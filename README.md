@@ -127,6 +127,33 @@ These are explicitly chosen and should be treated as constraints.
 7. **Extensibility safety**: Local-only extensions first, no remote code execution early.
 8. **AI local-first**: Ollama (Electron) or WASM LLM (web/PWA).
 
+## Agent Capability Transport (Frontend-Owned)
+
+Organizer operations are exposed through one capability contract in frontend TypeScript:
+- Registry: `frontend/src/services/lego_blocks/capabilityRegistryBlock.ts`
+- Router: `frontend/src/services/orchestrators/capabilityRouterOrch.ts`
+
+External agent/curl access uses a thin transport layer:
+- Frontend runner: `frontend/scripts/agent/capabilityRunner.ts`
+- FastAPI proxy endpoints:
+  - `GET /api/capabilities`
+  - `POST /api/capabilities/invoke`
+
+Important constraint:
+- Python backend does **not** implement duplicate YAML hierarchy services.
+- Backend only proxies requests to the frontend capability runner.
+
+Quick curl example:
+```bash
+curl -s http://127.0.0.1:8000/api/capabilities/invoke \
+  -H "Content-Type: application/json" \
+  -d '{
+    "capability": "organizer.nodes.list_roots",
+    "input": {"typeFilter": "program"},
+    "actor": {"kind": "agent", "id": "curl"}
+  }'
+```
+
 ## Storage Strategy (Locked)
 
 ### YAML Frontmatter + IndexedDB

@@ -24,6 +24,7 @@ Last updated: 2026-02-17
 12. Code design standard is lego blocks + orchestrators, with template-led orchestrator structure.
 13. Thoughts are free-capture first; mapping to hierarchy happens later through organizer/linking flows.
 14. Organizer-created program trees are project-scoped by default: nodes inherit `project_root` and write under `<project>/thinking-organizer/<type-folder>`.
+15. Agent-capability HTTP transport uses a **frontend TypeScript runner** as execution source; FastAPI acts only as a transport proxy and must not implement duplicate YAML hierarchy domain services.
 
 ## Architecture Pivot (2026-02-14)
 - **FROM**: SQLite + mirrored folders + backend hierarchy services
@@ -111,6 +112,7 @@ Last updated: 2026-02-17
 - ThinkingOrganizer now supports YAML tree reparenting and explorer file/folder drop mapping into YAML `parent` metadata with IndexedDB sync.
 - ThinkingOrganizer backlog create flow now supports explicit Jira-like node type selection (including idea buckets and thought buckets) with separate link tab preserved.
 - New Thought and Todo create flows now write YAML-frontmatter markdown; legacy todo files are upgraded to YAML on append.
+- Capability contract is centralized in frontend (`capabilityRegistryBlock` + `capabilityRouterOrch`) and now exposed for curl through backend `/api/capabilities` proxy that delegates to `frontend/scripts/agent/capabilityRunner.ts`.
 - No unified AI text action system across text boxes.
 - No extension SDK/runtime yet.
 - No explicit local-first agent management domain model yet.

@@ -4,14 +4,16 @@ import BacklogListBlock from '@/components/lego_blocks/BacklogListBlock'
 import VaultExplorerBlock from '@/components/lego_blocks/VaultExplorerBlock'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import {
-  getYamlNode,
-  listYamlChildren,
-  listYamlRootNodes,
-} from '@/services/lego_blocks/yamlHierarchyBlock'
 import { dropPathToYamlNodeOrch } from '@/services/orchestrators/thinkingOrganizerDropOrch'
 import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
+import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
+import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
+
+const LINKING_ACTOR: CapabilityActor = {
+  kind: 'human',
+  id: 'ui.linking',
+}
 
 function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
@@ -31,7 +33,11 @@ export default function LinkingOrch() {
     setLoading(true)
     setError(null)
     try {
-      const roots = await listYamlRootNodes('program')
+      const { nodes: roots } = await invokeCapabilityOrThrow({
+        capability: 'organizer.nodes.list_roots',
+        input: { typeFilter: 'program' },
+        actor: LINKING_ACTOR,
+      })
       setPrograms(roots.sort((a, b) => a.title.localeCompare(b.title)))
     } catch (err) {
       setError(errorMessage(err, 'Failed to load programs'))
@@ -49,7 +55,11 @@ export default function LinkingOrch() {
     setError(null)
     setMessage(null)
     try {
-      const node = await getYamlNode(nodeUuid)
+      const { node } = await invokeCapabilityOrThrow({
+        capability: 'organizer.node.get',
+        input: { uuid: nodeUuid },
+        actor: LINKING_ACTOR,
+      })
       if (!node) throw new Error('Node not found')
       if (node.type === 'program') throw new Error('Cannot link files to a program node directly.')
 
@@ -116,8 +126,22 @@ export default function LinkingOrch() {
             ) : (
               <BacklogListBlock
                 programs={programs}
-                loadEpics={program => listYamlChildren(program.key)}
-                loadChildren={epic => listYamlChildren(epic.key)}
+                loadEpics={async program => {
+                  const { nodes } = await invokeCapabilityOrThrow({
+                    capability: 'organizer.nodes.list_children',
+                    input: { parentKey: program.key },
+                    actor: LINKING_ACTOR,
+                  })
+                  return nodes
+                }}
+                loadChildren={async node => {
+                  const { nodes } = await invokeCapabilityOrThrow({
+                    capability: 'organizer.nodes.list_children',
+                    input: { parentKey: node.key },
+                    actor: LINKING_ACTOR,
+                  })
+                  return nodes
+                }}
                 selectedNodeId={null}
                 readOnly
                 onSelectNode={() => {}}

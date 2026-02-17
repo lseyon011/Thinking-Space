@@ -3,9 +3,10 @@ import { ArrowRight, Loader2, FolderTree, Layers, Lightbulb } from 'lucide-react
 import { Button } from '@/components/lego_blocks/ui/button'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import type { NodeType } from '@/services/lego_blocks/yamlNoteBlock'
-import { listYamlChildren, listYamlRootNodes } from '@/services/lego_blocks/yamlHierarchyBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { defaultNodeKindLabel } from '@/components/lego_blocks/HierarchyTreeBlock'
+import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
+import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
 import {
   STORAGE_KEYS,
   getStorageItem,
@@ -28,6 +29,11 @@ function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
   if (typeof value === 'string' && value.trim()) return value
   return fallback
+}
+
+const VIEW_ACTOR: CapabilityActor = {
+  kind: 'human',
+  id: 'ui.organizer-view',
 }
 
 function usePersistentTab(): [TabMode, (value: TabMode) => void] {
@@ -58,7 +64,11 @@ function ViewTab() {
     setLoading(true)
     setError(null)
     try {
-      const roots = await listYamlRootNodes('program')
+      const { nodes: roots } = await invokeCapabilityOrThrow({
+        capability: 'organizer.nodes.list_roots',
+        input: { typeFilter: 'program' },
+        actor: VIEW_ACTOR,
+      })
       const sorted = roots.sort((a, b) => a.title.localeCompare(b.title))
       setPrograms(sorted)
       setCurrentNodes(sorted)
@@ -80,7 +90,11 @@ function ViewTab() {
     setSelectedPath(nextPath)
 
     try {
-      const children = await listYamlChildren(node.key)
+      const { nodes: children } = await invokeCapabilityOrThrow({
+        capability: 'organizer.nodes.list_children',
+        input: { parentKey: node.key },
+        actor: VIEW_ACTOR,
+      })
       setCurrentNodes(children.sort((a, b) => a.title.localeCompare(b.title)))
     } catch (err) {
       setError(errorMessage(err, 'Failed to load children'))
@@ -96,7 +110,11 @@ function ViewTab() {
     setNodesLoading(true)
     setError(null)
     try {
-      const children = await listYamlChildren(parent.key)
+      const { nodes: children } = await invokeCapabilityOrThrow({
+        capability: 'organizer.nodes.list_children',
+        input: { parentKey: parent.key },
+        actor: VIEW_ACTOR,
+      })
       setCurrentNodes(children.sort((a, b) => a.title.localeCompare(b.title)))
     } catch (err) {
       setError(errorMessage(err, 'Failed to rewind path'))

@@ -1,5 +1,49 @@
 # Agent Handoffs
 
+## 2026-02-17 - LTM-034 Complete: Agent Capability Transport via Frontend Runner
+
+### From
+- Agent: Codex (GPT-5)
+
+### To
+- Next available Codex/Claude execution agent
+
+### Task Reference
+- ID: `LTM-034`
+- Title: Agent Capability Transport (Frontend Runner + FastAPI Proxy)
+
+### What Was Completed
+- Added frontend capability runner at `frontend/scripts/agent/capabilityRunner.ts`:
+  - Uses `capabilityRouterOrch` as the single execution surface for organizer capabilities.
+  - Adds Node `VaultFS` adapter and runs `fullSync` before invoke so Dexie cache is current.
+  - Supports `list` and `invoke` subcommands with JSON stdin/stdout.
+  - Uses `fake-indexeddb/auto` to run Dexie in node context.
+- Added thin FastAPI transport router `backend/app/routers/capabilities.py`:
+  - `GET /api/capabilities` -> frontend runner `list`.
+  - `POST /api/capabilities/invoke` -> frontend runner `invoke`.
+  - Python layer is transport-only and does not implement YAML hierarchy/domain logic.
+- Wired capabilities router in `backend/app/main.py`.
+- Added backend tests in `backend/tests/test_capabilities_api.py` with monkeypatched runner execution.
+- Added frontend script alias in `frontend/package.json`: `agent:capabilities`.
+- Continued UI migration to capability router:
+  - `frontend/src/components/orchestrators/LinkingOrch.tsx`
+  - `frontend/src/components/orchestrators/ThinkingOrganizerOrch.tsx`
+
+### Commands / Tests Run
+- `npm test -- --run tests/capabilityRouterOrch.test.ts tests/yamlHierarchyBlock.test.ts` (frontend) — passed.
+- `npm run build` (frontend) — passed.
+- `/Users/patila06/.pyenv/versions/3.10.12/envs/ltmpilot_venv/bin/python -m pytest backend/tests/test_capabilities_api.py -q` — passed.
+- `npm run agent:capabilities -- list` (frontend) — passed.
+- `npm run agent:capabilities -- invoke` with sample payload — passed.
+
+### Pillar Impact
+- Thinking space for individuals: all organizer operations now have an explicit machine-invokable contract, reducing UI-only coupling.
+- Place where humans and AI work together: same capability envelope is usable from UI and external automation.
+- AI agent management space for humans: curl/FastAPI transport makes organizer workflows scriptable for local agents.
+
+### Next Concrete Step
+- Add capability-level auth/allowlist and per-capability dry-run plans before broadening to non-organizer features.
+
 ## 2026-02-17 - LTM-033 Complete: Jira-Style Create Flow + Project Organizer Storage
 
 ### From

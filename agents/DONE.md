@@ -2,6 +2,33 @@
 
 ## 2026-02-17
 
+### DEV-012 - LTM-034 Agent Capability Transport (Frontend Runner + FastAPI Proxy)
+- Completed `LTM-034`.
+- Kept capability/domain execution frontend-only and added agent/curl transport:
+  - Added frontend runner: `frontend/scripts/agent/capabilityRunner.ts`
+  - Runner executes existing `capabilityRouterOrch` and performs cache rebuild via `fullSync` using a Node `VaultFS` adapter.
+  - Supports `list` and `invoke` commands with the same capability envelope shape used in UI.
+- Added thin FastAPI proxy (no Python YAML hierarchy service):
+  - `backend/app/routers/capabilities.py`
+  - `GET /api/capabilities` delegates to frontend runner `list`.
+  - `POST /api/capabilities/invoke` delegates to frontend runner `invoke`.
+- Wired router into backend app:
+  - `backend/app/main.py`
+- Added backend API tests with runner monkeypatching:
+  - `backend/tests/test_capabilities_api.py`
+- Added frontend npm helper command:
+  - `frontend/package.json` -> `agent:capabilities`.
+- Continued capability-router migration in organizer UI orchestrators:
+  - `frontend/src/components/orchestrators/LinkingOrch.tsx`
+  - `frontend/src/components/orchestrators/ThinkingOrganizerOrch.tsx`
+
+Validation:
+- `npm test -- --run tests/capabilityRouterOrch.test.ts tests/yamlHierarchyBlock.test.ts` (frontend) — passed.
+- `npm run build` (frontend) — passed.
+- `/Users/patila06/.pyenv/versions/3.10.12/envs/ltmpilot_venv/bin/python -m pytest backend/tests/test_capabilities_api.py -q` — passed.
+- `npm run agent:capabilities -- list` (frontend) — passed.
+- `npm run agent:capabilities -- invoke` with sample payload — passed.
+
 ### DEV-011 - LTM-033 Jira-Style Create Flow + Project Organizer Storage
 - Completed `LTM-033`.
 - Updated Thinking Organizer create flow to support explicit node type creation in backlog (Jira-style issue-type create):
