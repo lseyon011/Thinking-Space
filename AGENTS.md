@@ -133,34 +133,35 @@ Workspace location:
 - `coding-projects/thinking-space/thinking-organizer/*`
 
 Required session pattern:
-1. Sync first using organizer controls (`Sync Vault Now`) before reading/updating task state.
+1. Check active tasks: `./ltm organizer.nodes.search --query "status active" --limit 10`
 2. Claim/update tasks through capability operations (`task.claim`, `task.update_status`) or equivalent organizer UI actions.
 3. Every newly created operation node must include a meaningful description in YAML `description` (not empty placeholder text).
-4. Every implementation plan must be recorded in the tool as a plan node before execution (and updated as execution changes).
-5. End each session by recording run/handoff artifacts in the tool (`run.log`, `handoff.create`, comments/state history as needed).
+4. Record implementation plans in the organizer for non-trivial tasks (estimated >5 minutes). Quick fixes don't need a plan node.
+5. Run logging (`run.log`) is optional — use for significant multi-step sessions, not every interaction. Handoffs (`handoff.create`) are recommended when work is incomplete at session end.
 
 Actor and permission rules:
 1. Agents must always invoke capabilities with `actor.kind: "agent"` (never switch to `human`/`system` to bypass controls).
 2. If a capability call returns `Agent capabilities are disabled by feature flag.`, pause and ask the user to enable `agent_capabilities_enabled` before continuing.
 3. If writing to external vault paths (for example iCloud paths outside repo sandbox), request escalated filesystem permission first; do not bypass by changing actor kind.
 
-Capability runner invocation pattern (copy/paste):
+Capability runner invocation pattern (use `./ltm` wrapper from repo root):
 ```bash
 # List capabilities
-cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts list
+./ltm list
 
-# Invoke a capability (agent actor required)
-cat <<'EOF' | (cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts invoke)
-{
-  "vaultRoot": "/absolute/path/to/vault",
-  "request": {
-    "capability": "organizer.nodes.list_roots",
-    "input": {"typeFilter": "program"},
-    "actor": {"kind": "agent", "id": "codex"}
-  }
-}
-EOF
+# Invoke capabilities with --flag syntax (actor defaults to agent/claude-code)
+./ltm organizer.nodes.list_roots --typeFilter program
+./ltm organizer.node.create --type task --title "My task" --parentKey "epic-key" --extra-record_kind task
+./ltm task.claim --uuid "abc-123" --owner claude-code
+./ltm task.update_status --uuid "abc-123" --taskStatus done
+./ltm run.log --title "Session" --projectRoot /path --agentName claude-code --result success
+./ltm comment.add --uuid "abc-123" --text "Done" --addedBy claude-code
+
+# Raw JSON escape hatch (reads stdin)
+./ltm invoke < payload.json
 ```
+
+Setup: `.env` at repo root must have `LTM_VAULT_ROOT=/path/to/your/vault`.
 
 Recommended node pattern:
 - Program: `development (agent operations)` for active implementation tasks/plans/runs.

@@ -38,25 +38,27 @@ Workspace layout pattern:
 - `handoffs (agent operations)` program for transfer notes.
 - `principles and decisions (agent operations)` program for durable guidance.
 
-## Capability API Pattern (Avoid Runner Pitfalls)
-Use the runner in explicit CLI mode:
+## Capability API Pattern
+Use the `./ltm` wrapper from the repo root (auto-loads `.env` for vault path, sets runner flags, defaults actor to `agent/claude-code`):
 
 ```bash
-cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts list
+# List capabilities
+./ltm list
+
+# Common operations
+./ltm organizer.nodes.list_roots --typeFilter program
+./ltm organizer.node.get_by_key --key "development-agent-operations"
+./ltm organizer.node.create --type task --title "My task" --parentKey "task-backlog" --extra-record_kind task
+./ltm task.claim --uuid "abc-123" --owner claude-code
+./ltm task.update_status --uuid "abc-123" --taskStatus done
+./ltm run.log --title "Session" --projectRoot coding-projects/thinking-space --agentName claude-code --result success
+./ltm handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space --summary "Notes" --fromAgent claude-code --toAgent human --parentKey handoffs-agent-operations
+
+# Raw JSON escape hatch (reads stdin)
+./ltm invoke < payload.json
 ```
 
-```bash
-cat <<'EOF' | (cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts invoke)
-{
-  "vaultRoot": "/absolute/path/to/vault",
-  "request": {
-    "capability": "organizer.node.get_by_key",
-    "input": {"key": "development-agent-operations"},
-    "actor": {"kind": "agent", "id": "codex"}
-  }
-}
-EOF
-```
+Setup: `.env` at repo root must have `LTM_VAULT_ROOT=/path/to/your/vault`.
 
 ## Status Vocabulary
 - `READY`: unclaimed, clear to execute

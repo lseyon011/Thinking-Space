@@ -39,17 +39,18 @@ These are architecture constraints, not optional positioning variants.
 ## Phase Order (Follow README)
 Use `README.md` as source of truth.
 
-Current order:
-1. Phase 0: Architecture Alignment (update docs, install deps) — IN PROGRESS
-2. Phase 1: YAML Note Block (parse/stringify/validate)
-3. Phase 2: IndexedDB Cache Layer (Dexie.js)
-4. Phase 3: Hierarchy UI (tree view + reparent)
-5. Phase 4: Thought Edit Flow
-6. Phase 5: AI Actions (related, summarize, cleanup)
-7. Phase 6: Migration + Polish (remove SQLite code, migrate old thoughts)
-8. EPIC-3: Local-Only Extension Platform
-9. EPIC-5: AI Actions Everywhere
-10. EPIC-6: Optional Remote/Agent Backends (later)
+Current status:
+- Phase 0–4: DONE (architecture, YAML, IndexedDB, hierarchy UI, thought edit)
+- Phase 1–2 hardening: IN PROGRESS (DEV-008)
+- Phase 3 drag-drop: IN PROGRESS (DEV-009)
+- Agent Capability Transport: DONE (DEV-012/013/014)
+
+Next up:
+- Phase 5: AI Actions (related, summarize, cleanup)
+- Phase 6: Migration + Polish (remove SQLite code, migrate old thoughts)
+- EPIC-3: Local-Only Extension Platform
+- EPIC-5: AI Actions Everywhere
+- EPIC-6: Optional Remote/Agent Backends (later)
 
 ## Locked Technical Decisions
 1. Electron-first runtime for near-term milestones.
@@ -90,30 +91,33 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - UI code should consume service orchestrators by default, not low-level service primitives.
 - Caution: keep service orchestrators thin. Move shared algorithms, scanners, adapters, and transformation logic into service lego blocks.
 
-## Key New Service Blocks (To Be Created)
+## Key Service Blocks
 - `frontend/src/services/lego_blocks/yamlNoteBlock.ts` — YAML frontmatter parse/stringify/validate/key generation
 - `frontend/src/services/lego_blocks/dbBlock.ts` — Dexie.js IndexedDB cache layer
 - `frontend/src/services/orchestrators/vaultSyncOrch.ts` — vault scan to IndexedDB sync
-- `frontend/src/services/lego_blocks/aiBlock.ts` — local AI action primitives
+- `frontend/src/services/lego_blocks/capabilityRegistryBlock.ts` — capability registry with typed I/O contracts
+- `frontend/src/services/orchestrators/capabilityRouterOrch.ts` — capability router with policy/audit/dry-run
+- `frontend/src/services/lego_blocks/aiBlock.ts` — local AI action primitives (TO BE CREATED)
 
-## Mandatory Startup Sequence (Claude Sessions)
-1. Read `AGENTS.md`
-2. Read `README.md`
-3. Read `agents/README.md`
-4. Read `docs/ADR-005-Agent-Capabilities.md`
-5. Read `docs/ADR-006-Agent-Workspace-Schema.md`
-6. Open active tasks/plans from vault-native organizer workspace (`coding-projects/thinking-space/thinking-organizer/*`)
-7. Sync organizer cache before task updates (`Sync Vault Now` / equivalent capability path)
+## Startup Sequence (Claude Sessions)
+1. `CLAUDE.md` is auto-loaded — contains architecture, contracts, and locked decisions.
+2. Check active tasks: `./ltm organizer.nodes.search --query "status active" --limit 10`
+3. Read additional docs only when the task requires it:
+   - `README.md` — for phase order or product direction questions
+   - `docs/ADR-005-Agent-Capabilities.md` — when modifying the capability system
+   - `docs/ADR-006-Agent-Workspace-Schema.md` — when modifying workspace schema fields
+   - `agents/README.md` — for multi-agent handoff protocol
 
 ## Multi-Agent Discipline
-- Use organizer tool as source of truth for active operations (tasks, plans, runs, handoffs).
+- Use organizer tool as source of truth for active operations (tasks, plans, handoffs).
 - Every created operation node must include a substantive YAML `description`.
-- Every implementation plan must be recorded in the organizer tool before execution starts.
+- Record implementation plans in the organizer tool for non-trivial tasks (estimated >5 minutes of work). Quick fixes and small changes don't need a plan node.
+- Run logging (`run.log`) is optional — use it for significant multi-step sessions, not every interaction.
 - All agent capability calls must use `actor.kind: "agent"`; never switch to `human` to bypass flag/policy checks.
 - If `agent_capabilities_enabled` is off and a call fails with that error, pause and ask the user before continuing.
 - For external vault writes (such as iCloud paths outside repo sandbox), request escalated permissions first.
 - Follow workspace usage pattern:
-  - `development (agent operations)` for active task/plan/run work.
+  - `development (agent operations)` for active task/plan work.
   - `handoffs (agent operations)` for handoff records.
   - `principles and decisions (agent operations)` for durable guidance.
 - Keep docs synchronized when strategy or architecture shifts.
@@ -122,24 +126,32 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - Follow `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md`.
 
 ## Capability Runner Pattern
-Use this exact CLI mode for stable output:
+Use the `./ltm` wrapper from the repo root. It auto-loads `.env` (for `LTM_VAULT_ROOT`), sets runner flags, and defaults to `actor: {kind: "agent", id: "claude-code"}`.
 
 ```bash
-cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts list
+# List all capabilities
+./ltm list
+
+# Invoke capabilities directly with --flag syntax
+./ltm organizer.nodes.list_roots --typeFilter program
+./ltm organizer.nodes.list_children --parentKey "epic-auth"
+./ltm organizer.nodes.search --query "auth bug" --limit 10
+./ltm organizer.node.get --uuid "abc-123"
+./ltm organizer.node.create --type task --title "Fix login" --parentKey "epic-key" --extra-record_kind task
+./ltm organizer.node.update --uuid "abc-123" --status active --priority high
+./ltm task.claim --uuid "abc-123" --owner claude-code
+./ltm task.update_status --uuid "abc-123" --taskStatus done
+./ltm run.log --title "Session log" --projectRoot /path --agentName claude-code --result success
+./ltm comment.add --uuid "abc-123" --text "Done" --addedBy claude-code
+
+# Override actor (default: agent/claude-code)
+./ltm organizer.nodes.list_roots --actor-kind human --actor-id ui.user
+
+# Raw JSON escape hatch (reads stdin, for complex payloads)
+./ltm invoke < payload.json
 ```
 
-```bash
-cat <<'EOF' | (cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts invoke)
-{
-  "vaultRoot": "/absolute/path/to/vault",
-  "request": {
-    "capability": "organizer.nodes.list_roots",
-    "input": {"typeFilter": "program"},
-    "actor": {"kind": "agent", "id": "codex"}
-  }
-}
-EOF
-```
+Setup: ensure `.env` at repo root has `LTM_VAULT_ROOT=/path/to/your/vault`.
 
 ## Scope Boundary
 These instructions apply to `ltm-pilot` only.

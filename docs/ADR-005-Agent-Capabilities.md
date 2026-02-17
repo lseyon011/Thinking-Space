@@ -69,24 +69,23 @@ Operational tool usage pattern:
 
 ## Runner API Pattern (CLI)
 
-Stable invocation mode:
+Use the `./ltm` wrapper from the repo root. It auto-loads `.env` (for `LTM_VAULT_ROOT`), sets runner flags, and defaults actor to `{kind: "agent", id: "claude-code"}`.
 
 ```bash
-cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts list
+# List capabilities
+./ltm list
+
+# Invoke with --flag syntax
+./ltm organizer.nodes.list_roots --typeFilter program
+./ltm organizer.node.get --uuid "abc-123"
+./ltm organizer.node.create --type task --title "My task" --parentKey "epic-key" --extra-record_kind task
+./ltm task.claim --uuid "abc-123" --owner claude-code
+
+# Raw JSON escape hatch (reads stdin, for complex payloads)
+./ltm invoke < payload.json
 ```
 
-```bash
-cat <<'EOF' | (cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts invoke)
-{
-  "vaultRoot": "/absolute/path/to/vault",
-  "request": {
-    "capability": "organizer.nodes.list_roots",
-    "input": {"typeFilter": "program"},
-    "actor": {"kind": "agent", "id": "codex"}
-  }
-}
-EOF
-```
+Setup: `.env` at repo root must have `LTM_VAULT_ROOT=/path/to/your/vault`.
 
 ## Consequences
 

@@ -175,6 +175,106 @@ export class NodeVaultFS implements VaultFS {
   }
 }
 
+// ── CLI arg parsing for direct capability invocation ──
+
+const NUMBER_FIELDS = new Set(['limit', 'lineNumber'])
+const ARRAY_FIELDS = new Set(['tags', 'items', 'artifacts', 'relatedNodes', 'emotions', 'comments'])
+const BOOLEAN_FIELDS = new Set(['dryRun', 'dry-run', 'date_header'])
+
+/** Capabilities where non-identity fields are wrapped in an `updates` sub-object. */
+const WRAPPED_CAPABILITIES: Record<string, string> = {
+  'organizer.node.update': 'updates',
+}
+
+/** Identity fields that stay at the top level even for wrapped capabilities. */
+const IDENTITY_FIELDS = new Set(['uuid', 'key'])
+
+function parseCLIArgs(args: string[]): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  let i = 0
+  while (i < args.length) {
+    const arg = args[i]!
+    if (!arg.startsWith('--')) {
+      throw new Error(`Unexpected positional argument: ${arg}`)
+    }
+    const key = arg.slice(2)
+    // Boolean flags: if next arg is missing or starts with --, treat as true
+    if (BOOLEAN_FIELDS.has(key) && (i + 1 >= args.length || args[i + 1]!.startsWith('--'))) {
+      result[key] = true
+      i++
+      continue
+    }
+    if (i + 1 >= args.length) {
+      throw new Error(`Missing value for --${key}`)
+    }
+    const value = args[i + 1]!
+    i += 2
+    if (key.startsWith('extra-')) {
+      const extraKey = key.slice(6)
+      const extraFields = (result.extraFields as Record<string, unknown>) ?? {}
+      extraFields[extraKey] = value
+      result.extraFields = extraFields
+    } else if (NUMBER_FIELDS.has(key)) {
+      result[key] = Number(value)
+    } else if (ARRAY_FIELDS.has(key)) {
+      result[key] = value.split(',').map(s => s.trim())
+    } else {
+      result[key] = value
+    }
+  }
+  return result
+}
+
+function buildCLIInvokePayload(capability: string, cliArgs: string[]): InvokePayload {
+  const vaultRoot = process.env.LTM_VAULT_ROOT
+  if (!vaultRoot) {
+    throw new Error(
+      'LTM_VAULT_ROOT is not set. Use the ./ltm wrapper script or set it in .env.',
+    )
+  }
+
+  const parsed = parseCLIArgs(cliArgs)
+
+  // Extract actor overrides
+  const actorKind = (parsed['actor-kind'] as string) ?? 'agent'
+  const actorId = (parsed['actor-id'] as string) ?? 'claude-code'
+  delete parsed['actor-kind']
+  delete parsed['actor-id']
+
+  // Extract dryRun (accept both --dryRun and --dry-run)
+  const dryRun = parsed.dryRun === true || parsed['dry-run'] === true
+  delete parsed.dryRun
+  delete parsed['dry-run']
+
+  // Handle wrapped capabilities (e.g., organizer.node.update wraps non-uuid fields in `updates`)
+  const wrapKey = WRAPPED_CAPABILITIES[capability]
+  let input: Record<string, unknown>
+  if (wrapKey) {
+    const identity: Record<string, unknown> = {}
+    const wrapped: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(parsed)) {
+      if (IDENTITY_FIELDS.has(k)) {
+        identity[k] = v
+      } else {
+        wrapped[k] = v
+      }
+    }
+    input = { ...identity, [wrapKey]: wrapped }
+  } else {
+    input = parsed
+  }
+
+  return {
+    vaultRoot,
+    request: {
+      capability: capability as CapabilityInvokeRequest['capability'],
+      input,
+      actor: { kind: actorKind as 'agent' | 'human' | 'system', id: actorId },
+      dryRun,
+    },
+  }
+}
+
 async function main(): Promise<void> {
   const command = process.argv[2]
 
@@ -189,7 +289,15 @@ async function main(): Promise<void> {
     return
   }
 
-  throw new Error(`Unknown command: ${command ?? '<missing>'}`)
+  // CLI-arg mode: treat argv[2] as a capability name
+  if (command && command.includes('.')) {
+    const cliArgs = process.argv.slice(3)
+    const payload = buildCLIInvokePayload(command, cliArgs)
+    writeJson(await runCapabilityRunnerCommand('invoke', payload))
+    return
+  }
+
+  throw new Error(`Unknown command: ${command ?? '<missing>'}. Use "list", "invoke", or a capability name (e.g. organizer.nodes.list_roots).`)
 }
 
 export async function runCapabilityRunnerCommand(
