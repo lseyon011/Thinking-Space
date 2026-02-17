@@ -50,27 +50,30 @@ function parseTabMode(raw: string | null): TabMode | null {
 
 function usePersistentTab(): [TabMode, (value: TabMode) => void] {
   const [searchParams, setSearchParams] = useSearchParams()
-  const tabFromUrl = parseTabMode(searchParams.get(TAB_QUERY_PARAM))
   const [tab, setTab] = useState<TabMode>(() => {
-    if (tabFromUrl) return tabFromUrl
     const saved = parseTabMode(getStorageItem(STORAGE_KEYS.thinkingOrganizerTab))
     if (saved) return saved
     return 'backlog'
   })
+  const [urlHydrated, setUrlHydrated] = useState(false)
 
   useEffect(() => {
+    if (urlHydrated) return
+    const tabFromUrl = parseTabMode(searchParams.get(TAB_QUERY_PARAM))
     if (tabFromUrl && tabFromUrl !== tab) {
       setTab(tabFromUrl)
     }
-  }, [tab, tabFromUrl])
+    setUrlHydrated(true)
+  }, [searchParams, tab, urlHydrated])
 
   useEffect(() => {
+    if (!urlHydrated) return
     const current = parseTabMode(searchParams.get(TAB_QUERY_PARAM))
     if (current === tab) return
     const next = new URLSearchParams(searchParams)
     next.set(TAB_QUERY_PARAM, tab)
     setSearchParams(next, { replace: true })
-  }, [searchParams, setSearchParams, tab])
+  }, [searchParams, setSearchParams, tab, urlHydrated])
 
   useEffect(() => {
     setStorageItem(STORAGE_KEYS.thinkingOrganizerTab, tab)

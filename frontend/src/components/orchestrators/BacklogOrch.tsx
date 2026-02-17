@@ -84,7 +84,7 @@ export default function BacklogOrch() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [programs, setPrograms] = useState<NodeRecord[]>([])
   const [selectedNode, setSelectedNode] = useState<NodeRecord | null>(null)
-  const [selectedNodeUrlHydrated, setSelectedNodeUrlHydrated] = useState(false)
+  const [urlHydrated, setUrlHydrated] = useState(false)
   const [selectedFrontmatter, setSelectedFrontmatter] = useState<YAMLFrontmatter | null>(null)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
@@ -101,8 +101,6 @@ export default function BacklogOrch() {
     () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
   )
   const [activeProjectRoot, setActiveProjectRoot] = useState<string>(() => {
-    const fromUrl = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
-    if (fromUrl) return fromUrl
     const saved = getJsonStorageItem<string[]>(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, [])
     return normalizePath(saved.join('/'))
   })
@@ -145,44 +143,37 @@ export default function BacklogOrch() {
   }, [loadPrograms])
 
   useEffect(() => {
+    if (urlHydrated) return
     const selectedNodeUuid = searchParams.get(SELECTED_NODE_QUERY_PARAM)?.trim() ?? ''
-    if (!selectedNodeUuid) {
-      setSelectedNode(null)
-      setSelectedNodeUrlHydrated(true)
-      return
-    }
-    if (selectedNode?.uuid === selectedNodeUuid) {
-      setSelectedNodeUrlHydrated(true)
-      return
+    const urlRoot = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
+    if (urlRoot && urlRoot !== activeProjectRoot) {
+      setActiveProjectRoot(urlRoot)
+      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, urlRoot.split('/'))
     }
     let cancelled = false
     void (async () => {
-      try {
-        const { node } = await invokeCapabilityOrThrow({
-          capability: 'organizer.node.get',
-          input: { uuid: selectedNodeUuid },
-          actor: BACKLOG_ACTOR,
-        })
-        if (cancelled) return
-        setSelectedNode(node ?? null)
-      } catch {
-        if (!cancelled) setSelectedNode(null)
-      } finally {
-        if (!cancelled) setSelectedNodeUrlHydrated(true)
+      if (selectedNodeUuid) {
+        try {
+          const { node } = await invokeCapabilityOrThrow({
+            capability: 'organizer.node.get',
+            input: { uuid: selectedNodeUuid },
+            actor: BACKLOG_ACTOR,
+          })
+          if (!cancelled) setSelectedNode(node ?? null)
+        } catch {
+          if (!cancelled) setSelectedNode(null)
+        } finally {
+          if (!cancelled) setUrlHydrated(true)
+        }
+        return
       }
+      if (!cancelled) setUrlHydrated(true)
     })()
     return () => { cancelled = true }
-  }, [searchParams, selectedNode?.uuid])
+  }, [activeProjectRoot, searchParams, urlHydrated])
 
   useEffect(() => {
-    const urlRoot = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
-    if (!urlRoot || urlRoot === activeProjectRoot) return
-    setActiveProjectRoot(urlRoot)
-    setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, urlRoot.split('/'))
-  }, [activeProjectRoot, searchParams])
-
-  useEffect(() => {
-    if (!selectedNodeUrlHydrated) return
+    if (!urlHydrated) return
     const currentSelectedNode = searchParams.get(SELECTED_NODE_QUERY_PARAM)?.trim() ?? ''
     const nextSelectedNode = selectedNode?.uuid ?? ''
     if (currentSelectedNode === nextSelectedNode) return
@@ -190,16 +181,17 @@ export default function BacklogOrch() {
     if (nextSelectedNode) next.set(SELECTED_NODE_QUERY_PARAM, nextSelectedNode)
     else next.delete(SELECTED_NODE_QUERY_PARAM)
     setSearchParams(next, { replace: true })
-  }, [searchParams, selectedNode?.uuid, selectedNodeUrlHydrated, setSearchParams])
+  }, [searchParams, selectedNode?.uuid, setSearchParams, urlHydrated])
 
   useEffect(() => {
+    if (!urlHydrated) return
     const currentProjectRoot = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
     if (currentProjectRoot === activeProjectRoot) return
     const next = new URLSearchParams(searchParams)
     if (activeProjectRoot) next.set(PROJECT_ROOT_QUERY_PARAM, activeProjectRoot)
     else next.delete(PROJECT_ROOT_QUERY_PARAM)
     setSearchParams(next, { replace: true })
-  }, [activeProjectRoot, searchParams, setSearchParams])
+  }, [activeProjectRoot, searchParams, setSearchParams, urlHydrated])
 
   const refreshExecutionProgress = useCallback(async () => {
     setActiveExecutionTasksLoading(true)
