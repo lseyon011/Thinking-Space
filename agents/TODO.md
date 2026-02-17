@@ -36,6 +36,7 @@ Tasks LTM-017/020 are obsolete (SQLite-specific debt no longer applies).
 | LTM-032 | Remove Obsolete SQLite Code | READY | unassigned | LTM-027 | Delete backend hierarchy services, electron SQLite code, frontend SQLite adapters; clean imports |
 | LTM-016 | Decompose ThinkingOrganizerOrch | READY | unassigned | LTM-027 | CreateTab, ViewTab, TraceTab extracted into separate orchestrators; no file exceeds ~400 lines |
 | LTM-033 | Jira-Style Create Flow + Project Organizer Storage | DONE | codex-gpt5 | LTM-027 | Backlog supports explicit idea-bucket/idea/thought-bucket creation flow and writes nodes under `<project>/thinking-organizer/*`; linking remains a separate tab |
+| LTM-034 | Jira-Themed Create UX + Project Buttons + Full Metadata Panel | DONE | codex-gpt5 | LTM-033 | Create tab adopts Jira-like backlog feel, supports create-project with destination picker + project buttons, and displays full YAML frontmatter metadata for selected nodes |
 | LTM-006 | Local Extension Manifest + Permissions | READY | unassigned | LTM-027 | Extensions have explicit scoped permissions and lifecycle |
 | LTM-007 | In-App Feature Builder Scaffolding | READY | unassigned | LTM-006 | Generate/review/enable extension from in-app flow |
 | LTM-008 | Shared AI Text Action Bar | READY | unassigned | LTM-029 | Summarize/Cleanup/Related usable in all major text surfaces |

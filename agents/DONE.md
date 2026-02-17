@@ -2,6 +2,29 @@
 
 ## 2026-02-17
 
+### DEV-012 - LTM-034 Jira-Themed Create UX + Project Buttons + Full Metadata Panel
+- Completed `LTM-034`.
+- Upgraded create/backlog UI toward Jira sprint style while preserving current app theme:
+  - `frontend/src/components/lego_blocks/BacklogListBlock.tsx`
+  - Sprint containers now use Jira-like rounded card + row table structure.
+  - Work-item rows now match Jira-style columns (issue text, label chip, status chip, flag marker, assignee avatar).
+  - Added Jira-like `+ Create` footer row that expands into typed create form (bucket/idea/thought typing preserved).
+  - Preserved existing behavior: epic expand/collapse, drag-drop reparenting, search/filter support.
+- Added project creation modal + project switcher flow:
+  - `frontend/src/components/orchestrators/BacklogOrch.tsx`
+  - Added regular `Create Project` button that opens blurred-backdrop modal.
+  - Modal captures project name + destination folder (via `CascadingFolderPickerBlock`) and creates `<project>/thinking-organizer`.
+  - Created projects persist and render as clickable project buttons below create action.
+- Added full YAML metadata visibility in node details:
+  - `frontend/src/components/lego_blocks/NodeDetailPanelBlock.tsx`
+  - Node detail panel now renders full parsed frontmatter key/value metadata with loading state.
+- Added storage keys for project list + project-create destination:
+  - `frontend/src/services/lego_blocks/storageKeyBlock.ts`
+
+Validation:
+- `npm test -- --run` (frontend) — 53 tests passed.
+- `npm run build` (frontend) — passed.
+
 ### DEV-011 - LTM-033 Jira-Style Create Flow + Project Organizer Storage
 - Completed `LTM-033`.
 - Updated Thinking Organizer create flow to support explicit node type creation in backlog (Jira-style issue-type create):

@@ -7,6 +7,9 @@ export const STORAGE_KEYS = {
   thinkingOrganizerFolderRoots: 'ltm-thinking-organizer-folder-roots',
   thinkingOrganizerProjectRoots: 'ltm-thinking-organizer-project-roots',
   thinkingOrganizerSelectedProjectRoot: 'ltm-thinking-organizer-selected-project-root',
+  thinkingOrganizerProjects: 'ltm-thinking-organizer-projects',
+  thinkingOrganizerProjectCreateDestination: 'ltm-thinking-organizer-project-create-destination',
+  thinkingOrganizerActiveProject: 'ltm-thinking-organizer-active-project',
 } as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]
