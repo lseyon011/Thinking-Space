@@ -133,6 +133,7 @@ Use the `./ltm` wrapper from the repo root. It auto-loads `.env` (for `LTM_VAULT
 - `--description "..."` — mandatory for every created node per multi-agent discipline
 - `--parentKey "..."` — required to place nodes in the correct hierarchy (e.g., `handoffs-agent-operations`, `task-backlog`)
 - `--extra-record_kind <kind>` — for typed records: `task`, `run`, `handoff`, `decision`, `principle`, `note`
+- `--extra-*` is only for custom metadata (`extraFields`). For first-class fields use first-class flags (`--comments`, `--description`, etc). For append-only notes, use `comment.add`.
 
 ```bash
 # Read operations

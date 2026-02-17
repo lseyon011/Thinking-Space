@@ -189,8 +189,63 @@ const WRAPPED_CAPABILITIES: Record<string, string> = {
 /** Identity fields that stay at the top level even for wrapped capabilities. */
 const IDENTITY_FIELDS = new Set(['uuid', 'key'])
 
-function parseCLIArgs(args: string[]): Record<string, unknown> {
+const EXTRA_FIELD_ALIASES: Record<string, Record<string, string>> = {
+  'organizer.node.create': {
+    'extra-type': 'type',
+    'extra-title': 'title',
+    'extra-parentKey': 'parentKey',
+    'extra-parentUuid': 'parentUuid',
+    'extra-parentType': 'parentType',
+    'extra-tags': 'tags',
+    'extra-body': 'body',
+    'extra-description': 'description',
+    'extra-comments': 'comments',
+    'extra-projectRoot': 'projectRoot',
+  },
+  'organizer.node.update': {
+    'extra-type': 'type',
+    'extra-title': 'title',
+    'extra-tags': 'tags',
+    'extra-status': 'status',
+    'extra-priority': 'priority',
+    'extra-description': 'description',
+    'extra-comments': 'comments',
+  },
+}
+
+interface ParsedCLIArgsResult {
+  input: Record<string, unknown>
+  warnings: string[]
+}
+
+function parseScalarOrCollectionValue(key: string, value: string): unknown {
+  if (NUMBER_FIELDS.has(key)) return Number(value)
+  if (ARRAY_FIELDS.has(key)) return value.split(',').map(s => s.trim())
+  return value
+}
+
+function getAliasedKey(capability: string, key: string): { key: string; warning?: string } {
+  const aliases = EXTRA_FIELD_ALIASES[capability]
+  if (!aliases) return { key }
+  const canonical = aliases[key]
+  if (!canonical) return { key }
+
+  if (canonical === 'comments') {
+    return {
+      key: canonical,
+      warning: `Flag --${key} is deprecated for ${capability}. Use --comments. For append-only notes, use comment.add with --text.`,
+    }
+  }
+
+  return {
+    key: canonical,
+    warning: `Flag --${key} is deprecated for ${capability}. Use --${canonical} instead.`,
+  }
+}
+
+function parseCLIArgs(capability: string, args: string[]): ParsedCLIArgsResult {
   const result: Record<string, unknown> = {}
+  const warnings: string[] = []
   let i = 0
   while (i < args.length) {
     const arg = args[i]!
@@ -209,23 +264,31 @@ function parseCLIArgs(args: string[]): Record<string, unknown> {
     }
     const value = args[i + 1]!
     i += 2
-    if (key.startsWith('extra-')) {
-      const extraKey = key.slice(6)
+    const { key: resolvedKey, warning } = getAliasedKey(capability, key)
+    if (warning) warnings.push(warning)
+
+    if (resolvedKey.startsWith('extra-')) {
+      const extraKey = resolvedKey.slice(6)
       const extraFields = (result.extraFields as Record<string, unknown>) ?? {}
       extraFields[extraKey] = value
       result.extraFields = extraFields
-    } else if (NUMBER_FIELDS.has(key)) {
-      result[key] = Number(value)
-    } else if (ARRAY_FIELDS.has(key)) {
-      result[key] = value.split(',').map(s => s.trim())
     } else {
-      result[key] = value
+      result[resolvedKey] = parseScalarOrCollectionValue(resolvedKey, value)
     }
   }
-  return result
+  return { input: result, warnings }
 }
 
-function buildCLIInvokePayload(capability: string, cliArgs: string[]): InvokePayload {
+function writeCLIWarnings(warnings: string[]): void {
+  for (const warning of warnings) {
+    process.stderr.write(`[ltm] ${warning}\n`)
+  }
+}
+
+export function buildCLIInvokePayload(
+  capability: string,
+  cliArgs: string[],
+): { payload: InvokePayload; warnings: string[] } {
   const vaultRoot = process.env.LTM_VAULT_ROOT
   if (!vaultRoot) {
     throw new Error(
@@ -233,18 +296,19 @@ function buildCLIInvokePayload(capability: string, cliArgs: string[]): InvokePay
     )
   }
 
-  const parsed = parseCLIArgs(cliArgs)
+  const parsed = parseCLIArgs(capability, cliArgs)
+  const { input: inputArgs, warnings } = parsed
 
   // Extract actor overrides
-  const actorKind = (parsed['actor-kind'] as string) ?? 'agent'
-  const actorId = (parsed['actor-id'] as string) ?? 'claude-code'
-  delete parsed['actor-kind']
-  delete parsed['actor-id']
+  const actorKind = (inputArgs['actor-kind'] as string) ?? 'agent'
+  const actorId = (inputArgs['actor-id'] as string) ?? 'claude-code'
+  delete inputArgs['actor-kind']
+  delete inputArgs['actor-id']
 
   // Extract dryRun (accept both --dryRun and --dry-run)
-  const dryRun = parsed.dryRun === true || parsed['dry-run'] === true
-  delete parsed.dryRun
-  delete parsed['dry-run']
+  const dryRun = inputArgs.dryRun === true || inputArgs['dry-run'] === true
+  delete inputArgs.dryRun
+  delete inputArgs['dry-run']
 
   // Handle wrapped capabilities (e.g., organizer.node.update wraps non-uuid fields in `updates`)
   const wrapKey = WRAPPED_CAPABILITIES[capability]
@@ -252,7 +316,7 @@ function buildCLIInvokePayload(capability: string, cliArgs: string[]): InvokePay
   if (wrapKey) {
     const identity: Record<string, unknown> = {}
     const wrapped: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(parsed)) {
+    for (const [k, v] of Object.entries(inputArgs)) {
       if (IDENTITY_FIELDS.has(k)) {
         identity[k] = v
       } else {
@@ -261,17 +325,20 @@ function buildCLIInvokePayload(capability: string, cliArgs: string[]): InvokePay
     }
     input = { ...identity, [wrapKey]: wrapped }
   } else {
-    input = parsed
+    input = inputArgs
   }
 
   return {
-    vaultRoot,
-    request: {
-      capability: capability as CapabilityInvokeRequest['capability'],
-      input,
-      actor: { kind: actorKind as 'agent' | 'human' | 'system', id: actorId },
-      dryRun,
+    payload: {
+      vaultRoot,
+      request: {
+        capability: capability as CapabilityInvokeRequest['capability'],
+        input,
+        actor: { kind: actorKind as 'agent' | 'human' | 'system', id: actorId },
+        dryRun,
+      },
     },
+    warnings,
   }
 }
 
@@ -292,7 +359,8 @@ async function main(): Promise<void> {
   // CLI-arg mode: treat argv[2] as a capability name
   if (command && command.includes('.')) {
     const cliArgs = process.argv.slice(3)
-    const payload = buildCLIInvokePayload(command, cliArgs)
+    const { payload, warnings } = buildCLIInvokePayload(command, cliArgs)
+    writeCLIWarnings(warnings)
     writeJson(await runCapabilityRunnerCommand('invoke', payload))
     return
   }

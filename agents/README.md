@@ -43,6 +43,7 @@ Required fields for node creation (easy to forget, causes bugs):
 - `--description "..."` — mandatory for every created node
 - `--parentKey "..."` — places nodes in correct hierarchy
 - `--extra-record_kind <kind>` — `task`, `run`, `handoff`, `decision`, `principle`, `note`
+- `--extra-*` is for custom metadata only; use first-class flags for first-class fields (`--comments`, `--description`, etc). Use `comment.add` to append a note.
 
 ```bash
 # Read operations
@@ -63,6 +64,7 @@ Required fields for node creation (easy to forget, causes bugs):
 ./ltm handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space \
   --summary "Notes" --fromAgent claude-code --toAgent human \
   --parentKey handoffs-agent-operations
+./ltm comment.add --uuid "abc-123" --text "Done" --addedBy claude-code
 
 # Raw JSON escape hatch (reads stdin)
 ./ltm invoke < payload.json
