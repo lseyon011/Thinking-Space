@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getAiSettingsOrch,
+  resolveAiProviderForScopeOrch,
   resolveAiModelForScopeProviderOrch,
   resolveAiModelForProviderOrch,
   resolveAiSelectionOrch,
   setAiProviderModelOrch,
+  setAiScopeProviderOrch,
   setAiScopeProviderModelOrch,
   setAiSelectedProviderOrch,
 } from '@/services/orchestrators/aiSettingsOrch'
@@ -113,5 +115,34 @@ describe('aiSettingsOrch', () => {
     setAiScopeProviderModelOrch('new_thought', 'codex-cli', '')
     expect(resolveAiModelForScopeProviderOrch('new_thought', 'codex-cli')).toBe('gpt-5.3-codex')
     expect(getAiSettingsOrch().selectedProvider).toBe('codex-cli')
+  })
+
+  it('supports per-scope provider override with global fallback', async () => {
+    setAiSelectedProviderOrch('codex-cli')
+    setAiProviderModelOrch('codex-cli', 'gpt-5.3-codex')
+    setAiProviderModelOrch('claude', 'claude-sonnet-4-5-20250929')
+    setAiScopeProviderOrch('new_thought', 'claude')
+
+    listProvidersBlockMock.mockResolvedValue([
+      { provider: 'codex-cli', available: true, label: 'Codex CLI', model: 'gpt-5.3-codex', models: ['gpt-5.3-codex'] },
+      { provider: 'claude', available: true, label: 'Claude', model: 'claude-sonnet-4-5-20250929', models: ['claude-sonnet-4-5-20250929'] },
+      { provider: 'openai-codex', available: false, label: 'Codex', model: 'gpt-5.3-codex', models: ['gpt-5.3-codex'] },
+      { provider: 'azure-gpt', available: false, label: 'Azure GPT', model: 'gpt-5', models: ['gpt-5'] },
+    ])
+
+    const newThoughtSelection = await resolveAiSelectionOrch({ scope: 'new_thought' })
+    const chatSelection = await resolveAiSelectionOrch({ scope: 'chat' })
+
+    expect(newThoughtSelection?.provider).toBe('claude')
+    expect(newThoughtSelection?.model).toBe('claude-sonnet-4-5-20250929')
+    expect(chatSelection?.provider).toBe('codex-cli')
+    expect(chatSelection?.model).toBe('gpt-5.3-codex')
+    expect(resolveAiProviderForScopeOrch('new_thought')).toBe('claude')
+
+    setAiScopeProviderOrch('new_thought', null)
+
+    const resetSelection = await resolveAiSelectionOrch({ scope: 'new_thought' })
+    expect(resetSelection?.provider).toBe('codex-cli')
+    expect(resolveAiProviderForScopeOrch('new_thought')).toBeNull()
   })
 })

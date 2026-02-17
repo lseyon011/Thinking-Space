@@ -2,8 +2,10 @@ import {
   AI_SETTINGS_SCOPE_ORDER,
   isAiSettingsScope,
   readAiSettingsBlock,
+  resolveAiProviderForScopeBlock,
   resolveAiModelForScopeProviderBlock,
   resolveAiModelForProviderBlock,
+  setSelectedAiProviderForScopeBlock,
   setSelectedAiModelForScopeBlock,
   setSelectedAiModelBlock,
   setSelectedAiProviderBlock,
@@ -67,6 +69,10 @@ export function setAiProviderModelOrch(provider: AiProvider, model: string): AiS
   return setSelectedAiModelBlock(provider, model)
 }
 
+export function setAiScopeProviderOrch(scope: AiSettingsScope, provider: AiProvider | null): AiSettings {
+  return setSelectedAiProviderForScopeBlock(scope, provider)
+}
+
 export function setAiScopeProviderModelOrch(
   scope: AiSettingsScope,
   provider: AiProvider,
@@ -91,13 +97,14 @@ export function resolveAiSelectionFromProvidersOrch(
   const scope = isAiSettingsScope(input?.scope) ? input!.scope : null
   const provider = pickAvailableProvider(providers, [
     input?.provider,
+    scope ? resolveAiProviderForScopeBlock(scope, settings) : null,
     settings.selectedProvider,
     ...AI_PROVIDER_ORDER,
   ])
 
   if (!provider) return null
 
-  if (settings.selectedProvider !== provider) {
+  if (!scope && settings.selectedProvider !== provider) {
     setSelectedAiProviderBlock(provider)
   }
 
@@ -134,4 +141,8 @@ export function resolveAiModelForProviderOrch(provider: AiProvider): string {
 
 export function resolveAiModelForScopeProviderOrch(scope: AiSettingsScope, provider: AiProvider): string {
   return resolveAiModelForScopeProviderBlock(scope, provider)
+}
+
+export function resolveAiProviderForScopeOrch(scope: AiSettingsScope): AiProvider | null {
+  return resolveAiProviderForScopeBlock(scope)
 }

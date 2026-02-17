@@ -23,12 +23,14 @@ export const AI_SETTINGS_SCOPE_ORDER: AiSettingsScope[] = [
 export interface AiSettings {
   selectedProvider: AiProvider | null
   selectedModelByProvider: Partial<Record<AiProvider, string>>
+  selectedProviderByScope: Partial<Record<AiSettingsScope, AiProvider>>
   selectedModelByScopeProvider: Partial<Record<string, string>>
 }
 
 const DEFAULT_SETTINGS: AiSettings = {
   selectedProvider: null,
   selectedModelByProvider: {},
+  selectedProviderByScope: {},
   selectedModelByScopeProvider: {},
 }
 
@@ -45,6 +47,17 @@ function sanitizeModelMap(raw: unknown): Partial<Record<AiProvider, string>> {
     if (!isAiProvider(key)) continue
     const model = sanitizeModel(value)
     if (model) next[key] = model
+  }
+  return next
+}
+
+function sanitizeScopeProviderMap(raw: unknown): Partial<Record<AiSettingsScope, AiProvider>> {
+  if (!raw || typeof raw !== 'object') return {}
+  const next: Partial<Record<AiSettingsScope, AiProvider>> = {}
+  for (const [scope, provider] of Object.entries(raw)) {
+    if (!isAiSettingsScope(scope)) continue
+    if (!isAiProvider(provider)) continue
+    next[scope] = provider
   }
   return next
 }
@@ -87,6 +100,7 @@ export function readAiSettingsBlock(): AiSettings {
   return {
     selectedProvider: isAiProvider(parsed.selectedProvider) ? parsed.selectedProvider : null,
     selectedModelByProvider: sanitizeModelMap(parsed.selectedModelByProvider),
+    selectedProviderByScope: sanitizeScopeProviderMap(parsed.selectedProviderByScope),
     selectedModelByScopeProvider: sanitizeScopeProviderModelMap(parsed.selectedModelByScopeProvider),
   }
 }
@@ -95,6 +109,7 @@ export function writeAiSettingsBlock(next: AiSettings): AiSettings {
   const normalized: AiSettings = {
     selectedProvider: isAiProvider(next.selectedProvider) ? next.selectedProvider : null,
     selectedModelByProvider: sanitizeModelMap(next.selectedModelByProvider),
+    selectedProviderByScope: sanitizeScopeProviderMap(next.selectedProviderByScope),
     selectedModelByScopeProvider: sanitizeScopeProviderModelMap(next.selectedModelByScopeProvider),
   }
   setJsonStorageItem(STORAGE_KEYS.aiSettings, normalized)
@@ -121,6 +136,25 @@ export function setSelectedAiModelBlock(provider: AiProvider, model: string): Ai
   return writeAiSettingsBlock({
     ...current,
     selectedModelByProvider: nextModels,
+  })
+}
+
+export function setSelectedAiProviderForScopeBlock(
+  scope: AiSettingsScope,
+  provider: AiProvider | null,
+): AiSettings {
+  const current = readAiSettingsBlock()
+  const nextMap = { ...current.selectedProviderByScope }
+
+  if (provider && isAiProvider(provider)) {
+    nextMap[scope] = provider
+  } else {
+    delete nextMap[scope]
+  }
+
+  return writeAiSettingsBlock({
+    ...current,
+    selectedProviderByScope: nextMap,
   })
 }
 
@@ -161,4 +195,14 @@ export function resolveAiModelForScopeProviderBlock(
   const scoped = sanitizeModel(snapshot.selectedModelByScopeProvider[scopeProviderKey(scope, provider)])
   if (scoped) return scoped
   return resolveAiModelForProviderBlock(provider, snapshot)
+}
+
+export function resolveAiProviderForScopeBlock(
+  scope: AiSettingsScope,
+  settings?: AiSettings,
+): AiProvider | null {
+  const snapshot = settings ?? readAiSettingsBlock()
+  const scopedProvider = snapshot.selectedProviderByScope[scope]
+  if (scopedProvider && isAiProvider(scopedProvider)) return scopedProvider
+  return null
 }

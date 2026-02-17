@@ -7,8 +7,10 @@ import { listProvidersOrch, type AiProvider, type AiProviderStatus } from '@/ser
 import {
   listAiModelOptionsOrch,
   listAiModelScopesOrch,
+  resolveAiProviderForScopeOrch,
   resolveAiModelForScopeProviderOrch,
   resolveAiModelForProviderOrch,
+  setAiScopeProviderOrch,
   setAiScopeProviderModelOrch,
   resolveAiSelectionFromProvidersOrch,
   setAiProviderModelOrch,
@@ -62,14 +64,11 @@ export default function AiSettingsOrch() {
     steward_metadata: 'Steward metadata proposal generation.',
   }
 
-  const hydrateScopeInputs = useCallback((provider: AiProvider | null) => {
-    if (!provider) {
-      setScopeModelInputs({})
-      return
-    }
+  const hydrateScopeInputs = useCallback((items: AiProviderStatus[]) => {
     const next: Partial<Record<AiSettingsScope, string>> = {}
     for (const scope of scopes) {
-      next[scope] = resolveAiModelForScopeProviderOrch(scope, provider)
+      const selection = resolveAiSelectionFromProvidersOrch(items, { scope })
+      next[scope] = selection?.model ?? ''
     }
     setScopeModelInputs(next)
   }, [scopes])
@@ -82,7 +81,7 @@ export default function AiSettingsOrch() {
       const selection = resolveAiSelectionFromProvidersOrch(items)
       setSelectedProvider(selection?.provider ?? null)
       setModelInput(selection?.model ?? '')
-      hydrateScopeInputs(selection?.provider ?? null)
+      hydrateScopeInputs(items)
       setError(null)
     } catch (err) {
       setError(errorMessage(err, 'Failed to load AI providers'))
@@ -118,7 +117,7 @@ export default function AiSettingsOrch() {
     setAiSelectedProviderOrch(provider)
     setSelectedProvider(provider)
     setModelInput(resolveAiModelForProviderOrch(provider))
-    hydrateScopeInputs(provider)
+    hydrateScopeInputs(providers)
     setMessage(`Default provider set to ${provider}.`)
     setError(null)
   }
@@ -143,8 +142,8 @@ export default function AiSettingsOrch() {
     }
   }
 
-  const onSaveScopeModel = async (scope: AiSettingsScope) => {
-    if (!selectedProvider) return
+  const onSaveScopeModel = async (scope: AiSettingsScope, provider: AiProvider | null) => {
+    if (!provider) return
     const normalized = (scopeModelInputs[scope] ?? '').trim()
     if (!normalized) {
       setError(`Model cannot be empty for ${scopeLabels[scope]}.`)
@@ -152,12 +151,12 @@ export default function AiSettingsOrch() {
     }
     setSavingModel(true)
     try {
-      setAiScopeProviderModelOrch(scope, selectedProvider, normalized)
+      setAiScopeProviderModelOrch(scope, provider, normalized)
       setScopeModelInputs((prev) => ({
         ...prev,
-        [scope]: resolveAiModelForScopeProviderOrch(scope, selectedProvider),
+        [scope]: resolveAiModelForScopeProviderOrch(scope, provider),
       }))
-      setMessage(`${scopeLabels[scope]} model updated.`)
+      setMessage(`${scopeLabels[scope]} model updated (${provider}).`)
       setError(null)
     } catch (err) {
       setError(errorMessage(err, `Failed to save ${scopeLabels[scope]} model setting`))
@@ -192,7 +191,7 @@ export default function AiSettingsOrch() {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Global AI Defaults</CardTitle>
           <CardDescription>
-            Provider + fallback model used across AI actions. You can override model per tab below.
+            Provider + fallback model used across AI actions. You can override provider and model per tab below.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -266,51 +265,124 @@ export default function AiSettingsOrch() {
 
               <div className="space-y-2">
                 <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                  Per-Tab Model Overrides
+                  Per-Tab Provider + Model Overrides
                 </div>
                 <div className="space-y-2">
                   {scopes.map((scope) => (
                     <div key={scope} className="rounded-md border border-border/60 bg-muted/20 p-3">
-                      <div className="mb-1 text-xs font-medium text-foreground">{scopeLabels[scope]}</div>
-                      <div className="mb-2 text-xs text-muted-foreground">{scopeDescriptions[scope]}</div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          value={scopeModelInputs[scope] ?? ''}
-                          onChange={(event) => {
-                            const value = event.target.value
-                            setScopeModelInputs((prev) => ({ ...prev, [scope]: value }))
-                          }}
-                          disabled={!selectedProvider || savingModel}
-                          className="min-w-[18rem] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                          placeholder={selectedProvider ? resolveAiModelForScopeProviderOrch(scope, selectedProvider) : 'Select a provider first'}
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => { void onSaveScopeModel(scope) }}
-                          disabled={!selectedProvider || savingModel}
-                        >
-                          {savingModel ? 'Saving...' : 'Save'}
-                        </Button>
-                        {selectedProvider && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setAiScopeProviderModelOrch(scope, selectedProvider, '')
-                              setScopeModelInputs((prev) => ({
-                                ...prev,
-                                [scope]: resolveAiModelForScopeProviderOrch(scope, selectedProvider),
-                              }))
-                              setMessage(`${scopeLabels[scope]} reset to global model.`)
-                              setError(null)
-                            }}
-                            disabled={savingModel}
-                          >
-                            Use Global
-                          </Button>
-                        )}
-                      </div>
+                      {(() => {
+                        const selection = resolveAiSelectionFromProvidersOrch(providers, { scope })
+                        const scopeProviderOverride = resolveAiProviderForScopeOrch(scope)
+                        const scopeProvider = selection?.provider ?? null
+                        const knownModels = scopeProvider ? listAiModelOptionsOrch(scopeProvider) : []
+
+                        return (
+                          <>
+                            <div className="mb-1 text-xs font-medium text-foreground">{scopeLabels[scope]}</div>
+                            <div className="mb-2 text-xs text-muted-foreground">{scopeDescriptions[scope]}</div>
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              {providers.map((provider) => (
+                                <Button
+                                  key={`${scope}-${provider.provider}`}
+                                  size="sm"
+                                  variant={scopeProvider === provider.provider ? 'default' : 'outline'}
+                                  disabled={!provider.available || savingModel}
+                                  onClick={() => {
+                                    setAiScopeProviderOrch(scope, provider.provider)
+                                    setScopeModelInputs((prev) => ({
+                                      ...prev,
+                                      [scope]: resolveAiModelForScopeProviderOrch(scope, provider.provider),
+                                    }))
+                                    setMessage(`${scopeLabels[scope]} provider set to ${provider.provider}.`)
+                                    setError(null)
+                                  }}
+                                >
+                                  {provider.label}
+                                  {!provider.available && <span className="ml-1 text-xs opacity-70">unavailable</span>}
+                                </Button>
+                              ))}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={!scopeProviderOverride || savingModel}
+                                onClick={() => {
+                                  setAiScopeProviderOrch(scope, null)
+                                  const nextSelection = resolveAiSelectionFromProvidersOrch(providers, { scope })
+                                  setScopeModelInputs((prev) => ({
+                                    ...prev,
+                                    [scope]: nextSelection?.model ?? '',
+                                  }))
+                                  setMessage(`${scopeLabels[scope]} provider reset to global.`)
+                                  setError(null)
+                                }}
+                              >
+                                Use Global Provider
+                              </Button>
+                            </div>
+                            <div className="mb-2 text-xs text-muted-foreground">
+                              Effective provider: <span className="text-foreground">{scopeProvider ?? 'none'}</span>
+                              {scopeProviderOverride
+                                ? <span> (override)</span>
+                                : <span> (global)</span>}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <input
+                                value={scopeModelInputs[scope] ?? ''}
+                                onChange={(event) => {
+                                  const value = event.target.value
+                                  setScopeModelInputs((prev) => ({ ...prev, [scope]: value }))
+                                }}
+                                disabled={!scopeProvider || savingModel}
+                                className="min-w-[18rem] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                placeholder={scopeProvider ? resolveAiModelForScopeProviderOrch(scope, scopeProvider) : 'No provider available'}
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => { void onSaveScopeModel(scope, scopeProvider) }}
+                                disabled={!scopeProvider || savingModel}
+                              >
+                                {savingModel ? 'Saving...' : 'Save'}
+                              </Button>
+                              {scopeProvider && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setAiScopeProviderModelOrch(scope, scopeProvider, '')
+                                    setScopeModelInputs((prev) => ({
+                                      ...prev,
+                                      [scope]: resolveAiModelForScopeProviderOrch(scope, scopeProvider),
+                                    }))
+                                    setMessage(`${scopeLabels[scope]} model reset to provider/global default.`)
+                                    setError(null)
+                                  }}
+                                  disabled={savingModel}
+                                >
+                                  Use Provider Default
+                                </Button>
+                              )}
+                            </div>
+                            {knownModels.length > 0 && (
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                Suggested:
+                                {knownModels.map((model) => (
+                                  <button
+                                    key={`${scope}-${scopeProvider ?? 'none'}-${model}`}
+                                    type="button"
+                                    className="rounded-md border border-border/70 px-2 py-0.5 text-foreground hover:bg-muted"
+                                    onClick={() => {
+                                      setScopeModelInputs((prev) => ({ ...prev, [scope]: model }))
+                                    }}
+                                  >
+                                    {model}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )
+                      })()}
                     </div>
                   ))}
                 </div>
