@@ -109,6 +109,9 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - Use organizer tool as source of truth for active operations (tasks, plans, runs, handoffs).
 - Every created operation node must include a substantive YAML `description`.
 - Every implementation plan must be recorded in the organizer tool before execution starts.
+- All agent capability calls must use `actor.kind: "agent"`; never switch to `human` to bypass flag/policy checks.
+- If `agent_capabilities_enabled` is off and a call fails with that error, pause and ask the user before continuing.
+- For external vault writes (such as iCloud paths outside repo sandbox), request escalated permissions first.
 - Follow workspace usage pattern:
   - `development (agent operations)` for active task/plan/run work.
   - `handoffs (agent operations)` for handoff records.
@@ -117,6 +120,26 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - Use detailed commit messages that capture scope + intent + key changes; do not use generic commit titles.
 - Commit body must be the final task output copied verbatim from the agent response (no paraphrase, truncation, or reformatting).
 - Follow `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md`.
+
+## Capability Runner Pattern
+Use this exact CLI mode for stable output:
+
+```bash
+cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts list
+```
+
+```bash
+cat <<'EOF' | (cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts invoke)
+{
+  "vaultRoot": "/absolute/path/to/vault",
+  "request": {
+    "capability": "organizer.nodes.list_roots",
+    "input": {"typeFilter": "program"},
+    "actor": {"kind": "agent", "id": "codex"}
+  }
+}
+EOF
+```
 
 ## Scope Boundary
 These instructions apply to `ltm-pilot` only.

@@ -150,7 +150,7 @@ export interface CapabilityInputMap {
     parentType?: NodeType
     fromAgent?: string
     toAgent?: string
-    summary?: string
+    summary: string
     sourceRepo?: string
     branch?: string
     commit?: string

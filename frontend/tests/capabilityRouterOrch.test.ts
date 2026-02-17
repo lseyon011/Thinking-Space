@@ -633,7 +633,22 @@ describe('capabilityRouterOrch', () => {
       actor: ACTOR,
     }, { fs })
     expect(handoff.recordKind).toBe('handoff')
+    expect(handoff.description).toBe('Workspace imported and validated.')
     expect(handoff.filePath).toContain('thoughts/')
+  })
+
+  it('rejects handoff.create when summary is missing', async () => {
+    const fs = new FakeVaultFS()
+    await expect(capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'handoff.create',
+      input: {
+        title: 'Invalid Handoff',
+        projectRoot: 'coding-projects/thinking-space',
+        fromAgent: 'codex',
+        toAgent: 'claude',
+      },
+      actor: ACTOR,
+    }, { fs })).rejects.toThrow('Missing required field: summary')
   })
 
   it('reports and fixes status policy integrity violations', async () => {

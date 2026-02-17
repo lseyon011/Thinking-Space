@@ -504,6 +504,7 @@ async function executeCapability<Name extends CapabilityName>(
       const payload = input as CapabilityInputMap['handoff.create']
       assertNonEmptyString(payload.title, 'title')
       assertNonEmptyString(payload.projectRoot, 'projectRoot')
+      assertNonEmptyString(payload.summary, 'summary')
       assertWritableProjectRootAllowed(payload.projectRoot, 'handoff.create')
 
       const body = payload.body || buildHandoffBody({
@@ -519,6 +520,7 @@ async function executeCapability<Name extends CapabilityName>(
         parentUuid: payload.parentUuid,
         parentType: payload.parentType,
         body,
+        description: payload.summary.trim(),
         tags: ['ops/handoff'],
         projectRoot: payload.projectRoot,
         extraFields: {

@@ -29,11 +29,34 @@ Active operations source of truth:
 2. Every created operation node must include a meaningful YAML `description`.
 3. Every execution plan must be recorded in the organizer tool before coding starts.
 4. Update task/run/handoff state in-tool first.
+5. Use `actor.kind: "agent"` for agent capability calls. Never switch to `human` to bypass controls.
+6. If call fails with `Agent capabilities are disabled by feature flag.`, pause and ask user to enable it.
+7. If vault path is outside sandbox (for example iCloud), request escalated permissions before writes.
 
 Workspace layout pattern:
 - `development (agent operations)` program for active implementation tasks/plans/runs.
 - `handoffs (agent operations)` program for transfer notes.
 - `principles and decisions (agent operations)` program for durable guidance.
+
+## Capability API Pattern (Avoid Runner Pitfalls)
+Use the runner in explicit CLI mode:
+
+```bash
+cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts list
+```
+
+```bash
+cat <<'EOF' | (cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts invoke)
+{
+  "vaultRoot": "/absolute/path/to/vault",
+  "request": {
+    "capability": "organizer.node.get_by_key",
+    "input": {"key": "development-agent-operations"},
+    "actor": {"kind": "agent", "id": "codex"}
+  }
+}
+EOF
+```
 
 ## Status Vocabulary
 - `READY`: unclaimed, clear to execute

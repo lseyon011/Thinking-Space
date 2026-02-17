@@ -18,6 +18,9 @@ Use this checklist when operating with:
 - Log major task transitions with capability calls (`task.claim`, `task.update_status`, `run.log`).
 - Ensure every created operation node includes meaningful YAML `description`.
 - Ensure implementation plans are recorded in-tool before coding starts.
+- Use `actor.kind: "agent"` for agent operations (never fallback to `human` for bypass).
+- If capability call fails because `agent_capabilities_enabled` is disabled, pause and ask user.
+- If writing to iCloud/external vault path outside repo sandbox, request escalated permissions first.
 
 3. End of session:
 - Commit/push code repo first (if code changed).

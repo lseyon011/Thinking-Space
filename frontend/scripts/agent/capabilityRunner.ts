@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 import { EXCLUDED_DIRS } from '../../src/services/lego_blocks/vaultConstantsBlock'
 import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '../../src/services/lego_blocks/fsBlock'
+import { STORAGE_KEYS } from '../../src/services/lego_blocks/storageKeyBlock'
 import {
   invokeCapabilityOrch,
   listCapabilitiesOrch,
@@ -18,6 +19,35 @@ interface InvokePayload {
   vaultRoot: string
   request: CapabilityInvokeRequest
   apiBaseUrl?: string
+}
+
+class InMemoryLocalStorage {
+  private readonly store = new Map<string, string>()
+
+  get length(): number {
+    return this.store.size
+  }
+
+  clear(): void {
+    this.store.clear()
+  }
+
+  getItem(key: string): string | null {
+    return this.store.has(key) ? this.store.get(key)! : null
+  }
+
+  key(index: number): string | null {
+    if (index < 0 || index >= this.store.size) return null
+    return [...this.store.keys()][index] ?? null
+  }
+
+  removeItem(key: string): void {
+    this.store.delete(key)
+  }
+
+  setItem(key: string, value: string): void {
+    this.store.set(key, value)
+  }
 }
 
 export class NodeVaultFS implements VaultFS {
@@ -166,6 +196,8 @@ export async function runCapabilityRunnerCommand(
   command: 'list' | 'invoke',
   payload?: InvokePayload,
 ): Promise<unknown> {
+  ensureRunnerEnvironment()
+
   if (command === 'list') {
     return {
       ok: true,
@@ -227,6 +259,63 @@ async function readStdin(): Promise<string> {
 
 function writeJson(payload: unknown): void {
   process.stdout.write(`${JSON.stringify(payload)}\n`)
+}
+
+function ensureRunnerEnvironment(): void {
+  installLocalStorageShim()
+  applyRunnerFeatureFlagsFromEnv()
+}
+
+function installLocalStorageShim(): void {
+  if (typeof globalThis.localStorage !== 'undefined') return
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: new InMemoryLocalStorage(),
+    configurable: true,
+    enumerable: false,
+    writable: false,
+  })
+}
+
+function applyRunnerFeatureFlagsFromEnv(): void {
+  const hasAgent = process.env.LTM_AGENT_CAPABILITIES_ENABLED !== undefined
+  const hasFastapi = process.env.LTM_FASTAPI_CAPABILITY_ADAPTER_ENABLED !== undefined
+  if (!hasAgent && !hasFastapi) return
+
+  let flags = {
+    agent_capabilities_enabled: false,
+    fastapi_capability_adapter_enabled: false,
+  }
+
+  try {
+    const existingRaw = globalThis.localStorage.getItem(STORAGE_KEYS.capabilityFeatureFlags)
+    if (existingRaw) {
+      const existing = JSON.parse(existingRaw) as Partial<typeof flags>
+      flags = {
+        agent_capabilities_enabled: existing.agent_capabilities_enabled ?? flags.agent_capabilities_enabled,
+        fastapi_capability_adapter_enabled:
+          existing.fastapi_capability_adapter_enabled ?? flags.fastapi_capability_adapter_enabled,
+      }
+    }
+  } catch {
+    // ignore malformed storage entry
+  }
+
+  if (hasAgent) {
+    flags.agent_capabilities_enabled = parseBooleanEnv(process.env.LTM_AGENT_CAPABILITIES_ENABLED)
+  }
+  if (hasFastapi) {
+    flags.fastapi_capability_adapter_enabled = parseBooleanEnv(process.env.LTM_FASTAPI_CAPABILITY_ADAPTER_ENABLED)
+  }
+
+  globalThis.localStorage.setItem(STORAGE_KEYS.capabilityFeatureFlags, JSON.stringify(flags))
+}
+
+function parseBooleanEnv(value: string | undefined): boolean {
+  const normalized = (value || '').trim().toLowerCase()
+  return normalized === '1'
+    || normalized === 'true'
+    || normalized === 'yes'
+    || normalized === 'on'
 }
 
 const isDirectRun = (() => {

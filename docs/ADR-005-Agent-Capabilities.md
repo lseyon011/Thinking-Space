@@ -63,6 +63,30 @@ Operational tool usage pattern:
 3. Created operation records must include meaningful YAML `description`.
 4. Plans must be recorded in the organizer tool before implementation starts.
 5. Session outcomes must be written back as run/handoff records.
+6. Agent calls must use `actor.kind: "agent"`; do not switch to `human` to bypass feature flags.
+7. If `agent_capabilities_enabled` is disabled, stop and ask user before proceeding.
+8. External vault paths outside repo sandbox (for example iCloud) require escalated filesystem permission for writes.
+
+## Runner API Pattern (CLI)
+
+Stable invocation mode:
+
+```bash
+cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts list
+```
+
+```bash
+cat <<'EOF' | (cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts invoke)
+{
+  "vaultRoot": "/absolute/path/to/vault",
+  "request": {
+    "capability": "organizer.nodes.list_roots",
+    "input": {"typeFilter": "program"},
+    "actor": {"kind": "agent", "id": "codex"}
+  }
+}
+EOF
+```
 
 ## Consequences
 

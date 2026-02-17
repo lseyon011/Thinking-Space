@@ -139,6 +139,29 @@ Required session pattern:
 4. Every implementation plan must be recorded in the tool as a plan node before execution (and updated as execution changes).
 5. End each session by recording run/handoff artifacts in the tool (`run.log`, `handoff.create`, comments/state history as needed).
 
+Actor and permission rules:
+1. Agents must always invoke capabilities with `actor.kind: "agent"` (never switch to `human`/`system` to bypass controls).
+2. If a capability call returns `Agent capabilities are disabled by feature flag.`, pause and ask the user to enable `agent_capabilities_enabled` before continuing.
+3. If writing to external vault paths (for example iCloud paths outside repo sandbox), request escalated filesystem permission first; do not bypass by changing actor kind.
+
+Capability runner invocation pattern (copy/paste):
+```bash
+# List capabilities
+cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts list
+
+# Invoke a capability (agent actor required)
+cat <<'EOF' | (cd frontend && LTM_AGENT_CAPABILITIES_ENABLED=1 LTM_CAPABILITY_RUNNER_CLI=1 npx vite-node scripts/agent/capabilityRunner.ts invoke)
+{
+  "vaultRoot": "/absolute/path/to/vault",
+  "request": {
+    "capability": "organizer.nodes.list_roots",
+    "input": {"typeFilter": "program"},
+    "actor": {"kind": "agent", "id": "codex"}
+  }
+}
+EOF
+```
+
 Recommended node pattern:
 - Program: `development (agent operations)` for active implementation tasks/plans/runs.
 - Program: `handoffs (agent operations)` for transfer records.
