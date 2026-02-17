@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, Loader2, Plus, X } from 'lucide-react'
 import BacklogListBlock from '@/components/lego_blocks/BacklogListBlock'
+import ExecutionProgressBlock from '@/components/lego_blocks/ExecutionProgressBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/NodeDetailPanelBlock'
 import CascadingFolderPicker, { addRecent } from '@/components/lego_blocks/CascadingFolderPickerBlock'
 import { Button } from '@/components/lego_blocks/ui/button'
@@ -15,6 +16,7 @@ import { THINKING_ORGANIZER_DIR } from '@/services/lego_blocks/projectStorageBlo
 import {
   invokeCapabilityOrThrow,
 } from '@/services/orchestrators/capabilityRouterOrch'
+import { listInProgressExecutionTasksOrch } from '@/services/orchestrators/executionProgressOrch'
 import { getLastSyncTimestamp, smartSync } from '@/services/orchestrators/vaultSyncOrch'
 import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
 import {
@@ -82,6 +84,10 @@ export default function BacklogOrch() {
   const [lastSyncedAt, setLastSyncedAt] = useState<number>(() => getLastSyncTimestamp())
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [currentOperation, setCurrentOperation] = useState<string | null>(null)
+  const [activeExecutionTasks, setActiveExecutionTasks] = useState<NodeRecord[]>([])
+  const [activeExecutionTasksLoading, setActiveExecutionTasksLoading] = useState(false)
+  const [activeExecutionTasksError, setActiveExecutionTasksError] = useState<string | null>(null)
 
   const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>(
     () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
@@ -128,6 +134,27 @@ export default function BacklogOrch() {
     void loadPrograms(true)
   }, [loadPrograms])
 
+  const refreshExecutionProgress = useCallback(async () => {
+    setActiveExecutionTasksLoading(true)
+    setActiveExecutionTasksError(null)
+    try {
+      const tasks = await listInProgressExecutionTasksOrch({
+        actor: BACKLOG_ACTOR,
+        projectRoot: activeProjectRoot || undefined,
+        limit: 8,
+      })
+      setActiveExecutionTasks(tasks)
+    } catch (err) {
+      setActiveExecutionTasksError(errorMessage(err, 'Failed to load execution progress'))
+    } finally {
+      setActiveExecutionTasksLoading(false)
+    }
+  }, [activeProjectRoot])
+
+  useEffect(() => {
+    void refreshExecutionProgress()
+  }, [refreshExecutionProgress])
+
   useEffect(() => {
     const onFocus = () => { void loadPrograms(false) }
     window.addEventListener('focus', onFocus)
@@ -137,9 +164,15 @@ export default function BacklogOrch() {
   const syncVaultNow = useCallback(async () => {
     setMessage(null)
     setError(null)
-    const ok = await loadPrograms(true)
-    if (ok) setMessage('Vault synced and organizer cache refreshed.')
-  }, [loadPrograms])
+    setCurrentOperation('Syncing vault and refreshing organizer cache')
+    try {
+      const ok = await loadPrograms(true)
+      if (ok) setMessage('Vault synced and organizer cache refreshed.')
+    } finally {
+      setCurrentOperation(null)
+      void refreshExecutionProgress()
+    }
+  }, [loadPrograms, refreshExecutionProgress])
 
   useEffect(() => {
     if (!selectedNode) {
@@ -241,6 +274,7 @@ export default function BacklogOrch() {
     const projectRoot = normalizePath(`${normalizedDestination}/${projectKey}`)
 
     setCreatingProject(true)
+    setCurrentOperation(`Creating project ${trimmedName}`)
     setError(null)
     setMessage(null)
 
@@ -270,8 +304,10 @@ export default function BacklogOrch() {
       setError(errorMessage(err, 'Failed to create project'))
     } finally {
       setCreatingProject(false)
+      setCurrentOperation(null)
+      void refreshExecutionProgress()
     }
-  }, [destinationPath, destinationSegments, newProjectName, projectEntries, selectProject])
+  }, [destinationPath, destinationSegments, newProjectName, projectEntries, refreshExecutionProgress, selectProject])
 
   const createChildNode = useCallback(async (
     parent: NodeRecord | null,
@@ -287,24 +323,30 @@ export default function BacklogOrch() {
       throw new Error('Create or select a project first.')
     }
 
-    const { node: created } = await invokeCapabilityOrThrow({
-      capability: 'organizer.node.create',
-      input: {
-        type: nextType,
-        title,
-        parentKey: parent?.key,
-        parentUuid: parent?.uuid,
-        parentType: parent?.type,
-        projectRoot: parent ? undefined : activeProjectRoot,
-      },
-      actor: BACKLOG_ACTOR,
-    })
-    if (!parent) {
-      setPrograms(prev => [...prev, created].sort((a, b) => a.title.localeCompare(b.title)))
+    setCurrentOperation(`Creating ${defaultNodeKindLabel(nextType)}`)
+    try {
+      const { node: created } = await invokeCapabilityOrThrow({
+        capability: 'organizer.node.create',
+        input: {
+          type: nextType,
+          title,
+          parentKey: parent?.key,
+          parentUuid: parent?.uuid,
+          parentType: parent?.type,
+          projectRoot: parent ? undefined : activeProjectRoot,
+        },
+        actor: BACKLOG_ACTOR,
+      })
+      if (!parent) {
+        setPrograms(prev => [...prev, created].sort((a, b) => a.title.localeCompare(b.title)))
+      }
+      setMessage(`Created ${defaultNodeKindLabel(created.type)}: ${created.title}`)
+      return created
+    } finally {
+      setCurrentOperation(null)
+      void refreshExecutionProgress()
     }
-    setMessage(`Created ${defaultNodeKindLabel(created.type)}: ${created.title}`)
-    return created
-  }, [activeProjectRoot])
+  }, [activeProjectRoot, refreshExecutionProgress])
 
   const deleteNodeRecursive = useCallback(async (node: NodeRecord, removedIds: Set<string>): Promise<void> => {
     const { nodes: children } = await invokeCapabilityOrThrow({
@@ -325,6 +367,7 @@ export default function BacklogOrch() {
 
   const deleteAnyNode = useCallback(async (node: NodeRecord) => {
     setWorking(true)
+    setCurrentOperation(`Deleting ${node.title}`)
     setError(null)
     setMessage(null)
     try {
@@ -337,12 +380,15 @@ export default function BacklogOrch() {
       setError(errorMessage(err, 'Failed to delete node'))
     } finally {
       setWorking(false)
+      setCurrentOperation(null)
+      void refreshExecutionProgress()
     }
-  }, [deleteNodeRecursive, loadPrograms, selectedNode])
+  }, [deleteNodeRecursive, loadPrograms, refreshExecutionProgress, selectedNode])
 
   const renameNode = useCallback(async (newTitle: string) => {
     if (!selectedNode) return
     setWorking(true)
+    setCurrentOperation(`Renaming ${selectedNode.title}`)
     setError(null)
     try {
       const { node: updated } = await invokeCapabilityOrThrow({
@@ -362,12 +408,15 @@ export default function BacklogOrch() {
       setError(errorMessage(err, 'Failed to rename'))
     } finally {
       setWorking(false)
+      setCurrentOperation(null)
+      void refreshExecutionProgress()
     }
-  }, [selectedNode])
+  }, [refreshExecutionProgress, selectedNode])
 
   const updateStatus = useCallback(async (status: string) => {
     if (!selectedNode) return
     setWorking(true)
+    setCurrentOperation(`Updating status for ${selectedNode.title}`)
     try {
       const { node: updated } = await invokeCapabilityOrThrow({
         capability: 'organizer.node.update',
@@ -382,12 +431,15 @@ export default function BacklogOrch() {
       setError(errorMessage(err, 'Failed to update status'))
     } finally {
       setWorking(false)
+      setCurrentOperation(null)
+      void refreshExecutionProgress()
     }
-  }, [selectedNode])
+  }, [refreshExecutionProgress, selectedNode])
 
   const updatePriority = useCallback(async (priority: string) => {
     if (!selectedNode) return
     setWorking(true)
+    setCurrentOperation(`Updating priority for ${selectedNode.title}`)
     try {
       const { node: updated } = await invokeCapabilityOrThrow({
         capability: 'organizer.node.update',
@@ -402,12 +454,15 @@ export default function BacklogOrch() {
       setError(errorMessage(err, 'Failed to update priority'))
     } finally {
       setWorking(false)
+      setCurrentOperation(null)
+      void refreshExecutionProgress()
     }
-  }, [selectedNode])
+  }, [refreshExecutionProgress, selectedNode])
 
   const updateNodeNotes = useCallback(async (description: string, comments: YAMLCommentEntry[]) => {
     if (!selectedNode) return
     setWorking(true)
+    setCurrentOperation(`Updating notes for ${selectedNode.title}`)
     setError(null)
     try {
       const { node: updated } = await invokeCapabilityOrThrow({
@@ -427,11 +482,14 @@ export default function BacklogOrch() {
       setError(errorMessage(err, 'Failed to update description/comments'))
     } finally {
       setWorking(false)
+      setCurrentOperation(null)
+      void refreshExecutionProgress()
     }
-  }, [selectedNode])
+  }, [refreshExecutionProgress, selectedNode])
 
   const dropNodeToNode = useCallback(async (sourceUuid: string, targetNode: NodeRecord) => {
     setWorking(true)
+    setCurrentOperation(`Moving node under ${targetNode.title}`)
     setError(null)
     setMessage(null)
     try {
@@ -456,11 +514,14 @@ export default function BacklogOrch() {
       setError(errorMessage(err, 'Failed to move node'))
     } finally {
       setWorking(false)
+      setCurrentOperation(null)
+      void refreshExecutionProgress()
     }
-  }, [loadPrograms])
+  }, [loadPrograms, refreshExecutionProgress])
 
   const exportToExcalidraw = useCallback(async () => {
     setWorking(true)
+    setCurrentOperation('Exporting hierarchy to Excalidraw')
     setError(null)
     setMessage(null)
     try {
@@ -480,8 +541,10 @@ export default function BacklogOrch() {
       setError(errorMessage(err, 'Failed to export'))
     } finally {
       setWorking(false)
+      setCurrentOperation(null)
+      void refreshExecutionProgress()
     }
-  }, [openFile])
+  }, [openFile, refreshExecutionProgress])
 
   return (
     <div className="space-y-4">
@@ -527,6 +590,19 @@ export default function BacklogOrch() {
           )}
         </div>
       )}
+
+      <ExecutionProgressBlock
+        busy={working || syncing || creatingProject}
+        currentOperation={currentOperation}
+        tasks={activeExecutionTasks}
+        tasksLoading={activeExecutionTasksLoading}
+        tasksError={activeExecutionTasksError}
+        onRefresh={() => { void refreshExecutionProgress() }}
+        onSelectTask={(task) => {
+          setSelectedNode(task)
+          setMessage(`Focused task: ${task.ticket || task.title}`)
+        }}
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="outline" onClick={() => { void syncVaultNow() }} disabled={working || syncing}>
