@@ -28,6 +28,19 @@ export interface CodexCredentials {
   accountId?: string;
 }
 
+export interface CodexChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface CodexChatResult {
+  text: string;
+  model: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+}
+
 export interface AzureCredentials {
   accessToken: string;
   expiresOn: string; // ISO timestamp
@@ -271,6 +284,100 @@ export function refreshCodexTokenBlock(refreshToken: string): Promise<CodexCrede
           } catch (err) {
             reject(new Error(`Failed to parse Codex token refresh response: ${err}`));
           }
+        });
+      },
+    );
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+export function chatCodexWithOauthBlock(
+  messages: CodexChatMessage[],
+  accessToken: string,
+  accountId?: string,
+): Promise<CodexChatResult> {
+  const body = JSON.stringify({
+    model: 'gpt-5.3-codex',
+    instructions: 'You are a helpful assistant.',
+    input: messages.map((m) => ({
+      role: m.role,
+      content: [{ type: 'input_text', text: m.content }],
+    })),
+    store: false,
+    stream: true,
+  });
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: 'chatgpt.com',
+        path: '/backend-api/codex/responses',
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          'User-Agent': 'ltm-pilot-electron',
+          ...(accountId ? { 'ChatGPT-Account-Id': accountId } : {}),
+          'Content-Length': Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        let raw = '';
+        let sseBuffer = '';
+        let text = '';
+        let model = 'gpt-5.3-codex';
+        let usage: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | null = null;
+
+        const handleLine = (line: string) => {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data: ')) return;
+          const payload = trimmed.slice(6).trim();
+          if (!payload) return;
+          try {
+            const evt = JSON.parse(payload);
+            const evtType = evt?.type;
+            if (evtType === 'response.output_text.delta' && typeof evt?.delta === 'string') {
+              text += evt.delta;
+            } else if (evtType === 'response.output_text.done' && !text && typeof evt?.text === 'string') {
+              text = evt.text;
+            } else if (evtType === 'response.completed' && evt?.response) {
+              model = typeof evt.response.model === 'string' ? evt.response.model : model;
+              usage = evt.response.usage ?? usage;
+            }
+          } catch {
+            // Ignore non-JSON or partial lines.
+          }
+        };
+
+        res.on('data', (chunk) => {
+          const str = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
+          raw += str;
+          sseBuffer += str;
+          let idx = sseBuffer.indexOf('\n');
+          while (idx >= 0) {
+            const line = sseBuffer.slice(0, idx);
+            sseBuffer = sseBuffer.slice(idx + 1);
+            handleLine(line);
+            idx = sseBuffer.indexOf('\n');
+          }
+        });
+
+        res.on('end', () => {
+          if (status < 200 || status >= 300) {
+            reject(new Error(`Codex chat failed (HTTP ${status}): ${raw.slice(0, 300)}`));
+            return;
+          }
+          resolve({
+            text,
+            model,
+            inputTokens: usage?.input_tokens,
+            outputTokens: usage?.output_tokens,
+            totalTokens: usage?.total_tokens,
+          });
         });
       },
     );

@@ -118,4 +118,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('ai:credentials:claude:refresh', refreshToken),
   aiRefreshCodexToken: (refreshToken: string) =>
     ipcRenderer.invoke('ai:credentials:codex:refresh', refreshToken),
+  aiChatCodex: (
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+    accessToken: string,
+    accountId?: string,
+  ) => ipcRenderer.invoke('ai:chat:codex', messages, accessToken, accountId),
 });

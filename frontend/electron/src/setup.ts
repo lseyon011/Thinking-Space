@@ -218,7 +218,7 @@ export class ElectronCapacitorApp {
 
 // Set a CSP up for our application based on the custom scheme
 export function setupContentSecurityPolicy(customScheme: string): void {
-  const aiConnectSrc = 'https://api.anthropic.com https://*.openai.azure.com https://platform.claude.com https://api.openai.com https://auth.openai.com';
+  const aiConnectSrc = 'https://api.anthropic.com https://*.openai.azure.com https://platform.claude.com https://api.openai.com https://auth.openai.com https://chatgpt.com';
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {

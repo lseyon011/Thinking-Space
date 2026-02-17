@@ -17,6 +17,7 @@ import {
   refreshClaudeTokenBlock,
   readCodexCredentialsBlock,
   refreshCodexTokenBlock,
+  chatCodexWithOauthBlock,
   readAzureTokenBlock,
 } from './lego_blocks/aiCredentialBlock';
 import {
@@ -766,3 +767,10 @@ ipcMain.handle('ai:credentials:codex', async () => {
 ipcMain.handle('ai:credentials:codex:refresh', async (_event, refreshToken: string) => {
   return refreshCodexTokenBlock(refreshToken);
 });
+
+ipcMain.handle(
+  'ai:chat:codex',
+  async (_event, messages: Array<{ role: 'user' | 'assistant'; content: string }>, accessToken: string, accountId?: string) => {
+    return chatCodexWithOauthBlock(messages, accessToken, accountId);
+  },
+);

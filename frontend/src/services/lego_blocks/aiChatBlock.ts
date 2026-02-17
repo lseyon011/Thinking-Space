@@ -129,40 +129,21 @@ async function sendCodexDirectBlock(messages: ChatMessage[]): Promise<ChatRespon
   const creds = await getCodexCredentialsBlock()
   if (!creds) throw new Error('Codex credentials not available')
 
-  const { default: OpenAI } = await import('openai')
-  const client = new OpenAI({
-    apiKey: creds.accessToken,
-    baseURL: 'https://api.openai.com/v1',
-    defaultHeaders: { Authorization: `Bearer ${creds.accessToken}` },
-    dangerouslyAllowBrowser: true,
-  })
-
-  const model = 'gpt-5-codex'
   const requestedAt = new Date().toISOString()
   const started = performance.now()
-  const response: any = await client.responses.create({
-    model,
-    input: messages.map(m => ({
-      role: m.role,
-      content: [{ type: 'input_text', text: m.content }],
-    })),
-  })
+  const response = await window.electronAPI!.aiChatCodex(messages, creds.accessToken, creds.accountId)
 
-  const text = typeof response?.output_text === 'string' ? response.output_text : ''
+  const text = response.text ?? ''
   const respondedAt = new Date().toISOString()
   const latencyMs = Math.round(performance.now() - started)
-  const inputTokens = response?.usage?.input_tokens
-  const outputTokens = response?.usage?.output_tokens
-  const totalTokens = (
-    typeof inputTokens === 'number' && typeof outputTokens === 'number'
-      ? inputTokens + outputTokens
-      : undefined
-  )
+  const inputTokens = response.inputTokens
+  const outputTokens = response.outputTokens
+  const totalTokens = response.totalTokens
   return {
     role: 'assistant',
     content: text,
     provider: 'openai-codex',
-    model,
+    model: response.model || 'gpt-5.3-codex',
     requested_at: requestedAt,
     responded_at: respondedAt,
     latency_ms: latencyMs,

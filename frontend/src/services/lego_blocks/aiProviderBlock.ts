@@ -159,7 +159,7 @@ export async function listProvidersBlock(): Promise<AiProviderStatus[]> {
     ])
     return [
       { provider: 'claude', available: claude, label: 'Claude', model: 'claude-sonnet-4-5-20250929' },
-      { provider: 'openai-codex', available: codex, label: 'Codex', model: 'gpt-5-codex' },
+      { provider: 'openai-codex', available: codex, label: 'Codex', model: 'gpt-5.3-codex' },
       { provider: 'azure-gpt', available: azure, label: 'Azure GPT', model: 'gpt-5' },
     ]
   }

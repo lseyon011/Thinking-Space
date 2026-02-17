@@ -4,10 +4,12 @@ AI chat blocks — send messages to Claude, OpenAI Codex, or Azure GPT.
 Each block handles credential sourcing, client construction, and API call.
 """
 
+import json
 from datetime import datetime, timezone
 import time
 
 import anthropic
+import httpx
 import openai
 
 from .ai_credential_block import (
@@ -94,18 +96,18 @@ def _get_claude_token() -> str:
         raise RuntimeError(f"Claude token expired and refresh failed: {e}")
 
 
-def _get_codex_token() -> str:
-    """Get a valid Codex access token, refreshing if needed."""
+def _get_codex_credentials():
+    """Get valid Codex credentials, refreshing token if needed."""
     global _codex_cache
 
     if _codex_cache:
         creds, _ = _codex_cache
         if _is_token_valid(creds):
-            return creds.access_token
+            return creds
         try:
             refreshed = refresh_codex_token_block(creds.refresh_token)
             _codex_cache = (refreshed, datetime.now(timezone.utc))
-            return refreshed.access_token
+            return refreshed
         except Exception:
             _codex_cache = None
 
@@ -116,13 +118,13 @@ def _get_codex_token() -> str:
     # Check if freshly-read token is still valid
     if _is_token_valid(creds):
         _codex_cache = (creds, datetime.now(timezone.utc))
-        return creds.access_token
+        return creds
 
     # Token expired — refresh it
     try:
         refreshed = refresh_codex_token_block(creds.refresh_token)
         _codex_cache = (refreshed, datetime.now(timezone.utc))
-        return refreshed.access_token
+        return refreshed
     except Exception as e:
         raise RuntimeError(f"Codex token expired and refresh failed: {e}")
 
@@ -176,34 +178,72 @@ def chat_claude_block(messages: list[dict]) -> dict:
 
 def chat_codex_block(messages: list[dict]) -> dict:
     """Send messages to OpenAI Codex and return the response."""
-    token = _get_codex_token()
-    model = "gpt-5-codex"
+    creds = _get_codex_credentials()
+    model = "gpt-5.3-codex"
     requested_at = datetime.now(timezone.utc).isoformat()
     started = time.perf_counter()
 
-    client = openai.OpenAI(
-        api_key=token,
-        base_url="https://api.openai.com/v1",
-    )
+    headers = {
+        "Authorization": f"Bearer {creds.access_token}",
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "User-Agent": "ltm-pilot",
+    }
+    if creds.account_id:
+        headers["ChatGPT-Account-Id"] = creds.account_id
 
     payload = {
         "model": model,
+        "instructions": "You are a helpful assistant.",
         "input": [
             {"role": m["role"], "content": [{"type": "input_text", "text": m["content"]}]}
             for m in messages
         ],
+        "store": False,
+        "stream": True,
     }
-    response = client.responses.create(**payload)
 
-    text = getattr(response, "output_text", "") or ""
+    text_parts: list[str] = []
+    usage: dict = {}
+    with httpx.stream(
+        "POST",
+        "https://chatgpt.com/backend-api/codex/responses",
+        headers=headers,
+        json=payload,
+        timeout=60,
+    ) as response:
+        if response.status_code < 200 or response.status_code >= 300:
+            detail = response.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"Codex request failed (HTTP {response.status_code}): {detail[:300]}")
+
+        for line in response.iter_lines():
+            if not line or not line.startswith("data: "):
+                continue
+            raw = line[6:].strip()
+            if not raw:
+                continue
+            try:
+                evt = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            evt_type = evt.get("type")
+            if evt_type == "response.output_text.delta":
+                delta = evt.get("delta")
+                if isinstance(delta, str):
+                    text_parts.append(delta)
+            elif evt_type == "response.output_text.done" and not text_parts:
+                done_text = evt.get("text")
+                if isinstance(done_text, str):
+                    text_parts.append(done_text)
+            elif evt_type == "response.completed":
+                usage = evt.get("response", {}).get("usage", {}) or {}
+
+    text = "".join(text_parts)
     responded_at = datetime.now(timezone.utc).isoformat()
     latency_ms = int((time.perf_counter() - started) * 1000)
-    usage = getattr(response, "usage", None)
-    input_tokens = getattr(usage, "input_tokens", None) if usage is not None else None
-    output_tokens = getattr(usage, "output_tokens", None) if usage is not None else None
-    total_tokens = None
-    if isinstance(input_tokens, int) and isinstance(output_tokens, int):
-        total_tokens = input_tokens + output_tokens
+    input_tokens = usage.get("input_tokens") if isinstance(usage, dict) else None
+    output_tokens = usage.get("output_tokens") if isinstance(usage, dict) else None
+    total_tokens = usage.get("total_tokens") if isinstance(usage, dict) else None
 
     return {
         "role": "assistant",

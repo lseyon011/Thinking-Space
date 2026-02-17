@@ -115,6 +115,11 @@ interface ElectronAPI {
   aiGetAzureCredentials(): Promise<{ accessToken: string; expiresOn: string } | null>
   aiRefreshClaudeToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresAt: string }>
   aiRefreshCodexToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresAt: string; accountId?: string }>
+  aiChatCodex(
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+    accessToken: string,
+    accountId?: string,
+  ): Promise<{ text: string; model: string; inputTokens?: number; outputTokens?: number; totalTokens?: number }>
 }
 
 declare global {

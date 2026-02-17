@@ -51,7 +51,7 @@ def list_providers_orch() -> list[dict]:
         "provider": "openai-codex",
         "available": codex_available,
         "label": "Codex",
-        "model": "gpt-5-codex",
+        "model": "gpt-5.3-codex",
     })
 
     # Azure GPT
