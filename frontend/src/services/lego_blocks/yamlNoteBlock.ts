@@ -49,6 +49,17 @@ export interface YAMLCommentEntry {
   added_by?: string
 }
 
+export const ALLOWED_RECORD_KINDS = [
+  'task',
+  'run',
+  'handoff',
+  'decision',
+  'principle',
+  'note',
+] as const
+
+export type RecordKind = typeof ALLOWED_RECORD_KINDS[number]
+
 export interface YAMLStateHistoryEntry {
   at: string
   by?: string
@@ -130,7 +141,7 @@ export interface YAMLFrontmatter {
   related_nodes?: string[]
 
   schema_version?: string
-  record_kind?: string
+  record_kind?: RecordKind
   state_history?: YAMLStateHistoryEntry[]
 
   // Legacy compat — preserve unknown fields roundtrip
@@ -350,7 +361,7 @@ function normalizeFrontmatter(raw: Record<string, unknown>): YAMLFrontmatter {
     artifacts: normalizeStringArray(raw.artifacts),
     related_nodes: normalizeStringArray(raw.related_nodes),
     schema_version: raw.schema_version != null ? String(raw.schema_version) : undefined,
-    record_kind: raw.record_kind != null ? String(raw.record_kind) : undefined,
+    record_kind: normalizeRecordKind(raw.record_kind),
     state_history: normalizeStateHistory(raw.state_history),
   }
 }
@@ -421,4 +432,12 @@ function normalizeStateHistoryEntry(value: unknown): YAMLStateHistoryEntry | nul
     to: typeof record.to === 'string' ? record.to : undefined,
     note: typeof record.note === 'string' ? record.note : undefined,
   }
+}
+
+function normalizeRecordKind(raw: unknown): RecordKind | undefined {
+  if (typeof raw !== 'string') return undefined
+  const normalized = raw.trim() as RecordKind
+  if (!normalized) return undefined
+  if (ALLOWED_RECORD_KINDS.includes(normalized)) return normalized
+  return undefined
 }

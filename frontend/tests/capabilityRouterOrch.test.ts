@@ -421,4 +421,93 @@ describe('capabilityRouterOrch', () => {
     expect(frontmatter!.task_status).toBe('blocked')
     expect(frontmatter!.custom_scope).toBeUndefined()
   })
+
+  it('supports task claim/status update and comment add capabilities', async () => {
+    const fs = new FakeVaultFS()
+
+    const { node: task } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'idea',
+        title: 'Migration Task',
+        projectRoot: 'coding-projects/thinking-space',
+        extraFields: {
+          record_kind: 'task',
+          task_id: 'LTM-900',
+          task_status: 'ready',
+          schema_version: '2',
+        },
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const claimed = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'task.claim',
+      input: {
+        uuid: task.uuid,
+        owner: 'codex-gpt5',
+        note: 'Claimed for migration execution',
+      },
+      actor: ACTOR,
+    }, { fs })
+    expect(claimed.node.owner).toBe('codex-gpt5')
+    expect(claimed.node.taskStatus).toBe('in_progress')
+
+    const statusUpdated = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'task.update_status',
+      input: {
+        uuid: task.uuid,
+        taskStatus: 'done',
+      },
+      actor: ACTOR,
+    }, { fs })
+    expect(statusUpdated.node.taskStatus).toBe('done')
+
+    const commented = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'comment.add',
+      input: {
+        uuid: task.uuid,
+        text: 'Completed migration bootstrap.',
+      },
+      actor: ACTOR,
+    }, { fs })
+    expect(commented.node.comments?.some(comment => comment.text.includes('Completed migration bootstrap.'))).toBe(true)
+  })
+
+  it('supports run.log and handoff.create capabilities', async () => {
+    const fs = new FakeVaultFS()
+
+    const { node: run } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'run.log',
+      input: {
+        title: 'Migration Run 001',
+        projectRoot: 'coding-projects/thinking-space',
+        result: 'success',
+        sourceRepo: 'Thinking-Space',
+        branch: 'main',
+        commit: '251c328',
+        artifacts: ['agents/TODO.md'],
+      },
+      actor: ACTOR,
+    }, { fs })
+    expect(run.recordKind).toBe('run')
+    expect(run.result).toBe('success')
+
+    const { node: handoff } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'handoff.create',
+      input: {
+        title: 'Migration Handoff',
+        projectRoot: 'coding-projects/thinking-space',
+        fromAgent: 'codex',
+        toAgent: 'claude',
+        summary: 'Workspace imported and validated.',
+        sourceRepo: 'Thinking-Space',
+        branch: 'main',
+        commit: '251c328',
+      },
+      actor: ACTOR,
+    }, { fs })
+    expect(handoff.recordKind).toBe('handoff')
+    expect(handoff.filePath).toContain('thoughts/')
+  })
 })

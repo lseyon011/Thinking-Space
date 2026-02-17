@@ -6,11 +6,12 @@ import {
   type CapabilityName,
   type CapabilityOutputMap,
 } from '../lego_blocks/capabilityRegistryBlock'
+import { ALLOWED_RECORD_KINDS, type YAMLCommentEntry } from '../lego_blocks/yamlNoteBlock'
 import {
   createCapabilityInputHash,
   writeCapabilityAuditEntry,
 } from '../lego_blocks/capabilityAuditLogBlock'
-import { validateCapabilityPolicy } from '../lego_blocks/capabilityPolicyBlock'
+import { getCapabilityPolicy, validateCapabilityPolicy } from '../lego_blocks/capabilityPolicyBlock'
 import {
   createYamlNode,
   deleteYamlNode,
@@ -82,6 +83,11 @@ const WRITE_CAPABILITIES = new Set<CapabilityName>([
   'organizer.node.update',
   'organizer.node.move',
   'organizer.node.delete',
+  'task.claim',
+  'task.update_status',
+  'run.log',
+  'handoff.create',
+  'comment.add',
   'thoughts.create',
   'todos.create',
   'todos.toggle',
@@ -314,6 +320,8 @@ async function executeCapability<Name extends CapabilityName>(
     case 'organizer.node.create': {
       const payload = input as CapabilityInputMap['organizer.node.create']
       assertNonEmptyString(payload.title, 'title')
+      assertValidRecordKind(payload.extraFields?.record_kind)
+      assertWritableProjectRootAllowed(payload.projectRoot, 'organizer.node.create')
       const node = await createYamlNode({ ...payload, fs })
       return { node } as CapabilityOutputMap[Name]
     }
@@ -327,6 +335,7 @@ async function executeCapability<Name extends CapabilityName>(
     case 'organizer.node.update': {
       const payload = input as CapabilityInputMap['organizer.node.update']
       assertNonEmptyString(payload.uuid, 'uuid')
+      assertValidRecordKind(payload.updates.extraFields?.record_kind)
       const node = await updateYamlNode(payload.uuid, payload.updates, fs)
       return { node } as CapabilityOutputMap[Name]
     }
@@ -354,6 +363,159 @@ async function executeCapability<Name extends CapabilityName>(
           }
           : undefined,
       } as CapabilityOutputMap[Name]
+    }
+    case 'task.claim': {
+      const payload = input as CapabilityInputMap['task.claim']
+      assertNonEmptyString(payload.uuid, 'uuid')
+      assertNonEmptyString(payload.owner, 'owner')
+
+      const source = await getYamlNode(payload.uuid)
+      if (!source) throw new Error(`Node not found: ${payload.uuid}`)
+      assertTaskNode(source)
+      assertWritableProjectRootAllowed(source.projectRoot, 'task.claim')
+
+      const status = payload.taskStatus?.trim() || 'in_progress'
+      const history = appendStateHistory(source, {
+        from: source.taskStatus,
+        to: status,
+        note: payload.note ?? `Claimed by ${payload.owner}`,
+      }, payload.owner)
+
+      const node = await updateYamlNode(payload.uuid, {
+        extraFields: {
+          record_kind: 'task',
+          task_status: status,
+          owner: payload.owner.trim(),
+          state_history: history,
+          schema_version: '2',
+        },
+      }, fs)
+      return { node } as CapabilityOutputMap[Name]
+    }
+    case 'task.update_status': {
+      const payload = input as CapabilityInputMap['task.update_status']
+      assertNonEmptyString(payload.uuid, 'uuid')
+      assertNonEmptyString(payload.taskStatus, 'taskStatus')
+
+      const source = await getYamlNode(payload.uuid)
+      if (!source) throw new Error(`Node not found: ${payload.uuid}`)
+      assertTaskNode(source)
+      assertWritableProjectRootAllowed(source.projectRoot, 'task.update_status')
+
+      const status = payload.taskStatus.trim()
+      const history = appendStateHistory(source, {
+        from: source.taskStatus,
+        to: status,
+        note: payload.note,
+      }, source.owner || 'unknown')
+
+      const node = await updateYamlNode(payload.uuid, {
+        extraFields: {
+          record_kind: 'task',
+          task_status: status,
+          state_history: history,
+          schema_version: '2',
+        },
+      }, fs)
+      return { node } as CapabilityOutputMap[Name]
+    }
+    case 'run.log': {
+      const payload = input as CapabilityInputMap['run.log']
+      assertNonEmptyString(payload.title, 'title')
+      assertNonEmptyString(payload.projectRoot, 'projectRoot')
+      assertWritableProjectRootAllowed(payload.projectRoot, 'run.log')
+
+      const node = await createYamlNode({
+        type: 'thought',
+        title: payload.title,
+        parentKey: payload.parentKey,
+        parentUuid: payload.parentUuid,
+        parentType: payload.parentType,
+        body: payload.body,
+        tags: ['ops/run'],
+        projectRoot: payload.projectRoot,
+        extraFields: {
+          record_kind: 'run',
+          schema_version: '2',
+          run_id: payload.runId || createRunId(),
+          session_id: payload.sessionId,
+          agent_name: payload.agentName,
+          model: payload.model,
+          started_at: payload.startedAt || new Date().toISOString(),
+          ended_at: payload.endedAt,
+          result: payload.result,
+          source_repo: payload.sourceRepo,
+          branch: payload.branch,
+          commit: payload.commit,
+          artifacts: payload.artifacts,
+          related_nodes: payload.relatedNodes,
+        },
+        fs,
+      })
+      return { node } as CapabilityOutputMap[Name]
+    }
+    case 'handoff.create': {
+      const payload = input as CapabilityInputMap['handoff.create']
+      assertNonEmptyString(payload.title, 'title')
+      assertNonEmptyString(payload.projectRoot, 'projectRoot')
+      assertWritableProjectRootAllowed(payload.projectRoot, 'handoff.create')
+
+      const body = payload.body || buildHandoffBody({
+        summary: payload.summary,
+        fromAgent: payload.fromAgent,
+        toAgent: payload.toAgent,
+      })
+
+      const node = await createYamlNode({
+        type: 'thought',
+        title: payload.title,
+        parentKey: payload.parentKey,
+        parentUuid: payload.parentUuid,
+        parentType: payload.parentType,
+        body,
+        tags: ['ops/handoff'],
+        projectRoot: payload.projectRoot,
+        extraFields: {
+          record_kind: 'handoff',
+          schema_version: '2',
+          source_repo: payload.sourceRepo,
+          branch: payload.branch,
+          commit: payload.commit,
+          artifacts: payload.artifacts,
+          related_nodes: payload.relatedNodes,
+          state_history: [
+            {
+              at: new Date().toISOString(),
+              from: '',
+              to: 'created',
+              note: payload.summary || 'Handoff created',
+            },
+          ],
+        },
+        fs,
+      })
+      return { node } as CapabilityOutputMap[Name]
+    }
+    case 'comment.add': {
+      const payload = input as CapabilityInputMap['comment.add']
+      assertNonEmptyString(payload.uuid, 'uuid')
+      assertNonEmptyString(payload.text, 'text')
+
+      const source = await getYamlNode(payload.uuid)
+      if (!source) throw new Error(`Node not found: ${payload.uuid}`)
+      assertWritableProjectRootAllowed(source.projectRoot, 'comment.add')
+
+      const comments: YAMLCommentEntry[] = [
+        ...(source.comments ?? []),
+        {
+          text: payload.text.trim(),
+          added_at: new Date().toISOString(),
+          added_by: payload.addedBy?.trim() || 'unknown',
+        },
+      ]
+
+      const node = await updateYamlNode(payload.uuid, { comments }, fs)
+      return { node } as CapabilityOutputMap[Name]
     }
     case 'thoughts.create': {
       const payload = input as CapabilityInputMap['thoughts.create']
@@ -535,6 +697,11 @@ function createAuditId(): string {
   return `audit-${Date.now().toString(36)}-${rand}`
 }
 
+function createRunId(): string {
+  const rand = Math.random().toString(36).slice(2, 8)
+  return `run-${Date.now().toString(36)}-${rand}`
+}
+
 function extractTouchedPaths<Name extends CapabilityName>(
   capability: Name,
   data: CapabilityOutputMap[Name],
@@ -549,6 +716,19 @@ function extractTouchedPaths<Name extends CapabilityName>(
         | CapabilityOutputMap['organizer.node.rename']
         | CapabilityOutputMap['organizer.node.update']
         | CapabilityOutputMap['organizer.node.move']).node
+      return node?.filePath ? [node.filePath] : []
+    }
+    case 'task.claim':
+    case 'task.update_status':
+    case 'run.log':
+    case 'handoff.create':
+    case 'comment.add': {
+      const node = (data as
+        | CapabilityOutputMap['task.claim']
+        | CapabilityOutputMap['task.update_status']
+        | CapabilityOutputMap['run.log']
+        | CapabilityOutputMap['handoff.create']
+        | CapabilityOutputMap['comment.add']).node
       return node?.filePath ? [node.filePath] : []
     }
     case 'organizer.node.delete': {
@@ -582,6 +762,80 @@ function extractTouchedPaths<Name extends CapabilityName>(
     default:
       return []
   }
+}
+
+function assertValidRecordKind(recordKind: unknown): void {
+  if (recordKind === undefined || recordKind === null || recordKind === '') return
+  if (typeof recordKind !== 'string') {
+    throw new Error(`record_kind must be a string, received ${typeof recordKind}`)
+  }
+  if (!ALLOWED_RECORD_KINDS.includes(recordKind as (typeof ALLOWED_RECORD_KINDS)[number])) {
+    throw new Error(`Invalid record_kind: ${recordKind}`)
+  }
+}
+
+function assertTaskNode(node: { recordKind?: string }): void {
+  if (node.recordKind !== 'task') {
+    throw new Error('Node is not a task record (record_kind=task required).')
+  }
+}
+
+function assertWritableProjectRootAllowed(
+  projectRoot: string | undefined,
+  capability: CapabilityName,
+): void {
+  if (!projectRoot) return
+  const policy = getCapabilityPolicy()
+  const allowlist = policy.allowedWritableProjectRoots
+  if (!allowlist || allowlist.length === 0) return
+
+  const normalized = normalizePath(projectRoot)
+  const allowed = allowlist.some(root => normalizePath(root) === normalized)
+  if (!allowed) {
+    throw new Error(`Writable project root "${projectRoot}" is blocked for ${capability}.`)
+  }
+}
+
+function normalizePath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/\/+$/g, '')
+}
+
+function appendStateHistory(
+  source: { stateHistory?: Array<Record<string, unknown>>; taskStatus?: string; owner?: string },
+  transition: { from?: string; to: string; note?: string },
+  by: string,
+): Array<Record<string, unknown>> {
+  const existing = Array.isArray(source.stateHistory)
+    ? source.stateHistory.map(entry => ({ ...entry }))
+    : []
+  existing.push({
+    at: new Date().toISOString(),
+    by,
+    from: transition.from ?? source.taskStatus ?? '',
+    to: transition.to,
+    note: transition.note,
+  })
+  return existing
+}
+
+function buildHandoffBody(params: {
+  summary?: string
+  fromAgent?: string
+  toAgent?: string
+}): string {
+  const lines: string[] = ['## Handoff']
+  if (params.summary) {
+    lines.push('')
+    lines.push(params.summary)
+  }
+  if (params.fromAgent || params.toAgent) {
+    lines.push('')
+    lines.push('## Routing')
+    lines.push('')
+    if (params.fromAgent) lines.push(`- From: ${params.fromAgent}`)
+    if (params.toAgent) lines.push(`- To: ${params.toAgent}`)
+  }
+  return lines.join('\n')
 }
 
 async function auditCapability<Name extends CapabilityName>(params: {

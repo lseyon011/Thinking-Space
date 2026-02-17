@@ -2,6 +2,8 @@
 
 Last updated: 2026-02-17
 
+> Transition note (2026-02-17): this file is now a read-only snapshot during migration to the vault-native agent workspace. New principles/decisions should move to `coding-projects/thinking-space/thinking-organizer/*`.
+
 ## Product Direction
 - The app must be one product supporting all three identities from the ground up:
   - Thinking space for individuals (`Programs -> Epics -> Ideas -> Thoughts`)
@@ -30,6 +32,9 @@ Last updated: 2026-02-17
 18. Adapter parity fixtures are shared under `tests/fixtures/capability_parity_fixtures.json` and validated in both frontend and backend test suites.
 19. Agent-orchestration metadata is now first-class in YAML parsing (`task_*`, `run_*`, traceability, governance), and IndexedDB stores both typed fields and a generic `metadata` blob with searchable `metadataKeys`/`metadataText` for future schema growth.
 20. Node detail panel now renders arbitrary YAML fields recursively (arrays/objects/primitives), so non-curated frontmatter is visible without custom UI code.
+21. Agent-operation capability surface now includes task/run/handoff/comment primitives (`task.claim`, `task.update_status`, `run.log`, `handoff.create`, `comment.add`) and continues to route writes through capability audit logging.
+22. Vault-native migration bootstrap exists at `frontend/scripts/agent/bootstrapAgentWorkspace.ts` and has imported repo-local `agents/*` artifacts into `coding-projects/thinking-space/thinking-organizer/*` with source traceability metadata.
+23. Cutover has started: `agents/*.md` are read-only transition snapshots for one cycle while active operations move to the vault workspace.
 
 ## Architecture Pivot (2026-02-14)
 - **FROM**: SQLite + mirrored folders + backend hierarchy services

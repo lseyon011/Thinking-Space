@@ -1,6 +1,50 @@
 # Completed Work Log
 
+> Transition note (2026-02-17): this file is now a read-only snapshot during migration to the vault-native agent workspace. New run/completion logs should move to `coding-projects/thinking-space/thinking-organizer/*`.
+
 ## 2026-02-17
+
+### DEV-015 - LTM-037 Agent Workspace Migration Bootstrap + Cutover Controls
+- Completed `LTM-037`.
+- Added schema and operations docs:
+  - `docs/ADR-006-Agent-Workspace-Schema.md`
+  - `docs/OPS_REPO_SYNC_CHECKLIST.md`
+- Added capability operations for agent-native workflows (write path stays capability-router + audit):
+  - `task.claim`
+  - `task.update_status`
+  - `run.log`
+  - `handoff.create`
+  - `comment.add`
+  - files:
+    - `frontend/src/services/lego_blocks/capabilityRegistryBlock.ts`
+    - `frontend/src/services/orchestrators/capabilityRouterOrch.ts`
+    - `frontend/src/services/lego_blocks/capabilityPolicyBlock.ts`
+- Added record-kind and write-policy safety updates:
+  - `record_kind` validation in:
+    - `frontend/src/services/lego_blocks/yamlNoteBlock.ts`
+    - `frontend/src/services/lego_blocks/yamlHierarchyBlock.ts`
+  - writable project-root allowlist support in capability policy.
+- Added vault migration bootstrap script:
+  - `frontend/scripts/agent/bootstrapAgentWorkspace.ts`
+  - npm command: `npm run agent:workspace:bootstrap -- <target-project-root>`
+- Bootstrapped workspace and imported artifacts into:
+  - `/Users/patila06/Library/Mobile Documents/iCloud~md~obsidian/Documents/Long Term Memory iCloud/coding-projects/thinking-space/thinking-organizer/*`
+  - import counts:
+    - tasks: 34
+    - runs: 19
+    - handoffs: 15
+    - principles/decisions: 31
+- Added transition snapshot notes to:
+  - `agents/TODO.md`
+  - `agents/DONE.md`
+  - `agents/HANDOFFS.md`
+  - `agents/UNDERSTANDINGS.md`
+
+Validation:
+- `npm test -- --run tests/capabilityRouterOrch.test.ts tests/vaultSyncOrch.test.ts tests/yamlNoteBlock.test.ts tests/capabilityParityAdapters.test.ts` (frontend) — passed.
+- `npm run build` (frontend) — passed.
+- `npm run agent:workspace:bootstrap -- /tmp/ts-agent-workspace-test` — passed.
+- `npm run agent:workspace:bootstrap -- /Users/patila06/Library/Mobile Documents/iCloud~md~obsidian/Documents/Long Term Memory iCloud/coding-projects/thinking-space` — passed.
 
 ### DEV-014 - LTM-036 Agent Orchestration Metadata + Cache Queryability
 - Completed `LTM-036`.

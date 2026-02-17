@@ -5,6 +5,7 @@
 import { getVaultFS } from './fsBlock'
 import type { VaultFS } from './fsBlock'
 import {
+  ALLOWED_RECORD_KINDS,
   createNote,
   generateKey,
   parseNote,
@@ -640,6 +641,11 @@ function applyExtraFrontmatterFields(
     if (value === undefined || value === null || value === '') {
       delete frontmatter[key]
       continue
+    }
+    if (key === 'record_kind') {
+      if (typeof value !== 'string' || !ALLOWED_RECORD_KINDS.includes(value as (typeof ALLOWED_RECORD_KINDS)[number])) {
+        throw new Error(`Invalid record_kind: ${String(value)}`)
+      }
     }
     frontmatter[key] = value
   }

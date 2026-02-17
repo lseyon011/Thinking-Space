@@ -133,13 +133,20 @@ Organizer operations are exposed through one capability contract in frontend Typ
 - Registry: `frontend/src/services/lego_blocks/capabilityRegistryBlock.ts`
 - Router: `frontend/src/services/orchestrators/capabilityRouterOrch.ts`
 - Contract ADR: `docs/ADR-005-Agent-Capabilities.md`
+- Agent workspace schema ADR: `docs/ADR-006-Agent-Workspace-Schema.md`
 - Rollout matrix: `docs/CAPABILITY_ROLLOUT_MATRIX.md`
+- Ops repo checklist: `docs/OPS_REPO_SYNC_CHECKLIST.md`
 
 External agent/curl access uses a thin transport layer:
 - Frontend runner: `frontend/scripts/agent/capabilityRunner.ts`
 - FastAPI proxy endpoints:
   - `GET /api/capabilities`
   - `POST /api/capabilities/invoke`
+
+Workspace bootstrap/import tool:
+- `frontend/scripts/agent/bootstrapAgentWorkspace.ts`
+- Command:
+  - `cd frontend && npm run agent:workspace:bootstrap -- "<project-root-path>"`
 
 Operational controls:
 - Frontend feature flags:

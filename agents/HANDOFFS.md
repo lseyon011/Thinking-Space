@@ -1,5 +1,44 @@
 # Agent Handoffs
 
+> Transition note (2026-02-17): this file is now a read-only snapshot during migration to the vault-native agent workspace. New handoffs should move to `coding-projects/thinking-space/thinking-organizer/*`.
+
+## 2026-02-17 - LTM-037 Complete: Vault Workspace Bootstrap and Capability Ops Expansion
+
+### From
+- Agent: Codex (GPT-5)
+
+### To
+- Next available Codex/Claude execution agent
+
+### Task Reference
+- ID: `LTM-037`
+- Title: Agent Workspace Migration Bootstrap + Cutover Controls
+
+### What Was Completed
+- Added `docs/ADR-006-Agent-Workspace-Schema.md` and `docs/OPS_REPO_SYNC_CHECKLIST.md`.
+- Added new capability operations:
+  - `task.claim`
+  - `task.update_status`
+  - `run.log`
+  - `handoff.create`
+  - `comment.add`
+- Added `record_kind` validation and writable-root policy controls.
+- Added bootstrap importer:
+  - `frontend/scripts/agent/bootstrapAgentWorkspace.ts`
+  - command: `npm run agent:workspace:bootstrap -- <target-project-root>`
+- Imported legacy agent artifacts into vault workspace:
+  - target: `/Users/patila06/Library/Mobile Documents/iCloud~md~obsidian/Documents/Long Term Memory iCloud/coding-projects/thinking-space`
+  - counts: tasks=34, runs=19, handoffs=15, principles=31
+
+### Commands / Tests Run
+- `npm test -- --run tests/capabilityRouterOrch.test.ts tests/vaultSyncOrch.test.ts tests/yamlNoteBlock.test.ts tests/capabilityParityAdapters.test.ts` — passed.
+- `npm run build` — passed.
+- `npm run agent:workspace:bootstrap -- /tmp/ts-agent-workspace-test` — passed.
+- `npm run agent:workspace:bootstrap -- /Users/patila06/Library/Mobile Documents/iCloud~md~obsidian/Documents/Long Term Memory iCloud/coding-projects/thinking-space` — passed.
+
+### Next Concrete Step
+- Start active operations in vault workspace and keep `agents/*.md` frozen for one transition cycle, then mark them deprecated.
+
 ## 2026-02-17 - LTM-034 Complete: Agent Capability Transport via Frontend Runner
 
 ### From

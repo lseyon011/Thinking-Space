@@ -35,6 +35,11 @@ export type CapabilityName =
   | 'organizer.node.update'
   | 'organizer.node.move'
   | 'organizer.node.delete'
+  | 'task.claim'
+  | 'task.update_status'
+  | 'run.log'
+  | 'handoff.create'
+  | 'comment.add'
   | 'thoughts.create'
   | 'todos.create'
   | 'todos.toggle'
@@ -105,6 +110,58 @@ export interface CapabilityInputMap {
   }
   'organizer.node.delete': {
     uuid: string
+  }
+  'task.claim': {
+    uuid: string
+    owner: string
+    taskStatus?: string
+    note?: string
+  }
+  'task.update_status': {
+    uuid: string
+    taskStatus: string
+    note?: string
+  }
+  'run.log': {
+    title: string
+    projectRoot: string
+    parentKey?: string
+    parentUuid?: string
+    parentType?: NodeType
+    runId?: string
+    sessionId?: string
+    agentName?: string
+    model?: string
+    startedAt?: string
+    endedAt?: string
+    result?: string
+    sourceRepo?: string
+    branch?: string
+    commit?: string
+    artifacts?: string[]
+    relatedNodes?: string[]
+    body?: string
+  }
+  'handoff.create': {
+    title: string
+    projectRoot: string
+    parentKey?: string
+    parentUuid?: string
+    parentType?: NodeType
+    fromAgent?: string
+    toAgent?: string
+    summary?: string
+    sourceRepo?: string
+    branch?: string
+    commit?: string
+    artifacts?: string[]
+    relatedNodes?: string[]
+    body?: string
+  }
+  'comment.add': {
+    uuid: string
+    text: string
+    addedBy?: string
   }
   'thoughts.create': {
     folder_path: string
@@ -213,6 +270,21 @@ export interface CapabilityOutputMap {
       touchedPaths: string[]
     }
   }
+  'task.claim': {
+    node: NodeRecord
+  }
+  'task.update_status': {
+    node: NodeRecord
+  }
+  'run.log': {
+    node: NodeRecord
+  }
+  'handoff.create': {
+    node: NodeRecord
+  }
+  'comment.add': {
+    node: NodeRecord
+  }
   'thoughts.create': {
     output_path: string
   }
@@ -318,6 +390,31 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
   {
     name: 'organizer.node.delete',
     description: 'Delete a node from cache/source of truth workflow.',
+    readOnly: false,
+  },
+  {
+    name: 'task.claim',
+    description: 'Claim a task node for an owner and set task status.',
+    readOnly: false,
+  },
+  {
+    name: 'task.update_status',
+    description: 'Update status of an existing task node.',
+    readOnly: false,
+  },
+  {
+    name: 'run.log',
+    description: 'Create a run log node with traceability metadata.',
+    readOnly: false,
+  },
+  {
+    name: 'handoff.create',
+    description: 'Create a handoff node with source and artifact references.',
+    readOnly: false,
+  },
+  {
+    name: 'comment.add',
+    description: 'Append a comment entry to an existing organizer node.',
     readOnly: false,
   },
   {

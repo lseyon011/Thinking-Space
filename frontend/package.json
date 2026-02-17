@@ -12,6 +12,7 @@
     "electron:sync": "npm run build:electron && npx cap sync @capacitor-community/electron",
     "electron:dev": "npm run electron:sync && cd electron && npm run electron:start",
     "agent:capabilities": "vite-node scripts/agent/capabilityRunner.ts",
+    "agent:workspace:bootstrap": "vite-node scripts/agent/bootstrapAgentWorkspace.ts",
     "lint": "eslint .",
     "preview": "vite preview"
   },
