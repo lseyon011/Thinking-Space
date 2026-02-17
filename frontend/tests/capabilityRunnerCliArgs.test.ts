@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { buildCLIInvokePayload } from '../scripts/agent/capabilityRunner'
+import {
+  buildCLIInvokePayload,
+  renderCapabilityHelp,
+  renderRunnerHelp,
+} from '../scripts/agent/capabilityRunner'
 
 const ORIGINAL_VAULT_ROOT = process.env.LTM_VAULT_ROOT
 
@@ -62,5 +66,20 @@ describe('capabilityRunner CLI argument parsing', () => {
       description: 'Short implementation plan',
     })
     expect(warnings.some(msg => msg.includes('--extra-description'))).toBe(true)
+  })
+
+  it('renders top-level help with usage and guidance', () => {
+    const help = renderRunnerHelp()
+    expect(help).toContain('./ltm help')
+    expect(help).toContain('./ltm <capability> --help')
+    expect(help).toContain('Use comment.add for append-only task notes.')
+  })
+
+  it('renders capability-specific help for organizer.node.update', () => {
+    const help = renderCapabilityHelp('organizer.node.update')
+    expect(help).toContain('Capability: organizer.node.update')
+    expect(help).toContain('Update node metadata fields.')
+    expect(help).toContain('./ltm organizer.node.update --uuid "abc-123" --comments')
+    expect(help).toContain('./ltm comment.add --uuid "abc-123" --text')
   })
 })

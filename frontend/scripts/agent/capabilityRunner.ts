@@ -342,8 +342,84 @@ export function buildCLIInvokePayload(
   }
 }
 
+const CAPABILITY_EXAMPLES: Record<string, string[]> = {
+  'organizer.node.create': [
+    './ltm organizer.node.create --type task --title "My task" --parentKey task-backlog --projectRoot coding-projects/thinking-space --description "Short description" --extra-record_kind task',
+  ],
+  'organizer.node.update': [
+    './ltm organizer.node.update --uuid "abc-123" --status active --priority high',
+    './ltm organizer.node.update --uuid "abc-123" --comments "Reconfirmed acceptance criteria"',
+    './ltm comment.add --uuid "abc-123" --text "Append progress note" --addedBy codex-cli',
+  ],
+  'task.claim': [
+    './ltm task.claim --uuid "abc-123" --owner codex-cli',
+  ],
+  'task.update_status': [
+    './ltm task.update_status --uuid "abc-123" --taskStatus done',
+  ],
+  'comment.add': [
+    './ltm comment.add --uuid "abc-123" --text "Implemented parser hardening" --addedBy codex-cli',
+  ],
+}
+
+function formatExamples(capability: string): string {
+  const examples = CAPABILITY_EXAMPLES[capability]
+  if (!examples || examples.length === 0) return ''
+  return [
+    '',
+    'Examples:',
+    ...examples.map(example => `  ${example}`),
+  ].join('\n')
+}
+
+export function renderRunnerHelp(): string {
+  return [
+    'ltm capability runner',
+    '',
+    'Usage:',
+    '  ./ltm list',
+    '  ./ltm invoke < payload.json',
+    '  ./ltm <capability> [--flag value ...]',
+    '  ./ltm help',
+    '  ./ltm <capability> --help',
+    '',
+    'Notes:',
+    '  - --extra-* is for custom metadata only (extraFields).',
+    '  - For first-class fields use first-class flags (e.g., --comments, --description).',
+    '  - Use comment.add for append-only task notes.',
+    '',
+    'Discover capabilities:',
+    '  ./ltm list',
+  ].join('\n')
+}
+
+export function renderCapabilityHelp(capability: string): string {
+  const definition = listCapabilitiesOrch().find(entry => entry.name === capability)
+  if (!definition) {
+    return `Unknown capability: ${capability}\n\nRun ./ltm list to view available capabilities.`
+  }
+
+  return [
+    `Capability: ${definition.name}`,
+    `Description: ${definition.description}`,
+    `Mode: ${definition.readOnly ? 'read-only' : 'write'}`,
+    '',
+    `Usage: ./ltm ${definition.name} --flag value ...`,
+    ...((formatExamples(definition.name)).split('\n')),
+  ].join('\n').trim()
+}
+
+function writeText(text: string): void {
+  process.stdout.write(`${text}\n`)
+}
+
 async function main(): Promise<void> {
   const command = process.argv[2]
+
+  if (!command || command === 'help' || command === '--help' || command === '-h') {
+    writeText(renderRunnerHelp())
+    return
+  }
 
   if (command === 'list') {
     writeJson(await runCapabilityRunnerCommand('list'))
@@ -359,6 +435,10 @@ async function main(): Promise<void> {
   // CLI-arg mode: treat argv[2] as a capability name
   if (command && command.includes('.')) {
     const cliArgs = process.argv.slice(3)
+    if (cliArgs.includes('--help') || cliArgs.includes('-h')) {
+      writeText(renderCapabilityHelp(command))
+      return
+    }
     const { payload, warnings } = buildCLIInvokePayload(command, cliArgs)
     writeCLIWarnings(warnings)
     writeJson(await runCapabilityRunnerCommand('invoke', payload))
