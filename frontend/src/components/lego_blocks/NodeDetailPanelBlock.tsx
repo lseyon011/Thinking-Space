@@ -6,7 +6,6 @@ import {
   Layers,
   Lightbulb,
   MessageSquare,
-  Loader2,
   Trash2,
   X,
 } from 'lucide-react'
@@ -48,8 +47,6 @@ const PRIORITY_OPTIONS: NodePriority[] = ['low', 'medium', 'high', 'critical']
 
 export interface NodeDetailPanelBlockProps {
   node: NodeRecord
-  frontmatter?: Record<string, unknown> | null
-  frontmatterLoading?: boolean
   onClose: () => void
   onRename: (newTitle: string) => Promise<void>
   onUpdateStatus: (status: string) => Promise<void>
@@ -60,8 +57,6 @@ export interface NodeDetailPanelBlockProps {
 
 export default function NodeDetailPanelBlock({
   node,
-  frontmatter = null,
-  frontmatterLoading = false,
   onClose,
   onRename,
   onUpdateStatus,
@@ -107,14 +102,6 @@ export default function NodeDetailPanelBlock({
   }, [onClose, onDelete])
 
   const Icon = iconForNodeType(node.type)
-  const metadataEntries = frontmatter ? Object.entries(frontmatter).sort((a, b) => a[0].localeCompare(b[0])) : []
-
-  const formatMetadataValue = (value: unknown): string => {
-    if (value == null) return ''
-    if (Array.isArray(value)) return value.map(item => String(item)).join(', ')
-    if (typeof value === 'object') return JSON.stringify(value)
-    return String(value)
-  }
 
   return (
     <>
@@ -214,29 +201,6 @@ export default function NodeDetailPanelBlock({
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">File Path</label>
             <p className="break-all font-mono text-xs text-foreground/80">{node.filePath}</p>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">YAML Metadata</label>
-            {frontmatterLoading ? (
-              <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Loading metadata...
-              </div>
-            ) : metadataEntries.length === 0 ? (
-              <div className="rounded-md border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
-                No frontmatter metadata found.
-              </div>
-            ) : (
-              <div className="max-h-52 space-y-1 overflow-auto rounded-md border border-border/60 bg-muted/10 p-2">
-                {metadataEntries.map(([key, raw]) => (
-                  <div key={key} className="grid grid-cols-[110px_minmax(0,1fr)] items-start gap-2 text-xs">
-                    <span className="font-mono text-muted-foreground">{key}</span>
-                    <span className="break-all text-foreground/90">{formatMetadataValue(raw)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Actions */}

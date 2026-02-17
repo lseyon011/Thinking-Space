@@ -110,8 +110,6 @@ Last updated: 2026-02-17
 - IndexedDB cache layer implemented (dbBlock.ts + vaultSyncOrch.ts) — Phase 2 DONE.
 - ThinkingOrganizer now supports YAML tree reparenting and explorer file/folder drop mapping into YAML `parent` metadata with IndexedDB sync.
 - ThinkingOrganizer backlog create flow now supports explicit Jira-like node type selection (including idea buckets and thought buckets) with separate link tab preserved.
-- Backlog create tab now includes a project-creation modal (`Create Project`) with destination picker and persisted project buttons; selected project scopes visible programs.
-- Backlog node detail panel now shows full parsed YAML frontmatter metadata key/value pairs.
 - New Thought and Todo create flows now write YAML-frontmatter markdown; legacy todo files are upgraded to YAML on append.
 - No unified AI text action system across text boxes.
 - No extension SDK/runtime yet.

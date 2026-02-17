@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Download, Loader2, Plus, X } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Download, Loader2 } from 'lucide-react'
 import BacklogListBlock from '@/components/lego_blocks/BacklogListBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/NodeDetailPanelBlock'
-import CascadingFolderPicker, { addRecent } from '@/components/lego_blocks/CascadingFolderPickerBlock'
+import CascadingFolderPicker from '@/components/lego_blocks/CascadingFolderPickerBlock'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import { generateKey, parseNote, type NodeType } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodeType } from '@/services/lego_blocks/yamlNoteBlock'
 import {
   createYamlNode,
   deleteYamlNode,
@@ -29,27 +29,10 @@ import {
   setJsonStorageItem,
 } from '@/services/lego_blocks/storageKeyBlock'
 
-interface ProjectEntry {
-  name: string
-  root: string
-}
-
 function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
   if (typeof value === 'string' && value.trim()) return value
   return fallback
-}
-
-function normalizePath(value: string): string {
-  return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
-}
-
-function humanizeKey(value: string): string {
-  return value
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ') || 'Project'
 }
 
 function allowedChildTypes(parentType: NodeType | null): NodeType[] {
@@ -73,25 +56,14 @@ export default function BacklogOrch() {
   const [working, setWorking] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>(
-    () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
+  const [projectRootSegments, setProjectRootSegments] = useState<string[]>(
+    () => getJsonStorageItem<string[]>(
+      STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot,
+      [],
+    ),
   )
-  const [activeProjectRoot, setActiveProjectRoot] = useState<string>(() => {
-    const saved = getJsonStorageItem<string[]>(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, [])
-    return normalizePath(saved.join('/'))
-  })
 
-  const [projectModalOpen, setProjectModalOpen] = useState(false)
-  const [newProjectName, setNewProjectName] = useState('')
-  const [destinationSegments, setDestinationSegments] = useState<string[]>(
-    () => getJsonStorageItem<string[]>(STORAGE_KEYS.thinkingOrganizerProjectCreateDestination, []),
-  )
-  const [destinationPath, setDestinationPath] = useState(() => destinationSegments.join('/'))
-  const [creatingProject, setCreatingProject] = useState(false)
-
-  const [selectedFrontmatter, setSelectedFrontmatter] = useState<Record<string, unknown> | null>(null)
-  const [frontmatterLoading, setFrontmatterLoading] = useState(false)
+  const projectRoot = projectRootSegments.join('/')
 
   const loadPrograms = useCallback(async () => {
     setLoading(true)
@@ -110,145 +82,12 @@ export default function BacklogOrch() {
     void loadPrograms()
   }, [loadPrograms])
 
-  const availableProjects = useMemo(() => {
-    const byRoot = new Map<string, ProjectEntry>()
-
-    for (const project of projectEntries) {
-      const root = normalizePath(project.root)
-      if (!root) continue
-      byRoot.set(root, {
-        name: project.name?.trim() || humanizeKey(root.split('/')[root.split('/').length - 1] || ''),
-        root,
-      })
-    }
-
-    for (const program of programs) {
-      const root = normalizePath(program.projectRoot ?? '')
-      if (!root) continue
-      if (!byRoot.has(root)) {
-        byRoot.set(root, {
-          name: humanizeKey(root.split('/')[root.split('/').length - 1] || ''),
-          root,
-        })
-      }
-    }
-
-    return [...byRoot.values()].sort((a, b) => a.name.localeCompare(b.name))
-  }, [programs, projectEntries])
-
-  useEffect(() => {
-    if (availableProjects.length === 0) {
-      if (activeProjectRoot) {
-        setActiveProjectRoot('')
-        setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, [])
-      }
-      return
-    }
-
-    const exists = availableProjects.some(project => project.root === activeProjectRoot)
-    if (exists) return
-
-    const fallback = availableProjects[0].root
-    setActiveProjectRoot(fallback)
-    setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, fallback.split('/'))
-  }, [activeProjectRoot, availableProjects])
-
-  const visiblePrograms = useMemo(() => {
-    if (!activeProjectRoot) return programs
-    return programs.filter(program => normalizePath(program.projectRoot ?? '') === activeProjectRoot)
-  }, [activeProjectRoot, programs])
-
-  const selectProject = useCallback((root: string) => {
-    const normalized = normalizePath(root)
-    setActiveProjectRoot(normalized)
-    setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, normalized.split('/'))
+  const handleProjectRootChange = useCallback((segments: string[]) => {
+    setProjectRootSegments(segments)
+    setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, segments)
   }, [])
 
-  const handleDestinationChange = useCallback((segments: string[], fullPath: string) => {
-    setDestinationSegments(segments)
-    setDestinationPath(fullPath)
-    setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectCreateDestination, segments)
-  }, [])
-
-  const createProject = useCallback(async () => {
-    const trimmedName = newProjectName.trim()
-    const normalizedDestination = normalizePath(destinationPath)
-
-    if (!trimmedName) {
-      setError('Project name is required.')
-      return
-    }
-    if (!normalizedDestination) {
-      setError('Project destination is required.')
-      return
-    }
-
-    const projectKey = generateKey(trimmedName) || 'project'
-    const projectRoot = normalizePath(`${normalizedDestination}/${projectKey}`)
-
-    setCreatingProject(true)
-    setError(null)
-    setMessage(null)
-
-    try {
-      const fs = getVaultFS()
-      await fs.mkdir(projectRoot)
-      await fs.mkdir(`${projectRoot}/${THINKING_ORGANIZER_DIR}`)
-
-      const nextEntries = [...projectEntries]
-      const existingIdx = nextEntries.findIndex(project => normalizePath(project.root) === projectRoot)
-      if (existingIdx >= 0) {
-        nextEntries[existingIdx] = { name: trimmedName, root: projectRoot }
-      } else {
-        nextEntries.push({ name: trimmedName, root: projectRoot })
-      }
-      nextEntries.sort((a, b) => a.name.localeCompare(b.name))
-
-      setProjectEntries(nextEntries)
-      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjects, nextEntries)
-      selectProject(projectRoot)
-      addRecent(STORAGE_KEYS.thinkingOrganizerProjectRoots, destinationSegments)
-
-      setProjectModalOpen(false)
-      setNewProjectName('')
-      setMessage(`Created project: ${trimmedName}`)
-    } catch (err) {
-      setError(errorMessage(err, 'Failed to create project'))
-    } finally {
-      setCreatingProject(false)
-    }
-  }, [destinationPath, destinationSegments, newProjectName, projectEntries, selectProject])
-
-  useEffect(() => {
-    if (!selectedNode) {
-      setSelectedFrontmatter(null)
-      setFrontmatterLoading(false)
-      return
-    }
-
-    let cancelled = false
-
-    const loadFrontmatter = async () => {
-      setFrontmatterLoading(true)
-      try {
-        const fs = getVaultFS()
-        const content = await fs.read(selectedNode.filePath)
-        const parsed = parseNote(content)
-        if (cancelled) return
-        setSelectedFrontmatter(parsed?.frontmatter ?? null)
-      } catch {
-        if (cancelled) return
-        setSelectedFrontmatter(null)
-      } finally {
-        if (!cancelled) setFrontmatterLoading(false)
-      }
-    }
-
-    void loadFrontmatter()
-    return () => {
-      cancelled = true
-    }
-  }, [selectedNode])
+  // ── CRUD callbacks ──
 
   const createChildNode = useCallback(async (
     parent: NodeRecord | null,
@@ -259,9 +98,8 @@ export default function BacklogOrch() {
     const nextType = requestedType && allowedTypes.includes(requestedType)
       ? requestedType
       : allowedTypes[0]
-
-    if (!parent && !activeProjectRoot) {
-      throw new Error('Create or select a project first.')
+    if (!parent && !projectRoot) {
+      throw new Error('Select a project folder before creating a program.')
     }
 
     const created = await createYamlNode({
@@ -270,16 +108,14 @@ export default function BacklogOrch() {
       parentKey: parent?.key,
       parentUuid: parent?.uuid,
       parentType: parent?.type,
-      projectRoot: parent ? undefined : activeProjectRoot,
+      projectRoot: parent ? undefined : projectRoot,
     })
-
     if (!parent) {
       setPrograms(prev => [...prev, created].sort((a, b) => a.title.localeCompare(b.title)))
     }
-
     setMessage(`Created ${defaultNodeKindLabel(created.type)}: ${created.title}`)
     return created
-  }, [activeProjectRoot])
+  }, [projectRoot])
 
   const deleteNodeRecursive = useCallback(async (node: NodeRecord, removedIds: Set<string>): Promise<void> => {
     const children = await listYamlChildren(node.key)
@@ -390,51 +226,33 @@ export default function BacklogOrch() {
   }, [openFile])
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Projects</CardTitle>
+    <div>
+      <Card className="mb-4">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Project Folder</CardTitle>
           <CardDescription>
-            Create a project, then manage its hierarchy under <code>{THINKING_ORGANIZER_DIR}</code>.
+            New program trees are stored under each project&apos;s <code>{THINKING_ORGANIZER_DIR}</code> folder.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={() => setProjectModalOpen(true)}>
-              <Plus className="mr-1.5 h-4 w-4" />
-              Create Project
-            </Button>
+        <CardContent className="space-y-2">
+          <CascadingFolderPicker
+            defaultPath={projectRootSegments}
+            onChange={segments => handleProjectRootChange(segments)}
+            storageKey={STORAGE_KEYS.thinkingOrganizerProjectRoots}
+            maxRecents={12}
+          />
+          <div className="text-xs text-muted-foreground">
+            Storage target:{' '}
+            <span className="font-mono text-foreground">
+              {projectRoot ? `${projectRoot}/${THINKING_ORGANIZER_DIR}` : '(select a project folder)'}
+            </span>
           </div>
-
-          {availableProjects.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {availableProjects.map(project => {
-                const isActive = project.root === activeProjectRoot
-                return (
-                  <Button
-                    key={project.root}
-                    size="sm"
-                    variant={isActive ? 'default' : 'secondary'}
-                    onClick={() => selectProject(project.root)}
-                  >
-                    {project.name}
-                  </Button>
-                )
-              })}
-            </div>
-          )}
-
-          {activeProjectRoot && (
-            <div className="text-xs text-muted-foreground">
-              Active project root:{' '}
-              <span className="font-mono text-foreground">{activeProjectRoot}</span>
-            </div>
-          )}
         </CardContent>
       </Card>
 
+      {/* Messages */}
       {(message || error) && (
-        <div className="space-y-2">
+        <div className="mb-4 space-y-2">
           {message && (
             <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
               {message}
@@ -448,7 +266,8 @@ export default function BacklogOrch() {
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      {/* Toolbar */}
+      <div className="mb-4 flex items-center gap-2">
         <Button size="sm" variant="outline" onClick={() => { void exportToExcalidraw() }} disabled={working}>
           <Download className="mr-1 h-3.5 w-3.5" />
           Export Excalidraw
@@ -456,6 +275,7 @@ export default function BacklogOrch() {
         {working && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
       </div>
 
+      {/* Backlog list */}
       {loading ? (
         <div className="flex items-center gap-2 px-2 py-4 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -463,7 +283,7 @@ export default function BacklogOrch() {
         </div>
       ) : (
         <BacklogListBlock
-          programs={visiblePrograms}
+          programs={programs}
           loadEpics={program => listYamlChildren(program.key)}
           loadChildren={node => listYamlChildren(node.key)}
           selectedNodeId={selectedNode?.uuid ?? null}
@@ -473,11 +293,10 @@ export default function BacklogOrch() {
         />
       )}
 
+      {/* Detail panel */}
       {selectedNode && (
         <NodeDetailPanelBlock
           node={selectedNode}
-          frontmatter={selectedFrontmatter}
-          frontmatterLoading={frontmatterLoading}
           onClose={() => setSelectedNode(null)}
           onRename={renameNode}
           onUpdateStatus={updateStatus}
@@ -485,84 +304,6 @@ export default function BacklogOrch() {
           onOpenFile={() => openFile(selectedNode.filePath)}
           onDelete={() => deleteAnyNode(selectedNode)}
         />
-      )}
-
-      {projectModalOpen && (
-        <>
-          <div className="fixed inset-0 z-40 bg-background/50 backdrop-blur-sm" onClick={() => setProjectModalOpen(false)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <Card className="w-full max-w-xl border-border/80 shadow-2xl">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <CardTitle>Create Project</CardTitle>
-                    <CardDescription>
-                      Choose a project name and destination folder. We will create a <code>{THINKING_ORGANIZER_DIR}</code> folder inside it.
-                    </CardDescription>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-md p-1 text-muted-foreground hover:bg-muted"
-                    onClick={() => setProjectModalOpen(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs text-muted-foreground">Project name</label>
-                  <input
-                    value={newProjectName}
-                    onChange={e => setNewProjectName(e.target.value)}
-                    placeholder="Data Ingestion"
-                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs text-muted-foreground">Destination folder</label>
-                  <input
-                    value={destinationPath}
-                    onChange={e => {
-                      const next = e.target.value
-                      setDestinationPath(next)
-                      const nextSegments = next.split('/').filter(Boolean)
-                      setDestinationSegments(nextSegments)
-                      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectCreateDestination, nextSegments)
-                    }}
-                    placeholder="operations"
-                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  />
-                  <CascadingFolderPicker
-                    defaultPath={destinationSegments}
-                    onChange={handleDestinationChange}
-                    storageKey={STORAGE_KEYS.thinkingOrganizerProjectRoots}
-                    maxRecents={12}
-                  />
-                </div>
-
-                <div className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
-                  Project root preview:{' '}
-                  <span className="font-mono text-foreground">
-                    {destinationPath.trim() && newProjectName.trim()
-                      ? `${normalizePath(destinationPath)}/${generateKey(newProjectName) || 'project'}`
-                      : '(enter name and destination)'}
-                  </span>
-                </div>
-
-                <div className="flex justify-end gap-2">
-                  <Button variant="secondary" onClick={() => setProjectModalOpen(false)} disabled={creatingProject}>
-                    Cancel
-                  </Button>
-                  <Button onClick={() => { void createProject() }} disabled={creatingProject}>
-                    {creatingProject ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create Project'}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </>
       )}
     </div>
   )
