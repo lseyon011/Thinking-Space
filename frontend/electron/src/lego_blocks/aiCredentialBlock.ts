@@ -298,13 +298,15 @@ export function chatCodexWithOauthBlock(
   accessToken: string,
   accountId?: string,
 ): Promise<CodexChatResult> {
+  const input = messages.map((m) => ({
+    role: m.role,
+    content: [{ type: m.role === 'user' ? 'input_text' : 'output_text', text: m.content }],
+  }));
+
   const body = JSON.stringify({
     model: 'gpt-5.3-codex',
     instructions: 'You are a helpful assistant.',
-    input: messages.map((m) => ({
-      role: m.role,
-      content: [{ type: 'input_text', text: m.content }],
-    })),
+    input,
     store: false,
     stream: true,
   });

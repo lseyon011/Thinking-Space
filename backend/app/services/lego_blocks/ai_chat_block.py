@@ -129,6 +129,17 @@ def _get_codex_credentials():
         raise RuntimeError(f"Codex token expired and refresh failed: {e}")
 
 
+def _to_codex_input_item(message: dict) -> dict:
+    role = message.get("role")
+    text = message.get("content", "")
+    content_type = "input_text" if role == "user" else "output_text"
+    normalized_role = role if role in ("user", "assistant") else "user"
+    return {
+        "role": normalized_role,
+        "content": [{"type": content_type, "text": str(text)}],
+    }
+
+
 def chat_claude_block(messages: list[dict]) -> dict:
     """Send messages to Claude and return the response."""
     token = _get_claude_token()
@@ -195,10 +206,7 @@ def chat_codex_block(messages: list[dict]) -> dict:
     payload = {
         "model": model,
         "instructions": "You are a helpful assistant.",
-        "input": [
-            {"role": m["role"], "content": [{"type": "input_text", "text": m["content"]}]}
-            for m in messages
-        ],
+        "input": [_to_codex_input_item(m) for m in messages],
         "store": False,
         "stream": True,
     }
