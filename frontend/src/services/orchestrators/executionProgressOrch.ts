@@ -29,7 +29,7 @@ export async function listInProgressExecutionTasksOrch(
     .filter((node) => {
       const taskStatus = normalizeTaskStatus(node.taskStatus)
       if (taskStatus !== 'in_progress') return false
-      if (!(node.recordKind === 'task' || !!node.taskStatus)) return false
+      if (!(node.type === 'task' || node.recordKind === 'task' || !!node.taskStatus)) return false
       if (!projectRoot) return true
       return normalizePath(node.projectRoot ?? '') === projectRoot
     })

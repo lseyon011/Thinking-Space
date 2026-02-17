@@ -12,6 +12,9 @@ const TYPE_FOLDERS: Record<NodeType, string> = {
   idea: 'ideas',
   thought_bucket: 'thought_buckets',
   thought: 'thoughts',
+  task: 'tasks',
+  run: 'runs',
+  handoff: 'handoffs',
 }
 
 /**

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { BookOpen, ChevronRight, File, FileText, Folder, FolderOpen, FolderTree, Layers, Lightbulb, Loader2, MessageSquare, Pencil, Plus, Trash2, Unlink } from 'lucide-react'
+import { BookOpen, ChevronRight, File, FileText, Folder, FolderOpen, FolderTree, Handshake, Layers, Lightbulb, ListChecks, Loader2, MessageSquare, Pencil, Play, Plus, Trash2, Unlink } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/ui/button'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import type { NodeType } from '@/services/lego_blocks/yamlNoteBlock'
@@ -54,6 +54,9 @@ function iconForNodeType(type: NodeType) {
   if (type === 'idea') return Lightbulb
   if (type === 'thought_bucket') return Folder
   if (type === 'thought') return MessageSquare
+  if (type === 'task') return ListChecks
+  if (type === 'run') return Play
+  if (type === 'handoff') return Handshake
   return Lightbulb
 }
 
@@ -64,6 +67,9 @@ export function defaultNodeKindLabel(type: NodeType): string {
   if (type === 'idea') return 'Idea'
   if (type === 'thought_bucket') return 'Thought Bucket'
   if (type === 'thought') return 'Thought'
+  if (type === 'task') return 'Task'
+  if (type === 'run') return 'Run'
+  if (type === 'handoff') return 'Handoff'
   return 'Node'
 }
 

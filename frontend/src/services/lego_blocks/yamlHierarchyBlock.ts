@@ -40,6 +40,9 @@ const TYPE_FOLDERS: Record<NodeType, string> = {
   idea: 'ideas',
   thought_bucket: 'thought_buckets',
   thought: 'thoughts',
+  task: 'tasks',
+  run: 'runs',
+  handoff: 'handoffs',
 }
 
 const TYPE_TICKET_CODES: Record<NodeType, string> = {
@@ -49,6 +52,9 @@ const TYPE_TICKET_CODES: Record<NodeType, string> = {
   idea: 'I',
   thought_bucket: 'TB',
   thought: 'T',
+  task: 'T',
+  run: 'R',
+  handoff: 'H',
 }
 
 // ── Public API ──

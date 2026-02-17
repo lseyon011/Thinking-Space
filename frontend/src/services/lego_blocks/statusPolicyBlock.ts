@@ -39,8 +39,10 @@ export function normalizeTaskStatus(taskStatus: string | undefined): string | un
   return TASK_STATUS_ALIASES[canonical] ?? canonical
 }
 
-export function isTaskLikeNode(node: Pick<NodeRecord, 'recordKind' | 'taskStatus'>): boolean {
-  return node.recordKind === 'task' || !!normalizeTaskStatus(node.taskStatus)
+export function isTaskLikeNode(
+  node: Pick<NodeRecord, 'recordKind' | 'taskStatus'> & { type?: NodeRecord['type'] },
+): boolean {
+  return node.type === 'task' || node.recordKind === 'task' || !!normalizeTaskStatus(node.taskStatus)
 }
 
 export function nodeStatusFromTaskStatus(taskStatus: string | undefined): NodeStatus {

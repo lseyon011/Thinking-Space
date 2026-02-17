@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
-import { ArrowRight, Loader2, FolderTree, Layers, Lightbulb } from 'lucide-react'
+import { ArrowRight, Loader2, FolderTree, Handshake, Layers, Lightbulb, ListChecks, Play } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/lego_blocks/ui/button'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import type { NodeType } from '@/services/lego_blocks/yamlNoteBlock'
@@ -20,10 +21,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useEffect } from 'react'
 
 type TabMode = 'backlog' | 'view' | 'link' | 'steward' | 'integrity'
+const TAB_QUERY_PARAM = 'tab'
 
 function nodeIcon(type: NodeType) {
   if (type === 'program') return FolderTree
   if (type === 'epic') return Layers
+  if (type === 'task') return ListChecks
+  if (type === 'run') return Play
+  if (type === 'handoff') return Handshake
   return Lightbulb
 }
 
@@ -38,16 +43,41 @@ const VIEW_ACTOR: CapabilityActor = {
   id: 'ui.organizer-view',
 }
 
+function parseTabMode(raw: string | null): TabMode | null {
+  if (raw === 'backlog' || raw === 'view' || raw === 'link' || raw === 'steward' || raw === 'integrity') return raw
+  return null
+}
+
 function usePersistentTab(): [TabMode, (value: TabMode) => void] {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabFromUrl = parseTabMode(searchParams.get(TAB_QUERY_PARAM))
   const [tab, setTab] = useState<TabMode>(() => {
-    const saved = getStorageItem(STORAGE_KEYS.thinkingOrganizerTab)
-    if (saved === 'view' || saved === 'link' || saved === 'steward' || saved === 'integrity') return saved
+    if (tabFromUrl) return tabFromUrl
+    const saved = parseTabMode(getStorageItem(STORAGE_KEYS.thinkingOrganizerTab))
+    if (saved) return saved
     return 'backlog'
   })
 
+  useEffect(() => {
+    if (tabFromUrl && tabFromUrl !== tab) {
+      setTab(tabFromUrl)
+    }
+  }, [tab, tabFromUrl])
+
+  useEffect(() => {
+    const current = parseTabMode(searchParams.get(TAB_QUERY_PARAM))
+    if (current === tab) return
+    const next = new URLSearchParams(searchParams)
+    next.set(TAB_QUERY_PARAM, tab)
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams, tab])
+
+  useEffect(() => {
+    setStorageItem(STORAGE_KEYS.thinkingOrganizerTab, tab)
+  }, [tab])
+
   const setAndPersist = useCallback((value: TabMode) => {
     setTab(value)
-    setStorageItem(STORAGE_KEYS.thinkingOrganizerTab, value)
   }, [])
 
   return [tab, setAndPersist]

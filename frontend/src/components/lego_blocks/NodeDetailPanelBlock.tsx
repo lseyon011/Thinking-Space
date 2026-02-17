@@ -5,7 +5,10 @@ import {
   FolderTree,
   Layers,
   Lightbulb,
+  ListChecks,
   MessageSquare,
+  Handshake,
+  Play,
   Trash2,
   X,
 } from 'lucide-react'
@@ -27,6 +30,9 @@ function iconForNodeType(type: NodeType) {
   if (type === 'idea') return Lightbulb
   if (type === 'thought_bucket') return Folder
   if (type === 'thought') return MessageSquare
+  if (type === 'task') return ListChecks
+  if (type === 'run') return Play
+  if (type === 'handoff') return Handshake
   return Lightbulb
 }
 
@@ -38,6 +44,9 @@ function labelForNodeType(type: NodeType): string {
     idea: 'Idea',
     thought_bucket: 'Thought Bucket',
     thought: 'Thought',
+    task: 'Task',
+    run: 'Run',
+    handoff: 'Handoff',
   }
   return map[type] ?? 'Node'
 }

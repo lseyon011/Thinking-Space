@@ -31,6 +31,9 @@ const TYPE_COLORS: Record<string, string> = {
   idea: '#ffd8a8',      // light orange
   thought_bucket: '#d0bfff', // light purple
   thought: '#eebefa',   // light pink
+  task: '#ffe3e3',      // light red
+  run: '#dbeafe',       // light blue
+  handoff: '#f5d0fe',   // light fuchsia
 }
 
 const TYPE_STROKE_COLORS: Record<string, string> = {
@@ -40,6 +43,9 @@ const TYPE_STROKE_COLORS: Record<string, string> = {
   idea: '#d9480f',
   thought_bucket: '#7048e8',
   thought: '#ae3ec9',
+  task: '#c92a2a',
+  run: '#1d4ed8',
+  handoff: '#a21caf',
 }
 
 // ── Public API ──

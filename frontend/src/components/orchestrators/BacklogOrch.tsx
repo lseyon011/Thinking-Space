@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, Loader2, Plus, X } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/BacklogListBlock'
 import ExecutionProgressBlock from '@/components/lego_blocks/ExecutionProgressBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/NodeDetailPanelBlock'
@@ -37,6 +38,8 @@ const BACKLOG_ACTOR: CapabilityActor = {
   kind: 'human',
   id: 'ui.backlog',
 }
+const PROJECT_ROOT_QUERY_PARAM = 'projectRoot'
+const SELECTED_NODE_QUERY_PARAM = 'selectedNode'
 
 function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
@@ -65,21 +68,23 @@ function humanizeKey(value: string): string {
 
 function allowedChildTypes(parentType: NodeType | null): NodeType[] {
   if (!parentType) return ['program']
-  switch (parentType) {
-    case 'program': return ['epic']
-    case 'epic': return ['idea_bucket', 'idea', 'thought_bucket', 'thought']
-    case 'idea_bucket': return ['idea']
-    case 'idea': return ['thought_bucket', 'thought']
-    case 'thought_bucket': return ['thought']
-    case 'thought': return ['thought']
-    default: return ['idea']
-  }
+  const all: NodeType[] = ['epic', 'idea_bucket', 'idea', 'thought_bucket', 'thought', 'task', 'run', 'handoff']
+  const preferred: NodeType =
+    parentType === 'program' ? 'epic'
+      : parentType === 'epic' ? 'idea_bucket'
+        : parentType === 'idea_bucket' ? 'idea'
+          : parentType === 'idea' ? 'thought_bucket'
+            : parentType === 'thought_bucket' ? 'thought'
+              : 'thought'
+  return [preferred, ...all.filter(type => type !== preferred)]
 }
 
 export default function BacklogOrch() {
   const { openFile } = useMarkdownViewer()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [programs, setPrograms] = useState<NodeRecord[]>([])
   const [selectedNode, setSelectedNode] = useState<NodeRecord | null>(null)
+  const [selectedNodeUrlHydrated, setSelectedNodeUrlHydrated] = useState(false)
   const [selectedFrontmatter, setSelectedFrontmatter] = useState<YAMLFrontmatter | null>(null)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
@@ -96,6 +101,8 @@ export default function BacklogOrch() {
     () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
   )
   const [activeProjectRoot, setActiveProjectRoot] = useState<string>(() => {
+    const fromUrl = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
+    if (fromUrl) return fromUrl
     const saved = getJsonStorageItem<string[]>(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, [])
     return normalizePath(saved.join('/'))
   })
@@ -136,6 +143,63 @@ export default function BacklogOrch() {
   useEffect(() => {
     void loadPrograms(true)
   }, [loadPrograms])
+
+  useEffect(() => {
+    const selectedNodeUuid = searchParams.get(SELECTED_NODE_QUERY_PARAM)?.trim() ?? ''
+    if (!selectedNodeUuid) {
+      setSelectedNode(null)
+      setSelectedNodeUrlHydrated(true)
+      return
+    }
+    if (selectedNode?.uuid === selectedNodeUuid) {
+      setSelectedNodeUrlHydrated(true)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const { node } = await invokeCapabilityOrThrow({
+          capability: 'organizer.node.get',
+          input: { uuid: selectedNodeUuid },
+          actor: BACKLOG_ACTOR,
+        })
+        if (cancelled) return
+        setSelectedNode(node ?? null)
+      } catch {
+        if (!cancelled) setSelectedNode(null)
+      } finally {
+        if (!cancelled) setSelectedNodeUrlHydrated(true)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [searchParams, selectedNode?.uuid])
+
+  useEffect(() => {
+    const urlRoot = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
+    if (!urlRoot || urlRoot === activeProjectRoot) return
+    setActiveProjectRoot(urlRoot)
+    setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, urlRoot.split('/'))
+  }, [activeProjectRoot, searchParams])
+
+  useEffect(() => {
+    if (!selectedNodeUrlHydrated) return
+    const currentSelectedNode = searchParams.get(SELECTED_NODE_QUERY_PARAM)?.trim() ?? ''
+    const nextSelectedNode = selectedNode?.uuid ?? ''
+    if (currentSelectedNode === nextSelectedNode) return
+    const next = new URLSearchParams(searchParams)
+    if (nextSelectedNode) next.set(SELECTED_NODE_QUERY_PARAM, nextSelectedNode)
+    else next.delete(SELECTED_NODE_QUERY_PARAM)
+    setSearchParams(next, { replace: true })
+  }, [searchParams, selectedNode?.uuid, selectedNodeUrlHydrated, setSearchParams])
+
+  useEffect(() => {
+    const currentProjectRoot = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
+    if (currentProjectRoot === activeProjectRoot) return
+    const next = new URLSearchParams(searchParams)
+    if (activeProjectRoot) next.set(PROJECT_ROOT_QUERY_PARAM, activeProjectRoot)
+    else next.delete(PROJECT_ROOT_QUERY_PARAM)
+    setSearchParams(next, { replace: true })
+  }, [activeProjectRoot, searchParams, setSearchParams])
 
   const refreshExecutionProgress = useCallback(async () => {
     setActiveExecutionTasksLoading(true)
@@ -647,7 +711,7 @@ export default function BacklogOrch() {
             return nodes
           }}
           selectedNodeId={selectedNode?.uuid ?? null}
-          onSelectNode={setSelectedNode}
+          onSelectNode={(node) => setSelectedNode(node)}
           onCreateChild={createChildNode}
           onDropNodeToNode={dropNodeToNode}
         />

@@ -9,8 +9,11 @@ import {
   Info,
   Layers,
   Lightbulb,
+  ListChecks,
   Loader2,
   MessageSquare,
+  Handshake,
+  Play,
   Plus,
 } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/ui/button'
@@ -25,6 +28,9 @@ function iconForNodeType(type: NodeType) {
   if (type === 'idea') return Lightbulb
   if (type === 'thought_bucket') return Folder
   if (type === 'thought') return MessageSquare
+  if (type === 'task') return ListChecks
+  if (type === 'run') return Play
+  if (type === 'handoff') return Handshake
   return Lightbulb
 }
 
@@ -35,6 +41,9 @@ function iconColorForNodeType(type: NodeType): string {
   if (type === 'idea') return 'text-amber-600'
   if (type === 'thought_bucket') return 'text-emerald-600'
   if (type === 'thought') return 'text-cyan-600'
+  if (type === 'task') return 'text-rose-600'
+  if (type === 'run') return 'text-blue-700'
+  if (type === 'handoff') return 'text-fuchsia-700'
   return 'text-muted-foreground'
 }
 
@@ -117,21 +126,24 @@ function nodeTypeLabel(type: NodeType): string {
     idea: 'Idea',
     thought_bucket: 'Thought Bucket',
     thought: 'Thought',
+    task: 'Task',
+    run: 'Run',
+    handoff: 'Handoff',
   }
   return labels[type]
 }
 
 function allowedCreateTypes(parent: NodeRecord | null): NodeType[] {
   if (!parent) return ['program']
-  switch (parent.type) {
-    case 'program': return ['epic']
-    case 'epic': return ['idea_bucket', 'idea', 'thought_bucket', 'thought']
-    case 'idea_bucket': return ['idea']
-    case 'idea': return ['thought_bucket', 'thought']
-    case 'thought_bucket': return ['thought']
-    case 'thought': return ['thought']
-    default: return ['idea']
-  }
+  const all: NodeType[] = ['epic', 'idea_bucket', 'idea', 'thought_bucket', 'thought', 'task', 'run', 'handoff']
+  const preferred: NodeType =
+    parent.type === 'program' ? 'epic'
+      : parent.type === 'epic' ? 'idea_bucket'
+        : parent.type === 'idea_bucket' ? 'idea'
+          : parent.type === 'idea' ? 'thought_bucket'
+            : parent.type === 'thought_bucket' ? 'thought'
+              : 'thought'
+  return [preferred, ...all.filter(type => type !== preferred)]
 }
 
 function hasNodeDragType(event: React.DragEvent): boolean {
@@ -198,7 +210,7 @@ async function copyTextToClipboard(text: string): Promise<void> {
 }
 
 function isTaskNode(node: NodeRecord): boolean {
-  return node.recordKind === 'task' || !!node.taskStatus
+  return node.type === 'task' || node.recordKind === 'task' || !!node.taskStatus
 }
 
 export default function BacklogListBlock({
@@ -221,6 +233,14 @@ export default function BacklogListBlock({
   const [groupingInfoOpenByNode, setGroupingInfoOpenByNode] = useState<Record<string, boolean>>({})
   const [copiedRowNodeId, setCopiedRowNodeId] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
+  const programFingerprint = programs.map(program => `${program.uuid}:${program.updatedAt}`).join('|')
+
+  useEffect(() => {
+    // Child lists are locally cached; clear them when upstream program data refreshes
+    // so externally-created organizer nodes become visible without stale tree state.
+    setChildrenByNode({})
+    setExpandedNodes({})
+  }, [programFingerprint])
 
   const ensureProgramLoaded = useCallback(async (program: NodeRecord) => {
     const existing = childrenByNode[program.uuid]

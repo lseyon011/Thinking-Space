@@ -6,19 +6,25 @@ import { v4 as uuidv4 } from 'uuid'
 
 // ── Types ──
 
-export type NodeType =
-  | 'program'
-  | 'epic'
-  | 'idea_bucket'
-  | 'idea'
-  | 'thought_bucket'
-  | 'thought'
+export const NODE_TYPES = [
+  'program',
+  'epic',
+  'idea_bucket',
+  'idea',
+  'thought_bucket',
+  'thought',
+  'task',
+  'run',
+  'handoff',
+] as const
+
+export type NodeType = (typeof NODE_TYPES)[number]
 
 export type NodeStatus = 'active' | 'paused' | 'completed' | 'archived'
 
 export type NodePriority = 'low' | 'medium' | 'high' | 'critical'
 
-/** Level mapping: program=0, epic=1, idea_bucket=2, idea=3, thought_bucket=4, thought=5 */
+/** Level mapping: program=0, epic=1, idea_bucket=2, idea=3, thought_bucket=4, thought/task/run/handoff=5 */
 export const NODE_TYPE_LEVEL: Record<NodeType, number> = {
   program: 0,
   epic: 1,
@@ -26,6 +32,9 @@ export const NODE_TYPE_LEVEL: Record<NodeType, number> = {
   idea: 3,
   thought_bucket: 4,
   thought: 5,
+  task: 5,
+  run: 5,
+  handoff: 5,
 }
 
 export interface AISuggestionRelated {
@@ -50,7 +59,7 @@ export interface YAMLCommentEntry {
 }
 
 export const ALLOWED_RECORD_KINDS = [
-  'task',
+  ...NODE_TYPES,
   'run',
   'handoff',
   'decision',
@@ -312,7 +321,7 @@ function normalizeFrontmatter(raw: Record<string, unknown>): YAMLFrontmatter {
   const rest = { ...raw }
   delete rest.children
   delete rest.child_types
-  const type = (raw.type as NodeType) || 'thought'
+  const type = normalizeNodeType(raw.type)
   return {
     ...rest,
     uuid: String(raw.uuid || ''),
@@ -325,7 +334,7 @@ function normalizeFrontmatter(raw: Record<string, unknown>): YAMLFrontmatter {
     updated_at: String(raw.updated_at || new Date().toISOString()),
     parent: raw.parent != null ? String(raw.parent) : undefined,
     parent_uuid: raw.parent_uuid != null ? String(raw.parent_uuid) : undefined,
-    parent_type: raw.parent_type as NodeType | undefined,
+    parent_type: normalizeOptionalNodeType(raw.parent_type),
     tags: Array.isArray(raw.tags) ? raw.tags.map(String) : undefined,
     categories: Array.isArray(raw.categories) ? raw.categories.map(String) : undefined,
     progress: typeof raw.progress === 'number' ? raw.progress : undefined,
@@ -361,6 +370,22 @@ function normalizeFrontmatter(raw: Record<string, unknown>): YAMLFrontmatter {
     record_kind: normalizeRecordKind(raw.record_kind),
     state_history: normalizeStateHistory(raw.state_history),
   }
+}
+
+function normalizeNodeType(raw: unknown): NodeType {
+  if (typeof raw !== 'string') return 'thought'
+  const normalized = raw.trim() as NodeType
+  if (!normalized) return 'thought'
+  if (NODE_TYPES.includes(normalized)) return normalized
+  return 'thought'
+}
+
+function normalizeOptionalNodeType(raw: unknown): NodeType | undefined {
+  if (typeof raw !== 'string') return undefined
+  const normalized = raw.trim() as NodeType
+  if (!normalized) return undefined
+  if (NODE_TYPES.includes(normalized)) return normalized
+  return undefined
 }
 
 function normalizeComments(raw: unknown): YAMLCommentEntry[] | undefined {

@@ -36,6 +36,9 @@ const VALID_NODE_TYPES: ReadonlySet<NodeType> = new Set([
   'idea',
   'thought_bucket',
   'thought',
+  'task',
+  'run',
+  'handoff',
 ])
 
 const VALID_NODE_STATUS: ReadonlySet<NodeStatus> = new Set([

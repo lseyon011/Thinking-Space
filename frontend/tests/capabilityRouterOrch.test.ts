@@ -665,6 +665,7 @@ describe('capabilityRouterOrch', () => {
       actor: ACTOR,
     }, { fs })
     expect(run.recordKind).toBe('run')
+    expect(run.type).toBe('run')
     expect(run.result).toBe('success')
 
     const { node: handoff } = await capabilityOrch!.invokeCapabilityOrThrow({
@@ -682,8 +683,9 @@ describe('capabilityRouterOrch', () => {
       actor: ACTOR,
     }, { fs })
     expect(handoff.recordKind).toBe('handoff')
+    expect(handoff.type).toBe('handoff')
     expect(handoff.description).toBe('Workspace imported and validated.')
-    expect(handoff.filePath).toContain('thoughts/')
+    expect(handoff.filePath).toContain('handoffs/')
   })
 
   it('rejects handoff.create when summary is missing', async () => {

@@ -7,7 +7,7 @@ import {
   type CapabilityOutputMap,
 } from '../lego_blocks/capabilityRegistryBlock'
 import type { NodeRecord } from '../lego_blocks/dbBlock'
-import { ALLOWED_RECORD_KINDS, type YAMLCommentEntry } from '../lego_blocks/yamlNoteBlock'
+import { ALLOWED_RECORD_KINDS, NODE_TYPES, type NodeType, type YAMLCommentEntry } from '../lego_blocks/yamlNoteBlock'
 import {
   deriveEpicStatusFromTaskStatuses,
   isTaskLikeNode,
@@ -357,6 +357,7 @@ async function executeCapability<Name extends CapabilityName>(
     case 'organizer.node.create': {
       const payload = input as CapabilityInputMap['organizer.node.create']
       assertNonEmptyString(payload.title, 'title')
+      assertValidNodeType(payload.type)
       assertValidRecordKind(payload.extraFields?.record_kind)
       assertWritableProjectRootAllowed(payload.projectRoot, 'organizer.node.create')
       const normalizedCreatePayload = normalizeCreatePayloadForStatusPolicy(payload)
@@ -378,6 +379,7 @@ async function executeCapability<Name extends CapabilityName>(
     case 'organizer.node.update': {
       const payload = input as CapabilityInputMap['organizer.node.update']
       assertNonEmptyString(payload.uuid, 'uuid')
+      if (payload.updates.type !== undefined) assertValidNodeType(payload.updates.type)
       assertValidRecordKind(payload.updates.extraFields?.record_kind)
       const existing = await getYamlNode(payload.uuid)
       if (!existing) throw new Error(`Node not found: ${payload.uuid}`)
@@ -501,7 +503,7 @@ async function executeCapability<Name extends CapabilityName>(
       assertWritableProjectRootAllowed(payload.projectRoot, 'run.log')
 
       const node = await createYamlNode({
-        type: 'thought',
+        type: 'run',
         title: payload.title,
         parentKey: payload.parentKey,
         parentUuid: payload.parentUuid,
@@ -543,7 +545,7 @@ async function executeCapability<Name extends CapabilityName>(
       })
 
       const node = await createYamlNode({
-        type: 'thought',
+        type: 'handoff',
         title: payload.title,
         parentKey: payload.parentKey,
         parentUuid: payload.parentUuid,
@@ -844,23 +846,25 @@ function extractTouchedPaths<Name extends CapabilityName>(
 function normalizeCreatePayloadForStatusPolicy(
   payload: CapabilityInputMap['organizer.node.create'],
 ): CapabilityInputMap['organizer.node.create'] {
-  const extra = payload.extraFields ? { ...payload.extraFields } : undefined
-  const recordKind = typeof extra?.record_kind === 'string' ? extra.record_kind : undefined
-  const rawTaskStatus = typeof extra?.task_status === 'string' ? extra.task_status : undefined
+  const extra = payload.extraFields ? { ...payload.extraFields } : {}
+  const recordKind = typeof extra.record_kind === 'string' ? extra.record_kind.trim() : undefined
+  const rawTaskStatus = typeof extra.task_status === 'string' ? extra.task_status : undefined
   const normalizedTaskStatus = normalizeTaskStatus(rawTaskStatus)
+  const taskType = payload.type === 'task' || recordKind === 'task' || !!normalizedTaskStatus
+  const nextType = taskType ? 'task' : payload.type
 
-  if (normalizedTaskStatus) {
-    return {
-      ...payload,
-      extraFields: {
-        ...(extra ?? {}),
-        record_kind: recordKind ?? 'task',
-        task_status: normalizedTaskStatus,
-      },
-    }
+  const normalizedExtra: Record<string, unknown> = {
+    ...extra,
+    record_kind: nextType,
   }
+  if (nextType === 'task') normalizedExtra.task_status = normalizedTaskStatus ?? 'in_progress'
+  else delete normalizedExtra.task_status
 
-  return payload
+  return {
+    ...payload,
+    type: nextType,
+    extraFields: normalizedExtra,
+  }
 }
 
 function normalizeNodeUpdatesForStatusPolicy(
@@ -877,33 +881,29 @@ function normalizeNodeUpdatesForStatusPolicy(
     delete normalized.status
   }
 
-  const nextRecordKind = typeof normalized.extraFields?.record_kind === 'string'
-    ? normalized.extraFields.record_kind
+  const extraFields = normalized.extraFields ? { ...normalized.extraFields } : {}
+  const nextRecordKind = typeof extraFields.record_kind === 'string'
+    ? extraFields.record_kind.trim()
     : existing.recordKind
-  const taskNode = nextRecordKind === 'task' || isTaskLikeNode(existing)
-
-  const rawTaskStatus = typeof normalized.extraFields?.task_status === 'string'
-    ? normalized.extraFields.task_status
-    : undefined
+  let nextType = normalized.type ?? existing.type
+  const rawTaskStatus = typeof extraFields.task_status === 'string' ? extraFields.task_status : undefined
   const normalizedTaskStatus = normalizeTaskStatus(rawTaskStatus)
+  if (nextType === 'task' || nextRecordKind === 'task' || normalizedTaskStatus || isTaskLikeNode(existing)) {
+    nextType = 'task'
+  }
+  normalized.type = nextType
 
   if (normalizedTaskStatus) {
-    normalized.extraFields = {
-      ...(normalized.extraFields ?? {}),
-      record_kind: nextRecordKind ?? 'task',
-      task_status: normalizedTaskStatus,
-    }
+    extraFields.task_status = normalizedTaskStatus
     normalized.status = nodeStatusFromTaskStatus(normalizedTaskStatus)
-    return normalized
+  } else if (nextType === 'task' && normalized.status) {
+    extraFields.task_status = taskStatusFromNodeStatus(normalized.status)
+  } else if (nextType !== 'task') {
+    delete extraFields.task_status
   }
 
-  if (taskNode && normalized.status) {
-    normalized.extraFields = {
-      ...(normalized.extraFields ?? {}),
-      record_kind: nextRecordKind ?? 'task',
-      task_status: taskStatusFromNodeStatus(normalized.status),
-    }
-  }
+  extraFields.record_kind = nextType
+  normalized.extraFields = extraFields
 
   return normalized
 }
@@ -995,9 +995,19 @@ function assertValidRecordKind(recordKind: unknown): void {
   }
 }
 
-function assertTaskNode(node: { recordKind?: string; taskStatus?: string }): void {
-  if (!(node.recordKind === 'task' || !!normalizeTaskStatus(node.taskStatus))) {
-    throw new Error('Node is not a task record (record_kind=task or task_status required).')
+function assertValidNodeType(type: unknown): asserts type is NodeType {
+  if (typeof type !== 'string') {
+    throw new Error(`type must be a string, received ${typeof type}`)
+  }
+  const normalized = type.trim() as NodeType
+  if (!NODE_TYPES.includes(normalized)) {
+    throw new Error(`Invalid type: ${type}`)
+  }
+}
+
+function assertTaskNode(node: { type?: string; recordKind?: string; taskStatus?: string }): void {
+  if (!(node.type === 'task' || node.recordKind === 'task' || !!normalizeTaskStatus(node.taskStatus))) {
+    throw new Error('Node is not a task record (type=task or record_kind=task or task_status required).')
   }
 }
 
