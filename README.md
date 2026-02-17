@@ -11,24 +11,26 @@ Most note tools force users into fixed plugin models and fragmented AI workflows
 - In-app extensibility so users can build features without leaving the app
 - Local-first ownership of data and behavior
 
-## Current Codebase Understanding (As of 2026-02-14)
+## Current Codebase Understanding (As of 2026-02-17)
 
 ### Product Surface Today
-Current app is a tool-centric UI, not yet hierarchy-centric.
+The app has both tool-centric and hierarchy-centric UI surfaces.
 
 Primary routes in the app:
 - `Home`
 - `New Thought`
 - `Todos`
 - `Insights`
+- `Thinking Organizer` (hierarchy tree view with create, reparent, drag-drop)
 - `Excalidraw++` tools (`Format for Excalidraw`, `PDF to Markdown`, `Transcript Cleaner`)
 
 ### Runtime Architecture
 - **Frontend**: React + TypeScript + Vite + Tailwind (`frontend/`)
-- **Backend (web mode)**: FastAPI + Python (`backend/`) — being phased out for core features
+- **Backend (web mode)**: FastAPI + Python (`backend/`) — thin proxy only, being phased out for core features
 - **Desktop mode**: Electron + Capacitor bridge (`frontend/electron/`)
 - **Storage**: Markdown files with YAML frontmatter in the vault (source of truth)
 - **Cache**: IndexedDB via Dexie.js (in-browser fast access layer, rebuildable)
+- **Agent CLI**: `./ltm` wrapper for capability invocations (see Agent Capability Transport section)
 
 ### Frontend Architecture Contract
 - Reusable primitives live in `frontend/src/components/lego_blocks/*`.
@@ -56,22 +58,27 @@ Primary routes in the app:
 - Existing vault setup flow for Electron (`VaultSetupOrch` + local vault root binding)
 
 ### What Works Today
-- Create thought files with optional title/date header/emotions
+- Create thought files with YAML frontmatter (title, date header, emotions, tags)
 - Create and toggle todos
 - Scan vault sections and render month-level activity for thoughts/todos/files
-- Open markdown files in a read-only sheet viewer
+- Open and edit markdown files in a unified viewer/editor (`MarkdownViewerOrch`)
+- Conflict-safe save with mtime/hash checks
+- YAML frontmatter parse/stringify/validate via `yamlNoteBlock.ts`
+- IndexedDB cache layer via Dexie.js (`dbBlock.ts`) with vault sync (`vaultSyncOrch.ts`)
+- Thinking Organizer: hierarchy tree view with create, reparent, drag-drop, node detail panel
+- Jira-style node creation flow with project-scoped organizer storage
+- Agent capability transport: 30 capabilities via frontend runner + FastAPI proxy
+- Agent CLI wrapper (`./ltm`) for ergonomic capability invocation
+- Agent workspace with task lifecycle, run logging, handoffs, and audit trail
 - Run utility transforms (excalidraw formatting, transcript cleanup, pdf conversion)
 
 ### Current Gaps (Important)
-- No thought edit button / edit-save flow in thoughts calendar cards
-- Thoughts scanner is file/date-oriented only, not semantic hierarchy-oriented
-- No first-class `Program/Epic/Idea` model yet (YAML frontmatter schema defined but not implemented)
-- No YAML frontmatter parsing/writing primitives yet
-- No IndexedDB cache layer yet
-- No hierarchy tree view UI yet
+- Thoughts scanner is file/date-oriented only, not fully semantic hierarchy-oriented
 - No unified text action layer (`Summarize`, `Cleanup`, `Related`) across all inputs
 - No extension runtime for in-app feature generation yet
 - No dedicated automated test coverage in app code (only test dependency scaffolding exists)
+- Drag-drop YAML metadata mapping still in progress (DEV-009)
+- YAML Note Block + IndexedDB cache integration still being hardened (DEV-008)
 
 ## Target Direction
 
@@ -179,8 +186,14 @@ Recommended organizer layout:
 - `handoffs (agent operations)` program for cross-session transfers.
 - `principles and decisions (agent operations)` program for durable operating guidance.
 
-Quick curl example:
+Quick invocation examples:
 ```bash
+# CLI wrapper (recommended for agents — auto-loads .env, sets flags, defaults actor)
+./ltm organizer.nodes.list_roots --typeFilter program
+./ltm task.claim --uuid "abc-123" --owner claude-code
+./ltm run.log --title "Session" --projectRoot coding-projects/thinking-space --agentName claude-code --result success
+
+# curl via FastAPI proxy (requires backend running)
 curl -s http://127.0.0.1:8000/api/capabilities/invoke \
   -H "Content-Type: application/json" \
   -d '{
@@ -244,59 +257,28 @@ Folders are convenience groupings only. The app never enforces or relies on fold
 
 ## Implementation Plan (Execution Phases)
 
-### Phase 0: Architecture Alignment (EPIC-0) — DONE (prior) + UPDATE
-Scope:
-- Record architecture decisions and guardrails
-- Define YAML frontmatter schema and IndexedDB cache strategy
-- Remove SQLite plan, commit to YAML + IndexedDB
-- Install dependencies (`js-yaml`, `dexie`, `uuid`)
+### Phase 0: Architecture Alignment (EPIC-0) — DONE
+Completed: docs alignment, YAML schema definition, SQLite removal, dependency install, architecture conformance refactor (lego blocks + orchestrators), coding philosophy standardization.
 
-Exit criteria:
-- All docs reference YAML architecture, not SQLite
-- ADR-004 documented and linked from README
-- Dependencies installed
+### Phase 1: YAML Note Block — DONE (hardening in progress)
+Completed: `yamlNoteBlock.ts` (parse/stringify/validate/key generation), `NewThoughtOrch` creates YAML frontmatter notes, backward compat with plain thoughts, YAML frontmatter in new thought + todo create flows (DEV-010).
 
-### Phase 1: YAML Note Block
-Scope:
-- Create `yamlNoteBlock.ts` — parse, stringify, validate, generate key from title
-- Update `NewThoughtOrch` to create YAML frontmatter notes
-- Backward compatibility with existing plain thoughts
+Remaining: DEV-008 hardening pass for edge cases and roundtrip fidelity.
 
-Exit criteria:
-- New thoughts created as YAML frontmatter `.md` files
-- Parse/stringify roundtrip works correctly
+### Phase 2: IndexedDB Cache Layer — DONE (hardening in progress)
+Completed: `dbBlock.ts` (Dexie.js schema, upsert, query, search), `vaultSyncOrch.ts` (scan vault, populate IndexedDB), incremental sync, agent orchestration metadata now first-class in cache (DEV-014).
 
-### Phase 2: IndexedDB Cache Layer
-Scope:
-- Create `dbBlock.ts` — Dexie.js schema, upsert, query, search
-- Create `vaultSyncOrch.ts` — scan vault, populate IndexedDB
-- Incremental sync on file changes
+Remaining: DEV-008 hardening pass for sync reliability and cache integrity.
 
-Exit criteria:
-- IndexedDB populates on vault open
-- Hierarchy queries work from IndexedDB
+### Phase 3: Hierarchy UI (ThinkingOrganizer) — MOSTLY DONE
+Completed: `TreeViewBlock.tsx` recursive tree with collapse/expand, `ThinkingOrganizerOrch` driven by IndexedDB, Jira-style create flow with project-scoped storage (DEV-011), hierarchy CRUD + mirrored path manager (DEV-005), node detail panel with arbitrary YAML field rendering.
 
-### Phase 3: Hierarchy UI (ThinkingOrganizer)
-Scope:
-- Create `TreeViewBlock.tsx` — recursive tree, collapsible, drag-drop
-- Update `ThinkingOrganizerOrch` — tree view from IndexedDB
-- Reparent updates YAML files + IndexedDB
+Remaining: DEV-009 drag-and-drop YAML metadata mapping (in progress).
 
-Exit criteria:
-- Tree view shows full hierarchy
-- Drag-drop reparenting works end-to-end
+### Phase 4: Thought Edit Flow — DONE
+Completed: unified markdown viewer/editor (`MarkdownViewerOrch`), conflict-safe save with mtime/hash checks (DEV-001), edit + save without data loss (DEV-002).
 
-### Phase 4: Thought Edit Flow
-Scope:
-- Create `ThoughtEditorOrch.tsx` — open, edit, save thoughts
-- YAML frontmatter + body editing
-- Conflict detection (existing mtime/hash mechanism)
-
-Exit criteria:
-- Click thought in tree -> opens editor
-- Edit + save works without data loss
-
-### Phase 5: AI Actions
+### Phase 5: AI Actions — NOT STARTED
 Scope:
 - Create `aiBlock.ts` — related thoughts (lexical), summarize, cleanup
 - Related thoughts sidebar in editor
@@ -306,7 +288,7 @@ Exit criteria:
 - Related thoughts surfaced while editing
 - Summarize/cleanup actions work
 
-### Phase 6: Migration + Polish
+### Phase 6: Migration + Polish — NOT STARTED
 Scope:
 - One-time migration script for old thoughts -> YAML frontmatter
 - Remove obsolete SQLite code (backend hierarchy services, electron sqlite)
@@ -317,7 +299,17 @@ Exit criteria:
 - App works without backend in Electron
 - Clean codebase with no dead SQLite code
 
-### EPIC-3: Local-Only Extension Platform (unchanged)
+### Agent Capability Transport — DONE (completed outside original phase plan)
+Completed across DEV-012, DEV-013, DEV-014:
+- 30-capability registry with typed I/O contracts (`capabilityRegistryBlock.ts`)
+- Capability router with policy/audit/dry-run (`capabilityRouterOrch.ts`)
+- Frontend CLI runner (`capabilityRunner.ts`) + `./ltm` shell wrapper
+- FastAPI thin proxy (`/api/capabilities`, `/api/capabilities/invoke`)
+- Feature flags, rate limiting, bearer token controls
+- Agent workspace bootstrap + task lifecycle + run/handoff/comment operations
+- Adapter parity fixtures and rollout matrix
+
+### EPIC-3: Local-Only Extension Platform — NOT STARTED
 Scope:
 - Extension manifest + permission scopes + lifecycle hooks
 - UI extension points + command registration
@@ -326,7 +318,7 @@ Scope:
 Exit criteria:
 - User can generate and enable a local extension safely inside app
 
-### EPIC-5: AI Actions Everywhere (unchanged)
+### EPIC-5: AI Actions Everywhere — NOT STARTED
 Scope:
 - Shared text action component for all text surfaces
 - `Summarize`, `Cleanup`, `Related` actions with preview-before-apply
@@ -344,8 +336,8 @@ Exit criteria:
 - Remote execution is optional and additive, not required
 
 ## Milestone Releases
-- `v0.2`: Phase 1-2 (YAML notes + IndexedDB cache)
-- `v0.3`: Phase 3-4 (hierarchy UI + edit flow)
+- `v0.2`: Phase 1-2 (YAML notes + IndexedDB cache) — hardening in progress
+- `v0.3`: Phase 3-4 (hierarchy UI + edit flow) — Phase 4 done, Phase 3 nearly done
 - `v0.4`: Phase 5 (AI actions)
 - `v0.5`: EPIC-3 (extension platform)
 
