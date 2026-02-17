@@ -21,7 +21,7 @@ export default function CapabilityDiscovery() {
             <div>
               <h1 className="text-2xl font-semibold tracking-tight">Capability Discovery</h1>
               <p className="text-muted-foreground">
-                Inspect, invoke, and verify agent capabilities across local and FastAPI adapters.
+                Inspect, invoke, and verify agent capabilities across local, Electron IPC, and FastAPI adapters.
               </p>
             </div>
           </div>

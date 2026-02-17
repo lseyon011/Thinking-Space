@@ -35,6 +35,7 @@ import {
   updateYamlNode,
 } from '../lego_blocks/yamlHierarchyBlock'
 import { getVaultFS, type VaultFS } from '../lego_blocks/fsBlock'
+import { getStoredVaultRoot } from '../lego_blocks/storageKeyBlock'
 import { createThought } from './thoughtsOrch'
 import { createTodos, toggleTodo } from './todosOrch'
 import { listFiles, listFolders, listPdfFiles } from './fileSystemOrch'
@@ -106,6 +107,34 @@ const WRITE_CAPABILITIES = new Set<CapabilityName>([
 
 export function listCapabilitiesOrch() {
   return CAPABILITY_REGISTRY
+}
+
+export async function invokeCapabilityViaElectronAdapterOrch<Name extends CapabilityName>(
+  request: CapabilityInvokeRequest<Name>,
+): Promise<CapabilityInvokeResponse<Name>> {
+  if (!window.electronAPI?.isElectron) {
+    throw new Error('Electron capability adapter is only available in Electron runtime.')
+  }
+  if (!window.electronAPI.capabilitiesInvoke) {
+    throw new Error('Electron capability adapter IPC is unavailable in preload.')
+  }
+
+  const vaultRoot = getStoredVaultRoot()
+  if (!vaultRoot) {
+    throw new Error('Vault root not configured')
+  }
+
+  const response = await window.electronAPI.capabilitiesInvoke({
+    vaultRoot,
+    request: request as unknown as {
+      capability: string
+      input: Record<string, unknown>
+      actor?: { kind: 'human' | 'agent' | 'system'; id?: string }
+      requestId?: string
+      dryRun?: boolean
+    },
+  })
+  return response as CapabilityInvokeResponse<Name>
 }
 
 export async function invokeCapabilityOrch<Name extends CapabilityName>(

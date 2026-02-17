@@ -132,6 +132,102 @@ interface ExcalidrawPluginStatus {
   status_error: string | null;
 }
 
+type CapabilityActorKind = 'human' | 'agent' | 'system';
+
+interface ElectronCapabilityInvokePayload {
+  vaultRoot: string;
+  request: {
+    capability: string;
+    input: Record<string, unknown>;
+    actor?: { kind: CapabilityActorKind; id?: string };
+    requestId?: string;
+    dryRun?: boolean;
+  };
+  apiBaseUrl?: string;
+}
+
+interface CapabilityRunnerLocation {
+  frontendRoot: string;
+  viteNodeExec: string;
+  runnerScript: string;
+}
+
+function resolveCapabilityRunnerLocation(): CapabilityRunnerLocation {
+  const viteNodeBinary = process.platform === 'win32' ? 'vite-node.cmd' : 'vite-node';
+  const candidates = [
+    path.resolve(__dirname, '../../..'),
+    path.resolve(process.cwd()),
+    path.resolve(process.cwd(), '..'),
+    app.getAppPath(),
+    path.resolve(app.getAppPath(), '..'),
+  ];
+  const uniqueCandidates = [...new Set(candidates)];
+
+  for (const frontendRoot of uniqueCandidates) {
+    const runnerScript = path.join(frontendRoot, 'scripts', 'agent', 'capabilityRunner.ts');
+    const viteNodeExec = path.join(frontendRoot, 'node_modules', '.bin', viteNodeBinary);
+    if (fs.existsSync(runnerScript) && fs.existsSync(viteNodeExec)) {
+      return { frontendRoot, viteNodeExec, runnerScript };
+    }
+  }
+
+  throw new Error(
+    `Capability runner is unavailable: unable to find frontend/scripts/agent/capabilityRunner.ts and vite-node binary in candidates: ${uniqueCandidates.join(', ')}`,
+  );
+}
+
+async function runCapabilityRunnerViaViteNode(
+  command: 'list' | 'invoke',
+  payload?: ElectronCapabilityInvokePayload,
+): Promise<unknown> {
+  const { frontendRoot, viteNodeExec, runnerScript } = resolveCapabilityRunnerLocation();
+  const stdin = payload == null ? '' : JSON.stringify(payload);
+
+  const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+    const proc = spawn(
+      viteNodeExec,
+      [runnerScript, command],
+      {
+        cwd: frontendRoot,
+        env: { ...process.env, LTM_CAPABILITY_RUNNER_CLI: '1' },
+      },
+    );
+
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    proc.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    proc.on('error', reject);
+    proc.on('close', (code) => resolve({ code, stdout, stderr }));
+
+    if (stdin) {
+      proc.stdin.write(stdin);
+    }
+    proc.stdin.end();
+  });
+
+  if (result.code !== 0) {
+    const reason = result.stderr.trim() || 'unknown error';
+    throw new Error(`Capability runner failed (command=${command}): ${reason}`);
+  }
+
+  const raw = result.stdout.trim();
+  if (!raw) {
+    throw new Error('Capability runner returned an empty response.');
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Capability runner returned invalid JSON: ${message}`);
+  }
+}
+
 function resolvePluginDir(vaultRoot: string): string {
   return assertInsideVault(vaultRoot, path.join('.obsidian', 'plugins', EXCALIDRAW_PLUGIN_ID));
 }
@@ -352,6 +448,25 @@ function assertInsideVault(vaultRoot: string, targetPath: string): string {
   }
   return resolved;
 }
+
+// -- Capability adapter list --
+ipcMain.handle('capabilities:list', async () => {
+  return runCapabilityRunnerViaViteNode('list');
+});
+
+// -- Capability adapter invoke --
+ipcMain.handle('capabilities:invoke', async (_event, payload: ElectronCapabilityInvokePayload) => {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Capability invoke payload must be an object.');
+  }
+  if (!payload.vaultRoot || typeof payload.vaultRoot !== 'string') {
+    throw new Error('Capability invoke payload requires a string "vaultRoot".');
+  }
+  if (!payload.request || typeof payload.request !== 'object') {
+    throw new Error('Capability invoke payload requires a "request" object.');
+  }
+  return runCapabilityRunnerViaViteNode('invoke', payload);
+});
 
 // -- Vault folder picker --
 ipcMain.handle('vault:selectFolder', async () => {

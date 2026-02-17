@@ -11,11 +11,13 @@ import {
   type CapabilityName,
 } from '@/services/lego_blocks/capabilityRegistryBlock'
 import {
+  invokeCapabilityViaElectronAdapterOrch,
   invokeCapabilityOrch,
   listCapabilitiesOrch,
 } from '@/services/orchestrators/capabilityRouterOrch'
 
 export default function CapabilityDiscoveryOrch() {
+  const isElectronRuntime = !!window.electronAPI?.isElectron
   const capabilities = useMemo(() => listCapabilitiesOrch(), [])
   const [flags, setFlags] = useState(getCapabilityFeatureFlags())
   const [capability, setCapability] = useState<CapabilityName>(capabilities[0]?.name ?? 'organizer.nodes.list_roots')
@@ -24,9 +26,11 @@ export default function CapabilityDiscoveryOrch() {
   const [actorId, setActorId] = useState('ui.capability-discovery')
   const [dryRun, setDryRun] = useState(false)
   const [localResponse, setLocalResponse] = useState<string>('')
+  const [electronResponse, setElectronResponse] = useState<string>('')
   const [remoteResponse, setRemoteResponse] = useState<string>('')
   const [remoteToken, setRemoteToken] = useState('')
   const [loadingLocal, setLoadingLocal] = useState(false)
+  const [loadingElectron, setLoadingElectron] = useState(false)
   const [loadingRemote, setLoadingRemote] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -49,6 +53,28 @@ export default function CapabilityDiscoveryOrch() {
       setError(err instanceof Error ? err.message : 'Failed to invoke local capability')
     } finally {
       setLoadingLocal(false)
+    }
+  }
+
+  async function invokeElectron(): Promise<void> {
+    setLoadingElectron(true)
+    setError(null)
+    try {
+      const parsed = parseInput(inputJson)
+      const response = await invokeCapabilityViaElectronAdapterOrch({
+        capability,
+        input: parsed as never,
+        actor: {
+          kind: actorKind,
+          id: actorId.trim() || undefined,
+        },
+        dryRun,
+      })
+      setElectronResponse(JSON.stringify(response, null, 2))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to invoke Electron capability adapter')
+    } finally {
+      setLoadingElectron(false)
     }
   }
 
@@ -99,7 +125,7 @@ export default function CapabilityDiscoveryOrch() {
       <Card>
         <CardHeader>
           <CardTitle>Operational Controls</CardTitle>
-          <CardDescription>Feature flags for local agent and FastAPI adapter paths.</CardDescription>
+          <CardDescription>Feature flags for local agent and FastAPI adapter paths (Electron IPC is runtime-driven).</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between gap-4">
@@ -194,6 +220,13 @@ export default function CapabilityDiscoveryOrch() {
               {loadingLocal ? 'Invoking local...' : 'Invoke Local'}
             </Button>
             <Button
+              variant="outline"
+              onClick={() => void invokeElectron()}
+              disabled={loadingElectron || !isElectronRuntime}
+            >
+              {loadingElectron ? 'Invoking Electron...' : 'Invoke Electron IPC'}
+            </Button>
+            <Button
               variant="secondary"
               onClick={() => void invokeRemote()}
               disabled={loadingRemote || !flags.fastapi_capability_adapter_enabled}
@@ -220,7 +253,7 @@ export default function CapabilityDiscoveryOrch() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Local Response</CardTitle>
@@ -228,6 +261,17 @@ export default function CapabilityDiscoveryOrch() {
           <CardContent>
             <pre className="max-h-[420px] overflow-auto rounded-lg border border-border/60 bg-muted/40 p-3 text-xs">
               {localResponse || 'No local response yet.'}
+            </pre>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Electron Response</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <pre className="max-h-[420px] overflow-auto rounded-lg border border-border/60 bg-muted/40 p-3 text-xs">
+              {electronResponse || (isElectronRuntime ? 'No Electron response yet.' : 'Electron adapter unavailable in this runtime.')}
             </pre>
           </CardContent>
         </Card>

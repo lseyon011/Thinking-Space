@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '@/services/lego_blocks/fsBlock'
 
 class FakeVaultFS implements VaultFS {
@@ -167,6 +167,12 @@ beforeEach(async () => {
 afterEach(async () => {
   const { deleteDb } = await import('@/services/lego_blocks/dbBlock')
   await deleteDb()
+  const storage = (globalThis as typeof globalThis & { localStorage?: { removeItem?: (key: string) => void } }).localStorage
+  storage?.removeItem?.('ltm-vault-root')
+  const maybeWindow = (globalThis as typeof globalThis & { window?: { electronAPI?: unknown } }).window
+  if (maybeWindow?.electronAPI !== undefined) {
+    delete maybeWindow.electronAPI
+  }
 })
 
 describe('capabilityRouterOrch', () => {
@@ -174,6 +180,49 @@ describe('capabilityRouterOrch', () => {
     const names = capabilityOrch!.listCapabilitiesOrch().map(capability => capability.name)
     expect(names).toContain('organizer.node.create')
     expect(names).toContain('organizer.node.update')
+  })
+
+  it('invokes capability via Electron adapter IPC payload', async () => {
+    installWindowAndStorageShims()
+    const { setStoredVaultRoot } = await import('@/services/lego_blocks/storageKeyBlock')
+    setStoredVaultRoot('/tmp/electron-test-vault')
+
+    const expected = {
+      ok: true,
+      capability: 'organizer.nodes.list_roots',
+      requestId: 'cap-test',
+      actor: ACTOR,
+      dryRun: false,
+      auditId: 'audit-test',
+      warnings: [],
+      data: { nodes: [] },
+    }
+    const invokeMock = vi.fn().mockResolvedValue(expected)
+    const win = (globalThis as typeof globalThis & {
+      window: {
+        electronAPI?: {
+          isElectron: true
+          capabilitiesInvoke: typeof invokeMock
+        }
+      }
+    }).window
+    win.electronAPI = {
+      isElectron: true,
+      capabilitiesInvoke: invokeMock,
+    }
+
+    const request = {
+      capability: 'organizer.nodes.list_roots' as const,
+      input: { typeFilter: 'program' as const },
+      actor: ACTOR,
+    }
+
+    const response = await capabilityOrch!.invokeCapabilityViaElectronAdapterOrch(request)
+    expect(invokeMock).toHaveBeenCalledWith({
+      vaultRoot: '/tmp/electron-test-vault',
+      request,
+    })
+    expect(response).toEqual(expected)
   })
 
   it('creates and lists nodes through capability invocations', async () => {
@@ -723,3 +772,37 @@ describe('capabilityRouterOrch', () => {
     expect(reportAfter.issues.some(issue => issue.kind === 'epic_status_violation')).toBe(false)
   })
 })
+
+function installWindowAndStorageShims(): void {
+  const globalRecord = globalThis as typeof globalThis & {
+    window?: Record<string, unknown>
+    localStorage?: {
+      getItem(key: string): string | null
+      setItem(key: string, value: string): void
+      removeItem(key: string): void
+      clear(): void
+    }
+  }
+
+  if (!globalRecord.window) {
+    globalRecord.window = {}
+  }
+
+  if (!globalRecord.localStorage) {
+    const store = new Map<string, string>()
+    globalRecord.localStorage = {
+      getItem(key: string) {
+        return store.has(key) ? store.get(key)! : null
+      },
+      setItem(key: string, value: string) {
+        store.set(key, value)
+      },
+      removeItem(key: string) {
+        store.delete(key)
+      },
+      clear() {
+        store.clear()
+      },
+    }
+  }
+}

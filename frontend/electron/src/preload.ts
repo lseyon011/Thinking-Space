@@ -7,6 +7,21 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
 
+  // Capability adapter management
+  capabilitiesList: () =>
+    ipcRenderer.invoke('capabilities:list'),
+  capabilitiesInvoke: (payload: {
+    vaultRoot: string
+    request: {
+      capability: string
+      input: Record<string, unknown>
+      actor?: { kind: 'human' | 'agent' | 'system'; id?: string }
+      requestId?: string
+      dryRun?: boolean
+    }
+    apiBaseUrl?: string
+  }) => ipcRenderer.invoke('capabilities:invoke', payload),
+
   // Vault folder picker dialog
   selectVaultFolder: () => ipcRenderer.invoke('vault:selectFolder'),
 

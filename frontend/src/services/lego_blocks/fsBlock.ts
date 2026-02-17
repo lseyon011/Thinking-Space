@@ -32,6 +32,21 @@ export interface VaultStat {
 
 interface ElectronAPI {
   isElectron: true
+  capabilitiesList(): Promise<{
+    ok: boolean
+    capabilities?: Array<{ name: string }>
+  }>
+  capabilitiesInvoke(payload: {
+    vaultRoot: string
+    request: {
+      capability: string
+      input: Record<string, unknown>
+      actor?: { kind: 'human' | 'agent' | 'system'; id?: string }
+      requestId?: string
+      dryRun?: boolean
+    }
+    apiBaseUrl?: string
+  }): Promise<unknown>
   selectVaultFolder(): Promise<string | null>
   read(vaultRoot: string, relPath: string): Promise<string>
   write(vaultRoot: string, relPath: string, data: string): Promise<void>
