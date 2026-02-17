@@ -171,20 +171,22 @@ Recommended node pattern:
 
 ## Multi-Agent Workflow
 Before coding:
-1. Read `AGENTS.md`
-2. Read `README.md`
-3. Read `docs/ADR-005-Agent-Capabilities.md`
-4. Read `docs/ADR-006-Agent-Workspace-Schema.md`
-5. Open active tasks/plans in organizer workspace (`coding-projects/thinking-space/thinking-organizer/*`)
+1. `AGENTS.md` (or `CLAUDE.md` for Claude) contains architecture, contracts, and locked decisions — read it.
+2. Check active tasks: `./ltm organizer.nodes.search --query "status active" --limit 10`
+3. Read additional docs only when the task requires it:
+   - `README.md` — for phase order or product direction
+   - `docs/ADR-005-Agent-Capabilities.md` — when modifying capabilities
+   - `docs/ADR-006-Agent-Workspace-Schema.md` — when modifying workspace schema
 
 During work:
 - Claim one task in the organizer tool (`task.claim` / task node status updates).
 - Keep scope tied to acceptance criteria recorded on the task node.
-- Record any plan in the organizer tool before execution begins.
+- For non-trivial tasks (>5 min), record a plan in the organizer before execution.
 - Record durable principles/decisions in organizer workspace when new reusable context is discovered.
 
 After work:
-- Mark task/run/handoff state in the organizer tool first.
+- Mark task state in the organizer tool.
+- Run logging (`run.log`) is optional — use for significant sessions only.
 - Use detailed git commit messages with clear scope, intent, and key change summary; avoid vague messages like `fix`, `update`, or `wip`.
 - Commit body must be an exact verbatim copy of the final agent task output (including headings, bullets, wording, and order) for that task.
 - Do not paraphrase, shorten, reorder, or restyle the copied final output in the commit body.

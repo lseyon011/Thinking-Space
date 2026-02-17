@@ -28,11 +28,12 @@ from app.tools.thoughts_scanner import (
     get_thoughts_section_month,
 )
 from app.services.lego_blocks.vault_constants_block import EXCLUDED_DIRS
+from app.services.lego_blocks.vault_path_block import get_vault_root_block
 
 router = APIRouter()
 
-# Vault root path
-VAULT_ROOT = Path(__file__).parent.parent.parent.parent.parent
+# Vault root path — read from LTM_PILOT_VAULT_ROOT env var (loaded by dotenv in main.py)
+VAULT_ROOT = get_vault_root_block()
 
 
 class FormatExcalidrawRequest(BaseModel):

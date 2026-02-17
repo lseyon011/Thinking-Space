@@ -16,19 +16,16 @@ Active operations source of truth:
 - `coding-projects/thinking-space/thinking-organizer/*`
 
 ## Startup Sequence (Every New Agent)
-1. Read `AGENTS.md`
-2. If using Claude, read `CLAUDE.md`
-3. Read `README.md`
-4. Read `docs/ADR-005-Agent-Capabilities.md`
-5. Read `docs/ADR-006-Agent-Workspace-Schema.md`
-6. Open active tasks/plans in organizer workspace
-7. Sync organizer cache (`Sync Vault Now`) and claim one task in-tool
+1. Read `AGENTS.md` (or `CLAUDE.md` for Claude — it's auto-loaded and covers the same ground)
+2. Check active tasks: `./ltm organizer.nodes.search --query "status active" --limit 10`
+3. Claim a task and start working
+4. Read additional docs only when the task requires it (see "Files to Use" above)
 
 ## Mandatory Tool Pattern
 1. Run active task lifecycle only in organizer workspace.
 2. Every created operation node must include a meaningful YAML `description`.
-3. Every execution plan must be recorded in the organizer tool before coding starts.
-4. Update task/run/handoff state in-tool first.
+3. Record plans in the organizer for non-trivial tasks (estimated >5 minutes). Quick fixes don't need a plan node.
+4. Update task state in-tool. Run logging (`run.log`) is optional — use for significant sessions only.
 5. Use `actor.kind: "agent"` for agent capability calls. Never switch to `human` to bypass controls.
 6. If call fails with `Agent capabilities are disabled by feature flag.`, pause and ask user to enable it.
 7. If vault path is outside sandbox (for example iCloud), request escalated permissions before writes.
