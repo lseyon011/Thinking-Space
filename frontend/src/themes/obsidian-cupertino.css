@@ -1,0 +1,42 @@
+/*
+  Default visual tokens derived from the open-source Obsidian Cupertino theme:
+  https://github.com/aaaaalexis/obsidian-cupertino
+  License: MIT (Copyright (c) 2025 aaaaalexis)
+*/
+
+:root {
+  --ltm-cupertino-bg-hsl: 0 0% 100%;
+  --ltm-cupertino-fg-hsl: 0 0% 15%;
+  --ltm-cupertino-card-hsl: 0 0% 100%;
+  --ltm-cupertino-muted-hsl: 0 0% 95%;
+  --ltm-cupertino-muted-fg-hsl: 0 0% 45%;
+  --ltm-cupertino-accent-hsl: 0 0% 95%;
+  --ltm-cupertino-border-hsl: 0 0% 90%;
+  --ltm-cupertino-ring-hsl: 208 100% 50%;
+
+  --ltm-cupertino-primary-hsl: 208 100% 50%;
+  --ltm-cupertino-primary-foreground-hsl: 0 0% 100%;
+
+  --ltm-cupertino-radius: 0.75rem;
+  --ltm-cupertino-panel-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 8px 32px rgba(0, 0, 0, 0.06);
+}
+
+.dark {
+  --ltm-cupertino-bg-hsl: 0 0% 12%;
+  --ltm-cupertino-fg-hsl: 0 0% 87%;
+  --ltm-cupertino-card-hsl: 0 0% 14%;
+  --ltm-cupertino-muted-hsl: 0 0% 17%;
+  --ltm-cupertino-muted-fg-hsl: 0 0% 60%;
+  --ltm-cupertino-accent-hsl: 0 0% 18%;
+  --ltm-cupertino-border-hsl: 0 0% 22%;
+  --ltm-cupertino-ring-hsl: 208 100% 54%;
+
+  --ltm-cupertino-primary-hsl: 208 100% 54%;
+  --ltm-cupertino-primary-foreground-hsl: 0 0% 100%;
+
+  --ltm-cupertino-panel-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+body {
+  background-image: radial-gradient(circle at top, rgba(0, 136, 255, 0.06), transparent 44%);
+}

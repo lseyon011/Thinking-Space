@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+
+# Build outputs
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+
+# Poetry
+poetry.lock
+
+# Environment
+.env
+.env.local
+
+# Local vault copies (never commit real vault data)
+test-vault/
+
+# Dev script runtime files
+.dev-pids/
+.dev-logs/
+
+# OS
+.DS_Store

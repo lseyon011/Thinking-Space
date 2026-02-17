@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "ltm-pilot-backend"
+version = "0.1.0"
+description = "FastAPI backend for LTM vault management tools"
+authors = ["Anurag"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.34.0"}
+pydantic = "^2.10.0"
+pymupdf = "^1.26.7"
+anthropic = "^0.52"
+openai = "^1.60"
+python-dotenv = "^1.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+httpx = "^0.28.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
