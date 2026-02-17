@@ -214,7 +214,13 @@ function frontmatterToRecord(
     projectRoot: fm.project_root,
     ticket: typeof fm.ticket === 'string' ? fm.ticket : undefined,
     description: typeof fm.description === 'string' ? fm.description : undefined,
-    comments: Array.isArray(fm.comments) ? fm.comments.map(String) : undefined,
+    comments: Array.isArray(fm.comments)
+      ? fm.comments.map(comment => ({
+        text: comment.text,
+        added_at: comment.added_at,
+        added_by: comment.added_by,
+      }))
+      : undefined,
     tags: fm.tags ?? [],
     status: fm.status,
     priority: fm.priority,

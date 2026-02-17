@@ -10,6 +10,7 @@ import {
   parseNote,
   stringifyNote,
   suggestFilename,
+  type YAMLCommentEntry,
   type NodeType,
   type YAMLFrontmatter,
   NODE_TYPE_LEVEL,
@@ -64,7 +65,7 @@ export async function createYamlNode(params: {
   tags?: string[]
   body?: string
   description?: string
-  comments?: string[]
+  comments?: Array<string | YAMLCommentEntry>
   projectRoot?: string
   fs?: VaultFS
 }): Promise<NodeRecord> {
@@ -92,7 +93,7 @@ export async function createYamlNode(params: {
   })
 
   const description = params.description?.trim()
-  const comments = (params.comments ?? []).map(comment => comment.trim()).filter(Boolean)
+  const comments = normalizeCommentEntries(params.comments)
   if (description) {
     note.frontmatter.description = description
   }
@@ -189,6 +190,8 @@ export async function updateYamlNode(
     tags?: string[]
     status?: 'active' | 'paused' | 'completed' | 'archived'
     priority?: 'low' | 'medium' | 'high' | 'critical'
+    description?: string
+    comments?: Array<string | YAMLCommentEntry>
   },
   fs?: VaultFS,
 ): Promise<NodeRecord> {
@@ -208,6 +211,15 @@ export async function updateYamlNode(
   if (updates.tags !== undefined) note.frontmatter.tags = updates.tags
   if (updates.status !== undefined) note.frontmatter.status = updates.status
   if (updates.priority !== undefined) note.frontmatter.priority = updates.priority
+  if (updates.description !== undefined) {
+    const normalizedDescription = updates.description.trim()
+    if (normalizedDescription) note.frontmatter.description = normalizedDescription
+    else delete note.frontmatter.description
+  }
+  if (updates.comments !== undefined) {
+    const normalizedComments = normalizeCommentEntries(updates.comments)
+    note.frontmatter.comments = normalizedComments.length > 0 ? normalizedComments : undefined
+  }
   note.frontmatter.updated_at = new Date().toISOString()
 
   await vaultFs.write(record.filePath, stringifyNote(note))
@@ -532,7 +544,7 @@ function normalizeProjectRoot(value: string | undefined): string | undefined {
 
 function buildInitialBody(
   description: string | undefined,
-  comments: string[],
+  comments: YAMLCommentEntry[],
 ): string {
   const sections: string[] = []
 
@@ -547,12 +559,47 @@ function buildInitialBody(
     sections.push('## Comments')
     sections.push('')
     for (const comment of comments) {
-      sections.push(`- ${comment}`)
+      sections.push(`- ${comment.text}`)
     }
     sections.push('')
   }
 
   return sections.join('\n').trim()
+}
+
+function normalizeCommentEntries(comments: Array<string | YAMLCommentEntry> | undefined): YAMLCommentEntry[] {
+  if (!comments || comments.length === 0) return []
+
+  const now = new Date().toISOString()
+  return comments
+    .map(comment => normalizeSingleCommentEntry(comment, now))
+    .filter((comment): comment is YAMLCommentEntry => comment !== null)
+}
+
+function normalizeSingleCommentEntry(
+  comment: string | YAMLCommentEntry,
+  now: string,
+): YAMLCommentEntry | null {
+  if (typeof comment === 'string') {
+    const text = comment.trim()
+    if (!text) return null
+    return {
+      text,
+      added_at: now,
+      added_by: 'unknown',
+    }
+  }
+
+  const text = comment.text?.trim() ?? ''
+  if (!text) return null
+  const addedAt = comment.added_at?.trim()
+  const addedBy = comment.added_by?.trim()
+
+  return {
+    text,
+    added_at: addedAt || now,
+    added_by: addedBy || 'unknown',
+  }
 }
 
 async function addChildToParent(

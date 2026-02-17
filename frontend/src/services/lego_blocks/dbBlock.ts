@@ -3,7 +3,7 @@
 // Can be rebuilt from vault files at any time.
 
 import Dexie, { type Table } from 'dexie'
-import type { NodeType, NodeStatus, NodePriority } from './yamlNoteBlock'
+import type { NodeType, NodeStatus, NodePriority, YAMLCommentEntry } from './yamlNoteBlock'
 
 // ── Types ──
 
@@ -21,7 +21,7 @@ export interface NodeRecord {
   projectRoot?: string
   ticket?: string
   description?: string
-  comments?: string[]
+  comments?: YAMLCommentEntry[]
   tags: string[]
   status: NodeStatus
   priority?: NodePriority

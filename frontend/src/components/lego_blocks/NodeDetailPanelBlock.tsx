@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from '@/components/lego_blocks/ui/select'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import type { NodeType, NodePriority, NodeStatus, YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodeType, NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
 
 function iconForNodeType(type: NodeType) {
   if (type === 'program') return FolderTree
@@ -42,6 +42,13 @@ function labelForNodeType(type: NodeType): string {
   return map[type] ?? 'Node'
 }
 
+function formatTimestamp(value: string | undefined): string {
+  if (!value) return 'time unknown'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'time unknown'
+  return date.toLocaleString()
+}
+
 const STATUS_OPTIONS: NodeStatus[] = ['active', 'paused', 'completed', 'archived']
 const PRIORITY_OPTIONS: NodePriority[] = ['low', 'medium', 'high', 'critical']
 
@@ -52,6 +59,7 @@ export interface NodeDetailPanelBlockProps {
   onRename: (newTitle: string) => Promise<void>
   onUpdateStatus: (status: string) => Promise<void>
   onUpdatePriority: (priority: string) => Promise<void>
+  onUpdateNotes: (description: string, comments: YAMLCommentEntry[]) => Promise<void>
   onOpenFile: () => void
   onDelete: () => Promise<void>
 }
@@ -63,15 +71,34 @@ export default function NodeDetailPanelBlock({
   onRename,
   onUpdateStatus,
   onUpdatePriority,
+  onUpdateNotes,
   onOpenFile,
   onDelete,
 }: NodeDetailPanelBlockProps) {
   const [titleDraft, setTitleDraft] = useState(node.title)
   const [busy, setBusy] = useState(false)
+  const [descriptionDraft, setDescriptionDraft] = useState('')
+  const [commentsDraft, setCommentsDraft] = useState<YAMLCommentEntry[]>([])
+  const [newCommentDraft, setNewCommentDraft] = useState('')
 
   useEffect(() => {
     setTitleDraft(node.title)
   }, [node.title])
+
+  const sourceDescription = useMemo(
+    () => (frontmatter?.description ?? node.description ?? '').trim(),
+    [frontmatter?.description, node.description],
+  )
+  const sourceComments = useMemo(
+    () => (frontmatter?.comments ?? node.comments ?? []),
+    [frontmatter?.comments, node.comments],
+  )
+
+  useEffect(() => {
+    setDescriptionDraft(sourceDescription)
+    setCommentsDraft(sourceComments)
+    setNewCommentDraft('')
+  }, [node.uuid, sourceComments, sourceDescription])
 
   // Close on Escape
   useEffect(() => {
@@ -104,7 +131,16 @@ export default function NodeDetailPanelBlock({
   }, [onClose, onDelete])
 
   const Icon = iconForNodeType(node.type)
-  const comments = frontmatter?.comments ?? node.comments ?? []
+  const commentsDirty = useMemo(() => {
+    if (commentsDraft.length !== sourceComments.length) return true
+    for (let i = 0; i < commentsDraft.length; i += 1) {
+      if (commentsDraft[i].text !== sourceComments[i].text) return true
+      if ((commentsDraft[i].added_at ?? '') !== (sourceComments[i].added_at ?? '')) return true
+      if ((commentsDraft[i].added_by ?? '') !== (sourceComments[i].added_by ?? '')) return true
+    }
+    return false
+  }, [commentsDraft, sourceComments])
+  const notesDirty = descriptionDraft.trim() !== sourceDescription || commentsDirty
   const yamlFields = useMemo(() => {
     if (!frontmatter) return []
     return Object.entries(frontmatter)
@@ -117,6 +153,34 @@ export default function NodeDetailPanelBlock({
     if (typeof value === 'object' && value !== null) return JSON.stringify(value)
     return String(value)
   }
+
+  const addComment = useCallback(() => {
+    const next = newCommentDraft.trim()
+    if (!next) return
+    setCommentsDraft(prev => [
+      ...prev,
+      {
+        text: next,
+        added_at: new Date().toISOString(),
+        added_by: 'unknown',
+      },
+    ])
+    setNewCommentDraft('')
+  }, [newCommentDraft])
+
+  const removeComment = useCallback((index: number) => {
+    setCommentsDraft(prev => prev.filter((_, idx) => idx !== index))
+  }, [])
+
+  const commitNotes = useCallback(async () => {
+    if (!notesDirty) return
+    setBusy(true)
+    try {
+      await onUpdateNotes(descriptionDraft.trim(), commentsDraft)
+    } finally {
+      setBusy(false)
+    }
+  }, [commentsDraft, descriptionDraft, notesDirty, onUpdateNotes])
 
   return (
     <>
@@ -204,23 +268,72 @@ export default function NodeDetailPanelBlock({
             </div>
           )}
 
-          {(frontmatter?.description || node.description) && (
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Description</label>
-              <p className="text-sm text-foreground/90">{frontmatter?.description ?? node.description}</p>
-            </div>
-          )}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">Description</label>
+            <textarea
+              value={descriptionDraft}
+              onChange={e => setDescriptionDraft(e.target.value)}
+              rows={4}
+              className="w-full resize-y rounded-md border border-input bg-background px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Add description..."
+              disabled={busy}
+            />
+          </div>
 
-          {comments.length > 0 && (
-            <div className="space-y-1">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
               <label className="text-xs font-medium text-muted-foreground">Comments</label>
-              <ul className="list-inside list-disc space-y-1 text-sm text-foreground/90">
-                {comments.map((comment, idx) => (
-                  <li key={`${comment}-${idx}`}>{comment}</li>
-                ))}
-              </ul>
+              {notesDirty && (
+                <Button size="sm" variant="outline" onClick={() => { void commitNotes() }} disabled={busy}>
+                  Save Notes
+                </Button>
+              )}
             </div>
-          )}
+            <div className="space-y-2">
+              {commentsDraft.length > 0 ? (
+                <div className="space-y-1">
+                  {commentsDraft.map((comment, idx) => (
+                    <div key={`${comment.text}-${comment.added_at ?? idx}`} className="flex items-center gap-2 rounded-md border border-border/70 bg-muted/20 px-2 py-1.5 text-sm">
+                      <div className="flex-1">
+                        <p>{comment.text}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {comment.added_by ?? 'unknown'} • {formatTimestamp(comment.added_at)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeComment(idx)}
+                        className="rounded p-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                        disabled={busy}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No comments yet.</p>
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  value={newCommentDraft}
+                  onChange={e => setNewCommentDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      addComment()
+                    }
+                  }}
+                  placeholder="Add a comment..."
+                  className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  disabled={busy}
+                />
+                <Button size="sm" variant="outline" onClick={addComment} disabled={busy}>
+                  Add
+                </Button>
+              </div>
+            </div>
+          </div>
 
           {/* AI Summary */}
           {node.aiSummary && (

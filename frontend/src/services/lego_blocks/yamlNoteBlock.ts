@@ -43,6 +43,12 @@ export interface AISuggestions {
   suggested_move?: AISuggestionMove
 }
 
+export interface YAMLCommentEntry {
+  text: string
+  added_at?: string
+  added_by?: string
+}
+
 export interface YAMLFrontmatter {
   // Identity
   uuid: string
@@ -90,7 +96,7 @@ export interface YAMLFrontmatter {
 
   // Organizer metadata (optional)
   description?: string
-  comments?: string[]
+  comments?: YAMLCommentEntry[]
 
   // Legacy compat — preserve unknown fields roundtrip
   [extra: string]: unknown
@@ -289,6 +295,40 @@ function normalizeFrontmatter(raw: Record<string, unknown>): YAMLFrontmatter {
     project_root: raw.project_root != null ? String(raw.project_root) : undefined,
     ticket: raw.ticket != null ? String(raw.ticket) : undefined,
     description: raw.description != null ? String(raw.description) : undefined,
-    comments: Array.isArray(raw.comments) ? raw.comments.map(String) : undefined,
+    comments: normalizeComments(raw.comments),
+  }
+}
+
+function normalizeComments(raw: unknown): YAMLCommentEntry[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+
+  const comments = raw
+    .map(normalizeComment)
+    .filter((comment): comment is YAMLCommentEntry => comment !== null)
+
+  return comments.length > 0 ? comments : undefined
+}
+
+function normalizeComment(value: unknown): YAMLCommentEntry | null {
+  if (typeof value === 'string') {
+    const text = value.trim()
+    if (!text) return null
+    return { text }
+  }
+
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  const rawText = typeof record.text === 'string'
+    ? record.text
+    : typeof record.comment === 'string'
+      ? record.comment
+      : ''
+  const text = rawText.trim()
+  if (!text) return null
+
+  return {
+    text,
+    added_at: typeof record.added_at === 'string' ? record.added_at : undefined,
+    added_by: typeof record.added_by === 'string' ? record.added_by : undefined,
   }
 }

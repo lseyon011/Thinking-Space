@@ -95,11 +95,6 @@ interface ChildState {
 
 const ROOT_INPUT_KEY = '__root__'
 
-export interface CreateNodeExtras {
-  description?: string
-  comments?: string[]
-}
-
 export interface BacklogListBlockProps {
   programs: NodeRecord[]
   loadEpics: (program: NodeRecord) => Promise<NodeRecord[]>
@@ -107,12 +102,7 @@ export interface BacklogListBlockProps {
   selectedNodeId: string | null
   readOnly?: boolean
   onSelectNode: (node: NodeRecord) => void
-  onCreateChild?: (
-    parent: NodeRecord | null,
-    title: string,
-    requestedType?: NodeType,
-    extras?: CreateNodeExtras,
-  ) => Promise<NodeRecord>
+  onCreateChild?: (parent: NodeRecord | null, title: string, requestedType?: NodeType) => Promise<NodeRecord>
   onDropNodeToNode?: (sourceUuid: string, target: NodeRecord) => Promise<void>
 }
 
@@ -178,8 +168,6 @@ export default function BacklogListBlock({
   const [childrenByNode, setChildrenByNode] = useState<Record<string, ChildState>>({})
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({})
   const [drafts, setDrafts] = useState<Record<string, string>>({})
-  const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, string>>({})
-  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({})
   const [draftTypeByKey, setDraftTypeByKey] = useState<Record<string, NodeType>>({ [ROOT_INPUT_KEY]: 'program' })
   const [busyCreate, setBusyCreate] = useState<Record<string, boolean>>({})
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
@@ -267,26 +255,10 @@ export default function BacklogListBlock({
     setDrafts(prev => ({ ...prev, [key]: value }))
   }, [])
 
-  const setDescriptionDraft = useCallback((key: string, value: string) => {
-    setDescriptionDrafts(prev => ({ ...prev, [key]: value }))
-  }, [])
-
-  const setCommentDraft = useCallback((key: string, value: string) => {
-    setCommentDrafts(prev => ({ ...prev, [key]: value }))
-  }, [])
-
   const createUnder = useCallback(async (parent: NodeRecord | null, draftKey: string) => {
     if (!onCreateChild) return
     const title = (drafts[draftKey] ?? '').trim()
     if (!title) return
-    const description = (descriptionDrafts[draftKey] ?? '').trim()
-    const comment = (commentDrafts[draftKey] ?? '').trim()
-    const extras: CreateNodeExtras | undefined = (description || comment)
-      ? {
-        description: description || undefined,
-        comments: comment ? [comment] : undefined,
-      }
-      : undefined
 
     const allowedTypes = allowedCreateTypes(parent)
     const selectedType = draftTypeByKey[draftKey]
@@ -297,10 +269,8 @@ export default function BacklogListBlock({
     setLocalError(null)
     setBusyCreate(prev => ({ ...prev, [draftKey]: true }))
     try {
-      const created = await onCreateChild(parent, title, requestedType, extras)
+      const created = await onCreateChild(parent, title, requestedType)
       setDrafts(prev => ({ ...prev, [draftKey]: '' }))
-      setDescriptionDrafts(prev => ({ ...prev, [draftKey]: '' }))
-      setCommentDrafts(prev => ({ ...prev, [draftKey]: '' }))
 
       if (parent) {
         setChildrenByNode(prev => {
@@ -320,7 +290,7 @@ export default function BacklogListBlock({
     } finally {
       setBusyCreate(prev => ({ ...prev, [draftKey]: false }))
     }
-  }, [commentDrafts, descriptionDrafts, draftTypeByKey, drafts, onCreateChild])
+  }, [draftTypeByKey, drafts, onCreateChild])
 
   const makeDragStart = useCallback((node: NodeRecord) => (event: React.DragEvent) => {
     setDraggingNodeId(node.uuid)
@@ -378,72 +348,45 @@ export default function BacklogListBlock({
     const selectedTypeLabel = nodeTypeLabel(selectedType)
 
     return (
-      <div className="space-y-2 border-t border-border/70 bg-background px-3 py-2">
-        <div className="flex items-center gap-2">
-          <select
-            value={selectedType}
-            onChange={e => {
-              const nextType = e.target.value as NodeType
-              setDraftTypeByKey(prev => ({ ...prev, [draftKey]: nextType }))
-            }}
-            className="h-7 shrink-0 rounded-md border border-input bg-background px-2 text-[11px] text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            {allowedTypes.map(type => (
-              <option key={`${draftKey}-${type}`} value={type}>
-                {nodeTypeLabel(type)}
-              </option>
-            ))}
-          </select>
-          <input
-            value={drafts[draftKey] ?? ''}
-            onChange={e => setDraft(draftKey, e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                void createUnder(parent, draftKey)
-              }
-            }}
-            placeholder={`${placeholder} (${selectedTypeLabel})`}
-            className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 px-2 text-xs"
-            disabled={busyCreate[draftKey]}
-            onClick={() => { void createUnder(parent, draftKey) }}
-          >
-            {busyCreate[draftKey] ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-          </Button>
-        </div>
-        <div className="grid gap-2 md:grid-cols-2">
-          <input
-            value={descriptionDrafts[draftKey] ?? ''}
-            onChange={e => setDescriptionDraft(draftKey, e.target.value)}
-            placeholder="Description (optional)"
-            className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          <input
-            value={commentDrafts[draftKey] ?? ''}
-            onChange={e => setCommentDraft(draftKey, e.target.value)}
-            placeholder="Comment (optional)"
-            className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-        </div>
+      <div className="flex items-center gap-2 border-t border-border/70 bg-background px-3 py-2">
+        <select
+          value={selectedType}
+          onChange={e => {
+            const nextType = e.target.value as NodeType
+            setDraftTypeByKey(prev => ({ ...prev, [draftKey]: nextType }))
+          }}
+          className="h-7 shrink-0 rounded-md border border-input bg-background px-2 text-[11px] text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          {allowedTypes.map(type => (
+            <option key={`${draftKey}-${type}`} value={type}>
+              {nodeTypeLabel(type)}
+            </option>
+          ))}
+        </select>
+        <input
+          value={drafts[draftKey] ?? ''}
+          onChange={e => setDraft(draftKey, e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void createUnder(parent, draftKey)
+            }
+          }}
+          placeholder={`${placeholder} (${selectedTypeLabel})`}
+          className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 px-2 text-xs"
+          disabled={busyCreate[draftKey]}
+          onClick={() => { void createUnder(parent, draftKey) }}
+        >
+          {busyCreate[draftKey] ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+        </Button>
       </div>
     )
-  }, [
-    busyCreate,
-    commentDrafts,
-    createUnder,
-    descriptionDrafts,
-    draftTypeByKey,
-    drafts,
-    readOnly,
-    setCommentDraft,
-    setDescriptionDraft,
-    setDraft,
-  ])
+  }, [busyCreate, createUnder, draftTypeByKey, drafts, readOnly, setDraft])
 
   const renderNodeBranch = useCallback((node: NodeRecord, depth: number, colorIndex: number) => {
     const Icon = iconForNodeType(node.type)

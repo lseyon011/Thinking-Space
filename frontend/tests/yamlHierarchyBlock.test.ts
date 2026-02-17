@@ -233,9 +233,51 @@ describe('yamlHierarchyBlock project storage', () => {
     const note = parseNote(await fs.read(thought.filePath))
     expect(note).not.toBeNull()
     expect(note!.frontmatter.description).toBe('Record what worked and what failed in this sprint.')
-    expect(note!.frontmatter.comments).toEqual(['Need numbers from analytics before finalizing.'])
+    expect(note!.frontmatter.comments?.length).toBe(1)
+    expect(note!.frontmatter.comments?.[0].text).toBe('Need numbers from analytics before finalizing.')
+    expect(note!.frontmatter.comments?.[0].added_by).toBe('unknown')
+    expect(note!.frontmatter.comments?.[0].added_at).toBeTruthy()
     expect(note!.body).toContain('## Description')
     expect(note!.body).toContain('## Comments')
     expect(note!.body).toContain('- Need numbers from analytics before finalizing.')
+  })
+
+  it('updates description and comments after create', async () => {
+    const fs = new FakeVaultFS()
+    const { createYamlNode, updateYamlNode } = await import('@/services/lego_blocks/yamlHierarchyBlock')
+
+    const idea = await createYamlNode({
+      type: 'idea',
+      title: 'Streamline intake',
+      projectRoot: 'projects/delta',
+      fs,
+    })
+
+    const updated = await updateYamlNode(
+      idea.uuid,
+      {
+        description: 'Refine intake prompts and simplify intake states.',
+        comments: ['Capture current drop-off metrics', 'Validate with PM before rollout'],
+      },
+      fs,
+    )
+
+    expect(updated.description).toBe('Refine intake prompts and simplify intake states.')
+    expect(updated.comments?.map(comment => comment.text)).toEqual([
+      'Capture current drop-off metrics',
+      'Validate with PM before rollout',
+    ])
+    expect(updated.comments?.every(comment => comment.added_by === 'unknown')).toBe(true)
+    expect(updated.comments?.every(comment => Boolean(comment.added_at))).toBe(true)
+
+    const note = parseNote(await fs.read(updated.filePath))
+    expect(note).not.toBeNull()
+    expect(note!.frontmatter.description).toBe('Refine intake prompts and simplify intake states.')
+    expect(note!.frontmatter.comments?.map(comment => comment.text)).toEqual([
+      'Capture current drop-off metrics',
+      'Validate with PM before rollout',
+    ])
+    expect(note!.frontmatter.comments?.every(comment => comment.added_by === 'unknown')).toBe(true)
+    expect(note!.frontmatter.comments?.every(comment => Boolean(comment.added_at))).toBe(true)
   })
 })

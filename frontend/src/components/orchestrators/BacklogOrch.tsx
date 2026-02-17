@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, Loader2, Plus, X } from 'lucide-react'
-import BacklogListBlock, { type CreateNodeExtras } from '@/components/lego_blocks/BacklogListBlock'
+import BacklogListBlock from '@/components/lego_blocks/BacklogListBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/NodeDetailPanelBlock'
 import CascadingFolderPicker, { addRecent } from '@/components/lego_blocks/CascadingFolderPickerBlock'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import { generateKey, type NodeType, type YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
+import { generateKey, type NodeType, type YAMLCommentEntry, type YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
 import {
   createYamlNode,
   deleteYamlNode,
@@ -241,7 +241,6 @@ export default function BacklogOrch() {
     parent: NodeRecord | null,
     title: string,
     requestedType?: NodeType,
-    extras?: CreateNodeExtras,
   ) => {
     const allowedTypes = allowedChildTypes(parent?.type ?? null)
     const nextType = requestedType && allowedTypes.includes(requestedType)
@@ -258,8 +257,6 @@ export default function BacklogOrch() {
       parentKey: parent?.key,
       parentUuid: parent?.uuid,
       parentType: parent?.type,
-      description: extras?.description,
-      comments: extras?.comments,
       projectRoot: parent ? undefined : activeProjectRoot,
     })
     if (!parent) {
@@ -334,6 +331,24 @@ export default function BacklogOrch() {
       setSelectedNode(updated)
     } catch (err) {
       setError(errorMessage(err, 'Failed to update priority'))
+    } finally {
+      setWorking(false)
+    }
+  }, [selectedNode])
+
+  const updateNodeNotes = useCallback(async (description: string, comments: YAMLCommentEntry[]) => {
+    if (!selectedNode) return
+    setWorking(true)
+    setError(null)
+    try {
+      const updated = await updateYamlNode(selectedNode.uuid, {
+        description,
+        comments,
+      })
+      setSelectedNode(updated)
+      setMessage('Updated description/comments')
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to update description/comments'))
     } finally {
       setWorking(false)
     }
@@ -455,6 +470,7 @@ export default function BacklogOrch() {
           onRename={renameNode}
           onUpdateStatus={updateStatus}
           onUpdatePriority={updatePriority}
+          onUpdateNotes={updateNodeNotes}
           onOpenFile={() => openFile(selectedNode.filePath)}
           onDelete={() => deleteAnyNode(selectedNode)}
         />
