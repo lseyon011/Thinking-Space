@@ -12,6 +12,7 @@ import StewardProposalQueueBlock from '@/components/lego_blocks/StewardProposalQ
 import {
   applyStewardMetadataToFileOrch,
   generateStewardMetadataSuggestionForFileOrch,
+  type StewardSimilaritySnapshot,
 } from '@/services/orchestrators/stewardMetadataOrch'
 import {
   clearResolvedStewardProposalsOrch,
@@ -43,6 +44,16 @@ function formatTelemetryTime(value?: string): string | null {
   return date.toLocaleString()
 }
 
+function summarizeSimilarityForRationale(similarity?: StewardSimilaritySnapshot): string {
+  if (!similarity) return ''
+  const topEpic = similarity.epics[0]?.key
+  const topIdea = similarity.ideas[0]?.key
+  const topThought = similarity.thoughts[0]?.key
+  const parts = [topEpic, topIdea, topThought].filter(Boolean)
+  if (parts.length === 0) return ''
+  return `Similarity hints (${similarity.engine}): ${parts.join(', ')}.`
+}
+
 export default function StewardQueueOrch() {
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<NodeRecord | null>(null)
@@ -53,6 +64,7 @@ export default function StewardQueueOrch() {
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [lastGenerationTelemetry, setLastGenerationTelemetry] = useState<AiTelemetryEvent | null>(null)
+  const [lastSimilarity, setLastSimilarity] = useState<StewardSimilaritySnapshot | null>(null)
 
   const updateQueue = useCallback((updater: (prev: StewardProposal[]) => StewardProposal[]) => {
     setQueue(prev => {
@@ -107,6 +119,8 @@ export default function StewardQueueOrch() {
     try {
       const suggestion = await generateStewardMetadataSuggestionForFileOrch(selectedFilePath)
       setLastGenerationTelemetry(suggestion.telemetry ?? null)
+      setLastSimilarity(suggestion.similarity ?? null)
+      const similarityContext = summarizeSimilarityForRationale(suggestion.similarity)
       const proposal = createStewardFileYamlMetadataProposalOrch({
         filePath: selectedFilePath,
         node: selectedNode,
@@ -114,7 +128,7 @@ export default function StewardQueueOrch() {
         tags: suggestion.tags,
         suggestedEpicKey: suggestion.suggestedEpicKey,
         suggestedIdeaKey: suggestion.suggestedIdeaKey,
-        rationale: suggestion.rationale,
+        rationale: [suggestion.rationale, similarityContext].filter(Boolean).join(' '),
       })
       updateQueue(prev => {
         const { queue: next, added } = enqueueStewardProposalsOrch(prev, [proposal])
@@ -132,6 +146,7 @@ export default function StewardQueueOrch() {
     } catch (err) {
       setError(errorMessage(err, 'Failed to generate steward metadata proposal'))
       setLastGenerationTelemetry(null)
+      setLastSimilarity(null)
     } finally {
       setGenerating(false)
     }
@@ -309,6 +324,31 @@ export default function StewardQueueOrch() {
                 </div>
                 <div>
                   Responded: <span className="text-foreground">{formatTelemetryTime(lastGenerationTelemetry.respondedAt) ?? 'n/a'}</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {lastSimilarity && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Similarity Surfacing</CardTitle>
+                <CardDescription>
+                  Engine: {lastSimilarity.engine}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2 text-xs text-muted-foreground">
+                <div>
+                  <span className="text-foreground">Epics:</span>{' '}
+                  {lastSimilarity.epics.slice(0, 3).map(item => `${item.key} (${item.score.toFixed(2)})`).join(' • ') || 'none'}
+                </div>
+                <div>
+                  <span className="text-foreground">Ideas:</span>{' '}
+                  {lastSimilarity.ideas.slice(0, 3).map(item => `${item.key} (${item.score.toFixed(2)})`).join(' • ') || 'none'}
+                </div>
+                <div>
+                  <span className="text-foreground">Thoughts:</span>{' '}
+                  {lastSimilarity.thoughts.slice(0, 3).map(item => `${item.key} (${item.score.toFixed(2)})`).join(' • ') || 'none'}
                 </div>
               </CardContent>
             </Card>

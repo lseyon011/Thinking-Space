@@ -1,9 +1,9 @@
-import { getAllNodes, type NodeRecord } from '../lego_blocks/dbBlock'
 import { createNote, parseNote, stringifyNote } from '../lego_blocks/yamlNoteBlock'
 import { getVaultFS } from './runtimeOrch'
 import { syncSingleFile } from './vaultSyncOrch'
 import { listProvidersOrch, sendChatWithTelemetryOrch, type AiProvider } from './chatOrch'
 import { recordAiTelemetryOrch, type AiTelemetryEvent } from './aiTelemetryOrch'
+import { findSimilarGroupedMatchesOrch, type SimilarityGroupedMatches } from './similarityOrch'
 
 export interface StewardMetadataSuggestion {
   summary: string
@@ -15,6 +15,7 @@ export interface StewardMetadataSuggestion {
   model?: string
   usedAi: boolean
   telemetry?: AiTelemetryEvent
+  similarity?: StewardSimilaritySnapshot
 }
 
 interface RankedCandidate {
@@ -22,6 +23,22 @@ interface RankedCandidate {
   title: string
   parent?: string
   score: number
+}
+
+export interface StewardSimilarityMatch {
+  key: string
+  title: string
+  parent?: string
+  type: 'epic' | 'idea' | 'thought'
+  score: number
+  reasons: string[]
+}
+
+export interface StewardSimilaritySnapshot {
+  engine: string
+  epics: StewardSimilarityMatch[]
+  ideas: StewardSimilarityMatch[]
+  thoughts: StewardSimilarityMatch[]
 }
 
 function normalizeTagToken(tag: string): string {
@@ -42,47 +59,38 @@ function normalizeTags(tags: string[]): string[] {
   return [...unique].sort((a, b) => a.localeCompare(b))
 }
 
-function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9/_\s-]+/g, ' ')
-    .split(/\s+/)
-    .filter(token => token.length >= 3)
-}
-
 function deriveTitleFromPath(filePath: string): string {
   const base = filePath.split('/').pop() || filePath
   return base.replace(/\.md$/i, '').replace(/[_-]+/g, ' ').trim() || 'Untitled Thought'
 }
 
-function scoreCandidate(candidate: NodeRecord, signalTokens: Set<string>): number {
-  const text = [
-    candidate.key,
-    candidate.title,
-    candidate.description ?? '',
-    ...(candidate.tags ?? []),
-  ].join(' ')
-  const tokens = tokenize(text)
-  if (tokens.length === 0) return 0
-  let overlap = 0
-  for (const token of tokens) {
-    if (signalTokens.has(token)) overlap += 1
-  }
-  return overlap
+function toRankedCandidates(matches: StewardSimilarityMatch[]): RankedCandidate[] {
+  return matches.map(item => ({
+    key: item.key,
+    title: item.title,
+    parent: item.parent,
+    score: item.score,
+  }))
 }
 
-function rankCandidates(nodes: NodeRecord[], signalText: string, type: 'epic' | 'idea', limit: number): RankedCandidate[] {
-  const signalTokens = new Set(tokenize(signalText))
-  return nodes
-    .filter(node => node.type === type)
-    .map(node => ({
-      key: node.key,
-      title: node.title,
-      parent: node.parent,
-      score: scoreCandidate(node, signalTokens),
+function toStewardSimilaritySnapshot(grouped: SimilarityGroupedMatches): StewardSimilaritySnapshot {
+  const map = (type: 'epic' | 'idea' | 'thought', matches: SimilarityGroupedMatches['epics']): StewardSimilarityMatch[] => (
+    matches.map(match => ({
+      key: match.node.key,
+      title: match.node.title,
+      parent: match.node.parent,
+      type,
+      score: Number(match.normalizedScore.toFixed(3)),
+      reasons: match.reasons,
     }))
-    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
-    .slice(0, limit)
+  )
+
+  return {
+    engine: grouped.engine,
+    epics: map('epic', grouped.epics),
+    ideas: map('idea', grouped.ideas),
+    thoughts: map('thought', grouped.thoughts),
+  }
 }
 
 function heuristicTags(filePath: string): string[] {
@@ -161,10 +169,18 @@ export async function generateStewardMetadataSuggestionForFileOrch(filePath: str
   const fs = getVaultFS()
   const content = await fs.read(filePath)
   const title = deriveTitleFromPath(filePath)
-  const nodes = await getAllNodes()
   const signal = `${filePath}\n${title}\n${content.slice(0, 2600)}`
-  const epicCandidates = rankCandidates(nodes, signal, 'epic', 12)
-  const ideaCandidates = rankCandidates(nodes, signal, 'idea', 16)
+  const similar = await findSimilarGroupedMatchesOrch({
+    text: signal,
+    sourceFilePath: filePath,
+    preferredTypes: ['epic', 'idea', 'thought'],
+    perTypeLimit: 10,
+    limit: 160,
+  })
+  const similarity = toStewardSimilaritySnapshot(similar)
+  const epicCandidates = toRankedCandidates(similarity.epics)
+  const ideaCandidates = toRankedCandidates(similarity.ideas)
+  const thoughtCandidates = toRankedCandidates(similarity.thoughts)
 
   const heuristicEpic = epicCandidates[0]?.key
   const heuristicIdea = ideaCandidates[0]?.key
@@ -194,6 +210,7 @@ export async function generateStewardMetadataSuggestionForFileOrch(filePath: str
     rationale: 'Heuristic metadata suggestion generated from file path/content and organizer lexical matching.',
     usedAi: false,
     telemetry: undefined,
+    similarity,
   }
 
   const provider = await resolveDefaultProvider()
@@ -227,6 +244,9 @@ export async function generateStewardMetadataSuggestionForFileOrch(filePath: str
     '',
     'Idea candidates (key | title | parent):',
     ...ideaCandidates.map(item => `- ${item.key} | ${item.title} | parent=${item.parent ?? ''}`),
+    '',
+    'Similar thought candidates (key | title | score):',
+    ...thoughtCandidates.map(item => `- ${item.key} | ${item.title} | score=${item.score.toFixed(3)}`),
   ].join('\n')
 
   try {
@@ -238,8 +258,10 @@ export async function generateStewardMetadataSuggestionForFileOrch(filePath: str
         useCase: 'steward.metadata.proposal_generation',
         metadata: {
           filePath,
+          similarityEngine: similarity.engine,
           epicCandidates: epicCandidates.length,
           ideaCandidates: ideaCandidates.length,
+          thoughtCandidates: thoughtCandidates.length,
         },
       },
     )
@@ -250,6 +272,7 @@ export async function generateStewardMetadataSuggestionForFileOrch(filePath: str
         provider: response.provider,
         model: response.model,
         telemetry: telemetryEvent,
+        similarity,
       }
     }
     const ai = parseAiSuggestion(parsed)
@@ -259,6 +282,7 @@ export async function generateStewardMetadataSuggestionForFileOrch(filePath: str
         provider: response.provider,
         model: response.model,
         telemetry: telemetryEvent,
+        similarity,
       }
     }
 
@@ -279,6 +303,7 @@ export async function generateStewardMetadataSuggestionForFileOrch(filePath: str
       model: response.model,
       usedAi: true,
       telemetry: telemetryEvent,
+      similarity,
     }
   } catch {
     return fallback
