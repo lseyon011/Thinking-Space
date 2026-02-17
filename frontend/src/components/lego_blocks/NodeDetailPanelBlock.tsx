@@ -131,6 +131,7 @@ export default function NodeDetailPanelBlock({
   }, [onClose, onDelete])
 
   const Icon = iconForNodeType(node.type)
+  const statusEditable = node.type !== 'epic'
   const commentsDirty = useMemo(() => {
     if (commentsDraft.length !== sourceComments.length) return true
     for (let i = 0; i < commentsDraft.length; i += 1) {
@@ -266,7 +267,8 @@ export default function NodeDetailPanelBlock({
             <label className="text-xs font-medium text-muted-foreground">Status</label>
             <Select
               value={node.status}
-              onValueChange={val => { void onUpdateStatus(val) }}
+              onValueChange={val => { if (statusEditable) void onUpdateStatus(val) }}
+              disabled={!statusEditable}
             >
               <SelectTrigger className="h-9 text-sm">
                 <SelectValue />
@@ -277,6 +279,11 @@ export default function NodeDetailPanelBlock({
                 ))}
               </SelectContent>
             </Select>
+            {!statusEditable && (
+              <p className="text-[11px] text-muted-foreground">
+                Epic status is derived automatically from descendant task states.
+              </p>
+            )}
           </div>
 
           {/* Priority */}

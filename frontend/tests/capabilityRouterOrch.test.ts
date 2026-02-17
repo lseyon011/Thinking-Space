@@ -253,6 +253,131 @@ describe('capabilityRouterOrch', () => {
     expect(frontmatter!.comments?.[0].added_at).toBeTruthy()
   })
 
+  it('derives epic status from descendant task statuses', async () => {
+    const fs = new FakeVaultFS()
+
+    const { node: program } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'program',
+        title: 'Ops Program',
+        projectRoot: 'projects/ops',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const { node: epic } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'epic',
+        title: 'Policy Engine',
+        parentKey: program.key,
+        parentUuid: program.uuid,
+        parentType: 'program',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const { node: task } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'idea',
+        title: 'Task A',
+        parentKey: epic.key,
+        parentUuid: epic.uuid,
+        parentType: 'epic',
+        extraFields: {
+          record_kind: 'task',
+          task_status: 'done',
+        },
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const { node: epicAfterDone } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.get',
+      input: { uuid: epic.uuid },
+      actor: ACTOR,
+    }, { fs })
+    expect(epicAfterDone?.status).toBe('completed')
+
+    await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'task.update_status',
+      input: {
+        uuid: task.uuid,
+        taskStatus: 'in_progress',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const { node: epicAfterActive } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.get',
+      input: { uuid: epic.uuid },
+      actor: ACTOR,
+    }, { fs })
+    expect(epicAfterActive?.status).toBe('active')
+  })
+
+  it('ignores manual epic status edits and keeps derived status', async () => {
+    const fs = new FakeVaultFS()
+
+    const { node: program } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'program',
+        title: 'Ops Program',
+        projectRoot: 'projects/ops',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const { node: epic } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'epic',
+        title: 'Manual Override Guard',
+        parentKey: program.key,
+        parentUuid: program.uuid,
+        parentType: 'program',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'idea',
+        title: 'Task A',
+        parentKey: epic.key,
+        parentUuid: epic.uuid,
+        parentType: 'epic',
+        extraFields: {
+          record_kind: 'task',
+          task_status: 'in_progress',
+        },
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.update',
+      input: {
+        uuid: epic.uuid,
+        updates: {
+          status: 'completed',
+        },
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const { node: epicAfterUpdate } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.get',
+      input: { uuid: epic.uuid },
+      actor: ACTOR,
+    }, { fs })
+    expect(epicAfterUpdate?.status).toBe('active')
+  })
+
   it('supports dry-run preview for move without persisting', async () => {
     const fs = new FakeVaultFS()
 
@@ -509,5 +634,77 @@ describe('capabilityRouterOrch', () => {
     }, { fs })
     expect(handoff.recordKind).toBe('handoff')
     expect(handoff.filePath).toContain('thoughts/')
+  })
+
+  it('reports and fixes status policy integrity violations', async () => {
+    const fs = new FakeVaultFS()
+    const integrity = await import('@/services/orchestrators/organizerIntegrityOrch')
+    const hierarchy = await import('@/services/lego_blocks/yamlHierarchyBlock')
+
+    const { node: program } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'program',
+        title: 'Ops Program',
+        projectRoot: 'projects/ops',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const { node: epic } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'epic',
+        title: 'Integrity Epic',
+        parentKey: program.key,
+        parentUuid: program.uuid,
+        parentType: 'program',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const { node: task } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'idea',
+        title: 'Integrity Task',
+        parentKey: epic.key,
+        parentUuid: epic.uuid,
+        parentType: 'epic',
+        extraFields: {
+          record_kind: 'task',
+          task_status: 'done',
+        },
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    await hierarchy.updateYamlNode(task.uuid, {
+      status: 'active',
+      extraFields: {
+        record_kind: 'task',
+        task_status: 'done',
+      },
+    }, fs)
+
+    await hierarchy.updateYamlNode(epic.uuid, { status: 'active' }, fs)
+
+    const reportBefore = await integrity.runOrganizerIntegrityCheck({
+      fs,
+      includeLegacyFieldScan: false,
+    })
+    expect(reportBefore.issues.some(issue => issue.kind === 'task_status_drift')).toBe(true)
+    expect(reportBefore.issues.some(issue => issue.kind === 'epic_status_violation')).toBe(true)
+
+    const applied = await integrity.applyOrganizerStatusPolicy({ fs })
+    expect(applied.taskUpdates).toBeGreaterThan(0)
+    expect(applied.epicUpdates).toBeGreaterThan(0)
+
+    const reportAfter = await integrity.runOrganizerIntegrityCheck({
+      fs,
+      includeLegacyFieldScan: false,
+    })
+    expect(reportAfter.issues.some(issue => issue.kind === 'task_status_drift')).toBe(false)
+    expect(reportAfter.issues.some(issue => issue.kind === 'epic_status_violation')).toBe(false)
   })
 })

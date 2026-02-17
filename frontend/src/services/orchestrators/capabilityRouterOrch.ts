@@ -6,7 +6,15 @@ import {
   type CapabilityName,
   type CapabilityOutputMap,
 } from '../lego_blocks/capabilityRegistryBlock'
+import type { NodeRecord } from '../lego_blocks/dbBlock'
 import { ALLOWED_RECORD_KINDS, type YAMLCommentEntry } from '../lego_blocks/yamlNoteBlock'
+import {
+  deriveEpicStatusFromTaskStatuses,
+  isTaskLikeNode,
+  nodeStatusFromTaskStatus,
+  normalizeTaskStatus,
+  taskStatusFromNodeStatus,
+} from '../lego_blocks/statusPolicyBlock'
 import {
   createCapabilityInputHash,
   writeCapabilityAuditEntry,
@@ -322,7 +330,13 @@ async function executeCapability<Name extends CapabilityName>(
       assertNonEmptyString(payload.title, 'title')
       assertValidRecordKind(payload.extraFields?.record_kind)
       assertWritableProjectRootAllowed(payload.projectRoot, 'organizer.node.create')
-      const node = await createYamlNode({ ...payload, fs })
+      const normalizedCreatePayload = normalizeCreatePayloadForStatusPolicy(payload)
+      const node = await createYamlNode({ ...normalizedCreatePayload, fs })
+      await applyEpicStatusPolicyForAffectedNodes({
+        changedNodes: [node],
+        changedParentKeys: [payload.parentKey],
+        fs,
+      })
       return { node } as CapabilityOutputMap[Name]
     }
     case 'organizer.node.rename': {
@@ -336,13 +350,27 @@ async function executeCapability<Name extends CapabilityName>(
       const payload = input as CapabilityInputMap['organizer.node.update']
       assertNonEmptyString(payload.uuid, 'uuid')
       assertValidRecordKind(payload.updates.extraFields?.record_kind)
-      const node = await updateYamlNode(payload.uuid, payload.updates, fs)
+      const existing = await getYamlNode(payload.uuid)
+      if (!existing) throw new Error(`Node not found: ${payload.uuid}`)
+      const normalizedUpdates = normalizeNodeUpdatesForStatusPolicy(existing, payload.updates)
+      const node = await updateYamlNode(payload.uuid, normalizedUpdates, fs)
+      await applyEpicStatusPolicyForAffectedNodes({
+        changedNodes: [node],
+        changedParentKeys: [existing.parent, node.parent],
+        fs,
+      })
       return { node } as CapabilityOutputMap[Name]
     }
     case 'organizer.node.move': {
       const payload = input as CapabilityInputMap['organizer.node.move']
       assertNonEmptyString(payload.uuid, 'uuid')
+      const existing = await getYamlNode(payload.uuid)
       const node = await moveYamlNode(payload.uuid, payload.newParentKey, fs)
+      await applyEpicStatusPolicyForAffectedNodes({
+        changedNodes: [node],
+        changedParentKeys: [existing?.parent, node.parent, payload.newParentKey],
+        fs,
+      })
       return { node } as CapabilityOutputMap[Name]
     }
     case 'organizer.node.delete': {
@@ -351,6 +379,11 @@ async function executeCapability<Name extends CapabilityName>(
       const existing = await getYamlNode(payload.uuid)
       const childCount = existing ? (await listYamlChildren(existing.key)).length : 0
       await deleteYamlNode(payload.uuid, fs)
+      await applyEpicStatusPolicyForAffectedNodes({
+        changedNodes: [],
+        changedParentKeys: [existing?.parent],
+        fs,
+      })
       return {
         deleted: true,
         preview: existing
@@ -375,21 +408,28 @@ async function executeCapability<Name extends CapabilityName>(
       assertWritableProjectRootAllowed(source.projectRoot, 'task.claim')
 
       const status = payload.taskStatus?.trim() || 'in_progress'
+      const normalizedTaskStatus = normalizeTaskStatus(status) ?? 'in_progress'
       const history = appendStateHistory(source, {
         from: source.taskStatus,
-        to: status,
+        to: normalizedTaskStatus,
         note: payload.note ?? `Claimed by ${payload.owner}`,
       }, payload.owner)
 
       const node = await updateYamlNode(payload.uuid, {
+        status: nodeStatusFromTaskStatus(normalizedTaskStatus),
         extraFields: {
           record_kind: 'task',
-          task_status: status,
+          task_status: normalizedTaskStatus,
           owner: payload.owner.trim(),
           state_history: history,
           schema_version: '2',
         },
       }, fs)
+      await applyEpicStatusPolicyForAffectedNodes({
+        changedNodes: [node],
+        changedParentKeys: [source.parent, node.parent],
+        fs,
+      })
       return { node } as CapabilityOutputMap[Name]
     }
     case 'task.update_status': {
@@ -402,7 +442,7 @@ async function executeCapability<Name extends CapabilityName>(
       assertTaskNode(source)
       assertWritableProjectRootAllowed(source.projectRoot, 'task.update_status')
 
-      const status = payload.taskStatus.trim()
+      const status = normalizeTaskStatus(payload.taskStatus.trim()) ?? 'in_progress'
       const history = appendStateHistory(source, {
         from: source.taskStatus,
         to: status,
@@ -410,6 +450,7 @@ async function executeCapability<Name extends CapabilityName>(
       }, source.owner || 'unknown')
 
       const node = await updateYamlNode(payload.uuid, {
+        status: nodeStatusFromTaskStatus(status),
         extraFields: {
           record_kind: 'task',
           task_status: status,
@@ -417,6 +458,11 @@ async function executeCapability<Name extends CapabilityName>(
           schema_version: '2',
         },
       }, fs)
+      await applyEpicStatusPolicyForAffectedNodes({
+        changedNodes: [node],
+        changedParentKeys: [source.parent, node.parent],
+        fs,
+      })
       return { node } as CapabilityOutputMap[Name]
     }
     case 'run.log': {
@@ -764,6 +810,150 @@ function extractTouchedPaths<Name extends CapabilityName>(
   }
 }
 
+function normalizeCreatePayloadForStatusPolicy(
+  payload: CapabilityInputMap['organizer.node.create'],
+): CapabilityInputMap['organizer.node.create'] {
+  const extra = payload.extraFields ? { ...payload.extraFields } : undefined
+  const recordKind = typeof extra?.record_kind === 'string' ? extra.record_kind : undefined
+  const rawTaskStatus = typeof extra?.task_status === 'string' ? extra.task_status : undefined
+  const normalizedTaskStatus = normalizeTaskStatus(rawTaskStatus)
+
+  if (normalizedTaskStatus) {
+    return {
+      ...payload,
+      extraFields: {
+        ...(extra ?? {}),
+        record_kind: recordKind ?? 'task',
+        task_status: normalizedTaskStatus,
+      },
+    }
+  }
+
+  return payload
+}
+
+function normalizeNodeUpdatesForStatusPolicy(
+  existing: NodeRecord,
+  updates: CapabilityInputMap['organizer.node.update']['updates'],
+): CapabilityInputMap['organizer.node.update']['updates'] {
+  const normalized: CapabilityInputMap['organizer.node.update']['updates'] = {
+    ...updates,
+    extraFields: updates.extraFields ? { ...updates.extraFields } : undefined,
+  }
+
+  if (existing.type === 'epic' && normalized.status !== undefined) {
+    // Epic status is derived from descendant task states; ignore manual edits.
+    delete normalized.status
+  }
+
+  const nextRecordKind = typeof normalized.extraFields?.record_kind === 'string'
+    ? normalized.extraFields.record_kind
+    : existing.recordKind
+  const taskNode = nextRecordKind === 'task' || isTaskLikeNode(existing)
+
+  const rawTaskStatus = typeof normalized.extraFields?.task_status === 'string'
+    ? normalized.extraFields.task_status
+    : undefined
+  const normalizedTaskStatus = normalizeTaskStatus(rawTaskStatus)
+
+  if (normalizedTaskStatus) {
+    normalized.extraFields = {
+      ...(normalized.extraFields ?? {}),
+      record_kind: nextRecordKind ?? 'task',
+      task_status: normalizedTaskStatus,
+    }
+    normalized.status = nodeStatusFromTaskStatus(normalizedTaskStatus)
+    return normalized
+  }
+
+  if (taskNode && normalized.status) {
+    normalized.extraFields = {
+      ...(normalized.extraFields ?? {}),
+      record_kind: nextRecordKind ?? 'task',
+      task_status: taskStatusFromNodeStatus(normalized.status),
+    }
+  }
+
+  return normalized
+}
+
+async function applyEpicStatusPolicyForAffectedNodes(params: {
+  changedNodes: NodeRecord[]
+  changedParentKeys?: Array<string | null | undefined>
+  fs?: VaultFS
+}): Promise<void> {
+  const allNodes = await listAllYamlNodes()
+  if (allNodes.length === 0) return
+
+  const nodesByKey = new Map(allNodes.map(node => [node.key, node]))
+  const childrenByParent = new Map<string, NodeRecord[]>()
+  for (const node of allNodes) {
+    if (!node.parent) continue
+    const siblings = childrenByParent.get(node.parent) ?? []
+    siblings.push(node)
+    childrenByParent.set(node.parent, siblings)
+  }
+
+  const candidateEpicKeys = new Set<string>()
+
+  const visitAncestors = (startParentKey: string | null | undefined) => {
+    let cursor = startParentKey ?? undefined
+    const seen = new Set<string>()
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor)
+      const node = nodesByKey.get(cursor)
+      if (!node) break
+      if (node.type === 'epic') candidateEpicKeys.add(node.key)
+      cursor = node.parent
+    }
+  }
+
+  for (const node of params.changedNodes) {
+    if (node.type === 'epic') candidateEpicKeys.add(node.key)
+    visitAncestors(node.parent)
+  }
+  for (const parentKey of params.changedParentKeys ?? []) {
+    visitAncestors(parentKey)
+  }
+
+  if (candidateEpicKeys.size === 0) return
+
+  for (const epicKey of candidateEpicKeys) {
+    const epic = nodesByKey.get(epicKey)
+    if (!epic || epic.type !== 'epic') continue
+    const taskStatuses = collectDescendantTaskStatuses(epic.key, childrenByParent)
+    const derivedStatus = deriveEpicStatusFromTaskStatuses(taskStatuses)
+    if (!derivedStatus || derivedStatus === epic.status) continue
+    const updated = await updateYamlNode(epic.uuid, { status: derivedStatus }, params.fs)
+    nodesByKey.set(updated.key, updated)
+  }
+}
+
+function collectDescendantTaskStatuses(
+  rootKey: string,
+  childrenByParent: Map<string, NodeRecord[]>,
+): Array<string | undefined> {
+  const collected: Array<string | undefined> = []
+  const seen = new Set<string>()
+  const stack = [...(childrenByParent.get(rootKey) ?? [])]
+
+  while (stack.length > 0) {
+    const current = stack.pop()!
+    if (seen.has(current.key)) continue
+    seen.add(current.key)
+
+    if (isTaskLikeNode(current)) {
+      collected.push(current.taskStatus ?? 'in_progress')
+    }
+
+    const children = childrenByParent.get(current.key)
+    if (!children || children.length === 0) continue
+    for (const child of children) stack.push(child)
+  }
+
+  return collected
+}
+
 function assertValidRecordKind(recordKind: unknown): void {
   if (recordKind === undefined || recordKind === null || recordKind === '') return
   if (typeof recordKind !== 'string') {
@@ -774,9 +964,9 @@ function assertValidRecordKind(recordKind: unknown): void {
   }
 }
 
-function assertTaskNode(node: { recordKind?: string }): void {
-  if (node.recordKind !== 'task') {
-    throw new Error('Node is not a task record (record_kind=task required).')
+function assertTaskNode(node: { recordKind?: string; taskStatus?: string }): void {
+  if (!(node.recordKind === 'task' || !!normalizeTaskStatus(node.taskStatus))) {
+    throw new Error('Node is not a task record (record_kind=task or task_status required).')
   }
 }
 

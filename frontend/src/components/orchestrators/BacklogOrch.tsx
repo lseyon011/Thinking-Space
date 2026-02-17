@@ -15,7 +15,7 @@ import { THINKING_ORGANIZER_DIR } from '@/services/lego_blocks/projectStorageBlo
 import {
   invokeCapabilityOrThrow,
 } from '@/services/orchestrators/capabilityRouterOrch'
-import { smartSync } from '@/services/orchestrators/vaultSyncOrch'
+import { getLastSyncTimestamp, smartSync } from '@/services/orchestrators/vaultSyncOrch'
 import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
 import {
   STORAGE_KEYS,
@@ -37,6 +37,13 @@ function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
   if (typeof value === 'string' && value.trim()) return value
   return fallback
+}
+
+function formatSyncTime(timestampSeconds: number): string {
+  if (!timestampSeconds) return 'never'
+  const date = new Date(timestampSeconds * 1000)
+  if (Number.isNaN(date.getTime())) return 'unknown'
+  return date.toLocaleString()
 }
 
 function normalizePath(value: string): string {
@@ -71,6 +78,8 @@ export default function BacklogOrch() {
   const [selectedFrontmatter, setSelectedFrontmatter] = useState<YAMLFrontmatter | null>(null)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [lastSyncedAt, setLastSyncedAt] = useState<number>(() => getLastSyncTimestamp())
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -90,33 +99,46 @@ export default function BacklogOrch() {
   const [destinationPath, setDestinationPath] = useState(() => destinationSegments.join('/'))
   const [creatingProject, setCreatingProject] = useState(false)
 
-  const loadPrograms = useCallback(async () => {
+  const loadPrograms = useCallback(async (syncVault = false): Promise<boolean> => {
     setLoading(true)
     setError(null)
     try {
-      // Refresh cache from vault so external file edits are reflected in UI status/parents.
-      await smartSync()
+      if (syncVault) {
+        setSyncing(true)
+        await smartSync()
+        setLastSyncedAt(getLastSyncTimestamp())
+      }
       const { nodes: roots } = await invokeCapabilityOrThrow({
         capability: 'organizer.nodes.list_roots',
         input: { typeFilter: 'program' },
         actor: BACKLOG_ACTOR,
       })
       setPrograms(roots.sort((a, b) => a.title.localeCompare(b.title)))
+      return true
     } catch (err) {
       setError(errorMessage(err, 'Failed to load programs'))
+      return false
     } finally {
+      setSyncing(false)
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    void loadPrograms()
+    void loadPrograms(true)
   }, [loadPrograms])
 
   useEffect(() => {
-    const onFocus = () => { void loadPrograms() }
+    const onFocus = () => { void loadPrograms(false) }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
+  }, [loadPrograms])
+
+  const syncVaultNow = useCallback(async () => {
+    setMessage(null)
+    setError(null)
+    const ok = await loadPrograms(true)
+    if (ok) setMessage('Vault synced and organizer cache refreshed.')
   }, [loadPrograms])
 
   useEffect(() => {
@@ -506,12 +528,19 @@ export default function BacklogOrch() {
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="outline" onClick={() => { void syncVaultNow() }} disabled={working || syncing}>
+          {syncing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+          Sync Vault Now
+        </Button>
         <Button size="sm" variant="outline" onClick={() => { void exportToExcalidraw() }} disabled={working}>
           <Download className="mr-1 h-3.5 w-3.5" />
           Export Excalidraw
         </Button>
-        {working && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+        <div className="text-xs text-muted-foreground">
+          Last synced: <span className="font-medium text-foreground">{formatSyncTime(lastSyncedAt)}</span>
+        </div>
+        {(working || syncing) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
       </div>
 
       {loading ? (

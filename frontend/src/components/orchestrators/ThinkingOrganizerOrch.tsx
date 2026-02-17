@@ -14,10 +14,11 @@ import {
 } from '@/services/lego_blocks/storageKeyBlock'
 import BacklogOrch from '@/components/orchestrators/BacklogOrch'
 import LinkingOrch from '@/components/orchestrators/LinkingOrch'
+import OrganizerIntegrityOrch from '@/components/orchestrators/OrganizerIntegrityOrch'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import { useEffect } from 'react'
 
-type TabMode = 'backlog' | 'view' | 'link'
+type TabMode = 'backlog' | 'view' | 'link' | 'integrity'
 
 function nodeIcon(type: NodeType) {
   if (type === 'program') return FolderTree
@@ -39,7 +40,7 @@ const VIEW_ACTOR: CapabilityActor = {
 function usePersistentTab(): [TabMode, (value: TabMode) => void] {
   const [tab, setTab] = useState<TabMode>(() => {
     const saved = getStorageItem(STORAGE_KEYS.thinkingOrganizerTab)
-    if (saved === 'view' || saved === 'link') return saved
+    if (saved === 'view' || saved === 'link' || saved === 'integrity') return saved
     return 'backlog'
   })
 
@@ -288,11 +289,19 @@ export default function ThinkingOrganizerOrch() {
         >
           Link
         </Button>
+        <Button
+          variant={tab === 'integrity' ? 'default' : 'secondary'}
+          size="sm"
+          onClick={() => setTab('integrity')}
+        >
+          Integrity
+        </Button>
       </div>
 
       {tab === 'backlog' && <BacklogOrch />}
       {tab === 'view' && <ViewTab />}
       {tab === 'link' && <LinkingOrch />}
+      {tab === 'integrity' && <OrganizerIntegrityOrch />}
     </div>
   )
 }

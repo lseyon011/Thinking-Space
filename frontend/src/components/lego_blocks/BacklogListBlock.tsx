@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Folder,
   FolderTree,
+  Info,
   Layers,
   Lightbulb,
   Loader2,
@@ -155,6 +156,10 @@ function nodeDisplayTitle(node: NodeRecord): string {
   return `${ticket} - ${title}`
 }
 
+function isTaskNode(node: NodeRecord): boolean {
+  return node.recordKind === 'task' || !!node.taskStatus
+}
+
 export default function BacklogListBlock({
   programs,
   loadEpics,
@@ -172,6 +177,7 @@ export default function BacklogListBlock({
   const [busyCreate, setBusyCreate] = useState<Record<string, boolean>>({})
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
   const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null)
+  const [groupingInfoOpenByNode, setGroupingInfoOpenByNode] = useState<Record<string, boolean>>({})
   const [localError, setLocalError] = useState<string | null>(null)
 
   const ensureProgramLoaded = useCallback(async (program: NodeRecord) => {
@@ -388,7 +394,13 @@ export default function BacklogListBlock({
     )
   }, [busyCreate, createUnder, draftTypeByKey, drafts, readOnly, setDraft])
 
-  const renderNodeBranch = useCallback((node: NodeRecord, depth: number, colorIndex: number) => {
+  const renderNodeBranch = useCallback((
+    node: NodeRecord,
+    depth: number,
+    colorIndex: number,
+    parentNode: NodeRecord | null,
+    epicContext: NodeRecord | null,
+  ) => {
     const Icon = iconForNodeType(node.type)
     const isExpanded = !!expandedNodes[node.uuid]
     const childState = childrenByNode[node.uuid]
@@ -399,6 +411,10 @@ export default function BacklogListBlock({
     const iconColorClass = node.type === 'epic' && depth === 0
       ? (EPIC_ICON_COLOR_BY_BORDER[borderColorClass] ?? iconColorForNodeType(node.type))
       : iconColorForNodeType(node.type)
+
+    const effectiveEpicContext = node.type === 'epic' ? node : epicContext
+    const canShowGroupingInfo = isTaskNode(node) && !!effectiveEpicContext && !!parentNode
+    const groupingInfoOpen = !!groupingInfoOpenByNode[node.uuid]
 
     return (
       <div key={node.uuid} className="border-b border-border/70 last:border-b-0">
@@ -432,6 +448,25 @@ export default function BacklogListBlock({
           >
             {nodeDisplayTitle(node)}
           </button>
+          {canShowGroupingInfo && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setGroupingInfoOpenByNode(prev => ({ ...prev, [node.uuid]: !prev[node.uuid] }))
+              }}
+              className={cn(
+                'rounded-md p-1 transition-colors',
+                groupingInfoOpen
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+              title="Why this task is grouped here"
+            >
+              <Info className="h-3.5 w-3.5" />
+            </button>
+          )}
           {childCount !== null && (
             <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
               {childCount}
@@ -440,6 +475,13 @@ export default function BacklogListBlock({
           <StatusBadge status={node.status} />
           <PriorityDot priority={node.priority} />
         </div>
+        {canShowGroupingInfo && groupingInfoOpen && (
+          <div className="border-t border-border/60 bg-muted/25 px-3 py-1.5 text-[11px] text-muted-foreground" style={{ paddingLeft: `${36 + (depth * 16)}px` }}>
+            Grouped under epic: <span className="text-foreground">{nodeDisplayTitle(effectiveEpicContext!)}</span>
+            {' · '}
+            Parent: <span className="text-foreground">{nodeDisplayTitle(parentNode!)}</span>
+          </div>
+        )}
 
         {isExpanded && (
           <div className="bg-background/95">
@@ -454,7 +496,13 @@ export default function BacklogListBlock({
             )}
             {childState?.loaded && (
               <div>
-                {childState.nodes.map((child, idx) => renderNodeBranch(child, depth + 1, idx))}
+                {childState.nodes.map((child, idx) => renderNodeBranch(
+                  child,
+                  depth + 1,
+                  idx,
+                  node,
+                  effectiveEpicContext,
+                ))}
                 {childState.nodes.length === 0 && (
                   <div className="border-t border-border/70 px-3 py-2 text-xs text-muted-foreground">No items yet.</div>
                 )}
@@ -465,7 +513,7 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [childrenByNode, dragOverNodeId, expandedNodes, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, makeDragStart, onSelectNode, renderInlineCreate, selectedNodeId, toggleNode])
+  }, [childrenByNode, dragOverNodeId, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, makeDragStart, onSelectNode, renderInlineCreate, selectedNodeId, toggleNode])
 
   const renderProgramSection = useCallback((program: NodeRecord) => {
     void ensureProgramLoaded(program)
@@ -506,7 +554,7 @@ export default function BacklogListBlock({
           )}
           {childState?.loaded && (
             <>
-              {childState.nodes.map((node, idx) => renderNodeBranch(node, 0, idx))}
+              {childState.nodes.map((node, idx) => renderNodeBranch(node, 0, idx, program, node.type === 'epic' ? node : null))}
               {childState.nodes.length === 0 && (
                 <div className="px-3 py-2 text-xs text-muted-foreground">No items yet.</div>
               )}
