@@ -48,10 +48,12 @@ class ChatResponse(BaseModel):
     input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
+    thread_id: str | None = None
 
 
 class CodexCliChatRequest(BaseModel):
     messages: list[ChatMessageIn]
+    thread_id: str | None = None
 
 
 @router.get("/providers", response_model=list[ProviderStatus])
@@ -84,6 +86,7 @@ async def chat_codex_cli(req: CodexCliChatRequest):
         result = send_chat_orch(
             "codex-cli",
             [m.model_dump() for m in req.messages],
+            req.thread_id,
         )
         return result
     except RuntimeError as e:

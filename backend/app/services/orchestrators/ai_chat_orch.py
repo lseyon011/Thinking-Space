@@ -16,14 +16,14 @@ from app.services.lego_blocks.ai_credential_block import (
 )
 
 
-def send_chat_orch(provider: str, messages: list[dict]) -> dict:
+def send_chat_orch(provider: str, messages: list[dict], thread_id: str | None = None) -> dict:
     """Route a chat request to the appropriate provider block."""
     if provider == "claude":
         return chat_claude_block(messages)
     elif provider == "openai-codex":
         return chat_codex_block(messages)
     elif provider == "codex-cli":
-        return chat_codex_cli_block(messages)
+        return chat_codex_cli_block(messages, thread_id=thread_id)
     elif provider == "azure-gpt":
         return chat_azure_block(messages)
     else:

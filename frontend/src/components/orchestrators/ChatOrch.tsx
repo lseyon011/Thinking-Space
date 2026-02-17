@@ -17,6 +17,7 @@ interface ChatTimelineMessage extends ChatMessage {
   input_tokens?: number
   output_tokens?: number
   total_tokens?: number
+  thread_id?: string
 }
 
 function formatTimestamp(value?: string): string | null {
@@ -36,6 +37,16 @@ export default function ChatOrch() {
   const [providersLoading, setProvidersLoading] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const latestCodexCliThreadId = (): string | undefined => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const msg = messages[i]
+      if (msg.provider === 'codex-cli' && typeof msg.thread_id === 'string' && msg.thread_id.trim()) {
+        return msg.thread_id.trim()
+      }
+    }
+    return undefined
+  }
 
   useEffect(() => {
     listProvidersBlock()
@@ -69,7 +80,13 @@ export default function ChatOrch() {
 
     try {
       const allMessages = [...messages, userMsg]
-      const response: ChatResponse = await sendChatBlock(selectedProvider, allMessages)
+      const response: ChatResponse = await sendChatBlock(
+        selectedProvider,
+        allMessages,
+        selectedProvider === 'codex-cli'
+          ? { threadId: latestCodexCliThreadId() }
+          : undefined,
+      )
       setMessages((prev) => [...prev, {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -82,6 +99,7 @@ export default function ChatOrch() {
         input_tokens: response.input_tokens,
         output_tokens: response.output_tokens,
         total_tokens: response.total_tokens,
+        thread_id: response.thread_id,
       }])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to get response')

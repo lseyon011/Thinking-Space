@@ -33,6 +33,11 @@ export interface ChatResponse {
   input_tokens?: number
   output_tokens?: number
   total_tokens?: number
+  thread_id?: string
+}
+
+export interface ChatSendOptions {
+  threadId?: string
 }
 
 // ── Electron: direct API calls ──
@@ -153,11 +158,14 @@ async function sendCodexDirectBlock(messages: ChatMessage[]): Promise<ChatRespon
   }
 }
 
-async function sendCodexCliViaBackendBlock(messages: ChatMessage[]): Promise<ChatResponse> {
+async function sendCodexCliViaBackendBlock(
+  messages: ChatMessage[],
+  options?: ChatSendOptions,
+): Promise<ChatResponse> {
   const res = await fetch('/api/ai/chat/codex-cli', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, thread_id: options?.threadId || null }),
   })
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
@@ -184,8 +192,12 @@ async function sendViaBackendBlock(provider: AiProvider, messages: ChatMessage[]
 
 // ── Public API ──
 
-export async function sendChatBlock(provider: AiProvider, messages: ChatMessage[]): Promise<ChatResponse> {
-  if (provider === 'codex-cli') return sendCodexCliViaBackendBlock(messages)
+export async function sendChatBlock(
+  provider: AiProvider,
+  messages: ChatMessage[],
+  options?: ChatSendOptions,
+): Promise<ChatResponse> {
+  if (provider === 'codex-cli') return sendCodexCliViaBackendBlock(messages, options)
   if (isElectron()) {
     if (provider === 'claude') return sendClaudeDirectBlock(messages)
     if (provider === 'openai-codex') return sendCodexDirectBlock(messages)

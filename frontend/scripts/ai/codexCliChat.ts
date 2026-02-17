@@ -11,6 +11,8 @@ interface RunnerPayload {
   model?: string
   timeoutMs?: number
   workingDirectory?: string
+  threadId?: string
+  storageDirectory?: string
 }
 
 interface ParsedOutput {
@@ -46,6 +48,16 @@ function buildPrompt(messages: ChatMessage[]): string {
     transcript,
     'Assistant:',
   ].join('\n\n')
+}
+
+function buildResumePrompt(messages: ChatMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]
+    if (message?.role === 'user' && typeof message.content === 'string' && message.content.trim()) {
+      return message.content.trim()
+    }
+  }
+  return messages[messages.length - 1]?.content?.trim() || ''
 }
 
 function parseNumber(value: unknown): number | undefined {
@@ -167,28 +179,49 @@ async function run(): Promise<void> {
   }
 
   const model = typeof payload.model === 'string' && payload.model.trim() ? payload.model.trim() : DEFAULT_MODEL
-  const prompt = buildPrompt(messages)
+  const threadId = typeof payload.threadId === 'string' && payload.threadId.trim()
+    ? payload.threadId.trim()
+    : undefined
+  const prompt = threadId ? buildResumePrompt(messages) : buildPrompt(messages)
+  if (!prompt) {
+    throw new Error('Unable to determine prompt text for Codex CLI')
+  }
   const timeoutMs = typeof payload.timeoutMs === 'number' && payload.timeoutMs > 0
     ? Math.floor(payload.timeoutMs)
     : DEFAULT_TIMEOUT_MS
+  const storageDirectory = typeof payload.storageDirectory === 'string' && payload.storageDirectory.trim()
+    ? payload.storageDirectory.trim()
+    : undefined
 
-  const args = [
-    'exec',
-    '--json',
-    '--color',
-    'never',
-    '--sandbox',
-    'read-only',
-    '--skip-git-repo-check',
-    '--model',
-    model,
-    prompt,
-  ]
+  const args = threadId
+    ? [
+      'exec',
+      'resume',
+      '--json',
+      '--skip-git-repo-check',
+      '--model',
+      model,
+      threadId,
+      prompt,
+    ]
+    : [
+      'exec',
+      '--json',
+      '--color',
+      'never',
+      '--sandbox',
+      'read-only',
+      '--skip-git-repo-check',
+      '--model',
+      model,
+      prompt,
+    ]
 
   const child = spawn('codex', args, {
-    cwd: typeof payload.workingDirectory === 'string' && payload.workingDirectory.trim()
-      ? payload.workingDirectory.trim()
-      : process.cwd(),
+    cwd: storageDirectory
+      || (typeof payload.workingDirectory === 'string' && payload.workingDirectory.trim()
+        ? payload.workingDirectory.trim()
+        : process.cwd()),
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe'],
   })

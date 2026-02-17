@@ -1,5 +1,5 @@
 """
-AI chat blocks — send messages to Claude, OpenAI Codex, or Azure GPT.
+AI chat blocks — send messages to Claude, OpenAI Codex, Codex CLI, or Azure GPT.
 
 Each block handles credential sourcing, client construction, and API call.
 """
@@ -27,6 +27,7 @@ from .ai_credential_block import (
 CLAUDE_MAX_OUTPUT_TOKENS = 64000
 CODEX_CLI_MODEL = "gpt-5.3-codex"
 CODEX_CLI_RUNNER_TIMEOUT_MS = 180000
+AI_WORKSPACE_DIR_NAME = "ai-thinking-space"
 
 
 # ── Types ──
@@ -62,6 +63,29 @@ def _vite_node_exec_block(frontend_root: Path) -> Path:
 
 def _codex_cli_runner_script_block(frontend_root: Path) -> Path:
     return frontend_root / "scripts" / "ai" / "codexCliChat.ts"
+
+
+def _vault_root_block() -> Path:
+    raw = (os.getenv("LTM_VAULT_ROOT") or os.getenv("LTM_PILOT_VAULT_ROOT") or "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve(strict=False)
+    return _repo_root_block()
+
+
+def _ai_workspace_root_block() -> Path:
+    raw = (os.getenv("LTM_AI_WORKSPACE_ROOT") or "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve(strict=False)
+    return (_vault_root_block() / AI_WORKSPACE_DIR_NAME).resolve(strict=False)
+
+
+def _ensure_ai_workspace_dirs_block() -> Path:
+    root = _ai_workspace_root_block()
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "chats").mkdir(parents=True, exist_ok=True)
+    (root / "memory").mkdir(parents=True, exist_ok=True)
+    (root / "sessions").mkdir(parents=True, exist_ok=True)
+    return root
 
 
 def is_codex_cli_available_block() -> bool:
@@ -299,7 +323,7 @@ def chat_codex_block(messages: list[dict]) -> dict:
     }
 
 
-def chat_codex_cli_block(messages: list[dict]) -> dict:
+def chat_codex_cli_block(messages: list[dict], thread_id: str | None = None) -> dict:
     """Send messages to Codex CLI via frontend TypeScript runner."""
     frontend_root = _frontend_root_block()
     vite_node_exec = _vite_node_exec_block(frontend_root)
@@ -313,11 +337,14 @@ def chat_codex_cli_block(messages: list[dict]) -> dict:
 
     requested_at = datetime.now(timezone.utc).isoformat()
     started = time.perf_counter()
+    ai_workspace_root = _ensure_ai_workspace_dirs_block()
     payload = {
         "messages": messages,
         "model": CODEX_CLI_MODEL,
         "timeoutMs": CODEX_CLI_RUNNER_TIMEOUT_MS,
         "workingDirectory": str(_repo_root_block()),
+        "storageDirectory": str(ai_workspace_root),
+        "threadId": thread_id.strip() if isinstance(thread_id, str) and thread_id.strip() else None,
     }
 
     try:
@@ -378,6 +405,11 @@ def chat_codex_cli_block(messages: list[dict]) -> dict:
         if isinstance(parsed, dict) and isinstance(parsed.get("total_tokens"), int)
         else None
     )
+    response_thread_id = (
+        parsed.get("thread_id")
+        if isinstance(parsed, dict) and isinstance(parsed.get("thread_id"), str) and parsed.get("thread_id").strip()
+        else (thread_id.strip() if isinstance(thread_id, str) and thread_id.strip() else None)
+    )
 
     return {
         "role": "assistant",
@@ -390,6 +422,7 @@ def chat_codex_cli_block(messages: list[dict]) -> dict:
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": total_tokens,
+        "thread_id": response_thread_id,
     }
 
 
