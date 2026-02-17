@@ -182,7 +182,6 @@ function seedBaseHierarchy(fs: FakeVaultFS) {
     parent_uuid: program.frontmatter.uuid,
     parent_type: 'program',
   })
-  program.frontmatter.children = [epic.frontmatter.key]
 
   fs.seedFile('programs/program-personal-growth.md', stringifyNote(program))
   fs.seedFile('epics/epic-build-thinking-space.md', stringifyNote(epic))
@@ -224,9 +223,6 @@ describe('thinkingOrganizerDropOrch', () => {
     expect(droppedNode).toBeDefined()
     expect(droppedNode!.parent).toBe(epic.frontmatter.key)
 
-    const epicAfter = parseNote(await fs.read('epics/epic-build-thinking-space.md'))
-    expect(epicAfter).not.toBeNull()
-    expect(epicAfter!.frontmatter.children).toContain(dropped!.frontmatter.key)
   })
 
   it('maps only markdown files when dropping a folder', async () => {
@@ -279,9 +275,6 @@ describe('thinkingOrganizerDropOrch', () => {
       parent_type: 'idea',
     })
 
-    program.frontmatter.children = [epic.frontmatter.key]
-    idea.frontmatter.children = [thought.frontmatter.key]
-
     fs.seedFile('ideas/idea-hierarchy-ui.md', stringifyNote(idea))
     fs.seedFile('thoughts/thought-dnd-notes.md', stringifyNote(thought))
 
@@ -309,8 +302,5 @@ describe('thinkingOrganizerDropOrch', () => {
     expect(movedThought!.frontmatter.uuid).toBe(thought.frontmatter.uuid)
     expect(movedThought!.frontmatter.parent).toBe(epic.frontmatter.key)
 
-    const ideaAfter = parseNote(await fs.read('ideas/idea-hierarchy-ui.md'))
-    expect(ideaAfter).not.toBeNull()
-    expect(ideaAfter!.frontmatter.children ?? []).not.toContain(thought.frontmatter.key)
   })
 })

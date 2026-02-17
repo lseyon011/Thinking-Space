@@ -23,7 +23,7 @@ describe('yamlNoteBlock integration (real files)', () => {
     expect(note!.frontmatter.title).toBe('Personal Growth')
     expect(note!.frontmatter.type).toBe('program')
     expect(note!.frontmatter.level).toBe(0)
-    expect(note!.frontmatter.children).toEqual(['build-thinking-space', 'f9-investment-system'])
+    expect((note!.frontmatter as any).children).toBeUndefined()
     expect(note!.frontmatter.tags).toEqual(['life', 'growth'])
     expect(note!.frontmatter.status).toBe('active')
     expect(note!.frontmatter.priority).toBe('high')
@@ -45,7 +45,7 @@ describe('yamlNoteBlock integration (real files)', () => {
     expect(note!.frontmatter.parent_type).toBe('program')
     expect(note!.frontmatter.progress).toBe(0.15)
     expect(note!.frontmatter.ai_summary).toBe('Core app to organize hierarchical thinking with ambient AI')
-    expect(note!.frontmatter.children).toContain('yaml-architecture')
+    expect((note!.frontmatter as any).children).toBeUndefined()
 
     const errors = validate(note!.frontmatter)
     expect(errors).toEqual([])

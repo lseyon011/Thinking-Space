@@ -119,11 +119,6 @@ export async function createYamlNode(params: {
     }
   }
 
-  // Update parent's children list
-  if (params.parentKey) {
-    await addChildToParent(params.parentKey, note.frontmatter.key, params.type, fs)
-  }
-
   // Determine file path — use project storage when a project root is known.
   const filename = suggestFilename(note.frontmatter)
   let folder: string
@@ -253,11 +248,6 @@ export async function moveYamlNode(
   const note = parseNote(content)
   if (!note) throw new Error(`Failed to parse YAML for: ${record.filePath}`)
 
-  // Remove from old parent's children list
-  if (record.parent) {
-    await removeChildFromParent(record.parent, record.key, vaultFs)
-  }
-
   // Update node's parent fields
   if (newParentKey) {
     const parentRecord = await getNodeByKey(newParentKey)
@@ -266,9 +256,6 @@ export async function moveYamlNode(
     note.frontmatter.parent = parentRecord.key
     note.frontmatter.parent_uuid = parentRecord.uuid
     note.frontmatter.parent_type = parentRecord.type
-
-    // Add to new parent's children list
-    await addChildToParent(parentRecord.key, record.key, record.type, vaultFs)
 
     const projectRoot = await resolveProjectRoot({
       parentKey: parentRecord.key,
@@ -297,24 +284,14 @@ export async function moveYamlNode(
 
 /**
  * Delete a node: removes YAML file from vault + removes from IndexedDB.
- * Also removes this node from its parent's children list.
  */
 export async function deleteYamlNode(
   uuid: string,
   fs?: VaultFS,
 ): Promise<void> {
-  const vaultFs = fs ?? getVaultFS()
+  void fs
   const record = await getNodeByUuid(uuid)
   if (!record) return // already gone
-
-  // Remove from parent's children list
-  if (record.parent) {
-    try {
-      await removeChildFromParent(record.parent, record.key, vaultFs)
-    } catch {
-      // parent may not exist anymore
-    }
-  }
 
   // Delete YAML file (we write empty to mark deletion, then the file is gone)
   try {
@@ -623,8 +600,6 @@ function applyExtraFrontmatterFields(
     'parent',
     'parent_uuid',
     'parent_type',
-    'children',
-    'child_types',
     'tags',
     'status',
     'priority',
@@ -648,63 +623,5 @@ function applyExtraFrontmatterFields(
       }
     }
     frontmatter[key] = value
-  }
-}
-
-async function addChildToParent(
-  parentKey: string,
-  childKey: string,
-  childType: NodeType,
-  fs: VaultFS,
-): Promise<void> {
-  const parentRecord = await getNodeByKey(parentKey)
-  if (!parentRecord) return
-
-  try {
-    const content = await fs.read(parentRecord.filePath)
-    const note = parseNote(content)
-    if (!note) return
-
-    const children = note.frontmatter.children ?? []
-    if (!children.includes(childKey)) {
-      note.frontmatter.children = [...children, childKey]
-    }
-
-    const childTypes = note.frontmatter.child_types ?? []
-    if (!childTypes.includes(childType)) {
-      note.frontmatter.child_types = [...childTypes, childType]
-    }
-
-    note.frontmatter.updated_at = new Date().toISOString()
-    await fs.write(parentRecord.filePath, stringifyNote(note))
-    await syncSingleFile(parentRecord.filePath, fs)
-  } catch {
-    // non-fatal: parent file may not exist or parse
-  }
-}
-
-async function removeChildFromParent(
-  parentKey: string,
-  childKey: string,
-  fs: VaultFS,
-): Promise<void> {
-  const parentRecord = await getNodeByKey(parentKey)
-  if (!parentRecord) return
-
-  try {
-    const content = await fs.read(parentRecord.filePath)
-    const note = parseNote(content)
-    if (!note) return
-
-    const children = note.frontmatter.children ?? []
-    const filtered = children.filter(k => k !== childKey)
-    if (filtered.length === children.length) return // nothing changed
-
-    note.frontmatter.children = filtered.length > 0 ? filtered : undefined
-    note.frontmatter.updated_at = new Date().toISOString()
-    await fs.write(parentRecord.filePath, stringifyNote(note))
-    await syncSingleFile(parentRecord.filePath, fs)
-  } catch {
-    // non-fatal
   }
 }

@@ -42,12 +42,6 @@ parent:       "personal-growth"                          # parent's key (NOT pat
 parent_uuid:  "a1b2c3d4-..."                             # optional: parent's UUID
 parent_type:  "program"                                  # denormalized for speed
 
-# For containers only
-children:
-  - "ai-extensibility-ideas"
-  - "claude-handoff-gaps"
-child_types:  ["idea", "thought_bucket"]                 # allowed child types (validation)
-
 # DISCOVERY & STATUS
 tags:         ["project/app", "ai/pkm", "2026-q1"]
 categories:   ["active-projects"]                        # optional multi-category
@@ -122,7 +116,7 @@ Examples: `epic-build-thinking-space.md`, `thought-ollama-in-browser.md`
 ## In-Browser Fast Access Layer
 
 - **IndexedDB** via Dexie.js
-  - Caches parsed frontmatter + computed hierarchy (reverse children lookup)
+  - Caches parsed frontmatter + hierarchy indexes (parent-key lookups)
   - Stores: nodes table, full-text excerpts, optional embeddings for semantic "related"
   - Incremental sync: on vault open / file change, scan updated .md files only
   - Source of truth remains YAML — IndexedDB is pure cache (can be rebuilt anytime)
@@ -131,7 +125,7 @@ Examples: `epic-build-thinking-space.md`, `thought-ollama-in-browser.md`
 
 - **Primary**: Tree / outline view (ThinkingOrganizer tab)
   - Derived from IndexedDB, falls back to YAML scan
-  - Drag-and-drop reparenting updates `parent`, `children` in affected files
+  - Drag-and-drop reparenting updates `parent` fields in affected files
 
 - **Secondary (optional)**: Excalidraw visualization
   - "Visualize Epic" generates `.excalidraw.md` in `canvases/`
@@ -140,7 +134,7 @@ Examples: `epic-build-thinking-space.md`, `thought-ollama-in-browser.md`
 ## AI Integration
 
 - Reads YAML frontmatter + body text
-- Writes back updated YAML (create files, update parent/children, add suggestions)
+- Writes back updated YAML (create files, update parent, add suggestions)
 - Ambient actions: summarize, cleanup, suggest bucket, related thoughts, auto-reparent
 - Local-first: Ollama (Electron) or WASM LLM (web/PWA)
 

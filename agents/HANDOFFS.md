@@ -274,7 +274,7 @@
 
 ### Key Architecture Changes
 1. **Storage**: SQLite -> YAML frontmatter in .md files (source of truth) + IndexedDB cache
-2. **Hierarchy**: Mirrored folders -> metadata-driven via YAML `parent`/`children` fields
+2. **Hierarchy**: Mirrored folders -> metadata-driven via YAML `parent` fields
 3. **Backend**: Required -> Not required for core features
 4. **Implementation**: Dual Python+TS -> Single TS implementation
 5. **Phases**: Old EPIC numbering -> New phase-based progression

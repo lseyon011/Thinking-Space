@@ -17,7 +17,7 @@ Last updated: 2026-02-17
 3. **IndexedDB (Dexie.js)** as rebuildable in-browser cache for fast hierarchy queries.
 4. **No SQLite / native DB** — previous SQLite plan is superseded (ADR-004).
 5. **No backend required** for core features (hierarchy, editing, AI actions).
-6. **Folders are arbitrary** — hierarchy lives in YAML `parent`/`children` fields, not folder structure.
+6. **Folders are arbitrary** — hierarchy lives in YAML `parent` fields, not folder structure.
 7. Related suggestions MVP via lexical search in IndexedDB first.
 8. Local-only extensions first; no early remote code execution.
 9. AI local-first: Ollama (Electron) or WASM LLM (web/PWA).

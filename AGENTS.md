@@ -64,7 +64,7 @@ If sequence changes, update `README.md` first, then align `agents/TODO.md`.
 3. **IndexedDB (Dexie.js)** as rebuildable in-browser cache. NOT a source of truth.
 4. **No SQLite / native DB** — previous SQLite plan is superseded.
 5. **No backend required** for core features (hierarchy, editing, AI).
-6. **Folders are arbitrary** — hierarchy is metadata-driven via YAML `parent`/`children` fields.
+6. **Folders are arbitrary** — hierarchy is metadata-driven via YAML `parent` fields.
 7. Lexical related retrieval first via IndexedDB full-text search.
 8. Local-only extensions first; no early remote code execution.
 9. AI local-first: Ollama (Electron) or WASM LLM (web/PWA).
@@ -74,10 +74,10 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 
 ## Architecture Guardrails
 - Keep markdown files with YAML frontmatter as portable source-of-truth content.
-- Hierarchy is defined by YAML `parent`/`children`/`type`/`level` fields, NOT folder structure.
+- Hierarchy is defined by YAML `parent`/`type`/`level` fields, NOT folder structure.
 - IndexedDB is a pure cache layer — can be rebuilt from YAML files at any time.
 - Standardize markdown view/edit through one shared orchestrator (`frontend/src/components/orchestrators/MarkdownViewerOrch.tsx`); do not add page-local markdown edit modals.
-- Reparent by updating YAML `parent`/`children` fields in affected files + syncing IndexedDB.
+- Reparent by updating YAML `parent` fields in affected files + syncing IndexedDB.
 - Add conflict-safe saves for thought editing (`mtime`/hash checks).
 - Avoid destructive migrations without rollback/recovery path.
 - No backend dependency for core features.

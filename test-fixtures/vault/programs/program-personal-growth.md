@@ -4,9 +4,6 @@ key: personal-growth
 title: Personal Growth
 type: program
 level: 0
-children:
-  - build-thinking-space
-  - f9-investment-system
 tags:
   - life
   - growth

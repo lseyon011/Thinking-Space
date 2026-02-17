@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url'
 import {
   createNote,
   generateKey,
-  parseNote,
   stringifyNote,
   type NodeType,
 } from '../../src/services/lego_blocks/yamlNoteBlock'
@@ -248,10 +247,6 @@ async function createNode(
   const filePathAbs = path.join(folder, filename)
   await fs.writeFile(filePathAbs, stringifyNote(note), 'utf-8')
 
-  if (params.parent) {
-    await appendChildKey(ctx, params.parent, note.frontmatter.key)
-  }
-
   const relPath = path.relative(ctx.projectRootAbs, filePathAbs).replace(/\\/g, '/')
   const created: CreatedNode = {
     type: params.type,
@@ -261,18 +256,6 @@ async function createNode(
   }
   ctx.nodesByKey.set(created.key, created)
   return created
-}
-
-async function appendChildKey(ctx: BootstrapContext, parent: CreatedNode, childKey: string): Promise<void> {
-  const parentPath = path.join(ctx.projectRootAbs, parent.filePath)
-  const content = await fs.readFile(parentPath, 'utf-8')
-  const parsed = parseNote(content)
-  if (!parsed) return
-  const existing = parsed.frontmatter.children ?? []
-  if (!existing.includes(childKey)) existing.push(childKey)
-  parsed.frontmatter.children = existing
-  parsed.frontmatter.updated_at = new Date().toISOString()
-  await fs.writeFile(parentPath, stringifyNote(parsed), 'utf-8')
 }
 
 async function importTodoRows(ctx: BootstrapContext, parent: CreatedNode): Promise<number> {

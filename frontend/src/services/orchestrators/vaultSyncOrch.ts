@@ -268,8 +268,6 @@ const KNOWN_FRONTMATTER_KEYS = new Set<string>([
   'parent',
   'parent_uuid',
   'parent_type',
-  'children',
-  'child_types',
   'tags',
   'categories',
   'progress',

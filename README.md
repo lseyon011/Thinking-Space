@@ -120,7 +120,7 @@ These are explicitly chosen and should be treated as constraints.
 
 1. **Runtime priority**: Electron-first for early milestones.
 2. **Storage**: YAML frontmatter in Markdown files as source of truth. IndexedDB (Dexie.js) as rebuildable cache.
-3. **Hierarchy**: Metadata-driven via YAML `parent`/`children` fields. Folders are arbitrary/pragmatic (user's choice).
+3. **Hierarchy**: Metadata-driven via YAML `parent` fields. Folders are arbitrary/pragmatic (user's choice).
 4. **No backend for core features**: Core hierarchy, editing, and AI features work without backend.
 5. **No SQLite / native DB**: Removed in favor of YAML + IndexedDB.
 6. **Similarity MVP**: Lexical search first via IndexedDB full-text (no embedding dependency in first pass).
@@ -178,7 +178,7 @@ curl -s http://127.0.0.1:8000/api/capabilities/invoke \
 ### YAML Frontmatter + IndexedDB
 - **Markdown files with YAML frontmatter** are the source of truth (portable, user-owned, git-friendly)
 - **IndexedDB** (via Dexie.js) caches parsed frontmatter for fast hierarchy queries
-- **Hierarchy lives in metadata** (`parent`, `children`, `type`, `level` fields), not folder structure
+- **Hierarchy lives in metadata** (`parent`, `type`, `level` fields), not folder structure
 - **Folders are user's choice** — organize by date, domain, source, inbox/archive, whatever works
 
 Full schema: `docs/ADR-004-YAML-Architecture.md`
@@ -223,7 +223,7 @@ vault/
     thinking-space-hierarchy.excalidraw.md
   attachments/
 ```
-Folders are convenience groupings only. The app never enforces or relies on folder structure. Hierarchy is derived from YAML `parent`/`children` fields.
+Folders are convenience groupings only. The app never enforces or relies on folder structure. Hierarchy is derived from YAML `parent` fields.
 
 ## Implementation Plan (Execution Phases)
 

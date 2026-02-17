@@ -57,7 +57,7 @@ Current order:
 3. **IndexedDB (Dexie.js)** as rebuildable in-browser cache for fast hierarchy queries.
 4. **No SQLite / native DB** — removed in favor of YAML + IndexedDB.
 5. **No backend required** for core features (hierarchy, editing, AI actions).
-6. **Folders are arbitrary** — hierarchy lives in YAML `parent`/`children` fields, not folder structure.
+6. **Folders are arbitrary** — hierarchy lives in YAML `parent` fields, not folder structure.
 7. Related retrieval starts with lexical search via IndexedDB full-text.
 8. Local-only extensions first; no early remote code execution.
 9. AI local-first: Ollama (Electron) or WASM LLM (web/PWA).

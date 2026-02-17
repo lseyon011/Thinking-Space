@@ -75,9 +75,6 @@ parent_type: "program"
 tags:
   - "ai"
   - "pkm"
-children:
-  - "child-1"
-  - "child-2"
 progress: 0.5
 priority: "high"
 created_at: "2026-01-01T00:00:00Z"
@@ -92,7 +89,6 @@ Body.
     expect(result.frontmatter.parent_uuid).toBe('parent-uuid-123')
     expect(result.frontmatter.parent_type).toBe('program')
     expect(result.frontmatter.tags).toEqual(['ai', 'pkm'])
-    expect(result.frontmatter.children).toEqual(['child-1', 'child-2'])
     expect(result.frontmatter.progress).toBe(0.5)
     expect(result.frontmatter.priority).toBe('high')
     expect(result.frontmatter.ai_summary).toBe('An AI summary')
@@ -112,6 +108,27 @@ updated_at: "2026-01-01T00:00:00Z"
 `
     const result = parseNote(content)!
     expect(result.body).toBe('')
+  })
+
+  it('strips legacy children fields from parsed frontmatter', () => {
+    const content = `---
+uuid: "legacy-1"
+key: "legacy-1"
+title: "Legacy"
+type: "epic"
+level: 1
+status: "active"
+children:
+  - "child-a"
+child_types:
+  - "idea"
+created_at: "2026-01-01T00:00:00Z"
+updated_at: "2026-01-01T00:00:00Z"
+---
+`
+    const result = parseNote(content)!
+    expect((result.frontmatter as any).children).toBeUndefined()
+    expect((result.frontmatter as any).child_types).toBeUndefined()
   })
 
   it('normalizes orchestration fields for tasks and runs', () => {
@@ -302,7 +319,6 @@ describe('roundtrip (parse -> stringify -> parse)', () => {
         parent: 'parent-prog',
         parent_uuid: 'parent-uuid',
         parent_type: 'program',
-        children: ['child-a', 'child-b'],
         tags: ['test', 'roundtrip'],
         progress: 0.75,
         status: 'active',
@@ -325,7 +341,6 @@ describe('roundtrip (parse -> stringify -> parse)', () => {
     expect(reparsed.frontmatter.parent).toBe(original.frontmatter.parent)
     expect(reparsed.frontmatter.parent_uuid).toBe(original.frontmatter.parent_uuid)
     expect(reparsed.frontmatter.parent_type).toBe(original.frontmatter.parent_type)
-    expect(reparsed.frontmatter.children).toEqual(original.frontmatter.children)
     expect(reparsed.frontmatter.tags).toEqual(original.frontmatter.tags)
     expect(reparsed.frontmatter.progress).toBe(original.frontmatter.progress)
     expect(reparsed.frontmatter.status).toBe(original.frontmatter.status)

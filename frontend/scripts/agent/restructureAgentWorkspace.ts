@@ -92,15 +92,6 @@ function extractTaskIds(text: string): string[] {
   return Array.from(new Set(matches))
 }
 
-function reconcileChildren(existing: unknown, discovered: string[]): string[] | undefined {
-  const existingList = toArray(existing)
-  const discoveredSet = new Set(discovered)
-  const kept = existingList.filter((key) => discoveredSet.has(key))
-  const append = discovered.filter((key) => !kept.includes(key))
-  const result = [...kept, ...append]
-  return result.length > 0 ? result : undefined
-}
-
 async function listMarkdownFiles(dir: string): Promise<string[]> {
   let entries: string[] = []
   try {
@@ -406,47 +397,21 @@ async function main(): Promise<void> {
     }
   }
 
-  // Rebuild children + child_types from actual parent pointers.
-  const childrenByParent = new Map<string, string[]>()
-  const typeByKey = new Map<string, string>()
+  // Strip legacy forward-link hierarchy fields; parent is the only source of truth.
   for (const node of nodes) {
     if (node.deleted) continue
-    const key = String(node.note.frontmatter.key || '').trim()
-    if (!key) continue
-    typeByKey.set(key, String(node.note.frontmatter.type || ''))
-    const parent = String(node.note.frontmatter.parent || '').trim()
-    if (!parent) continue
-    const list = childrenByParent.get(parent) || []
-    list.push(key)
-    childrenByParent.set(parent, list)
-  }
-
-  for (const node of nodes) {
-    if (node.deleted) continue
-    const fm = node.note.frontmatter
-    const key = String(fm.key || '').trim()
-    if (!key) continue
-    const discoveredKids = childrenByParent.get(key) || []
-    const nextChildren = reconcileChildren(fm.children, discoveredKids)
-    const currentChildren = toArray(fm.children)
-    const changedChildren =
-      currentChildren.length !== (nextChildren?.length || 0) ||
-      currentChildren.some((item, idx) => item !== (nextChildren || [])[idx])
-    if (changedChildren) {
-      if (nextChildren) fm.children = nextChildren
-      else delete fm.children
-      const childTypes = nextChildren
-        ? Array.from(
-            new Set(
-              nextChildren
-                .map((childKey) => typeByKey.get(childKey))
-                .filter((value): value is string => Boolean(value)),
-            ),
-          )
-        : []
-      if (childTypes.length > 0) fm.child_types = childTypes as NodeType[]
-      else delete fm.child_types
-      fm.updated_at = now
+    const fm = node.note.frontmatter as Record<string, unknown>
+    let changed = false
+    if ('children' in fm) {
+      delete fm.children
+      changed = true
+    }
+    if ('child_types' in fm) {
+      delete fm.child_types
+      changed = true
+    }
+    if (changed) {
+      node.note.frontmatter.updated_at = now
       updatedNodes += 1
     }
   }

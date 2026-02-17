@@ -84,10 +84,6 @@ export interface YAMLFrontmatter {
   parent_uuid?: string
   parent_type?: NodeType
 
-  // Container fields
-  children?: string[]
-  child_types?: NodeType[]
-
   // Discovery & status
   tags?: string[]
   categories?: string[]
@@ -313,9 +309,12 @@ export function hasFrontmatter(content: string): boolean {
 // ── Internals ──
 
 function normalizeFrontmatter(raw: Record<string, unknown>): YAMLFrontmatter {
+  const rest = { ...raw }
+  delete rest.children
+  delete rest.child_types
   const type = (raw.type as NodeType) || 'thought'
   return {
-    ...raw,
+    ...rest,
     uuid: String(raw.uuid || ''),
     key: String(raw.key || ''),
     title: String(raw.title || ''),
@@ -327,8 +326,6 @@ function normalizeFrontmatter(raw: Record<string, unknown>): YAMLFrontmatter {
     parent: raw.parent != null ? String(raw.parent) : undefined,
     parent_uuid: raw.parent_uuid != null ? String(raw.parent_uuid) : undefined,
     parent_type: raw.parent_type as NodeType | undefined,
-    children: Array.isArray(raw.children) ? raw.children.map(String) : undefined,
-    child_types: Array.isArray(raw.child_types) ? raw.child_types as NodeType[] : undefined,
     tags: Array.isArray(raw.tags) ? raw.tags.map(String) : undefined,
     categories: Array.isArray(raw.categories) ? raw.categories.map(String) : undefined,
     progress: typeof raw.progress === 'number' ? raw.progress : undefined,
