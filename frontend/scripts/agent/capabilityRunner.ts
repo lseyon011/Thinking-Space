@@ -4,6 +4,7 @@ import * as fsPromises from 'node:fs/promises'
 import * as path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import { inspect } from 'node:util'
 
 import { EXCLUDED_DIRS } from '../../src/services/lego_blocks/vaultConstantsBlock'
 import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '../../src/services/lego_blocks/fsBlock'
@@ -377,6 +378,7 @@ export function renderRunnerHelp(): string {
     'ltm capability runner',
     '',
     'Usage:',
+    '  ./ltm [--text|--json] <command>',
     '  ./ltm list',
     '  ./ltm invoke < payload.json',
     '  ./ltm <capability> [--flag value ...]',
@@ -384,6 +386,8 @@ export function renderRunnerHelp(): string {
     '  ./ltm <capability> --help',
     '',
     'Notes:',
+    '  - Output defaults: text on TTY, json otherwise.',
+    '  - Use --text for readable output and --json for machine parsing.',
     '  - --extra-* is for custom metadata only (extraFields).',
     '  - For first-class fields use first-class flags (e.g., --comments, --description).',
     '  - Use comment.add for append-only task notes.',
@@ -413,8 +417,214 @@ function writeText(text: string): void {
   process.stdout.write(`${text}\n`)
 }
 
+type CliOutputFormat = 'json' | 'text'
+
+function normalizeOutputFormat(value: string | undefined): CliOutputFormat | null {
+  const normalized = (value || '').trim().toLowerCase()
+  if (normalized === 'json') return 'json'
+  if (normalized === 'text') return 'text'
+  return null
+}
+
+export function resolveOutputFormat(
+  args: string[],
+  options?: { envFormat?: string; isTTY?: boolean },
+): { format: CliOutputFormat; args: string[] } {
+  let explicit: CliOutputFormat | null = null
+  let index = 0
+  while (index < args.length) {
+    const arg = args[index]!
+    if (arg === '--json') {
+      explicit = 'json'
+      index += 1
+      continue
+    }
+    if (arg === '--text') {
+      explicit = 'text'
+      index += 1
+      continue
+    }
+    break
+  }
+
+  const passthrough = args.slice(index)
+
+  const envFormat = normalizeOutputFormat(options?.envFormat ?? process.env.LTM_OUTPUT_FORMAT)
+  const isTTY = options?.isTTY ?? Boolean(process.stdout.isTTY)
+  const format = explicit ?? envFormat ?? (isTTY ? 'text' : 'json')
+  return { format, args: passthrough }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function asString(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed || null
+}
+
+function indentText(value: string, spaces = 2): string {
+  const prefix = ' '.repeat(spaces)
+  return value
+    .split('\n')
+    .map(line => `${prefix}${line}`)
+    .join('\n')
+}
+
+function formatUnknown(value: unknown): string {
+  return inspect(value, {
+    depth: 5,
+    colors: Boolean(process.stdout.isTTY),
+    compact: false,
+    breakLength: 100,
+  })
+}
+
+function nodeLabel(node: Record<string, unknown>): string {
+  const ticket = asString(node.ticket)
+  const title = asString(node.title)
+  const key = asString(node.key)
+  if (ticket && title && !title.startsWith(ticket)) return `${ticket} - ${title}`
+  return ticket || title || key || 'Untitled node'
+}
+
+function nodeSummary(node: Record<string, unknown>): string {
+  const bits: string[] = []
+  const type = asString(node.type)
+  const status = asString(node.status)
+  const taskStatus = asString(node.taskStatus)
+  const owner = asString(node.owner)
+  if (type) bits.push(type)
+  const label = nodeLabel(node)
+  bits.push(label)
+  if (status) bits.push(`status:${status}`)
+  if (taskStatus) bits.push(`task:${taskStatus}`)
+  if (owner) bits.push(`owner:${owner}`)
+  return bits.join(' | ')
+}
+
+function renderNodesSection(nodes: unknown[], heading: string): string[] {
+  const lines: string[] = []
+  lines.push(`${heading}: ${nodes.length}`)
+  const maxRows = 12
+  const rows = nodes.slice(0, maxRows)
+  rows.forEach((entry, index) => {
+    const record = asRecord(entry)
+    if (!record) {
+      lines.push(`  ${index + 1}. ${String(entry)}`)
+      return
+    }
+    lines.push(`  ${index + 1}. ${nodeSummary(record)}`)
+  })
+  if (nodes.length > maxRows) {
+    lines.push(`  ... ${nodes.length - maxRows} more`)
+  }
+  return lines
+}
+
+function renderListOutput(payload: unknown): string {
+  const record = asRecord(payload)
+  const capabilities = Array.isArray(record?.capabilities) ? record!.capabilities : []
+  const lines: string[] = []
+
+  lines.push(`Capabilities (${capabilities.length})`)
+  for (const capability of capabilities) {
+    const entry = asRecord(capability)
+    if (!entry) continue
+    const name = asString(entry.name) || '<unknown>'
+    const mode = entry.readOnly === true ? 'read' : 'write'
+    const description = asString(entry.description) || ''
+    lines.push(`- ${name} [${mode}]${description ? `: ${description}` : ''}`)
+  }
+  lines.push('')
+  lines.push('Tip: run ./ltm <capability> --help for usage examples.')
+  return lines.join('\n')
+}
+
+function renderInvokeOutput(payload: unknown): string {
+  const record = asRecord(payload)
+  if (!record) return formatUnknown(payload)
+
+  const capability = asString(record.capability) || '<unknown>'
+  const ok = record.ok === true
+  const failed = record.ok === false
+  if (!ok && !failed) return formatUnknown(payload)
+
+  const lines: string[] = []
+  lines.push(`${ok ? 'Success' : 'Failure'}: ${capability}`)
+
+  const requestId = asString(record.requestId)
+  const auditId = asString(record.auditId)
+  if (requestId) lines.push(`Request: ${requestId}`)
+  if (auditId) lines.push(`Audit: ${auditId}`)
+
+  const actor = asRecord(record.actor)
+  if (actor) {
+    const actorKind = asString(actor.kind) || 'unknown'
+    const actorId = asString(actor.id) || 'unknown'
+    lines.push(`Actor: ${actorKind}/${actorId}`)
+  }
+
+  const warnings = Array.isArray(record.warnings) ? record.warnings : []
+  if (warnings.length > 0) {
+    lines.push('Warnings:')
+    warnings.forEach((warning) => lines.push(`- ${String(warning)}`))
+  }
+
+  if (!ok) {
+    const error = asRecord(record.error)
+    if (error) {
+      lines.push(`Error: ${asString(error.code) || 'UNKNOWN'} - ${asString(error.message) || 'Unknown error'}`)
+    }
+    return lines.join('\n')
+  }
+
+  const data = asRecord(record.data)
+  if (!data) {
+    lines.push('Data:')
+    lines.push(indentText(formatUnknown(record.data)))
+    return lines.join('\n')
+  }
+
+  if (Array.isArray(data.nodes)) {
+    lines.push(...renderNodesSection(data.nodes, 'Nodes'))
+    return lines.join('\n')
+  }
+
+  if (data.node) {
+    const node = asRecord(data.node)
+    if (node) {
+      lines.push('Node:')
+      lines.push(`  ${nodeSummary(node)}`)
+      const filePath = asString(node.filePath)
+      if (filePath) lines.push(`  file: ${filePath}`)
+      return lines.join('\n')
+    }
+  }
+
+  lines.push('Data:')
+  lines.push(indentText(formatUnknown(data)))
+  return lines.join('\n')
+}
+
+function writeOutput(payload: unknown, format: CliOutputFormat, context: 'list' | 'invoke'): void {
+  if (format === 'json') {
+    writeJson(payload)
+    return
+  }
+  if (context === 'list') {
+    writeText(renderListOutput(payload))
+    return
+  }
+  writeText(renderInvokeOutput(payload))
+}
+
 async function main(): Promise<void> {
-  const command = process.argv[2]
+  const { format: outputFormat, args } = resolveOutputFormat(process.argv.slice(2))
+  const command = args[0]
 
   if (!command || command === 'help' || command === '--help' || command === '-h') {
     writeText(renderRunnerHelp())
@@ -422,26 +632,26 @@ async function main(): Promise<void> {
   }
 
   if (command === 'list') {
-    writeJson(await runCapabilityRunnerCommand('list'))
+    writeOutput(await runCapabilityRunnerCommand('list'), outputFormat, 'list')
     return
   }
 
   if (command === 'invoke') {
     const payload = await parseInvokePayload()
-    writeJson(await runCapabilityRunnerCommand('invoke', payload))
+    writeOutput(await runCapabilityRunnerCommand('invoke', payload), outputFormat, 'invoke')
     return
   }
 
   // CLI-arg mode: treat argv[2] as a capability name
   if (command && command.includes('.')) {
-    const cliArgs = process.argv.slice(3)
+    const cliArgs = args.slice(1)
     if (cliArgs.includes('--help') || cliArgs.includes('-h')) {
       writeText(renderCapabilityHelp(command))
       return
     }
     const { payload, warnings } = buildCLIInvokePayload(command, cliArgs)
     writeCLIWarnings(warnings)
-    writeJson(await runCapabilityRunnerCommand('invoke', payload))
+    writeOutput(await runCapabilityRunnerCommand('invoke', payload), outputFormat, 'invoke')
     return
   }
 

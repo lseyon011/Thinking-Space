@@ -3,6 +3,7 @@ import {
   buildCLIInvokePayload,
   renderCapabilityHelp,
   renderRunnerHelp,
+  resolveOutputFormat,
 } from '../scripts/agent/capabilityRunner'
 
 const ORIGINAL_VAULT_ROOT = process.env.LTM_VAULT_ROOT
@@ -70,8 +71,10 @@ describe('capabilityRunner CLI argument parsing', () => {
 
   it('renders top-level help with usage and guidance', () => {
     const help = renderRunnerHelp()
+    expect(help).toContain('./ltm [--text|--json] <command>')
     expect(help).toContain('./ltm help')
     expect(help).toContain('./ltm <capability> --help')
+    expect(help).toContain('Output defaults: text on TTY, json otherwise.')
     expect(help).toContain('Use comment.add for append-only task notes.')
   })
 
@@ -81,5 +84,32 @@ describe('capabilityRunner CLI argument parsing', () => {
     expect(help).toContain('Update node metadata fields.')
     expect(help).toContain('./ltm organizer.node.update --uuid "abc-123" --comments')
     expect(help).toContain('./ltm comment.add --uuid "abc-123" --text')
+  })
+
+  it('uses text output by default in TTY mode', () => {
+    const resolved = resolveOutputFormat(['list'], { isTTY: true })
+    expect(resolved.format).toBe('text')
+    expect(resolved.args).toEqual(['list'])
+  })
+
+  it('uses json output by default in non-TTY mode', () => {
+    const resolved = resolveOutputFormat(['list'], { isTTY: false })
+    expect(resolved.format).toBe('json')
+    expect(resolved.args).toEqual(['list'])
+  })
+
+  it('honors --json flag and removes it from args', () => {
+    const resolved = resolveOutputFormat(['--json', 'organizer.nodes.search', '--query', 'active'], { isTTY: true })
+    expect(resolved.format).toBe('json')
+    expect(resolved.args).toEqual(['organizer.nodes.search', '--query', 'active'])
+  })
+
+  it('does not consume capability --text argument when command is already selected', () => {
+    const resolved = resolveOutputFormat(
+      ['comment.add', '--uuid', 'abc-123', '--text', 'progress note'],
+      { isTTY: true },
+    )
+    expect(resolved.format).toBe('text')
+    expect(resolved.args).toEqual(['comment.add', '--uuid', 'abc-123', '--text', 'progress note'])
   })
 })

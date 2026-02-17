@@ -145,6 +145,7 @@ Actor and permission rules:
 3. If writing to external vault paths (for example iCloud paths outside repo sandbox), request escalated filesystem permission first; do not bypass by changing actor kind.
 
 Capability runner invocation pattern (use `./ltm` wrapper from repo root):
+- Output format: `./ltm` defaults to readable text in interactive terminals; use `--json` when you need machine-parseable output.
 
 Required fields for node creation (easy to forget, causes bugs):
 - `--projectRoot coding-projects/thinking-space` — without it, nodes land at vault root and won't appear in organizer UI

@@ -127,6 +127,7 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 
 ## Capability Runner Pattern
 Use the `./ltm` wrapper from the repo root. It auto-loads `.env` (for `LTM_VAULT_ROOT`), sets runner flags, and defaults to `actor: {kind: "agent", id: "claude-code"}`.
+Output defaults to readable text in interactive terminals; pass `--json` for machine parsing.
 
 ### Required fields for node creation (easy to forget, causes bugs):
 - `--projectRoot coding-projects/thinking-space` — without it, nodes land at vault root and won't appear in organizer UI

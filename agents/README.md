@@ -37,6 +37,7 @@ Workspace layout pattern:
 
 ## Capability API Pattern
 Use the `./ltm` wrapper from the repo root (auto-loads `.env` for vault path, sets runner flags, defaults actor to `agent/claude-code`).
+`./ltm` defaults to readable text in interactive terminals; use `--json` when output must be machine-parseable.
 
 Required fields for node creation (easy to forget, causes bugs):
 - `--projectRoot coding-projects/thinking-space` — without it, nodes land at vault root
