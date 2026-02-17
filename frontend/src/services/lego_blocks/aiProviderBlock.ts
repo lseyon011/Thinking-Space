@@ -9,7 +9,7 @@ import { isElectron } from './fsBlock'
 
 // ── Types ──
 
-export type AiProvider = 'claude' | 'openai-codex' | 'azure-gpt'
+export type AiProvider = 'claude' | 'openai-codex' | 'codex-cli' | 'azure-gpt'
 
 export interface AiProviderStatus {
   provider: AiProvider
@@ -148,18 +148,31 @@ export async function getAzureCredentialsBlock(): Promise<AzureCredentials | nul
   return creds
 }
 
+async function getCodexCliAvailabilityBlock(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/ai/providers')
+    if (!res.ok) return false
+    const providers = await res.json() as Array<{ provider?: string; available?: boolean }>
+    return providers.some((p) => p.provider === 'codex-cli' && !!p.available)
+  } catch {
+    return false
+  }
+}
+
 // ── Provider listing ──
 
 export async function listProvidersBlock(): Promise<AiProviderStatus[]> {
   if (isElectron()) {
-    const [claude, codex, azure] = await Promise.all([
+    const [claude, codex, codexCli, azure] = await Promise.all([
       getClaudeCredentialsBlock().then(c => !!c).catch(() => false),
       getCodexCredentialsBlock().then(c => !!c).catch(() => false),
+      getCodexCliAvailabilityBlock(),
       getAzureCredentialsBlock().then(c => !!c).catch(() => false),
     ])
     return [
       { provider: 'claude', available: claude, label: 'Claude', model: 'claude-sonnet-4-5-20250929' },
       { provider: 'openai-codex', available: codex, label: 'Codex', model: 'gpt-5.3-codex' },
+      { provider: 'codex-cli', available: codexCli, label: 'Codex CLI', model: 'gpt-5.3-codex' },
       { provider: 'azure-gpt', available: azure, label: 'Azure GPT', model: 'gpt-5' },
     ]
   }

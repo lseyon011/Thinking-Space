@@ -13,7 +13,7 @@ from app.services.orchestrators.ai_chat_orch import (
 
 router = APIRouter()
 
-Provider = Literal["claude", "openai-codex", "azure-gpt"]
+Provider = Literal["claude", "openai-codex", "codex-cli", "azure-gpt"]
 
 
 class ChatMessageIn(BaseModel):
@@ -50,6 +50,10 @@ class ChatResponse(BaseModel):
     total_tokens: int | None = None
 
 
+class CodexCliChatRequest(BaseModel):
+    messages: list[ChatMessageIn]
+
+
 @router.get("/providers", response_model=list[ProviderStatus])
 async def get_providers():
     """List available AI providers with credential status."""
@@ -62,6 +66,23 @@ async def chat(req: ChatRequest):
     try:
         result = send_chat_orch(
             req.provider,
+            [m.model_dump() for m in req.messages],
+        )
+        return result
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat/codex-cli", response_model=ChatResponse)
+async def chat_codex_cli(req: CodexCliChatRequest):
+    """Send messages to Codex CLI (frontend TypeScript runner)."""
+    try:
+        result = send_chat_orch(
+            "codex-cli",
             [m.model_dump() for m in req.messages],
         )
         return result

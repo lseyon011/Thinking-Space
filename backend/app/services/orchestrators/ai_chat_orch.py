@@ -4,8 +4,10 @@ AI chat orchestrator — routes to correct provider block and checks availabilit
 
 from app.services.lego_blocks.ai_chat_block import (
     chat_azure_block,
+    chat_codex_cli_block,
     chat_claude_block,
     chat_codex_block,
+    is_codex_cli_available_block,
 )
 from app.services.lego_blocks.ai_credential_block import (
     read_azure_token_block,
@@ -20,6 +22,8 @@ def send_chat_orch(provider: str, messages: list[dict]) -> dict:
         return chat_claude_block(messages)
     elif provider == "openai-codex":
         return chat_codex_block(messages)
+    elif provider == "codex-cli":
+        return chat_codex_cli_block(messages)
     elif provider == "azure-gpt":
         return chat_azure_block(messages)
     else:
@@ -51,6 +55,18 @@ def list_providers_orch() -> list[dict]:
         "provider": "openai-codex",
         "available": codex_available,
         "label": "Codex",
+        "model": "gpt-5.3-codex",
+    })
+
+    # Codex CLI (TypeScript runner)
+    try:
+        codex_cli_available = is_codex_cli_available_block()
+    except Exception:
+        codex_cli_available = False
+    providers.append({
+        "provider": "codex-cli",
+        "available": codex_cli_available,
+        "label": "Codex CLI",
         "model": "gpt-5.3-codex",
     })
 

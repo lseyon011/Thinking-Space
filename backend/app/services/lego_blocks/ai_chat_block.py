@@ -5,6 +5,10 @@ Each block handles credential sourcing, client construction, and API call.
 """
 
 import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
 from datetime import datetime, timezone
 import time
 
@@ -21,6 +25,8 @@ from .ai_credential_block import (
 )
 
 CLAUDE_MAX_OUTPUT_TOKENS = 64000
+CODEX_CLI_MODEL = "gpt-5.3-codex"
+CODEX_CLI_RUNNER_TIMEOUT_MS = 180000
 
 
 # ── Types ──
@@ -38,6 +44,32 @@ class ChatResponse:
         self.content = content
         self.provider = provider
         self.model = model
+
+
+def _repo_root_block() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
+def _frontend_root_block() -> Path:
+    return _repo_root_block() / "frontend"
+
+
+def _vite_node_exec_block(frontend_root: Path) -> Path:
+    if os.name == "nt":
+        return frontend_root / "node_modules" / ".bin" / "vite-node.cmd"
+    return frontend_root / "node_modules" / ".bin" / "vite-node"
+
+
+def _codex_cli_runner_script_block(frontend_root: Path) -> Path:
+    return frontend_root / "scripts" / "ai" / "codexCliChat.ts"
+
+
+def is_codex_cli_available_block() -> bool:
+    frontend_root = _frontend_root_block()
+    vite_node = _vite_node_exec_block(frontend_root)
+    runner_script = _codex_cli_runner_script_block(frontend_root)
+    codex_bin = shutil.which("codex")
+    return bool(codex_bin and vite_node.exists() and runner_script.exists())
 
 
 # ── Claude ──
@@ -257,6 +289,100 @@ def chat_codex_block(messages: list[dict]) -> dict:
         "role": "assistant",
         "content": text,
         "provider": "openai-codex",
+        "model": model,
+        "requested_at": requested_at,
+        "responded_at": responded_at,
+        "latency_ms": latency_ms,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
+def chat_codex_cli_block(messages: list[dict]) -> dict:
+    """Send messages to Codex CLI via frontend TypeScript runner."""
+    frontend_root = _frontend_root_block()
+    vite_node_exec = _vite_node_exec_block(frontend_root)
+    runner_script = _codex_cli_runner_script_block(frontend_root)
+
+    if not is_codex_cli_available_block():
+        raise RuntimeError(
+            "Codex CLI provider unavailable. Ensure `codex` is installed and "
+            "`frontend/node_modules/.bin/vite-node` plus `frontend/scripts/ai/codexCliChat.ts` exist."
+        )
+
+    requested_at = datetime.now(timezone.utc).isoformat()
+    started = time.perf_counter()
+    payload = {
+        "messages": messages,
+        "model": CODEX_CLI_MODEL,
+        "timeoutMs": CODEX_CLI_RUNNER_TIMEOUT_MS,
+        "workingDirectory": str(_repo_root_block()),
+    }
+
+    try:
+        result = subprocess.run(
+            [str(vite_node_exec), str(runner_script)],
+            cwd=str(frontend_root),
+            input=json.dumps(payload),
+            text=True,
+            capture_output=True,
+            timeout=max(1, int(CODEX_CLI_RUNNER_TIMEOUT_MS / 1000) + 30),
+            env={**os.environ, "LTM_CODEX_CLI_RUNNER": "1"},
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"Codex CLI runner timed out after {CODEX_CLI_RUNNER_TIMEOUT_MS}ms"
+        ) from exc
+    except OSError as exc:
+        raise RuntimeError(f"Failed to launch Codex CLI runner: {exc}") from exc
+
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(
+            f"Codex CLI runner failed (exit {result.returncode}): {detail[:500]}"
+        )
+
+    raw = (result.stdout or "").strip()
+    if not raw:
+        raise RuntimeError("Codex CLI runner returned empty output")
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Codex CLI runner returned invalid JSON: {exc}") from exc
+
+    text = parsed.get("text", "") if isinstance(parsed, dict) else ""
+    if not isinstance(text, str) or not text.strip():
+        raise RuntimeError("Codex CLI runner returned no assistant text")
+
+    responded_at = datetime.now(timezone.utc).isoformat()
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    model = (
+        parsed.get("model")
+        if isinstance(parsed, dict) and isinstance(parsed.get("model"), str) and parsed.get("model")
+        else CODEX_CLI_MODEL
+    )
+    input_tokens = (
+        parsed.get("input_tokens")
+        if isinstance(parsed, dict) and isinstance(parsed.get("input_tokens"), int)
+        else None
+    )
+    output_tokens = (
+        parsed.get("output_tokens")
+        if isinstance(parsed, dict) and isinstance(parsed.get("output_tokens"), int)
+        else None
+    )
+    total_tokens = (
+        parsed.get("total_tokens")
+        if isinstance(parsed, dict) and isinstance(parsed.get("total_tokens"), int)
+        else None
+    )
+
+    return {
+        "role": "assistant",
+        "content": text,
+        "provider": "codex-cli",
         "model": model,
         "requested_at": requested_at,
         "responded_at": responded_at,

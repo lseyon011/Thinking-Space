@@ -1,5 +1,5 @@
 /**
- * AI chat block — sends messages to Claude or Azure GPT.
+ * AI chat block — sends messages to configured AI providers.
  *
  * Electron: direct SDK calls from renderer with IPC-sourced credentials.
  * Web: POST to backend /api/ai/chat which proxies the call.
@@ -153,9 +153,23 @@ async function sendCodexDirectBlock(messages: ChatMessage[]): Promise<ChatRespon
   }
 }
 
+async function sendCodexCliViaBackendBlock(messages: ChatMessage[]): Promise<ChatResponse> {
+  const res = await fetch('/api/ai/chat/codex-cli', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages }),
+  })
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    throw new Error(`AI chat failed (HTTP ${res.status}): ${detail.slice(0, 300)}`)
+  }
+  return res.json()
+}
+
 // ── Web: backend proxy ──
 
 async function sendViaBackendBlock(provider: AiProvider, messages: ChatMessage[]): Promise<ChatResponse> {
+  if (provider === 'codex-cli') return sendCodexCliViaBackendBlock(messages)
   const res = await fetch('/api/ai/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -171,6 +185,7 @@ async function sendViaBackendBlock(provider: AiProvider, messages: ChatMessage[]
 // ── Public API ──
 
 export async function sendChatBlock(provider: AiProvider, messages: ChatMessage[]): Promise<ChatResponse> {
+  if (provider === 'codex-cli') return sendCodexCliViaBackendBlock(messages)
   if (isElectron()) {
     if (provider === 'claude') return sendClaudeDirectBlock(messages)
     if (provider === 'openai-codex') return sendCodexDirectBlock(messages)
