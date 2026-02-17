@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X, FileText, ExternalLink, Info, Pencil, Save, Eye } from 'lucide-react'
+import { X, FileText, ExternalLink, Info, Pencil, Save, Eye, Sparkles } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
   saveMarkdownDocument,
 } from '@/services/orchestrators/markdownDocumentsOrch'
+import { type AiProvider, type AiProviderStatus, listProvidersBlock } from '@/services/lego_blocks/aiProviderBlock'
+import { type AiAssistAction, type RunAiAssistResult, runAiAssistOrch } from '@/services/orchestrators/aiAssistOrch'
 import { buildObsidianOpenUrl } from '@/services/lego_blocks/obsidianLinkBlock'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/ExcalidrawDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/MarkdownMiniNavBlock'
@@ -33,6 +35,23 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+const AI_ASSIST_ACTIONS: Array<{ action: AiAssistAction; label: string }> = [
+  { action: 'grammar', label: 'Grammar' },
+  { action: 'clarity', label: 'Clarity' },
+  { action: 'structure', label: 'Structure' },
+  { action: 'tone', label: 'Tone' },
+]
+
+function selectDefaultProvider(providers: AiProviderStatus[]): AiProvider | null {
+  const preferred: AiProvider[] = ['codex-cli', 'claude', 'openai-codex', 'azure-gpt']
+  for (const provider of preferred) {
+    if (providers.some((item) => item.provider === provider && item.available)) {
+      return provider
+    }
+  }
+  return providers.find((item) => item.available)?.provider ?? null
+}
+
 export default function MarkdownDocumentBlock({
   path,
   initialMode = 'view',
@@ -56,6 +75,12 @@ export default function MarkdownDocumentBlock({
 
   const [showMeta, setShowMeta] = useState(true)
   const [showPreview, setShowPreview] = useState(false)
+  const [providers, setProviders] = useState<AiProviderStatus[]>([])
+  const [providersLoading, setProvidersLoading] = useState(true)
+  const [selectedProvider, setSelectedProvider] = useState<AiProvider | null>(null)
+  const [assistRunningAction, setAssistRunningAction] = useState<AiAssistAction | null>(null)
+  const [assistError, setAssistError] = useState<string | null>(null)
+  const [assistSuggestion, setAssistSuggestion] = useState<RunAiAssistResult | null>(null)
   const isExcalidrawDoc = /\.(excalidraw|excalidraw\.md)$/i.test(path)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
 
@@ -64,6 +89,9 @@ export default function MarkdownDocumentBlock({
     setError(null)
     setSaveError(null)
     setConflict(null)
+    setAssistError(null)
+    setAssistSuggestion(null)
+    setAssistRunningAction(null)
     try {
       const data = await readMarkdownDocument(path)
       setContent(data.content)
@@ -82,6 +110,33 @@ export default function MarkdownDocumentBlock({
       setLoading(false)
     }
   }, [path])
+
+  useEffect(() => {
+    let cancelled = false
+    setProvidersLoading(true)
+    listProvidersBlock()
+      .then((items) => {
+        if (cancelled) return
+        setProviders(items)
+        setSelectedProvider((current) => {
+          if (current && items.some((item) => item.provider === current && item.available)) {
+            return current
+          }
+          return selectDefaultProvider(items)
+        })
+      })
+      .catch(() => {
+        if (cancelled) return
+        setProviders([])
+        setSelectedProvider(null)
+      })
+      .finally(() => {
+        if (!cancelled) setProvidersLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     setMode(isExcalidrawDoc ? 'view' : initialMode)
@@ -103,12 +158,15 @@ export default function MarkdownDocumentBlock({
 
   const isEditing = mode === 'edit'
   const hasChanges = isEditing && content !== null && draft !== content
+  const availableProviders = providers.filter((item) => item.available)
 
   const startEditing = () => {
     if (loading || error || isExcalidrawDoc) return
     setMode('edit')
     setSaveError(null)
     setConflict(null)
+    setAssistError(null)
+    setAssistSuggestion(null)
   }
 
   const cancelEditing = () => {
@@ -117,6 +175,9 @@ export default function MarkdownDocumentBlock({
     setSaveError(null)
     setConflict(null)
     setShowPreview(false)
+    setAssistError(null)
+    setAssistSuggestion(null)
+    setAssistRunningAction(null)
   }
 
   const useLatestConflictVersion = () => {
@@ -127,6 +188,42 @@ export default function MarkdownDocumentBlock({
     setBaseHash(conflict.currentHash)
     setSaveError(null)
     setConflict(null)
+  }
+
+  const runAssistAction = async (action: AiAssistAction) => {
+    if (!selectedProvider || loading || isExcalidrawDoc || assistRunningAction) return
+    if (!draft.trim()) {
+      setAssistError('Add some text before running AI assist.')
+      return
+    }
+
+    setAssistRunningAction(action)
+    setAssistError(null)
+    setAssistSuggestion(null)
+    try {
+      const result = await runAiAssistOrch({
+        provider: selectedProvider,
+        action,
+        content: draft,
+      })
+      if (!result.changed) {
+        setAssistError(`No ${action} changes suggested.`)
+        return
+      }
+      setAssistSuggestion(result)
+    } catch (err) {
+      setAssistError(err instanceof Error ? err.message : 'AI assist failed')
+    } finally {
+      setAssistRunningAction(null)
+    }
+  }
+
+  const applyAssistSuggestion = () => {
+    if (!assistSuggestion) return
+    setDraft(assistSuggestion.suggestedContent)
+    setAssistSuggestion(null)
+    setAssistError(null)
+    setShowPreview(true)
   }
 
   const handleSave = async () => {
@@ -149,6 +246,8 @@ export default function MarkdownDocumentBlock({
       setSizeBytes(new Blob([reloaded.content]).size)
       setMode('view')
       setShowPreview(false)
+      setAssistError(null)
+      setAssistSuggestion(null)
       onSaved?.(result)
     } catch (err) {
       if (err instanceof MarkdownDocumentConflictError) {
@@ -261,9 +360,90 @@ export default function MarkdownDocumentBlock({
 
         {!loading && !error && content !== null && isEditing && !isExcalidrawDoc && (
           <div className="space-y-4">
+            <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  AI assist
+                </span>
+
+                <select
+                  value={selectedProvider ?? ''}
+                  disabled={providersLoading || availableProviders.length === 0 || !!assistRunningAction}
+                  onChange={(event) => setSelectedProvider(event.target.value as AiProvider)}
+                  className="rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground disabled:opacity-60"
+                >
+                  {!selectedProvider && <option value="">Select provider</option>}
+                  {availableProviders.map((provider) => (
+                    <option key={provider.provider} value={provider.provider}>
+                      {provider.label}
+                    </option>
+                  ))}
+                </select>
+
+                {AI_ASSIST_ACTIONS.map((item) => (
+                  <button
+                    key={item.action}
+                    onClick={() => void runAssistAction(item.action)}
+                    disabled={
+                      providersLoading
+                      || availableProviders.length === 0
+                      || !selectedProvider
+                      || !!assistRunningAction
+                    }
+                    className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {assistRunningAction === item.action ? `${item.label}...` : item.label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">
+                Preview-first only. Suggestions never auto-save until you click Save.
+              </div>
+            </div>
+
+            {assistSuggestion && (
+              <div className="rounded-lg border border-border/50 bg-background p-3">
+                <div className="text-xs text-muted-foreground">
+                  {[assistSuggestion.provider, assistSuggestion.model].filter(Boolean).join(' • ')}
+                  {assistSuggestion.latency_ms != null && ` • ${assistSuggestion.latency_ms} ms`}
+                  {assistSuggestion.total_tokens != null && ` • tokens ${assistSuggestion.total_tokens}`}
+                </div>
+                <textarea
+                  value={assistSuggestion.suggestedContent}
+                  readOnly
+                  className="mt-2 min-h-[20vh] w-full resize-y rounded-lg border border-input bg-muted/10 p-3 text-sm"
+                />
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    onClick={applyAssistSuggestion}
+                    className="rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground"
+                  >
+                    Apply suggestion
+                  </button>
+                  <button
+                    onClick={() => setAssistSuggestion(null)}
+                    className="rounded-lg border border-border px-3 py-2 text-xs text-foreground hover:bg-muted"
+                  >
+                    Discard
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {assistError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {assistError}
+              </div>
+            )}
+
             <textarea
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => {
+                setDraft(e.target.value)
+                if (assistSuggestion) setAssistSuggestion(null)
+                if (assistError) setAssistError(null)
+              }}
               className="min-h-[52vh] w-full resize-y rounded-lg border border-input bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
             />
 
