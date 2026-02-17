@@ -10,11 +10,14 @@ Use this checklist when operating with:
 - Pull latest in both repos.
 - Confirm target branch in both repos.
 - Record the session start in a run/handoff note.
+- Run organizer sync before task updates (`Sync Vault Now` / capability equivalent).
 
 2. During implementation:
 - Keep changes scoped (code repo vs ops repo).
 - Do not mix unrelated changes across repos in one commit.
 - Log major task transitions with capability calls (`task.claim`, `task.update_status`, `run.log`).
+- Ensure every created operation node includes meaningful YAML `description`.
+- Ensure implementation plans are recorded in-tool before coding starts.
 
 3. End of session:
 - Commit/push code repo first (if code changed).
@@ -42,4 +45,5 @@ Use this checklist when operating with:
 - `branch`
 - `commit`
 - `artifacts`
-
+5. Use tool-native operations as source of truth for active work:
+- `coding-projects/thinking-space/thinking-organizer/*`

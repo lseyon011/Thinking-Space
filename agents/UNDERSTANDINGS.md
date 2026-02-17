@@ -35,6 +35,7 @@ Last updated: 2026-02-17
 21. Agent-operation capability surface now includes task/run/handoff/comment primitives (`task.claim`, `task.update_status`, `run.log`, `handoff.create`, `comment.add`) and continues to route writes through capability audit logging.
 22. Vault-native migration bootstrap exists at `frontend/scripts/agent/bootstrapAgentWorkspace.ts` and has imported repo-local `agents/*` artifacts into `coding-projects/thinking-space/thinking-organizer/*` with source traceability metadata.
 23. Cutover has started: `agents/*.md` are read-only transition snapshots for one cycle while active operations move to the vault workspace.
+24. Active agent operations now follow a mandatory tool pattern: sync first, execute task lifecycle in organizer capabilities/UI, require meaningful `description` on created operation nodes, and record plans in-tool before implementation begins.
 
 ## Architecture Pivot (2026-02-14)
 - **FROM**: SQLite + mirrored folders + backend hierarchy services

@@ -162,6 +162,26 @@ Important constraint:
 - Python backend does **not** implement duplicate YAML hierarchy services.
 - Backend only proxies requests to the frontend capability runner.
 
+## Agent Operations Pattern (Mandatory)
+
+For active agent orchestration, the source of truth is the vault-native organizer workspace:
+- `coding-projects/thinking-space/thinking-organizer/*`
+
+Required operating pattern:
+1. Sync vault/cache first (`Sync Vault Now`) before reading/updating operational state.
+2. Execute task lifecycle in-tool (`task.claim`, `task.update_status`, organizer UI actions).
+3. Every created operation node must include a meaningful YAML `description`.
+4. Every execution plan must be recorded in-tool before implementation begins.
+5. Record run/handoff outcomes in-tool (`run.log`, `handoff.create`, comments/state history).
+
+Recommended organizer layout:
+- `development (agent operations)` program for implementation tasks/plans/runs.
+- `handoffs (agent operations)` program for cross-session transfers.
+- `principles and decisions (agent operations)` program for durable operating guidance.
+
+Transition note:
+- `agents/*.md` files are read-only migration snapshots, not active workflow state.
+
 Quick curl example:
 ```bash
 curl -s http://127.0.0.1:8000/api/capabilities/invoke \

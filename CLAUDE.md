@@ -101,13 +101,19 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 2. Read `README.md`
 3. Read `agents/README.md`
 4. Read `agents/UNDERSTANDINGS.md`
-5. Read `agents/TODO.md`
-6. Read latest `agents/HANDOFFS.md`
+5. Read `agents/TODO.md` and `agents/HANDOFFS.md` as transition snapshots only
+6. Open active tasks/plans from vault-native organizer workspace (`coding-projects/thinking-space/thinking-organizer/*`)
+7. Sync organizer cache before task updates (`Sync Vault Now` / equivalent capability path)
 
 ## Multi-Agent Discipline
-- Claim tasks in `agents/TODO.md` before coding.
-- Log completed work in `agents/DONE.md`.
-- Add handoff entries in `agents/HANDOFFS.md` for unfinished work.
+- Use organizer tool as source of truth for active operations (tasks, plans, runs, handoffs).
+- Every created operation node must include a substantive YAML `description`.
+- Every implementation plan must be recorded in the organizer tool before execution starts.
+- Keep `agents/*.md` as read-only transition snapshots unless explicitly asked to update them.
+- Follow workspace usage pattern:
+  - `development (agent operations)` for active task/plan/run work.
+  - `handoffs (agent operations)` for handoff records.
+  - `principles and decisions (agent operations)` for durable guidance.
 - Keep docs synchronized when strategy or architecture shifts.
 - Use detailed commit messages that capture scope + intent + key changes; do not use generic commit titles.
 - Commit body must begin with the exact completion summary already shared by the agent, then optionally expand with technical context.

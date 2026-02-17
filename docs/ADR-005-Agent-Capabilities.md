@@ -57,6 +57,13 @@ Transport adapters:
   - `POST /api/capabilities/invoke`
 - Backend transport must not implement duplicate YAML hierarchy/domain services.
 
+Operational tool usage pattern:
+1. Sync first (`Sync Vault Now` / sync capability path) before reads or writes.
+2. Execute active task lifecycle in the organizer tool/capability layer.
+3. Created operation records must include meaningful YAML `description`.
+4. Plans must be recorded in the organizer tool before implementation starts.
+5. Session outcomes must be written back as run/handoff records.
+
 ## Consequences
 
 Positive:

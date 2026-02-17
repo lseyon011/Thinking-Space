@@ -7,21 +7,35 @@ Purpose: enable parallel agents to execute without repeatedly re-reading the who
 - `CLAUDE.md`: Claude-native project file (must stay consistent with `AGENTS.md`)
 - `README.md`: roadmap and epic order source of truth
 - `agents/UNDERSTANDINGS.md`: stable architecture, decisions, key file map
-- `agents/TODO.md`: active queue and priorities
-- `agents/DONE.md`: completed items and landed decisions
-- `agents/HANDOFFS.md`: cross-agent session handoffs
+- `agents/TODO.md`: transition snapshot queue (read-only unless explicitly requested)
+- `agents/DONE.md`: transition snapshot of completed items
+- `agents/HANDOFFS.md`: transition snapshot handoffs
 - `agents/TEMPLATES/HANDOFF_TEMPLATE.md`: required handoff format
 - `agents/TEMPLATES/ORCHESTRATOR_TEMPLATE.md`: required structure for new major orchestrator files
 - `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md`: required commit message structure
+
+Active operations source of truth:
+- `coding-projects/thinking-space/thinking-organizer/*`
 
 ## Startup Sequence (Every New Agent)
 1. Read `AGENTS.md`
 2. If using Claude, read `CLAUDE.md`
 3. Read `README.md`
 4. Read `agents/UNDERSTANDINGS.md`
-5. Read top of `agents/TODO.md`
-6. Check latest entry in `agents/HANDOFFS.md`
-7. Claim one `READY` task by switching it to `IN_PROGRESS`
+5. Read top of `agents/TODO.md` + latest `agents/HANDOFFS.md` for migration context only
+6. Open active tasks/plans in organizer workspace
+7. Sync organizer cache (`Sync Vault Now`) and claim one task in-tool
+
+## Mandatory Tool Pattern
+1. Do not run active task lifecycle in `agents/*.md`.
+2. Every created operation node must include a meaningful YAML `description`.
+3. Every execution plan must be recorded in the organizer tool before coding starts.
+4. Update task/run/handoff state in-tool first; mirror to snapshots only when explicitly requested.
+
+Workspace layout pattern:
+- `development (agent operations)` program for active implementation tasks/plans/runs.
+- `handoffs (agent operations)` program for transfer notes.
+- `principles and decisions (agent operations)` program for durable guidance.
 
 ## Status Vocabulary
 - `READY`: unclaimed, clear to execute

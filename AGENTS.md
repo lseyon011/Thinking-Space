@@ -126,6 +126,28 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - Minimize extension permissions and enforce explicit consent.
 - No hidden remote calls in "local-only" flows.
 
+## Agent Tool Usage Pattern (Mandatory)
+Active multi-agent operations must run in the vault-native organizer workspace, not `agents/*.md`.
+
+Workspace location:
+- `coding-projects/thinking-space/thinking-organizer/*`
+
+Required session pattern:
+1. Sync first using organizer controls (`Sync Vault Now`) before reading/updating task state.
+2. Claim/update tasks through capability operations (`task.claim`, `task.update_status`) or equivalent organizer UI actions.
+3. Every newly created operation node must include a meaningful description in YAML `description` (not empty placeholder text).
+4. Every implementation plan must be recorded in the tool as a plan node before execution (and updated as execution changes).
+5. End each session by recording run/handoff artifacts in the tool (`run.log`, `handoff.create`, comments/state history as needed).
+
+Recommended node pattern:
+- Program: `development (agent operations)` for active implementation tasks/plans/runs.
+- Program: `handoffs (agent operations)` for transfer records.
+- Program: `principles and decisions (agent operations)` for durable guidance.
+- Plans should be linked to execution tasks via `related_nodes` and/or `depends_on`.
+
+Transition rule:
+- `agents/TODO.md`, `agents/DONE.md`, and `agents/HANDOFFS.md` are read-only snapshots during migration unless explicitly requested otherwise.
+
 ## Multi-Agent Workflow
 Before coding:
 1. Read `AGENTS.md`
@@ -135,14 +157,14 @@ Before coding:
 5. Read latest `agents/HANDOFFS.md`
 
 During work:
-- Claim one task in `agents/TODO.md` (`READY -> IN_PROGRESS`).
-- Keep scope tied to acceptance criteria.
+- Claim one task in the organizer tool (`task.claim` / task node status updates).
+- Keep scope tied to acceptance criteria recorded on the task node.
+- Record any plan in the organizer tool before execution begins.
 - Update `agents/UNDERSTANDINGS.md` if you discover reusable context.
 
 After work:
-- Mark task state in `agents/TODO.md`.
-- Log outcomes in `agents/DONE.md`.
-- Write handoff in `agents/HANDOFFS.md` using `agents/TEMPLATES/HANDOFF_TEMPLATE.md` when needed.
+- Mark task/run/handoff state in the organizer tool first.
+- Mirror back to `agents/*.md` only if explicitly requested for snapshot maintenance.
 - Use detailed git commit messages with clear scope, intent, and key change summary; avoid vague messages like `fix`, `update`, or `wip`.
 - Commit body must start with the exact completed-work summary already produced by the agent for that task, then optionally add extra detail.
 - Use `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md` for commit structure.

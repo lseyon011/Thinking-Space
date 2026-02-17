@@ -77,6 +77,23 @@ All write capabilities must:
 - be audit logged in `.ltm-pilot/audit/capability-audit.log`
 - pass capability policy checks
 
+### 3.1) Tool Usage Pattern (Mandatory)
+
+Active operations must be run in:
+- `coding-projects/thinking-space/thinking-organizer/*`
+
+Required behavior:
+1. Sync cache/vault before operational updates.
+2. Record task lifecycle in-tool (`task.claim`, `task.update_status`, equivalent UI actions).
+3. Any created operation record must include meaningful YAML `description`.
+4. Any implementation plan must be recorded as a plan node in-tool before execution.
+5. Run/handoff artifacts must be logged in-tool before session close.
+
+Recommended workspace grouping:
+- `development (agent operations)` for active execution.
+- `handoffs (agent operations)` for transfer records.
+- `principles and decisions (agent operations)` for durable guidance.
+
 ### 4) Cache Queryability Strategy
 
 IndexedDB stores:
@@ -95,4 +112,3 @@ Positive:
 
 Tradeoff:
 - Some governance is runtime validated (policy/router) rather than fully static.
-
