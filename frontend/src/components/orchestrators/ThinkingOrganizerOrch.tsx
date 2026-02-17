@@ -15,10 +15,11 @@ import {
 import BacklogOrch from '@/components/orchestrators/BacklogOrch'
 import LinkingOrch from '@/components/orchestrators/LinkingOrch'
 import OrganizerIntegrityOrch from '@/components/orchestrators/OrganizerIntegrityOrch'
+import StewardQueueOrch from '@/components/orchestrators/StewardQueueOrch'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import { useEffect } from 'react'
 
-type TabMode = 'backlog' | 'view' | 'link' | 'integrity'
+type TabMode = 'backlog' | 'view' | 'link' | 'steward' | 'integrity'
 
 function nodeIcon(type: NodeType) {
   if (type === 'program') return FolderTree
@@ -40,7 +41,7 @@ const VIEW_ACTOR: CapabilityActor = {
 function usePersistentTab(): [TabMode, (value: TabMode) => void] {
   const [tab, setTab] = useState<TabMode>(() => {
     const saved = getStorageItem(STORAGE_KEYS.thinkingOrganizerTab)
-    if (saved === 'view' || saved === 'link' || saved === 'integrity') return saved
+    if (saved === 'view' || saved === 'link' || saved === 'steward' || saved === 'integrity') return saved
     return 'backlog'
   })
 
@@ -263,7 +264,7 @@ export default function ThinkingOrganizerOrch() {
       <div className="mb-4">
         <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Thinking Organizer</h1>
         <p className="text-sm text-muted-foreground">
-          Create and organize hierarchy items in Create, explore in View, and map them to files in Link.
+          Create and organize hierarchy items in Create, explore in View, map them to files in Link, and run steward proposals in Steward.
         </p>
       </div>
 
@@ -290,6 +291,13 @@ export default function ThinkingOrganizerOrch() {
           Link
         </Button>
         <Button
+          variant={tab === 'steward' ? 'default' : 'secondary'}
+          size="sm"
+          onClick={() => setTab('steward')}
+        >
+          Steward
+        </Button>
+        <Button
           variant={tab === 'integrity' ? 'default' : 'secondary'}
           size="sm"
           onClick={() => setTab('integrity')}
@@ -301,6 +309,7 @@ export default function ThinkingOrganizerOrch() {
       {tab === 'backlog' && <BacklogOrch />}
       {tab === 'view' && <ViewTab />}
       {tab === 'link' && <LinkingOrch />}
+      {tab === 'steward' && <StewardQueueOrch />}
       {tab === 'integrity' && <OrganizerIntegrityOrch />}
     </div>
   )
