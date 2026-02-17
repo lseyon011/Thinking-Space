@@ -132,12 +132,24 @@ These are explicitly chosen and should be treated as constraints.
 Organizer operations are exposed through one capability contract in frontend TypeScript:
 - Registry: `frontend/src/services/lego_blocks/capabilityRegistryBlock.ts`
 - Router: `frontend/src/services/orchestrators/capabilityRouterOrch.ts`
+- Contract ADR: `docs/ADR-005-Agent-Capabilities.md`
+- Rollout matrix: `docs/CAPABILITY_ROLLOUT_MATRIX.md`
 
 External agent/curl access uses a thin transport layer:
 - Frontend runner: `frontend/scripts/agent/capabilityRunner.ts`
 - FastAPI proxy endpoints:
   - `GET /api/capabilities`
   - `POST /api/capabilities/invoke`
+
+Operational controls:
+- Frontend feature flags:
+  - `agent_capabilities_enabled` (default: `false`)
+  - `fastapi_capability_adapter_enabled` (default: `false`)
+- FastAPI adapter environment controls:
+  - `LTM_FASTAPI_CAPABILITY_ADAPTER_ENABLED=true`
+  - `LTM_CAPABILITY_BEARER_TOKEN=<token>` (optional)
+  - `LTM_CAPABILITY_RATE_LIMIT_PER_MINUTE=<int>`
+  - `LTM_CAPABILITY_MAX_PAYLOAD_BYTES=<int>`
 
 Important constraint:
 - Python backend does **not** implement duplicate YAML hierarchy services.

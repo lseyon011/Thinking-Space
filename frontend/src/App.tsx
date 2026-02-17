@@ -11,6 +11,7 @@ import Todos from './pages/Todos'
 import ThinkingSpace from './pages/ThinkingSpace'
 import ThinkingOrganizer from './pages/ThinkingOrganizer'
 import Chat from './pages/Chat'
+import CapabilityDiscovery from './pages/CapabilityDiscovery'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { smartSync } from './services/orchestrators/vaultSyncOrch'
@@ -114,6 +115,15 @@ function App() {
               >
                 Chat
               </Link>
+              <Link
+                to="/capabilities"
+                onClick={() => setShowTools(false)}
+                className={`shrink-0 transition-colors hover:text-foreground ${
+                  isActive('/capabilities') ? 'text-foreground' : ''
+                }`}
+              >
+                Capabilities
+              </Link>
               <div className="relative shrink-0">
                 <button
                   onClick={() => setShowTools(prev => !prev)}
@@ -214,6 +224,7 @@ function App() {
           <Route path="/new-thought" element={<NewThought />} />
           <Route path="/todos" element={<Todos />} />
           <Route path="/chat" element={<Chat />} />
+          <Route path="/capabilities" element={<CapabilityDiscovery />} />
         </Routes>
       </main>
     </div>

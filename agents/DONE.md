@@ -2,6 +2,49 @@
 
 ## 2026-02-17
 
+### DEV-013 - LTM-035 Capability Rollout + Controls + Adapter Parity
+- Completed `LTM-035`.
+- Expanded capability coverage beyond organizer CRUD:
+  - `thoughts.create`
+  - `todos.create`, `todos.toggle`
+  - `tools.files.list_markdown`, `tools.files.list_pdf`, `tools.folders.list`
+  - `tools.excalidraw.preview`, `tools.excalidraw.format`
+  - `tools.pdf.preview`, `tools.pdf.convert`
+  - `tools.transcript.preview`, `tools.transcript.clean_save`
+- Migrated key UI surfaces to capability invocations:
+  - `frontend/src/pages/NewThought.tsx`
+  - `frontend/src/pages/Todos.tsx`
+  - `frontend/src/components/orchestrators/TodoCalendarOrch.tsx`
+  - `frontend/src/pages/FormatExcalidraw.tsx`
+  - `frontend/src/pages/PdfToMarkdown.tsx`
+  - `frontend/src/pages/TranscriptCleaner.tsx`
+- Added capability discovery + ops controls route:
+  - `frontend/src/components/orchestrators/CapabilityDiscoveryOrch.tsx`
+  - `frontend/src/pages/CapabilityDiscovery.tsx`
+  - `frontend/src/App.tsx` route/nav wiring (`/capabilities`)
+- Added frontend feature-flag primitives:
+  - `frontend/src/services/lego_blocks/capabilityFeatureFlagsBlock.ts`
+  - `frontend/src/services/lego_blocks/storageKeyBlock.ts` new key
+- Added backend operational controls for `/api/capabilities`:
+  - adapter enable gate (`LTM_FASTAPI_CAPABILITY_ADAPTER_ENABLED`)
+  - optional bearer auth (`LTM_CAPABILITY_BEARER_TOKEN`)
+  - rate limiting (`LTM_CAPABILITY_RATE_LIMIT_PER_MINUTE`)
+  - payload limit (`LTM_CAPABILITY_MAX_PAYLOAD_BYTES`)
+  - file: `backend/app/routers/capabilities.py`
+- Added parity fixture suite across adapters:
+  - shared fixtures: `tests/fixtures/capability_parity_fixtures.json`
+  - frontend parity test: `frontend/tests/capabilityParityAdapters.test.ts`
+  - backend parity test: `backend/tests/test_capability_parity_api.py`
+- Added rollout and contract docs:
+  - `docs/CAPABILITY_ROLLOUT_MATRIX.md`
+  - `docs/ADR-005-Agent-Capabilities.md`
+  - `README.md` updates for controls and matrix links
+
+Validation:
+- `npm test -- --run tests/capabilityRouterOrch.test.ts tests/capabilityParityAdapters.test.ts` (frontend) — passed.
+- `npm run build` (frontend) — passed.
+- `/Users/patila06/.pyenv/versions/3.10.12/envs/ltmpilot_venv/bin/python -m pytest backend/tests/test_capabilities_api.py backend/tests/test_capability_parity_api.py -q` — passed.
+
 ### DEV-012 - LTM-034 Agent Capability Transport (Frontend Runner + FastAPI Proxy)
 - Completed `LTM-034`.
 - Kept capability/domain execution frontend-only and added agent/curl transport:

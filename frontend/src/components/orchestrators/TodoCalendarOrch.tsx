@@ -1,5 +1,7 @@
 import SectionChecklistBlock from '@/components/lego_blocks/SectionChecklistBlock'
-import { getTodosMonth, getTodosSectionMonth, toggleTodo } from '@/services/orchestrators/todosOrch'
+import { getTodosMonth, getTodosSectionMonth } from '@/services/orchestrators/todosOrch'
+import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
+import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
 
 interface TodoCalendarItem {
   checked: boolean
@@ -7,8 +9,17 @@ interface TodoCalendarItem {
   line: number
 }
 
+const TODOS_CALENDAR_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.todos-calendar' }
+
 async function toggleTodoItem(item: TodoCalendarItem) {
-  await toggleTodo(item.file, item.line)
+  await invokeCapabilityOrThrow({
+    capability: 'todos.toggle',
+    input: {
+      filePath: item.file,
+      lineNumber: item.line,
+    },
+    actor: TODOS_CALENDAR_ACTOR,
+  })
 }
 
 function renderTodoItemTextClassName(item: { checked: boolean }) {

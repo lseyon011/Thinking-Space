@@ -1,0 +1,342 @@
+[
+  {
+    "id": "organizer_roots_program",
+    "request": {
+      "capability": "organizer.nodes.list_roots",
+      "input": {
+        "typeFilter": "program"
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "organizer_children_epic",
+    "request": {
+      "capability": "organizer.nodes.list_children",
+      "input": {
+        "parentKey": "build-thinking-space"
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "organizer_list_all",
+    "request": {
+      "capability": "organizer.nodes.list_all",
+      "input": {},
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "organizer_search_yaml",
+    "request": {
+      "capability": "organizer.nodes.search",
+      "input": {
+        "query": "yaml architecture",
+        "limit": 20
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "organizer_get_idea",
+    "request": {
+      "capability": "organizer.node.get",
+      "input": {
+        "uuid": "c3d4e5f6-a7b8-9012-cdef-123456789012"
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "organizer_get_by_key_yaml",
+    "request": {
+      "capability": "organizer.node.get_by_key",
+      "input": {
+        "key": "yaml-architecture"
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "organizer_read_frontmatter_idea",
+    "request": {
+      "capability": "organizer.node.read_frontmatter",
+      "input": {
+        "filePath": "ideas/idea-yaml-architecture.md"
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "organizer_rename_idea",
+    "request": {
+      "capability": "organizer.node.rename",
+      "input": {
+        "uuid": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+        "newTitle": "YAML Frontmatter Architecture Updated"
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "organizer_update_idea",
+    "request": {
+      "capability": "organizer.node.update",
+      "input": {
+        "uuid": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+        "updates": {
+          "description": "Parity update description",
+          "priority": "medium",
+          "status": "active",
+          "tags": ["architecture", "yaml", "parity"]
+        }
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "organizer_move_idea_dryrun",
+    "request": {
+      "capability": "organizer.node.move",
+      "input": {
+        "uuid": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+        "newParentKey": "personal-growth"
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      },
+      "dryRun": true
+    }
+  },
+  {
+    "id": "organizer_delete_idea_dryrun",
+    "request": {
+      "capability": "organizer.node.delete",
+      "input": {
+        "uuid": "c3d4e5f6-a7b8-9012-cdef-123456789012"
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      },
+      "dryRun": true
+    }
+  },
+  {
+    "id": "organizer_move_idea",
+    "request": {
+      "capability": "organizer.node.move",
+      "input": {
+        "uuid": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+        "newParentKey": "personal-growth"
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "organizer_delete_idea",
+    "request": {
+      "capability": "organizer.node.delete",
+      "input": {
+        "uuid": "c3d4e5f6-a7b8-9012-cdef-123456789012"
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "thoughts_create",
+    "request": {
+      "capability": "thoughts.create",
+      "input": {
+        "folder_path": "thoughts/parity",
+        "filename": "agent-parity-thought.md",
+        "content": "This note validates capability adapter parity.",
+        "title": "Agent Parity Thought",
+        "date_header": false,
+        "emotions": ["focused"]
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "todos_create",
+    "request": {
+      "capability": "todos.create",
+      "input": {
+        "folderPath": "todos/parity",
+        "date": "2026-02-17",
+        "items": ["Parity task one", "Parity task two"]
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "todos_toggle_existing",
+    "request": {
+      "capability": "todos.toggle",
+      "input": {
+        "filePath": "todos/sample-toggle.md",
+        "lineNumber": 1
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "tools_list_markdown",
+    "request": {
+      "capability": "tools.files.list_markdown",
+      "input": {
+        "limit": 50
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "tools_list_pdf",
+    "request": {
+      "capability": "tools.files.list_pdf",
+      "input": {
+        "limit": 50
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "tools_list_folders",
+    "request": {
+      "capability": "tools.folders.list",
+      "input": {
+        "limit": 50
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "tools_excalidraw_preview",
+    "request": {
+      "capability": "tools.excalidraw.preview",
+      "input": {
+        "inputPath": "Activity Dashboard.md",
+        "options": {
+          "normalize_book": true,
+          "strip_fences": true,
+          "split_long_paragraphs": false,
+          "join_lines": true
+        }
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "tools_excalidraw_format",
+    "request": {
+      "capability": "tools.excalidraw.format",
+      "input": {
+        "inputPath": "Activity Dashboard.md",
+        "options": {
+          "normalize_book": true,
+          "strip_fences": true,
+          "split_long_paragraphs": false,
+          "join_lines": true
+        }
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "tools_transcript_preview",
+    "request": {
+      "capability": "tools.transcript.preview",
+      "input": {
+        "inputText": "(0s): Welcome everyone\\n(10s): Today we discuss planning.",
+        "headingsText": "00:00:00 Intro\\n00:00:10 Planning",
+        "options": {
+          "heading_level": 2
+        }
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  },
+  {
+    "id": "tools_transcript_clean_save",
+    "request": {
+      "capability": "tools.transcript.clean_save",
+      "input": {
+        "input_text": "(0s): Welcome everyone\\n(10s): Today we discuss planning.",
+        "headings_text": "00:00:00 Intro\\n00:00:10 Planning",
+        "output_folder": "transcripts/parity",
+        "output_name": "meeting-notes",
+        "base_folder": null,
+        "options": {
+          "heading_level": 2
+        }
+      },
+      "actor": {
+        "kind": "human",
+        "id": "parity-suite"
+      }
+    }
+  }
+]

@@ -8,9 +8,11 @@ import CascadingFolderPicker, { addRecent } from '@/components/lego_blocks/Casca
 import EmotionTagger from '@/components/lego_blocks/EmotionTaggerBlock'
 import ThoughtsCalendarOrch from '@/components/orchestrators/ThoughtsCalendarOrch'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
-import { createThought } from '@/services/orchestrators/thoughtsOrch'
+import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
+import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
 
 const STORAGE_KEY = 'ltm-new-thought-recents'
+const THOUGHTS_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.new-thought' }
 
 type Tab = 'create' | 'view'
 
@@ -50,13 +52,17 @@ function CreateTab() {
     setSavedPath(null)
 
     try {
-      const data = await createThought({
-        folder_path: folderPath,
-        filename,
-        content,
-        title: title.trim() || null,
-        date_header: dateHeader,
-        emotions,
+      const data = await invokeCapabilityOrThrow({
+        capability: 'thoughts.create',
+        input: {
+          folder_path: folderPath,
+          filename,
+          content,
+          title: title.trim() || null,
+          date_header: dateHeader,
+          emotions,
+        },
+        actor: THOUGHTS_ACTOR,
       })
 
       setSavedPath(data.output_path)

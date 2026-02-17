@@ -25,6 +25,9 @@ Last updated: 2026-02-17
 13. Thoughts are free-capture first; mapping to hierarchy happens later through organizer/linking flows.
 14. Organizer-created program trees are project-scoped by default: nodes inherit `project_root` and write under `<project>/thinking-organizer/<type-folder>`.
 15. Agent-capability HTTP transport uses a **frontend TypeScript runner** as execution source; FastAPI acts only as a transport proxy and must not implement duplicate YAML hierarchy domain services.
+16. Capability rollout now includes Thoughts/Todos/Tools actions (not only organizer CRUD), with UI routes invoking capability router for create/toggle/preview/save paths.
+17. FastAPI capability adapter is now safe-by-default behind env controls (enable flag + optional bearer token + rate limit + payload limit).
+18. Adapter parity fixtures are shared under `tests/fixtures/capability_parity_fixtures.json` and validated in both frontend and backend test suites.
 
 ## Architecture Pivot (2026-02-14)
 - **FROM**: SQLite + mirrored folders + backend hierarchy services
@@ -113,6 +116,7 @@ Last updated: 2026-02-17
 - ThinkingOrganizer backlog create flow now supports explicit Jira-like node type selection (including idea buckets and thought buckets) with separate link tab preserved.
 - New Thought and Todo create flows now write YAML-frontmatter markdown; legacy todo files are upgraded to YAML on append.
 - Capability contract is centralized in frontend (`capabilityRegistryBlock` + `capabilityRouterOrch`) and now exposed for curl through backend `/api/capabilities` proxy that delegates to `frontend/scripts/agent/capabilityRunner.ts`.
+- Discovery/invocation UI exists at `/capabilities` via `frontend/src/components/orchestrators/CapabilityDiscoveryOrch.tsx`.
 - No unified AI text action system across text boxes.
 - No extension SDK/runtime yet.
 - No explicit local-first agent management domain model yet.

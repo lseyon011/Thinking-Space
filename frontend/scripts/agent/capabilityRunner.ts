@@ -3,6 +3,7 @@ import 'fake-indexeddb/auto'
 import * as fsPromises from 'node:fs/promises'
 import * as path from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 
 import { EXCLUDED_DIRS } from '../../src/services/lego_blocks/vaultConstantsBlock'
 import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '../../src/services/lego_blocks/fsBlock'
@@ -16,9 +17,10 @@ import { fullSync } from '../../src/services/orchestrators/vaultSyncOrch'
 interface InvokePayload {
   vaultRoot: string
   request: CapabilityInvokeRequest
+  apiBaseUrl?: string
 }
 
-class NodeVaultFS implements VaultFS {
+export class NodeVaultFS implements VaultFS {
   private readonly vaultRoot: string
 
   constructor(vaultRoot: string) {
@@ -147,23 +149,41 @@ async function main(): Promise<void> {
   const command = process.argv[2]
 
   if (command === 'list') {
-    writeJson({
-      ok: true,
-      capabilities: listCapabilitiesOrch(),
-    })
+    writeJson(await runCapabilityRunnerCommand('list'))
     return
   }
 
   if (command === 'invoke') {
     const payload = await parseInvokePayload()
-    const fs = new NodeVaultFS(payload.vaultRoot)
-    await fullSync(fs)
-    const response = await invokeCapabilityOrch(payload.request, { fs })
-    writeJson(response)
+    writeJson(await runCapabilityRunnerCommand('invoke', payload))
     return
   }
 
   throw new Error(`Unknown command: ${command ?? '<missing>'}`)
+}
+
+export async function runCapabilityRunnerCommand(
+  command: 'list' | 'invoke',
+  payload?: InvokePayload,
+): Promise<unknown> {
+  if (command === 'list') {
+    return {
+      ok: true,
+      capabilities: listCapabilitiesOrch(),
+    }
+  }
+
+  if (!payload) {
+    throw new Error('Invoke command requires payload.')
+  }
+
+  if (payload.apiBaseUrl) {
+    ;(globalThis as any).__LTM_API_BASE__ = payload.apiBaseUrl
+  }
+
+  const fs = new NodeVaultFS(payload.vaultRoot)
+  await fullSync(fs)
+  return invokeCapabilityOrch(payload.request, { fs })
 }
 
 async function parseInvokePayload(): Promise<InvokePayload> {
@@ -209,8 +229,21 @@ function writeJson(payload: unknown): void {
   process.stdout.write(`${JSON.stringify(payload)}\n`)
 }
 
-main().catch(error => {
-  const message = error instanceof Error ? error.message : String(error)
-  process.stderr.write(`${message}\n`)
-  process.exit(1)
-})
+const isDirectRun = (() => {
+  if (process.env.LTM_CAPABILITY_RUNNER_CLI === '1') return true
+  try {
+    const current = fileURLToPath(import.meta.url)
+    const currentName = path.basename(current)
+    return process.argv.some(arg => arg.includes(currentName))
+  } catch {
+    return false
+  }
+})()
+
+if (isDirectRun) {
+  main().catch(error => {
+    const message = error instanceof Error ? error.message : String(error)
+    process.stderr.write(`${message}\n`)
+    process.exit(1)
+  })
+}

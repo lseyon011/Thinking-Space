@@ -21,6 +21,7 @@ poetry.lock
 
 # Local vault copies (never commit real vault data)
 test-vault/
+test-fixtures/vault/.ltm-pilot/
 
 # Dev script runtime files
 .dev-pids/

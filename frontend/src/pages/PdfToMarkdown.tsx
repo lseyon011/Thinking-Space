@@ -4,9 +4,11 @@ import { Button } from '@/components/lego_blocks/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/lego_blocks/ui/card'
 import { Switch } from '@/components/lego_blocks/ui/switch'
 import { ArrowLeft, FileType, Check, Loader2, Search } from 'lucide-react'
-import { listPdfFiles } from '@/services/orchestrators/fileSystemOrch'
-import { previewPdf, convertPdf } from '@/services/orchestrators/pdfToMarkdownOrch'
+import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
 import type { ConvertOptions, PdfPreviewData, PdfConvertResult } from '@/services/lego_blocks/typesBlock'
+import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
+
+const PDF_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.tools.pdf' }
 
 export default function PdfToMarkdown() {
   const [files, setFiles] = useState<string[]>([])
@@ -32,8 +34,12 @@ export default function PdfToMarkdown() {
 
   // Load file list on mount
   useEffect(() => {
-    listPdfFiles()
-      .then(files => setFiles(files))
+    invokeCapabilityOrThrow({
+      capability: 'tools.files.list_pdf',
+      input: { limit: 500 },
+      actor: PDF_ACTOR,
+    })
+      .then(({ files }) => setFiles(files))
       .catch(err => setError(err.message))
   }, [])
 
@@ -48,8 +54,12 @@ export default function PdfToMarkdown() {
     setResult(null)
     setError(null)
 
-    previewPdf(selectedFile, options)
-      .then(data => setPreview(data))
+    invokeCapabilityOrThrow({
+      capability: 'tools.pdf.preview',
+      input: { inputPath: selectedFile, options },
+      actor: PDF_ACTOR,
+    })
+      .then(({ preview }) => setPreview(preview))
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
   }, [selectedFile, options])
@@ -62,8 +72,12 @@ export default function PdfToMarkdown() {
     setResult(null)
 
     try {
-      const data = await convertPdf(selectedFile, options)
-      setResult(data)
+      const { result } = await invokeCapabilityOrThrow({
+        capability: 'tools.pdf.convert',
+        input: { inputPath: selectedFile, options },
+        actor: PDF_ACTOR,
+      })
+      setResult(result)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {

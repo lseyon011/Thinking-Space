@@ -5,11 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_bloc
 import { Button } from '@/components/lego_blocks/ui/button'
 import CascadingFolderPicker, { addRecent } from '@/components/lego_blocks/CascadingFolderPickerBlock'
 import TodoCalendarOrch from '@/components/orchestrators/TodoCalendarOrch'
-import { createTodos } from '@/services/orchestrators/todosOrch'
+import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
+import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
 
 type Tab = 'create' | 'view'
 
 const STORAGE_KEY = 'ltm-todos-recents'
+const TODOS_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.todos' }
 
 function todayDateStr() {
   const d = new Date()
@@ -49,11 +51,15 @@ function CreateTab() {
     setSavedPath(null)
 
     try {
-      const data = await createTodos(
-        folderPath.replace(/\/todos\/?$/, '') + '/todos',
-        dateStr,
-        items,
-      )
+      const data = await invokeCapabilityOrThrow({
+        capability: 'todos.create',
+        input: {
+          folderPath: folderPath.replace(/\/todos\/?$/, '') + '/todos',
+          date: dateStr,
+          items,
+        },
+        actor: TODOS_ACTOR,
+      })
 
       setSavedPath(data.output_path)
       setItemsAdded(data.items_added)

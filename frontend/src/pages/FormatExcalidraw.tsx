@@ -5,9 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Switch } from '@/components/lego_blocks/ui/switch'
 import { ArrowLeft, FileText, Check, Loader2 } from 'lucide-react'
 import SearchDropdown from '@/components/lego_blocks/SearchDropdownBlock'
-import { listFiles } from '@/services/orchestrators/fileSystemOrch'
-import { previewFormat, formatAndSave } from '@/services/orchestrators/formatExcalidrawOrch'
+import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
 import type { FormatOptions, FormatPreviewData, FormatResult } from '@/services/lego_blocks/typesBlock'
+import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
+
+const FORMAT_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.tools.excalidraw' }
 
 export default function FormatExcalidraw() {
   const [files, setFiles] = useState<string[]>([])
@@ -26,8 +28,12 @@ export default function FormatExcalidraw() {
 
   // Load file list on mount
   useEffect(() => {
-    listFiles()
-      .then(files => setFiles(files))
+    invokeCapabilityOrThrow({
+      capability: 'tools.files.list_markdown',
+      input: { limit: 1000 },
+      actor: FORMAT_ACTOR,
+    })
+      .then(({ files }) => setFiles(files))
       .catch(err => setError(err.message))
   }, [])
 
@@ -42,8 +48,12 @@ export default function FormatExcalidraw() {
     setResult(null)
     setError(null)
 
-    previewFormat(selectedFile, options)
-      .then(data => setPreview(data))
+    invokeCapabilityOrThrow({
+      capability: 'tools.excalidraw.preview',
+      input: { inputPath: selectedFile, options },
+      actor: FORMAT_ACTOR,
+    })
+      .then(({ preview }) => setPreview(preview))
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
   }, [selectedFile, options])
@@ -56,8 +66,12 @@ export default function FormatExcalidraw() {
     setResult(null)
 
     try {
-      const data = await formatAndSave(selectedFile, options)
-      setResult(data)
+      const { result } = await invokeCapabilityOrThrow({
+        capability: 'tools.excalidraw.format',
+        input: { inputPath: selectedFile, options },
+        actor: FORMAT_ACTOR,
+      })
+      setResult(result)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {

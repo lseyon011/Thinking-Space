@@ -9,16 +9,27 @@ export const STORAGE_KEYS = {
   thinkingOrganizerSelectedProjectRoot: 'ltm-thinking-organizer-selected-project-root',
   thinkingOrganizerProjects: 'ltm-thinking-organizer-projects',
   thinkingOrganizerProjectCreateDestination: 'ltm-thinking-organizer-project-create-destination',
+  capabilityFeatureFlags: 'ltm-capability-feature-flags',
 } as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]
 
 export function getStorageItem(key: StorageKey): string | null {
-  return localStorage.getItem(key)
+  try {
+    if (typeof localStorage === 'undefined') return null
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
 }
 
 export function setStorageItem(key: StorageKey, value: string): void {
-  localStorage.setItem(key, value)
+  try {
+    if (typeof localStorage === 'undefined') return
+    localStorage.setItem(key, value)
+  } catch {
+    // Ignore storage write failures in restricted runtimes.
+  }
 }
 
 export function getJsonStorageItem<T>(key: StorageKey, fallback: T): T {

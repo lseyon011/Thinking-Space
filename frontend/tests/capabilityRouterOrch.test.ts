@@ -152,7 +152,7 @@ class FakeVaultFS implements VaultFS {
   }
 }
 
-const ACTOR = { kind: 'agent', id: 'test-suite' } as const
+const ACTOR = { kind: 'human', id: 'test-suite' } as const
 
 let fakeIdb: typeof import('fake-indexeddb') | null = null
 let capabilityOrch: typeof import('@/services/orchestrators/capabilityRouterOrch') | null = null
@@ -251,5 +251,129 @@ describe('capabilityRouterOrch', () => {
     expect(frontmatter!.comments?.[0].text).toBe('Need validation numbers')
     expect(frontmatter!.comments?.[0].added_by).toBe('unknown')
     expect(frontmatter!.comments?.[0].added_at).toBeTruthy()
+  })
+
+  it('supports dry-run preview for move without persisting', async () => {
+    const fs = new FakeVaultFS()
+
+    const { node: programA } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'program',
+        title: 'Program A',
+        projectRoot: 'projects/a',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const { node: programB } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'program',
+        title: 'Program B',
+        projectRoot: 'projects/b',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const { node: epic } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'epic',
+        title: 'Epic 1',
+        parentKey: programA.key,
+        parentUuid: programA.uuid,
+        parentType: 'program',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const dryRun = await capabilityOrch!.invokeCapabilityOrch({
+      capability: 'organizer.node.move',
+      input: {
+        uuid: epic.uuid,
+        newParentKey: programB.key,
+      },
+      actor: ACTOR,
+      dryRun: true,
+    }, { fs })
+
+    expect(dryRun.ok).toBe(true)
+    if (!dryRun.ok) throw new Error('Expected dry-run response to succeed')
+    expect(dryRun.data.preview?.fromParentKey).toBe(programA.key)
+    expect(dryRun.data.preview?.toParentKey).toBe(programB.key)
+    expect(dryRun.warnings[0]).toContain('Dry-run')
+
+    const { nodes: stillUnderA } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.nodes.list_children',
+      input: { parentKey: programA.key },
+      actor: ACTOR,
+    }, { fs })
+    expect(stillUnderA.some(node => node.uuid === epic.uuid)).toBe(true)
+
+    const { nodes: underB } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.nodes.list_children',
+      input: { parentKey: programB.key },
+      actor: ACTOR,
+    }, { fs })
+    expect(underB.some(node => node.uuid === epic.uuid)).toBe(false)
+  })
+
+  it('supports dry-run preview for delete without persisting', async () => {
+    const fs = new FakeVaultFS()
+
+    const { node } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'thought',
+        title: 'Delete candidate',
+        projectRoot: 'projects/data-ingestion',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const dryRun = await capabilityOrch!.invokeCapabilityOrch({
+      capability: 'organizer.node.delete',
+      input: {
+        uuid: node.uuid,
+      },
+      actor: ACTOR,
+      dryRun: true,
+    }, { fs })
+
+    expect(dryRun.ok).toBe(true)
+    if (!dryRun.ok) throw new Error('Expected dry-run response to succeed')
+    expect(dryRun.data.deleted).toBe(true)
+    expect(dryRun.data.preview?.nodeUuid).toBe(node.uuid)
+
+    const { node: stillThere } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.get',
+      input: { uuid: node.uuid },
+      actor: ACTOR,
+    }, { fs })
+    expect(stillThere).not.toBeNull()
+  })
+
+  it('writes capability audit entries', async () => {
+    const fs = new FakeVaultFS()
+
+    await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'program',
+        title: 'Audit Program',
+        projectRoot: 'projects/audit',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const log = await fs.read('.ltm-pilot/audit/capability-audit.log')
+    const lines = log.split('\n').filter(Boolean)
+    expect(lines.length).toBeGreaterThan(0)
+
+    const latest = JSON.parse(lines[lines.length - 1]) as { capability: string; ok: boolean; auditId: string }
+    expect(latest.capability).toBe('organizer.node.create')
+    expect(latest.ok).toBe(true)
+    expect(latest.auditId).toContain('audit-')
   })
 })

@@ -1,0 +1,78 @@
+# ADR-005: Agent Capability Contract and Transport
+
+Status: Accepted  
+Date: 2026-02-17
+
+## Context
+
+The product needs agent-native read/write access to thinking-organizer operations without duplicating domain logic in multiple runtimes.
+
+Current architecture constraints:
+- YAML frontmatter + markdown files are source of truth.
+- IndexedDB is a rebuildable cache.
+- Core capability/domain logic should remain frontend-first.
+- Backend transport may exist but must stay optional and thin.
+
+## Decision
+
+Define a single capability contract executed by frontend TypeScript and exposed through adapters.
+
+Core contract:
+- Invocation envelope:
+  - `capability`
+  - `input`
+  - `actor`
+  - `requestId`
+  - `dryRun`
+- Response envelope:
+  - `ok`
+  - `capability`
+  - `requestId`
+  - `actor`
+  - `dryRun`
+  - `auditId`
+  - `warnings`
+  - `data` (on success)
+  - `error` (on failure)
+
+Capability naming:
+- `organizer.nodes.*` for collection/list/search operations.
+- `organizer.node.*` for single-node CRUD/read operations.
+
+Execution source of truth:
+- `frontend/src/services/lego_blocks/capabilityRegistryBlock.ts`
+- `frontend/src/services/orchestrators/capabilityRouterOrch.ts`
+
+Audit + safety requirements:
+- Every invocation attempts to write audit entry under `.ltm-pilot/audit/capability-audit.log`.
+- Policy checks run before execution (payload size + optional node-type/project-root restrictions + agent write controls).
+- Destructive dry-run support is required for:
+  - `organizer.node.move`
+  - `organizer.node.delete`
+
+Transport adapters:
+- Frontend runner (Node): `frontend/scripts/agent/capabilityRunner.ts`
+- FastAPI thin proxy:
+  - `GET /api/capabilities`
+  - `POST /api/capabilities/invoke`
+- Backend transport must not implement duplicate YAML hierarchy/domain services.
+
+## Consequences
+
+Positive:
+- One capability contract across UI and agent entrypoints.
+- Avoids frontend/backend divergence for hierarchy semantics.
+- Enables curl/automation access while preserving local-first model.
+
+Tradeoffs:
+- Capability runner bootstraps frontend runtime modules in node context.
+- Audit logging is best-effort; failures do not block capability execution.
+
+## Rollout
+
+Phase 1:
+- Contract + registry/router + organizer migration + FastAPI proxy.
+
+Phase 2:
+- Expand dry-run coverage and stricter policy defaults.
+- Add adapter parity fixtures and broader surface migration (thoughts/todos/tools).
