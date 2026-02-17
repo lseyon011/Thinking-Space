@@ -611,7 +611,7 @@ describe('capabilityRouterOrch', () => {
         sourceRepo: 'Thinking-Space',
         branch: 'main',
         commit: '251c328',
-        artifacts: ['agents/TODO.md'],
+        artifacts: ['thinking-organizer/ideas'],
       },
       actor: ACTOR,
     }, { fs })

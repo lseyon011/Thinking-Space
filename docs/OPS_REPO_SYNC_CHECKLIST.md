@@ -39,11 +39,10 @@ Use this checklist when operating with:
 
 1. Keep writable project roots allowlisted in capability policy.
 2. Validate `record_kind` on all operation records.
-3. Keep `agents/*.md` as read-only snapshot during transition cycle.
-4. Keep source traceability fields populated:
+3. Keep source traceability fields populated:
 - `source_repo`
 - `branch`
 - `commit`
 - `artifacts`
-5. Use tool-native operations as source of truth for active work:
+4. Use tool-native operations as source of truth for active work:
 - `coding-projects/thinking-space/thinking-organizer/*`

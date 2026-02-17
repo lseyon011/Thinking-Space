@@ -14,7 +14,7 @@ If Claude learns something useful, Claude must manually update `CLAUDE.md` to pr
 
 Also mirror durable project knowledge to:
 - `AGENTS.md` (cross-tool contract)
-- `agents/UNDERSTANDINGS.md` (token-efficient shared context)
+- organizer principles/decision records in `coding-projects/thinking-space/thinking-organizer/*`
 
 ## Working Style (Inherited + Project-Specific)
 - Think from first principles, then map to concrete code tradeoffs.
@@ -100,8 +100,8 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 1. Read `AGENTS.md`
 2. Read `README.md`
 3. Read `agents/README.md`
-4. Read `agents/UNDERSTANDINGS.md`
-5. Read `agents/TODO.md` and `agents/HANDOFFS.md` as transition snapshots only
+4. Read `docs/ADR-005-Agent-Capabilities.md`
+5. Read `docs/ADR-006-Agent-Workspace-Schema.md`
 6. Open active tasks/plans from vault-native organizer workspace (`coding-projects/thinking-space/thinking-organizer/*`)
 7. Sync organizer cache before task updates (`Sync Vault Now` / equivalent capability path)
 
@@ -109,14 +109,13 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - Use organizer tool as source of truth for active operations (tasks, plans, runs, handoffs).
 - Every created operation node must include a substantive YAML `description`.
 - Every implementation plan must be recorded in the organizer tool before execution starts.
-- Keep `agents/*.md` as read-only transition snapshots unless explicitly asked to update them.
 - Follow workspace usage pattern:
   - `development (agent operations)` for active task/plan/run work.
   - `handoffs (agent operations)` for handoff records.
   - `principles and decisions (agent operations)` for durable guidance.
 - Keep docs synchronized when strategy or architecture shifts.
 - Use detailed commit messages that capture scope + intent + key changes; do not use generic commit titles.
-- Commit body must begin with the exact completion summary already shared by the agent, then optionally expand with technical context.
+- Commit body must be the final task output copied verbatim from the agent response (no paraphrase, truncation, or reformatting).
 - Follow `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md`.
 
 ## Scope Boundary

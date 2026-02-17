@@ -179,9 +179,6 @@ Recommended organizer layout:
 - `handoffs (agent operations)` program for cross-session transfers.
 - `principles and decisions (agent operations)` program for durable operating guidance.
 
-Transition note:
-- `agents/*.md` files are read-only migration snapshots, not active workflow state.
-
 Quick curl example:
 ```bash
 curl -s http://127.0.0.1:8000/api/capabilities/invoke \
@@ -369,34 +366,35 @@ Exit criteria:
 - **Risk**: Unsafe extension behaviors
   - **Mitigation**: explicit permission model + local-only policy + restricted capability surface
 - **Risk**: Context bloat for multi-agent work
-  - **Mitigation**: dedicated `agents/` operational docs and strict handoff structure
+  - **Mitigation**: organizer tool-native operations + capability audit logs + required in-tool plan/handoff records
 
 ## Multi-Agent Collaboration Infrastructure
-Use the `agents/` folder to avoid repeated full-repo rereads across Codex/Claude sessions.
+Use the organizer workspace as source of truth for active operations:
+- `coding-projects/thinking-space/thinking-organizer/*`
 
 - `AGENTS.md`
   - Top-level implementation contract (must-read before coding)
-- `agents/UNDERSTANDINGS.md`
-  - Stable architecture/context summary + critical file map
-- `agents/TODO.md`
-  - Active queue and next actions
-- `agents/DONE.md`
-  - Completed work log and decisions landed
-- `agents/HANDOFFS.md`
-  - Current handoffs between agents/sessions
+- `docs/ADR-005-Agent-Capabilities.md`
+  - Capability contract, transport, policy/audit expectations
+- `docs/ADR-006-Agent-Workspace-Schema.md`
+  - Workspace schema and required operation fields
+- organizer programs
+  - `development (agent operations)` for active implementation tasks/plans/runs
+  - `handoffs (agent operations)` for transfer records
+  - `principles and decisions (agent operations)` for durable guidance
 - `agents/TEMPLATES/HANDOFF_TEMPLATE.md`
   - Required handoff format
 - `agents/README.md`
-  - Operating protocol for multi-agent execution
+  - Additional protocol notes + templates
 
 Workflow:
 1. Read `AGENTS.md`
 2. Read `README.md`
 3. Read `agents/README.md`
-4. Read `agents/UNDERSTANDINGS.md`
-5. Pick top `READY` item from `agents/TODO.md`
-6. Execute and update `agents/DONE.md`
-7. Write handoff in `agents/HANDOFFS.md`
+4. Read `docs/ADR-005-Agent-Capabilities.md`
+5. Read `docs/ADR-006-Agent-Workspace-Schema.md`
+6. Sync organizer cache and claim an in-tool task (`task.claim`)
+7. Record plan/run/handoff updates in organizer workspace
 
 ## Quick Start
 

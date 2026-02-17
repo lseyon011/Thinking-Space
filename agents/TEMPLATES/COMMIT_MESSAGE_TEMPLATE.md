@@ -5,19 +5,14 @@ Use this for all commits.
 ## Rules
 - Keep subject specific and scoped.
 - Do not use vague subjects like `fix`, `update`, `wip`.
-- First body section must copy the exact completed-work summary already produced by the agent.
-- Additional details are optional and go after the copied summary.
+- Body must be the final task output copied verbatim from the agent response.
+- Keep exact headings, bullet structure, wording, punctuation, and order.
+- Do not paraphrase, shorten, reorder, or restyle the copied text.
+- Do not append extra commentary unless explicitly requested.
 
 ## Format
 ```text
 <type>(<scope>): <intent-oriented summary>
 
-Completed work summary (copied exactly):
-- <bullet from agent completion summary>
-- <bullet from agent completion summary>
-
-Additional details:
-- Tests/validation run: <commands>
-- Key implementation notes: <important detail>
-- Follow-ups: <optional>
+<paste final agent task output verbatim below>
 ```

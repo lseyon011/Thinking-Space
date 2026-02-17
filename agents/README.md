@@ -6,10 +6,8 @@ Purpose: enable parallel agents to execute without repeatedly re-reading the who
 - `AGENTS.md`: non-negotiable product/architecture contract for all implementation work
 - `CLAUDE.md`: Claude-native project file (must stay consistent with `AGENTS.md`)
 - `README.md`: roadmap and epic order source of truth
-- `agents/UNDERSTANDINGS.md`: stable architecture, decisions, key file map
-- `agents/TODO.md`: transition snapshot queue (read-only unless explicitly requested)
-- `agents/DONE.md`: transition snapshot of completed items
-- `agents/HANDOFFS.md`: transition snapshot handoffs
+- `docs/ADR-005-Agent-Capabilities.md`: capability contract and operational controls
+- `docs/ADR-006-Agent-Workspace-Schema.md`: organizer workspace schema + operation fields
 - `agents/TEMPLATES/HANDOFF_TEMPLATE.md`: required handoff format
 - `agents/TEMPLATES/ORCHESTRATOR_TEMPLATE.md`: required structure for new major orchestrator files
 - `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md`: required commit message structure
@@ -21,16 +19,16 @@ Active operations source of truth:
 1. Read `AGENTS.md`
 2. If using Claude, read `CLAUDE.md`
 3. Read `README.md`
-4. Read `agents/UNDERSTANDINGS.md`
-5. Read top of `agents/TODO.md` + latest `agents/HANDOFFS.md` for migration context only
+4. Read `docs/ADR-005-Agent-Capabilities.md`
+5. Read `docs/ADR-006-Agent-Workspace-Schema.md`
 6. Open active tasks/plans in organizer workspace
 7. Sync organizer cache (`Sync Vault Now`) and claim one task in-tool
 
 ## Mandatory Tool Pattern
-1. Do not run active task lifecycle in `agents/*.md`.
+1. Run active task lifecycle only in organizer workspace.
 2. Every created operation node must include a meaningful YAML `description`.
 3. Every execution plan must be recorded in the organizer tool before coding starts.
-4. Update task/run/handoff state in-tool first; mirror to snapshots only when explicitly requested.
+4. Update task/run/handoff state in-tool first.
 
 Workspace layout pattern:
 - `development (agent operations)` program for active implementation tasks/plans/runs.
@@ -41,19 +39,19 @@ Workspace layout pattern:
 - `READY`: unclaimed, clear to execute
 - `IN_PROGRESS`: currently owned by one agent
 - `BLOCKED`: waiting on decision or dependency
-- `DONE`: completed and logged in `agents/DONE.md`
+- `DONE`: completed in organizer task/run records
 
 ## Ownership Rules
 - One task, one owner at a time.
-- Update `TODO` at task start and end.
-- Log all completed work in `DONE` with date and artifacts.
-- Add a handoff entry before ending session if work is incomplete.
+- Update task status in organizer records at task start and end.
+- Log completed work in organizer run/task notes with date and artifacts.
+- Add a handoff record in organizer workspace before ending session if work is incomplete.
 
 ## Token Efficiency Rules
 - Do not re-scan full repo unless required by task.
-- Use `UNDERSTANDINGS` file map first.
+- Use organizer principles/decisions nodes plus ADR docs first.
 - Read only files relevant to the claimed task.
-- Add new discoveries once to `UNDERSTANDINGS`, then reference there.
+- Add durable discoveries to organizer principles/decisions nodes, then reference there.
 
 ## Quality Rules
 - No silent scope changes.
@@ -73,6 +71,6 @@ Workspace layout pattern:
 - UI should consume service workflows from `services/orchestrators` by default.
 - Caution: orchestrators must stay thin. If orchestration files grow dense with reusable logic, extract to lego blocks/services/hooks.
 - Git commits must use detailed messages describing scope, intent, and substantive changes.
-- Commit body must include the exact completed-work summary from the agent output as the first section.
-- Then add any extra technical details (tests, migration notes, follow-ups) below the copied summary.
+- Commit body must be the exact final agent task output copied verbatim.
+- Do not paraphrase, shorten, reorder, or restyle any part of that copied final output.
 - Use `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md`.

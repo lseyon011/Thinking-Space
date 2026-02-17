@@ -19,12 +19,10 @@ interface CreatedNode {
 interface BootstrapContext {
   projectRootAbs: string
   projectRootValue: string
-  repoRoot: string
   sourceRepo: string
   branch: string
   commit: string
   keySet: Set<string>
-  nodesByKey: Map<string, CreatedNode>
 }
 
 const TYPE_FOLDERS: Record<NodeType, string> = {
@@ -39,9 +37,7 @@ const TYPE_FOLDERS: Record<NodeType, string> = {
 async function main(): Promise<void> {
   const target = process.argv[2]?.trim()
   if (!target) {
-    throw new Error(
-      'Usage: vite-node scripts/agent/bootstrapAgentWorkspace.ts "<target-project-root>"',
-    )
+    throw new Error('Usage: vite-node scripts/agent/bootstrapAgentWorkspace.ts "<target-project-root>"')
   }
 
   const projectRootAbs = path.resolve(target)
@@ -50,130 +46,145 @@ async function main(): Promise<void> {
   const ctx: BootstrapContext = {
     projectRootAbs,
     projectRootValue: deriveProjectRootValue(projectRootAbs),
-    repoRoot,
     sourceRepo: path.basename(repoRoot),
     branch: safeGit(repoRoot, 'rev-parse --abbrev-ref HEAD') || 'unknown',
     commit: safeGit(repoRoot, 'rev-parse HEAD') || 'unknown',
     keySet: new Set<string>(),
-    nodesByKey: new Map<string, CreatedNode>(),
   }
 
   await ensureOrganizerDirs(ctx)
 
-  const program = await createNode(ctx, {
+  const developmentProgram = await createNode(ctx, {
     type: 'program',
-    title: 'Thinking Space Agent Operations',
-    tags: ['ops', 'agent-management'],
+    title: 'development (agent operations)',
     body: [
-      '# Thinking Space Agent Operations',
+      '# development (agent operations)',
       '',
-      'Workspace for agent-native execution tracking imported from repo-local `agents/*.md` artifacts.',
-      '',
-      `Source repository: ${ctx.sourceRepo}`,
-      `Branch: ${ctx.branch}`,
-      `Commit: ${ctx.commit}`,
+      'Primary workspace for active implementation tasks, plans, and execution runs.',
     ].join('\n'),
     extraFields: {
       record_kind: 'note',
       schema_version: '2',
+      description: 'Primary workspace for active implementation tasks, plans, and execution runs.',
       source_repo: ctx.sourceRepo,
       branch: ctx.branch,
       commit: ctx.commit,
-      artifacts: ['agents/TODO.md', 'agents/DONE.md', 'agents/HANDOFFS.md', 'agents/UNDERSTANDINGS.md'],
+      artifacts: ['thinking-organizer/programs'],
     },
+    tags: ['ops', 'development'],
   })
 
-  const backlogEpic = await createNode(ctx, {
+  await createNode(ctx, {
     type: 'epic',
-    title: 'Task Backlog',
-    parent: program,
+    title: 'task backlog',
+    parent: developmentProgram,
     tags: ['ops/task'],
     extraFields: {
       record_kind: 'note',
       schema_version: '2',
+      description: 'Backlog epic containing active and upcoming implementation tasks.',
       source_repo: ctx.sourceRepo,
       branch: ctx.branch,
       commit: ctx.commit,
-      artifacts: ['agents/TODO.md'],
     },
   })
 
-  const runsEpic = await createNode(ctx, {
+  await createNode(ctx, {
     type: 'epic',
-    title: 'Execution Runs',
-    parent: program,
+    title: 'execution runs',
+    parent: developmentProgram,
     tags: ['ops/run'],
     extraFields: {
       record_kind: 'note',
       schema_version: '2',
+      description: 'Execution run records linked to task delivery and outcomes.',
       source_repo: ctx.sourceRepo,
       branch: ctx.branch,
       commit: ctx.commit,
-      artifacts: ['agents/DONE.md'],
     },
   })
 
-  const handoffsEpic = await createNode(ctx, {
+  const handoffsProgram = await createNode(ctx, {
+    type: 'program',
+    title: 'handoffs (agent operations)',
+    body: [
+      '# handoffs (agent operations)',
+      '',
+      'Cross-session and cross-agent transfer records.',
+    ].join('\n'),
+    extraFields: {
+      record_kind: 'note',
+      schema_version: '2',
+      description: 'Cross-session and cross-agent transfer records.',
+      source_repo: ctx.sourceRepo,
+      branch: ctx.branch,
+      commit: ctx.commit,
+    },
+    tags: ['ops', 'handoff'],
+  })
+
+  await createNode(ctx, {
     type: 'epic',
-    title: 'Handoffs',
-    parent: program,
+    title: 'active handoffs',
+    parent: handoffsProgram,
     tags: ['ops/handoff'],
     extraFields: {
       record_kind: 'note',
       schema_version: '2',
+      description: 'Current pending and active handoff records.',
       source_repo: ctx.sourceRepo,
       branch: ctx.branch,
       commit: ctx.commit,
-      artifacts: ['agents/HANDOFFS.md'],
     },
   })
 
-  const principlesEpic = await createNode(ctx, {
-    type: 'epic',
-    title: 'Principles and Decisions',
-    parent: program,
-    tags: ['ops/principles'],
+  const principlesProgram = await createNode(ctx, {
+    type: 'program',
+    title: 'principles and decisions (agent operations)',
+    body: [
+      '# principles and decisions (agent operations)',
+      '',
+      'Durable operating guidance, architecture decisions, and reusable learnings.',
+    ].join('\n'),
     extraFields: {
       record_kind: 'note',
       schema_version: '2',
+      description: 'Durable operating guidance, architecture decisions, and reusable learnings.',
       source_repo: ctx.sourceRepo,
       branch: ctx.branch,
       commit: ctx.commit,
-      artifacts: ['agents/UNDERSTANDINGS.md'],
+    },
+    tags: ['ops', 'principles'],
+  })
+
+  await createNode(ctx, {
+    type: 'epic',
+    title: 'operating contract',
+    parent: principlesProgram,
+    tags: ['ops/principles'],
+    extraFields: {
+      record_kind: 'decision',
+      schema_version: '2',
+      description: 'Core operating contract and guardrails for agents and humans.',
+      source_repo: ctx.sourceRepo,
+      branch: ctx.branch,
+      commit: ctx.commit,
     },
   })
 
-  const todoImported = await importTodoRows(ctx, backlogEpic)
-  const doneImported = await importDoneRows(ctx, runsEpic)
-  const handoffImported = await importHandoffRows(ctx, handoffsEpic)
-  const understandingImported = await importUnderstandings(ctx, principlesEpic)
-
-  const manifestPath = path.join(
-    ctx.projectRootAbs,
-    'thinking-organizer',
-    'import-manifest.md',
-  )
+  const manifestPath = path.join(ctx.projectRootAbs, 'thinking-organizer', 'bootstrap-manifest.md')
   const manifest = [
-    '# Agent Workspace Import Manifest',
+    '# Agent Workspace Bootstrap Manifest',
     '',
-    `Imported at: ${new Date().toISOString()}`,
+    `Bootstrapped at: ${new Date().toISOString()}`,
     `Source repo: ${ctx.sourceRepo}`,
     `Source branch: ${ctx.branch}`,
     `Source commit: ${ctx.commit}`,
     '',
-    '## Counts',
+    '## Notes',
     '',
-    `- Tasks imported: ${todoImported}`,
-    `- Run/completion notes imported: ${doneImported}`,
-    `- Handoffs imported: ${handoffImported}`,
-    `- Principles/decisions imported: ${understandingImported}`,
-    '',
-    '## Source Files',
-    '',
-    '- agents/TODO.md',
-    '- agents/DONE.md',
-    '- agents/HANDOFFS.md',
-    '- agents/UNDERSTANDINGS.md',
+    '- This bootstrap creates the organizer workspace structure only.',
+    '- Active tasks/plans/runs/handoffs should be created in-tool after bootstrap.',
   ].join('\n')
   await fs.writeFile(manifestPath, manifest, 'utf-8')
 
@@ -182,12 +193,11 @@ async function main(): Promise<void> {
       {
         ok: true,
         projectRoot: ctx.projectRootAbs,
-        counts: {
-          tasks: todoImported,
-          runs: doneImported,
-          handoffs: handoffImported,
-          principles: understandingImported,
-        },
+        created: [
+          'development (agent operations)',
+          'handoffs (agent operations)',
+          'principles and decisions (agent operations)',
+        ],
       },
       null,
       2,
@@ -238,216 +248,19 @@ async function createNode(
   }
 
   note.frontmatter.key = makeUniqueKey(ctx, note.frontmatter.key || generateKey(params.title) || params.type)
-  const folder = path.join(
-    ctx.projectRootAbs,
-    'thinking-organizer',
-    TYPE_FOLDERS[params.type],
-  )
+
+  const folder = path.join(ctx.projectRootAbs, 'thinking-organizer', TYPE_FOLDERS[params.type])
   const filename = `${params.type}-${note.frontmatter.key}.md`
   const filePathAbs = path.join(folder, filename)
   await fs.writeFile(filePathAbs, stringifyNote(note), 'utf-8')
 
   const relPath = path.relative(ctx.projectRootAbs, filePathAbs).replace(/\\/g, '/')
-  const created: CreatedNode = {
+  return {
     type: params.type,
     key: note.frontmatter.key,
     uuid: note.frontmatter.uuid,
     filePath: relPath,
   }
-  ctx.nodesByKey.set(created.key, created)
-  return created
-}
-
-async function importTodoRows(ctx: BootstrapContext, parent: CreatedNode): Promise<number> {
-  const filePath = path.join(ctx.repoRoot, 'agents', 'TODO.md')
-  const content = await fs.readFile(filePath, 'utf-8')
-  const rows = content
-    .split('\n')
-    .filter(line => line.startsWith('| LTM-'))
-
-  let count = 0
-  for (const row of rows) {
-    const cols = row
-      .split('|')
-      .slice(1, -1)
-      .map(part => part.trim())
-    if (cols.length < 6) continue
-
-    const [taskId, title, status, owner, dependsOn, acceptance] = cols
-    const normalizedStatus = normalizeTaskStatus(status)
-    const depends = parseCsv(dependsOn)
-    const nodeTitle = `${taskId} ${title}`
-
-    const body = [
-      `# ${nodeTitle}`,
-      '',
-      `Status: ${status}`,
-      `Owner: ${owner || 'unassigned'}`,
-      '',
-      '## Acceptance Criteria',
-      '',
-      acceptance || 'No criteria provided',
-      '',
-      '## Source',
-      '',
-      '- agents/TODO.md',
-    ].join('\n')
-
-    await createNode(ctx, {
-      type: 'idea',
-      title: nodeTitle,
-      parent,
-      tags: ['ops/task'],
-      body,
-      extraFields: {
-        record_kind: 'task',
-        schema_version: '2',
-        task_id: taskId,
-        task_status: normalizedStatus,
-        depends_on: depends,
-        blocked_by: [],
-        acceptance_criteria: acceptance ? [acceptance] : [],
-        owner: owner && owner !== 'unassigned' ? owner : 'unknown',
-        source_repo: ctx.sourceRepo,
-        branch: ctx.branch,
-        commit: ctx.commit,
-        artifacts: ['agents/TODO.md'],
-        related_nodes: depends,
-        state_history: [
-          {
-            at: new Date().toISOString(),
-            by: 'migration',
-            from: '',
-            to: normalizedStatus,
-            note: 'Imported from agents/TODO.md',
-          },
-        ],
-      },
-    })
-    count += 1
-  }
-  return count
-}
-
-async function importDoneRows(ctx: BootstrapContext, parent: CreatedNode): Promise<number> {
-  const filePath = path.join(ctx.repoRoot, 'agents', 'DONE.md')
-  const content = await fs.readFile(filePath, 'utf-8')
-  const regex = /^###\s+(.+)\n([\s\S]*?)(?=^###\s+|^##\s+|(?![\s\S]))/gm
-  let match: RegExpExecArray | null
-  let count = 0
-
-  while ((match = regex.exec(content)) !== null) {
-    const heading = match[1].trim()
-    const sectionBody = match[2].trim()
-    const runId = `run-${generateKey(heading).slice(0, 24) || Date.now().toString(36)}`
-
-    await createNode(ctx, {
-      type: 'thought',
-      title: heading,
-      parent,
-      tags: ['ops/run'],
-      body: sectionBody,
-      extraFields: {
-        record_kind: 'run',
-        schema_version: '2',
-        run_id: runId,
-        result: 'success',
-        started_at: new Date().toISOString(),
-        ended_at: new Date().toISOString(),
-        source_repo: ctx.sourceRepo,
-        branch: ctx.branch,
-        commit: ctx.commit,
-        artifacts: ['agents/DONE.md'],
-      },
-    })
-    count += 1
-  }
-
-  return count
-}
-
-async function importHandoffRows(ctx: BootstrapContext, parent: CreatedNode): Promise<number> {
-  const filePath = path.join(ctx.repoRoot, 'agents', 'HANDOFFS.md')
-  const content = await fs.readFile(filePath, 'utf-8')
-  const regex = /^##\s+(.+)\n([\s\S]*?)(?=^##\s+|(?![\s\S]))/gm
-  let match: RegExpExecArray | null
-  let count = 0
-
-  while ((match = regex.exec(content)) !== null) {
-    const heading = match[1].trim()
-    if (heading.toLowerCase().includes('agent handoffs')) continue
-    const sectionBody = match[2].trim()
-
-    await createNode(ctx, {
-      type: 'thought',
-      title: heading,
-      parent,
-      tags: ['ops/handoff'],
-      body: sectionBody,
-      extraFields: {
-        record_kind: 'handoff',
-        schema_version: '2',
-        source_repo: ctx.sourceRepo,
-        branch: ctx.branch,
-        commit: ctx.commit,
-        artifacts: ['agents/HANDOFFS.md'],
-      },
-    })
-    count += 1
-  }
-
-  return count
-}
-
-async function importUnderstandings(ctx: BootstrapContext, parent: CreatedNode): Promise<number> {
-  const filePath = path.join(ctx.repoRoot, 'agents', 'UNDERSTANDINGS.md')
-  const content = await fs.readFile(filePath, 'utf-8')
-  const sections = splitBySection(content)
-  const nodes: Array<{ title: string; kind: 'decision' | 'principle'; body: string }> = []
-
-  for (const line of sections['Locked Decisions'] ?? []) {
-    const m = line.match(/^\d+\.\s+(.+)$/)
-    if (!m) continue
-    nodes.push({
-      title: m[1].trim(),
-      kind: 'decision',
-      body: m[1].trim(),
-    })
-  }
-
-  for (const sectionName of ['Product Direction', 'Invariants to Preserve']) {
-    for (const line of sections[sectionName] ?? []) {
-      const m = line.match(/^-+\s+(.+)$/)
-      if (!m) continue
-      nodes.push({
-        title: m[1].trim(),
-        kind: 'principle',
-        body: m[1].trim(),
-      })
-    }
-  }
-
-  let count = 0
-  for (const item of nodes) {
-    await createNode(ctx, {
-      type: 'idea',
-      title: item.title.slice(0, 120),
-      parent,
-      tags: ['ops/principles'],
-      body: item.body,
-      extraFields: {
-        record_kind: item.kind,
-        schema_version: '2',
-        source_repo: ctx.sourceRepo,
-        branch: ctx.branch,
-        commit: ctx.commit,
-        artifacts: ['agents/UNDERSTANDINGS.md'],
-      },
-    })
-    count += 1
-  }
-
-  return count
 }
 
 function makeUniqueKey(ctx: BootstrapContext, initial: string): string {
@@ -469,24 +282,6 @@ function makeUniqueKey(ctx: BootstrapContext, initial: string): string {
   throw new Error(`Failed to generate unique key for ${initial}`)
 }
 
-function normalizeTaskStatus(raw: string): string {
-  const value = raw
-    .toLowerCase()
-    .replace(/\(.*?\)/g, '')
-    .replace(/\s+/g, '_')
-    .replace(/[^a-z0-9_]/g, '')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '')
-  return value || 'unknown'
-}
-
-function parseCsv(raw: string): string[] {
-  return raw
-    .split(',')
-    .map(value => value.trim())
-    .filter(Boolean)
-}
-
 function deriveProjectRootValue(projectRootAbs: string): string {
   const normalized = projectRootAbs.replace(/\\/g, '/')
   const marker = '/Documents/Long Term Memory iCloud/'
@@ -504,23 +299,6 @@ function safeGit(repoRoot: string, command: string): string {
   } catch {
     return ''
   }
-}
-
-function splitBySection(content: string): Record<string, string[]> {
-  const lines = content.split('\n')
-  const sections: Record<string, string[]> = {}
-  let current = ''
-  for (const line of lines) {
-    const heading = line.match(/^##\s+(.+)$/)
-    if (heading) {
-      current = heading[1].trim()
-      if (!sections[current]) sections[current] = []
-      continue
-    }
-    if (!current) continue
-    sections[current].push(line)
-  }
-  return sections
 }
 
 main().catch((error) => {

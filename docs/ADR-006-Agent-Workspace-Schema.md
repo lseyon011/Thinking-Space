@@ -5,7 +5,7 @@ Date: 2026-02-17
 
 ## Context
 
-We are migrating active agent operations from repo-local markdown (`agents/*.md`) into a vault-native workspace under:
+Active agent operations run in a vault-native workspace under:
 
 `coding-projects/thinking-space/thinking-organizer/*`
 

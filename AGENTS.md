@@ -39,7 +39,7 @@ These are architecture requirements, not optional positioning variants.
 - `CLAUDE.md` is Claude Code's native file for project-specific instructions.
 - `AGENTS.md` is the cross-tool open-standard contract.
 - Both should contain consistent onboarding, architecture constraints, and execution priorities.
-- If Claude learns useful project knowledge, Claude must manually update `CLAUDE.md` and synchronize durable items into `AGENTS.md` and `agents/UNDERSTANDINGS.md`.
+- If Claude learns useful project knowledge, Claude must manually update `CLAUDE.md` and synchronize durable items into `AGENTS.md` plus organizer principles/decision records.
 
 ## Phase Order
 Use phase order defined in `README.md` as source of truth.
@@ -56,7 +56,7 @@ Current order to respect:
 9. EPIC-5: AI Actions Everywhere
 10. EPIC-6: Optional Remote/Agent Backends (later)
 
-If sequence changes, update `README.md` first, then align `agents/TODO.md`.
+If sequence changes, update `README.md` first, then align active organizer plan/task nodes.
 
 ## Locked Technical Decisions
 1. Electron-first runtime for near-term milestones.
@@ -114,7 +114,7 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 1. Did I place reusable logic in `lego_blocks` and flow wiring in `orchestrators`?
 2. Did I keep naming consistent with `*Block` and `*Orch`?
 3. Did I avoid page-local one-off variants of existing shared components?
-4. Did I update docs (`AGENTS.md`, `CLAUDE.md`, `agents/UNDERSTANDINGS.md`) if architecture knowledge changed?
+4. Did I update docs (`AGENTS.md`, `CLAUDE.md`, `README.md`) if architecture knowledge changed?
 
 ## Orchestrator Template Rule
 - New major screen-level orchestrators should follow `agents/TEMPLATES/ORCHESTRATOR_TEMPLATE.md`.
@@ -127,7 +127,7 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - No hidden remote calls in "local-only" flows.
 
 ## Agent Tool Usage Pattern (Mandatory)
-Active multi-agent operations must run in the vault-native organizer workspace, not `agents/*.md`.
+Active multi-agent operations must run in the vault-native organizer workspace.
 
 Workspace location:
 - `coding-projects/thinking-space/thinking-organizer/*`
@@ -145,28 +145,25 @@ Recommended node pattern:
 - Program: `principles and decisions (agent operations)` for durable guidance.
 - Plans should be linked to execution tasks via `related_nodes` and/or `depends_on`.
 
-Transition rule:
-- `agents/TODO.md`, `agents/DONE.md`, and `agents/HANDOFFS.md` are read-only snapshots during migration unless explicitly requested otherwise.
-
 ## Multi-Agent Workflow
 Before coding:
 1. Read `AGENTS.md`
 2. Read `README.md`
-3. Read `agents/UNDERSTANDINGS.md`
-4. Read `agents/TODO.md`
-5. Read latest `agents/HANDOFFS.md`
+3. Read `docs/ADR-005-Agent-Capabilities.md`
+4. Read `docs/ADR-006-Agent-Workspace-Schema.md`
+5. Open active tasks/plans in organizer workspace (`coding-projects/thinking-space/thinking-organizer/*`)
 
 During work:
 - Claim one task in the organizer tool (`task.claim` / task node status updates).
 - Keep scope tied to acceptance criteria recorded on the task node.
 - Record any plan in the organizer tool before execution begins.
-- Update `agents/UNDERSTANDINGS.md` if you discover reusable context.
+- Record durable principles/decisions in organizer workspace when new reusable context is discovered.
 
 After work:
 - Mark task/run/handoff state in the organizer tool first.
-- Mirror back to `agents/*.md` only if explicitly requested for snapshot maintenance.
 - Use detailed git commit messages with clear scope, intent, and key change summary; avoid vague messages like `fix`, `update`, or `wip`.
-- Commit body must start with the exact completed-work summary already produced by the agent for that task, then optionally add extra detail.
+- Commit body must be an exact verbatim copy of the final agent task output (including headings, bullets, wording, and order) for that task.
+- Do not paraphrase, shorten, reorder, or restyle the copied final output in the commit body.
 - Use `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md` for commit structure.
 
 ## Quality Bar
