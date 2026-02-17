@@ -6,10 +6,12 @@ import { getVaultFS } from './fsBlock'
 import type { VaultFS } from './fsBlock'
 import {
   createNote,
+  generateKey,
   parseNote,
   stringifyNote,
   suggestFilename,
   type NodeType,
+  type YAMLFrontmatter,
   NODE_TYPE_LEVEL,
 } from './yamlNoteBlock'
 import {
@@ -38,6 +40,15 @@ const TYPE_FOLDERS: Record<NodeType, string> = {
   thought: 'thoughts',
 }
 
+const TYPE_TICKET_CODES: Record<NodeType, string> = {
+  program: 'P',
+  epic: 'E',
+  idea_bucket: 'IB',
+  idea: 'I',
+  thought_bucket: 'TB',
+  thought: 'T',
+}
+
 // ── Public API ──
 
 /**
@@ -52,6 +63,8 @@ export async function createYamlNode(params: {
   parentType?: NodeType
   tags?: string[]
   body?: string
+  description?: string
+  comments?: string[]
   projectRoot?: string
   fs?: VaultFS
 }): Promise<NodeRecord> {
@@ -61,6 +74,12 @@ export async function createYamlNode(params: {
     parentKey: params.parentKey,
     fs,
   })
+  const programCode = await resolveProgramCode({
+    type: params.type,
+    title: params.title,
+    parentKey: params.parentKey,
+  })
+  const ticket = projectRoot ? await generateProjectTicket(projectRoot, programCode, params.type) : undefined
 
   const note = createNote({
     type: params.type,
@@ -72,8 +91,28 @@ export async function createYamlNode(params: {
     body: params.body,
   })
 
+  const description = params.description?.trim()
+  const comments = (params.comments ?? []).map(comment => comment.trim()).filter(Boolean)
+  if (description) {
+    note.frontmatter.description = description
+  }
+  if (comments.length > 0) {
+    note.frontmatter.comments = comments
+  }
+  if (!note.body.trim()) {
+    note.body = buildInitialBody(description, comments)
+  }
+
   if (projectRoot) {
     note.frontmatter.project_root = projectRoot
+    note.frontmatter.ticket = ticket
+    if (ticket) {
+      note.frontmatter.title = prependTicketToTitle(ticket, note.frontmatter.title)
+      const keyFromTitle = generateKey(note.frontmatter.title)
+      if (keyFromTitle) {
+        note.frontmatter.key = keyFromTitle
+      }
+    }
   }
 
   // Update parent's children list
@@ -302,6 +341,20 @@ export async function getYamlNodeByKey(key: string): Promise<NodeRecord | undefi
 }
 
 /**
+ * Read a node frontmatter directly from YAML file by path.
+ */
+export async function readYamlFrontmatterByPath(
+  filePath: string,
+  fs?: VaultFS,
+): Promise<YAMLFrontmatter | null> {
+  const vaultFs = fs ?? getVaultFS()
+  const content = await vaultFs.read(filePath)
+  const note = parseNote(content)
+  if (!note) return null
+  return note.frontmatter
+}
+
+/**
  * Get all nodes from IndexedDB cache.
  */
 export async function listAllYamlNodes(): Promise<NodeRecord[]> {
@@ -345,6 +398,116 @@ async function resolveProjectRoot(params: {
   return normalizeProjectRoot(parsed)
 }
 
+async function generateProjectTicket(
+  projectRoot: string,
+  programCode: string,
+  type: NodeType,
+): Promise<string> {
+  const projectCode = deriveProjectCode(projectRoot)
+  const normalizedProgramCode = normalizeTicketToken(programCode, 'PG')
+  const typeCode = TYPE_TICKET_CODES[type]
+  const prefix = `${projectCode}-${normalizedProgramCode}-${typeCode}-`
+
+  const allNodes = await getAllNodes()
+  const existing = new Set(
+    allNodes
+      .filter(node => normalizeProjectRoot(node.projectRoot) === normalizeProjectRoot(projectRoot))
+      .map(node => (typeof node.ticket === 'string' ? node.ticket : ''))
+      .filter(Boolean),
+  )
+
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const suffix = String(Math.floor(100 + (Math.random() * 900)))
+    const ticket = `${prefix}${suffix}`
+    if (!existing.has(ticket)) return ticket
+  }
+
+  // Extremely unlikely fallback when random space is exhausted.
+  return `${prefix}${Date.now().toString().slice(-3)}`
+}
+
+function deriveProjectCode(projectRoot: string): string {
+  const normalized = normalizeProjectRoot(projectRoot)
+  if (!normalized) return 'PR'
+
+  const segment = normalized.split('/').filter(Boolean).pop() ?? normalized
+  const tokens = segment.split(/[-_\\s]+/).filter(Boolean)
+
+  if (tokens.length >= 2) {
+    return `${tokens[0][0] ?? ''}${tokens[1][0] ?? ''}`.toUpperCase()
+  }
+
+  const token = (tokens[0] ?? segment).replace(/[^a-zA-Z0-9]/g, '')
+  if (!token) return 'PR'
+  if (token.length <= 3) return token.toUpperCase()
+
+  const letter = token.match(/[A-Za-z]/)?.[0] ?? token[0]
+  const digit = token.match(/[0-9]/)?.[0]
+  if (letter && digit) return `${letter}${digit}`.toUpperCase()
+
+  return token.slice(0, 2).toUpperCase()
+}
+
+async function resolveProgramCode(params: {
+  type: NodeType
+  title: string
+  parentKey?: string
+}): Promise<string> {
+  if (params.type === 'program') return deriveProgramCode(params.title)
+
+  const parentKey = params.parentKey?.trim()
+  if (!parentKey) return 'PG'
+
+  let cursor = await getNodeByKey(parentKey)
+  for (let depth = 0; depth < 20 && cursor; depth += 1) {
+    if (cursor.type === 'program') {
+      const codeFromTicket = deriveProgramCodeFromTicket(cursor.ticket)
+      if (codeFromTicket) return codeFromTicket
+      return deriveProgramCode(cursor.key || cursor.title)
+    }
+    cursor = cursor.parent ? await getNodeByKey(cursor.parent) : undefined
+  }
+
+  return 'PG'
+}
+
+function deriveProgramCode(value: string): string {
+  const normalized = value.trim().toUpperCase()
+  if (!normalized) return 'PG'
+
+  const tokens = normalized
+    .replace(/[^A-Z0-9\s_-]/g, ' ')
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+
+  if (tokens.length >= 2) {
+    return `${tokens[0][0] ?? ''}${tokens[1][0] ?? ''}`.toUpperCase()
+  }
+
+  const single = tokens[0] ?? normalized
+  if (single.length <= 3) return single.toUpperCase()
+  return single.slice(0, 3).toUpperCase()
+}
+
+function deriveProgramCodeFromTicket(ticket: string | undefined): string | undefined {
+  if (!ticket) return undefined
+  const match = ticket.trim().toUpperCase().match(/^[A-Z0-9]+-([A-Z0-9]+)-P-\d{3}$/)
+  return match?.[1] || undefined
+}
+
+function normalizeTicketToken(value: string, fallback: string): string {
+  const token = value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+  return token || fallback
+}
+
+function prependTicketToTitle(ticket: string, title: string): string {
+  const trimmedTitle = title.trim()
+  if (!trimmedTitle) return ticket
+  if (trimmedTitle.startsWith(`${ticket} `)) return trimmedTitle
+  if (trimmedTitle.startsWith(`${ticket} - `)) return trimmedTitle
+  return `${ticket} - ${trimmedTitle}`
+}
+
 async function readProjectRootFromFile(
   filePath: string,
   fs: VaultFS,
@@ -365,6 +528,31 @@ function normalizeProjectRoot(value: string | undefined): string | undefined {
   if (!value) return undefined
   const normalized = value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
   return normalized || undefined
+}
+
+function buildInitialBody(
+  description: string | undefined,
+  comments: string[],
+): string {
+  const sections: string[] = []
+
+  if (description) {
+    sections.push('## Description')
+    sections.push('')
+    sections.push(description)
+    sections.push('')
+  }
+
+  if (comments.length > 0) {
+    sections.push('## Comments')
+    sections.push('')
+    for (const comment of comments) {
+      sections.push(`- ${comment}`)
+    }
+    sections.push('')
+  }
+
+  return sections.join('\n').trim()
 }
 
 async function addChildToParent(

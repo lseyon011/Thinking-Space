@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '@/services/lego_blocks/fsBlock'
-import { parseNote } from '@/services/lego_blocks/yamlNoteBlock'
+import { generateKey, parseNote } from '@/services/lego_blocks/yamlNoteBlock'
 
 class FakeVaultFS implements VaultFS {
   private readonly files = new Map<string, string>()
@@ -178,12 +178,13 @@ describe('yamlHierarchyBlock project storage', () => {
       fs,
     })
 
-    expect(program.filePath).toBe(
-      'projects/delta/thinking-organizer/programs/program-delta-initiative.md',
-    )
+    expect(program.filePath.startsWith('projects/delta/thinking-organizer/programs/program-')).toBe(true)
     const note = parseNote(await fs.read(program.filePath))
     expect(note).not.toBeNull()
     expect(note!.frontmatter.project_root).toBe('projects/delta')
+    expect(note!.frontmatter.title).toMatch(/^DE-DI-P-\d{3} - Delta Initiative$/)
+    expect(note!.frontmatter.key).toBe(generateKey(note!.frontmatter.title))
+    expect(program.filePath).toBe(`projects/delta/thinking-organizer/programs/program-${note!.frontmatter.key}.md`)
   })
 
   it('inherits project_root for child nodes and stores them in the same project organizer folder', async () => {
@@ -206,12 +207,35 @@ describe('yamlHierarchyBlock project storage', () => {
       fs,
     })
 
-    expect(epic.filePath).toBe(
-      'projects/delta/thinking-organizer/epics/epic-polish-backlog-ux.md',
-    )
+    expect(epic.filePath.startsWith('projects/delta/thinking-organizer/epics/epic-')).toBe(true)
     const epicNote = parseNote(await fs.read(epic.filePath))
     expect(epicNote).not.toBeNull()
     expect(epicNote!.frontmatter.project_root).toBe('projects/delta')
+    expect(epicNote!.frontmatter.title).toMatch(/^DE-DI-E-\d{3} - Polish Backlog UX$/)
+    expect(epicNote!.frontmatter.key).toBe(generateKey(epicNote!.frontmatter.title))
+    expect(epic.filePath).toBe(`projects/delta/thinking-organizer/epics/epic-${epicNote!.frontmatter.key}.md`)
     expect(epicNote!.frontmatter.parent).toBe(program.key)
+  })
+
+  it('writes description and comments into frontmatter and markdown body when creating a node', async () => {
+    const fs = new FakeVaultFS()
+    const { createYamlNode } = await import('@/services/lego_blocks/yamlHierarchyBlock')
+
+    const thought = await createYamlNode({
+      type: 'thought',
+      title: 'Capture Postmortem',
+      projectRoot: 'projects/delta',
+      description: 'Record what worked and what failed in this sprint.',
+      comments: ['Need numbers from analytics before finalizing.'],
+      fs,
+    })
+
+    const note = parseNote(await fs.read(thought.filePath))
+    expect(note).not.toBeNull()
+    expect(note!.frontmatter.description).toBe('Record what worked and what failed in this sprint.')
+    expect(note!.frontmatter.comments).toEqual(['Need numbers from analytics before finalizing.'])
+    expect(note!.body).toContain('## Description')
+    expect(note!.body).toContain('## Comments')
+    expect(note!.body).toContain('- Need numbers from analytics before finalizing.')
   })
 })

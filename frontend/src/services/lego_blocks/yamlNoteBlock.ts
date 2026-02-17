@@ -85,6 +85,13 @@ export interface YAMLFrontmatter {
   // Project storage (optional, set on program nodes)
   project_root?: string
 
+  // Jira-like display id (optional, project-scoped)
+  ticket?: string
+
+  // Organizer metadata (optional)
+  description?: string
+  comments?: string[]
+
   // Legacy compat — preserve unknown fields roundtrip
   [extra: string]: unknown
 }
@@ -280,5 +287,8 @@ function normalizeFrontmatter(raw: Record<string, unknown>): YAMLFrontmatter {
     ai_suggestions: raw.ai_suggestions as AISuggestions | undefined,
     excalidraw: raw.excalidraw != null ? String(raw.excalidraw) : undefined,
     project_root: raw.project_root != null ? String(raw.project_root) : undefined,
+    ticket: raw.ticket != null ? String(raw.ticket) : undefined,
+    description: raw.description != null ? String(raw.description) : undefined,
+    comments: Array.isArray(raw.comments) ? raw.comments.map(String) : undefined,
   }
 }

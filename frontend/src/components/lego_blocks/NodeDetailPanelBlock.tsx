@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   BookOpen,
   Folder,
@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from '@/components/lego_blocks/ui/select'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import type { NodeType, NodePriority, NodeStatus } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodeType, NodePriority, NodeStatus, YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
 
 function iconForNodeType(type: NodeType) {
   if (type === 'program') return FolderTree
@@ -47,6 +47,7 @@ const PRIORITY_OPTIONS: NodePriority[] = ['low', 'medium', 'high', 'critical']
 
 export interface NodeDetailPanelBlockProps {
   node: NodeRecord
+  frontmatter?: YAMLFrontmatter | null
   onClose: () => void
   onRename: (newTitle: string) => Promise<void>
   onUpdateStatus: (status: string) => Promise<void>
@@ -57,6 +58,7 @@ export interface NodeDetailPanelBlockProps {
 
 export default function NodeDetailPanelBlock({
   node,
+  frontmatter,
   onClose,
   onRename,
   onUpdateStatus,
@@ -102,6 +104,19 @@ export default function NodeDetailPanelBlock({
   }, [onClose, onDelete])
 
   const Icon = iconForNodeType(node.type)
+  const comments = frontmatter?.comments ?? node.comments ?? []
+  const yamlFields = useMemo(() => {
+    if (!frontmatter) return []
+    return Object.entries(frontmatter)
+      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .sort(([a], [b]) => a.localeCompare(b))
+  }, [frontmatter])
+
+  function renderYamlValue(value: unknown): string {
+    if (Array.isArray(value)) return value.join(', ')
+    if (typeof value === 'object' && value !== null) return JSON.stringify(value)
+    return String(value)
+  }
 
   return (
     <>
@@ -112,7 +127,7 @@ export default function NodeDetailPanelBlock({
       />
 
       {/* Panel */}
-      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md border-l border-border bg-background shadow-2xl animate-slide-in overflow-auto">
+      <div className="fixed inset-y-0 right-0 z-50 w-[min(96vw,58rem)] border-l border-border bg-background shadow-2xl animate-slide-in overflow-auto">
         <div className="flex flex-col gap-5 p-5">
           {/* Header */}
           <div className="flex items-start justify-between gap-3">
@@ -189,6 +204,24 @@ export default function NodeDetailPanelBlock({
             </div>
           )}
 
+          {(frontmatter?.description || node.description) && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Description</label>
+              <p className="text-sm text-foreground/90">{frontmatter?.description ?? node.description}</p>
+            </div>
+          )}
+
+          {comments.length > 0 && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Comments</label>
+              <ul className="list-inside list-disc space-y-1 text-sm text-foreground/90">
+                {comments.map((comment, idx) => (
+                  <li key={`${comment}-${idx}`}>{comment}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* AI Summary */}
           {node.aiSummary && (
             <div className="space-y-1">
@@ -202,6 +235,20 @@ export default function NodeDetailPanelBlock({
             <label className="text-xs font-medium text-muted-foreground">File Path</label>
             <p className="break-all font-mono text-xs text-foreground/80">{node.filePath}</p>
           </div>
+
+          {yamlFields.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">YAML Metadata</label>
+              <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/20 p-3 md:grid-cols-2">
+                {yamlFields.map(([key, value]) => (
+                  <div key={key} className="space-y-0.5">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{key}</p>
+                    <p className="break-all font-mono text-xs text-foreground/90">{renderYamlValue(value)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex items-center gap-2 border-t border-border pt-4">

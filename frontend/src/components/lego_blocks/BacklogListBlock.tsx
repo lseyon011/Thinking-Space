@@ -12,10 +12,8 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/ui/button'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import type { NodeType, NodePriority, NodeStatus } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodePriority, NodeStatus, NodeType } from '@/services/lego_blocks/yamlNoteBlock'
 import { cn } from '@/lib/utils'
-
-// ── Inline helpers ──
 
 function iconForNodeType(type: NodeType) {
   if (type === 'program') return FolderTree
@@ -25,6 +23,16 @@ function iconForNodeType(type: NodeType) {
   if (type === 'thought_bucket') return Folder
   if (type === 'thought') return MessageSquare
   return Lightbulb
+}
+
+function iconColorForNodeType(type: NodeType): string {
+  if (type === 'program') return 'text-sky-600'
+  if (type === 'epic') return 'text-violet-600'
+  if (type === 'idea_bucket') return 'text-indigo-600'
+  if (type === 'idea') return 'text-amber-600'
+  if (type === 'thought_bucket') return 'text-emerald-600'
+  if (type === 'thought') return 'text-cyan-600'
+  return 'text-muted-foreground'
 }
 
 const STATUS_COLORS: Record<NodeStatus, string> = {
@@ -52,6 +60,17 @@ const EPIC_BORDER_PALETTE = [
   'border-l-lime-500',
 ]
 
+const EPIC_ICON_COLOR_BY_BORDER: Record<string, string> = {
+  'border-l-blue-500': 'text-blue-600',
+  'border-l-violet-500': 'text-violet-600',
+  'border-l-emerald-500': 'text-emerald-600',
+  'border-l-amber-500': 'text-amber-600',
+  'border-l-rose-500': 'text-rose-600',
+  'border-l-cyan-500': 'text-cyan-600',
+  'border-l-fuchsia-500': 'text-fuchsia-600',
+  'border-l-lime-500': 'text-lime-600',
+}
+
 function StatusBadge({ status }: { status: NodeStatus }) {
   return (
     <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium', STATUS_COLORS[status])}>
@@ -63,11 +82,9 @@ function StatusBadge({ status }: { status: NodeStatus }) {
 function PriorityDot({ priority }: { priority?: NodePriority }) {
   if (!priority) return null
   return (
-    <span className={cn('inline-block h-2 w-2 rounded-full shrink-0', PRIORITY_COLORS[priority])} title={priority} />
+    <span className={cn('inline-block h-2 w-2 shrink-0 rounded-full', PRIORITY_COLORS[priority])} title={priority} />
   )
 }
-
-// ── Types ──
 
 interface ChildState {
   loading: boolean
@@ -78,6 +95,11 @@ interface ChildState {
 
 const ROOT_INPUT_KEY = '__root__'
 
+export interface CreateNodeExtras {
+  description?: string
+  comments?: string[]
+}
+
 export interface BacklogListBlockProps {
   programs: NodeRecord[]
   loadEpics: (program: NodeRecord) => Promise<NodeRecord[]>
@@ -85,7 +107,12 @@ export interface BacklogListBlockProps {
   selectedNodeId: string | null
   readOnly?: boolean
   onSelectNode: (node: NodeRecord) => void
-  onCreateChild?: (parent: NodeRecord | null, title: string, requestedType?: NodeType) => Promise<NodeRecord>
+  onCreateChild?: (
+    parent: NodeRecord | null,
+    title: string,
+    requestedType?: NodeType,
+    extras?: CreateNodeExtras,
+  ) => Promise<NodeRecord>
   onDropNodeToNode?: (sourceUuid: string, target: NodeRecord) => Promise<void>
 }
 
@@ -129,6 +156,15 @@ function readDroppedNodeId(event: React.DragEvent): string | null {
   return null
 }
 
+function nodeDisplayTitle(node: NodeRecord): string {
+  const title = node.title?.trim() ?? ''
+  const ticket = node.ticket?.trim() ?? ''
+  if (!ticket) return title
+  if (!title) return ticket
+  if (title.startsWith(ticket)) return title
+  return `${ticket} - ${title}`
+}
+
 export default function BacklogListBlock({
   programs,
   loadEpics,
@@ -139,95 +175,119 @@ export default function BacklogListBlock({
   onCreateChild,
   onDropNodeToNode,
 }: BacklogListBlockProps) {
-  // epic children keyed by program uuid
-  const [epicsByProgram, setEpicsByProgram] = useState<Record<string, ChildState>>({})
-  // children keyed by epic uuid
-  const [childrenByEpic, setChildrenByEpic] = useState<Record<string, ChildState>>({})
-  // expanded epic sections
-  const [expandedEpics, setExpandedEpics] = useState<Record<string, boolean>>({})
-  // inline create drafts
+  const [childrenByNode, setChildrenByNode] = useState<Record<string, ChildState>>({})
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({})
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, string>>({})
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({})
   const [draftTypeByKey, setDraftTypeByKey] = useState<Record<string, NodeType>>({ [ROOT_INPUT_KEY]: 'program' })
   const [busyCreate, setBusyCreate] = useState<Record<string, boolean>>({})
-  // drag state
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
   const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
 
-  // ── Load epics for a program ──
-  const ensureEpicsLoaded = useCallback(async (program: NodeRecord) => {
-    const existing = epicsByProgram[program.uuid]
+  const ensureProgramLoaded = useCallback(async (program: NodeRecord) => {
+    const existing = childrenByNode[program.uuid]
     if (existing?.loading || existing?.loaded) return
 
-    setEpicsByProgram(prev => ({
+    setChildrenByNode(prev => ({
       ...prev,
       [program.uuid]: { loading: true, loaded: false, nodes: [], error: null },
     }))
 
     try {
       const epics = await loadEpics(program)
-      setEpicsByProgram(prev => ({
+      setChildrenByNode(prev => ({
         ...prev,
-        [program.uuid]: { loading: false, loaded: true, nodes: epics.sort((a, b) => a.title.localeCompare(b.title)), error: null },
+        [program.uuid]: {
+          loading: false,
+          loaded: true,
+          nodes: epics.sort((a, b) => a.title.localeCompare(b.title)),
+          error: null,
+        },
       }))
     } catch (err) {
-      setEpicsByProgram(prev => ({
+      setChildrenByNode(prev => ({
         ...prev,
-        [program.uuid]: { loading: false, loaded: false, nodes: [], error: err instanceof Error ? err.message : 'Failed to load epics' },
+        [program.uuid]: {
+          loading: false,
+          loaded: false,
+          nodes: [],
+          error: err instanceof Error ? err.message : 'Failed to load epics',
+        },
       }))
     }
-  }, [epicsByProgram, loadEpics])
+  }, [childrenByNode, loadEpics])
 
-  // ── Load children for an epic ──
-  const ensureChildrenLoaded = useCallback(async (epic: NodeRecord) => {
-    const existing = childrenByEpic[epic.uuid]
+  const ensureChildrenLoaded = useCallback(async (node: NodeRecord) => {
+    const existing = childrenByNode[node.uuid]
     if (existing?.loading || existing?.loaded) return
 
-    setChildrenByEpic(prev => ({
+    setChildrenByNode(prev => ({
       ...prev,
-      [epic.uuid]: { loading: true, loaded: false, nodes: [], error: null },
+      [node.uuid]: { loading: true, loaded: false, nodes: [], error: null },
     }))
 
     try {
-      const children = await loadChildren(epic)
-      setChildrenByEpic(prev => ({
+      const children = await loadChildren(node)
+      setChildrenByNode(prev => ({
         ...prev,
-        [epic.uuid]: { loading: false, loaded: true, nodes: children.sort((a, b) => a.title.localeCompare(b.title)), error: null },
+        [node.uuid]: {
+          loading: false,
+          loaded: true,
+          nodes: children.sort((a, b) => a.title.localeCompare(b.title)),
+          error: null,
+        },
       }))
     } catch (err) {
-      setChildrenByEpic(prev => ({
+      setChildrenByNode(prev => ({
         ...prev,
-        [epic.uuid]: { loading: false, loaded: false, nodes: [], error: err instanceof Error ? err.message : 'Failed to load children' },
+        [node.uuid]: {
+          loading: false,
+          loaded: false,
+          nodes: [],
+          error: err instanceof Error ? err.message : 'Failed to load children',
+        },
       }))
     }
-  }, [childrenByEpic, loadChildren])
+  }, [childrenByNode, loadChildren])
 
-  // ── Toggle epic expand ──
-  const toggleEpic = useCallback((epic: NodeRecord) => {
-    setExpandedEpics(prev => {
-      const willExpand = !prev[epic.uuid]
-      if (willExpand) void ensureChildrenLoaded(epic)
-      return { ...prev, [epic.uuid]: willExpand }
+  const toggleNode = useCallback((node: NodeRecord) => {
+    setExpandedNodes(prev => {
+      const willExpand = !prev[node.uuid]
+      if (willExpand) {
+        if (node.type === 'program') void ensureProgramLoaded(node)
+        else void ensureChildrenLoaded(node)
+      }
+      return { ...prev, [node.uuid]: willExpand }
     })
-  }, [ensureChildrenLoaded])
+  }, [ensureChildrenLoaded, ensureProgramLoaded])
 
-  // ── Auto-load epics when program section mounts ──
-  const ensureProgramLoaded = useCallback((program: NodeRecord) => {
-    const existing = epicsByProgram[program.uuid]
-    if (!existing?.loading && !existing?.loaded) {
-      void ensureEpicsLoaded(program)
-    }
-  }, [epicsByProgram, ensureEpicsLoaded])
-
-  // ── Inline create ──
   const setDraft = useCallback((key: string, value: string) => {
     setDrafts(prev => ({ ...prev, [key]: value }))
+  }, [])
+
+  const setDescriptionDraft = useCallback((key: string, value: string) => {
+    setDescriptionDrafts(prev => ({ ...prev, [key]: value }))
+  }, [])
+
+  const setCommentDraft = useCallback((key: string, value: string) => {
+    setCommentDrafts(prev => ({ ...prev, [key]: value }))
   }, [])
 
   const createUnder = useCallback(async (parent: NodeRecord | null, draftKey: string) => {
     if (!onCreateChild) return
     const title = (drafts[draftKey] ?? '').trim()
     if (!title) return
+    const description = (descriptionDrafts[draftKey] ?? '').trim()
+    const comment = (commentDrafts[draftKey] ?? '').trim()
+    const extras: CreateNodeExtras | undefined = (description || comment)
+      ? {
+        description: description || undefined,
+        comments: comment ? [comment] : undefined,
+      }
+      : undefined
+
     const allowedTypes = allowedCreateTypes(parent)
     const selectedType = draftTypeByKey[draftKey]
     const requestedType = selectedType && allowedTypes.includes(selectedType)
@@ -237,26 +297,21 @@ export default function BacklogListBlock({
     setLocalError(null)
     setBusyCreate(prev => ({ ...prev, [draftKey]: true }))
     try {
-      const created = await onCreateChild(parent, title, requestedType)
+      const created = await onCreateChild(parent, title, requestedType, extras)
       setDrafts(prev => ({ ...prev, [draftKey]: '' }))
+      setDescriptionDrafts(prev => ({ ...prev, [draftKey]: '' }))
+      setCommentDrafts(prev => ({ ...prev, [draftKey]: '' }))
 
-      // Add to local state
-      if (parent && parent.type === 'program') {
-        setEpicsByProgram(prev => {
+      if (parent) {
+        setChildrenByNode(prev => {
           const existing = prev[parent.uuid]
           if (!existing?.loaded) return prev
           return {
             ...prev,
-            [parent.uuid]: { ...existing, nodes: [...existing.nodes, created].sort((a, b) => a.title.localeCompare(b.title)) },
-          }
-        })
-      } else if (parent) {
-        setChildrenByEpic(prev => {
-          const existing = prev[parent.uuid]
-          if (!existing?.loaded) return prev
-          return {
-            ...prev,
-            [parent.uuid]: { ...existing, nodes: [...existing.nodes, created].sort((a, b) => a.title.localeCompare(b.title)) },
+            [parent.uuid]: {
+              ...existing,
+              nodes: [...existing.nodes, created].sort((a, b) => a.title.localeCompare(b.title)),
+            },
           }
         })
       }
@@ -265,9 +320,8 @@ export default function BacklogListBlock({
     } finally {
       setBusyCreate(prev => ({ ...prev, [draftKey]: false }))
     }
-  }, [draftTypeByKey, drafts, onCreateChild])
+  }, [commentDrafts, descriptionDrafts, draftTypeByKey, drafts, onCreateChild])
 
-  // ── Drag handlers ──
   const makeDragStart = useCallback((node: NodeRecord) => (event: React.DragEvent) => {
     setDraggingNodeId(node.uuid)
     event.dataTransfer.setData('application/x-ltm-node-id', node.uuid)
@@ -314,41 +368,9 @@ export default function BacklogListBlock({
     }
   }, [draggingNodeId, onDropNodeToNode])
 
-  // ── Render a child row ──
-  const renderChildRow = useCallback((node: NodeRecord) => {
-    const Icon = iconForNodeType(node.type)
-    return (
-      <button
-        key={node.uuid}
-        type="button"
-        draggable
-        onDragStart={makeDragStart(node)}
-        onDragEnd={handleDragEnd}
-        onDragOver={e => handleDragOver(node, e)}
-        onDragLeave={() => handleDragLeave(node.uuid)}
-        onDrop={e => { void handleDrop(node, e) }}
-        onClick={() => onSelectNode(node)}
-        className={cn(
-          'flex w-full items-center gap-2 border-t border-border/70 bg-background px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-50',
-          selectedNodeId === node.uuid && 'bg-accent/40 text-accent-foreground',
-          dragOverNodeId === node.uuid && 'ring-2 ring-primary/40 bg-primary/5',
-        )}
-        style={{ minHeight: '36px' }}
-      >
-        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate">{node.title}</span>
-        <span className="inline-flex shrink-0 items-center rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-          {nodeTypeLabel(node.type)}
-        </span>
-        <StatusBadge status={node.status} />
-        <PriorityDot priority={node.priority} />
-      </button>
-    )
-  }, [dragOverNodeId, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, makeDragStart, onSelectNode, selectedNodeId])
-
-  // ── Render inline create input ──
   const renderInlineCreate = useCallback((parent: NodeRecord | null, draftKey: string, placeholder: string) => {
     if (readOnly) return null
+
     const allowedTypes = allowedCreateTypes(parent)
     const selectedType = draftTypeByKey[draftKey] && allowedTypes.includes(draftTypeByKey[draftKey])
       ? draftTypeByKey[draftKey]
@@ -356,94 +378,126 @@ export default function BacklogListBlock({
     const selectedTypeLabel = nodeTypeLabel(selectedType)
 
     return (
-      <div className="flex items-center gap-2 border-t border-border/70 bg-background px-3 py-2">
-        <select
-          value={selectedType}
-          onChange={e => {
-            const nextType = e.target.value as NodeType
-            setDraftTypeByKey(prev => ({ ...prev, [draftKey]: nextType }))
-          }}
-          className="h-7 shrink-0 rounded-md border border-input bg-background px-2 text-[11px] text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-        >
-          {allowedTypes.map(type => (
-            <option key={`${draftKey}-${type}`} value={type}>
-              {nodeTypeLabel(type)}
-            </option>
-          ))}
-        </select>
-        <input
-          value={drafts[draftKey] ?? ''}
-          onChange={e => setDraft(draftKey, e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              void createUnder(parent, draftKey)
-            }
-          }}
-          placeholder={`${placeholder} (${selectedTypeLabel})`}
-          className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 px-2 text-xs"
-          disabled={busyCreate[draftKey]}
-          onClick={() => { void createUnder(parent, draftKey) }}
-        >
-          {busyCreate[draftKey] ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-        </Button>
+      <div className="space-y-2 border-t border-border/70 bg-background px-3 py-2">
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedType}
+            onChange={e => {
+              const nextType = e.target.value as NodeType
+              setDraftTypeByKey(prev => ({ ...prev, [draftKey]: nextType }))
+            }}
+            className="h-7 shrink-0 rounded-md border border-input bg-background px-2 text-[11px] text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            {allowedTypes.map(type => (
+              <option key={`${draftKey}-${type}`} value={type}>
+                {nodeTypeLabel(type)}
+              </option>
+            ))}
+          </select>
+          <input
+            value={drafts[draftKey] ?? ''}
+            onChange={e => setDraft(draftKey, e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void createUnder(parent, draftKey)
+              }
+            }}
+            placeholder={`${placeholder} (${selectedTypeLabel})`}
+            className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs"
+            disabled={busyCreate[draftKey]}
+            onClick={() => { void createUnder(parent, draftKey) }}
+          >
+            {busyCreate[draftKey] ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+          </Button>
+        </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          <input
+            value={descriptionDrafts[draftKey] ?? ''}
+            onChange={e => setDescriptionDraft(draftKey, e.target.value)}
+            placeholder="Description (optional)"
+            className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <input
+            value={commentDrafts[draftKey] ?? ''}
+            onChange={e => setCommentDraft(draftKey, e.target.value)}
+            placeholder="Comment (optional)"
+            className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
       </div>
     )
-  }, [busyCreate, createUnder, draftTypeByKey, drafts, readOnly, setDraft])
+  }, [
+    busyCreate,
+    commentDrafts,
+    createUnder,
+    descriptionDrafts,
+    draftTypeByKey,
+    drafts,
+    readOnly,
+    setCommentDraft,
+    setDescriptionDraft,
+    setDraft,
+  ])
 
-  // ── Render epic section ──
-  const renderEpicSection = useCallback((epic: NodeRecord, colorIndex: number) => {
-    const isExpanded = !!expandedEpics[epic.uuid]
-    const childState = childrenByEpic[epic.uuid]
+  const renderNodeBranch = useCallback((node: NodeRecord, depth: number, colorIndex: number) => {
+    const Icon = iconForNodeType(node.type)
+    const isExpanded = !!expandedNodes[node.uuid]
+    const childState = childrenByNode[node.uuid]
     const childCount = childState?.loaded ? childState.nodes.length : null
-    const borderColor = EPIC_BORDER_PALETTE[colorIndex % EPIC_BORDER_PALETTE.length]
+    const borderColorClass = depth === 0
+      ? EPIC_BORDER_PALETTE[colorIndex % EPIC_BORDER_PALETTE.length]
+      : 'border-l-zinc-300'
+    const iconColorClass = node.type === 'epic' && depth === 0
+      ? (EPIC_ICON_COLOR_BY_BORDER[borderColorClass] ?? iconColorForNodeType(node.type))
+      : iconColorForNodeType(node.type)
 
     return (
-      <div key={epic.uuid} className="border-b border-border/70 last:border-b-0">
-        {/* Epic header row */}
+      <div key={node.uuid} className="border-b border-border/70 last:border-b-0">
         <div
           draggable
-          onDragStart={makeDragStart(epic)}
+          onDragStart={makeDragStart(node)}
           onDragEnd={handleDragEnd}
-          onDragOver={e => handleDragOver(epic, e)}
-          onDragLeave={() => handleDragLeave(epic.uuid)}
-          onDrop={e => { void handleDrop(epic, e) }}
+          onDragOver={e => handleDragOver(node, e)}
+          onDragLeave={() => handleDragLeave(node.uuid)}
+          onDrop={e => { void handleDrop(node, e) }}
           className={cn(
             'flex cursor-pointer items-center gap-2 border-l-[3px] bg-background px-3 py-2 transition-colors hover:bg-zinc-50',
-            borderColor,
-            selectedNodeId === epic.uuid && 'bg-accent/40',
-            dragOverNodeId === epic.uuid && 'ring-2 ring-primary/40 bg-primary/5',
+            borderColorClass,
+            selectedNodeId === node.uuid && 'bg-accent/40',
+            dragOverNodeId === node.uuid && 'ring-2 ring-primary/40 bg-primary/5',
           )}
+          style={{ paddingLeft: `${12 + (depth * 16)}px` }}
         >
           <button
             type="button"
-            onClick={() => toggleEpic(epic)}
+            onClick={() => toggleNode(node)}
             className="rounded p-0.5 text-muted-foreground hover:bg-muted"
           >
             <ChevronRight className={cn('h-4 w-4 transition-transform', isExpanded && 'rotate-90')} />
           </button>
-          <Layers className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <Icon className={cn('h-4 w-4 shrink-0', iconColorClass)} />
           <button
             type="button"
-            onClick={() => onSelectNode(epic)}
+            onClick={() => onSelectNode(node)}
             className="min-w-0 flex-1 truncate text-left text-sm font-medium"
           >
-            {epic.title}
+            {nodeDisplayTitle(node)}
           </button>
           {childCount !== null && (
             <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
               {childCount}
             </span>
           )}
-          <StatusBadge status={epic.status} />
+          <StatusBadge status={node.status} />
+          <PriorityDot priority={node.priority} />
         </div>
 
-        {/* Expanded children */}
         {isExpanded && (
           <div className="bg-background/95">
             {childState?.loading && (
@@ -456,28 +510,27 @@ export default function BacklogListBlock({
               <div className="border-t border-border/70 px-6 py-1 text-xs text-destructive">{childState.error}</div>
             )}
             {childState?.loaded && (
-              <div className="pl-3">
-                {childState.nodes.map(renderChildRow)}
+              <div>
+                {childState.nodes.map((child, idx) => renderNodeBranch(child, depth + 1, idx))}
                 {childState.nodes.length === 0 && (
                   <div className="border-t border-border/70 px-3 py-2 text-xs text-muted-foreground">No items yet.</div>
                 )}
               </div>
             )}
-            {renderInlineCreate(epic, `epic-${epic.uuid}`, 'Add item...')}
+            {renderInlineCreate(node, `node-${node.uuid}`, 'Add child...')}
           </div>
         )}
       </div>
     )
-  }, [childrenByEpic, dragOverNodeId, expandedEpics, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, makeDragStart, onSelectNode, renderChildRow, renderInlineCreate, selectedNodeId, toggleEpic])
+  }, [childrenByNode, dragOverNodeId, expandedNodes, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, makeDragStart, onSelectNode, renderInlineCreate, selectedNodeId, toggleNode])
 
-  // ── Render program section ──
   const renderProgramSection = useCallback((program: NodeRecord) => {
-    ensureProgramLoaded(program)
-    const epicState = epicsByProgram[program.uuid]
+    void ensureProgramLoaded(program)
+    const childState = childrenByNode[program.uuid]
+    const programIconColorClass = iconColorForNodeType(program.type)
 
     return (
       <div key={program.uuid} className="rounded-xl border border-border/70 bg-muted/30 p-2">
-        {/* Program header */}
         <div
           draggable
           onDragStart={makeDragStart(program)}
@@ -492,39 +545,39 @@ export default function BacklogListBlock({
           )}
           onClick={() => onSelectNode(program)}
         >
-          <FolderTree className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate text-sm font-bold">{program.title}</span>
+          <FolderTree className={cn('h-4 w-4 shrink-0', programIconColorClass)} />
+          <span className="min-w-0 flex-1 truncate text-sm font-bold">
+            {nodeDisplayTitle(program)}
+          </span>
         </div>
 
-        {/* Epics under this program */}
         <div className="mt-2 overflow-hidden rounded-md border border-border/70 bg-background">
-          {epicState?.loading && (
+          {childState?.loading && (
             <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
-              Loading epics...
+              Loading children...
             </div>
           )}
-          {epicState?.error && (
-            <div className="px-3 py-1 text-xs text-destructive">{epicState.error}</div>
+          {childState?.error && (
+            <div className="px-3 py-1 text-xs text-destructive">{childState.error}</div>
           )}
-          {epicState?.loaded && (
+          {childState?.loaded && (
             <>
-              {epicState.nodes.map((epic, idx) => renderEpicSection(epic, idx))}
-              {epicState.nodes.length === 0 && (
-                <div className="px-3 py-2 text-xs text-muted-foreground">No epics yet.</div>
+              {childState.nodes.map((node, idx) => renderNodeBranch(node, 0, idx))}
+              {childState.nodes.length === 0 && (
+                <div className="px-3 py-2 text-xs text-muted-foreground">No items yet.</div>
               )}
             </>
           )}
-          {renderInlineCreate(program, `program-${program.uuid}`, 'Add epic...')}
+          {renderInlineCreate(program, `program-${program.uuid}`, 'Add child...')}
         </div>
       </div>
     )
-  }, [dragOverNodeId, ensureProgramLoaded, epicsByProgram, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, makeDragStart, onSelectNode, renderEpicSection, renderInlineCreate, selectedNodeId])
+  }, [childrenByNode, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, makeDragStart, onSelectNode, renderInlineCreate, renderNodeBranch, selectedNodeId])
 
   return (
     <div className="flex flex-col space-y-3">
-      {/* Top-level program create */}
-      {!readOnly && renderInlineCreate(null, '__root__', 'Add program...')}
+      {!readOnly && renderInlineCreate(null, ROOT_INPUT_KEY, 'Add program...')}
 
       {programs.length === 0 && (
         <div className="px-3 py-4 text-sm text-muted-foreground">

@@ -19,6 +19,9 @@ export interface NodeRecord {
   parentType?: NodeType
   filePath: string         // vault-relative path
   projectRoot?: string
+  ticket?: string
+  description?: string
+  comments?: string[]
   tags: string[]
   status: NodeStatus
   priority?: NodePriority

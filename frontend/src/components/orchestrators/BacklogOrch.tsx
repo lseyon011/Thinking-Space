@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, Loader2, Plus, X } from 'lucide-react'
-import BacklogListBlock from '@/components/lego_blocks/BacklogListBlock'
+import BacklogListBlock, { type CreateNodeExtras } from '@/components/lego_blocks/BacklogListBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/NodeDetailPanelBlock'
 import CascadingFolderPicker, { addRecent } from '@/components/lego_blocks/CascadingFolderPickerBlock'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import { generateKey, type NodeType } from '@/services/lego_blocks/yamlNoteBlock'
+import { generateKey, type NodeType, type YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
 import {
   createYamlNode,
   deleteYamlNode,
@@ -15,6 +15,7 @@ import {
   listYamlChildren,
   listYamlRootNodes,
   moveYamlNode,
+  readYamlFrontmatterByPath,
   renameYamlNode,
   updateYamlNode,
 } from '@/services/lego_blocks/yamlHierarchyBlock'
@@ -69,6 +70,7 @@ export default function BacklogOrch() {
   const { openFile } = useMarkdownViewer()
   const [programs, setPrograms] = useState<NodeRecord[]>([])
   const [selectedNode, setSelectedNode] = useState<NodeRecord | null>(null)
+  const [selectedFrontmatter, setSelectedFrontmatter] = useState<YAMLFrontmatter | null>(null)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -106,6 +108,25 @@ export default function BacklogOrch() {
   useEffect(() => {
     void loadPrograms()
   }, [loadPrograms])
+
+  useEffect(() => {
+    if (!selectedNode) {
+      setSelectedFrontmatter(null)
+      return
+    }
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const frontmatter = await readYamlFrontmatterByPath(selectedNode.filePath)
+        if (!cancelled) setSelectedFrontmatter(frontmatter)
+      } catch {
+        if (!cancelled) setSelectedFrontmatter(null)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [selectedNode])
 
   const availableProjects = useMemo(() => {
     const byRoot = new Map<string, ProjectEntry>()
@@ -220,6 +241,7 @@ export default function BacklogOrch() {
     parent: NodeRecord | null,
     title: string,
     requestedType?: NodeType,
+    extras?: CreateNodeExtras,
   ) => {
     const allowedTypes = allowedChildTypes(parent?.type ?? null)
     const nextType = requestedType && allowedTypes.includes(requestedType)
@@ -236,6 +258,8 @@ export default function BacklogOrch() {
       parentKey: parent?.key,
       parentUuid: parent?.uuid,
       parentType: parent?.type,
+      description: extras?.description,
+      comments: extras?.comments,
       projectRoot: parent ? undefined : activeProjectRoot,
     })
     if (!parent) {
@@ -426,6 +450,7 @@ export default function BacklogOrch() {
       {selectedNode && (
         <NodeDetailPanelBlock
           node={selectedNode}
+          frontmatter={selectedFrontmatter}
           onClose={() => setSelectedNode(null)}
           onRename={renameNode}
           onUpdateStatus={updateStatus}
