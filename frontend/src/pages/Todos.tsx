@@ -44,7 +44,10 @@ function CreateTab() {
     applyAssistSuggestion,
     dismissAssistSuggestion,
     clearAssistState,
-  } = useAiAssistRuntimeBlock()
+  } = useAiAssistRuntimeBlock({
+    scope: 'todos',
+    useCase: 'todos.assist',
+  })
 
   const handleFolderChange = (segments: string[], fullPath: string) => {
     setFolderSegments(segments)

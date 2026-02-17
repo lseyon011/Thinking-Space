@@ -1,4 +1,5 @@
 import type { AiProvider } from '../lego_blocks/aiProviderBlock'
+import type { AiSettingsScope } from '../lego_blocks/aiSettingsBlock'
 import { resolveAiSelectionOrch } from './aiSettingsOrch'
 import { sendChatWithTelemetryOrch } from './chatOrch'
 import type { AiTelemetryEvent } from './aiTelemetryOrch'
@@ -8,6 +9,8 @@ export type AiAssistAction = 'grammar' | 'clarity' | 'structure' | 'tone'
 export interface RunAiAssistInput {
   provider?: AiProvider
   model?: string
+  scope?: AiSettingsScope
+  useCase?: string
   action: AiAssistAction
   content: string
 }
@@ -73,6 +76,7 @@ export async function runAiAssistOrch(input: RunAiAssistInput): Promise<RunAiAss
   const selection = await resolveAiSelectionOrch({
     provider: input.provider ?? null,
     model: input.model ?? null,
+    scope: input.scope ?? null,
   })
   if (!selection) {
     throw new Error('No AI provider available. Configure one in AI Settings.')
@@ -83,9 +87,10 @@ export async function runAiAssistOrch(input: RunAiAssistInput): Promise<RunAiAss
     [{ role: 'user', content: prompt }],
     { model: selection.model },
     {
-      useCase: 'markdown.assist',
+      useCase: input.useCase || 'markdown.assist',
       metadata: {
         action: input.action,
+        scope: input.scope || null,
       },
     },
   )

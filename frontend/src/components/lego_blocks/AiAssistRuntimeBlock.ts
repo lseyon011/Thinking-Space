@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { AiProvider } from '@/services/orchestrators/chatOrch'
 import { runAiAssistOrch, type AiAssistAction, type RunAiAssistResult } from '@/services/orchestrators/aiAssistOrch'
 import { resolveAiSelectionOrch } from '@/services/orchestrators/aiSettingsOrch'
+import type { AiSettingsScope } from '@/services/lego_blocks/aiSettingsBlock'
 
 export interface AiAssistRuntimeBlockState {
   aiSelectionLoading: boolean
@@ -16,13 +17,18 @@ export interface AiAssistRuntimeBlockState {
   clearAssistState: () => void
 }
 
+export interface UseAiAssistRuntimeBlockOptions {
+  scope: AiSettingsScope
+  useCase: string
+}
+
 function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
   if (typeof value === 'string' && value.trim()) return value
   return fallback
 }
 
-export function useAiAssistRuntimeBlock(): AiAssistRuntimeBlockState {
+export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions): AiAssistRuntimeBlockState {
   const [aiSelectionLoading, setAiSelectionLoading] = useState(true)
   const [selectedProvider, setSelectedProvider] = useState<AiProvider | null>(null)
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
@@ -31,11 +37,11 @@ export function useAiAssistRuntimeBlock(): AiAssistRuntimeBlockState {
   const [assistSuggestion, setAssistSuggestion] = useState<RunAiAssistResult | null>(null)
 
   const syncSelection = useCallback(async () => {
-    const selection = await resolveAiSelectionOrch()
+    const selection = await resolveAiSelectionOrch({ scope: options.scope })
     setSelectedProvider(selection?.provider ?? null)
     setSelectedModel(selection?.model ?? null)
     return selection
-  }, [])
+  }, [options.scope])
 
   useEffect(() => {
     let cancelled = false
@@ -74,6 +80,8 @@ export function useAiAssistRuntimeBlock(): AiAssistRuntimeBlockState {
       const result = await runAiAssistOrch({
         provider: selection.provider,
         model: selection.model,
+        scope: options.scope,
+        useCase: options.useCase,
         action,
         content,
       })
@@ -89,7 +97,7 @@ export function useAiAssistRuntimeBlock(): AiAssistRuntimeBlockState {
     } finally {
       setAssistRunningAction(null)
     }
-  }, [assistRunningAction, syncSelection])
+  }, [assistRunningAction, options.scope, options.useCase, syncSelection])
 
   const applyAssistSuggestion = useCallback((onApply: (nextContent: string) => void): boolean => {
     if (!assistSuggestion) return false

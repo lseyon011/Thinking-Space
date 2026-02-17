@@ -205,7 +205,7 @@ export async function generateStewardMetadataSuggestionForFileOrch(filePath: str
     similarity,
   }
 
-  const selection = await resolveAiSelectionOrch()
+  const selection = await resolveAiSelectionOrch({ scope: 'steward_metadata' })
   if (!selection) {
     return {
       ...fallback,

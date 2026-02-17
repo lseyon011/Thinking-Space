@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getAiSettingsOrch,
+  resolveAiModelForScopeProviderOrch,
   resolveAiModelForProviderOrch,
   resolveAiSelectionOrch,
   setAiProviderModelOrch,
+  setAiScopeProviderModelOrch,
   setAiSelectedProviderOrch,
 } from '@/services/orchestrators/aiSettingsOrch'
 
@@ -85,5 +87,31 @@ describe('aiSettingsOrch', () => {
     expect(selection?.provider).toBe('codex-cli')
     expect(selection?.model).toBe('gpt-5-codex')
     expect(resolveAiModelForProviderOrch('codex-cli')).toBe('gpt-5-codex')
+  })
+
+  it('supports per-scope model overrides with fallback to provider default', async () => {
+    setAiSelectedProviderOrch('codex-cli')
+    setAiProviderModelOrch('codex-cli', 'gpt-5.3-codex')
+    setAiScopeProviderModelOrch('new_thought', 'codex-cli', 'gpt-5-codex')
+
+    listProvidersBlockMock.mockResolvedValue([
+      { provider: 'codex-cli', available: true, label: 'Codex CLI', model: 'gpt-5.3-codex', models: ['gpt-5.3-codex', 'gpt-5-codex'] },
+      { provider: 'claude', available: false, label: 'Claude', model: 'claude-sonnet-4-5-20250929', models: ['claude-sonnet-4-5-20250929'] },
+      { provider: 'openai-codex', available: false, label: 'Codex', model: 'gpt-5.3-codex', models: ['gpt-5.3-codex'] },
+      { provider: 'azure-gpt', available: false, label: 'Azure GPT', model: 'gpt-5', models: ['gpt-5'] },
+    ])
+
+    const scoped = await resolveAiSelectionOrch({ scope: 'new_thought' })
+    const global = await resolveAiSelectionOrch({ scope: 'chat' })
+
+    expect(scoped?.provider).toBe('codex-cli')
+    expect(scoped?.model).toBe('gpt-5-codex')
+    expect(global?.model).toBe('gpt-5.3-codex')
+    expect(resolveAiModelForScopeProviderOrch('new_thought', 'codex-cli')).toBe('gpt-5-codex')
+    expect(resolveAiModelForScopeProviderOrch('chat', 'codex-cli')).toBe('gpt-5.3-codex')
+
+    setAiScopeProviderModelOrch('new_thought', 'codex-cli', '')
+    expect(resolveAiModelForScopeProviderOrch('new_thought', 'codex-cli')).toBe('gpt-5.3-codex')
+    expect(getAiSettingsOrch().selectedProvider).toBe('codex-cli')
   })
 })

@@ -6,10 +6,14 @@ import AiTelemetryPanelBlock from '@/components/lego_blocks/AiTelemetryPanelBloc
 import { listProvidersOrch, type AiProvider, type AiProviderStatus } from '@/services/orchestrators/chatOrch'
 import {
   listAiModelOptionsOrch,
+  listAiModelScopesOrch,
+  resolveAiModelForScopeProviderOrch,
   resolveAiModelForProviderOrch,
+  setAiScopeProviderModelOrch,
   resolveAiSelectionFromProvidersOrch,
   setAiProviderModelOrch,
   setAiSelectedProviderOrch,
+  type AiSettingsScope,
 } from '@/services/orchestrators/aiSettingsOrch'
 import {
   clearAiTelemetryEventsOrch,
@@ -28,6 +32,7 @@ export default function AiSettingsOrch() {
   const [loadingProviders, setLoadingProviders] = useState(true)
   const [selectedProvider, setSelectedProvider] = useState<AiProvider | null>(null)
   const [modelInput, setModelInput] = useState('')
+  const [scopeModelInputs, setScopeModelInputs] = useState<Partial<Record<AiSettingsScope, string>>>({})
   const [savingModel, setSavingModel] = useState(false)
   const [telemetryEvents, setTelemetryEvents] = useState<AiTelemetryEvent[]>([])
   const [loadingTelemetry, setLoadingTelemetry] = useState(false)
@@ -39,6 +44,35 @@ export default function AiSettingsOrch() {
     ? providers.find(item => item.provider === selectedProvider) ?? null
     : null
   const selectedKnownModels = selectedProvider ? listAiModelOptionsOrch(selectedProvider) : []
+  const scopes = useMemo(() => listAiModelScopesOrch(), [])
+
+  const scopeLabels: Record<AiSettingsScope, string> = {
+    chat: 'Chat tab',
+    markdown_editor: 'Markdown editor',
+    new_thought: 'New Thought tab',
+    todos: 'Todos tab',
+    steward_metadata: 'Steward metadata',
+  }
+
+  const scopeDescriptions: Record<AiSettingsScope, string> = {
+    chat: 'Conversation replies in Chat route.',
+    markdown_editor: 'Inline AI assist inside markdown editor.',
+    new_thought: 'AI assist for New Thought content drafting.',
+    todos: 'AI assist for todo text cleanup and clarity.',
+    steward_metadata: 'Steward metadata proposal generation.',
+  }
+
+  const hydrateScopeInputs = useCallback((provider: AiProvider | null) => {
+    if (!provider) {
+      setScopeModelInputs({})
+      return
+    }
+    const next: Partial<Record<AiSettingsScope, string>> = {}
+    for (const scope of scopes) {
+      next[scope] = resolveAiModelForScopeProviderOrch(scope, provider)
+    }
+    setScopeModelInputs(next)
+  }, [scopes])
 
   const loadProviders = useCallback(async () => {
     setLoadingProviders(true)
@@ -48,13 +82,14 @@ export default function AiSettingsOrch() {
       const selection = resolveAiSelectionFromProvidersOrch(items)
       setSelectedProvider(selection?.provider ?? null)
       setModelInput(selection?.model ?? '')
+      hydrateScopeInputs(selection?.provider ?? null)
       setError(null)
     } catch (err) {
       setError(errorMessage(err, 'Failed to load AI providers'))
     } finally {
       setLoadingProviders(false)
     }
-  }, [])
+  }, [hydrateScopeInputs])
 
   const loadTelemetry = useCallback(() => {
     setLoadingTelemetry(true)
@@ -83,6 +118,7 @@ export default function AiSettingsOrch() {
     setAiSelectedProviderOrch(provider)
     setSelectedProvider(provider)
     setModelInput(resolveAiModelForProviderOrch(provider))
+    hydrateScopeInputs(provider)
     setMessage(`Default provider set to ${provider}.`)
     setError(null)
   }
@@ -102,6 +138,29 @@ export default function AiSettingsOrch() {
       setError(null)
     } catch (err) {
       setError(errorMessage(err, 'Failed to save model setting'))
+    } finally {
+      setSavingModel(false)
+    }
+  }
+
+  const onSaveScopeModel = async (scope: AiSettingsScope) => {
+    if (!selectedProvider) return
+    const normalized = (scopeModelInputs[scope] ?? '').trim()
+    if (!normalized) {
+      setError(`Model cannot be empty for ${scopeLabels[scope]}.`)
+      return
+    }
+    setSavingModel(true)
+    try {
+      setAiScopeProviderModelOrch(scope, selectedProvider, normalized)
+      setScopeModelInputs((prev) => ({
+        ...prev,
+        [scope]: resolveAiModelForScopeProviderOrch(scope, selectedProvider),
+      }))
+      setMessage(`${scopeLabels[scope]} model updated.`)
+      setError(null)
+    } catch (err) {
+      setError(errorMessage(err, `Failed to save ${scopeLabels[scope]} model setting`))
     } finally {
       setSavingModel(false)
     }
@@ -133,7 +192,7 @@ export default function AiSettingsOrch() {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Global AI Defaults</CardTitle>
           <CardDescription>
-            These defaults are used by Chat, markdown AI assist, and steward metadata generation.
+            Provider + fallback model used across AI actions. You can override model per tab below.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -203,6 +262,58 @@ export default function AiSettingsOrch() {
 
               <div className="text-xs text-muted-foreground">
                 Available providers: {availableProviders.map(item => item.provider).join(', ') || 'none'}
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  Per-Tab Model Overrides
+                </div>
+                <div className="space-y-2">
+                  {scopes.map((scope) => (
+                    <div key={scope} className="rounded-md border border-border/60 bg-muted/20 p-3">
+                      <div className="mb-1 text-xs font-medium text-foreground">{scopeLabels[scope]}</div>
+                      <div className="mb-2 text-xs text-muted-foreground">{scopeDescriptions[scope]}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          value={scopeModelInputs[scope] ?? ''}
+                          onChange={(event) => {
+                            const value = event.target.value
+                            setScopeModelInputs((prev) => ({ ...prev, [scope]: value }))
+                          }}
+                          disabled={!selectedProvider || savingModel}
+                          className="min-w-[18rem] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          placeholder={selectedProvider ? resolveAiModelForScopeProviderOrch(scope, selectedProvider) : 'Select a provider first'}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => { void onSaveScopeModel(scope) }}
+                          disabled={!selectedProvider || savingModel}
+                        >
+                          {savingModel ? 'Saving...' : 'Save'}
+                        </Button>
+                        {selectedProvider && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setAiScopeProviderModelOrch(scope, selectedProvider, '')
+                              setScopeModelInputs((prev) => ({
+                                ...prev,
+                                [scope]: resolveAiModelForScopeProviderOrch(scope, selectedProvider),
+                              }))
+                              setMessage(`${scopeLabels[scope]} reset to global model.`)
+                              setError(null)
+                            }}
+                            disabled={savingModel}
+                          >
+                            Use Global
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
           )}

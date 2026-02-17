@@ -64,7 +64,7 @@ export default function ChatOrch() {
     listProvidersOrch()
       .then((p) => {
         setProviders(p)
-        const selection = resolveAiSelectionFromProvidersOrch(p)
+        const selection = resolveAiSelectionFromProvidersOrch(p, { scope: 'chat' })
         setSelectedProvider(selection?.provider ?? null)
         setSelectedModel(selection?.model ?? null)
       })
@@ -77,7 +77,7 @@ export default function ChatOrch() {
       setSelectedModel(null)
       return
     }
-    const selection = resolveAiSelectionFromProvidersOrch(providers, { provider: selectedProvider })
+    const selection = resolveAiSelectionFromProvidersOrch(providers, { provider: selectedProvider, scope: 'chat' })
     setSelectedProvider(selection?.provider ?? null)
     setSelectedModel(selection?.model ?? null)
   }, [providers, selectedProvider])
@@ -103,7 +103,7 @@ export default function ChatOrch() {
 
     try {
       const allMessages = [...messages, userMsg]
-      const selection = await resolveAiSelectionOrch({ provider: selectedProvider })
+      const selection = await resolveAiSelectionOrch({ provider: selectedProvider, scope: 'chat' })
       if (!selection) {
         throw new Error('No AI provider available. Configure one in AI Settings.')
       }

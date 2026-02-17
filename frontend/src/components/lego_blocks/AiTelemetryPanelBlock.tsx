@@ -28,7 +28,7 @@ function summarizeChange(event: AiTelemetryEvent): string {
   const filePath = typeof metadata.filePath === 'string' ? metadata.filePath : null
   const reason = typeof metadata.reason === 'string' ? metadata.reason : null
 
-  if (event.useCase === 'markdown.assist' && action) {
+  if (event.useCase.endsWith('.assist') && action) {
     return `Applied ${action} assist suggestion`
   }
   if (event.useCase === 'steward.metadata.proposal_generation' && filePath) {

@@ -50,7 +50,10 @@ function CreateTab() {
     applyAssistSuggestion,
     dismissAssistSuggestion,
     clearAssistState,
-  } = useAiAssistRuntimeBlock()
+  } = useAiAssistRuntimeBlock({
+    scope: 'new_thought',
+    useCase: 'new_thought.assist',
+  })
 
   const handleFolderChange = (segments: string[], fullPath: string) => {
     setFolderSegments(segments)

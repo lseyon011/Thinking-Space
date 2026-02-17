@@ -70,7 +70,10 @@ export default function MarkdownDocumentBlock({
     applyAssistSuggestion,
     dismissAssistSuggestion,
     clearAssistState,
-  } = useAiAssistRuntimeBlock()
+  } = useAiAssistRuntimeBlock({
+    scope: 'markdown_editor',
+    useCase: 'markdown.assist',
+  })
   const isExcalidrawDoc = /\.(excalidraw|excalidraw\.md)$/i.test(path)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
 

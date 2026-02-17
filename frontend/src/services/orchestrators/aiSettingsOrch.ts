@@ -1,8 +1,13 @@
 import {
+  AI_SETTINGS_SCOPE_ORDER,
+  isAiSettingsScope,
   readAiSettingsBlock,
+  resolveAiModelForScopeProviderBlock,
   resolveAiModelForProviderBlock,
+  setSelectedAiModelForScopeBlock,
   setSelectedAiModelBlock,
   setSelectedAiProviderBlock,
+  type AiSettingsScope,
   type AiSettings,
 } from '../lego_blocks/aiSettingsBlock'
 import {
@@ -16,11 +21,15 @@ import {
 export interface ResolveAiSelectionInput {
   provider?: AiProvider | null
   model?: string | null
+  scope?: AiSettingsScope | null
 }
+
+export type { AiSettingsScope, AiSettings }
 
 export interface ResolvedAiSelection {
   provider: AiProvider
   model: string
+  scope: AiSettingsScope | null
   providers: AiProviderStatus[]
 }
 
@@ -58,8 +67,20 @@ export function setAiProviderModelOrch(provider: AiProvider, model: string): AiS
   return setSelectedAiModelBlock(provider, model)
 }
 
+export function setAiScopeProviderModelOrch(
+  scope: AiSettingsScope,
+  provider: AiProvider,
+  model: string,
+): AiSettings {
+  return setSelectedAiModelForScopeBlock(scope, provider, model)
+}
+
 export function listAiModelOptionsOrch(provider: AiProvider): string[] {
   return listProviderModelsBlock(provider)
+}
+
+export function listAiModelScopesOrch(): AiSettingsScope[] {
+  return [...AI_SETTINGS_SCOPE_ORDER]
 }
 
 export function resolveAiSelectionFromProvidersOrch(
@@ -67,6 +88,7 @@ export function resolveAiSelectionFromProvidersOrch(
   input?: ResolveAiSelectionInput,
 ): ResolvedAiSelection | null {
   const settings = readAiSettingsBlock()
+  const scope = isAiSettingsScope(input?.scope) ? input!.scope : null
   const provider = pickAvailableProvider(providers, [
     input?.provider,
     settings.selectedProvider,
@@ -81,14 +103,20 @@ export function resolveAiSelectionFromProvidersOrch(
 
   const requestedModel = normalizeModel(input?.model)
   if (requestedModel) {
-    setSelectedAiModelBlock(provider, requestedModel)
+    if (scope) setSelectedAiModelForScopeBlock(scope, provider, requestedModel)
+    else setSelectedAiModelBlock(provider, requestedModel)
   }
 
-  const model = requestedModel || resolveAiModelForProviderBlock(provider, settings)
+  const model = requestedModel || (
+    scope
+      ? resolveAiModelForScopeProviderBlock(scope, provider, settings)
+      : resolveAiModelForProviderBlock(provider, settings)
+  )
 
   return {
     provider,
     model,
+    scope,
     providers,
   }
 }
@@ -102,4 +130,8 @@ export async function resolveAiSelectionOrch(
 
 export function resolveAiModelForProviderOrch(provider: AiProvider): string {
   return resolveAiModelForProviderBlock(provider)
+}
+
+export function resolveAiModelForScopeProviderOrch(scope: AiSettingsScope, provider: AiProvider): string {
+  return resolveAiModelForScopeProviderBlock(scope, provider)
 }
