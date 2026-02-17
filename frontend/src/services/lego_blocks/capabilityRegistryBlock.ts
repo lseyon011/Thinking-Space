@@ -80,6 +80,7 @@ export interface CapabilityInputMap {
     description?: string
     comments?: Array<string | YAMLCommentEntry>
     projectRoot?: string
+    extraFields?: Record<string, unknown>
   }
   'organizer.node.rename': {
     uuid: string
@@ -95,6 +96,7 @@ export interface CapabilityInputMap {
       priority?: NodePriority
       description?: string
       comments?: Array<string | YAMLCommentEntry>
+      extraFields?: Record<string, unknown>
     }
   }
   'organizer.node.move': {

@@ -376,4 +376,49 @@ describe('capabilityRouterOrch', () => {
     expect(latest.ok).toBe(true)
     expect(latest.auditId).toContain('audit-')
   })
+
+  it('supports extra orchestration fields on create/update', async () => {
+    const fs = new FakeVaultFS()
+
+    const { node } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: 'idea',
+        title: 'Agent Task',
+        projectRoot: 'projects/agent',
+        extraFields: {
+          record_kind: 'task',
+          task_id: 'LTM-500',
+          custom_scope: 'agent-native',
+        },
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.update',
+      input: {
+        uuid: node.uuid,
+        updates: {
+          extraFields: {
+            task_status: 'blocked',
+            custom_scope: null,
+          },
+        },
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const { frontmatter } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.read_frontmatter',
+      input: { filePath: node.filePath },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(frontmatter).not.toBeNull()
+    expect(frontmatter!.record_kind).toBe('task')
+    expect(frontmatter!.task_id).toBe('LTM-500')
+    expect(frontmatter!.task_status).toBe('blocked')
+    expect(frontmatter!.custom_scope).toBeUndefined()
+  })
 })

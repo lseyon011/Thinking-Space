@@ -3,7 +3,13 @@
 // Can be rebuilt from vault files at any time.
 
 import Dexie, { type Table } from 'dexie'
-import type { NodeType, NodeStatus, NodePriority, YAMLCommentEntry } from './yamlNoteBlock'
+import type {
+  NodeType,
+  NodeStatus,
+  NodePriority,
+  YAMLCommentEntry,
+  YAMLStateHistoryEntry,
+} from './yamlNoteBlock'
 
 // ── Types ──
 
@@ -22,6 +28,30 @@ export interface NodeRecord {
   ticket?: string
   description?: string
   comments?: YAMLCommentEntry[]
+  taskId?: string
+  taskStatus?: string
+  dependsOn?: string[]
+  blockedBy?: string[]
+  acceptanceCriteria?: string[]
+  owner?: string
+  runId?: string
+  sessionId?: string
+  agentName?: string
+  model?: string
+  startedAt?: string
+  endedAt?: string
+  result?: string
+  sourceRepo?: string
+  branch?: string
+  commit?: string
+  artifacts?: string[]
+  relatedNodes?: string[]
+  schemaVersion?: string
+  recordKind?: string
+  stateHistory?: YAMLStateHistoryEntry[]
+  metadata?: Record<string, unknown>
+  metadataKeys?: string[]
+  metadataText?: string
   tags: string[]
   status: NodeStatus
   priority?: NodePriority
@@ -41,6 +71,15 @@ class ThinkingSpaceDB extends Dexie {
     super('ThinkingSpaceDB')
     this.version(1).stores({
       nodes: '++id, &uuid, &key, type, parent, parentUuid, filePath, updatedAt, status, *tags',
+    })
+    this.version(2).stores({
+      nodes: '++id, &uuid, &key, type, parent, parentUuid, filePath, updatedAt, status, taskStatus, owner, runId, sessionId, recordKind, *tags, *dependsOn, *blockedBy, *relatedNodes, *metadataKeys',
+    }).upgrade(async tx => {
+      const table = tx.table('nodes')
+      await table.toCollection().modify((raw: NodeRecord) => {
+        const normalized = normalizeRecordForStorage(raw)
+        Object.assign(raw, normalized)
+      })
     })
   }
 }
@@ -62,11 +101,12 @@ export async function upsertNode(
   record: Omit<NodeRecord, 'id'>,
 ): Promise<void> {
   const db = getDb()
+  const normalized = normalizeRecordForStorage(record)
   const existing = await db.nodes.where('uuid').equals(record.uuid).first()
   if (existing) {
-    await db.nodes.update(existing.id!, record)
+    await db.nodes.update(existing.id!, normalized)
   } else {
-    await db.nodes.add(record)
+    await db.nodes.add(normalized)
   }
 }
 
@@ -129,6 +169,30 @@ export async function getNodesByType(type: NodeType): Promise<NodeRecord[]> {
 }
 
 /**
+ * Get nodes by orchestration record kind (for example: task, run, handoff).
+ */
+export async function getNodesByRecordKind(recordKind: string): Promise<NodeRecord[]> {
+  const db = getDb()
+  return db.nodes.where('recordKind').equals(recordKind).toArray()
+}
+
+/**
+ * Get nodes by orchestration task status (for example: ready, in_progress, blocked, done).
+ */
+export async function getNodesByTaskStatus(taskStatus: string): Promise<NodeRecord[]> {
+  const db = getDb()
+  return db.nodes.where('taskStatus').equals(taskStatus).toArray()
+}
+
+/**
+ * Get nodes that include a metadata key in their generic metadata blob.
+ */
+export async function getNodesByMetadataKey(metadataKey: string): Promise<NodeRecord[]> {
+  const db = getDb()
+  return db.nodes.where('metadataKeys').equals(metadataKey).toArray()
+}
+
+/**
  * Simple text search across title, key, tags, bodyExcerpt, and aiSummary.
  * Returns nodes matching any search term.
  */
@@ -148,6 +212,25 @@ export async function searchNodes(query: string, limit: number = 20): Promise<No
       ...(node.tags || []),
       node.bodyExcerpt || '',
       node.aiSummary || '',
+      node.taskId || '',
+      node.taskStatus || '',
+      ...(node.dependsOn || []),
+      ...(node.blockedBy || []),
+      ...(node.acceptanceCriteria || []),
+      node.owner || '',
+      node.runId || '',
+      node.sessionId || '',
+      node.agentName || '',
+      node.model || '',
+      node.result || '',
+      node.sourceRepo || '',
+      node.branch || '',
+      node.commit || '',
+      ...(node.artifacts || []),
+      ...(node.relatedNodes || []),
+      node.schemaVersion || '',
+      node.recordKind || '',
+      node.metadataText || '',
     ].join(' ').toLowerCase()
 
     for (const term of terms) {
@@ -224,4 +307,76 @@ export async function deleteDb(): Promise<void> {
     _db = null
   }
   await Dexie.delete('ThinkingSpaceDB')
+}
+
+function normalizeRecordForStorage(record: Omit<NodeRecord, 'id'>): Omit<NodeRecord, 'id'> {
+  const metadata = record.metadata
+    ? JSON.parse(JSON.stringify(record.metadata)) as Record<string, unknown>
+    : undefined
+
+  return {
+    ...record,
+    dependsOn: record.dependsOn?.filter(Boolean),
+    blockedBy: record.blockedBy?.filter(Boolean),
+    acceptanceCriteria: record.acceptanceCriteria?.filter(Boolean),
+    artifacts: record.artifacts?.filter(Boolean),
+    relatedNodes: record.relatedNodes?.filter(Boolean),
+    metadata,
+    metadataKeys: (record.metadataKeys ?? extractMetadataKeys(metadata)).filter(Boolean),
+    metadataText: record.metadataText ?? buildMetadataSearchText(metadata),
+  }
+}
+
+function extractMetadataKeys(metadata: Record<string, unknown> | undefined): string[] {
+  if (!metadata) return []
+  const keys = new Set<string>()
+  collectMetadataKeys('', metadata, keys)
+  return [...keys]
+}
+
+function collectMetadataKeys(prefix: string, value: unknown, out: Set<string>): void {
+  if (value === null || value === undefined) return
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectMetadataKeys(prefix, item, out)
+    }
+    return
+  }
+  if (typeof value !== 'object') return
+
+  const record = value as Record<string, unknown>
+  for (const [key, inner] of Object.entries(record)) {
+    const path = prefix ? `${prefix}.${key}` : key
+    out.add(path)
+    collectMetadataKeys(path, inner, out)
+  }
+}
+
+function buildMetadataSearchText(metadata: Record<string, unknown> | undefined): string {
+  if (!metadata) return ''
+  const values: string[] = []
+  collectMetadataValues(metadata, values)
+  return values.join(' ').toLowerCase()
+}
+
+function collectMetadataValues(value: unknown, out: string[]): void {
+  if (value === null || value === undefined) return
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectMetadataValues(item, out)
+    }
+    return
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    for (const [key, inner] of Object.entries(record)) {
+      out.push(key)
+      collectMetadataValues(inner, out)
+    }
+    return
+  }
+
+  out.push(String(value))
 }

@@ -114,6 +114,73 @@ updated_at: "2026-01-01T00:00:00Z"
     expect(result.body).toBe('')
   })
 
+  it('normalizes orchestration fields for tasks and runs', () => {
+    const content = `---
+uuid: "orch-1"
+key: "orch-1"
+title: "Orchestration Record"
+type: "thought"
+level: 5
+status: "active"
+created_at: "2026-02-17T00:00:00Z"
+updated_at: "2026-02-17T00:00:00Z"
+record_kind: "task"
+schema_version: 2
+task_id: "LTM-200"
+task_status: "in_progress"
+depends_on:
+  - "LTM-150"
+blocked_by:
+  - "LTM-151"
+acceptance_criteria:
+  - "shipping complete"
+owner: "codex"
+run_id: "run-123"
+session_id: "session-456"
+agent_name: "codex-gpt5"
+model: "gpt-5"
+started_at: "2026-02-17T10:00:00Z"
+ended_at: "2026-02-17T11:00:00Z"
+result: "success"
+source_repo: "Thinking-Space"
+branch: "main"
+commit: "2c78a0a"
+artifacts:
+  - "docs/CAPABILITY_ROLLOUT_MATRIX.md"
+related_nodes:
+  - "build-thinking-space"
+state_history:
+  - at: "2026-02-17T10:00:00Z"
+    from: "ready"
+    to: "in_progress"
+---
+
+Body.
+`
+    const result = parseNote(content)!
+    expect(result.frontmatter.record_kind).toBe('task')
+    expect(result.frontmatter.schema_version).toBe('2')
+    expect(result.frontmatter.task_id).toBe('LTM-200')
+    expect(result.frontmatter.task_status).toBe('in_progress')
+    expect(result.frontmatter.depends_on).toEqual(['LTM-150'])
+    expect(result.frontmatter.blocked_by).toEqual(['LTM-151'])
+    expect(result.frontmatter.acceptance_criteria).toEqual(['shipping complete'])
+    expect(result.frontmatter.owner).toBe('codex')
+    expect(result.frontmatter.run_id).toBe('run-123')
+    expect(result.frontmatter.session_id).toBe('session-456')
+    expect(result.frontmatter.agent_name).toBe('codex-gpt5')
+    expect(result.frontmatter.model).toBe('gpt-5')
+    expect(result.frontmatter.started_at).toBe('2026-02-17T10:00:00Z')
+    expect(result.frontmatter.ended_at).toBe('2026-02-17T11:00:00Z')
+    expect(result.frontmatter.result).toBe('success')
+    expect(result.frontmatter.source_repo).toBe('Thinking-Space')
+    expect(result.frontmatter.branch).toBe('main')
+    expect(result.frontmatter.commit).toBe('2c78a0a')
+    expect(result.frontmatter.artifacts).toEqual(['docs/CAPABILITY_ROLLOUT_MATRIX.md'])
+    expect(result.frontmatter.related_nodes).toEqual(['build-thinking-space'])
+    expect(result.frontmatter.state_history?.[0].to).toBe('in_progress')
+  })
+
   it('handles leading whitespace before frontmatter', () => {
     const content = `
 ---

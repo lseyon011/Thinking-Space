@@ -49,6 +49,15 @@ export interface YAMLCommentEntry {
   added_by?: string
 }
 
+export interface YAMLStateHistoryEntry {
+  at: string
+  by?: string
+  from?: string
+  to?: string
+  note?: string
+  [extra: string]: unknown
+}
+
 export interface YAMLFrontmatter {
   // Identity
   uuid: string
@@ -97,6 +106,32 @@ export interface YAMLFrontmatter {
   // Organizer metadata (optional)
   description?: string
   comments?: YAMLCommentEntry[]
+
+  // Agent orchestration metadata (optional)
+  task_id?: string
+  task_status?: string
+  depends_on?: string[]
+  blocked_by?: string[]
+  acceptance_criteria?: string[]
+  owner?: string
+
+  run_id?: string
+  session_id?: string
+  agent_name?: string
+  model?: string
+  started_at?: string
+  ended_at?: string
+  result?: string
+
+  source_repo?: string
+  branch?: string
+  commit?: string
+  artifacts?: string[]
+  related_nodes?: string[]
+
+  schema_version?: string
+  record_kind?: string
+  state_history?: YAMLStateHistoryEntry[]
 
   // Legacy compat — preserve unknown fields roundtrip
   [extra: string]: unknown
@@ -296,6 +331,27 @@ function normalizeFrontmatter(raw: Record<string, unknown>): YAMLFrontmatter {
     ticket: raw.ticket != null ? String(raw.ticket) : undefined,
     description: raw.description != null ? String(raw.description) : undefined,
     comments: normalizeComments(raw.comments),
+    task_id: raw.task_id != null ? String(raw.task_id) : undefined,
+    task_status: raw.task_status != null ? String(raw.task_status) : undefined,
+    depends_on: normalizeStringArray(raw.depends_on),
+    blocked_by: normalizeStringArray(raw.blocked_by),
+    acceptance_criteria: normalizeStringArray(raw.acceptance_criteria),
+    owner: raw.owner != null ? String(raw.owner) : undefined,
+    run_id: raw.run_id != null ? String(raw.run_id) : undefined,
+    session_id: raw.session_id != null ? String(raw.session_id) : undefined,
+    agent_name: raw.agent_name != null ? String(raw.agent_name) : undefined,
+    model: raw.model != null ? String(raw.model) : undefined,
+    started_at: raw.started_at != null ? String(raw.started_at) : undefined,
+    ended_at: raw.ended_at != null ? String(raw.ended_at) : undefined,
+    result: raw.result != null ? String(raw.result) : undefined,
+    source_repo: raw.source_repo != null ? String(raw.source_repo) : undefined,
+    branch: raw.branch != null ? String(raw.branch) : undefined,
+    commit: raw.commit != null ? String(raw.commit) : undefined,
+    artifacts: normalizeStringArray(raw.artifacts),
+    related_nodes: normalizeStringArray(raw.related_nodes),
+    schema_version: raw.schema_version != null ? String(raw.schema_version) : undefined,
+    record_kind: raw.record_kind != null ? String(raw.record_kind) : undefined,
+    state_history: normalizeStateHistory(raw.state_history),
   }
 }
 
@@ -330,5 +386,39 @@ function normalizeComment(value: unknown): YAMLCommentEntry | null {
     text,
     added_at: typeof record.added_at === 'string' ? record.added_at : undefined,
     added_by: typeof record.added_by === 'string' ? record.added_by : undefined,
+  }
+}
+
+function normalizeStringArray(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const values = raw
+    .map(value => String(value).trim())
+    .filter(Boolean)
+  return values.length > 0 ? values : undefined
+}
+
+function normalizeStateHistory(raw: unknown): YAMLStateHistoryEntry[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const values = raw
+    .map(normalizeStateHistoryEntry)
+    .filter((entry): entry is YAMLStateHistoryEntry => entry !== null)
+  return values.length > 0 ? values : undefined
+}
+
+function normalizeStateHistoryEntry(value: unknown): YAMLStateHistoryEntry | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  const at = typeof record.at === 'string' && record.at.trim()
+    ? record.at.trim()
+    : ''
+  if (!at) return null
+
+  return {
+    ...record,
+    at,
+    by: typeof record.by === 'string' ? record.by : undefined,
+    from: typeof record.from === 'string' ? record.from : undefined,
+    to: typeof record.to === 'string' ? record.to : undefined,
+    note: typeof record.note === 'string' ? record.note : undefined,
   }
 }

@@ -266,4 +266,47 @@ describe('dbBlock search', () => {
     const results = await searchNodes('zzzznonexistent')
     expect(results).toHaveLength(0)
   })
+
+  it('indexes orchestration fields and generic metadata keys', async () => {
+    if (!fakeIdb) return
+
+    const { fullSync } = await import('@/services/orchestrators/vaultSyncOrch')
+    const {
+      getNodesByRecordKind,
+      getNodesByTaskStatus,
+      getNodesByMetadataKey,
+      searchNodes,
+    } = await import('@/services/lego_blocks/dbBlock')
+
+    const fs = new FakeVaultFS()
+    const note = createNote({ type: 'thought', title: 'Task Record' })
+    note.frontmatter.record_kind = 'task'
+    note.frontmatter.task_id = 'LTM-200'
+    note.frontmatter.task_status = 'in_progress'
+    note.frontmatter.owner = 'codex'
+    note.frontmatter.custom_scope = 'agent-native'
+    note.frontmatter.custom_trace = {
+      source: 'importer',
+      depth: 2,
+    }
+    fs.seedFile('tasks/task-record.md', stringifyNote(note))
+
+    await fullSync(fs)
+
+    const byKind = await getNodesByRecordKind('task')
+    expect(byKind).toHaveLength(1)
+    expect(byKind[0].taskId).toBe('LTM-200')
+
+    const byStatus = await getNodesByTaskStatus('in_progress')
+    expect(byStatus).toHaveLength(1)
+    expect(byStatus[0].owner).toBe('codex')
+
+    const byMetadataKey = await getNodesByMetadataKey('custom_trace.source')
+    expect(byMetadataKey).toHaveLength(1)
+    expect(byMetadataKey[0].metadata?.custom_scope).toBe('agent-native')
+
+    const bySearch = await searchNodes('agent-native')
+    expect(bySearch).toHaveLength(1)
+    expect(bySearch[0].key).toBe(note.frontmatter.key)
+  })
 })

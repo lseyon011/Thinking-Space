@@ -144,14 +144,55 @@ export default function NodeDetailPanelBlock({
   const yamlFields = useMemo(() => {
     if (!frontmatter) return []
     return Object.entries(frontmatter)
-      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .filter(([key, value]) => (
+        key !== 'description' &&
+        key !== 'comments' &&
+        value !== undefined &&
+        value !== null &&
+        value !== ''
+      ))
       .sort(([a], [b]) => a.localeCompare(b))
   }, [frontmatter])
 
-  function renderYamlValue(value: unknown): string {
-    if (Array.isArray(value)) return value.join(', ')
-    if (typeof value === 'object' && value !== null) return JSON.stringify(value)
-    return String(value)
+  function renderYamlValue(value: unknown): JSX.Element {
+    if (value === null || value === undefined) {
+      return <span className="font-mono text-xs text-muted-foreground">null</span>
+    }
+
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        return <span className="font-mono text-xs text-muted-foreground">[]</span>
+      }
+      return (
+        <ul className="space-y-1">
+          {value.map((item, idx) => (
+            <li key={idx} className="rounded border border-border/50 bg-background/60 px-2 py-1">
+              {renderYamlValue(item)}
+            </li>
+          ))}
+        </ul>
+      )
+    }
+
+    if (typeof value === 'object') {
+      const entries = Object.entries(value as Record<string, unknown>)
+      if (entries.length === 0) {
+        return <span className="font-mono text-xs text-muted-foreground">{'{}'}</span>
+      }
+
+      return (
+        <div className="space-y-1.5 rounded border border-border/50 bg-background/60 p-2">
+          {entries.map(([key, inner]) => (
+            <div key={key} className="space-y-0.5">
+              <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">{key}</p>
+              <div className="pl-2">{renderYamlValue(inner)}</div>
+            </div>
+          ))}
+        </div>
+      )
+    }
+
+    return <span className="break-all font-mono text-xs text-foreground/90">{String(value)}</span>
   }
 
   const addComment = useCallback(() => {
@@ -352,11 +393,11 @@ export default function NodeDetailPanelBlock({
           {yamlFields.length > 0 && (
             <div className="space-y-2">
               <label className="text-xs font-medium text-muted-foreground">YAML Metadata</label>
-              <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/20 p-3 md:grid-cols-2">
+              <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3">
                 {yamlFields.map(([key, value]) => (
-                  <div key={key} className="space-y-0.5">
+                  <div key={key} className="space-y-1 rounded-md border border-border/50 bg-muted/30 p-2">
                     <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{key}</p>
-                    <p className="break-all font-mono text-xs text-foreground/90">{renderYamlValue(value)}</p>
+                    <div>{renderYamlValue(value)}</div>
                   </div>
                 ))}
               </div>

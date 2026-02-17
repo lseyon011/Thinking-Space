@@ -38,6 +38,7 @@ Tasks LTM-017/020 are obsolete (SQLite-specific debt no longer applies).
 | LTM-033 | Jira-Style Create Flow + Project Organizer Storage | DONE | codex-gpt5 | LTM-027 | Backlog supports explicit idea-bucket/idea/thought-bucket creation flow and writes nodes under `<project>/thinking-organizer/*`; linking remains a separate tab |
 | LTM-034 | Agent Capability Transport (Frontend Runner + FastAPI Proxy) | DONE | codex-gpt5 | LTM-033 | `/api/capabilities` and `/api/capabilities/invoke` delegate to frontend capability runner; no Python YAML hierarchy service is introduced; curl-compatible contract works through capability envelope |
 | LTM-035 | Capability Rollout + Controls + Adapter Parity | DONE | codex-gpt5 | LTM-034 | Thoughts/Todos/Tools actions exposed via capability router, discovery page added, feature flags + FastAPI auth/rate/payload controls added, and parity fixtures validate router/runner/FastAPI consistency |
+| LTM-036 | Agent Orchestration Metadata + Cache Queryability | DONE | codex-gpt5 | LTM-035 | YAML schema includes task/run/trace/governance fields, Node detail renders arbitrary YAML metadata cleanly, and IndexedDB stores/query indexes generic metadata blobs + orchestration fields |
 | LTM-006 | Local Extension Manifest + Permissions | READY | unassigned | LTM-027 | Extensions have explicit scoped permissions and lifecycle |
 | LTM-007 | In-App Feature Builder Scaffolding | READY | unassigned | LTM-006 | Generate/review/enable extension from in-app flow |
 | LTM-008 | Shared AI Text Action Bar | READY | unassigned | LTM-029 | Summarize/Cleanup/Related usable in all major text surfaces |
@@ -67,4 +68,4 @@ Tasks LTM-017/020 are obsolete (SQLite-specific debt no longer applies).
 - **Phase 6 (Migration + Polish)**: LTM-031, LTM-032
 - **EPIC-3 (Extensions)**: LTM-006, LTM-007
 - **EPIC-5 (AI Everywhere)**: LTM-008, LTM-009
-- **EPIC-6 (Optional Remote/Agent Backends)**: LTM-034, LTM-035
+- **EPIC-6 (Optional Remote/Agent Backends)**: LTM-034, LTM-035, LTM-036

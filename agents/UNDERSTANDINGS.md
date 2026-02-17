@@ -28,6 +28,8 @@ Last updated: 2026-02-17
 16. Capability rollout now includes Thoughts/Todos/Tools actions (not only organizer CRUD), with UI routes invoking capability router for create/toggle/preview/save paths.
 17. FastAPI capability adapter is now safe-by-default behind env controls (enable flag + optional bearer token + rate limit + payload limit).
 18. Adapter parity fixtures are shared under `tests/fixtures/capability_parity_fixtures.json` and validated in both frontend and backend test suites.
+19. Agent-orchestration metadata is now first-class in YAML parsing (`task_*`, `run_*`, traceability, governance), and IndexedDB stores both typed fields and a generic `metadata` blob with searchable `metadataKeys`/`metadataText` for future schema growth.
+20. Node detail panel now renders arbitrary YAML fields recursively (arrays/objects/primitives), so non-curated frontmatter is visible without custom UI code.
 
 ## Architecture Pivot (2026-02-14)
 - **FROM**: SQLite + mirrored folders + backend hierarchy services

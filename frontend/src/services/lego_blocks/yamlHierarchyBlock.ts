@@ -67,6 +67,7 @@ export async function createYamlNode(params: {
   description?: string
   comments?: Array<string | YAMLCommentEntry>
   projectRoot?: string
+  extraFields?: Record<string, unknown>
   fs?: VaultFS
 }): Promise<NodeRecord> {
   const fs = params.fs ?? getVaultFS()
@@ -103,6 +104,7 @@ export async function createYamlNode(params: {
   if (!note.body.trim()) {
     note.body = buildInitialBody(description, comments)
   }
+  applyExtraFrontmatterFields(note.frontmatter, params.extraFields)
 
   if (projectRoot) {
     note.frontmatter.project_root = projectRoot
@@ -192,6 +194,7 @@ export async function updateYamlNode(
     priority?: 'low' | 'medium' | 'high' | 'critical'
     description?: string
     comments?: Array<string | YAMLCommentEntry>
+    extraFields?: Record<string, unknown>
   },
   fs?: VaultFS,
 ): Promise<NodeRecord> {
@@ -219,6 +222,9 @@ export async function updateYamlNode(
   if (updates.comments !== undefined) {
     const normalizedComments = normalizeCommentEntries(updates.comments)
     note.frontmatter.comments = normalizedComments.length > 0 ? normalizedComments : undefined
+  }
+  if (updates.extraFields !== undefined) {
+    applyExtraFrontmatterFields(note.frontmatter, updates.extraFields)
   }
   note.frontmatter.updated_at = new Date().toISOString()
 
@@ -599,6 +605,43 @@ function normalizeSingleCommentEntry(
     text,
     added_at: addedAt || now,
     added_by: addedBy || 'unknown',
+  }
+}
+
+function applyExtraFrontmatterFields(
+  frontmatter: YAMLFrontmatter,
+  extraFields: Record<string, unknown> | undefined,
+): void {
+  if (!extraFields) return
+  const reserved = new Set([
+    'uuid',
+    'key',
+    'title',
+    'type',
+    'level',
+    'parent',
+    'parent_uuid',
+    'parent_type',
+    'children',
+    'child_types',
+    'tags',
+    'status',
+    'priority',
+    'project_root',
+    'ticket',
+    'description',
+    'comments',
+    'created_at',
+    'updated_at',
+  ])
+  for (const [key, value] of Object.entries(extraFields)) {
+    if (!key.trim()) continue
+    if (reserved.has(key)) continue
+    if (value === undefined || value === null || value === '') {
+      delete frontmatter[key]
+      continue
+    }
+    frontmatter[key] = value
   }
 }
 

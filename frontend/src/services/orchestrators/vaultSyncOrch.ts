@@ -201,6 +201,7 @@ function frontmatterToRecord(
   filePath: string,
   body: string,
 ): Omit<NodeRecord, 'id'> {
+  const { metadata, metadataKeys, metadataText } = extractGenericMetadata(fm)
   return {
     uuid: fm.uuid,
     key: fm.key,
@@ -221,6 +222,32 @@ function frontmatterToRecord(
         added_by: comment.added_by,
       }))
       : undefined,
+    taskId: typeof fm.task_id === 'string' ? fm.task_id : undefined,
+    taskStatus: typeof fm.task_status === 'string' ? fm.task_status : undefined,
+    dependsOn: Array.isArray(fm.depends_on) ? fm.depends_on.filter(Boolean) : undefined,
+    blockedBy: Array.isArray(fm.blocked_by) ? fm.blocked_by.filter(Boolean) : undefined,
+    acceptanceCriteria: Array.isArray(fm.acceptance_criteria) ? fm.acceptance_criteria.filter(Boolean) : undefined,
+    owner: typeof fm.owner === 'string' ? fm.owner : undefined,
+    runId: typeof fm.run_id === 'string' ? fm.run_id : undefined,
+    sessionId: typeof fm.session_id === 'string' ? fm.session_id : undefined,
+    agentName: typeof fm.agent_name === 'string' ? fm.agent_name : undefined,
+    model: typeof fm.model === 'string' ? fm.model : undefined,
+    startedAt: typeof fm.started_at === 'string' ? fm.started_at : undefined,
+    endedAt: typeof fm.ended_at === 'string' ? fm.ended_at : undefined,
+    result: typeof fm.result === 'string' ? fm.result : undefined,
+    sourceRepo: typeof fm.source_repo === 'string' ? fm.source_repo : undefined,
+    branch: typeof fm.branch === 'string' ? fm.branch : undefined,
+    commit: typeof fm.commit === 'string' ? fm.commit : undefined,
+    artifacts: Array.isArray(fm.artifacts) ? fm.artifacts.filter(Boolean) : undefined,
+    relatedNodes: Array.isArray(fm.related_nodes) ? fm.related_nodes.filter(Boolean) : undefined,
+    schemaVersion: fm.schema_version != null ? String(fm.schema_version) : undefined,
+    recordKind: typeof fm.record_kind === 'string' ? fm.record_kind : undefined,
+    stateHistory: Array.isArray(fm.state_history)
+      ? fm.state_history.map(entry => ({ ...entry }))
+      : undefined,
+    metadata,
+    metadataKeys,
+    metadataText,
     tags: fm.tags ?? [],
     status: fm.status,
     priority: fm.priority,
@@ -229,5 +256,119 @@ function frontmatterToRecord(
     updatedAt: fm.updated_at,
     aiSummary: fm.ai_summary,
     bodyExcerpt: body.slice(0, 200).trim() || undefined,
+  }
+}
+
+const KNOWN_FRONTMATTER_KEYS = new Set<string>([
+  'uuid',
+  'key',
+  'title',
+  'type',
+  'level',
+  'parent',
+  'parent_uuid',
+  'parent_type',
+  'children',
+  'child_types',
+  'tags',
+  'categories',
+  'progress',
+  'status',
+  'priority',
+  'created_at',
+  'updated_at',
+  'ai_summary',
+  'ai_generated',
+  'last_ai_update',
+  'ai_suggestions',
+  'excalidraw',
+  'project_root',
+  'ticket',
+  'description',
+  'comments',
+  'task_id',
+  'task_status',
+  'depends_on',
+  'blocked_by',
+  'acceptance_criteria',
+  'owner',
+  'run_id',
+  'session_id',
+  'agent_name',
+  'model',
+  'started_at',
+  'ended_at',
+  'result',
+  'source_repo',
+  'branch',
+  'commit',
+  'artifacts',
+  'related_nodes',
+  'schema_version',
+  'record_kind',
+  'state_history',
+])
+
+function extractGenericMetadata(frontmatter: YAMLFrontmatter): {
+  metadata?: Record<string, unknown>
+  metadataKeys?: string[]
+  metadataText?: string
+} {
+  const metadata: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(frontmatter)) {
+    if (KNOWN_FRONTMATTER_KEYS.has(key)) continue
+    if (value === undefined || value === null || value === '') continue
+    metadata[key] = value
+  }
+
+  const keys = Object.keys(metadata)
+  if (keys.length === 0) return {}
+
+  const metadataKeys = collectMetadataKeys(metadata)
+  const metadataText = buildMetadataText(metadata)
+  return {
+    metadata,
+    metadataKeys,
+    metadataText,
+  }
+}
+
+function collectMetadataKeys(metadata: Record<string, unknown>): string[] {
+  const out = new Set<string>()
+  walkMetadata('', metadata, (path) => out.add(path))
+  return [...out]
+}
+
+function buildMetadataText(metadata: Record<string, unknown>): string {
+  const out: string[] = []
+  walkMetadata('', metadata, (path, value) => {
+    out.push(path)
+    if (value !== null && value !== undefined && typeof value !== 'object') {
+      out.push(String(value))
+    }
+  })
+  return out.join(' ').toLowerCase()
+}
+
+function walkMetadata(
+  prefix: string,
+  value: unknown,
+  visitor: (path: string, value: unknown) => void,
+): void {
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      const path = prefix ? `${prefix}[${i}]` : `[${i}]`
+      visitor(path, value[i])
+      walkMetadata(path, value[i], visitor)
+    }
+    return
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    for (const [key, inner] of Object.entries(record)) {
+      const path = prefix ? `${prefix}.${key}` : key
+      visitor(path, inner)
+      walkMetadata(path, inner, visitor)
+    }
   }
 }

@@ -76,6 +76,44 @@ excalidraw:   "canvases/thinking-space-hierarchy.excalidraw.md"   # optional lin
 ---
 ```
 
+### Agent Orchestration Extensions
+
+For agent-native task/run management, nodes may include optional orchestration fields:
+
+```yaml
+# TASK FIELDS
+task_id: "LTM-200"
+task_status: "in_progress"
+depends_on: ["LTM-150"]
+blocked_by: []
+acceptance_criteria: ["all checks passing"]
+owner: "codex-gpt5"
+
+# RUN FIELDS
+run_id: "run-20260217-001"
+session_id: "session-abc123"
+agent_name: "codex-gpt5"
+model: "gpt-5"
+started_at: "2026-02-17T10:00:00Z"
+ended_at: "2026-02-17T10:10:00Z"
+result: "success"
+
+# TRACEABILITY
+source_repo: "Thinking-Space"
+branch: "main"
+commit: "2c78a0a"
+artifacts: ["docs/CAPABILITY_ROLLOUT_MATRIX.md"]
+related_nodes: ["build-thinking-space"]
+
+# GOVERNANCE
+schema_version: "2"
+record_kind: "task"   # e.g. task | run | handoff | decision
+state_history:
+  - at: "2026-02-17T10:00:00Z"
+    from: "ready"
+    to: "in_progress"
+```
+
 ## File Naming
 
 Recommended (not enforced): `{type}-{key}.md` or `{key}.md`

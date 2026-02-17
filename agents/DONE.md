@@ -2,6 +2,35 @@
 
 ## 2026-02-17
 
+### DEV-014 - LTM-036 Agent Orchestration Metadata + Cache Queryability
+- Completed `LTM-036`.
+- Expanded YAML frontmatter model with orchestration fields in `frontend/src/services/lego_blocks/yamlNoteBlock.ts`:
+  - Task: `task_id`, `task_status`, `depends_on`, `blocked_by`, `acceptance_criteria`, `owner`
+  - Run: `run_id`, `session_id`, `agent_name`, `model`, `started_at`, `ended_at`, `result`
+  - Traceability: `source_repo`, `branch`, `commit`, `artifacts`, `related_nodes`
+  - Governance: `schema_version`, `record_kind`, `state_history`
+- Added agent-safe metadata extension writes to hierarchy update/create paths:
+  - `frontend/src/services/lego_blocks/yamlHierarchyBlock.ts` supports `extraFields` with reserved-key protection.
+- Upgraded IndexedDB node cache/queryability in `frontend/src/services/lego_blocks/dbBlock.ts`:
+  - Added typed orchestration fields on `NodeRecord`
+  - Added generic metadata blob/index strategy: `metadata`, `metadataKeys`, `metadataText`
+  - Added query helpers: `getNodesByRecordKind`, `getNodesByTaskStatus`, `getNodesByMetadataKey`
+  - Added Dexie schema v2 indexes and normalization for stored records
+- Extended vault sync mapping in `frontend/src/services/orchestrators/vaultSyncOrch.ts`:
+  - Maps new typed orchestration fields into cache
+  - Extracts unknown frontmatter into generic metadata blob/index fields
+- Improved node detail YAML rendering in `frontend/src/components/lego_blocks/NodeDetailPanelBlock.tsx`:
+  - Recursively renders objects/arrays/primitives for arbitrary YAML metadata (clean display for non-curated fields).
+- Updated architecture docs:
+  - `docs/ADR-004-YAML-Architecture.md` includes agent orchestration extension fields.
+- Added/updated tests:
+  - `frontend/tests/yamlNoteBlock.test.ts` (orchestration normalization coverage)
+  - `frontend/tests/vaultSyncOrch.test.ts` (metadata index/query coverage)
+
+Validation:
+- `npm test -- --run tests/yamlNoteBlock.test.ts tests/vaultSyncOrch.test.ts tests/capabilityRouterOrch.test.ts` (frontend) — passed.
+- `npm run build` (frontend) — passed.
+
 ### DEV-013 - LTM-035 Capability Rollout + Controls + Adapter Parity
 - Completed `LTM-035`.
 - Expanded capability coverage beyond organizer CRUD:
