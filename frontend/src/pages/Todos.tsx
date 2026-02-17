@@ -4,6 +4,9 @@ import { ArrowLeft, CheckSquare, Loader2, CheckCircle2, LayoutList, Eye } from '
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import { Button } from '@/components/lego_blocks/ui/button'
 import CascadingFolderPicker, { addRecent } from '@/components/lego_blocks/CascadingFolderPickerBlock'
+import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBlock'
+import AiAssistReviewBlock from '@/components/lego_blocks/AiAssistReviewBlock'
+import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/AiAssistRuntimeBlock'
 import TodoCalendarOrch from '@/components/orchestrators/TodoCalendarOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
 import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
@@ -30,6 +33,18 @@ function CreateTab() {
   const [error, setError] = useState<string | null>(null)
   const [savedPath, setSavedPath] = useState<string | null>(null)
   const [itemsAdded, setItemsAdded] = useState(0)
+  const {
+    aiSelectionLoading,
+    selectedProvider,
+    selectedModel,
+    assistRunningAction,
+    assistError,
+    assistSuggestion,
+    runAssistAction,
+    applyAssistSuggestion,
+    dismissAssistSuggestion,
+    clearAssistState,
+  } = useAiAssistRuntimeBlock()
 
   const handleFolderChange = (segments: string[], fullPath: string) => {
     setFolderSegments(segments)
@@ -76,6 +91,7 @@ function CreateTab() {
     setDateStr(todayDateStr())
     setSavedPath(null)
     setError(null)
+    clearAssistState()
   }
 
   const itemCount = tasksText.split('\n').filter(l => l.trim()).length
@@ -139,9 +155,39 @@ function CreateTab() {
                 <span className="text-xs text-muted-foreground tabular-nums">{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
               )}
             </div>
+            <AiAssistControlsBlock
+              selectedProvider={selectedProvider}
+              selectedModel={selectedModel}
+              runningAction={assistRunningAction}
+              loading={aiSelectionLoading}
+              disabled={saving}
+              onRun={(action) => { void runAssistAction(action, tasksText) }}
+            />
+
+            {assistSuggestion && (
+              <AiAssistReviewBlock
+                suggestion={assistSuggestion}
+                onApply={() => {
+                  applyAssistSuggestion((next) => {
+                    setTasksText(next)
+                  })
+                }}
+                onDiscard={dismissAssistSuggestion}
+              />
+            )}
+
+            {assistError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {assistError}
+              </div>
+            )}
+
             <textarea
               value={tasksText}
-              onChange={(e) => setTasksText(e.target.value)}
+              onChange={(e) => {
+                setTasksText(e.target.value)
+                if (assistSuggestion || assistError) clearAssistState()
+              }}
               placeholder="One task per line..."
               className="min-h-[300px] w-full rounded-lg border border-input bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-y"
             />

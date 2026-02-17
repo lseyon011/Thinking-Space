@@ -6,6 +6,9 @@ import { Button } from '@/components/lego_blocks/ui/button'
 import { Switch } from '@/components/lego_blocks/ui/switch'
 import CascadingFolderPicker, { addRecent } from '@/components/lego_blocks/CascadingFolderPickerBlock'
 import EmotionTagger from '@/components/lego_blocks/EmotionTaggerBlock'
+import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBlock'
+import AiAssistReviewBlock from '@/components/lego_blocks/AiAssistReviewBlock'
+import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/AiAssistRuntimeBlock'
 import ThoughtsCalendarOrch from '@/components/orchestrators/ThoughtsCalendarOrch'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
@@ -36,6 +39,18 @@ function CreateTab() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedPath, setSavedPath] = useState<string | null>(null)
+  const {
+    aiSelectionLoading,
+    selectedProvider,
+    selectedModel,
+    assistRunningAction,
+    assistError,
+    assistSuggestion,
+    runAssistAction,
+    applyAssistSuggestion,
+    dismissAssistSuggestion,
+    clearAssistState,
+  } = useAiAssistRuntimeBlock()
 
   const handleFolderChange = (segments: string[], fullPath: string) => {
     setFolderSegments(segments)
@@ -89,6 +104,7 @@ function CreateTab() {
     setFilename(todayFilename())
     setSavedPath(null)
     setError(null)
+    clearAssistState()
   }
 
   const canSave = folderPath.trim() && filename.trim() && content.trim() && !saving
@@ -170,9 +186,39 @@ function CreateTab() {
 
           <div className="space-y-2">
             <label className="text-xs text-muted-foreground">Content</label>
+            <AiAssistControlsBlock
+              selectedProvider={selectedProvider}
+              selectedModel={selectedModel}
+              runningAction={assistRunningAction}
+              loading={aiSelectionLoading}
+              disabled={saving}
+              onRun={(action) => { void runAssistAction(action, content) }}
+            />
+
+            {assistSuggestion && (
+              <AiAssistReviewBlock
+                suggestion={assistSuggestion}
+                onApply={() => {
+                  applyAssistSuggestion((next) => {
+                    setContent(next)
+                  })
+                }}
+                onDiscard={dismissAssistSuggestion}
+              />
+            )}
+
+            {assistError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {assistError}
+              </div>
+            )}
+
             <textarea
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={(e) => {
+                setContent(e.target.value)
+                if (assistSuggestion || assistError) clearAssistState()
+              }}
               placeholder="What's on your mind?"
               className="min-h-[400px] w-full rounded-lg border border-input bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-y"
             />
