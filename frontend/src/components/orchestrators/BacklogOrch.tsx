@@ -15,6 +15,7 @@ import { THINKING_ORGANIZER_DIR } from '@/services/lego_blocks/projectStorageBlo
 import {
   invokeCapabilityOrThrow,
 } from '@/services/orchestrators/capabilityRouterOrch'
+import { smartSync } from '@/services/orchestrators/vaultSyncOrch'
 import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
 import {
   STORAGE_KEYS,
@@ -93,6 +94,8 @@ export default function BacklogOrch() {
     setLoading(true)
     setError(null)
     try {
+      // Refresh cache from vault so external file edits are reflected in UI status/parents.
+      await smartSync()
       const { nodes: roots } = await invokeCapabilityOrThrow({
         capability: 'organizer.nodes.list_roots',
         input: { typeFilter: 'program' },
@@ -108,6 +111,12 @@ export default function BacklogOrch() {
 
   useEffect(() => {
     void loadPrograms()
+  }, [loadPrograms])
+
+  useEffect(() => {
+    const onFocus = () => { void loadPrograms() }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
   }, [loadPrograms])
 
   useEffect(() => {

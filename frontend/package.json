@@ -13,6 +13,7 @@
     "electron:dev": "npm run electron:sync && cd electron && npm run electron:start",
     "agent:capabilities": "vite-node scripts/agent/capabilityRunner.ts",
     "agent:workspace:bootstrap": "vite-node scripts/agent/bootstrapAgentWorkspace.ts",
+    "agent:workspace:restructure": "vite-node scripts/agent/restructureAgentWorkspace.ts",
     "lint": "eslint .",
     "preview": "vite preview"
   },
