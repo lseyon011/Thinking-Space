@@ -7,9 +7,9 @@ import {
   readMarkdownDocument,
   saveMarkdownDocument,
 } from '@/services/orchestrators/markdownDocumentsOrch'
-import { type AiProvider, type AiProviderStatus, listProvidersBlock } from '@/services/lego_blocks/aiProviderBlock'
+import { type AiProvider, type AiProviderStatus, listProvidersOrch } from '@/services/orchestrators/chatOrch'
 import { type AiAssistAction, type RunAiAssistResult, runAiAssistOrch } from '@/services/orchestrators/aiAssistOrch'
-import { buildObsidianOpenUrl } from '@/services/lego_blocks/obsidianLinkBlock'
+import { buildObsidianOpenUrlOrch } from '@/services/orchestrators/obsidianLinkOrch'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/ExcalidrawDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/MarkdownMiniNavBlock'
 import { cn } from '@/lib/utils'
@@ -114,7 +114,7 @@ export default function MarkdownDocumentBlock({
   useEffect(() => {
     let cancelled = false
     setProvidersLoading(true)
-    listProvidersBlock()
+    listProvidersOrch()
       .then((items) => {
         if (cancelled) return
         setProviders(items)
@@ -154,7 +154,7 @@ export default function MarkdownDocumentBlock({
 
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
-  const obsidianUrl = buildObsidianOpenUrl(path)
+  const obsidianUrl = buildObsidianOpenUrlOrch(path)
 
   const isEditing = mode === 'edit'
   const hasChanges = isEditing && content !== null && draft !== content

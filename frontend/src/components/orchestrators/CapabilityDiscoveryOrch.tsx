@@ -5,7 +5,7 @@ import { Switch } from '@/components/lego_blocks/ui/switch'
 import {
   getCapabilityFeatureFlags,
   setCapabilityFeatureFlag,
-} from '@/services/lego_blocks/capabilityFeatureFlagsBlock'
+} from '@/services/orchestrators/capabilityFeatureFlagsOrch'
 import {
   type CapabilityActor,
   type CapabilityName,

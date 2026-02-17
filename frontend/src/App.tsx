@@ -15,7 +15,7 @@ import CapabilityDiscovery from './pages/CapabilityDiscovery'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { smartSync } from './services/orchestrators/vaultSyncOrch'
-import { getStoredVaultRoot } from './services/lego_blocks/storageKeyBlock'
+import { getStoredVaultRoot } from './services/orchestrators/storageOrch'
 
 function App() {
   const location = useLocation()

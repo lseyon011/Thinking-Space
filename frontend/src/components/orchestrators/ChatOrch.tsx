@@ -4,8 +4,14 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { Card, CardContent } from '@/components/lego_blocks/ui/card'
-import { type AiProvider, type AiProviderStatus, listProvidersBlock } from '@/services/lego_blocks/aiProviderBlock'
-import { type ChatMessage, type ChatResponse, sendChatBlock } from '@/services/lego_blocks/aiChatBlock'
+import {
+  type AiProvider,
+  type AiProviderStatus,
+  type ChatMessage,
+  type ChatResponse,
+  listProvidersOrch,
+  sendChatOrch,
+} from '@/services/orchestrators/chatOrch'
 
 interface ChatTimelineMessage extends ChatMessage {
   id: string
@@ -49,7 +55,7 @@ export default function ChatOrch() {
   }
 
   useEffect(() => {
-    listProvidersBlock()
+    listProvidersOrch()
       .then((p) => {
         setProviders(p)
         const firstAvailable = p.find((x) => x.available)
@@ -80,7 +86,7 @@ export default function ChatOrch() {
 
     try {
       const allMessages = [...messages, userMsg]
-      const response: ChatResponse = await sendChatBlock(
+      const response: ChatResponse = await sendChatOrch(
         selectedProvider,
         allMessages,
         selectedProvider === 'codex-cli'

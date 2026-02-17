@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
-import type { ParsedExcalidrawScene } from '@/services/lego_blocks/excalidrawFileBlock'
-import { parseExcalidrawScene } from '@/services/lego_blocks/excalidrawFileBlock'
+import type { ParsedExcalidrawScene } from '@/services/orchestrators/excalidrawSceneOrch'
+import { parseExcalidrawSceneOrch } from '@/services/orchestrators/excalidrawSceneOrch'
 import { cn } from '@/lib/utils'
 
 const ExcalidrawCanvas = lazy(async () => {
@@ -23,7 +23,7 @@ export default function ExcalidrawDocumentBlock({
   onSceneChange,
   className,
 }: ExcalidrawDocumentBlockProps) {
-  const parsedScene = useMemo(() => parseExcalidrawScene(content), [content])
+  const parsedScene = useMemo(() => parseExcalidrawSceneOrch(content), [content])
   const [excalidrawApi, setExcalidrawApi] = useState<ExcalidrawImperativeAPI | null>(null)
   const [scrollState, setScrollState] = useState({ scrollX: 0, scrollY: 0, zoom: 1 })
   const containerRef = useRef<HTMLDivElement | null>(null)

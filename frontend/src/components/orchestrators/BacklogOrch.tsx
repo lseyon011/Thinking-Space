@@ -7,12 +7,15 @@ import CascadingFolderPicker, { addRecent } from '@/components/lego_blocks/Casca
 import { Button } from '@/components/lego_blocks/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import { generateKey, type NodeType, type YAMLCommentEntry, type YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
-import { hierarchyToExcalidrawMd } from '@/services/lego_blocks/hierarchyExcalidrawBlock'
-import { getVaultFS } from '@/services/lego_blocks/fsBlock'
+import type { NodeType, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
+import {
+  THINKING_ORGANIZER_DIR,
+  generateNodeKeyOrch,
+  getVaultFsOrch,
+  hierarchyToExcalidrawMdOrch,
+} from '@/services/orchestrators/backlogProjectOrch'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { defaultNodeKindLabel } from '@/components/lego_blocks/HierarchyTreeBlock'
-import { THINKING_ORGANIZER_DIR } from '@/services/lego_blocks/projectStorageBlock'
 import {
   invokeCapabilityOrThrow,
 } from '@/services/orchestrators/capabilityRouterOrch'
@@ -23,7 +26,7 @@ import {
   STORAGE_KEYS,
   getJsonStorageItem,
   setJsonStorageItem,
-} from '@/services/lego_blocks/storageKeyBlock'
+} from '@/services/orchestrators/storageOrch'
 
 interface ProjectEntry {
   name: string
@@ -270,7 +273,7 @@ export default function BacklogOrch() {
       return
     }
 
-    const projectKey = generateKey(trimmedName) || 'project'
+    const projectKey = generateNodeKeyOrch(trimmedName) || 'project'
     const projectRoot = normalizePath(`${normalizedDestination}/${projectKey}`)
 
     setCreatingProject(true)
@@ -279,7 +282,7 @@ export default function BacklogOrch() {
     setMessage(null)
 
     try {
-      const fs = getVaultFS()
+      const fs = getVaultFsOrch()
       await fs.mkdir(projectRoot)
       await fs.mkdir(`${projectRoot}/${THINKING_ORGANIZER_DIR}`)
 
@@ -531,8 +534,8 @@ export default function BacklogOrch() {
         actor: BACKLOG_ACTOR,
       })
       if (allNodes.length === 0) { setError('No nodes to export.'); return }
-      const mdContent = hierarchyToExcalidrawMd(allNodes)
-      const fs = getVaultFS()
+      const mdContent = hierarchyToExcalidrawMdOrch(allNodes)
+      const fs = getVaultFsOrch()
       const filePath = 'hierarchy-mindmap.excalidraw.md'
       await fs.write(filePath, mdContent)
       setMessage(`Exported hierarchy to ${filePath}`)
@@ -723,7 +726,7 @@ export default function BacklogOrch() {
                   Project root preview:{' '}
                   <span className="font-mono text-foreground">
                     {destinationPath.trim() && newProjectName.trim()
-                      ? `${normalizePath(destinationPath)}/${generateKey(newProjectName) || 'project'}`
+                      ? `${normalizePath(destinationPath)}/${generateNodeKeyOrch(newProjectName) || 'project'}`
                       : '(enter name and destination)'}
                   </span>
                 </div>
