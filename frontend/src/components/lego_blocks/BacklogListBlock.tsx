@@ -329,8 +329,8 @@ export default function BacklogListBlock({
         onDrop={e => { void handleDrop(node, e) }}
         onClick={() => onSelectNode(node)}
         className={cn(
-          'flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors hover:bg-muted/60',
-          selectedNodeId === node.uuid && 'bg-accent text-accent-foreground',
+          'flex w-full items-center gap-2 border-t border-border/70 bg-background px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-50',
+          selectedNodeId === node.uuid && 'bg-accent/40 text-accent-foreground',
           dragOverNodeId === node.uuid && 'ring-2 ring-primary/40 bg-primary/5',
         )}
         style={{ minHeight: '36px' }}
@@ -356,7 +356,7 @@ export default function BacklogListBlock({
     const selectedTypeLabel = nodeTypeLabel(selectedType)
 
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5">
+      <div className="flex items-center gap-2 border-t border-border/70 bg-background px-3 py-2">
         <select
           value={selectedType}
           onChange={e => {
@@ -404,7 +404,7 @@ export default function BacklogListBlock({
     const borderColor = EPIC_BORDER_PALETTE[colorIndex % EPIC_BORDER_PALETTE.length]
 
     return (
-      <div key={epic.uuid} className={cn('border-l-[3px] rounded-md', borderColor)}>
+      <div key={epic.uuid} className="border-b border-border/70 last:border-b-0">
         {/* Epic header row */}
         <div
           draggable
@@ -414,8 +414,9 @@ export default function BacklogListBlock({
           onDragLeave={() => handleDragLeave(epic.uuid)}
           onDrop={e => { void handleDrop(epic, e) }}
           className={cn(
-            'flex items-center gap-2 rounded-r-md px-3 py-2 transition-colors hover:bg-muted/40 cursor-pointer',
-            selectedNodeId === epic.uuid && 'bg-accent/50',
+            'flex cursor-pointer items-center gap-2 border-l-[3px] bg-background px-3 py-2 transition-colors hover:bg-zinc-50',
+            borderColor,
+            selectedNodeId === epic.uuid && 'bg-accent/40',
             dragOverNodeId === epic.uuid && 'ring-2 ring-primary/40 bg-primary/5',
           )}
         >
@@ -444,21 +445,21 @@ export default function BacklogListBlock({
 
         {/* Expanded children */}
         {isExpanded && (
-          <div className="pb-1">
+          <div className="bg-background/95">
             {childState?.loading && (
-              <div className="flex items-center gap-2 px-6 py-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 border-t border-border/70 px-6 py-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Loading...
               </div>
             )}
             {childState?.error && (
-              <div className="px-6 py-1 text-xs text-destructive">{childState.error}</div>
+              <div className="border-t border-border/70 px-6 py-1 text-xs text-destructive">{childState.error}</div>
             )}
             {childState?.loaded && (
-              <div className="space-y-0.5 pl-3">
+              <div className="pl-3">
                 {childState.nodes.map(renderChildRow)}
                 {childState.nodes.length === 0 && (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">No items yet.</div>
+                  <div className="border-t border-border/70 px-3 py-2 text-xs text-muted-foreground">No items yet.</div>
                 )}
               </div>
             )}
@@ -475,7 +476,7 @@ export default function BacklogListBlock({
     const epicState = epicsByProgram[program.uuid]
 
     return (
-      <div key={program.uuid} className="space-y-1">
+      <div key={program.uuid} className="rounded-xl border border-border/70 bg-muted/30 p-2">
         {/* Program header */}
         <div
           draggable
@@ -485,8 +486,8 @@ export default function BacklogListBlock({
           onDragLeave={() => handleDragLeave(program.uuid)}
           onDrop={e => { void handleDrop(program, e) }}
           className={cn(
-            'flex items-center gap-2 rounded-md px-3 py-2 cursor-pointer transition-colors hover:bg-muted/40',
-            selectedNodeId === program.uuid && 'bg-accent/50',
+            'flex cursor-pointer items-center gap-2 rounded-md bg-muted/40 px-3 py-2 transition-colors hover:bg-muted/60',
+            selectedNodeId === program.uuid && 'bg-accent/40',
             dragOverNodeId === program.uuid && 'ring-2 ring-primary/40 bg-primary/5',
           )}
           onClick={() => onSelectNode(program)}
@@ -496,7 +497,7 @@ export default function BacklogListBlock({
         </div>
 
         {/* Epics under this program */}
-        <div className="space-y-1 pl-2">
+        <div className="mt-2 overflow-hidden rounded-md border border-border/70 bg-background">
           {epicState?.loading && (
             <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
