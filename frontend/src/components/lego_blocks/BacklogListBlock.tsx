@@ -1,7 +1,9 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   BookOpen,
+  Check,
   ChevronRight,
+  Copy,
   Folder,
   FolderTree,
   Info,
@@ -156,6 +158,45 @@ function nodeDisplayTitle(node: NodeRecord): string {
   return `${ticket} - ${title}`
 }
 
+function nodeTitleWithoutTicket(node: NodeRecord): string {
+  const title = node.title?.trim() ?? ''
+  const ticket = node.ticket?.trim() ?? ''
+  if (!ticket) return title
+  if (!title) return ''
+  if (title === ticket) return ''
+  if (title.startsWith(`${ticket} - `)) return title.slice(ticket.length + 3).trim()
+  if (title.startsWith(`${ticket} `)) return title.slice(ticket.length + 1).trim()
+  return title
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  const normalized = text.trim()
+  if (!normalized) return
+
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(normalized)
+    return
+  }
+
+  if (typeof document === 'undefined') {
+    throw new Error('Clipboard API is unavailable in this runtime.')
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = normalized
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  const copied = document.execCommand('copy')
+  document.body.removeChild(textarea)
+  if (!copied) {
+    throw new Error('Failed to copy text to clipboard.')
+  }
+}
+
 function isTaskNode(node: NodeRecord): boolean {
   return node.recordKind === 'task' || !!node.taskStatus
 }
@@ -178,6 +219,7 @@ export default function BacklogListBlock({
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
   const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null)
   const [groupingInfoOpenByNode, setGroupingInfoOpenByNode] = useState<Record<string, boolean>>({})
+  const [copiedRowNodeId, setCopiedRowNodeId] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
 
   const ensureProgramLoaded = useCallback(async (program: NodeRecord) => {
@@ -344,6 +386,38 @@ export default function BacklogListBlock({
     }
   }, [draggingNodeId, onDropNodeToNode])
 
+  useEffect(() => {
+    if (!copiedRowNodeId) return
+    const timeoutId = window.setTimeout(() => {
+      setCopiedRowNodeId(current => (current === copiedRowNodeId ? null : current))
+    }, 1400)
+    return () => window.clearTimeout(timeoutId)
+  }, [copiedRowNodeId])
+
+  const copyRowLabelForNode = useCallback(async (node: NodeRecord, event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const label = nodeDisplayTitle(node).trim() || node.title.trim() || 'Untitled'
+    try {
+      await copyTextToClipboard(label)
+      setCopiedRowNodeId(node.uuid)
+      setLocalError(null)
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to copy row text')
+    }
+  }, [])
+
+  const renderTicketBadge = useCallback((node: NodeRecord) => {
+    const ticket = node.ticket?.trim() ?? ''
+    if (!ticket) return null
+
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
+        {ticket}
+      </span>
+    )
+  }, [])
+
   const renderInlineCreate = useCallback((parent: NodeRecord | null, draftKey: string, placeholder: string) => {
     if (readOnly) return null
 
@@ -444,9 +518,22 @@ export default function BacklogListBlock({
           <button
             type="button"
             onClick={() => onSelectNode(node)}
-            className="min-w-0 flex-1 truncate text-left text-sm font-medium"
+            className="group min-w-0 flex flex-1 items-center gap-2 text-left text-sm font-medium"
           >
-            {nodeDisplayTitle(node)}
+            {renderTicketBadge(node)}
+            <span className="min-w-0 flex-1 truncate">
+              {nodeTitleWithoutTicket(node) || nodeDisplayTitle(node) || 'Untitled'}
+            </span>
+          </button>
+          <button
+            type="button"
+            draggable={false}
+            onClick={event => { void copyRowLabelForNode(node, event) }}
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title={copiedRowNodeId === node.uuid ? 'Copied' : 'Copy row label'}
+            aria-label={copiedRowNodeId === node.uuid ? `Copied row label ${nodeDisplayTitle(node)}` : `Copy row label ${nodeDisplayTitle(node)}`}
+          >
+            {copiedRowNodeId === node.uuid ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
           </button>
           {canShowGroupingInfo && (
             <button
@@ -513,7 +600,7 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [childrenByNode, dragOverNodeId, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, makeDragStart, onSelectNode, renderInlineCreate, selectedNodeId, toggleNode])
+  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverNodeId, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, makeDragStart, onSelectNode, renderInlineCreate, renderTicketBadge, selectedNodeId, toggleNode])
 
   const renderProgramSection = useCallback((program: NodeRecord) => {
     void ensureProgramLoaded(program)
@@ -537,9 +624,22 @@ export default function BacklogListBlock({
           onClick={() => onSelectNode(program)}
         >
           <FolderTree className={cn('h-4 w-4 shrink-0', programIconColorClass)} />
-          <span className="min-w-0 flex-1 truncate text-sm font-bold">
-            {nodeDisplayTitle(program)}
-          </span>
+          <div className="min-w-0 flex flex-1 items-center gap-2">
+            {renderTicketBadge(program)}
+            <span className="min-w-0 flex-1 truncate text-sm font-bold">
+              {nodeTitleWithoutTicket(program) || nodeDisplayTitle(program) || 'Untitled'}
+            </span>
+          </div>
+          <button
+            type="button"
+            draggable={false}
+            onClick={event => { void copyRowLabelForNode(program, event) }}
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title={copiedRowNodeId === program.uuid ? 'Copied' : 'Copy row label'}
+            aria-label={copiedRowNodeId === program.uuid ? `Copied row label ${nodeDisplayTitle(program)}` : `Copy row label ${nodeDisplayTitle(program)}`}
+          >
+            {copiedRowNodeId === program.uuid ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
         </div>
 
         <div className="mt-2 overflow-hidden rounded-md border border-border/70 bg-background">
@@ -564,7 +664,7 @@ export default function BacklogListBlock({
         </div>
       </div>
     )
-  }, [childrenByNode, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, makeDragStart, onSelectNode, renderInlineCreate, renderNodeBranch, selectedNodeId])
+  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, makeDragStart, onSelectNode, renderInlineCreate, renderNodeBranch, renderTicketBadge, selectedNodeId])
 
   return (
     <div className="flex flex-col space-y-3">
