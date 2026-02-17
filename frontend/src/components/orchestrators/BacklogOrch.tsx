@@ -7,23 +7,15 @@ import { Button } from '@/components/lego_blocks/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import { generateKey, type NodeType, type YAMLCommentEntry, type YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
-import {
-  createYamlNode,
-  deleteYamlNode,
-  getYamlNode,
-  listAllYamlNodes,
-  listYamlChildren,
-  listYamlRootNodes,
-  moveYamlNode,
-  readYamlFrontmatterByPath,
-  renameYamlNode,
-  updateYamlNode,
-} from '@/services/lego_blocks/yamlHierarchyBlock'
 import { hierarchyToExcalidrawMd } from '@/services/lego_blocks/hierarchyExcalidrawBlock'
 import { getVaultFS } from '@/services/lego_blocks/fsBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { defaultNodeKindLabel } from '@/components/lego_blocks/HierarchyTreeBlock'
 import { THINKING_ORGANIZER_DIR } from '@/services/lego_blocks/projectStorageBlock'
+import {
+  invokeCapabilityOrThrow,
+} from '@/services/orchestrators/capabilityRouterOrch'
+import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
 import {
   STORAGE_KEYS,
   getJsonStorageItem,
@@ -33,6 +25,11 @@ import {
 interface ProjectEntry {
   name: string
   root: string
+}
+
+const BACKLOG_ACTOR: CapabilityActor = {
+  kind: 'human',
+  id: 'ui.backlog',
 }
 
 function errorMessage(value: unknown, fallback: string): string {
@@ -96,7 +93,11 @@ export default function BacklogOrch() {
     setLoading(true)
     setError(null)
     try {
-      const roots = await listYamlRootNodes('program')
+      const { nodes: roots } = await invokeCapabilityOrThrow({
+        capability: 'organizer.nodes.list_roots',
+        input: { typeFilter: 'program' },
+        actor: BACKLOG_ACTOR,
+      })
       setPrograms(roots.sort((a, b) => a.title.localeCompare(b.title)))
     } catch (err) {
       setError(errorMessage(err, 'Failed to load programs'))
@@ -118,7 +119,11 @@ export default function BacklogOrch() {
     let cancelled = false
     void (async () => {
       try {
-        const frontmatter = await readYamlFrontmatterByPath(selectedNode.filePath)
+        const { frontmatter } = await invokeCapabilityOrThrow({
+          capability: 'organizer.node.read_frontmatter',
+          input: { filePath: selectedNode.filePath },
+          actor: BACKLOG_ACTOR,
+        })
         if (!cancelled) setSelectedFrontmatter(frontmatter)
       } catch {
         if (!cancelled) setSelectedFrontmatter(null)
@@ -251,13 +256,17 @@ export default function BacklogOrch() {
       throw new Error('Create or select a project first.')
     }
 
-    const created = await createYamlNode({
-      type: nextType,
-      title,
-      parentKey: parent?.key,
-      parentUuid: parent?.uuid,
-      parentType: parent?.type,
-      projectRoot: parent ? undefined : activeProjectRoot,
+    const { node: created } = await invokeCapabilityOrThrow({
+      capability: 'organizer.node.create',
+      input: {
+        type: nextType,
+        title,
+        parentKey: parent?.key,
+        parentUuid: parent?.uuid,
+        parentType: parent?.type,
+        projectRoot: parent ? undefined : activeProjectRoot,
+      },
+      actor: BACKLOG_ACTOR,
     })
     if (!parent) {
       setPrograms(prev => [...prev, created].sort((a, b) => a.title.localeCompare(b.title)))
@@ -267,11 +276,19 @@ export default function BacklogOrch() {
   }, [activeProjectRoot])
 
   const deleteNodeRecursive = useCallback(async (node: NodeRecord, removedIds: Set<string>): Promise<void> => {
-    const children = await listYamlChildren(node.key)
+    const { nodes: children } = await invokeCapabilityOrThrow({
+      capability: 'organizer.nodes.list_children',
+      input: { parentKey: node.key },
+      actor: BACKLOG_ACTOR,
+    })
     for (const child of children) {
       await deleteNodeRecursive(child, removedIds)
     }
-    await deleteYamlNode(node.uuid)
+    await invokeCapabilityOrThrow({
+      capability: 'organizer.node.delete',
+      input: { uuid: node.uuid },
+      actor: BACKLOG_ACTOR,
+    })
     removedIds.add(node.uuid)
   }, [])
 
@@ -297,7 +314,14 @@ export default function BacklogOrch() {
     setWorking(true)
     setError(null)
     try {
-      const updated = await renameYamlNode(selectedNode.uuid, newTitle)
+      const { node: updated } = await invokeCapabilityOrThrow({
+        capability: 'organizer.node.rename',
+        input: {
+          uuid: selectedNode.uuid,
+          newTitle,
+        },
+        actor: BACKLOG_ACTOR,
+      })
       if (updated.type === 'program') {
         setPrograms(prev => prev.map(p => p.uuid === updated.uuid ? updated : p).sort((a, b) => a.title.localeCompare(b.title)))
       }
@@ -314,7 +338,14 @@ export default function BacklogOrch() {
     if (!selectedNode) return
     setWorking(true)
     try {
-      const updated = await updateYamlNode(selectedNode.uuid, { status: status as 'active' | 'paused' | 'completed' | 'archived' })
+      const { node: updated } = await invokeCapabilityOrThrow({
+        capability: 'organizer.node.update',
+        input: {
+          uuid: selectedNode.uuid,
+          updates: { status: status as 'active' | 'paused' | 'completed' | 'archived' },
+        },
+        actor: BACKLOG_ACTOR,
+      })
       setSelectedNode(updated)
     } catch (err) {
       setError(errorMessage(err, 'Failed to update status'))
@@ -327,7 +358,14 @@ export default function BacklogOrch() {
     if (!selectedNode) return
     setWorking(true)
     try {
-      const updated = await updateYamlNode(selectedNode.uuid, { priority: priority as 'low' | 'medium' | 'high' | 'critical' })
+      const { node: updated } = await invokeCapabilityOrThrow({
+        capability: 'organizer.node.update',
+        input: {
+          uuid: selectedNode.uuid,
+          updates: { priority: priority as 'low' | 'medium' | 'high' | 'critical' },
+        },
+        actor: BACKLOG_ACTOR,
+      })
       setSelectedNode(updated)
     } catch (err) {
       setError(errorMessage(err, 'Failed to update priority'))
@@ -341,9 +379,16 @@ export default function BacklogOrch() {
     setWorking(true)
     setError(null)
     try {
-      const updated = await updateYamlNode(selectedNode.uuid, {
-        description,
-        comments,
+      const { node: updated } = await invokeCapabilityOrThrow({
+        capability: 'organizer.node.update',
+        input: {
+          uuid: selectedNode.uuid,
+          updates: {
+            description,
+            comments,
+          },
+        },
+        actor: BACKLOG_ACTOR,
       })
       setSelectedNode(updated)
       setMessage('Updated description/comments')
@@ -359,10 +404,21 @@ export default function BacklogOrch() {
     setError(null)
     setMessage(null)
     try {
-      const sourceNode = await getYamlNode(sourceUuid)
+      const { node: sourceNode } = await invokeCapabilityOrThrow({
+        capability: 'organizer.node.get',
+        input: { uuid: sourceUuid },
+        actor: BACKLOG_ACTOR,
+      })
       if (!sourceNode) throw new Error('Source node not found')
       if (sourceNode.uuid === targetNode.uuid) throw new Error('Cannot move a node onto itself.')
-      await moveYamlNode(sourceNode.uuid, targetNode.key)
+      await invokeCapabilityOrThrow({
+        capability: 'organizer.node.move',
+        input: {
+          uuid: sourceNode.uuid,
+          newParentKey: targetNode.key,
+        },
+        actor: BACKLOG_ACTOR,
+      })
       await loadPrograms()
       setMessage(`Moved ${sourceNode.title} under ${targetNode.title}`)
     } catch (err) {
@@ -377,7 +433,11 @@ export default function BacklogOrch() {
     setError(null)
     setMessage(null)
     try {
-      const allNodes = await listAllYamlNodes()
+      const { nodes: allNodes } = await invokeCapabilityOrThrow({
+        capability: 'organizer.nodes.list_all',
+        input: {},
+        actor: BACKLOG_ACTOR,
+      })
       if (allNodes.length === 0) { setError('No nodes to export.'); return }
       const mdContent = hierarchyToExcalidrawMd(allNodes)
       const fs = getVaultFS()
@@ -453,8 +513,22 @@ export default function BacklogOrch() {
       ) : (
         <BacklogListBlock
           programs={visiblePrograms}
-          loadEpics={program => listYamlChildren(program.key)}
-          loadChildren={node => listYamlChildren(node.key)}
+          loadEpics={async program => {
+            const { nodes } = await invokeCapabilityOrThrow({
+              capability: 'organizer.nodes.list_children',
+              input: { parentKey: program.key },
+              actor: BACKLOG_ACTOR,
+            })
+            return nodes
+          }}
+          loadChildren={async node => {
+            const { nodes } = await invokeCapabilityOrThrow({
+              capability: 'organizer.nodes.list_children',
+              input: { parentKey: node.key },
+              actor: BACKLOG_ACTOR,
+            })
+            return nodes
+          }}
           selectedNodeId={selectedNode?.uuid ?? null}
           onSelectNode={setSelectedNode}
           onCreateChild={createChildNode}
