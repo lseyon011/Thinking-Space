@@ -16,6 +16,23 @@ export interface AiProviderStatus {
   available: boolean
   label: string
   model: string
+  models: string[]
+}
+
+export const AI_PROVIDER_ORDER: AiProvider[] = ['codex-cli', 'claude', 'openai-codex', 'azure-gpt']
+
+const PROVIDER_LABELS: Record<AiProvider, string> = {
+  claude: 'Claude',
+  'openai-codex': 'Codex',
+  'codex-cli': 'Codex CLI',
+  'azure-gpt': 'Azure GPT',
+}
+
+const PROVIDER_MODELS: Record<AiProvider, string[]> = {
+  claude: ['claude-sonnet-4-5-20250929'],
+  'openai-codex': ['gpt-5.3-codex', 'gpt-5-codex'],
+  'codex-cli': ['gpt-5.3-codex', 'gpt-5-codex'],
+  'azure-gpt': ['gpt-5'],
 }
 
 export interface ClaudeCredentials {
@@ -34,6 +51,18 @@ export interface CodexCredentials {
 export interface AzureCredentials {
   accessToken: string
   expiresOn: string
+}
+
+export function isAiProvider(value: unknown): value is AiProvider {
+  return value === 'claude' || value === 'openai-codex' || value === 'codex-cli' || value === 'azure-gpt'
+}
+
+export function listProviderModelsBlock(provider: AiProvider): string[] {
+  return [...PROVIDER_MODELS[provider]]
+}
+
+export function defaultProviderModelBlock(provider: AiProvider): string {
+  return PROVIDER_MODELS[provider][0]
 }
 
 // ── Credential cache (Electron only) ──
@@ -170,15 +199,75 @@ export async function listProvidersBlock(): Promise<AiProviderStatus[]> {
       getAzureCredentialsBlock().then(c => !!c).catch(() => false),
     ])
     return [
-      { provider: 'claude', available: claude, label: 'Claude', model: 'claude-sonnet-4-5-20250929' },
-      { provider: 'openai-codex', available: codex, label: 'Codex', model: 'gpt-5.3-codex' },
-      { provider: 'codex-cli', available: codexCli, label: 'Codex CLI', model: 'gpt-5.3-codex' },
-      { provider: 'azure-gpt', available: azure, label: 'Azure GPT', model: 'gpt-5' },
+      {
+        provider: 'codex-cli',
+        available: codexCli,
+        label: PROVIDER_LABELS['codex-cli'],
+        model: defaultProviderModelBlock('codex-cli'),
+        models: listProviderModelsBlock('codex-cli'),
+      },
+      {
+        provider: 'claude',
+        available: claude,
+        label: PROVIDER_LABELS.claude,
+        model: defaultProviderModelBlock('claude'),
+        models: listProviderModelsBlock('claude'),
+      },
+      {
+        provider: 'openai-codex',
+        available: codex,
+        label: PROVIDER_LABELS['openai-codex'],
+        model: defaultProviderModelBlock('openai-codex'),
+        models: listProviderModelsBlock('openai-codex'),
+      },
+      {
+        provider: 'azure-gpt',
+        available: azure,
+        label: PROVIDER_LABELS['azure-gpt'],
+        model: defaultProviderModelBlock('azure-gpt'),
+        models: listProviderModelsBlock('azure-gpt'),
+      },
     ]
   }
 
   // Web: ask backend
   const res = await fetch('/api/ai/providers')
   if (!res.ok) throw new Error('Failed to list AI providers')
-  return res.json()
+  const raw = await res.json() as Array<{
+    provider?: string
+    available?: boolean
+    label?: string
+    model?: string
+  }>
+
+  const byProvider = new Map<AiProvider, {
+    available: boolean
+    label?: string
+    model?: string
+  }>()
+
+  for (const row of raw) {
+    if (!isAiProvider(row?.provider)) continue
+    byProvider.set(row.provider, {
+      available: !!row.available,
+      label: typeof row.label === 'string' ? row.label.trim() : undefined,
+      model: typeof row.model === 'string' ? row.model.trim() : undefined,
+    })
+  }
+
+  return AI_PROVIDER_ORDER.map((provider) => {
+    const knownModels = listProviderModelsBlock(provider)
+    const row = byProvider.get(provider)
+    const fallbackModel = defaultProviderModelBlock(provider)
+    const model = row?.model || fallbackModel
+    const models = model && !knownModels.includes(model) ? [model, ...knownModels] : knownModels
+
+    return {
+      provider,
+      available: !!row?.available,
+      label: row?.label || PROVIDER_LABELS[provider],
+      model,
+      models,
+    }
+  })
 }

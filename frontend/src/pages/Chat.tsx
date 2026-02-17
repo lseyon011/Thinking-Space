@@ -20,7 +20,7 @@ export default function Chat() {
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Chat</h1>
-              <p className="text-sm text-muted-foreground">Talk to Claude or Azure GPT.</p>
+              <p className="text-sm text-muted-foreground">Talk with your configured AI provider.</p>
             </div>
           </div>
         </header>

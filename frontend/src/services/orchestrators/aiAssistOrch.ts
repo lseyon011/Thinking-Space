@@ -1,10 +1,13 @@
-import { sendChatBlock } from '../lego_blocks/aiChatBlock'
 import type { AiProvider } from '../lego_blocks/aiProviderBlock'
+import { resolveAiSelectionOrch } from './aiSettingsOrch'
+import { sendChatWithTelemetryOrch } from './chatOrch'
+import type { AiTelemetryEvent } from './aiTelemetryOrch'
 
 export type AiAssistAction = 'grammar' | 'clarity' | 'structure' | 'tone'
 
 export interface RunAiAssistInput {
-  provider: AiProvider
+  provider?: AiProvider
+  model?: string
   action: AiAssistAction
   content: string
 }
@@ -22,6 +25,7 @@ export interface RunAiAssistResult {
   input_tokens?: number
   output_tokens?: number
   total_tokens?: number
+  telemetry?: AiTelemetryEvent
 }
 
 const ACTION_GUIDANCE: Record<AiAssistAction, string> = {
@@ -65,13 +69,26 @@ function buildAssistPrompt(action: AiAssistAction, body: string): string {
 export async function runAiAssistOrch(input: RunAiAssistInput): Promise<RunAiAssistResult> {
   const source = input.content.replace(/\r\n/g, '\n')
   const { frontmatter, body } = splitFrontmatter(source)
+  const prompt = buildAssistPrompt(input.action, body)
+  const selection = await resolveAiSelectionOrch({
+    provider: input.provider ?? null,
+    model: input.model ?? null,
+  })
+  if (!selection) {
+    throw new Error('No AI provider available. Configure one in AI Settings.')
+  }
 
-  const response = await sendChatBlock(input.provider, [
+  const { response, telemetryEvent } = await sendChatWithTelemetryOrch(
+    selection.provider,
+    [{ role: 'user', content: prompt }],
+    { model: selection.model },
     {
-      role: 'user',
-      content: buildAssistPrompt(input.action, body),
+      useCase: 'markdown.assist',
+      metadata: {
+        action: input.action,
+      },
     },
-  ])
+  )
 
   let revisedBody = stripMarkdownCodeFence(response.content).replace(/\r\n/g, '\n')
   if (frontmatter) {
@@ -94,5 +111,6 @@ export async function runAiAssistOrch(input: RunAiAssistInput): Promise<RunAiAss
     input_tokens: response.input_tokens,
     output_tokens: response.output_tokens,
     total_tokens: response.total_tokens,
+    telemetry: telemetryEvent,
   }
 }

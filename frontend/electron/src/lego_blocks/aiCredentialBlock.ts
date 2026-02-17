@@ -297,14 +297,16 @@ export function chatCodexWithOauthBlock(
   messages: CodexChatMessage[],
   accessToken: string,
   accountId?: string,
+  model?: string,
 ): Promise<CodexChatResult> {
+  const requestedModel = typeof model === 'string' && model.trim() ? model.trim() : 'gpt-5.3-codex';
   const input = messages.map((m) => ({
     role: m.role,
     content: [{ type: m.role === 'user' ? 'input_text' : 'output_text', text: m.content }],
   }));
 
   const body = JSON.stringify({
-    model: 'gpt-5.3-codex',
+    model: requestedModel,
     instructions: 'You are a helpful assistant.',
     input,
     store: false,
@@ -331,7 +333,7 @@ export function chatCodexWithOauthBlock(
         let raw = '';
         let sseBuffer = '';
         let text = '';
-        let model = 'gpt-5.3-codex';
+        let responseModel = requestedModel;
         let usage: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | null = null;
 
         const handleLine = (line: string) => {
@@ -347,7 +349,7 @@ export function chatCodexWithOauthBlock(
             } else if (evtType === 'response.output_text.done' && !text && typeof evt?.text === 'string') {
               text = evt.text;
             } else if (evtType === 'response.completed' && evt?.response) {
-              model = typeof evt.response.model === 'string' ? evt.response.model : model;
+              responseModel = typeof evt.response.model === 'string' ? evt.response.model : responseModel;
               usage = evt.response.usage ?? usage;
             }
           } catch {
@@ -375,7 +377,7 @@ export function chatCodexWithOauthBlock(
           }
           resolve({
             text,
-            model,
+            model: responseModel,
             inputTokens: usage?.input_tokens,
             outputTokens: usage?.output_tokens,
             totalTokens: usage?.total_tokens,

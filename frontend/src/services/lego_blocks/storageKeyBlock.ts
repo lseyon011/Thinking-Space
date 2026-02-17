@@ -12,6 +12,7 @@ export const STORAGE_KEYS = {
   capabilityFeatureFlags: 'ltm-capability-feature-flags',
   stewardProposalQueue: 'ltm-steward-proposal-queue',
   aiTelemetryEvents: 'ltm-ai-telemetry-events',
+  aiSettings: 'ltm-ai-settings',
 } as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]

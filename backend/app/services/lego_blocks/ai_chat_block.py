@@ -196,10 +196,10 @@ def _to_codex_input_item(message: dict) -> dict:
     }
 
 
-def chat_claude_block(messages: list[dict]) -> dict:
+def chat_claude_block(messages: list[dict], model: str | None = None) -> dict:
     """Send messages to Claude and return the response."""
     token = _get_claude_token()
-    model = "claude-sonnet-4-5-20250929"
+    model = model.strip() if isinstance(model, str) and model.strip() else "claude-sonnet-4-5-20250929"
     requested_at = datetime.now(timezone.utc).isoformat()
     started = time.perf_counter()
 
@@ -243,10 +243,10 @@ def chat_claude_block(messages: list[dict]) -> dict:
 # ── OpenAI Codex ──
 
 
-def chat_codex_block(messages: list[dict]) -> dict:
+def chat_codex_block(messages: list[dict], model: str | None = None) -> dict:
     """Send messages to OpenAI Codex and return the response."""
     creds = _get_codex_credentials()
-    model = "gpt-5.3-codex"
+    model = model.strip() if isinstance(model, str) and model.strip() else "gpt-5.3-codex"
     requested_at = datetime.now(timezone.utc).isoformat()
     started = time.perf_counter()
 
@@ -323,7 +323,11 @@ def chat_codex_block(messages: list[dict]) -> dict:
     }
 
 
-def chat_codex_cli_block(messages: list[dict], thread_id: str | None = None) -> dict:
+def chat_codex_cli_block(
+    messages: list[dict],
+    thread_id: str | None = None,
+    model: str | None = None,
+) -> dict:
     """Send messages to Codex CLI via frontend TypeScript runner."""
     frontend_root = _frontend_root_block()
     vite_node_exec = _vite_node_exec_block(frontend_root)
@@ -338,9 +342,10 @@ def chat_codex_cli_block(messages: list[dict], thread_id: str | None = None) -> 
     requested_at = datetime.now(timezone.utc).isoformat()
     started = time.perf_counter()
     ai_workspace_root = _ensure_ai_workspace_dirs_block()
+    requested_model = model.strip() if isinstance(model, str) and model.strip() else CODEX_CLI_MODEL
     payload = {
         "messages": messages,
-        "model": CODEX_CLI_MODEL,
+        "model": requested_model,
         "timeoutMs": CODEX_CLI_RUNNER_TIMEOUT_MS,
         "workingDirectory": str(_repo_root_block()),
         "storageDirectory": str(ai_workspace_root),
@@ -388,7 +393,7 @@ def chat_codex_cli_block(messages: list[dict], thread_id: str | None = None) -> 
     model = (
         parsed.get("model")
         if isinstance(parsed, dict) and isinstance(parsed.get("model"), str) and parsed.get("model")
-        else CODEX_CLI_MODEL
+        else requested_model
     )
     input_tokens = (
         parsed.get("input_tokens")
@@ -429,13 +434,13 @@ def chat_codex_cli_block(messages: list[dict], thread_id: str | None = None) -> 
 # ── Azure GPT ──
 
 
-def chat_azure_block(messages: list[dict]) -> dict:
+def chat_azure_block(messages: list[dict], model: str | None = None) -> dict:
     """Send messages to Azure GPT and return the response."""
     creds = read_azure_token_block()
     if not creds:
         raise RuntimeError("Azure credentials not available")
 
-    model = "gpt-5"
+    model = model.strip() if isinstance(model, str) and model.strip() else "gpt-5"
     requested_at = datetime.now(timezone.utc).isoformat()
     started = time.perf_counter()
 

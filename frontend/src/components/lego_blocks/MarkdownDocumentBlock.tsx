@@ -7,12 +7,13 @@ import {
   readMarkdownDocument,
   saveMarkdownDocument,
 } from '@/services/orchestrators/markdownDocumentsOrch'
-import { type AiProvider, type AiProviderStatus, listProvidersOrch } from '@/services/orchestrators/chatOrch'
+import { type AiProvider } from '@/services/orchestrators/chatOrch'
 import { type AiAssistAction, type RunAiAssistResult, runAiAssistOrch } from '@/services/orchestrators/aiAssistOrch'
 import { buildObsidianOpenUrlOrch } from '@/services/orchestrators/obsidianLinkOrch'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/ExcalidrawDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/MarkdownMiniNavBlock'
 import { cn } from '@/lib/utils'
+import { resolveAiSelectionOrch } from '@/services/orchestrators/aiSettingsOrch'
 
 export type MarkdownViewerMode = 'view' | 'edit'
 
@@ -42,16 +43,6 @@ const AI_ASSIST_ACTIONS: Array<{ action: AiAssistAction; label: string }> = [
   { action: 'tone', label: 'Tone' },
 ]
 
-function selectDefaultProvider(providers: AiProviderStatus[]): AiProvider | null {
-  const preferred: AiProvider[] = ['codex-cli', 'claude', 'openai-codex', 'azure-gpt']
-  for (const provider of preferred) {
-    if (providers.some((item) => item.provider === provider && item.available)) {
-      return provider
-    }
-  }
-  return providers.find((item) => item.available)?.provider ?? null
-}
-
 export default function MarkdownDocumentBlock({
   path,
   initialMode = 'view',
@@ -75,9 +66,9 @@ export default function MarkdownDocumentBlock({
 
   const [showMeta, setShowMeta] = useState(true)
   const [showPreview, setShowPreview] = useState(false)
-  const [providers, setProviders] = useState<AiProviderStatus[]>([])
-  const [providersLoading, setProvidersLoading] = useState(true)
   const [selectedProvider, setSelectedProvider] = useState<AiProvider | null>(null)
+  const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  const [aiSelectionLoading, setAiSelectionLoading] = useState(true)
   const [assistRunningAction, setAssistRunningAction] = useState<AiAssistAction | null>(null)
   const [assistError, setAssistError] = useState<string | null>(null)
   const [assistSuggestion, setAssistSuggestion] = useState<RunAiAssistResult | null>(null)
@@ -113,25 +104,20 @@ export default function MarkdownDocumentBlock({
 
   useEffect(() => {
     let cancelled = false
-    setProvidersLoading(true)
-    listProvidersOrch()
-      .then((items) => {
+    setAiSelectionLoading(true)
+    resolveAiSelectionOrch()
+      .then((selection) => {
         if (cancelled) return
-        setProviders(items)
-        setSelectedProvider((current) => {
-          if (current && items.some((item) => item.provider === current && item.available)) {
-            return current
-          }
-          return selectDefaultProvider(items)
-        })
+        setSelectedProvider(selection?.provider ?? null)
+        setSelectedModel(selection?.model ?? null)
       })
       .catch(() => {
         if (cancelled) return
-        setProviders([])
         setSelectedProvider(null)
+        setSelectedModel(null)
       })
       .finally(() => {
-        if (!cancelled) setProvidersLoading(false)
+        if (!cancelled) setAiSelectionLoading(false)
       })
     return () => {
       cancelled = true
@@ -158,7 +144,6 @@ export default function MarkdownDocumentBlock({
 
   const isEditing = mode === 'edit'
   const hasChanges = isEditing && content !== null && draft !== content
-  const availableProviders = providers.filter((item) => item.available)
 
   const startEditing = () => {
     if (loading || error || isExcalidrawDoc) return
@@ -191,7 +176,7 @@ export default function MarkdownDocumentBlock({
   }
 
   const runAssistAction = async (action: AiAssistAction) => {
-    if (!selectedProvider || loading || isExcalidrawDoc || assistRunningAction) return
+    if (loading || isExcalidrawDoc || assistRunningAction) return
     if (!draft.trim()) {
       setAssistError('Add some text before running AI assist.')
       return
@@ -201,8 +186,15 @@ export default function MarkdownDocumentBlock({
     setAssistError(null)
     setAssistSuggestion(null)
     try {
+      const selection = await resolveAiSelectionOrch()
+      if (!selection) {
+        throw new Error('No AI provider available. Configure one in AI Settings.')
+      }
+      setSelectedProvider(selection.provider)
+      setSelectedModel(selection.model)
       const result = await runAiAssistOrch({
-        provider: selectedProvider,
+        provider: selection.provider,
+        model: selection.model,
         action,
         content: draft,
       })
@@ -366,29 +358,22 @@ export default function MarkdownDocumentBlock({
                   <Sparkles className="h-3.5 w-3.5" />
                   AI assist
                 </span>
-
-                <select
-                  value={selectedProvider ?? ''}
-                  disabled={providersLoading || availableProviders.length === 0 || !!assistRunningAction}
-                  onChange={(event) => setSelectedProvider(event.target.value as AiProvider)}
-                  className="rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground disabled:opacity-60"
-                >
-                  {!selectedProvider && <option value="">Select provider</option>}
-                  {availableProviders.map((provider) => (
-                    <option key={provider.provider} value={provider.provider}>
-                      {provider.label}
-                    </option>
-                  ))}
-                </select>
+                {selectedProvider && selectedModel ? (
+                  <span className="rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground">
+                    {selectedProvider} / {selectedModel}
+                  </span>
+                ) : (
+                  <span className="rounded-lg border border-input bg-background px-2 py-1 text-xs text-muted-foreground">
+                    No AI provider available
+                  </span>
+                )}
 
                 {AI_ASSIST_ACTIONS.map((item) => (
                   <button
                     key={item.action}
                     onClick={() => void runAssistAction(item.action)}
                     disabled={
-                      providersLoading
-                      || availableProviders.length === 0
-                      || !selectedProvider
+                      aiSelectionLoading
                       || !!assistRunningAction
                     }
                     className="rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
@@ -398,7 +383,7 @@ export default function MarkdownDocumentBlock({
                 ))}
               </div>
               <div className="mt-2 text-xs text-muted-foreground">
-                Preview-first only. Suggestions never auto-save until you click Save.
+                Preview-first only. Suggestions never auto-save until you click Save. Configure provider/model in AI Settings.
               </div>
             </div>
 

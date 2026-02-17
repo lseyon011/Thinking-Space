@@ -24,6 +24,7 @@ class ChatMessageIn(BaseModel):
 class ChatRequest(BaseModel):
     provider: Provider
     messages: list[ChatMessageIn]
+    model: str | None = None
 
 
 class TestProviderRequest(BaseModel):
@@ -54,6 +55,7 @@ class ChatResponse(BaseModel):
 class CodexCliChatRequest(BaseModel):
     messages: list[ChatMessageIn]
     thread_id: str | None = None
+    model: str | None = None
 
 
 @router.get("/providers", response_model=list[ProviderStatus])
@@ -69,6 +71,7 @@ async def chat(req: ChatRequest):
         result = send_chat_orch(
             req.provider,
             [m.model_dump() for m in req.messages],
+            model=req.model,
         )
         return result
     except RuntimeError as e:
@@ -87,6 +90,7 @@ async def chat_codex_cli(req: CodexCliChatRequest):
             "codex-cli",
             [m.model_dump() for m in req.messages],
             req.thread_id,
+            req.model,
         )
         return result
     except RuntimeError as e:

@@ -12,6 +12,7 @@ import ThinkingSpace from './pages/ThinkingSpace'
 import ThinkingOrganizer from './pages/ThinkingOrganizer'
 import Chat from './pages/Chat'
 import CapabilityDiscovery from './pages/CapabilityDiscovery'
+import AiSettings from './pages/AiSettings'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { smartSync } from './services/orchestrators/vaultSyncOrch'
@@ -114,6 +115,15 @@ function App() {
                 }`}
               >
                 Chat
+              </Link>
+              <Link
+                to="/ai-settings"
+                onClick={() => setShowTools(false)}
+                className={`shrink-0 transition-colors hover:text-foreground ${
+                  isActive('/ai-settings') ? 'text-foreground' : ''
+                }`}
+              >
+                AI Settings
               </Link>
               <Link
                 to="/capabilities"
@@ -224,6 +234,7 @@ function App() {
           <Route path="/new-thought" element={<NewThought />} />
           <Route path="/todos" element={<Todos />} />
           <Route path="/chat" element={<Chat />} />
+          <Route path="/ai-settings" element={<AiSettings />} />
           <Route path="/capabilities" element={<CapabilityDiscovery />} />
         </Routes>
       </main>

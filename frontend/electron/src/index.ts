@@ -770,7 +770,13 @@ ipcMain.handle('ai:credentials:codex:refresh', async (_event, refreshToken: stri
 
 ipcMain.handle(
   'ai:chat:codex',
-  async (_event, messages: Array<{ role: 'user' | 'assistant'; content: string }>, accessToken: string, accountId?: string) => {
-    return chatCodexWithOauthBlock(messages, accessToken, accountId);
+  async (
+    _event,
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+    accessToken: string,
+    accountId?: string,
+    model?: string,
+  ) => {
+    return chatCodexWithOauthBlock(messages, accessToken, accountId, model);
   },
 );

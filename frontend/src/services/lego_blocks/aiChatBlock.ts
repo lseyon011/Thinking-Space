@@ -7,6 +7,7 @@
 
 import { isElectron } from './fsBlock'
 import {
+  defaultProviderModelBlock,
   type AiProvider,
   getClaudeCredentialsBlock,
   getCodexCredentialsBlock,
@@ -38,11 +39,17 @@ export interface ChatResponse {
 
 export interface ChatSendOptions {
   threadId?: string
+  model?: string
 }
 
 // ── Electron: direct API calls ──
 
-async function sendClaudeDirectBlock(messages: ChatMessage[]): Promise<ChatResponse> {
+function resolveRequestedModel(provider: AiProvider, requested?: string): string {
+  const normalized = typeof requested === 'string' ? requested.trim() : ''
+  return normalized || defaultProviderModelBlock(provider)
+}
+
+async function sendClaudeDirectBlock(messages: ChatMessage[], model?: string): Promise<ChatResponse> {
   const creds = await getClaudeCredentialsBlock()
   if (!creds) throw new Error('Claude credentials not available')
 
@@ -53,11 +60,11 @@ async function sendClaudeDirectBlock(messages: ChatMessage[]): Promise<ChatRespo
     dangerouslyAllowBrowser: true,
   })
 
-  const model = 'claude-sonnet-4-5-20250929'
+  const requestedModel = resolveRequestedModel('claude', model)
   const requestedAt = new Date().toISOString()
   const started = performance.now()
   const response = await client.messages.create({
-    model,
+    model: requestedModel,
     // Anthropic Messages API requires max_tokens; keep a high ceiling.
     max_tokens: CLAUDE_MAX_OUTPUT_TOKENS,
     messages: messages.map(m => ({ role: m.role, content: m.content })),
@@ -81,7 +88,7 @@ async function sendClaudeDirectBlock(messages: ChatMessage[]): Promise<ChatRespo
     role: 'assistant',
     content: text,
     provider: 'claude',
-    model,
+    model: requestedModel,
     requested_at: requestedAt,
     responded_at: respondedAt,
     latency_ms: latencyMs,
@@ -91,7 +98,7 @@ async function sendClaudeDirectBlock(messages: ChatMessage[]): Promise<ChatRespo
   }
 }
 
-async function sendAzureDirectBlock(messages: ChatMessage[]): Promise<ChatResponse> {
+async function sendAzureDirectBlock(messages: ChatMessage[], model?: string): Promise<ChatResponse> {
   const creds = await getAzureCredentialsBlock()
   if (!creds) throw new Error('Azure credentials not available')
 
@@ -104,11 +111,11 @@ async function sendAzureDirectBlock(messages: ChatMessage[]): Promise<ChatRespon
     dangerouslyAllowBrowser: true,
   })
 
-  const model = 'gpt-5'
+  const requestedModel = resolveRequestedModel('azure-gpt', model)
   const requestedAt = new Date().toISOString()
   const started = performance.now()
   const payload = {
-    model,
+    model: requestedModel,
     messages: messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
   }
   const response = await client.chat.completions.create(payload)
@@ -120,7 +127,7 @@ async function sendAzureDirectBlock(messages: ChatMessage[]): Promise<ChatRespon
     role: 'assistant',
     content: text,
     provider: 'azure-gpt',
-    model,
+    model: requestedModel,
     requested_at: requestedAt,
     responded_at: respondedAt,
     latency_ms: latencyMs,
@@ -130,13 +137,14 @@ async function sendAzureDirectBlock(messages: ChatMessage[]): Promise<ChatRespon
   }
 }
 
-async function sendCodexDirectBlock(messages: ChatMessage[]): Promise<ChatResponse> {
+async function sendCodexDirectBlock(messages: ChatMessage[], model?: string): Promise<ChatResponse> {
   const creds = await getCodexCredentialsBlock()
   if (!creds) throw new Error('Codex credentials not available')
 
+  const requestedModel = resolveRequestedModel('openai-codex', model)
   const requestedAt = new Date().toISOString()
   const started = performance.now()
-  const response = await window.electronAPI!.aiChatCodex(messages, creds.accessToken, creds.accountId)
+  const response = await window.electronAPI!.aiChatCodex(messages, creds.accessToken, creds.accountId, requestedModel)
 
   const text = response.text ?? ''
   const respondedAt = new Date().toISOString()
@@ -148,7 +156,7 @@ async function sendCodexDirectBlock(messages: ChatMessage[]): Promise<ChatRespon
     role: 'assistant',
     content: text,
     provider: 'openai-codex',
-    model: response.model || 'gpt-5.3-codex',
+    model: response.model || requestedModel,
     requested_at: requestedAt,
     responded_at: respondedAt,
     latency_ms: latencyMs,
@@ -165,7 +173,11 @@ async function sendCodexCliViaBackendBlock(
   const res = await fetch('/api/ai/chat/codex-cli', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, thread_id: options?.threadId || null }),
+    body: JSON.stringify({
+      messages,
+      thread_id: options?.threadId || null,
+      model: options?.model || null,
+    }),
   })
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
@@ -176,12 +188,20 @@ async function sendCodexCliViaBackendBlock(
 
 // ── Web: backend proxy ──
 
-async function sendViaBackendBlock(provider: AiProvider, messages: ChatMessage[]): Promise<ChatResponse> {
-  if (provider === 'codex-cli') return sendCodexCliViaBackendBlock(messages)
+async function sendViaBackendBlock(
+  provider: AiProvider,
+  messages: ChatMessage[],
+  options?: ChatSendOptions,
+): Promise<ChatResponse> {
+  if (provider === 'codex-cli') return sendCodexCliViaBackendBlock(messages, options)
   const res = await fetch('/api/ai/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider, messages }),
+    body: JSON.stringify({
+      provider,
+      messages,
+      model: options?.model || null,
+    }),
   })
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
@@ -199,10 +219,10 @@ export async function sendChatBlock(
 ): Promise<ChatResponse> {
   if (provider === 'codex-cli') return sendCodexCliViaBackendBlock(messages, options)
   if (isElectron()) {
-    if (provider === 'claude') return sendClaudeDirectBlock(messages)
-    if (provider === 'openai-codex') return sendCodexDirectBlock(messages)
-    if (provider === 'azure-gpt') return sendAzureDirectBlock(messages)
+    if (provider === 'claude') return sendClaudeDirectBlock(messages, options?.model)
+    if (provider === 'openai-codex') return sendCodexDirectBlock(messages, options?.model)
+    if (provider === 'azure-gpt') return sendAzureDirectBlock(messages, options?.model)
     throw new Error(`Unknown provider: ${provider}`)
   }
-  return sendViaBackendBlock(provider, messages)
+  return sendViaBackendBlock(provider, messages, options)
 }

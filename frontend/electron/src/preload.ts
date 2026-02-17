@@ -122,5 +122,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     messages: Array<{ role: 'user' | 'assistant'; content: string }>,
     accessToken: string,
     accountId?: string,
-  ) => ipcRenderer.invoke('ai:chat:codex', messages, accessToken, accountId),
+    model?: string,
+  ) => ipcRenderer.invoke('ai:chat:codex', messages, accessToken, accountId, model),
 });

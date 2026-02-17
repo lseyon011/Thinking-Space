@@ -119,6 +119,7 @@ interface ElectronAPI {
     messages: Array<{ role: 'user' | 'assistant'; content: string }>,
     accessToken: string,
     accountId?: string,
+    model?: string,
   ): Promise<{ text: string; model: string; inputTokens?: number; outputTokens?: number; totalTokens?: number }>
 }
 

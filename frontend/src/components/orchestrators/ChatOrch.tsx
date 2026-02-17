@@ -10,8 +10,13 @@ import {
   type ChatMessage,
   type ChatResponse,
   listProvidersOrch,
-  sendChatOrch,
+  sendChatWithTelemetryOrch,
 } from '@/services/orchestrators/chatOrch'
+import {
+  resolveAiSelectionFromProvidersOrch,
+  resolveAiSelectionOrch,
+  setAiSelectedProviderOrch,
+} from '@/services/orchestrators/aiSettingsOrch'
 
 interface ChatTimelineMessage extends ChatMessage {
   id: string
@@ -36,6 +41,7 @@ function formatTimestamp(value?: string): string | null {
 export default function ChatOrch() {
   const [providers, setProviders] = useState<AiProviderStatus[]>([])
   const [selectedProvider, setSelectedProvider] = useState<AiProvider | null>(null)
+  const [selectedModel, setSelectedModel] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatTimelineMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -58,12 +64,23 @@ export default function ChatOrch() {
     listProvidersOrch()
       .then((p) => {
         setProviders(p)
-        const firstAvailable = p.find((x) => x.available)
-        if (firstAvailable) setSelectedProvider(firstAvailable.provider)
+        const selection = resolveAiSelectionFromProvidersOrch(p)
+        setSelectedProvider(selection?.provider ?? null)
+        setSelectedModel(selection?.model ?? null)
       })
       .catch((err) => setError(err.message))
       .finally(() => setProvidersLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (!selectedProvider) {
+      setSelectedModel(null)
+      return
+    }
+    const selection = resolveAiSelectionFromProvidersOrch(providers, { provider: selectedProvider })
+    setSelectedProvider(selection?.provider ?? null)
+    setSelectedModel(selection?.model ?? null)
+  }, [providers, selectedProvider])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -86,26 +103,41 @@ export default function ChatOrch() {
 
     try {
       const allMessages = [...messages, userMsg]
-      const response: ChatResponse = await sendChatOrch(
-        selectedProvider,
+      const selection = await resolveAiSelectionOrch({ provider: selectedProvider })
+      if (!selection) {
+        throw new Error('No AI provider available. Configure one in AI Settings.')
+      }
+      setSelectedModel(selection.model)
+      const { response } = await sendChatWithTelemetryOrch(
+        selection.provider,
         allMessages,
-        selectedProvider === 'codex-cli'
-          ? { threadId: latestCodexCliThreadId() }
-          : undefined,
+        {
+          model: selection.model,
+          threadId: selection.provider === 'codex-cli'
+            ? latestCodexCliThreadId()
+            : undefined,
+        },
+        {
+          useCase: 'chat.session',
+          metadata: {
+            messageCount: allMessages.length,
+          },
+        },
       )
+      const timelineResponse: ChatResponse = response
       setMessages((prev) => [...prev, {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: response.content,
-        provider: response.provider,
-        model: response.model,
-        requested_at: response.requested_at,
-        responded_at: response.responded_at,
-        latency_ms: response.latency_ms,
-        input_tokens: response.input_tokens,
-        output_tokens: response.output_tokens,
-        total_tokens: response.total_tokens,
-        thread_id: response.thread_id,
+        content: timelineResponse.content,
+        provider: timelineResponse.provider,
+        model: timelineResponse.model,
+        requested_at: timelineResponse.requested_at,
+        responded_at: timelineResponse.responded_at,
+        latency_ms: timelineResponse.latency_ms,
+        input_tokens: timelineResponse.input_tokens,
+        output_tokens: timelineResponse.output_tokens,
+        total_tokens: timelineResponse.total_tokens,
+        thread_id: timelineResponse.thread_id,
       }])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to get response')
@@ -140,7 +172,10 @@ export default function ChatOrch() {
             <button
               key={p.provider}
               disabled={!p.available}
-              onClick={() => setSelectedProvider(p.provider)}
+              onClick={() => {
+                setSelectedProvider(p.provider)
+                setAiSelectedProviderOrch(p.provider)
+              }}
               className={`rounded-full border px-3 py-1 text-sm transition-colors ${
                 selectedProvider === p.provider
                   ? 'border-primary bg-primary text-primary-foreground'
@@ -153,6 +188,11 @@ export default function ChatOrch() {
               {!p.available && <span className="ml-1 text-xs opacity-60">unavailable</span>}
             </button>
           ))
+        )}
+        {selectedProvider && selectedModel && (
+          <span className="text-xs text-muted-foreground">
+            Model: {selectedModel} (from AI Settings)
+          </span>
         )}
       </div>
 

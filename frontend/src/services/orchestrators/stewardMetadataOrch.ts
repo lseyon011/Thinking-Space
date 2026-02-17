@@ -1,9 +1,10 @@
 import { createNote, parseNote, stringifyNote } from '../lego_blocks/yamlNoteBlock'
 import { getVaultFS } from './runtimeOrch'
 import { syncSingleFile } from './vaultSyncOrch'
-import { listProvidersOrch, sendChatWithTelemetryOrch, type AiProvider } from './chatOrch'
+import { sendChatWithTelemetryOrch, type AiProvider } from './chatOrch'
 import { recordAiTelemetryOrch, type AiTelemetryEvent } from './aiTelemetryOrch'
 import { findSimilarGroupedMatchesOrch, type SimilarityGroupedMatches } from './similarityOrch'
+import { resolveAiSelectionOrch } from './aiSettingsOrch'
 
 export interface StewardMetadataSuggestion {
   summary: string
@@ -156,15 +157,6 @@ function parseAiSuggestion(payload: Record<string, unknown>): {
   }
 }
 
-async function resolveDefaultProvider(): Promise<AiProvider | null> {
-  const providers = await listProvidersOrch()
-  const preferred: AiProvider[] = ['codex-cli', 'claude', 'openai-codex', 'azure-gpt']
-  for (const provider of preferred) {
-    if (providers.some(item => item.provider === provider && item.available)) return provider
-  }
-  return null
-}
-
 export async function generateStewardMetadataSuggestionForFileOrch(filePath: string): Promise<StewardMetadataSuggestion> {
   const fs = getVaultFS()
   const content = await fs.read(filePath)
@@ -213,8 +205,8 @@ export async function generateStewardMetadataSuggestionForFileOrch(filePath: str
     similarity,
   }
 
-  const provider = await resolveDefaultProvider()
-  if (!provider) {
+  const selection = await resolveAiSelectionOrch()
+  if (!selection) {
     return {
       ...fallback,
       telemetry: heuristicTelemetry('no_provider_available'),
@@ -251,13 +243,15 @@ export async function generateStewardMetadataSuggestionForFileOrch(filePath: str
 
   try {
     const { response, telemetryEvent } = await sendChatWithTelemetryOrch(
-      provider,
+      selection.provider,
       [{ role: 'user', content: prompt }],
-      undefined,
+      { model: selection.model },
       {
         useCase: 'steward.metadata.proposal_generation',
         metadata: {
           filePath,
+          configuredProvider: selection.provider,
+          configuredModel: selection.model,
           similarityEngine: similarity.engine,
           epicCandidates: epicCandidates.length,
           ideaCandidates: ideaCandidates.length,

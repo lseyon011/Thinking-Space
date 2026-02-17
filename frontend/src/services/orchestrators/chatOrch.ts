@@ -103,7 +103,7 @@ export async function sendChatWithTelemetryOrch(
     const telemetryEvent = recordAiTelemetryOrch({
       useCase: telemetry.useCase,
       provider,
-      model: 'unknown',
+      model: options?.model?.trim() || 'unknown',
       status: 'error',
       requestedAt,
       respondedAt,
