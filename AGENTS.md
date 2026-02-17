@@ -145,17 +145,32 @@ Actor and permission rules:
 3. If writing to external vault paths (for example iCloud paths outside repo sandbox), request escalated filesystem permission first; do not bypass by changing actor kind.
 
 Capability runner invocation pattern (use `./ltm` wrapper from repo root):
-```bash
-# List capabilities
-./ltm list
 
-# Invoke capabilities with --flag syntax (actor defaults to agent/claude-code)
+Required fields for node creation (easy to forget, causes bugs):
+- `--projectRoot coding-projects/thinking-space` — without it, nodes land at vault root and won't appear in organizer UI
+- `--description "..."` — mandatory for every created node
+- `--parentKey "..."` — places nodes in correct hierarchy
+- `--extra-record_kind <kind>` — for typed records: `task`, `run`, `handoff`, `decision`, `principle`, `note`
+
+```bash
+# Read operations
+./ltm list
 ./ltm organizer.nodes.list_roots --typeFilter program
-./ltm organizer.node.create --type task --title "My task" --parentKey "epic-key" --extra-record_kind task
+./ltm organizer.nodes.search --query "my task" --limit 5
+
+# Create node (all required fields shown)
+./ltm organizer.node.create --type task --title "My task" \
+  --parentKey "task-backlog" \
+  --projectRoot coding-projects/thinking-space \
+  --description "Short description of the task" \
+  --extra-record_kind task
+
+# Other write operations
 ./ltm task.claim --uuid "abc-123" --owner claude-code
 ./ltm task.update_status --uuid "abc-123" --taskStatus done
-./ltm run.log --title "Session" --projectRoot /path --agentName claude-code --result success
-./ltm comment.add --uuid "abc-123" --text "Done" --addedBy claude-code
+./ltm handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space \
+  --summary "Notes" --fromAgent claude-code --toAgent human \
+  --parentKey handoffs-agent-operations
 
 # Raw JSON escape hatch (reads stdin)
 ./ltm invoke < payload.json

@@ -128,24 +128,36 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 ## Capability Runner Pattern
 Use the `./ltm` wrapper from the repo root. It auto-loads `.env` (for `LTM_VAULT_ROOT`), sets runner flags, and defaults to `actor: {kind: "agent", id: "claude-code"}`.
 
-```bash
-# List all capabilities
-./ltm list
+### Required fields for node creation (easy to forget, causes bugs):
+- `--projectRoot coding-projects/thinking-space` — without it, nodes land at vault root and won't appear in organizer UI
+- `--description "..."` — mandatory for every created node per multi-agent discipline
+- `--parentKey "..."` — required to place nodes in the correct hierarchy (e.g., `handoffs-agent-operations`, `task-backlog`)
+- `--extra-record_kind <kind>` — for typed records: `task`, `run`, `handoff`, `decision`, `principle`, `note`
 
-# Invoke capabilities directly with --flag syntax
+```bash
+# Read operations
+./ltm list
 ./ltm organizer.nodes.list_roots --typeFilter program
 ./ltm organizer.nodes.list_children --parentKey "epic-auth"
 ./ltm organizer.nodes.search --query "auth bug" --limit 10
 ./ltm organizer.node.get --uuid "abc-123"
-./ltm organizer.node.create --type task --title "Fix login" --parentKey "epic-key" --extra-record_kind task
+
+# Create node (all required fields shown)
+./ltm organizer.node.create --type task --title "Fix login" \
+  --parentKey "task-backlog" \
+  --projectRoot coding-projects/thinking-space \
+  --description "Login form crashes on submit due to missing validation" \
+  --extra-record_kind task
+
+# Other write operations
 ./ltm organizer.node.update --uuid "abc-123" --status active --priority high
 ./ltm task.claim --uuid "abc-123" --owner claude-code
 ./ltm task.update_status --uuid "abc-123" --taskStatus done
-./ltm run.log --title "Session log" --projectRoot /path --agentName claude-code --result success
+./ltm run.log --title "Session log" --projectRoot coding-projects/thinking-space --agentName claude-code --result success
+./ltm handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space \
+  --summary "Notes" --fromAgent claude-code --toAgent human \
+  --parentKey handoffs-agent-operations
 ./ltm comment.add --uuid "abc-123" --text "Done" --addedBy claude-code
-
-# Override actor (default: agent/claude-code)
-./ltm organizer.nodes.list_roots --actor-kind human --actor-id ui.user
 
 # Raw JSON escape hatch (reads stdin, for complex payloads)
 ./ltm invoke < payload.json

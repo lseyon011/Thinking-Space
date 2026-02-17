@@ -36,20 +36,33 @@ Workspace layout pattern:
 - `principles and decisions (agent operations)` program for durable guidance.
 
 ## Capability API Pattern
-Use the `./ltm` wrapper from the repo root (auto-loads `.env` for vault path, sets runner flags, defaults actor to `agent/claude-code`):
+Use the `./ltm` wrapper from the repo root (auto-loads `.env` for vault path, sets runner flags, defaults actor to `agent/claude-code`).
+
+Required fields for node creation (easy to forget, causes bugs):
+- `--projectRoot coding-projects/thinking-space` — without it, nodes land at vault root
+- `--description "..."` — mandatory for every created node
+- `--parentKey "..."` — places nodes in correct hierarchy
+- `--extra-record_kind <kind>` — `task`, `run`, `handoff`, `decision`, `principle`, `note`
 
 ```bash
-# List capabilities
+# Read operations
 ./ltm list
-
-# Common operations
 ./ltm organizer.nodes.list_roots --typeFilter program
 ./ltm organizer.node.get_by_key --key "development-agent-operations"
-./ltm organizer.node.create --type task --title "My task" --parentKey "task-backlog" --extra-record_kind task
+
+# Create node (all required fields shown)
+./ltm organizer.node.create --type task --title "My task" \
+  --parentKey "task-backlog" \
+  --projectRoot coding-projects/thinking-space \
+  --description "Short description of the task" \
+  --extra-record_kind task
+
+# Other operations
 ./ltm task.claim --uuid "abc-123" --owner claude-code
 ./ltm task.update_status --uuid "abc-123" --taskStatus done
-./ltm run.log --title "Session" --projectRoot coding-projects/thinking-space --agentName claude-code --result success
-./ltm handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space --summary "Notes" --fromAgent claude-code --toAgent human --parentKey handoffs-agent-operations
+./ltm handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space \
+  --summary "Notes" --fromAgent claude-code --toAgent human \
+  --parentKey handoffs-agent-operations
 
 # Raw JSON escape hatch (reads stdin)
 ./ltm invoke < payload.json
