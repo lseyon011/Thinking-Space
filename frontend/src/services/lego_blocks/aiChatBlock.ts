@@ -9,6 +9,7 @@ import { isElectron } from './fsBlock'
 import {
   type AiProvider,
   getClaudeCredentialsBlock,
+  getCodexCredentialsBlock,
   getAzureCredentialsBlock,
 } from './aiProviderBlock'
 
@@ -42,7 +43,7 @@ async function sendClaudeDirectBlock(messages: ChatMessage[]): Promise<ChatRespo
 
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic({
-    apiKey: creds.accessToken,
+    authToken: creds.accessToken,
     defaultHeaders: { 'anthropic-beta': 'oauth-2025-04-20' },
     dangerouslyAllowBrowser: true,
   })
@@ -124,6 +125,53 @@ async function sendAzureDirectBlock(messages: ChatMessage[]): Promise<ChatRespon
   }
 }
 
+async function sendCodexDirectBlock(messages: ChatMessage[]): Promise<ChatResponse> {
+  const creds = await getCodexCredentialsBlock()
+  if (!creds) throw new Error('Codex credentials not available')
+
+  const { default: OpenAI } = await import('openai')
+  const client = new OpenAI({
+    apiKey: creds.accessToken,
+    baseURL: 'https://api.openai.com/v1',
+    defaultHeaders: { Authorization: `Bearer ${creds.accessToken}` },
+    dangerouslyAllowBrowser: true,
+  })
+
+  const model = 'gpt-5-codex'
+  const requestedAt = new Date().toISOString()
+  const started = performance.now()
+  const response: any = await client.responses.create({
+    model,
+    input: messages.map(m => ({
+      role: m.role,
+      content: [{ type: 'input_text', text: m.content }],
+    })),
+  })
+
+  const text = typeof response?.output_text === 'string' ? response.output_text : ''
+  const respondedAt = new Date().toISOString()
+  const latencyMs = Math.round(performance.now() - started)
+  const inputTokens = response?.usage?.input_tokens
+  const outputTokens = response?.usage?.output_tokens
+  const totalTokens = (
+    typeof inputTokens === 'number' && typeof outputTokens === 'number'
+      ? inputTokens + outputTokens
+      : undefined
+  )
+  return {
+    role: 'assistant',
+    content: text,
+    provider: 'openai-codex',
+    model,
+    requested_at: requestedAt,
+    responded_at: respondedAt,
+    latency_ms: latencyMs,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    total_tokens: totalTokens,
+  }
+}
+
 // ── Web: backend proxy ──
 
 async function sendViaBackendBlock(provider: AiProvider, messages: ChatMessage[]): Promise<ChatResponse> {
@@ -144,6 +192,7 @@ async function sendViaBackendBlock(provider: AiProvider, messages: ChatMessage[]
 export async function sendChatBlock(provider: AiProvider, messages: ChatMessage[]): Promise<ChatResponse> {
   if (isElectron()) {
     if (provider === 'claude') return sendClaudeDirectBlock(messages)
+    if (provider === 'openai-codex') return sendCodexDirectBlock(messages)
     if (provider === 'azure-gpt') return sendAzureDirectBlock(messages)
     throw new Error(`Unknown provider: ${provider}`)
   }

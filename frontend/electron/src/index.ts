@@ -15,6 +15,8 @@ import { ElectronCapacitorApp, setupContentSecurityPolicy, setupReloadWatcher } 
 import {
   readClaudeCredentialsBlock,
   refreshClaudeTokenBlock,
+  readCodexCredentialsBlock,
+  refreshCodexTokenBlock,
   readAzureTokenBlock,
 } from './lego_blocks/aiCredentialBlock';
 import {
@@ -755,4 +757,12 @@ ipcMain.handle('ai:credentials:azure', async () => {
 
 ipcMain.handle('ai:credentials:claude:refresh', async (_event, refreshToken: string) => {
   return refreshClaudeTokenBlock(refreshToken);
+});
+
+ipcMain.handle('ai:credentials:codex', async () => {
+  return readCodexCredentialsBlock();
+});
+
+ipcMain.handle('ai:credentials:codex:refresh', async (_event, refreshToken: string) => {
+  return refreshCodexTokenBlock(refreshToken);
 });

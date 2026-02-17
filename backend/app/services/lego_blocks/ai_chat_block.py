@@ -1,5 +1,5 @@
 """
-AI chat blocks — send messages to Claude or Azure GPT.
+AI chat blocks — send messages to Claude, OpenAI Codex, or Azure GPT.
 
 Each block handles credential sourcing, client construction, and API call.
 """
@@ -12,7 +12,9 @@ import openai
 
 from .ai_credential_block import (
     read_azure_token_block,
+    read_codex_credentials_block,
     read_claude_credentials_block,
+    refresh_codex_token_block,
     refresh_claude_token_block,
 )
 
@@ -40,6 +42,18 @@ class ChatResponse:
 
 
 _claude_cache = None  # (credentials, fetched_at)
+_codex_cache = None  # (credentials, fetched_at)
+
+
+def _is_token_valid(creds) -> bool:
+    """Check if credentials have a non-expired access token."""
+    if not creds.expires_at:
+        return False
+    try:
+        exp = datetime.fromisoformat(creds.expires_at.replace("Z", "+00:00"))
+        return datetime.now(timezone.utc) < exp
+    except ValueError:
+        return False
 
 
 def _get_claude_token() -> str:
@@ -48,27 +62,69 @@ def _get_claude_token() -> str:
 
     if _claude_cache:
         creds, _ = _claude_cache
-        if creds.expires_at:
-            try:
-                exp = datetime.fromisoformat(creds.expires_at.replace("Z", "+00:00"))
-                if datetime.now(timezone.utc) < exp:
-                    return creds.access_token
-            except ValueError:
-                pass
+        if _is_token_valid(creds):
+            return creds.access_token
         # Try refresh
-        try:
-            refreshed = refresh_claude_token_block(creds.refresh_token)
-            _claude_cache = (refreshed, datetime.now(timezone.utc))
-            return refreshed.access_token
-        except Exception:
-            _claude_cache = None
+        if creds.refresh_token:
+            try:
+                refreshed = refresh_claude_token_block(creds.refresh_token)
+                _claude_cache = (refreshed, datetime.now(timezone.utc))
+                return refreshed.access_token
+            except Exception:
+                _claude_cache = None
 
     creds = read_claude_credentials_block()
     if not creds:
         raise RuntimeError("Claude credentials not available")
 
-    _claude_cache = (creds, datetime.now(timezone.utc))
-    return creds.access_token
+    # Check if freshly-read token is still valid
+    if _is_token_valid(creds):
+        _claude_cache = (creds, datetime.now(timezone.utc))
+        return creds.access_token
+
+    # Token expired — refresh it
+    if not creds.refresh_token:
+        raise RuntimeError("Claude token is expired and no refresh token is available")
+
+    try:
+        refreshed = refresh_claude_token_block(creds.refresh_token)
+        _claude_cache = (refreshed, datetime.now(timezone.utc))
+        return refreshed.access_token
+    except Exception as e:
+        raise RuntimeError(f"Claude token expired and refresh failed: {e}")
+
+
+def _get_codex_token() -> str:
+    """Get a valid Codex access token, refreshing if needed."""
+    global _codex_cache
+
+    if _codex_cache:
+        creds, _ = _codex_cache
+        if _is_token_valid(creds):
+            return creds.access_token
+        try:
+            refreshed = refresh_codex_token_block(creds.refresh_token)
+            _codex_cache = (refreshed, datetime.now(timezone.utc))
+            return refreshed.access_token
+        except Exception:
+            _codex_cache = None
+
+    creds = read_codex_credentials_block()
+    if not creds:
+        raise RuntimeError("Codex credentials not available")
+
+    # Check if freshly-read token is still valid
+    if _is_token_valid(creds):
+        _codex_cache = (creds, datetime.now(timezone.utc))
+        return creds.access_token
+
+    # Token expired — refresh it
+    try:
+        refreshed = refresh_codex_token_block(creds.refresh_token)
+        _codex_cache = (refreshed, datetime.now(timezone.utc))
+        return refreshed.access_token
+    except Exception as e:
+        raise RuntimeError(f"Codex token expired and refresh failed: {e}")
 
 
 def chat_claude_block(messages: list[dict]) -> dict:
@@ -79,7 +135,7 @@ def chat_claude_block(messages: list[dict]) -> dict:
     started = time.perf_counter()
 
     client = anthropic.Anthropic(
-        api_key=token,
+        auth_token=token,
         default_headers={"anthropic-beta": "oauth-2025-04-20"},
     )
 
@@ -105,6 +161,54 @@ def chat_claude_block(messages: list[dict]) -> dict:
         "role": "assistant",
         "content": text,
         "provider": "claude",
+        "model": model,
+        "requested_at": requested_at,
+        "responded_at": responded_at,
+        "latency_ms": latency_ms,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
+# ── OpenAI Codex ──
+
+
+def chat_codex_block(messages: list[dict]) -> dict:
+    """Send messages to OpenAI Codex and return the response."""
+    token = _get_codex_token()
+    model = "gpt-5-codex"
+    requested_at = datetime.now(timezone.utc).isoformat()
+    started = time.perf_counter()
+
+    client = openai.OpenAI(
+        api_key=token,
+        base_url="https://api.openai.com/v1",
+    )
+
+    payload = {
+        "model": model,
+        "input": [
+            {"role": m["role"], "content": [{"type": "input_text", "text": m["content"]}]}
+            for m in messages
+        ],
+    }
+    response = client.responses.create(**payload)
+
+    text = getattr(response, "output_text", "") or ""
+    responded_at = datetime.now(timezone.utc).isoformat()
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    usage = getattr(response, "usage", None)
+    input_tokens = getattr(usage, "input_tokens", None) if usage is not None else None
+    output_tokens = getattr(usage, "output_tokens", None) if usage is not None else None
+    total_tokens = None
+    if isinstance(input_tokens, int) and isinstance(output_tokens, int):
+        total_tokens = input_tokens + output_tokens
+
+    return {
+        "role": "assistant",
+        "content": text,
+        "provider": "openai-codex",
         "model": model,
         "requested_at": requested_at,
         "responded_at": responded_at,

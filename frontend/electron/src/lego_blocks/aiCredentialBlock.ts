@@ -2,10 +2,12 @@
  * AI credential reading for Electron main process.
  *
  * Claude: macOS Keychain → fallback ~/.claude/.credentials.json
+ * Codex:  macOS Keychain ("Codex Auth") → fallback ~/.codex/auth.json
  * Azure:  `az account get-access-token` CLI
  */
 
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -19,6 +21,13 @@ export interface ClaudeCredentials {
   expiresAt: string; // ISO timestamp
 }
 
+export interface CodexCredentials {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: string; // ISO timestamp
+  accountId?: string;
+}
+
 export interface AzureCredentials {
   accessToken: string;
   expiresOn: string; // ISO timestamp
@@ -28,18 +37,28 @@ export interface AzureCredentials {
 
 const KEYCHAIN_SERVICE = 'Claude Code-credentials';
 const CREDENTIALS_FILE = path.join(os.homedir(), '.claude', '.credentials.json');
-const CLAUDE_TOKEN_ENDPOINT = 'https://console.anthropic.com/v1/oauth/token';
-const CLAUDE_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5f';
+const CLAUDE_TOKEN_ENDPOINT = 'https://platform.claude.com/v1/oauth/token';
+const CLAUDE_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
+
+function normalizeExpiresAt(value: unknown): string {
+  if (!value) return '';
+  // If it's a number (Unix ms timestamp), convert to ISO string
+  if (typeof value === 'number') return new Date(value).toISOString();
+  // If it's a numeric string, parse as ms timestamp
+  if (typeof value === 'string' && /^\d+$/.test(value)) return new Date(Number(value)).toISOString();
+  // Already an ISO string or similar
+  return String(value);
+}
 
 function parseKeychainPayload(raw: string): ClaudeCredentials | null {
   try {
     const parsed = JSON.parse(raw);
     const oauth = parsed?.claudeAiOauth;
-    if (!oauth?.accessToken || !oauth?.refreshToken) return null;
+    if (!oauth?.accessToken) return null;
     return {
       accessToken: oauth.accessToken,
-      refreshToken: oauth.refreshToken,
-      expiresAt: oauth.expiresAt ?? '',
+      refreshToken: typeof oauth.refreshToken === 'string' ? oauth.refreshToken : '',
+      expiresAt: normalizeExpiresAt(oauth.expiresAt),
     };
   } catch {
     return null;
@@ -99,13 +118,158 @@ export function refreshClaudeTokenBlock(refreshToken: string): Promise<ClaudeCre
           }
           try {
             const data = JSON.parse(text);
+            const normalized = normalizeExpiresAt(data.expires_at);
             resolve({
               accessToken: data.access_token,
               refreshToken: data.refresh_token ?? refreshToken,
-              expiresAt: data.expires_at ?? new Date(Date.now() + (data.expires_in ?? 3600) * 1000).toISOString(),
+              expiresAt: normalized || new Date(Date.now() + (data.expires_in ?? 3600) * 1000).toISOString(),
             });
           } catch (err) {
             reject(new Error(`Failed to parse token refresh response: ${err}`));
+          }
+        });
+      },
+    );
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+// ── Codex ──
+
+const CODEX_KEYCHAIN_SERVICE = 'Codex Auth';
+const CODEX_TOKEN_ENDPOINT =
+  (process.env.CODEX_REFRESH_TOKEN_URL_OVERRIDE ?? '').trim() || 'https://auth.openai.com/oauth/token';
+const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
+
+function resolveUserPath(input: string): string {
+  if (!input) return input;
+  if (input === '~') return os.homedir();
+  if (input.startsWith('~/')) return path.join(os.homedir(), input.slice(2));
+  return path.resolve(input);
+}
+
+function resolveCodexHomePath(): string {
+  const configured = process.env.CODEX_HOME?.trim();
+  const candidate = configured ? resolveUserPath(configured) : path.join(os.homedir(), '.codex');
+  try {
+    return fs.realpathSync.native(candidate);
+  } catch {
+    return candidate;
+  }
+}
+
+function computeCodexKeychainAccount(codexHome: string): string {
+  const digest = createHash('sha256').update(codexHome).digest('hex');
+  return `cli|${digest.slice(0, 16)}`;
+}
+
+function codexExpiresAt(lastRefresh: unknown, fallbackMtimeMs?: number): string {
+  const parsedLastRefresh =
+    typeof lastRefresh === 'string' || typeof lastRefresh === 'number'
+      ? new Date(lastRefresh).getTime()
+      : NaN;
+  const baselineMs = Number.isFinite(parsedLastRefresh)
+    ? parsedLastRefresh
+    : (typeof fallbackMtimeMs === 'number' && Number.isFinite(fallbackMtimeMs) ? fallbackMtimeMs : Date.now());
+  return new Date(baselineMs + 60 * 60 * 1000).toISOString();
+}
+
+function parseCodexPayload(raw: string, fallbackMtimeMs?: number): CodexCredentials | null {
+  try {
+    const parsed = JSON.parse(raw);
+    const tokens = parsed?.tokens;
+    if (!tokens || typeof tokens !== 'object') return null;
+    if (typeof tokens.access_token !== 'string' || !tokens.access_token) return null;
+    if (typeof tokens.refresh_token !== 'string' || !tokens.refresh_token) return null;
+    return {
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresAt: codexExpiresAt(parsed?.last_refresh, fallbackMtimeMs),
+      accountId: typeof tokens.account_id === 'string' ? tokens.account_id : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function readCodexCredentialsBlock(): CodexCredentials | null {
+  const codexHome = resolveCodexHomePath();
+  const authPath = path.join(codexHome, 'auth.json');
+
+  // Try macOS Keychain first.
+  if (process.platform === 'darwin') {
+    try {
+      const account = computeCodexKeychainAccount(codexHome);
+      const raw = execFileSync(
+        'security',
+        ['find-generic-password', '-s', CODEX_KEYCHAIN_SERVICE, '-a', account, '-w'],
+        { encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] },
+      ).trim();
+      const creds = parseCodexPayload(raw);
+      if (creds) return creds;
+    } catch {
+      // Missing keychain record or security command unavailable.
+    }
+  }
+
+  // Fallback file.
+  try {
+    const stat = fs.statSync(authPath);
+    const raw = fs.readFileSync(authPath, 'utf8');
+    return parseCodexPayload(raw, stat.mtimeMs);
+  } catch {
+    return null;
+  }
+}
+
+export function refreshCodexTokenBlock(refreshToken: string): Promise<CodexCredentials> {
+  const form = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+    client_id: CODEX_CLIENT_ID,
+  });
+  const body = form.toString();
+
+  return new Promise((resolve, reject) => {
+    const url = new URL(CODEX_TOKEN_ENDPOINT);
+    const req = https.request(
+      {
+        hostname: url.hostname,
+        path: `${url.pathname}${url.search}`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        res.on('end', () => {
+          const status = res.statusCode ?? 0;
+          const text = Buffer.concat(chunks).toString('utf8');
+          if (status < 200 || status >= 300) {
+            reject(new Error(`Codex token refresh failed (HTTP ${status}): ${text.slice(0, 300)}`));
+            return;
+          }
+          try {
+            const data = JSON.parse(text);
+            if (typeof data.access_token !== 'string' || !data.access_token) {
+              reject(new Error('Codex token refresh response did not include access_token'));
+              return;
+            }
+            const expiresAt = normalizeExpiresAt(data.expires_at)
+              || new Date(Date.now() + (Number(data.expires_in) || 3600) * 1000).toISOString();
+            resolve({
+              accessToken: data.access_token,
+              refreshToken: data.refresh_token ?? refreshToken,
+              expiresAt,
+              accountId: typeof data.account_id === 'string' ? data.account_id : undefined,
+            });
+          } catch (err) {
+            reject(new Error(`Failed to parse Codex token refresh response: ${err}`));
           }
         });
       },

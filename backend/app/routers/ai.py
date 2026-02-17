@@ -13,7 +13,7 @@ from app.services.orchestrators.ai_chat_orch import (
 
 router = APIRouter()
 
-Provider = Literal["claude", "azure-gpt"]
+Provider = Literal["claude", "openai-codex", "azure-gpt"]
 
 
 class ChatMessageIn(BaseModel):

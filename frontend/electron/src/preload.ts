@@ -112,6 +112,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('ai:credentials:claude'),
   aiGetAzureCredentials: () =>
     ipcRenderer.invoke('ai:credentials:azure'),
+  aiGetCodexCredentials: () =>
+    ipcRenderer.invoke('ai:credentials:codex'),
   aiRefreshClaudeToken: (refreshToken: string) =>
     ipcRenderer.invoke('ai:credentials:claude:refresh', refreshToken),
+  aiRefreshCodexToken: (refreshToken: string) =>
+    ipcRenderer.invoke('ai:credentials:codex:refresh', refreshToken),
 });

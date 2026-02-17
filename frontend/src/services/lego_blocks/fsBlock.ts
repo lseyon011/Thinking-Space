@@ -111,8 +111,10 @@ interface ElectronAPI {
 
   // AI credential management
   aiGetClaudeCredentials(): Promise<{ accessToken: string; refreshToken: string; expiresAt: string } | null>
+  aiGetCodexCredentials(): Promise<{ accessToken: string; refreshToken: string; expiresAt: string; accountId?: string } | null>
   aiGetAzureCredentials(): Promise<{ accessToken: string; expiresOn: string } | null>
   aiRefreshClaudeToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresAt: string }>
+  aiRefreshCodexToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresAt: string; accountId?: string }>
 }
 
 declare global {
