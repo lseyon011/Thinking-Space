@@ -11,26 +11,42 @@ Most note tools force users into fixed plugin models and fragmented AI workflows
 - In-app extensibility so users can build features without leaving the app
 - Local-first ownership of data and behavior
 
-## Current Codebase Understanding (As of 2026-02-17)
+## Current Codebase Understanding (As of 2026-02-18)
 
 ### Product Surface Today
 The app has both tool-centric and hierarchy-centric UI surfaces.
 
 Primary routes in the app:
 - `Home`
+- `Thinking Space`
 - `New Thought`
 - `Todos`
 - `Insights`
+- `Chat`
+- `AI Settings`
+- `Capabilities`
 - `Thinking Organizer` (hierarchy tree view with create, reparent, drag-drop)
 - `Excalidraw++` tools (`Format for Excalidraw`, `PDF to Markdown`, `Transcript Cleaner`)
 
 ### Runtime Architecture
 - **Frontend**: React + TypeScript + Vite + Tailwind (`frontend/`)
 - **Backend (web mode)**: FastAPI + Python (`backend/`) — thin proxy only, being phased out for core features
-- **Desktop mode**: Electron + Capacitor bridge (`frontend/electron/`)
+- **Desktop/mobile modes**: Electron + Capacitor (`frontend/electron/`, `frontend/ios/`)
 - **Storage**: Markdown files with YAML frontmatter in the vault (source of truth)
 - **Cache**: IndexedDB via Dexie.js (in-browser fast access layer, rebuildable)
 - **Agent CLI**: `./ltm` wrapper for capability invocations (see Agent Capability Transport section)
+
+### Recent Delivery Highlights
+- Native AI login support for both Electron and Capacitor runtimes
+  - Manual credential login for Claude, OpenAI/Codex, and Azure GPT in `AI Settings`
+  - Native provider availability + direct chat routing parity outside web-backend mode
+- Desktop-to-mobile AI OAuth handoff
+  - Generate transfer code from Electron login state
+  - Import transfer code on mobile native runtime for Claude/Codex OAuth usage
+- Capability IPC adapter parity hardening against FastAPI transport
+- Multi-platform packaging progress
+  - Electron app packaging path
+  - iOS build/sync path for Capacitor app testing
 
 ### Frontend Architecture Contract
 - Reusable primitives live in `frontend/src/components/lego_blocks/*`.
@@ -67,16 +83,21 @@ Primary routes in the app:
 - IndexedDB cache layer via Dexie.js (`dbBlock.ts`) with vault sync (`vaultSyncOrch.ts`)
 - Thinking Organizer: hierarchy tree view with create, reparent, drag-drop, node detail panel
 - Jira-style node creation flow with project-scoped organizer storage
+- Global AI settings with provider/model defaults, per-tab provider selection, and per-tab model overrides
+- AI telemetry panel and event logging for AI requests
+- Native AI login management on Electron + Capacitor (`AI Settings`)
+- Desktop-to-mobile transfer-code import flow for Claude/Codex OAuth credentials
 - Agent capability transport: 30 capabilities via frontend runner + FastAPI proxy
 - Agent CLI wrapper (`./ltm`) for ergonomic capability invocation
 - Agent workspace with task lifecycle, run logging, handoffs, and audit trail
 - Run utility transforms (excalidraw formatting, transcript cleanup, pdf conversion)
+- Automated frontend test suite (Vitest) with coverage across services/orchestrators and capability parity fixtures
 
 ### Current Gaps (Important)
 - Thoughts scanner is file/date-oriented only, not fully semantic hierarchy-oriented
-- No unified text action layer (`Summarize`, `Cleanup`, `Related`) across all inputs
+- AI text actions are implemented in key surfaces but not yet unified across every text surface
 - No extension runtime for in-app feature generation yet
-- No dedicated automated test coverage in app code (only test dependency scaffolding exists)
+- No dedicated end-to-end app test harness yet (coverage is primarily unit/service-level)
 - Drag-drop YAML metadata mapping still in progress (DEV-009)
 - YAML Note Block + IndexedDB cache integration still being hardened (DEV-008)
 
@@ -257,8 +278,10 @@ Folders are convenience groupings only. The app never enforces or relies on fold
 
 ## Implementation Plan (Execution Phases)
 
-### Phase 0: Architecture Alignment (EPIC-0) — DONE
-Completed: docs alignment, YAML schema definition, SQLite removal, dependency install, architecture conformance refactor (lego blocks + orchestrators), coding philosophy standardization.
+### Phase 0: Architecture Alignment (EPIC-0) — IN PROGRESS
+Completed to date: docs alignment, YAML schema definition, SQLite removal, dependency install, architecture conformance refactor (lego blocks + orchestrators), coding philosophy standardization.
+
+Remaining: ongoing architecture/doc drift checks as platform and AI features expand.
 
 ### Phase 1: YAML Note Block — DONE (hardening in progress)
 Completed: `yamlNoteBlock.ts` (parse/stringify/validate/key generation), `NewThoughtOrch` creates YAML frontmatter notes, backward compat with plain thoughts, YAML frontmatter in new thought + todo create flows (DEV-010).
@@ -278,15 +301,20 @@ Remaining: DEV-009 drag-and-drop YAML metadata mapping (in progress).
 ### Phase 4: Thought Edit Flow — DONE
 Completed: unified markdown viewer/editor (`MarkdownViewerOrch`), conflict-safe save with mtime/hash checks (DEV-001), edit + save without data loss (DEV-002).
 
-### Phase 5: AI Actions — NOT STARTED
-Scope:
-- Create `aiBlock.ts` — related thoughts (lexical), summarize, cleanup
-- Related thoughts sidebar in editor
-- Local AI via Ollama (Electron) / WASM (web)
+### Phase 5: AI Actions — IN PROGRESS
+Completed to date:
+- Global AI settings and telemetry
+- Per-tab provider/model overrides for AI actions
+- Native AI login/runtime parity for Electron + Capacitor
+- Desktop-to-mobile OAuth handoff for Claude/Codex in native runtime
+
+Remaining scope:
+- Fully unify AI text actions across every major text surface
+- Expand local AI runtime options (Ollama/WASM path completion)
 
 Exit criteria:
 - Related thoughts surfaced while editing
-- Summarize/cleanup actions work
+- Summarize/cleanup actions work consistently across major text inputs
 
 ### Phase 6: Migration + Polish — NOT STARTED
 Scope:
@@ -338,7 +366,7 @@ Exit criteria:
 ## Milestone Releases
 - `v0.2`: Phase 1-2 (YAML notes + IndexedDB cache) — hardening in progress
 - `v0.3`: Phase 3-4 (hierarchy UI + edit flow) — Phase 4 done, Phase 3 nearly done
-- `v0.4`: Phase 5 (AI actions)
+- `v0.4`: Phase 5 (AI actions + native AI login/runtime parity) — in progress
 - `v0.5`: EPIC-3 (extension platform)
 
 ## Success Metrics
