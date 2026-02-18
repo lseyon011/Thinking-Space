@@ -4,6 +4,20 @@ import { Button } from '@/components/lego_blocks/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import AiTelemetryPanelBlock from '@/components/lego_blocks/AiTelemetryPanelBlock'
 import { listProvidersOrch, type AiProvider, type AiProviderStatus } from '@/services/orchestrators/chatOrch'
+import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeOrch'
+import {
+  clearNativeAiLoginsOrch,
+  getNativeAiLoginStateOrch,
+  setNativeAzureLoginOrch,
+  setNativeClaudeLoginOrch,
+  setNativeOpenAiLoginOrch,
+} from '@/services/orchestrators/aiCredentialsOrch'
+import {
+  clearImportedAiLoginsOrch,
+  generateDesktopAiLoginTransferCodeOrch,
+  getImportedAiLoginStateOrch,
+  importAiLoginTransferCodeOrch,
+} from '@/services/orchestrators/aiLoginTransferOrch'
 import {
   listAiModelOptionsOrch,
   listAiModelScopesOrch,
@@ -30,12 +44,21 @@ function errorMessage(value: unknown, fallback: string): string {
 }
 
 export default function AiSettingsOrch() {
+  const nativeRuntime = isElectron() || isCapacitorNative()
   const [providers, setProviders] = useState<AiProviderStatus[]>([])
   const [loadingProviders, setLoadingProviders] = useState(true)
   const [selectedProvider, setSelectedProvider] = useState<AiProvider | null>(null)
   const [modelInput, setModelInput] = useState('')
   const [scopeModelInputs, setScopeModelInputs] = useState<Partial<Record<AiSettingsScope, string>>>({})
   const [savingModel, setSavingModel] = useState(false)
+  const [claudeApiKeyInput, setClaudeApiKeyInput] = useState('')
+  const [openAiApiKeyInput, setOpenAiApiKeyInput] = useState('')
+  const [azureApiKeyInput, setAzureApiKeyInput] = useState('')
+  const [azureEndpointInput, setAzureEndpointInput] = useState('')
+  const [azureDeploymentInput, setAzureDeploymentInput] = useState('')
+  const [azureApiVersionInput, setAzureApiVersionInput] = useState('')
+  const [transferCodeInput, setTransferCodeInput] = useState('')
+  const [generatingTransferCode, setGeneratingTransferCode] = useState(false)
   const [telemetryEvents, setTelemetryEvents] = useState<AiTelemetryEvent[]>([])
   const [loadingTelemetry, setLoadingTelemetry] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -73,6 +96,16 @@ export default function AiSettingsOrch() {
     setScopeModelInputs(next)
   }, [scopes])
 
+  const hydrateNativeLoginInputs = useCallback(() => {
+    const state = getNativeAiLoginStateOrch()
+    setClaudeApiKeyInput(state.claudeApiKey)
+    setOpenAiApiKeyInput(state.openAiApiKey)
+    setAzureApiKeyInput(state.azureApiKey)
+    setAzureEndpointInput(state.azureEndpoint)
+    setAzureDeploymentInput(state.azureDeployment)
+    setAzureApiVersionInput(state.azureApiVersion)
+  }, [])
+
   const loadProviders = useCallback(async () => {
     setLoadingProviders(true)
     try {
@@ -102,7 +135,10 @@ export default function AiSettingsOrch() {
   useEffect(() => {
     void loadProviders()
     loadTelemetry()
-  }, [loadProviders, loadTelemetry])
+    if (nativeRuntime) {
+      hydrateNativeLoginInputs()
+    }
+  }, [hydrateNativeLoginInputs, loadProviders, loadTelemetry, nativeRuntime])
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -165,6 +201,82 @@ export default function AiSettingsOrch() {
     }
   }
 
+  const onSaveNativeLogins = async () => {
+    try {
+      setNativeClaudeLoginOrch(claudeApiKeyInput)
+      setNativeOpenAiLoginOrch(openAiApiKeyInput)
+      setNativeAzureLoginOrch({
+        apiKey: azureApiKeyInput,
+        endpoint: azureEndpointInput,
+        deployment: azureDeploymentInput,
+        apiVersion: azureApiVersionInput,
+      })
+      hydrateNativeLoginInputs()
+      await loadProviders()
+      setMessage('Native AI logins updated.')
+      setError(null)
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to update native AI logins'))
+    }
+  }
+
+  const onClearNativeLogins = async () => {
+    try {
+      clearNativeAiLoginsOrch()
+      hydrateNativeLoginInputs()
+      await loadProviders()
+      setMessage('Native AI logins cleared.')
+      setError(null)
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to clear native AI logins'))
+    }
+  }
+
+  const onGenerateTransferCode = async () => {
+    setGeneratingTransferCode(true)
+    try {
+      const code = await generateDesktopAiLoginTransferCodeOrch()
+      setTransferCodeInput(code)
+      setMessage('Desktop AI login transfer code generated.')
+      setError(null)
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to generate transfer code from desktop login'))
+    } finally {
+      setGeneratingTransferCode(false)
+    }
+  }
+
+  const onImportTransferCode = async () => {
+    try {
+      importAiLoginTransferCodeOrch(transferCodeInput)
+      await loadProviders()
+      const imported = getImportedAiLoginStateOrch()
+      const importedProviders = [
+        imported.hasClaudeOauth ? 'Claude OAuth' : null,
+        imported.hasCodexOauth ? 'Codex OAuth' : null,
+      ].filter(Boolean)
+      setMessage(
+        importedProviders.length > 0
+          ? `Imported ${importedProviders.join(' + ')} desktop login.`
+          : 'Transfer code imported.',
+      )
+      setError(null)
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to import transfer code'))
+    }
+  }
+
+  const onClearImportedLogins = async () => {
+    try {
+      clearImportedAiLoginsOrch()
+      await loadProviders()
+      setMessage('Imported desktop AI logins cleared.')
+      setError(null)
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to clear imported desktop logins'))
+    }
+  }
+
   const onClearTelemetry = () => {
     clearAiTelemetryEventsOrch()
     setTelemetryEvents([])
@@ -185,6 +297,109 @@ export default function AiSettingsOrch() {
             </div>
           )}
         </div>
+      )}
+
+      {nativeRuntime && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Native App AI Logins</CardTitle>
+            <CardDescription>
+              Stored locally on this device for Electron/Capacitor runtime calls (no backend required).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Claude API Key</div>
+              <input
+                value={claudeApiKeyInput}
+                onChange={(event) => setClaudeApiKeyInput(event.target.value)}
+                type="password"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="sk-ant-..."
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">OpenAI API Key (Codex)</div>
+              <input
+                value={openAiApiKeyInput}
+                onChange={(event) => setOpenAiApiKeyInput(event.target.value)}
+                type="password"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="sk-..."
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Azure OpenAI API Key</div>
+              <input
+                value={azureApiKeyInput}
+                onChange={(event) => setAzureApiKeyInput(event.target.value)}
+                type="password"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Azure API key"
+              />
+            </div>
+            <div className="grid gap-2 md:grid-cols-3">
+              <input
+                value={azureEndpointInput}
+                onChange={(event) => setAzureEndpointInput(event.target.value)}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Azure endpoint"
+              />
+              <input
+                value={azureDeploymentInput}
+                onChange={(event) => setAzureDeploymentInput(event.target.value)}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Deployment"
+              />
+              <input
+                value={azureApiVersionInput}
+                onChange={(event) => setAzureApiVersionInput(event.target.value)}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="API version"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" onClick={() => { void onSaveNativeLogins() }}>
+                Save Native Logins
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { void onClearNativeLogins() }}>
+                Clear Native Logins
+              </Button>
+            </div>
+
+            <div className="h-px bg-border/70" />
+
+            <div className="space-y-2">
+              <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                Desktop Login Transfer Code
+              </div>
+              <textarea
+                value={transferCodeInput}
+                onChange={(event) => setTransferCodeInput(event.target.value)}
+                className="min-h-[110px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono"
+                placeholder="Paste transfer code from Electron AI Settings"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                {isElectron() && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={generatingTransferCode}
+                    onClick={() => { void onGenerateTransferCode() }}
+                  >
+                    {generatingTransferCode ? 'Generating…' : 'Generate from Desktop Login'}
+                  </Button>
+                )}
+                <Button size="sm" onClick={() => { void onImportTransferCode() }}>
+                  Import Transfer Code
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => { void onClearImportedLogins() }}>
+                  Clear Imported Desktop Logins
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <Card>

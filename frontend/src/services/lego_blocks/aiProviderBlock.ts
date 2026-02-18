@@ -2,10 +2,20 @@
  * AI provider abstraction — credential sourcing per platform.
  *
  * Electron: reads credentials via IPC (Keychain / az CLI).
+ * Capacitor: reads locally saved API-key logins.
  * Web: no client-side credentials; backend handles everything.
  */
 
-import { isElectron } from './fsBlock'
+import { isCapacitorNative, isElectron } from './fsBlock'
+import {
+  getManualAzureCredentialsBlock,
+  getManualClaudeApiKeyBlock,
+  getManualOpenAiApiKeyBlock,
+} from './aiCredentialStoreBlock'
+import {
+  getNativeClaudeOauthCredentialsBlock,
+  getNativeCodexOauthCredentialsBlock,
+} from './aiOauthCredentialStoreBlock'
 
 // ── Types ──
 
@@ -191,12 +201,18 @@ async function getCodexCliAvailabilityBlock(): Promise<boolean> {
 // ── Provider listing ──
 
 export async function listProvidersBlock(): Promise<AiProviderStatus[]> {
-  if (isElectron()) {
+  const nativeRuntime = isElectron() || isCapacitorNative()
+  if (nativeRuntime) {
+    const manualClaude = !!getManualClaudeApiKeyBlock()
+    const manualCodex = !!getManualOpenAiApiKeyBlock()
+    const manualAzure = !!getManualAzureCredentialsBlock()
+    const oauthClaude = !isElectron() && !!getNativeClaudeOauthCredentialsBlock()
+    const oauthCodex = !isElectron() && !!getNativeCodexOauthCredentialsBlock()
     const [claude, codex, codexCli, azure] = await Promise.all([
-      getClaudeCredentialsBlock().then(c => !!c).catch(() => false),
-      getCodexCredentialsBlock().then(c => !!c).catch(() => false),
-      getCodexCliAvailabilityBlock(),
-      getAzureCredentialsBlock().then(c => !!c).catch(() => false),
+      isElectron() ? getClaudeCredentialsBlock().then(c => !!c).catch(() => false) : Promise.resolve(false),
+      isElectron() ? getCodexCredentialsBlock().then(c => !!c).catch(() => false) : Promise.resolve(false),
+      isElectron() ? getCodexCliAvailabilityBlock() : Promise.resolve(false),
+      isElectron() ? getAzureCredentialsBlock().then(c => !!c).catch(() => false) : Promise.resolve(false),
     ])
     return [
       {
@@ -208,21 +224,21 @@ export async function listProvidersBlock(): Promise<AiProviderStatus[]> {
       },
       {
         provider: 'claude',
-        available: claude,
+        available: manualClaude || oauthClaude || claude,
         label: PROVIDER_LABELS.claude,
         model: defaultProviderModelBlock('claude'),
         models: listProviderModelsBlock('claude'),
       },
       {
         provider: 'openai-codex',
-        available: codex,
+        available: manualCodex || oauthCodex || codex,
         label: PROVIDER_LABELS['openai-codex'],
         model: defaultProviderModelBlock('openai-codex'),
         models: listProviderModelsBlock('openai-codex'),
       },
       {
         provider: 'azure-gpt',
-        available: azure,
+        available: manualAzure || azure,
         label: PROVIDER_LABELS['azure-gpt'],
         model: defaultProviderModelBlock('azure-gpt'),
         models: listProviderModelsBlock('azure-gpt'),

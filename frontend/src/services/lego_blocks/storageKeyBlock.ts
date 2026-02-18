@@ -13,6 +13,8 @@ export const STORAGE_KEYS = {
   stewardProposalQueue: 'ltm-steward-proposal-queue',
   aiTelemetryEvents: 'ltm-ai-telemetry-events',
   aiSettings: 'ltm-ai-settings',
+  aiManualCredentials: 'ltm-ai-manual-credentials',
+  aiOauthCredentials: 'ltm-ai-oauth-credentials',
 } as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]

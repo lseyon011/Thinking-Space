@@ -5,7 +5,7 @@
  * Web: POST to backend /api/ai/chat which proxies the call.
  */
 
-import { isElectron } from './fsBlock'
+import { isCapacitorNative, isElectron } from './fsBlock'
 import {
   defaultProviderModelBlock,
   type AiProvider,
@@ -13,6 +13,15 @@ import {
   getCodexCredentialsBlock,
   getAzureCredentialsBlock,
 } from './aiProviderBlock'
+import {
+  getManualAzureCredentialsBlock,
+  getManualClaudeApiKeyBlock,
+  getManualOpenAiApiKeyBlock,
+} from './aiCredentialStoreBlock'
+import {
+  getNativeClaudeOauthCredentialsBlock,
+  getNativeCodexOauthCredentialsBlock,
+} from './aiOauthCredentialStoreBlock'
 
 const CLAUDE_MAX_OUTPUT_TOKENS = 64000
 
@@ -50,15 +59,29 @@ function resolveRequestedModel(provider: AiProvider, requested?: string): string
 }
 
 async function sendClaudeDirectBlock(messages: ChatMessage[], model?: string): Promise<ChatResponse> {
-  const creds = await getClaudeCredentialsBlock()
-  if (!creds) throw new Error('Claude credentials not available')
-
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
-  const client = new Anthropic({
-    authToken: creds.accessToken,
-    defaultHeaders: { 'anthropic-beta': 'oauth-2025-04-20' },
-    dangerouslyAllowBrowser: true,
-  })
+  const manualApiKey = getManualClaudeApiKeyBlock()
+  const oauthCredentials = isElectron() ? null : getNativeClaudeOauthCredentialsBlock()
+  const client = manualApiKey
+    ? new Anthropic({
+      apiKey: manualApiKey,
+      dangerouslyAllowBrowser: true,
+    })
+    : oauthCredentials
+      ? new Anthropic({
+        authToken: oauthCredentials.accessToken,
+        defaultHeaders: { 'anthropic-beta': 'oauth-2025-04-20' },
+        dangerouslyAllowBrowser: true,
+      })
+    : await (async () => {
+      const creds = await getClaudeCredentialsBlock()
+      if (!creds) throw new Error('Claude credentials not available')
+      return new Anthropic({
+        authToken: creds.accessToken,
+        defaultHeaders: { 'anthropic-beta': 'oauth-2025-04-20' },
+        dangerouslyAllowBrowser: true,
+      })
+    })()
 
   const requestedModel = resolveRequestedModel('claude', model)
   const requestedAt = new Date().toISOString()
@@ -99,17 +122,27 @@ async function sendClaudeDirectBlock(messages: ChatMessage[], model?: string): P
 }
 
 async function sendAzureDirectBlock(messages: ChatMessage[], model?: string): Promise<ChatResponse> {
-  const creds = await getAzureCredentialsBlock()
-  if (!creds) throw new Error('Azure credentials not available')
-
+  const manual = getManualAzureCredentialsBlock()
   const { default: OpenAI } = await import('openai')
-  const client = new OpenAI({
-    apiKey: creds.accessToken,
-    baseURL: 'https://fuchs-lab-openai.openai.azure.com/openai/deployments/gpt-5',
-    defaultQuery: { 'api-version': '2024-12-01-preview' },
-    defaultHeaders: { Authorization: `Bearer ${creds.accessToken}` },
-    dangerouslyAllowBrowser: true,
-  })
+  const client = manual
+    ? new OpenAI({
+      apiKey: manual.apiKey,
+      baseURL: `${manual.endpoint.replace(/\/+$/, '')}/openai/deployments/${manual.deployment}`,
+      defaultQuery: { 'api-version': manual.apiVersion },
+      defaultHeaders: { 'api-key': manual.apiKey },
+      dangerouslyAllowBrowser: true,
+    })
+    : await (async () => {
+      const creds = await getAzureCredentialsBlock()
+      if (!creds) throw new Error('Azure credentials not available')
+      return new OpenAI({
+        apiKey: creds.accessToken,
+        baseURL: 'https://fuchs-lab-openai.openai.azure.com/openai/deployments/gpt-5',
+        defaultQuery: { 'api-version': '2024-12-01-preview' },
+        defaultHeaders: { Authorization: `Bearer ${creds.accessToken}` },
+        dangerouslyAllowBrowser: true,
+      })
+    })()
 
   const requestedModel = resolveRequestedModel('azure-gpt', model)
   const requestedAt = new Date().toISOString()
@@ -137,13 +170,149 @@ async function sendAzureDirectBlock(messages: ChatMessage[], model?: string): Pr
   }
 }
 
-async function sendCodexDirectBlock(messages: ChatMessage[], model?: string): Promise<ChatResponse> {
-  const creds = await getCodexCredentialsBlock()
-  if (!creds) throw new Error('Codex credentials not available')
+function parseCodexSseResponseBlock(raw: string, requestedModel: string): {
+  text: string
+  model: string
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+} {
+  let text = ''
+  let model = requestedModel
+  let usage: Record<string, unknown> | null = null
+  const lines = raw.split(/\r?\n/)
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data: ')) continue
+    const payload = trimmed.slice(6).trim()
+    if (!payload) continue
+    try {
+      const event = JSON.parse(payload) as Record<string, unknown>
+      const type = event.type
+      if (type === 'response.output_text.delta' && typeof event.delta === 'string') {
+        text += event.delta
+      } else if (type === 'response.output_text.done' && !text && typeof event.text === 'string') {
+        text = event.text
+      } else if (type === 'response.completed' && event.response && typeof event.response === 'object') {
+        const response = event.response as Record<string, unknown>
+        if (typeof response.model === 'string' && response.model.trim()) {
+          model = response.model.trim()
+        }
+        if (response.usage && typeof response.usage === 'object') {
+          usage = response.usage as Record<string, unknown>
+        }
+      }
+    } catch {
+      // Ignore malformed event lines.
+    }
+  }
 
-  const requestedModel = resolveRequestedModel('openai-codex', model)
+  const inputTokens = typeof usage?.input_tokens === 'number' ? usage.input_tokens : undefined
+  const outputTokens = typeof usage?.output_tokens === 'number' ? usage.output_tokens : undefined
+  const totalTokens = typeof usage?.total_tokens === 'number' ? usage.total_tokens : undefined
+  return { text, model, inputTokens, outputTokens, totalTokens }
+}
+
+async function sendCodexOauthDirectBlock(
+  messages: ChatMessage[],
+  accessToken: string,
+  accountId: string | undefined,
+  model: string,
+): Promise<ChatResponse> {
   const requestedAt = new Date().toISOString()
   const started = performance.now()
+  const payload = {
+    model,
+    instructions: 'You are a helpful assistant.',
+    input: messages.map((message) => ({
+      role: message.role,
+      content: [{
+        type: message.role === 'user' ? 'input_text' : 'output_text',
+        text: message.content,
+      }],
+    })),
+    store: false,
+    stream: true,
+  }
+  const response = await fetch('https://chatgpt.com/backend-api/codex/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+      ...(accountId ? { 'ChatGPT-Account-Id': accountId } : {}),
+    },
+    body: JSON.stringify(payload),
+  })
+  const raw = await response.text()
+  if (!response.ok) {
+    throw new Error(`Codex OAuth chat failed (HTTP ${response.status}): ${raw.slice(0, 300)}`)
+  }
+
+  const parsed = parseCodexSseResponseBlock(raw, model)
+  const respondedAt = new Date().toISOString()
+  const latencyMs = Math.round(performance.now() - started)
+  return {
+    role: 'assistant',
+    content: parsed.text,
+    provider: 'openai-codex',
+    model: parsed.model,
+    requested_at: requestedAt,
+    responded_at: respondedAt,
+    latency_ms: latencyMs,
+    input_tokens: parsed.inputTokens,
+    output_tokens: parsed.outputTokens,
+    total_tokens: parsed.totalTokens,
+  }
+}
+
+async function sendCodexDirectBlock(messages: ChatMessage[], model?: string): Promise<ChatResponse> {
+  const requestedModel = resolveRequestedModel('openai-codex', model)
+  const manualApiKey = getManualOpenAiApiKeyBlock()
+  const oauthCredentials = isElectron() ? null : getNativeCodexOauthCredentialsBlock()
+
+  if (manualApiKey) {
+    const requestedAt = new Date().toISOString()
+    const started = performance.now()
+    const { default: OpenAI } = await import('openai')
+    const client = new OpenAI({
+      apiKey: manualApiKey,
+      dangerouslyAllowBrowser: true,
+    })
+    const response = await client.chat.completions.create({
+      model: requestedModel,
+      messages: messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+    })
+    const text = response.choices[0]?.message?.content ?? ''
+    const respondedAt = new Date().toISOString()
+    const latencyMs = Math.round(performance.now() - started)
+    return {
+      role: 'assistant',
+      content: text,
+      provider: 'openai-codex',
+      model: response.model || requestedModel,
+      requested_at: requestedAt,
+      responded_at: respondedAt,
+      latency_ms: latencyMs,
+      input_tokens: response.usage?.prompt_tokens ?? undefined,
+      output_tokens: response.usage?.completion_tokens ?? undefined,
+      total_tokens: response.usage?.total_tokens ?? undefined,
+    }
+  }
+
+  if (oauthCredentials) {
+    return sendCodexOauthDirectBlock(
+      messages,
+      oauthCredentials.accessToken,
+      oauthCredentials.accountId,
+      requestedModel,
+    )
+  }
+
+  const requestedAt = new Date().toISOString()
+  const started = performance.now()
+  const creds = await getCodexCredentialsBlock()
+  if (!creds || !isElectron()) throw new Error('Codex credentials not available')
   const response = await window.electronAPI!.aiChatCodex(messages, creds.accessToken, creds.accountId, requestedModel)
 
   const text = response.text ?? ''
@@ -218,7 +387,7 @@ export async function sendChatBlock(
   options?: ChatSendOptions,
 ): Promise<ChatResponse> {
   if (provider === 'codex-cli') return sendCodexCliViaBackendBlock(messages, options)
-  if (isElectron()) {
+  if (isElectron() || isCapacitorNative()) {
     if (provider === 'claude') return sendClaudeDirectBlock(messages, options?.model)
     if (provider === 'openai-codex') return sendCodexDirectBlock(messages, options?.model)
     if (provider === 'azure-gpt') return sendAzureDirectBlock(messages, options?.model)
