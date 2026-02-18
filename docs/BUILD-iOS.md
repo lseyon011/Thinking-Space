@@ -51,13 +51,16 @@ After enabling iCloud, Xcode creates `App.entitlements` with:
 
 ### 3. Native Plugin Registration
 
-The `ICloudPlugin.swift` in `ios/App/App/Plugins/` is automatically detected by Capacitor. No manual bridge registration is needed.
+Folder selection is implemented by `FolderPickerPlugin` in `frontend/ios/App/App/AppDelegate.swift`.
+It is registered manually from `LTMBridgeViewController.capacitorDidLoad()`.
+
+`frontend/ios/App/App/Base.lproj/Main.storyboard` must use `LTMBridgeViewController` (module: `App`) as the bridge view controller class.
 
 ## Building for Simulator
 
 1. In Xcode, select an iPad or iPhone simulator from the device dropdown
 2. Press **Cmd+R** to build and run
-3. On first launch, the app will prompt for storage location (iCloud or Local)
+3. On first launch, the app will prompt for vault folder selection (local or iCloud Drive)
 
 ## Building for Device
 
@@ -84,7 +87,8 @@ The `ICloudPlugin.swift` in `ios/App/App/Plugins/` is automatically detected by 
 Run `npm run build:ios` again to rebuild and re-sync the web assets.
 
 ### Plugin not found
-After modifying Swift plugins, you may need to run:
+After modifying bridge/plugin Swift code, run:
 ```bash
-cd frontend/ios/App && pod install
+cd frontend
+npx cap sync ios
 ```

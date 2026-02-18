@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   buildCLIInvokePayload,
+  installLocalStorageShim,
   renderCapabilityHelp,
   renderRunnerHelp,
   resolveOutputFormat,
 } from '../scripts/agent/capabilityRunner'
 
 const ORIGINAL_VAULT_ROOT = process.env.LTM_VAULT_ROOT
+const ORIGINAL_LOCAL_STORAGE_DESCRIPTOR = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
 
 beforeEach(() => {
   process.env.LTM_VAULT_ROOT = '/tmp/ltm-runner-cli-test'
@@ -17,6 +19,11 @@ afterEach(() => {
     delete process.env.LTM_VAULT_ROOT
   } else {
     process.env.LTM_VAULT_ROOT = ORIGINAL_VAULT_ROOT
+  }
+  if (ORIGINAL_LOCAL_STORAGE_DESCRIPTOR) {
+    Object.defineProperty(globalThis, 'localStorage', ORIGINAL_LOCAL_STORAGE_DESCRIPTOR)
+  } else {
+    delete (globalThis as { localStorage?: unknown }).localStorage
   }
 })
 
@@ -111,5 +118,20 @@ describe('capabilityRunner CLI argument parsing', () => {
     )
     expect(resolved.format).toBe('text')
     expect(resolved.args).toEqual(['comment.add', '--uuid', 'abc-123', '--text', 'progress note'])
+  })
+
+  it('installs in-memory localStorage shim when runtime localStorage is unusable', () => {
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: { getItem: () => null },
+      configurable: true,
+      enumerable: true,
+      writable: true,
+    })
+
+    installLocalStorageShim()
+    expect(typeof globalThis.localStorage.getItem).toBe('function')
+    expect(typeof globalThis.localStorage.setItem).toBe('function')
+    expect(typeof globalThis.localStorage.removeItem).toBe('function')
+    expect(typeof globalThis.localStorage.clear).toBe('function')
   })
 })

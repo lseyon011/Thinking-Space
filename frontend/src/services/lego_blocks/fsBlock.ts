@@ -635,6 +635,7 @@ export async function pickAndInitBrowserVaultFS(): Promise<BrowserVaultFS> {
 // ── Platform detection + singleton ──
 
 let _instance: VaultFS | null = null
+const DEFAULT_CAPACITOR_VAULT_ROOT = 'LTM-Vault'
 
 export function getVaultFS(): VaultFS {
   if (_instance) return _instance
@@ -650,21 +651,11 @@ function createVaultFS(): VaultFS {
   }
   // Capacitor mobile
   if (isCapacitorNative()) {
-    const stored = getStoredVaultRoot() ?? ''
-    // cap-picker: prefix means a folder picked via native UIDocumentPickerViewController
-    // The path after the prefix is an absolute POSIX path (e.g. /private/var/mobile/...)
-    if (stored.startsWith('cap-picker:')) {
-      const absolutePath = stored.slice('cap-picker:'.length)
-      return new CapacitorVaultFS(absolutePath)
+    const { vaultRoot, normalizedStoredRoot } = normalizeCapacitorStoredVaultRoot(getStoredVaultRoot())
+    if (normalizedStoredRoot) {
+      setStoredVaultRoot(normalizedStoredRoot)
     }
-    // Relative path within Documents (e.g. "LTM-Vault")
-    // Reject stale absolute paths from older versions
-    let vaultRoot = stored
-    if (vaultRoot.startsWith('/')) {
-      vaultRoot = 'LTM-Vault'
-      setStoredVaultRoot(vaultRoot)
-    }
-    return new CapacitorVaultFS(vaultRoot || 'LTM-Vault')
+    return new CapacitorVaultFS(vaultRoot)
   }
   // Web fallback
   return new WebVaultFS()
@@ -715,4 +706,32 @@ export async function selectAndSetVaultRoot(): Promise<string | null> {
     setVaultRoot(selected)
   }
   return selected
+}
+
+export function normalizeCapacitorStoredVaultRoot(storedRoot: string | null): {
+  vaultRoot: string
+  normalizedStoredRoot: string | null
+} {
+  const stored = storedRoot ?? ''
+  // cap-picker: prefix means a folder picked via native UIDocumentPickerViewController
+  // The path after the prefix is an absolute POSIX path (e.g. /private/var/mobile/...)
+  if (stored.startsWith('cap-picker:')) {
+    return {
+      vaultRoot: stored.slice('cap-picker:'.length),
+      normalizedStoredRoot: null,
+    }
+  }
+  // Relative path within Documents (e.g. "LTM-Vault")
+  // Reject stale absolute paths from older versions
+  if (stored.startsWith('/')) {
+    return {
+      vaultRoot: DEFAULT_CAPACITOR_VAULT_ROOT,
+      normalizedStoredRoot: DEFAULT_CAPACITOR_VAULT_ROOT,
+    }
+  }
+  const resolved = stored || DEFAULT_CAPACITOR_VAULT_ROOT
+  return {
+    vaultRoot: resolved,
+    normalizedStoredRoot: null,
+  }
 }

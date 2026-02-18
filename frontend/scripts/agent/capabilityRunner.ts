@@ -51,6 +51,15 @@ class InMemoryLocalStorage {
   }
 }
 
+function isUsableLocalStorage(value: unknown): value is Pick<Storage, 'getItem' | 'setItem' | 'removeItem' | 'clear'> {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  return typeof candidate.getItem === 'function'
+    && typeof candidate.setItem === 'function'
+    && typeof candidate.removeItem === 'function'
+    && typeof candidate.clear === 'function'
+}
+
 export class NodeVaultFS implements VaultFS {
   private readonly vaultRoot: string
 
@@ -732,8 +741,8 @@ function ensureRunnerEnvironment(): void {
   applyRunnerFeatureFlagsFromEnv()
 }
 
-function installLocalStorageShim(): void {
-  if (typeof globalThis.localStorage !== 'undefined') return
+export function installLocalStorageShim(): void {
+  if (isUsableLocalStorage((globalThis as Record<string, unknown>).localStorage)) return
   Object.defineProperty(globalThis, 'localStorage', {
     value: new InMemoryLocalStorage(),
     configurable: true,

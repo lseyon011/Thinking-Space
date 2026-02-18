@@ -32,10 +32,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 class LTMBridgeViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
-        print("[LTM] capacitorDidLoad called, bridge = \(String(describing: bridge))")
         let plugin = FolderPickerPlugin()
         bridge?.registerPluginInstance(plugin)
-        print("[LTM] FolderPickerPlugin registered, jsName = \(plugin.jsName)")
     }
 }
 
