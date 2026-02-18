@@ -68,6 +68,12 @@ export default function Home() {
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
+            <Button asChild variant="secondary" className="h-11 px-5">
+              <Link to="/mindmap-builder">
+                Mindmap Builder
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
           </div>
         </div>
 

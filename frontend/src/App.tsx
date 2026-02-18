@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import Home from './pages/Home'
 import FormatExcalidraw from './pages/FormatExcalidraw'
 import ExcalidrawPlugin from './pages/ExcalidrawPlugin'
+import MindmapBuilder from './pages/MindmapBuilder'
 import PdfToMarkdown from './pages/PdfToMarkdown'
 import GitInsights from './pages/GitInsights'
 import TranscriptCleaner from './pages/TranscriptCleaner'
@@ -141,6 +142,7 @@ function App() {
                   aria-expanded={showTools}
                   className={`transition-colors hover:text-foreground ${
                     isActive('/format-excalidraw') ||
+                    isActive('/mindmap-builder') ||
                     isActive('/excalidraw-plugin') ||
                     isActive('/pdf-to-markdown') ||
                     isActive('/transcript-cleaner')
@@ -188,6 +190,16 @@ function App() {
                   </div>
                 </Link>
                 <Link
+                  to="/mindmap-builder"
+                  onClick={() => setShowTools(false)}
+                  className="rounded-2xl border border-border/60 bg-card px-5 py-4 text-lg font-semibold tracking-tight transition-colors hover:bg-accent"
+                >
+                  Mindmap Builder
+                  <div className="mt-1 text-sm font-normal text-muted-foreground">
+                    Full-text markdown to Excalidraw
+                  </div>
+                </Link>
+                <Link
                   to="/pdf-to-markdown"
                   onClick={() => setShowTools(false)}
                   className="rounded-2xl border border-border/60 bg-card px-5 py-4 text-lg font-semibold tracking-tight transition-colors hover:bg-accent"
@@ -228,6 +240,7 @@ function App() {
           <Route path="/file-organizer" element={<ThinkingOrganizer />} />
           <Route path="/excalidraw-plugin" element={<ExcalidrawPlugin />} />
           <Route path="/format-excalidraw" element={<FormatExcalidraw />} />
+          <Route path="/mindmap-builder" element={<MindmapBuilder />} />
           <Route path="/git-insights" element={<GitInsights />} />
           <Route path="/pdf-to-markdown" element={<PdfToMarkdown />} />
           <Route path="/transcript-cleaner" element={<TranscriptCleaner />} />
