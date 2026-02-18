@@ -7,6 +7,10 @@ const config: CapacitorConfig = {
   server: {
     cleartext: true,
   },
+  ios: {
+    scheme: 'Long Term Memory',
+    contentInset: 'always',
+  },
 };
 
 // @capacitor-community/electron reads this but the base type doesn't include it

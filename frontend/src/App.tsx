@@ -25,11 +25,29 @@ function App() {
   const isActive = (path: string) => location.pathname === path
   const [showTools, setShowTools] = useState(false)
   const [needsVaultSetup, setNeedsVaultSetup] = useState(() => {
-    // Electron and Capacitor need a vault root selected
-    if (isElectron() || isCapacitorNative()) return !getStoredVaultRoot()
-    // Web: check if we have a stored vault root (either 'browser-fs' or 'web-backend')
-    return !getStoredVaultRoot()
+    const stored = getStoredVaultRoot()
+    if (!stored) return true
+    // On Capacitor, reject stale absolute paths from older versions
+    if (isCapacitorNative() && stored.startsWith('/')) return true
+    return false
   })
+  // On mount, restore security-scoped bookmark for picker-selected Capacitor vaults
+  useEffect(() => {
+    if (needsVaultSetup || !isCapacitorNative()) return
+    const stored = getStoredVaultRoot()
+    if (!stored?.startsWith('cap-picker:')) return
+
+    import('@capacitor/core').then(({ registerPlugin }) => {
+      const FolderPicker = registerPlugin<{
+        restoreBookmark(): Promise<{ url: string; accessing: boolean }>
+      }>('FolderPicker')
+      FolderPicker.restoreBookmark().catch((err: unknown) => {
+        console.warn('[App] Failed to restore bookmark, re-prompting vault setup:', err)
+        setNeedsVaultSetup(true)
+      })
+    })
+  }, [needsVaultSetup])
+
   // On mount, try to restore a persisted BrowserVaultFS handle
   useEffect(() => {
     if (needsVaultSetup || isElectron() || isCapacitorNative()) return

@@ -89,8 +89,12 @@ if (electronIsDev) {
   setupContentSecurityPolicy(myCapacitorApp.getCustomURLScheme());
   // Initialize our app, build windows, and load content.
   await myCapacitorApp.init();
-  // Check for updates if we are in a packaged app.
-  autoUpdater.checkForUpdatesAndNotify();
+  // Check for updates if we are in a packaged app (skip in dev or if no valid publish config).
+  if (!electronIsDev) {
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {
+      // Silently ignore update check failures (e.g. no releases published yet)
+    });
+  }
 })();
 
 // Handle when all of our windows are close (platforms have their own expectations).

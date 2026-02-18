@@ -3,13 +3,14 @@ import ReactDOM from 'react-dom/client'
 import { HashRouter, BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { MarkdownViewerProvider } from './components/orchestrators/MarkdownViewerOrch'
-import { isElectron } from './services/orchestrators/runtimeOrch'
+import { isElectron, isCapacitorNative } from './services/orchestrators/runtimeOrch'
 import './index.css'
 
-// Electron uses HashRouter (no server to handle routes).
+// Electron and Capacitor use HashRouter (no server to handle routes).
 // Web uses BrowserRouter with the /ltm-pilot prefix.
-const Router = isElectron() ? HashRouter : BrowserRouter
-const routerProps = isElectron() ? {} : { basename: '/ltm-pilot' }
+const isLocalApp = isElectron() || isCapacitorNative()
+const Router = isLocalApp ? HashRouter : BrowserRouter
+const routerProps = isLocalApp ? {} : { basename: '/ltm-pilot' }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

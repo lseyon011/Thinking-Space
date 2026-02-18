@@ -297,35 +297,48 @@ class ElectronVaultFS implements VaultFS {
 }
 
 // ── CapacitorVaultFS (reads local device filesystem) ──
+// Two modes:
+//   1. Relative mode: vaultRoot is relative (e.g. "LTM-Vault"), uses Directory.Documents
+//   2. Absolute mode: vaultRoot starts with "/", converted to file:// URI, no directory param
+// The absolute mode is used when the user picks a folder via UIDocumentPickerViewController
+// (including iCloud Drive folders).
 
 class CapacitorVaultFS implements VaultFS {
   private vaultRoot: string
+  private isAbsolute: boolean
 
   constructor(vaultRoot: string) {
+    this.isAbsolute = vaultRoot.startsWith('/')
     this.vaultRoot = vaultRoot
   }
 
   private resolve(path: string): string {
-    return `${this.vaultRoot}/${path}`
+    const base = path ? `${this.vaultRoot}/${path}` : this.vaultRoot
+    // Capacitor Filesystem needs file:// URIs for absolute paths.
+    // Don't pre-encode — the native Filesystem plugin handles encoding internally.
+    if (this.isAbsolute) return `file://${base}`
+    return base
+  }
+
+  private async fsOpts(path: string) {
+    if (this.isAbsolute) {
+      return { path: this.resolve(path) }
+    }
+    const { Directory } = await import('@capacitor/filesystem')
+    return { path: this.resolve(path), directory: Directory.Documents }
   }
 
   async read(path: string): Promise<string> {
     const { Filesystem, Encoding } = await import('@capacitor/filesystem')
-    const result = await Filesystem.readFile({
-      path: this.resolve(path),
-      encoding: Encoding.UTF8,
-    })
+    const opts = await this.fsOpts(path)
+    const result = await Filesystem.readFile({ ...opts, encoding: Encoding.UTF8 })
     return result.data as string
   }
 
   async write(path: string, data: string): Promise<void> {
     const { Filesystem, Encoding } = await import('@capacitor/filesystem')
-    await Filesystem.writeFile({
-      path: this.resolve(path),
-      data,
-      encoding: Encoding.UTF8,
-      recursive: true,
-    })
+    const opts = await this.fsOpts(path)
+    await Filesystem.writeFile({ ...opts, data, encoding: Encoding.UTF8, recursive: true })
     notifyFileChanged(path)
   }
 
@@ -336,7 +349,8 @@ class CapacitorVaultFS implements VaultFS {
 
   async list(path: string): Promise<ListedFiles> {
     const { Filesystem } = await import('@capacitor/filesystem')
-    const result = await Filesystem.readdir({ path: this.resolve(path) })
+    const opts = await this.fsOpts(path)
+    const result = await Filesystem.readdir(opts)
     const files: string[] = []
     const folders: string[] = []
     for (const f of result.files) {
@@ -351,37 +365,59 @@ class CapacitorVaultFS implements VaultFS {
     const extSet = new Set(extensions)
     const entries: VaultEntry[] = []
 
-    const walk = async (dir: string, relPrefix: string) => {
+    // walkByUri: use native-provided URIs from readdir results to avoid
+    // encoding issues with special characters (?, #, %) in filenames.
+    const walk = async (dirPath: string, dirUri: string | null, relPrefix: string) => {
       const { Filesystem } = await import('@capacitor/filesystem')
-      const result = await Filesystem.readdir({ path: dir })
+      // Use the native URI when available (properly encoded); fall back to constructing our own
+      const opts = dirUri
+        ? { path: dirUri }
+        : this.isAbsolute
+          ? { path: `file://${dirPath}` }
+          : { path: dirPath, directory: (await import('@capacitor/filesystem')).Directory.Documents }
+      const result = await Filesystem.readdir(opts)
       for (const item of result.files) {
         if (item.name.startsWith('.') || EXCLUDED_DIRS.has(item.name)) continue
-        const fullPath = `${dir}/${item.name}`
         const relPath = relPrefix ? `${relPrefix}/${item.name}` : item.name
+        // readdir returns a `uri` for each item that's already properly encoded
+        const itemUri: string | undefined = (item as any).uri
 
         if (item.type === 'directory') {
-          await walk(fullPath, relPath)
+          const childDir = `${dirPath}/${item.name}`
+          await walk(childDir, itemUri ?? null, relPath)
         } else {
           const ext = '.' + item.name.split('.').pop()?.toLowerCase()
           if (!extSet.has(ext || '')) continue
-          const st = await Filesystem.stat({ path: fullPath })
-          entries.push({
-            path: relPath,
-            size: st.size,
-            mtime: (st.mtime || 0) / 1000,
-            ctime: (st.ctime || st.mtime || 0) / 1000,
-          })
+          // Use the native URI for stat to avoid encoding issues
+          const stOpts = itemUri
+            ? { path: itemUri }
+            : this.isAbsolute
+              ? { path: `file://${dirPath}/${item.name}` }
+              : { path: `${dirPath}/${item.name}`, directory: (await import('@capacitor/filesystem')).Directory.Documents }
+          try {
+            const st = await Filesystem.stat(stOpts)
+            entries.push({
+              path: relPath,
+              size: st.size,
+              mtime: (st.mtime || 0) / 1000,
+              ctime: (st.ctime || st.mtime || 0) / 1000,
+            })
+          } catch (err) {
+            // Skip files that can't be stat'd (e.g. iCloud placeholders not yet downloaded)
+            console.warn(`[CapacitorVaultFS] Skipping file that failed stat: ${relPath}`, err)
+          }
         }
       }
     }
 
-    await walk(this.vaultRoot, '')
+    await walk(this.vaultRoot, null, '')
     return entries
   }
 
   async stat(path: string): Promise<VaultStat> {
     const { Filesystem } = await import('@capacitor/filesystem')
-    const st = await Filesystem.stat({ path: this.resolve(path) })
+    const opts = await this.fsOpts(path)
+    const st = await Filesystem.stat(opts)
     return {
       size: st.size,
       mtime: (st.mtime || 0) / 1000,
@@ -400,10 +436,8 @@ class CapacitorVaultFS implements VaultFS {
 
   async mkdir(path: string): Promise<void> {
     const { Filesystem } = await import('@capacitor/filesystem')
-    await Filesystem.mkdir({
-      path: this.resolve(path),
-      recursive: true,
-    })
+    const opts = await this.fsOpts(path)
+    await Filesystem.mkdir({ ...opts, recursive: true })
   }
 
   async process(path: string, fn: (data: string) => string): Promise<void> {
@@ -616,8 +650,21 @@ function createVaultFS(): VaultFS {
   }
   // Capacitor mobile
   if (isCapacitorNative()) {
-    const vaultRoot = getStoredVaultRoot() ?? ''
-    return new CapacitorVaultFS(vaultRoot)
+    const stored = getStoredVaultRoot() ?? ''
+    // cap-picker: prefix means a folder picked via native UIDocumentPickerViewController
+    // The path after the prefix is an absolute POSIX path (e.g. /private/var/mobile/...)
+    if (stored.startsWith('cap-picker:')) {
+      const absolutePath = stored.slice('cap-picker:'.length)
+      return new CapacitorVaultFS(absolutePath)
+    }
+    // Relative path within Documents (e.g. "LTM-Vault")
+    // Reject stale absolute paths from older versions
+    let vaultRoot = stored
+    if (vaultRoot.startsWith('/')) {
+      vaultRoot = 'LTM-Vault'
+      setStoredVaultRoot(vaultRoot)
+    }
+    return new CapacitorVaultFS(vaultRoot || 'LTM-Vault')
   }
   // Web fallback
   return new WebVaultFS()

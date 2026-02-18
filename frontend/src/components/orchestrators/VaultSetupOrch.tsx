@@ -10,6 +10,15 @@ import {
   setVaultFSInstance,
   setVaultRoot,
 } from '@/services/lego_blocks/fsBlock'
+import { registerPlugin } from '@capacitor/core'
+
+// Native folder picker plugin (defined in AppDelegate.swift)
+interface FolderPickerPluginDef {
+  pickFolder(): Promise<{ url: string; accessing: boolean }>
+  restoreBookmark(): Promise<{ url: string; accessing: boolean }>
+}
+
+const FolderPicker = registerPlugin<FolderPickerPluginDef>('FolderPicker')
 
 interface Props {
   onComplete: (vaultRoot: string) => void
@@ -19,12 +28,14 @@ export default function VaultSetup({ onComplete }: Props) {
   const [selecting, setSelecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isNativeApp = isElectron() || isCapacitorNative()
+  const isElectronApp = isElectron()
+  const isCapacitor = isCapacitorNative()
+  const isNativeApp = isElectronApp || isCapacitor
   const hasBrowserFS = !isNativeApp && isBrowserFSAvailable()
   const hasBackendOption = !isNativeApp
 
-  // Electron / Capacitor: use native folder picker
-  const handleNativeSelect = async () => {
+  // Electron: use native folder picker via IPC
+  const handleElectronSelect = async () => {
     setSelecting(true)
     setError(null)
     try {
@@ -39,6 +50,27 @@ export default function VaultSetup({ onComplete }: Props) {
     }
   }
 
+  // Capacitor (iOS): open native folder picker showing local + iCloud
+  const handleCapacitorSelect = async () => {
+    setSelecting(true)
+    setError(null)
+    try {
+      const result = await FolderPicker.pickFolder()
+      // Store the absolute path — CapacitorVaultFS will use it directly
+      // Prefix with cap-picker: so we know it's a picker-selected absolute path
+      const vaultMarker = `cap-picker:${result.url}`
+      setVaultRoot(vaultMarker)
+      onComplete(vaultMarker)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!msg.includes('cancel')) {
+        setError(msg)
+      }
+    } finally {
+      setSelecting(false)
+    }
+  }
+
   // Browser: use File System Access API
   const handleBrowserFolderPick = async () => {
     setSelecting(true)
@@ -46,11 +78,11 @@ export default function VaultSetup({ onComplete }: Props) {
     try {
       const browserFS = await pickAndInitBrowserVaultFS()
       setVaultFSInstance(browserFS)
-      setVaultRoot('browser-fs') // marker value for localStorage
+      setVaultRoot('browser-fs')
       onComplete('browser-fs')
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        // User cancelled the picker
+        // User cancelled
       } else {
         setError(err instanceof Error ? err.message : 'Failed to open folder')
       }
@@ -59,12 +91,13 @@ export default function VaultSetup({ onComplete }: Props) {
     }
   }
 
-  // Web: connect to FastAPI backend (existing WebVaultFS)
+  // Web: connect to FastAPI backend
   const handleBackendConnect = () => {
-    // WebVaultFS is the default — just set a vault root and proceed
     setVaultRoot('web-backend')
     onComplete('web-backend')
   }
+
+  const handleNativeSelect = isElectronApp ? handleElectronSelect : handleCapacitorSelect
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-background">
@@ -75,12 +108,11 @@ export default function VaultSetup({ onComplete }: Props) {
         <h1 className="text-2xl font-semibold tracking-tight">Welcome to Long Term Memory</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {isNativeApp
-            ? 'Select your Obsidian vault folder to get started. LTM will read and write files directly in your vault.'
+            ? 'Select your vault folder to get started. You can pick a local folder or one in iCloud Drive.'
             : 'Choose how to connect to your vault.'}
         </p>
 
         <div className="mt-6 flex flex-col gap-3">
-          {/* Native app: single button */}
           {isNativeApp && (
             <Button size="lg" onClick={handleNativeSelect} disabled={selecting}>
               {selecting ? 'Selecting...' : (
@@ -92,7 +124,6 @@ export default function VaultSetup({ onComplete }: Props) {
             </Button>
           )}
 
-          {/* Browser: File System Access API option */}
           {hasBrowserFS && (
             <Button size="lg" onClick={handleBrowserFolderPick} disabled={selecting}>
               {selecting ? 'Opening...' : (
@@ -104,7 +135,6 @@ export default function VaultSetup({ onComplete }: Props) {
             </Button>
           )}
 
-          {/* Web: backend connection option */}
           {hasBackendOption && (
             <Button
               size="lg"
