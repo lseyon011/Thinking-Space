@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { Switch } from '@/components/lego_blocks/ui/switch'
@@ -13,14 +13,15 @@ import {
 import {
   invokeCapabilityViaElectronAdapterOrch,
   invokeCapabilityOrch,
+  listCapabilitiesViaElectronAdapterOrch,
   listCapabilitiesOrch,
 } from '@/services/orchestrators/capabilityRouterOrch'
 
 export default function CapabilityDiscoveryOrch() {
   const isElectronRuntime = !!window.electronAPI?.isElectron
-  const capabilities = useMemo(() => listCapabilitiesOrch(), [])
+  const [capabilities, setCapabilities] = useState(() => listCapabilitiesOrch())
   const [flags, setFlags] = useState(getCapabilityFeatureFlags())
-  const [capability, setCapability] = useState<CapabilityName>(capabilities[0]?.name ?? 'organizer.nodes.list_roots')
+  const [capability, setCapability] = useState<CapabilityName>(() => listCapabilitiesOrch()[0]?.name ?? 'organizer.nodes.list_roots')
   const [inputJson, setInputJson] = useState('{}')
   const [actorKind, setActorKind] = useState<CapabilityActor['kind']>('human')
   const [actorId, setActorId] = useState('ui.capability-discovery')
@@ -33,6 +34,29 @@ export default function CapabilityDiscoveryOrch() {
   const [loadingElectron, setLoadingElectron] = useState(false)
   const [loadingRemote, setLoadingRemote] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!isElectronRuntime) return
+
+    let cancelled = false
+    void listCapabilitiesViaElectronAdapterOrch()
+      .then((response) => {
+        if (cancelled || !response.ok || !response.capabilities || response.capabilities.length === 0) return
+        setCapabilities(response.capabilities)
+        setCapability((current) => (
+          response.capabilities!.some(entry => entry.name === current)
+            ? current
+            : response.capabilities![0].name
+        ))
+      })
+      .catch((err: unknown) => {
+        console.warn('[CapabilityDiscoveryOrch] Failed to load Electron capability list, using local registry:', err)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isElectronRuntime])
 
   async function invokeLocal(): Promise<void> {
     setLoadingLocal(true)

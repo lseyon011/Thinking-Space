@@ -35,7 +35,7 @@ interface ElectronAPI {
   isElectron: true
   capabilitiesList(): Promise<{
     ok: boolean
-    capabilities?: Array<{ name: string }>
+    capabilities?: Array<{ name: string; description: string; readOnly: boolean }>
   }>
   capabilitiesInvoke(payload: {
     vaultRoot: string

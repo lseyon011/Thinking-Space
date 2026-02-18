@@ -182,6 +182,38 @@ describe('capabilityRouterOrch', () => {
     expect(names).toContain('organizer.node.update')
   })
 
+  it('lists capabilities via Electron adapter IPC payload', async () => {
+    installWindowAndStorageShims()
+
+    const expected = {
+      ok: true,
+      capabilities: [
+        {
+          name: 'organizer.nodes.list_roots',
+          description: 'List root nodes in the organizer hierarchy, optionally filtered by type.',
+          readOnly: true,
+        },
+      ],
+    }
+    const listMock = vi.fn().mockResolvedValue(expected)
+    const win = (globalThis as typeof globalThis & {
+      window: {
+        electronAPI?: {
+          isElectron: true
+          capabilitiesList: typeof listMock
+        }
+      }
+    }).window
+    win.electronAPI = {
+      isElectron: true,
+      capabilitiesList: listMock,
+    }
+
+    const response = await capabilityOrch!.listCapabilitiesViaElectronAdapterOrch()
+    expect(listMock).toHaveBeenCalledWith()
+    expect(response).toEqual(expected)
+  })
+
   it('invokes capability via Electron adapter IPC payload', async () => {
     installWindowAndStorageShims()
     const { setStoredVaultRoot } = await import('@/services/lego_blocks/storageKeyBlock')

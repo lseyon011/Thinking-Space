@@ -1,5 +1,6 @@
 import {
   CAPABILITY_REGISTRY,
+  type CapabilityDefinition,
   getCapabilityDefinition,
   type CapabilityActor,
   type CapabilityInputMap,
@@ -107,6 +108,22 @@ const WRITE_CAPABILITIES = new Set<CapabilityName>([
 
 export function listCapabilitiesOrch() {
   return CAPABILITY_REGISTRY
+}
+
+export interface CapabilityListAdapterResponse {
+  ok: boolean
+  capabilities?: CapabilityDefinition[]
+}
+
+export async function listCapabilitiesViaElectronAdapterOrch(): Promise<CapabilityListAdapterResponse> {
+  if (!window.electronAPI?.isElectron) {
+    throw new Error('Electron capability adapter is only available in Electron runtime.')
+  }
+  if (!window.electronAPI.capabilitiesList) {
+    throw new Error('Electron capability adapter IPC is unavailable in preload.')
+  }
+  const response = await window.electronAPI.capabilitiesList()
+  return response as CapabilityListAdapterResponse
 }
 
 export async function invokeCapabilityViaElectronAdapterOrch<Name extends CapabilityName>(
