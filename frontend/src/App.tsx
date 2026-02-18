@@ -18,15 +18,37 @@ import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { smartSync } from './services/orchestrators/vaultSyncOrch'
 import { getStoredVaultRoot } from './services/orchestrators/storageOrch'
+import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from './services/lego_blocks/fsBlock'
 
 function App() {
   const location = useLocation()
   const isActive = (path: string) => location.pathname === path
   const [showTools, setShowTools] = useState(false)
   const [needsVaultSetup, setNeedsVaultSetup] = useState(() => {
-    if (!isElectron()) return false
+    // Electron and Capacitor need a vault root selected
+    if (isElectron() || isCapacitorNative()) return !getStoredVaultRoot()
+    // Web: check if we have a stored vault root (either 'browser-fs' or 'web-backend')
     return !getStoredVaultRoot()
   })
+  // On mount, try to restore a persisted BrowserVaultFS handle
+  useEffect(() => {
+    if (needsVaultSetup || isElectron() || isCapacitorNative()) return
+    const storedRoot = getStoredVaultRoot()
+    if (storedRoot !== 'browser-fs') return
+
+    initBrowserVaultFS()
+      .then((fs) => {
+        if (fs) {
+          setVaultFSInstance(fs)
+        } else {
+          // Permission denied or handle lost — re-prompt
+          setNeedsVaultSetup(true)
+        }
+      })
+      .catch(() => {
+        setNeedsVaultSetup(true)
+      })
+  }, [])
 
   useEffect(() => {
     setShowTools(false)

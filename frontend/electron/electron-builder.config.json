@@ -1,5 +1,6 @@
 {
-  "appId": "com.yourdoamnin.yourapp",
+  "appId": "com.anurag.ltm",
+  "productName": "Long Term Memory",
   "directories": {
     "buildResources": "resources"
   },
@@ -22,7 +23,12 @@
     "icon": "assets/appIcon.ico"
   },
   "mac": {
-    "category": "your.app.category.type",
+    "category": "public.app-category.productivity",
     "target": "dmg"
+  },
+  "linux": {
+    "target": "AppImage",
+    "icon": "assets/appIcon.png",
+    "category": "Office"
   }
 }

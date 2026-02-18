@@ -6,6 +6,7 @@
 import { Capacitor } from '@capacitor/core'
 import { EXCLUDED_DIRS } from './vaultConstantsBlock'
 import { getStoredVaultRoot, setStoredVaultRoot } from './storageKeyBlock'
+import { notifyFileChanged } from './crossWindowSyncBlock'
 
 // ── Types ──
 
@@ -170,6 +171,7 @@ class WebVaultFS implements VaultFS {
       body: JSON.stringify({ path, content: data }),
     })
     if (!res.ok) throw new Error(`Failed to write file: ${path}`)
+    notifyFileChanged(path)
   }
 
   async create(path: string, data: string): Promise<void> {
@@ -259,7 +261,8 @@ class ElectronVaultFS implements VaultFS {
   }
 
   async write(path: string, data: string): Promise<void> {
-    return this.api.write(this.vaultRoot, path, data)
+    await this.api.write(this.vaultRoot, path, data)
+    notifyFileChanged(path)
   }
 
   async create(path: string, data: string): Promise<void> {
@@ -323,6 +326,7 @@ class CapacitorVaultFS implements VaultFS {
       encoding: Encoding.UTF8,
       recursive: true,
     })
+    notifyFileChanged(path)
   }
 
   async create(path: string, data: string): Promise<void> {
@@ -408,6 +412,192 @@ class CapacitorVaultFS implements VaultFS {
   }
 }
 
+// ── BrowserVaultFS (File System Access API — serverless web) ──
+
+// Store the directory handle in IndexedDB for persistence across sessions.
+const FS_HANDLE_DB = 'ltm-fs-handles'
+const FS_HANDLE_STORE = 'handles'
+const FS_HANDLE_KEY = 'vault-root'
+
+async function persistDirectoryHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(FS_HANDLE_DB, 1)
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(FS_HANDLE_STORE)
+    }
+    req.onsuccess = () => {
+      const tx = req.result.transaction(FS_HANDLE_STORE, 'readwrite')
+      tx.objectStore(FS_HANDLE_STORE).put(handle, FS_HANDLE_KEY)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    }
+    req.onerror = () => reject(req.error)
+  })
+}
+
+export async function getPersistedDirectoryHandle(): Promise<FileSystemDirectoryHandle | null> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(FS_HANDLE_DB, 1)
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(FS_HANDLE_STORE)
+    }
+    req.onsuccess = () => {
+      const tx = req.result.transaction(FS_HANDLE_STORE, 'readonly')
+      const get = tx.objectStore(FS_HANDLE_STORE).get(FS_HANDLE_KEY)
+      get.onsuccess = () => resolve(get.result ?? null)
+      get.onerror = () => reject(get.error)
+    }
+    req.onerror = () => reject(req.error)
+  })
+}
+
+export class BrowserVaultFS implements VaultFS {
+  private root: FileSystemDirectoryHandle
+
+  constructor(root: FileSystemDirectoryHandle) {
+    this.root = root
+  }
+
+  private async resolveFile(filePath: string, create = false): Promise<FileSystemFileHandle> {
+    const parts = filePath.split('/').filter(Boolean)
+    const fileName = parts.pop()!
+    let dir = this.root
+    for (const segment of parts) {
+      dir = await dir.getDirectoryHandle(segment, { create })
+    }
+    return dir.getFileHandle(fileName, { create })
+  }
+
+  private async resolveDir(dirPath: string, create = false): Promise<FileSystemDirectoryHandle> {
+    const parts = dirPath.split('/').filter(Boolean)
+    let dir = this.root
+    for (const segment of parts) {
+      dir = await dir.getDirectoryHandle(segment, { create })
+    }
+    return dir
+  }
+
+  async read(filePath: string): Promise<string> {
+    const handle = await this.resolveFile(filePath)
+    const file = await handle.getFile()
+    return file.text()
+  }
+
+  async write(filePath: string, data: string): Promise<void> {
+    const handle = await this.resolveFile(filePath, true)
+    const writable = await handle.createWritable()
+    await writable.write(data)
+    await writable.close()
+    notifyFileChanged(filePath)
+  }
+
+  async create(filePath: string, data: string): Promise<void> {
+    if (await this.exists(filePath)) throw new Error(`File already exists: ${filePath}`)
+    await this.write(filePath, data)
+  }
+
+  async list(dirPath: string): Promise<ListedFiles> {
+    const dir = await this.resolveDir(dirPath)
+    const files: string[] = []
+    const folders: string[] = []
+    for await (const [name, handle] of (dir as any).entries()) {
+      if (name.startsWith('.')) continue
+      if (handle.kind === 'directory') folders.push(name)
+      else files.push(name)
+    }
+    return { files, folders }
+  }
+
+  async walkVault(extensions: string[] = ['.md']): Promise<VaultEntry[]> {
+    const extSet = new Set(extensions)
+    const entries: VaultEntry[] = []
+
+    const walk = async (dir: FileSystemDirectoryHandle, prefix: string) => {
+      for await (const [name, handle] of (dir as any).entries()) {
+        if (name.startsWith('.') || EXCLUDED_DIRS.has(name)) continue
+        const relPath = prefix ? `${prefix}/${name}` : name
+
+        if (handle.kind === 'directory') {
+          await walk(handle as FileSystemDirectoryHandle, relPath)
+        } else {
+          const ext = '.' + name.split('.').pop()?.toLowerCase()
+          if (!extSet.has(ext || '')) continue
+          const file = await (handle as FileSystemFileHandle).getFile()
+          entries.push({
+            path: relPath,
+            size: file.size,
+            mtime: file.lastModified / 1000,
+            ctime: file.lastModified / 1000, // File System Access API doesn't expose ctime
+          })
+        }
+      }
+    }
+
+    await walk(this.root, '')
+    return entries
+  }
+
+  async stat(filePath: string): Promise<VaultStat> {
+    // Try as file first, then as directory
+    try {
+      const handle = await this.resolveFile(filePath)
+      const file = await handle.getFile()
+      return {
+        size: file.size,
+        mtime: file.lastModified / 1000,
+        ctime: file.lastModified / 1000,
+        isDirectory: false,
+      }
+    } catch {
+      // Try as directory
+      await this.resolveDir(filePath)
+      return { size: 0, mtime: 0, ctime: 0, isDirectory: true }
+    }
+  }
+
+  async exists(filePath: string): Promise<boolean> {
+    try {
+      await this.stat(filePath)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async mkdir(dirPath: string): Promise<void> {
+    await this.resolveDir(dirPath, true)
+  }
+
+  async process(filePath: string, fn: (data: string) => string): Promise<void> {
+    const content = await this.read(filePath)
+    await this.write(filePath, fn(content))
+  }
+}
+
+export function isBrowserFSAvailable(): boolean {
+  return typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function'
+}
+
+export async function initBrowserVaultFS(): Promise<BrowserVaultFS | null> {
+  if (!isBrowserFSAvailable()) return null
+
+  // Try to restore a persisted handle
+  const handle = await getPersistedDirectoryHandle()
+  if (!handle) return null
+
+  // Request permission — if denied, the user will need to re-pick
+  const perm = await (handle as any).requestPermission({ mode: 'readwrite' })
+  if (perm !== 'granted') return null
+
+  return new BrowserVaultFS(handle)
+}
+
+export async function pickAndInitBrowserVaultFS(): Promise<BrowserVaultFS> {
+  const handle = await window.showDirectoryPicker({ mode: 'readwrite' })
+  await persistDirectoryHandle(handle)
+  return new BrowserVaultFS(handle)
+}
+
 // ── Platform detection + singleton ──
 
 let _instance: VaultFS | null = null
@@ -447,6 +637,22 @@ export function isCapacitorNative(): boolean {
 
 export function isDesktop(): boolean {
   return isElectron()
+}
+
+export function getPlatformName(): 'electron' | 'ios' | 'android' | 'web' {
+  if (isElectron()) return 'electron'
+  if (isCapacitorNative()) {
+    try {
+      const platform = Capacitor.getPlatform()
+      if (platform === 'ios') return 'ios'
+      if (platform === 'android') return 'android'
+    } catch { /* fallthrough */ }
+  }
+  return 'web'
+}
+
+export function setVaultFSInstance(fs: VaultFS): void {
+  _instance = fs
 }
 
 export function setVaultRoot(path: string): void {

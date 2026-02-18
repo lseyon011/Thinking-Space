@@ -47,6 +47,18 @@ unhandled();
 const trayMenuTemplate: (MenuItemConstructorOptions | MenuItem)[] = [new MenuItem({ label: 'Quit App', role: 'quit' })];
 const appMenuBarMenuTemplate: (MenuItemConstructorOptions | MenuItem)[] = [
   { role: process.platform === 'darwin' ? 'appMenu' : 'fileMenu' },
+  {
+    label: 'File',
+    submenu: [
+      {
+        label: 'New Window',
+        accelerator: 'CmdOrCtrl+Shift+N',
+        click: () => { myCapacitorApp.createWindow(); },
+      },
+      { type: 'separator' },
+      { role: 'close' },
+    ],
+  },
   { role: 'viewMenu' },
 ];
 
@@ -94,9 +106,14 @@ app.on('window-all-closed', function () {
 app.on('activate', async function () {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
-  if (myCapacitorApp.getMainWindow().isDestroyed()) {
-    await myCapacitorApp.init();
+  if (myCapacitorApp.getWindowCount() === 0) {
+    await myCapacitorApp.createWindow();
   }
+});
+
+// -- New window IPC --
+ipcMain.handle('window:new', async () => {
+  await myCapacitorApp.createWindow();
 });
 
 // =====================================================================
