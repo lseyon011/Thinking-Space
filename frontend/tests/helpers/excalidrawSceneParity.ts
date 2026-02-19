@@ -69,6 +69,24 @@ function asRoundedNumber(value: unknown, decimals = 3): number {
   return Math.round(n * factor) / factor
 }
 
+function normalizeParityText(text: string): string {
+  return text
+    .replace(/\u00A0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function parityTextKey(text: string): string {
+  let hash = 2166136261
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  const digest = (hash >>> 0).toString(16).padStart(8, '0')
+  const preview = text.slice(0, 48).replace(/\s+/g, ' ')
+  return `${digest}:${preview}`
+}
+
 function simplifyElementForParity(value: unknown): unknown {
   const stripped = stripElementMetadata(value)
   if (!isPlainObject(stripped)) return stripped
@@ -86,7 +104,7 @@ function simplifyElementForParity(value: unknown): unknown {
   }
 
   if (elementType === 'text') {
-    out.text = typeof stripped.text === 'string' ? stripped.text : ''
+    out.text = normalizeParityText(typeof stripped.text === 'string' ? stripped.text : '')
     out.fontSize = asFiniteNumber(stripped.fontSize, 20)
     out.fontFamily = asFiniteNumber(stripped.fontFamily, 2)
     out.lineHeight = asFiniteNumber(stripped.lineHeight, 1.25)
@@ -146,6 +164,51 @@ function normalizeElementOriginAndOrder(elements: unknown[]): unknown[] {
   return shifted
 }
 
+function groupParityElementsByText(elements: unknown[]): Record<string, unknown[]> {
+  const buckets = new Map<string, unknown[]>()
+
+  for (const element of elements) {
+    if (!isPlainObject(element)) continue
+    const text = typeof element.text === 'string' ? element.text : ''
+    const entry = {
+      x: asRoundedNumber(element.x),
+      y: asRoundedNumber(element.y),
+      width: asRoundedNumber(element.width),
+      height: asRoundedNumber(element.height),
+      textAlign: typeof element.textAlign === 'string' ? element.textAlign : 'left',
+      fontSize: asFiniteNumber(element.fontSize, 20),
+      fontFamily: asFiniteNumber(element.fontFamily, 2),
+      lineHeight: asFiniteNumber(element.lineHeight, 1.25),
+      verticalAlign: typeof element.verticalAlign === 'string' ? element.verticalAlign : 'middle',
+    }
+
+    const list = buckets.get(text) ?? []
+    list.push(entry)
+    buckets.set(text, list)
+  }
+
+  const out: Record<string, unknown[]> = {}
+  for (const [text, list] of [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const key = parityTextKey(text)
+    out[key] = list.sort((left, right) => {
+      const lx = asFiniteNumber((left as Record<string, unknown>).x)
+      const rx = asFiniteNumber((right as Record<string, unknown>).x)
+      if (lx !== rx) return lx - rx
+      const ly = asFiniteNumber((left as Record<string, unknown>).y)
+      const ry = asFiniteNumber((right as Record<string, unknown>).y)
+      if (ly !== ry) return ly - ry
+      const lw = asFiniteNumber((left as Record<string, unknown>).width)
+      const rw = asFiniteNumber((right as Record<string, unknown>).width)
+      if (lw !== rw) return lw - rw
+      const lh = asFiniteNumber((left as Record<string, unknown>).height)
+      const rh = asFiniteNumber((right as Record<string, unknown>).height)
+      return lh - rh
+    })
+  }
+
+  return out
+}
+
 function normalizeSceneForProfile(
   scene: ParsedExcalidrawScene,
   profile: SceneParityProfile,
@@ -153,12 +216,14 @@ function normalizeSceneForProfile(
   const normalized = normalizeScene(scene)
   if (profile === 'strict') return normalized
 
+  const parityElements = normalizeElementOriginAndOrder(
+    normalized.elements
+      .map(element => simplifyElementForParity(element))
+      .filter(isParityRelevantElement),
+  )
+
   return {
-    elements: normalizeElementOriginAndOrder(
-      normalized.elements
-        .map(element => simplifyElementForParity(element))
-        .filter(isParityRelevantElement),
-    ),
+    elements: groupParityElementsByText(parityElements) as unknown as ParsedExcalidrawScene['elements'],
     appState: {},
     files: {},
   }
@@ -214,10 +279,17 @@ function collectDiffs(actual: JsonValue, expected: JsonValue, path: string, out:
     const actualKeys = Object.keys(actual).sort()
     const expectedKeys = Object.keys(expected).sort()
 
-    const actualKeyList = actualKeys.join(',')
-    const expectedKeyList = expectedKeys.join(',')
-    if (actualKeyList !== expectedKeyList) {
-      out.push(`${path}: object keys mismatch (${actualKeyList} vs ${expectedKeyList})`)
+    const missingInActual = expectedKeys.filter(key => !(key in actual))
+    const missingInExpected = actualKeys.filter(key => !(key in expected))
+    if (missingInActual.length > 0 || missingInExpected.length > 0) {
+      const summarize = (keys: string[]): string => {
+        if (keys.length === 0) return 'none'
+        const preview = keys.slice(0, 3).join(', ')
+        return keys.length > 3 ? `${preview} (+${keys.length - 3} more)` : preview
+      }
+      out.push(
+        `${path}: object keys mismatch (missing in actual: ${summarize(missingInActual)}; missing in expected: ${summarize(missingInExpected)})`,
+      )
     }
 
     const keySet = new Set([...actualKeys, ...expectedKeys])

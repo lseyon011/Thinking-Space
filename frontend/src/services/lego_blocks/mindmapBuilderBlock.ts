@@ -105,11 +105,12 @@ const LAYOUT_DEFAULTS = {
 }
 
 const VERTICAL_EXTRA_GAP = 12
+const WRAP_WIDTH_MAX = 10000
 
 export const DEFAULT_MINDMAP_BUILD_OPTIONS: MindmapBuildOptions = {
   includeFullText: true,
   maxDepth: 6,
-  maxWrapWidth: 1000,
+  maxWrapWidth: WRAP_WIDTH_MAX,
   growthMode: 'right-left',
   arrowType: 'curved',
   fillSweep: false,
@@ -135,7 +136,7 @@ function hashNumber(input: string): number {
 
 function titleFromPath(path: string): string {
   const name = path.split('/').pop() || path
-  return name.replace(/\.md$/i, '').replace(/[-_]+/g, ' ').trim() || 'Mindmap'
+  return name.replace(/\.md$/i, '').replace(/_/g, ' ').trim() || 'Mindmap'
 }
 
 function normalizeBody(body: string): string {
@@ -182,45 +183,107 @@ function isVerticalGrowthMode(mode: MindmapGrowthMode): boolean {
   return mode === 'up-facing' || mode === 'down-facing'
 }
 
-function wrapLine(rawLine: string, maxChars: number): string[] {
-  if (!rawLine.trim()) return ['']
+function estimateCharWidthPx(char: string, fontSize: number): number {
+  if (char === '\u00A0' || /\s/u.test(char)) return fontSize * 0.3
+  if (/[ilI1.,:;!'`|]/u.test(char)) return fontSize * 0.3
+  if (/[mwMW@#%&Q]/u.test(char)) return fontSize * 0.82
+  if (/[A-Z]/u.test(char)) return fontSize * 0.65
+  if (/[0-9]/u.test(char)) return fontSize * 0.56
+  if (char.codePointAt(0) != null && char.codePointAt(0)! > 0x7f) return fontSize * 0.62
+  return fontSize * 0.52
+}
 
-  const chunks = rawLine.split(/\s+/)
+function estimateLineWidthPx(text: string, fontSize: number): number {
+  let width = 0
+  for (const char of Array.from(text)) {
+    width += estimateCharWidthPx(char, fontSize)
+  }
+  return width
+}
+
+function wrapWordByWidth(word: string, maxWidthPx: number, fontSize: number): string[] {
+  if (!word) return ['']
   const lines: string[] = []
   let current = ''
+  let currentWidth = 0
 
-  for (const part of chunks) {
-    if (!current) {
-      current = part
-      continue
-    }
-    const candidate = `${current} ${part}`
-    if (candidate.length <= maxChars) {
-      current = candidate
+  for (const char of Array.from(word)) {
+    const charWidth = estimateCharWidthPx(char, fontSize)
+    if (currentWidth + charWidth <= maxWidthPx || !current) {
+      current += char
+      currentWidth += charWidth
       continue
     }
     lines.push(current)
-    current = part
+    current = char
+    currentWidth = charWidth
   }
 
   if (current) lines.push(current)
   return lines.length > 0 ? lines : ['']
 }
 
-function wrapPreservingBreaks(text: string, maxChars: number): string {
-  const capped = Math.max(18, maxChars)
+function wrapLineByWidth(rawLine: string, maxWidthPx: number, fontSize: number): string[] {
+  if (!rawLine.trim()) return ['']
+
+  const tokens = rawLine.match(/\s+|[^\s]+/gu) ?? [rawLine]
+  const lines: string[] = []
+  let current = ''
+
+  let index = 0
+  while (index < tokens.length) {
+    const token = tokens[index]
+    const candidate = current + token
+    const candidateWidth = estimateLineWidthPx(candidate, fontSize)
+    const isWhitespace = /^\s+$/u.test(token)
+
+    if (isWhitespace || candidateWidth <= maxWidthPx) {
+      current = candidate
+      index += 1
+      continue
+    }
+
+    if (!current) {
+      const wrapped = wrapWordByWidth(token, maxWidthPx, fontSize)
+      const trailing = wrapped[wrapped.length - 1] ?? ''
+      const head = wrapped.slice(0, -1)
+      if (head.length > 0) lines.push(...head)
+      current = trailing
+      index += 1
+      continue
+    }
+
+    lines.push(current.trimEnd())
+    current = ''
+  }
+
+  if (current) lines.push(current.trimEnd())
+  return lines
+}
+
+function wrapPreservingBreaks(text: string, maxWidthPx: number, fontSize: number, preserveNbsp = false): string {
+  if (!Number.isFinite(maxWidthPx) || maxWidthPx <= 0) {
+    return text.replace(/\r/g, '')
+  }
+
   const rawLines = text.replace(/\r/g, '').split('\n')
   const out: string[] = []
 
   for (const raw of rawLines) {
+    if (preserveNbsp && raw === '\u00A0') {
+      out.push('\u00A0')
+      continue
+    }
+
     if (!raw.trim()) {
       out.push('')
       continue
     }
-    out.push(...wrapLine(raw, capped))
+    out.push(...wrapLineByWidth(raw, maxWidthPx, fontSize))
   }
 
-  return out.join('\n').trim()
+  const joined = out.join('\n')
+  return preserveNbsp ? joined : joined.trim()
 }
 
 function parseHeadingRows(markdown: string, maxDepth: number): HeadingRow[] {
@@ -373,29 +436,40 @@ function createGraphNodes(tree: HeadingTreeNode[], sourcePath: string, options: 
 function assignTextMetrics(nodes: MindmapNode[], options: MindmapBuildOptions): void {
   for (const node of nodes) {
     const fontSize = fontSizeForDepth(node.depth, options.fontScale)
-    const wrapped = wrapPreservingBreaks(node.text, options.maxWrapWidth)
-    const lines = wrapped ? wrapped.split('\n') : ['']
-    const longest = lines.reduce((max, line) => Math.max(max, line.length), 0)
-
     const horizontalPadding = node.kind === 'content' ? 18 : 14
     const verticalPadding = node.kind === 'content' ? 20 : 10
-    const maxNodeWidth = Math.max(
-      node.kind === 'root' ? 240 : 180,
-      options.maxWrapWidth + horizontalPadding * 2,
+    const effectiveMaxWidth = options.maxWrapWidth >= WRAP_WIDTH_MAX
+      ? Number.POSITIVE_INFINITY
+      : Math.max(options.maxWrapWidth, 100)
+    const normalizedText = node.text.replace(/\r/g, '').trim()
+    const sourceLines = normalizedText ? normalizedText.split('\n') : ['']
+    const sourceMaxLineWidth = sourceLines.reduce(
+      (max, line) => Math.max(max, estimateLineWidthPx(line, fontSize)),
+      0,
     )
+    const shouldWrap = Number.isFinite(effectiveMaxWidth) && sourceMaxLineWidth > effectiveMaxWidth
+    const measuredText = shouldWrap
+      ? wrapPreservingBreaks(normalizedText, effectiveMaxWidth, fontSize, node.kind === 'content')
+      : normalizedText
+    const wrapped = node.kind === 'content' ? normalizedText : measuredText
+    const lines = measuredText ? measuredText.split('\n') : ['']
+    const longest = lines.reduce((max, line) => Math.max(max, line.length), 0)
+    const measuredMaxLineWidth = lines.reduce(
+      (max, line) => Math.max(max, estimateLineWidthPx(line, fontSize)),
+      0,
+    )
+    const widthCap = Number.isFinite(effectiveMaxWidth)
+      ? effectiveMaxWidth + horizontalPadding * 2
+      : Number.POSITIVE_INFINITY
 
-    const width = clamp(
-      Math.round(longest * Math.max(fontSize * 0.56, 7.5) + horizontalPadding * 2),
-      node.kind === 'root' ? 220 : 140,
-      maxNodeWidth,
-    )
+    let width = Math.round(measuredMaxLineWidth + horizontalPadding * 2)
+    width = Math.max(width, node.kind === 'root' ? 220 : 140)
+    if (Number.isFinite(widthCap)) width = Math.min(width, Math.round(widthCap))
 
     const baseHeight = Math.round(lines.length * Math.max(fontSize * 1.42, 20) + verticalPadding * 2)
-    const height = clamp(
-      baseHeight,
-      54,
-      node.kind === 'content' ? 20000 : 2400,
-    )
+    const height = node.kind === 'content'
+      ? Math.max(baseHeight, 54)
+      : clamp(baseHeight, 54, 2400)
 
     node.fontSize = fontSize
     node.text = wrapped

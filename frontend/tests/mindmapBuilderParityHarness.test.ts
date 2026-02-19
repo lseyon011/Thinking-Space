@@ -34,6 +34,7 @@ function buildSceneFromMarkdown(markdown: string, sourcePath: string): ParsedExc
     {
       ...DEFAULT_MINDMAP_BUILD_OPTIONS,
       includeFullText: true,
+      maxWrapWidth: 1000,
       growthMode: 'right-left',
       arrowType: 'curved',
     },

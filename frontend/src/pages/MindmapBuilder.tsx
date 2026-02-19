@@ -256,15 +256,15 @@ export default function MindmapBuilder() {
                 </label>
 
                 <label className="space-y-1 text-sm md:col-span-2">
-                  <span className="font-medium">Wrap Width (characters)</span>
+                  <span className="font-medium">Wrap Width (px, 10000 = infinite)</span>
                   <input
                     type="number"
-                    min={18}
+                    min={100}
                     max={10000}
                     value={options.maxWrapWidth}
                     onChange={(e) => setOptions((prev) => ({
                       ...prev,
-                      maxWrapWidth: Math.max(18, Math.min(10000, Number(e.target.value) || 1000)),
+                      maxWrapWidth: Math.max(100, Math.min(10000, Number(e.target.value) || 10000)),
                     }))}
                     className="h-10 w-full rounded-lg border border-input bg-background px-3"
                   />

@@ -183,4 +183,15 @@ describe('excalidrawSceneParity helper', () => {
     const parityDiffs = diffScenesParityFocused(left, right)
     expect(parityDiffs.length).toBeGreaterThan(0)
   })
+
+  it('parity-focused mode ignores wrap-only text differences', () => {
+    const left = buildBaseScene()
+    const right = buildBaseScene()
+
+    ;(right.elements[1] as Record<string, unknown>).text = 'Alpha\n'
+    ;(right.elements[3] as Record<string, unknown>).text = '  Beta\t'
+
+    const parityDiffs = diffScenesParityFocused(left, right)
+    expect(parityDiffs).toEqual([])
+  })
 })

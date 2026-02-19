@@ -14,6 +14,10 @@ function extractTextElements(scene: { elements: unknown[] }): string[] {
     .map((item) => String((item as Record<string, unknown>).text ?? ''))
 }
 
+function asSceneElements(scene: { elements: unknown[] }): Array<Record<string, unknown>> {
+  return scene.elements.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+}
+
 describe('mindmapBuilderBlock', () => {
   const source = [
     '# Root heading',
@@ -66,5 +70,49 @@ describe('mindmapBuilderBlock', () => {
   it('builds default output paths with excalidraw suffix', () => {
     const output = suggestMindmapOutputPathBlock('folder/my-note.md')
     expect(output).toBe('folder/my-note (mindmap full text).excalidraw.md')
+  })
+
+  it('preserves content text verbatim with blank-line spacing and allows uncapped content height', () => {
+    const longBullet = `• ${'word '.repeat(80).trim()}`
+    const repeated = Array.from({ length: 120 }, (_, index) => `${longBullet} ${index}`).join('\n\n\n')
+    const verbatimSource = [
+      '# Root',
+      '',
+      '## Bullets',
+      '• first bullet sentence',
+      '',
+      '',
+      '• second bullet sentence',
+      '',
+      '## Huge',
+      repeated,
+    ].join('\n')
+
+    const result = buildMindmapSceneFromMarkdownBlock(
+      verbatimSource,
+      'notes/example.md',
+      {
+        ...DEFAULT_MINDMAP_BUILD_OPTIONS,
+        includeFullText: true,
+        arrowType: 'curved',
+        growthMode: 'right-facing',
+        maxWrapWidth: 980,
+      },
+    )
+
+    const elements = asSceneElements(result.scene)
+    const bulletText = elements.find((element) => element.type === 'text' && element.text === '• first bullet sentence\n\n\n• second bullet sentence')
+    expect(bulletText).toBeDefined()
+    const bulletContainerId = bulletText?.containerId
+    expect(typeof bulletContainerId).toBe('string')
+    const bulletContainer = elements.find((element) => element.id === bulletContainerId)
+    expect(typeof bulletContainer?.width).toBe('number')
+    expect((bulletContainer?.width as number) >= 140).toBe(true)
+
+    const hugeText = elements.find((element) => element.type === 'text' && typeof element.text === 'string' && (element.text as string).includes('word word word'))
+    expect(hugeText).toBeDefined()
+    const hugeContainer = elements.find((element) => element.id === hugeText?.containerId)
+    expect(typeof hugeContainer?.height).toBe('number')
+    expect((hugeContainer?.height as number) > 2400).toBe(true)
   })
 })
