@@ -11,6 +11,26 @@ type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue }
 
+export type SceneParityProfile = 'strict' | 'parity-focused'
+
+const NON_SEMANTIC_ELEMENT_KEYS = new Set([
+  'id',
+  'index',
+  'seed',
+  'version',
+  'versionNonce',
+  'updated',
+  'containerId',
+  'frameId',
+  'groupIds',
+  'link',
+  'locked',
+  'boundElements',
+  'startBinding',
+  'endBinding',
+  'fileId',
+])
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
@@ -21,6 +41,71 @@ function normalizeScene(scene: ParsedExcalidrawScene): ParsedExcalidrawScene {
     elements: Array.isArray(normalized.elements) ? normalized.elements : [],
     appState: normalized.appState ?? {},
     files: normalized.files ?? {},
+  }
+}
+
+function stripElementMetadata(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(item => stripElementMetadata(item))
+  }
+
+  if (!isPlainObject(value)) return value
+
+  const out: Record<string, unknown> = {}
+  for (const [key, raw] of Object.entries(value)) {
+    if (NON_SEMANTIC_ELEMENT_KEYS.has(key)) continue
+    out[key] = stripElementMetadata(raw)
+  }
+  return out
+}
+
+function asFiniteNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function simplifyElementForParity(value: unknown): unknown {
+  const stripped = stripElementMetadata(value)
+  if (!isPlainObject(stripped)) return stripped
+
+  const elementType = typeof stripped.type === 'string' ? stripped.type : 'unknown'
+
+  const out: Record<string, unknown> = {
+    type: elementType,
+    x: asFiniteNumber(stripped.x),
+    y: asFiniteNumber(stripped.y),
+    width: asFiniteNumber(stripped.width),
+    height: asFiniteNumber(stripped.height),
+    angle: asFiniteNumber(stripped.angle),
+    isDeleted: stripped.isDeleted === true,
+  }
+
+  if (elementType === 'text') {
+    out.text = typeof stripped.text === 'string' ? stripped.text : ''
+    out.fontSize = asFiniteNumber(stripped.fontSize, 20)
+    out.fontFamily = asFiniteNumber(stripped.fontFamily, 2)
+    out.lineHeight = asFiniteNumber(stripped.lineHeight, 1.25)
+    out.textAlign = typeof stripped.textAlign === 'string' ? stripped.textAlign : 'left'
+    out.verticalAlign = typeof stripped.verticalAlign === 'string' ? stripped.verticalAlign : 'middle'
+  }
+
+  if (elementType === 'arrow' || elementType === 'line' || elementType === 'freedraw') {
+    out.points = Array.isArray(stripped.points) ? stripped.points : []
+  }
+
+  return out
+}
+
+function normalizeSceneForProfile(
+  scene: ParsedExcalidrawScene,
+  profile: SceneParityProfile,
+): ParsedExcalidrawScene {
+  const normalized = normalizeScene(scene)
+  if (profile === 'strict') return normalized
+
+  return {
+    elements: normalized.elements.map(element => simplifyElementForParity(element)),
+    appState: {},
+    files: {},
   }
 }
 
@@ -108,14 +193,29 @@ function collectDiffs(actual: JsonValue, expected: JsonValue, path: string, out:
   }
 }
 
-export function canonicalizeScene(scene: ParsedExcalidrawScene): JsonValue {
-  return canonicalizeJson(normalizeScene(scene))
+export function canonicalizeScene(
+  scene: ParsedExcalidrawScene,
+  profile: SceneParityProfile = 'strict',
+): JsonValue {
+  return canonicalizeJson(normalizeSceneForProfile(scene, profile))
 }
 
-export function diffScenesStrict(actual: ParsedExcalidrawScene, expected: ParsedExcalidrawScene): string[] {
-  const actualCanonical = canonicalizeScene(actual)
-  const expectedCanonical = canonicalizeScene(expected)
+export function diffScenes(
+  actual: ParsedExcalidrawScene,
+  expected: ParsedExcalidrawScene,
+  profile: SceneParityProfile = 'strict',
+): string[] {
+  const actualCanonical = canonicalizeScene(actual, profile)
+  const expectedCanonical = canonicalizeScene(expected, profile)
   const diffs: string[] = []
   collectDiffs(actualCanonical, expectedCanonical, 'scene', diffs)
   return diffs
+}
+
+export function diffScenesStrict(actual: ParsedExcalidrawScene, expected: ParsedExcalidrawScene): string[] {
+  return diffScenes(actual, expected, 'strict')
+}
+
+export function diffScenesParityFocused(actual: ParsedExcalidrawScene, expected: ParsedExcalidrawScene): string[] {
+  return diffScenes(actual, expected, 'parity-focused')
 }

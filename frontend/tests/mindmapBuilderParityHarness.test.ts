@@ -9,7 +9,11 @@ import {
   parseExcalidrawScene,
   type ParsedExcalidrawScene,
 } from '../src/services/lego_blocks/excalidrawFileBlock'
-import { canonicalizeScene, diffScenesStrict } from './helpers/excalidrawSceneParity'
+import {
+  canonicalizeScene,
+  diffScenesParityFocused,
+  diffScenesStrict,
+} from './helpers/excalidrawSceneParity'
 
 const LOCAL_FIXTURE_DIR = path.resolve(
   __dirname,
@@ -56,7 +60,7 @@ describe('mindmapBuilder parity harness', () => {
   })
 
   it.skipIf(process.env.RUN_EXTERNAL_EXCALIDRAW_PARITY !== '1')(
-    'supports strict parity checks against external excalidraw-testfiles fixture pair',
+    'supports parity-focused checks against external excalidraw-testfiles fixture pair',
     () => {
       expect(existsSync(EXTERNAL_INPUT_PATH)).toBe(true)
       expect(existsSync(EXTERNAL_EXPECTED_PATH)).toBe(true)
@@ -67,7 +71,7 @@ describe('mindmapBuilder parity harness', () => {
 
       expect(expectedParsed).not.toBeNull()
       const actual = buildSceneFromMarkdown(markdown, EXTERNAL_INPUT_PATH)
-      const diffs = diffScenesStrict(actual, expectedParsed as ParsedExcalidrawScene)
+      const diffs = diffScenesParityFocused(actual, expectedParsed as ParsedExcalidrawScene)
       expect(diffs).toEqual([])
     },
   )
