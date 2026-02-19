@@ -316,7 +316,6 @@ export default function ExcalidrawDocumentBlock({
         const nextScrollY = -centerY + viewportWorldH / 2
         excalidrawApi.updateScene({
           appState: {
-            ...baseAppState,
             scrollX: nextScrollX,
             scrollY: nextScrollY,
             zoom: { value: targetZoom as any },
@@ -560,7 +559,6 @@ export default function ExcalidrawDocumentBlock({
 
               excalidrawApi.updateScene({
                 appState: {
-                  ...excalidrawApi.getAppState(),
                   scrollX: nextScrollX,
                   scrollY: nextScrollY,
                 },
