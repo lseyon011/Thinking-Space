@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/AiAssistRuntimeBlock'
 import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBlock'
 import AiAssistReviewBlock from '@/components/lego_blocks/AiAssistReviewBlock'
+import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/aiBlock'
 
 export type MarkdownViewerMode = 'view' | 'edit'
 
@@ -25,6 +26,7 @@ interface MarkdownDocumentBlockProps {
   path: string
   initialMode?: MarkdownViewerMode
   onSaved?: (result: { output_path: string; revision_path: string | null }) => void
+  onOpenPathForEdit?: (path: string) => void
   onClose?: () => void
   showCloseButton?: boolean
   className?: string
@@ -44,6 +46,7 @@ export default function MarkdownDocumentBlock({
   path,
   initialMode = 'view',
   onSaved,
+  onOpenPathForEdit,
   onClose,
   showCloseButton = false,
   className,
@@ -60,6 +63,9 @@ export default function MarkdownDocumentBlock({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [conflict, setConflict] = useState<MarkdownDocumentConflictError | null>(null)
+  const [relatedThoughts, setRelatedThoughts] = useState<SimilarityMatch[]>([])
+  const [relatedLoading, setRelatedLoading] = useState(false)
+  const [relatedError, setRelatedError] = useState<string | null>(null)
 
   const [showMeta, setShowMeta] = useState(true)
   const [showPreview, setShowPreview] = useState(false)
@@ -89,6 +95,9 @@ export default function MarkdownDocumentBlock({
     setError(null)
     setSaveError(null)
     setConflict(null)
+    setRelatedThoughts([])
+    setRelatedError(null)
+    setRelatedLoading(false)
     setHasExcalidrawChanges(false)
     excalidrawSceneRef.current = null
     ignoreInitialExcalidrawChangeRef.current = true
@@ -133,6 +142,52 @@ export default function MarkdownDocumentBlock({
   const isEditing = mode === 'edit'
   const hasTextChanges = isEditing && content !== null && draft !== content
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
+
+  useEffect(() => {
+    if (!isEditing || isExcalidrawDoc || loading || error || content === null) {
+      setRelatedThoughts([])
+      setRelatedError(null)
+      setRelatedLoading(false)
+      return
+    }
+
+    const source = draft.trim()
+    if (source.length < 24) {
+      setRelatedThoughts([])
+      setRelatedError(null)
+      setRelatedLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setRelatedLoading(true)
+    setRelatedError(null)
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const matches = await findRelated({
+            text: source,
+            sourceFilePath: path,
+            preferredTypes: ['thought'],
+            limit: 6,
+          })
+          if (cancelled) return
+          setRelatedThoughts(matches)
+        } catch (err) {
+          if (cancelled) return
+          setRelatedError(err instanceof Error ? err.message : 'Failed to load related thoughts')
+          setRelatedThoughts([])
+        } finally {
+          if (!cancelled) setRelatedLoading(false)
+        }
+      })()
+    }, 320)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+    }
+  }, [content, draft, error, isEditing, isExcalidrawDoc, loading, path])
 
   const handleExcalidrawSceneChange = useCallback((scene: ParsedExcalidrawScene) => {
     excalidrawSceneRef.current = scene
@@ -358,70 +413,106 @@ export default function MarkdownDocumentBlock({
         )}
 
         {!loading && !error && content !== null && isEditing && !isExcalidrawDoc && (
-          <div className="space-y-4">
-            <AiAssistControlsBlock
-              selectedProvider={selectedProvider}
-              selectedModel={selectedModel}
-              runningAction={assistRunningAction}
-              loading={aiSelectionLoading}
-              disabled={loading || isExcalidrawDoc}
-              onRun={(action) => { void runAssistAction(action, draft) }}
-              helperText="Preview-first only. Suggestions never auto-save until you click Save. Configure provider/model in AI Settings."
-            />
-
-            {assistSuggestion && (
-              <AiAssistReviewBlock
-                suggestion={assistSuggestion}
-                onApply={() => {
-                  const applied = applyAssistSuggestion((next) => {
-                    setDraft(next)
-                  })
-                  if (applied) setShowPreview(true)
-                }}
-                onDiscard={dismissAssistSuggestion}
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+            <div className="space-y-4">
+              <AiAssistControlsBlock
+                selectedProvider={selectedProvider}
+                selectedModel={selectedModel}
+                runningAction={assistRunningAction}
+                loading={aiSelectionLoading}
+                disabled={loading || isExcalidrawDoc}
+                onRun={(action) => { void runAssistAction(action, draft) }}
+                helperText="Preview-first only. Suggestions never auto-save until you click Save. Configure provider/model in AI Settings."
               />
-            )}
 
-            {assistError && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {assistError}
-              </div>
-            )}
+              {assistSuggestion && (
+                <AiAssistReviewBlock
+                  suggestion={assistSuggestion}
+                  onApply={() => {
+                    const applied = applyAssistSuggestion((next) => {
+                      setDraft(next)
+                    })
+                    if (applied) setShowPreview(true)
+                  }}
+                  onDiscard={dismissAssistSuggestion}
+                />
+              )}
 
-            <textarea
-              value={draft}
-              onChange={(e) => {
-                setDraft(e.target.value)
-                if (assistSuggestion || assistError) clearAssistState()
-              }}
-              className="min-h-[52vh] w-full resize-y rounded-lg border border-input bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-            />
-
-            {showPreview && !isExcalidrawDoc && (
-              <div className="rounded-lg border border-border/50 bg-muted/20 p-4">
-                <div className="mb-3 text-xs font-medium text-muted-foreground">Preview</div>
-                <div className="prose">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {stripFrontmatter(draft)}
-                  </ReactMarkdown>
+              {assistError && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {assistError}
                 </div>
-              </div>
-            )}
+              )}
 
-            {saveError && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {saveError}
-              </div>
-            )}
+              <textarea
+                value={draft}
+                onChange={(e) => {
+                  setDraft(e.target.value)
+                  if (assistSuggestion || assistError) clearAssistState()
+                }}
+                className="min-h-[52vh] w-full resize-y rounded-lg border border-input bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              />
 
-            {conflict && (
-              <button
-                onClick={useLatestConflictVersion}
-                className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
-              >
-                Load latest file version
-              </button>
-            )}
+              {showPreview && !isExcalidrawDoc && (
+                <div className="rounded-lg border border-border/50 bg-muted/20 p-4">
+                  <div className="mb-3 text-xs font-medium text-muted-foreground">Preview</div>
+                  <div className="prose">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {stripFrontmatter(draft)}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              )}
+
+              {saveError && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {saveError}
+                </div>
+              )}
+
+              {conflict && (
+                <button
+                  onClick={useLatestConflictVersion}
+                  className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+                >
+                  Load latest file version
+                </button>
+              )}
+            </div>
+
+            <aside className="space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3 lg:sticky lg:top-4 lg:h-fit">
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Related Thoughts
+              </div>
+              {relatedLoading && (
+                <div className="text-xs text-muted-foreground">Finding related notes...</div>
+              )}
+              {relatedError && (
+                <div className="text-xs text-destructive">{relatedError}</div>
+              )}
+              {!relatedLoading && !relatedError && relatedThoughts.length === 0 && (
+                <div className="text-xs text-muted-foreground">
+                  Keep typing to see lexical matches from your thought cache.
+                </div>
+              )}
+              {relatedThoughts.map(match => (
+                <button
+                  key={match.node.uuid}
+                  type="button"
+                  className="w-full rounded-md border border-border/70 bg-background px-2.5 py-2 text-left transition-colors hover:bg-muted/40"
+                  onClick={() => {
+                    if (!onOpenPathForEdit || match.node.filePath === path) return
+                    onOpenPathForEdit(match.node.filePath)
+                  }}
+                >
+                  <div className="truncate text-xs font-medium text-foreground">{match.node.title}</div>
+                  <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{match.node.filePath}</div>
+                  <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Score {Math.round(match.normalizedScore * 100)}% · {match.reasons.join(', ') || 'lexical'}
+                  </div>
+                </button>
+              ))}
+            </aside>
           </div>
         )}
 
