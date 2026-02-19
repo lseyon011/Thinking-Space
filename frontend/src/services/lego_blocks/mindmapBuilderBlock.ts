@@ -434,6 +434,25 @@ function createGraphNodes(tree: HeadingTreeNode[], sourcePath: string, options: 
 }
 
 function assignTextMetrics(nodes: MindmapNode[], options: MindmapBuildOptions): void {
+  const lineWidthCache = new Map<string, number>()
+  const wrappedTextCache = new Map<string, string>()
+  const measureLineWidth = (line: string, fontSize: number): number => {
+    const key = `${fontSize}::${line}`
+    const cached = lineWidthCache.get(key)
+    if (cached != null) return cached
+    const measured = estimateLineWidthPx(line, fontSize)
+    lineWidthCache.set(key, measured)
+    return measured
+  }
+  const wrapText = (text: string, maxWidthPx: number, fontSize: number, preserveNbsp: boolean): string => {
+    const key = `${fontSize}::${maxWidthPx}::${preserveNbsp ? '1' : '0'}::${text}`
+    const cached = wrappedTextCache.get(key)
+    if (cached != null) return cached
+    const wrapped = wrapPreservingBreaks(text, maxWidthPx, fontSize, preserveNbsp)
+    wrappedTextCache.set(key, wrapped)
+    return wrapped
+  }
+
   for (const node of nodes) {
     const fontSize = fontSizeForDepth(node.depth, options.fontScale)
     const horizontalPadding = node.kind === 'content' ? 18 : 14
@@ -444,20 +463,21 @@ function assignTextMetrics(nodes: MindmapNode[], options: MindmapBuildOptions): 
     const normalizedText = node.text.replace(/\r/g, '').trim()
     const sourceLines = normalizedText ? normalizedText.split('\n') : ['']
     const sourceMaxLineWidth = sourceLines.reduce(
-      (max, line) => Math.max(max, estimateLineWidthPx(line, fontSize)),
+      (max, line) => Math.max(max, measureLineWidth(line, fontSize)),
       0,
     )
     const shouldWrap = Number.isFinite(effectiveMaxWidth) && sourceMaxLineWidth > effectiveMaxWidth
     const measuredText = shouldWrap
-      ? wrapPreservingBreaks(normalizedText, effectiveMaxWidth, fontSize, node.kind === 'content')
+      ? wrapText(normalizedText, effectiveMaxWidth, fontSize, node.kind === 'content')
       : normalizedText
     const wrapped = node.kind === 'content' ? normalizedText : measuredText
     const lines = measuredText ? measuredText.split('\n') : ['']
-    const longest = lines.reduce((max, line) => Math.max(max, line.length), 0)
-    const measuredMaxLineWidth = lines.reduce(
-      (max, line) => Math.max(max, estimateLineWidthPx(line, fontSize)),
-      0,
-    )
+    const measuredMaxLineWidth = shouldWrap
+      ? lines.reduce(
+        (max, line) => Math.max(max, measureLineWidth(line, fontSize)),
+        0,
+      )
+      : sourceMaxLineWidth
     const widthCap = Number.isFinite(effectiveMaxWidth)
       ? effectiveMaxWidth + horizontalPadding * 2
       : Number.POSITIVE_INFINITY

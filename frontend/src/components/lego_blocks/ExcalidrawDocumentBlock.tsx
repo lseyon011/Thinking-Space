@@ -17,6 +17,60 @@ interface ExcalidrawDocumentBlockProps {
   className?: string
 }
 
+interface SceneDrawableCenter {
+  x: number
+  y: number
+  isAnchor: boolean
+}
+
+interface SceneAnalysis {
+  sceneBounds: {
+    minX: number
+    minY: number
+    maxX: number
+    maxY: number
+    width: number
+    height: number
+    medianCenterX: number
+    medianCenterY: number
+    anchorCount: number
+    medianAnchorCenterX: number
+    medianAnchorCenterY: number
+  } | null
+  drawableCenters: SceneDrawableCenter[]
+  durationMs: number
+}
+
+interface ExcalidrawPerfEvent {
+  name: string
+  durationMs: number
+  elementCount: number
+  ts: string
+  meta?: Record<string, unknown>
+}
+
+const LARGE_SCENE_ELEMENT_THRESHOLD = 1200
+const MEDIAN_SORT_THRESHOLD = 2000
+const PERF_EVENTS_LIMIT = 400
+
+function nowMs(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now()
+}
+
+function pushGlobalExcalidrawPerfEvent(event: ExcalidrawPerfEvent): void {
+  const state = globalThis as {
+    __ltmExcalidrawPerfEvents?: ExcalidrawPerfEvent[]
+    __ltmExcalidrawPerfLast?: ExcalidrawPerfEvent
+  }
+  const events = Array.isArray(state.__ltmExcalidrawPerfEvents)
+    ? state.__ltmExcalidrawPerfEvents
+    : []
+  events.push(event)
+  if (events.length > PERF_EVENTS_LIMIT) events.shift()
+  state.__ltmExcalidrawPerfEvents = events
+  state.__ltmExcalidrawPerfLast = event
+}
+
 export default function ExcalidrawDocumentBlock({
   content,
   editable = false,
@@ -24,7 +78,14 @@ export default function ExcalidrawDocumentBlock({
   className,
 }: ExcalidrawDocumentBlockProps) {
   const debugEnabled = editable
-  const parsedScene = useMemo(() => parseExcalidrawSceneOrch(content), [content])
+    && (globalThis as { __ltmExcalidrawDebugEnabled?: unknown }).__ltmExcalidrawDebugEnabled === true
+  const parseDurationMsRef = useRef(0)
+  const parsedScene = useMemo(() => {
+    const started = nowMs()
+    const parsed = parseExcalidrawSceneOrch(content)
+    parseDurationMsRef.current = nowMs() - started
+    return parsed
+  }, [content])
   const [excalidrawApi, setExcalidrawApi] = useState<ExcalidrawImperativeAPI | null>(null)
   const [scrollState, setScrollState] = useState({ scrollX: 0, scrollY: 0, zoom: 1 })
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -32,12 +93,16 @@ export default function ExcalidrawDocumentBlock({
   const scrollFrameRef = useRef<number | null>(null)
   const pendingScrollRef = useRef({ scrollX: 0, scrollY: 0, zoom: 1 })
   const sceneChangeFrameRef = useRef<number | null>(null)
-  const latestSceneRef = useRef<ParsedExcalidrawScene | null>(null)
   const hasAutoCenteredRef = useRef(false)
   const autoCenterRequestedRef = useRef(false)
   const autoCenterAttemptsRef = useRef(0)
   const autoCenterFrameRef = useRef<number | null>(null)
   const onChangeLogCountRef = useRef(0)
+  const queuedSceneRef = useRef<{
+    elements: readonly unknown[]
+    appState: Record<string, unknown>
+    files: Record<string, unknown>
+  } | null>(null)
 
   const debugLog = useCallback((event: string, data: Record<string, unknown> = {}) => {
     if (!debugEnabled) return
@@ -70,18 +135,32 @@ export default function ExcalidrawDocumentBlock({
     }
   }, [editable, parsedScene])
 
-  const sceneBounds = useMemo(() => {
-    if (!parsedScene || parsedScene.elements.length === 0) return null
+  const sceneAnalysis = useMemo<SceneAnalysis>(() => {
+    const started = nowMs()
+    if (!parsedScene || parsedScene.elements.length === 0) {
+      return {
+        sceneBounds: null,
+        drawableCenters: [],
+        durationMs: nowMs() - started,
+      }
+    }
 
     let minX = Number.POSITIVE_INFINITY
     let minY = Number.POSITIVE_INFINITY
     let maxX = Number.NEGATIVE_INFINITY
     let maxY = Number.NEGATIVE_INFINITY
     let found = false
+    let centerSumX = 0
+    let centerSumY = 0
+    let anchorCenterSumX = 0
+    let anchorCenterSumY = 0
+    let anchorCount = 0
+    let centerCount = 0
     const centersX: number[] = []
     const centersY: number[] = []
     const anchorCentersX: number[] = []
     const anchorCentersY: number[] = []
+    const drawableCenters: SceneDrawableCenter[] = []
 
     for (const item of parsedScene.elements) {
       if (!item || typeof item !== 'object') continue
@@ -99,42 +178,105 @@ export default function ExcalidrawDocumentBlock({
       maxY = Math.max(maxY, y + Math.max(height, 1))
       const cx = x + Math.max(width, 1) / 2
       const cy = y + Math.max(height, 1) / 2
-      centersX.push(cx)
-      centersY.push(cy)
+      centerCount += 1
+      centerSumX += cx
+      centerSumY += cy
+      drawableCenters.push({
+        x: cx,
+        y: cy,
+        isAnchor: type !== 'freedraw',
+      })
+      if (centerCount <= MEDIAN_SORT_THRESHOLD) {
+        centersX.push(cx)
+        centersY.push(cy)
+      }
       if (type !== 'freedraw') {
-        anchorCentersX.push(cx)
-        anchorCentersY.push(cy)
+        anchorCount += 1
+        anchorCenterSumX += cx
+        anchorCenterSumY += cy
+        if (anchorCount <= MEDIAN_SORT_THRESHOLD) {
+          anchorCentersX.push(cx)
+          anchorCentersY.push(cy)
+        }
       }
       found = true
     }
 
-    if (!found || centersX.length === 0 || centersY.length === 0) return null
-    centersX.sort((a, b) => a - b)
-    centersY.sort((a, b) => a - b)
-    anchorCentersX.sort((a, b) => a - b)
-    anchorCentersY.sort((a, b) => a - b)
-    const mid = Math.floor(centersX.length / 2)
-    const medianCenterX = centersX[mid] ?? (minX + (maxX - minX) / 2)
-    const medianCenterY = centersY[mid] ?? (minY + (maxY - minY) / 2)
-    const anchorMid = Math.floor(anchorCentersX.length / 2)
-    const medianAnchorCenterX = anchorCentersX[anchorMid] ?? medianCenterX
-    const medianAnchorCenterY = anchorCentersY[anchorMid] ?? medianCenterY
+    if (!found || centerCount === 0) {
+      return {
+        sceneBounds: null,
+        drawableCenters,
+        durationMs: nowMs() - started,
+      }
+    }
+
+    const useAveragesForCenter = centerCount > MEDIAN_SORT_THRESHOLD
+    let medianCenterX = minX + (maxX - minX) / 2
+    let medianCenterY = minY + (maxY - minY) / 2
+    let medianAnchorCenterX = medianCenterX
+    let medianAnchorCenterY = medianCenterY
+
+    if (useAveragesForCenter) {
+      medianCenterX = centerSumX / centerCount
+      medianCenterY = centerSumY / centerCount
+      if (anchorCount > 0) {
+        medianAnchorCenterX = anchorCenterSumX / anchorCount
+        medianAnchorCenterY = anchorCenterSumY / anchorCount
+      }
+    } else {
+      centersX.sort((a, b) => a - b)
+      centersY.sort((a, b) => a - b)
+      anchorCentersX.sort((a, b) => a - b)
+      anchorCentersY.sort((a, b) => a - b)
+      const mid = Math.floor(centersX.length / 2)
+      medianCenterX = centersX[mid] ?? medianCenterX
+      medianCenterY = centersY[mid] ?? medianCenterY
+      const anchorMid = Math.floor(anchorCentersX.length / 2)
+      medianAnchorCenterX = anchorCentersX[anchorMid] ?? medianCenterX
+      medianAnchorCenterY = anchorCentersY[anchorMid] ?? medianCenterY
+    }
+
     return {
-      minX,
-      minY,
-      maxX,
-      maxY,
-      width: Math.max(maxX - minX, 1),
-      height: Math.max(maxY - minY, 1),
-      medianCenterX,
-      medianCenterY,
-      anchorCount: anchorCentersX.length,
-      medianAnchorCenterX,
-      medianAnchorCenterY,
+      sceneBounds: {
+        minX,
+        minY,
+        maxX,
+        maxY,
+        width: Math.max(maxX - minX, 1),
+        height: Math.max(maxY - minY, 1),
+        medianCenterX,
+        medianCenterY,
+        anchorCount,
+        medianAnchorCenterX,
+        medianAnchorCenterY,
+      },
+      drawableCenters,
+      durationMs: nowMs() - started,
     }
   }, [parsedScene])
 
+  const sceneBounds = sceneAnalysis.sceneBounds
+  const isLargeScene = (parsedScene?.elements.length ?? 0) >= LARGE_SCENE_ELEMENT_THRESHOLD
+
   useEffect(() => {
+    pushGlobalExcalidrawPerfEvent({
+      name: 'parse_scene',
+      durationMs: parseDurationMsRef.current,
+      elementCount: parsedScene?.elements.length ?? 0,
+      ts: new Date().toISOString(),
+      meta: {
+        contentLength: content.length,
+      },
+    })
+    pushGlobalExcalidrawPerfEvent({
+      name: 'analyze_scene',
+      durationMs: sceneAnalysis.durationMs,
+      elementCount: parsedScene?.elements.length ?? 0,
+      ts: new Date().toISOString(),
+      meta: {
+        largeSceneMode: isLargeScene,
+      },
+    })
     debugLog('parse', {
       contentLength: content.length,
       parsed: Boolean(parsedScene),
@@ -142,11 +284,14 @@ export default function ExcalidrawDocumentBlock({
       hasAppState: Boolean(parsedScene?.appState),
       hasFiles: Boolean(parsedScene?.files),
       sceneBounds,
+      parseDurationMs: parseDurationMsRef.current,
+      sceneAnalysisMs: sceneAnalysis.durationMs,
+      largeSceneMode: isLargeScene,
     })
-  }, [content.length, debugLog, parsedScene, sceneBounds])
+  }, [content.length, debugLog, isLargeScene, parsedScene, sceneAnalysis.durationMs, sceneBounds])
 
   const miniMapRects = useMemo(() => {
-    if (!parsedScene || !sceneBounds) return []
+    if (editable || !parsedScene || !sceneBounds) return []
 
     const rects: Array<{ x: number; y: number; width: number; height: number; key: string }> = []
     const elements = parsedScene.elements
@@ -173,7 +318,7 @@ export default function ExcalidrawDocumentBlock({
     }
 
     return rects
-  }, [parsedScene, sceneBounds])
+  }, [editable, parsedScene, sceneBounds])
 
   const uiOptions = useMemo(() => {
     if (editable) {
@@ -199,17 +344,32 @@ export default function ExcalidrawDocumentBlock({
     }
   }, [editable])
 
-  const queueSceneChange = useCallback((scene: ParsedExcalidrawScene) => {
+  const queueSceneChange = useCallback((params: {
+    elements: readonly unknown[]
+    appState: Record<string, unknown>
+    files: Record<string, unknown>
+  }) => {
     if (!onSceneChange) return
 
-    latestSceneRef.current = scene
+    queuedSceneRef.current = params
     if (sceneChangeFrameRef.current !== null) return
 
     sceneChangeFrameRef.current = window.requestAnimationFrame(() => {
       sceneChangeFrameRef.current = null
-      const nextScene = latestSceneRef.current
-      if (!nextScene) return
-      onSceneChange(nextScene)
+      const queued = queuedSceneRef.current
+      if (!queued) return
+      const flushStarted = nowMs()
+      onSceneChange({
+        elements: [...queued.elements],
+        appState: { ...queued.appState },
+        files: { ...queued.files },
+      })
+      pushGlobalExcalidrawPerfEvent({
+        name: 'scene_change_flush',
+        durationMs: nowMs() - flushStarted,
+        elementCount: queued.elements.length,
+        ts: new Date().toISOString(),
+      })
     })
   }, [onSceneChange])
 
@@ -219,28 +379,17 @@ export default function ExcalidrawDocumentBlock({
     right: number
     bottom: number
   }, options?: { anchorsOnly?: boolean }): number => {
-    if (!parsedScene || parsedScene.elements.length === 0) return 0
+    if (sceneAnalysis.drawableCenters.length === 0) return 0
     const anchorsOnly = options?.anchorsOnly === true
     let count = 0
-    for (const item of parsedScene.elements) {
-      if (!item || typeof item !== 'object') continue
-      const element = item as Record<string, unknown>
-      if (element.isDeleted === true) continue
-      const type = typeof element.type === 'string' ? element.type : ''
-      if (anchorsOnly && type === 'freedraw') continue
-      const x = Number(element.x)
-      const y = Number(element.y)
-      const width = Number(element.width)
-      const height = Number(element.height)
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) continue
-      const cx = x + Math.max(width, 1) / 2
-      const cy = y + Math.max(height, 1) / 2
-      if (cx >= viewport.left && cx <= viewport.right && cy >= viewport.top && cy <= viewport.bottom) {
+    for (const center of sceneAnalysis.drawableCenters) {
+      if (anchorsOnly && !center.isAnchor) continue
+      if (center.x >= viewport.left && center.x <= viewport.right && center.y >= viewport.top && center.y <= viewport.bottom) {
         count += 1
       }
     }
     return count
-  }, [parsedScene])
+  }, [sceneAnalysis.drawableCenters])
 
   useEffect(() => {
     return () => {
@@ -252,6 +401,7 @@ export default function ExcalidrawDocumentBlock({
         window.cancelAnimationFrame(autoCenterFrameRef.current)
         autoCenterFrameRef.current = null
       }
+      queuedSceneRef.current = null
     }
   }, [])
 
@@ -264,6 +414,7 @@ export default function ExcalidrawDocumentBlock({
       autoCenterFrameRef.current = null
     }
     onChangeLogCountRef.current = 0
+    queuedSceneRef.current = null
     debugLog('scene_reset', { editable, contentLength: content.length })
   }, [content, editable])
 
@@ -293,6 +444,7 @@ export default function ExcalidrawDocumentBlock({
       return false
     }
 
+    const autoCenterStarted = nowMs()
     try {
       const baseAppState = excalidrawApi.getAppState()
       const parsedAppState = (parsedScene.appState ?? {}) as Record<string, unknown>
@@ -350,6 +502,17 @@ export default function ExcalidrawDocumentBlock({
         appScrollY: app.scrollY,
         appZoom: app.zoom.value,
       })
+      pushGlobalExcalidrawPerfEvent({
+        name: 'auto_center',
+        durationMs: nowMs() - autoCenterStarted,
+        elementCount: parsedScene.elements.length,
+        ts: new Date().toISOString(),
+        meta: {
+          source,
+          attempt,
+          success: true,
+        },
+      })
       hasAutoCenteredRef.current = true
       autoCenterRequestedRef.current = false
       return true
@@ -358,6 +521,18 @@ export default function ExcalidrawDocumentBlock({
         source,
         attempt,
         message: error instanceof Error ? error.message : String(error),
+      })
+      pushGlobalExcalidrawPerfEvent({
+        name: 'auto_center',
+        durationMs: nowMs() - autoCenterStarted,
+        elementCount: parsedScene.elements.length,
+        ts: new Date().toISOString(),
+        meta: {
+          source,
+          attempt,
+          success: false,
+          message: error instanceof Error ? error.message : String(error),
+        },
       })
       // Keep editor usable even if camera centering fails.
       return false
@@ -378,15 +553,17 @@ export default function ExcalidrawDocumentBlock({
     if (!excalidrawApi) return undefined
 
     const app = excalidrawApi.getAppState()
-    setScrollState({
-      scrollX: app.scrollX,
-      scrollY: app.scrollY,
-      zoom: app.zoom.value,
-    })
-    pendingScrollRef.current = {
-      scrollX: app.scrollX,
-      scrollY: app.scrollY,
-      zoom: app.zoom.value,
+    if (!editable) {
+      setScrollState({
+        scrollX: app.scrollX,
+        scrollY: app.scrollY,
+        zoom: app.zoom.value,
+      })
+      pendingScrollRef.current = {
+        scrollX: app.scrollX,
+        scrollY: app.scrollY,
+        zoom: app.zoom.value,
+      }
     }
     debugLog('api_ready', {
       appScrollX: app.scrollX,
@@ -439,20 +616,22 @@ export default function ExcalidrawDocumentBlock({
       }
     }
 
-    const unsubscribe = excalidrawApi.onScrollChange((scrollX, scrollY, zoom) => {
-      pendingScrollRef.current = { scrollX, scrollY, zoom: zoom.value }
-      if (scrollFrameRef.current !== null) {
-        return
-      }
+    const unsubscribe = editable
+      ? null
+      : excalidrawApi.onScrollChange((scrollX, scrollY, zoom) => {
+        pendingScrollRef.current = { scrollX, scrollY, zoom: zoom.value }
+        if (scrollFrameRef.current !== null) {
+          return
+        }
 
-      scrollFrameRef.current = window.requestAnimationFrame(() => {
-        scrollFrameRef.current = null
-        setScrollState(pendingScrollRef.current)
+        scrollFrameRef.current = window.requestAnimationFrame(() => {
+          scrollFrameRef.current = null
+          setScrollState(pendingScrollRef.current)
+        })
       })
-    })
 
     return () => {
-      unsubscribe()
+      unsubscribe?.()
       if (scrollFrameRef.current !== null) {
         window.cancelAnimationFrame(scrollFrameRef.current)
         scrollFrameRef.current = null
@@ -506,13 +685,14 @@ export default function ExcalidrawDocumentBlock({
           handleKeyboardGlobally={editable}
           onChange={(elements: readonly unknown[], appState: unknown, files: unknown) => {
             onChangeLogCountRef.current += 1
+            const typedAppState = (appState as Record<string, unknown>) ?? {}
+            const typedFiles = (files as Record<string, unknown>) ?? {}
             if (onChangeLogCountRef.current <= 5 || onChangeLogCountRef.current % 100 === 0) {
-              const typedAppState = (appState as Record<string, unknown>) ?? {}
               const zoom = (typedAppState.zoom as { value?: unknown } | undefined)?.value
               debugLog('on_change', {
                 count: onChangeLogCountRef.current,
                 elements: elements.length,
-                files: Object.keys(((files as Record<string, unknown>) ?? {})).length,
+                files: Object.keys(typedFiles).length,
                 zoom: typeof zoom === 'number' ? zoom : null,
                 scrollX: typeof typedAppState.scrollX === 'number' ? typedAppState.scrollX : null,
                 scrollY: typeof typedAppState.scrollY === 'number' ? typedAppState.scrollY : null,
@@ -522,14 +702,20 @@ export default function ExcalidrawDocumentBlock({
               scheduleAutoCenter('on_change', elements.length)
             }
             queueSceneChange({
-              elements: [...elements],
-              appState: (appState as Record<string, unknown>) ?? {},
-              files: (files as Record<string, unknown>) ?? {},
+              elements,
+              appState: typedAppState,
+              files: typedFiles,
             })
           }}
           UIOptions={uiOptions as any}
         />
       </Suspense>
+
+      {editable && isLargeScene && (
+        <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-lg border border-border/70 bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur">
+          Large scene mode: {parsedScene?.elements.length ?? 0} elements · parse {Math.round(parseDurationMsRef.current)}ms · analyze {Math.round(sceneAnalysis.durationMs)}ms
+        </div>
+      )}
 
       {!editable && sceneBounds && (
         <button

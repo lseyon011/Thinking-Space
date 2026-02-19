@@ -28,6 +28,7 @@ export default function MindmapBuilder() {
   const [selectedFile, setSelectedFile] = useState('')
   const [outputPath, setOutputPath] = useState('')
   const [options, setOptions] = useState<MindmapBuildOptions>(() => getDefaultMindmapBuildOptionsOrch())
+  const [debouncedOptions, setDebouncedOptions] = useState<MindmapBuildOptions>(() => getDefaultMindmapBuildOptionsOrch())
   const [preview, setPreview] = useState<MindmapPreviewData | null>(null)
   const [loadingFiles, setLoadingFiles] = useState(true)
   const [loadingPreview, setLoadingPreview] = useState(false)
@@ -50,6 +51,15 @@ export default function MindmapBuilder() {
   }, [])
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedOptions(options)
+    }, 120)
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [options])
+
+  useEffect(() => {
     if (!selectedFile) {
       setPreview(null)
       return
@@ -64,7 +74,7 @@ export default function MindmapBuilder() {
     setLoadingPreview(true)
     setError(null)
 
-    buildMindmapPreviewOrch(selectedFile, options)
+    buildMindmapPreviewOrch(selectedFile, debouncedOptions)
       .then((nextPreview) => {
         if (cancelled) return
         setPreview(nextPreview)
@@ -81,7 +91,7 @@ export default function MindmapBuilder() {
     return () => {
       cancelled = true
     }
-  }, [selectedFile, options])
+  }, [debouncedOptions, selectedFile])
 
   const toggleOption = (key: ToggleOptionKey) => {
     setOptions((prev) => ({ ...prev, [key]: !prev[key] }))
@@ -100,7 +110,9 @@ export default function MindmapBuilder() {
         outputPath,
       })
       setOutputPath(result.outputPath)
-      setMessage(result.message)
+      setMessage(
+        `${result.message} (${Math.round(result.timingMs.total)} ms total; write ${Math.round(result.timingMs.write)} ms)`,
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save mindmap')
     } finally {
@@ -110,7 +122,7 @@ export default function MindmapBuilder() {
 
   const statsLine = useMemo(() => {
     if (!preview) return null
-    return `${preview.sourceLines} source lines, ${preview.headingCount} headings, ${preview.nodeCount} nodes, ${preview.connectionCount} links`
+    return `${preview.sourceLines} source lines, ${preview.headingCount} headings, ${preview.nodeCount} nodes, ${preview.connectionCount} links • read ${Math.round(preview.timingMs.read)} ms • build ${Math.round(preview.timingMs.build)} ms • serialize ${Math.round(preview.timingMs.serialize)} ms`
   }, [preview])
 
   return (
@@ -338,22 +350,27 @@ export default function MindmapBuilder() {
                 {statsLine ?? 'Choose a markdown source to build preview.'}
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              {loadingPreview && (
-                <div className="flex items-center justify-center py-10 text-muted-foreground">
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Building mindmap preview...
+            <CardContent className="relative">
+              {preview && (
+                <div className={`h-[70vh] transition-opacity ${loadingPreview ? 'opacity-60' : 'opacity-100'}`}>
+                  <ExcalidrawDocumentBlock content={preview.sceneMarkdown} className="h-full" />
                 </div>
               )}
-              {!loadingPreview && preview && (
-                <div className="h-[70vh]">
-                  <ExcalidrawDocumentBlock content={preview.sceneMarkdown} className="h-full" />
+              {loadingPreview && (
+                <div className={`absolute inset-0 flex items-center justify-center text-muted-foreground ${preview ? 'bg-background/50 backdrop-blur-[1px]' : ''}`}>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Building mindmap preview...
                 </div>
               )}
               {!loadingPreview && !preview && (
                 <div className="py-8 text-center text-sm text-muted-foreground">
                   No preview available.
                 </div>
+              )}
+              {preview && preview.nodeCount >= 800 && (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Large scene detected. Preview keeps the previous canvas mounted while regenerating to reduce visual jank.
+                </p>
               )}
             </CardContent>
           </Card>

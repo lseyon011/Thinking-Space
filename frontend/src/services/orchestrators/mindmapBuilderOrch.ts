@@ -18,6 +18,12 @@ export interface MindmapPreviewData {
   headingCount: number
   nodeCount: number
   connectionCount: number
+  timingMs: {
+    read: number
+    build: number
+    serialize: number
+    total: number
+  }
 }
 
 export interface MindmapSaveResult {
@@ -25,6 +31,15 @@ export interface MindmapSaveResult {
   nodeCount: number
   headingCount: number
   message: string
+  timingMs: {
+    previewTotal: number
+    write: number
+    total: number
+  }
+}
+
+function nowMs(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now()
 }
 
 export function getDefaultMindmapBuildOptionsOrch(): MindmapBuildOptions {
@@ -49,18 +64,32 @@ export async function buildMindmapPreviewOrch(
   inputPath: string,
   options: MindmapBuildOptions,
 ): Promise<MindmapPreviewData> {
+  const started = nowMs()
   const fs = getVaultFS()
+  const readStarted = nowMs()
   const content = await fs.read(inputPath)
+  const readMs = nowMs() - readStarted
+  const buildStarted = nowMs()
   const built = buildMindmapSceneFromMarkdownBlock(content, inputPath, options)
+  const buildMs = nowMs() - buildStarted
+  const serializeStarted = nowMs()
+  const sceneMarkdown = serializeMindmapSceneToMarkdownBlock(built.scene)
+  const serializeMs = nowMs() - serializeStarted
 
   return {
     inputPath,
     scene: built.scene,
-    sceneMarkdown: serializeMindmapSceneToMarkdownBlock(built.scene),
+    sceneMarkdown,
     sourceLines: built.stats.sourceLineCount,
     headingCount: built.stats.headingCount,
     nodeCount: built.stats.nodeCount,
     connectionCount: built.stats.connectionCount,
+    timingMs: {
+      read: readMs,
+      build: buildMs,
+      serialize: serializeMs,
+      total: nowMs() - started,
+    },
   }
 }
 
@@ -69,16 +98,24 @@ export async function saveMindmapSceneOrch(params: {
   options: MindmapBuildOptions
   outputPath?: string
 }): Promise<MindmapSaveResult> {
+  const started = nowMs()
   const outputPath = params.outputPath?.trim() || suggestMindmapOutputPathOrch(params.inputPath)
   const preview = await buildMindmapPreviewOrch(params.inputPath, params.options)
 
   const fs = getVaultFS()
+  const writeStarted = nowMs()
   await fs.write(outputPath, preview.sceneMarkdown)
+  const writeMs = nowMs() - writeStarted
 
   return {
     outputPath,
     nodeCount: preview.nodeCount,
     headingCount: preview.headingCount,
     message: `Saved mindmap to ${outputPath}`,
+    timingMs: {
+      previewTotal: preview.timingMs.total,
+      write: writeMs,
+      total: nowMs() - started,
+    },
   }
 }
