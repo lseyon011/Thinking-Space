@@ -1,7 +1,10 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { ParsedExcalidrawScene } from '@/services/orchestrators/excalidrawSceneOrch'
-import { parseExcalidrawSceneOrch } from '@/services/orchestrators/excalidrawSceneOrch'
+import {
+  parseExcalidrawSceneOrch,
+  parseExcalidrawSceneRawOrch,
+} from '@/services/orchestrators/excalidrawSceneOrch'
 import { cn } from '@/lib/utils'
 
 const ExcalidrawCanvas = lazy(async () => {
@@ -17,67 +20,170 @@ interface ExcalidrawDocumentBlockProps {
   className?: string
 }
 
+type SceneBounds = {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+  width: number
+  height: number
+}
+
+type SceneRect = {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
+function quantile(sorted: number[], q: number): number {
+  if (sorted.length === 0) return 0
+  if (sorted.length === 1) return sorted[0]
+  const position = (sorted.length - 1) * q
+  const lower = Math.floor(position)
+  const upper = Math.ceil(position)
+  if (lower === upper) return sorted[lower]
+  const weight = position - lower
+  return sorted[lower] * (1 - weight) + sorted[upper] * weight
+}
+
+function rectsToBounds(rects: SceneRect[]): SceneBounds | null {
+  if (rects.length === 0) return null
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  for (const rect of rects) {
+    minX = Math.min(minX, rect.left)
+    minY = Math.min(minY, rect.top)
+    maxX = Math.max(maxX, rect.right)
+    maxY = Math.max(maxY, rect.bottom)
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) return null
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: Math.max(maxX - minX, 1),
+    height: Math.max(maxY - minY, 1),
+  }
+}
+
 export default function ExcalidrawDocumentBlock({
   content,
   editable = false,
   onSceneChange,
   className,
 }: ExcalidrawDocumentBlockProps) {
-  const parsedScene = useMemo(() => parseExcalidrawSceneOrch(content), [content])
+  const parsedScene = useMemo(() => {
+    if (editable) {
+      const raw = parseExcalidrawSceneRawOrch(content)
+      if (raw) return raw
+    }
+    return parseExcalidrawSceneOrch(content)
+  }, [content, editable])
   const [excalidrawApi, setExcalidrawApi] = useState<ExcalidrawImperativeAPI | null>(null)
   const [scrollState, setScrollState] = useState({ scrollX: 0, scrollY: 0, zoom: 1 })
+  const [apiElementStats, setApiElementStats] = useState({ visible: 0, includingDeleted: 0 })
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [containerSize, setContainerSize] = useState({ width: 1, height: 1 })
   const scrollFrameRef = useRef<number | null>(null)
   const pendingScrollRef = useRef({ scrollX: 0, scrollY: 0, zoom: 1 })
   const sceneChangeFrameRef = useRef<number | null>(null)
   const latestSceneRef = useRef<ParsedExcalidrawScene | null>(null)
+  const hasAutoFitRef = useRef(false)
+  const hasHydratedSceneRef = useRef(false)
 
   const initialData = useMemo(() => {
     if (!parsedScene) return null
+    const baseAppState = (parsedScene.appState ?? {}) as Record<string, unknown>
     return {
       elements: parsedScene.elements as any[],
       appState: {
-        ...(parsedScene.appState ?? {}),
+        ...baseAppState,
         viewModeEnabled: !editable,
+        ...(editable
+          ? {
+            // Start from deterministic viewport in edit mode, then auto-fit once container size is known.
+            scrollX: 0,
+            scrollY: 0,
+            zoom: { value: 1 },
+          }
+          : {}),
       } as any,
       files: (parsedScene.files ?? {}) as any,
     }
   }, [editable, parsedScene])
 
-  const sceneBounds = useMemo(() => {
-    if (!parsedScene || parsedScene.elements.length === 0) return null
+  const drawableRects = useMemo(() => {
+    if (!parsedScene || parsedScene.elements.length === 0) return [] as SceneRect[]
 
-    let minX = Number.POSITIVE_INFINITY
-    let minY = Number.POSITIVE_INFINITY
-    let maxX = Number.NEGATIVE_INFINITY
-    let maxY = Number.NEGATIVE_INFINITY
-    let found = false
-
+    const rects: SceneRect[] = []
     for (const item of parsedScene.elements) {
       if (!item || typeof item !== 'object') continue
       const element = item as Record<string, unknown>
       if (element.isDeleted === true) continue
+
       const x = Number(element.x)
       const y = Number(element.y)
-      const width = Number(element.width)
-      const height = Number(element.height)
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) continue
-      minX = Math.min(minX, x)
-      minY = Math.min(minY, y)
-      maxX = Math.max(maxX, x + Math.max(width, 1))
-      maxY = Math.max(maxY, y + Math.max(height, 1))
-      found = true
+      const rawWidth = Number(element.width)
+      const rawHeight = Number(element.height)
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(rawWidth) || !Number.isFinite(rawHeight)) continue
+      if (Math.abs(x) > 10_000_000 || Math.abs(y) > 10_000_000) continue
+
+      const width = Math.max(Math.abs(rawWidth), 1)
+      const height = Math.max(Math.abs(rawHeight), 1)
+      const left = rawWidth >= 0 ? x : x - width
+      const top = rawHeight >= 0 ? y : y - height
+
+      rects.push({
+        left,
+        top,
+        right: left + width,
+        bottom: top + height,
+      })
     }
 
-    if (!found) return null
+    return rects
+  }, [parsedScene])
+
+  const sceneBounds = useMemo(() => rectsToBounds(drawableRects), [drawableRects])
+
+  const fitBounds = useMemo(() => {
+    if (drawableRects.length === 0) return null
+
+    if (drawableRects.length < 50) {
+      return rectsToBounds(drawableRects)
+    }
+
+    const lefts = drawableRects.map(rect => rect.left).sort((a, b) => a - b)
+    const tops = drawableRects.map(rect => rect.top).sort((a, b) => a - b)
+    const rights = drawableRects.map(rect => rect.right).sort((a, b) => a - b)
+    const bottoms = drawableRects.map(rect => rect.bottom).sort((a, b) => a - b)
+
+    const qMinX = quantile(lefts, 0.02)
+    const qMinY = quantile(tops, 0.02)
+    const qMaxX = quantile(rights, 0.98)
+    const qMaxY = quantile(bottoms, 0.98)
+
+    if (!Number.isFinite(qMinX) || !Number.isFinite(qMinY) || !Number.isFinite(qMaxX) || !Number.isFinite(qMaxY)) {
+      return rectsToBounds(drawableRects)
+    }
+
+    const width = qMaxX - qMinX
+    const height = qMaxY - qMinY
+    if (width < 1 || height < 1) {
+      return rectsToBounds(drawableRects)
+    }
+
     return {
-      minX,
-      minY,
-      maxX,
-      maxY,
-      width: Math.max(maxX - minX, 1),
-      height: Math.max(maxY - minY, 1),
+      minX: qMinX,
+      minY: qMinY,
+      maxX: qMaxX,
+      maxY: qMaxY,
+      width: Math.max(width, 1),
+      height: Math.max(height, 1),
     }
   }, [parsedScene])
 
@@ -110,6 +216,73 @@ export default function ExcalidrawDocumentBlock({
 
     return rects
   }, [parsedScene, sceneBounds])
+
+  const fitSceneToViewport = useCallback(() => {
+    if (!editable || !excalidrawApi || !fitBounds) return false
+    if (containerSize.width <= 1 || containerSize.height <= 1) return false
+
+    const scaleX = (containerSize.width * 0.9) / Math.max(fitBounds.width, 1)
+    const scaleY = (containerSize.height * 0.9) / Math.max(fitBounds.height, 1)
+    let zoomValue = Math.min(scaleX, scaleY)
+    if (!Number.isFinite(zoomValue) || zoomValue <= 0) zoomValue = 1
+    zoomValue = Math.max(0.001, Math.min(zoomValue, 8))
+
+    const viewportWorldW = containerSize.width / zoomValue
+    const viewportWorldH = containerSize.height / zoomValue
+    const centerX = fitBounds.minX + fitBounds.width / 2
+    const centerY = fitBounds.minY + fitBounds.height / 2
+    const scrollX = -centerX + viewportWorldW / 2
+    const scrollY = -centerY + viewportWorldH / 2
+
+    excalidrawApi.refresh()
+    excalidrawApi.updateScene({
+      appState: {
+        ...excalidrawApi.getAppState(),
+        zoom: { value: zoomValue } as any,
+        scrollX,
+        scrollY,
+      } as any,
+    })
+
+    const sceneElements = excalidrawApi.getSceneElements()
+    if (sceneElements.length > 0) {
+      excalidrawApi.scrollToContent(sceneElements, {
+        fitToViewport: true,
+        viewportZoomFactor: 0.92,
+        animate: false,
+        minZoom: 0.001,
+        maxZoom: 8,
+      })
+    }
+
+    setApiElementStats({
+      visible: excalidrawApi.getSceneElements().length,
+      includingDeleted: excalidrawApi.getSceneElementsIncludingDeleted().length,
+    })
+
+    return true
+  }, [containerSize.height, containerSize.width, editable, excalidrawApi, fitBounds])
+
+  const hydrateSceneFromParsed = useCallback(() => {
+    if (!editable || !excalidrawApi || !parsedScene) return false
+
+    excalidrawApi.refresh()
+    excalidrawApi.updateScene({
+      elements: parsedScene.elements as any[],
+      files: (parsedScene.files ?? {}) as any,
+      appState: {
+        ...excalidrawApi.getAppState(),
+        ...(parsedScene.appState ?? {}),
+        viewModeEnabled: false,
+      } as any,
+    })
+    hasHydratedSceneRef.current = true
+    setApiElementStats({
+      visible: excalidrawApi.getSceneElements().length,
+      includingDeleted: excalidrawApi.getSceneElementsIncludingDeleted().length,
+    })
+    return true
+  }, [editable, excalidrawApi, parsedScene])
 
   const uiOptions = useMemo(() => {
     if (editable) {
@@ -159,6 +332,25 @@ export default function ExcalidrawDocumentBlock({
   }, [])
 
   useEffect(() => {
+    hasAutoFitRef.current = false
+    hasHydratedSceneRef.current = false
+  }, [content, editable])
+
+  useEffect(() => {
+    if (!editable || !excalidrawApi || !parsedScene || hasHydratedSceneRef.current) return
+
+    const frameId = window.requestAnimationFrame(() => {
+      try {
+        hydrateSceneFromParsed()
+      } catch {
+        // Ignore hydration failures; fallback render remains active.
+      }
+    })
+
+    return () => window.cancelAnimationFrame(frameId)
+  }, [editable, excalidrawApi, hydrateSceneFromParsed, parsedScene])
+
+  useEffect(() => {
     if (!excalidrawApi) return undefined
 
     const app = excalidrawApi.getAppState()
@@ -172,6 +364,10 @@ export default function ExcalidrawDocumentBlock({
       scrollY: app.scrollY,
       zoom: app.zoom.value,
     }
+    setApiElementStats({
+      visible: excalidrawApi.getSceneElements().length,
+      includingDeleted: excalidrawApi.getSceneElementsIncludingDeleted().length,
+    })
 
     const unsubscribe = excalidrawApi.onScrollChange((scrollX, scrollY, zoom) => {
       pendingScrollRef.current = { scrollX, scrollY, zoom: zoom.value }
@@ -193,6 +389,22 @@ export default function ExcalidrawDocumentBlock({
       }
     }
   }, [excalidrawApi])
+
+  useEffect(() => {
+    if (!editable || !excalidrawApi || hasAutoFitRef.current) return
+    if (!sceneBounds) return
+    if (containerSize.width <= 1 || containerSize.height <= 1) return
+
+    const frameId = window.requestAnimationFrame(() => {
+      try {
+        hasAutoFitRef.current = fitSceneToViewport()
+      } catch {
+        // Ignore fit failures; scene is still editable.
+      }
+    })
+
+    return () => window.cancelAnimationFrame(frameId)
+  }, [containerSize.height, containerSize.width, editable, excalidrawApi, fitSceneToViewport, sceneBounds])
 
   useEffect(() => {
     const container = containerRef.current
@@ -227,6 +439,10 @@ export default function ExcalidrawDocumentBlock({
           autoFocus={editable}
           handleKeyboardGlobally={editable}
           onChange={(elements: readonly unknown[], appState: unknown, files: unknown) => {
+            setApiElementStats({
+              visible: excalidrawApi?.getSceneElements().length ?? elements.length,
+              includingDeleted: excalidrawApi?.getSceneElementsIncludingDeleted().length ?? elements.length,
+            })
             queueSceneChange({
               elements: [...elements],
               appState: (appState as Record<string, unknown>) ?? {},
@@ -236,6 +452,45 @@ export default function ExcalidrawDocumentBlock({
           UIOptions={uiOptions as any}
         />
       </Suspense>
+
+      {editable && sceneBounds && (
+        <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
+          <div className="rounded-md border border-border/70 bg-background/90 px-2 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur">
+            Loaded {(parsedScene?.elements ?? []).length} elements ({drawableRects.length} drawable)
+          </div>
+          <div className="rounded-md border border-border/70 bg-background/90 px-2 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur">
+            Canvas {apiElementStats.visible}/{apiElementStats.includingDeleted} zoom {scrollState.zoom.toFixed(3)}
+          </div>
+          <button
+            type="button"
+            className="rounded-md border border-border/70 bg-background/90 px-2 py-1 text-xs font-medium shadow-sm backdrop-blur hover:bg-muted"
+            onClick={() => {
+              try {
+                hydrateSceneFromParsed()
+              } catch {
+                // Ignore manual reload failures.
+              }
+            }}
+            title="Reload scene from file content"
+          >
+            Reload Scene
+          </button>
+          <button
+            type="button"
+            className="rounded-md border border-border/70 bg-background/90 px-2 py-1 text-xs font-medium shadow-sm backdrop-blur hover:bg-muted"
+            onClick={() => {
+              try {
+                fitSceneToViewport()
+              } catch {
+                // Ignore manual fit failures.
+              }
+            }}
+            title="Fit drawing to viewport"
+          >
+            Fit to Content
+          </button>
+        </div>
+      )}
 
       {!editable && sceneBounds && (
         <button

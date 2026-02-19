@@ -79,7 +79,11 @@ function normalizeScene(scene: ParsedExcalidrawScene): ParsedExcalidrawScene {
   })
 }
 
-function parseFromCodeFences(content: string): ParsedExcalidrawScene | null {
+function maybeNormalizeScene(scene: ParsedExcalidrawScene, normalize: boolean): ParsedExcalidrawScene {
+  return normalize ? normalizeScene(scene) : scene
+}
+
+function parseFromCodeFences(content: string, normalize: boolean): ParsedExcalidrawScene | null {
   const fenceRe = /```([a-zA-Z0-9_-]+)?\s*([\s\S]*?)\s*```/gi
   let match: RegExpExecArray | null
   while (true) {
@@ -90,7 +94,7 @@ function parseFromCodeFences(content: string): ParsedExcalidrawScene | null {
 
     if (fenceType === '' || fenceType === 'json') {
       const parsed = tryParseJson(block)
-      if (parsed) return normalizeScene(parsed)
+      if (parsed) return maybeNormalizeScene(parsed, normalize)
       continue
     }
 
@@ -98,20 +102,28 @@ function parseFromCodeFences(content: string): ParsedExcalidrawScene | null {
       const decompressed = decompressFromBase64LzString(block.replace(/\s+/g, ''))
       if (!decompressed) continue
       const parsed = tryParseJson(decompressed)
-      if (parsed) return normalizeScene(parsed)
+      if (parsed) return maybeNormalizeScene(parsed, normalize)
     }
   }
   return null
 }
 
-export function parseExcalidrawScene(content: string): ParsedExcalidrawScene | null {
+function parseExcalidrawSceneInternal(content: string, normalize: boolean): ParsedExcalidrawScene | null {
   const raw = content.trim()
   if (!raw) return null
 
   const direct = tryParseJson(raw)
-  if (direct) return normalizeScene(direct)
+  if (direct) return maybeNormalizeScene(direct, normalize)
 
-  return parseFromCodeFences(content)
+  return parseFromCodeFences(content, normalize)
+}
+
+export function parseExcalidrawScene(content: string): ParsedExcalidrawScene | null {
+  return parseExcalidrawSceneInternal(content, true)
+}
+
+export function parseExcalidrawSceneRaw(content: string): ParsedExcalidrawScene | null {
+  return parseExcalidrawSceneInternal(content, false)
 }
 
 export function serializeExcalidrawScene(

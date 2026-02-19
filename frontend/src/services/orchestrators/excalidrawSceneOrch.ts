@@ -1,5 +1,6 @@
 import {
   parseExcalidrawScene,
+  parseExcalidrawSceneRaw,
   serializeExcalidrawScene,
   type ParsedExcalidrawScene,
 } from '../lego_blocks/excalidrawFileBlock'
@@ -8,6 +9,10 @@ export type { ParsedExcalidrawScene }
 
 export function parseExcalidrawSceneOrch(content: string): ParsedExcalidrawScene | null {
   return parseExcalidrawScene(content)
+}
+
+export function parseExcalidrawSceneRawOrch(content: string): ParsedExcalidrawScene | null {
+  return parseExcalidrawSceneRaw(content)
 }
 
 export function serializeExcalidrawSceneOrch(

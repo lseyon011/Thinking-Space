@@ -52,7 +52,7 @@ function lzDecompress(
     data.position >>= 1
     if (data.position === 0) {
       data.position = resetValue
-      data.val = getNextValue(data.index += 1)
+      data.val = getNextValue(data.index++)
     }
     bits |= (resb > 0 ? 1 : 0) * power
     power <<= 1
@@ -68,7 +68,7 @@ function lzDecompress(
         data.position >>= 1
         if (data.position === 0) {
           data.position = resetValue
-          data.val = getNextValue(data.index += 1)
+          data.val = getNextValue(data.index++)
         }
         bits |= (resb > 0 ? 1 : 0) * power
         power <<= 1
@@ -84,7 +84,7 @@ function lzDecompress(
         data.position >>= 1
         if (data.position === 0) {
           data.position = resetValue
-          data.val = getNextValue(data.index += 1)
+          data.val = getNextValue(data.index++)
         }
         bits |= (resb > 0 ? 1 : 0) * power
         power <<= 1
@@ -112,7 +112,7 @@ function lzDecompress(
       data.position >>= 1
       if (data.position === 0) {
         data.position = resetValue
-        data.val = getNextValue(data.index += 1)
+        data.val = getNextValue(data.index++)
       }
       bits |= (resb > 0 ? 1 : 0) * power
       power <<= 1
@@ -129,7 +129,7 @@ function lzDecompress(
           data.position >>= 1
           if (data.position === 0) {
             data.position = resetValue
-            data.val = getNextValue(data.index += 1)
+            data.val = getNextValue(data.index++)
           }
           bits |= (resb > 0 ? 1 : 0) * power
           power <<= 1
@@ -148,7 +148,7 @@ function lzDecompress(
           data.position >>= 1
           if (data.position === 0) {
             data.position = resetValue
-            data.val = getNextValue(data.index += 1)
+            data.val = getNextValue(data.index++)
           }
           bits |= (resb > 0 ? 1 : 0) * power
           power <<= 1
