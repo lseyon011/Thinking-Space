@@ -234,6 +234,7 @@ export default function MindmapBuilder() {
                     }))}
                   >
                     <option value="helvetica">Helvetica</option>
+                    <option value="excalidraw">Excalidraw Script</option>
                     <option value="cascadia">Cascadia</option>
                     <option value="virgil">Virgil</option>
                   </select>

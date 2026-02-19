@@ -43,7 +43,7 @@ describe('mindmapBuilderBlock', () => {
     expect(result.stats.headingCount).toBe(3)
     expect(result.stats.nodeCount).toBe(7) // root + headings + per-heading content nodes
     expect(textElements.some(text => text.includes('Detail line A1.'))).toBe(true)
-    expect(textElements.some(text => text === 'Child A')).toBe(true)
+    expect(textElements.some(text => text.includes('Child A'))).toBe(true)
   })
 
   it('keeps node text to heading titles when full-text mode is disabled', () => {
@@ -60,7 +60,7 @@ describe('mindmapBuilderBlock', () => {
 
     const textElements = extractTextElements(result.scene)
     expect(textElements.some(text => text.includes('Detail line A1.'))).toBe(false)
-    expect(textElements.some(text => text === 'Child A')).toBe(true)
+    expect(textElements.some(text => text.includes('Child A'))).toBe(true)
   })
 
   it('builds default output paths with excalidraw suffix', () => {

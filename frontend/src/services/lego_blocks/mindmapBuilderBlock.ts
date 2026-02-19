@@ -4,7 +4,7 @@ import { normalizeExcalidrawSceneForInteropBlock } from './excalidrawSceneCompat
 export type MindmapGrowthMode = 'radial' | 'right-facing' | 'left-facing' | 'right-left' | 'up-facing' | 'down-facing'
 export type MindmapFontScale = 'normal' | 'fibonacci'
 export type MindmapArrowType = 'curved' | 'straight' | 'elbow'
-export type MindmapFontFamily = 'virgil' | 'helvetica' | 'cascadia'
+export type MindmapFontFamily = 'virgil' | 'helvetica' | 'cascadia' | 'excalidraw'
 
 export interface MindmapBuildOptions {
   includeFullText: boolean
@@ -61,6 +61,11 @@ interface MindmapNode {
   fontSize: number
 }
 
+interface NodeRenderRefs {
+  rectId: string
+  textId: string
+}
+
 interface LayoutContext {
   nodesById: Map<string, MindmapNode>
   childrenByParent: Map<string, MindmapNode[]>
@@ -108,12 +113,12 @@ export const DEFAULT_MINDMAP_BUILD_OPTIONS: MindmapBuildOptions = {
   growthMode: 'right-left',
   arrowType: 'curved',
   fillSweep: false,
-  centerText: true,
+  centerText: false,
   multicolorBranches: true,
   boxNodes: true,
   roundedCorners: true,
-  fontScale: 'normal',
-  fontFamily: 'helvetica',
+  fontScale: 'fibonacci',
+  fontFamily: 'excalidraw',
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -136,9 +141,7 @@ function titleFromPath(path: string): string {
 function normalizeBody(body: string): string {
   return body
     .replace(/\r/g, '')
-    .replace(/\u00A0/g, ' ')
     .trim()
-    .replace(/\n{3,}/g, '\n\n')
 }
 
 function fontSizeForDepth(depth: number, scale: MindmapFontScale): number {
@@ -150,6 +153,8 @@ function fontSizeForDepth(depth: number, scale: MindmapFontScale): number {
 
 function fontFamilyId(family: MindmapFontFamily): number {
   switch (family) {
+    case 'excalidraw':
+      return 5
     case 'virgil':
       return 1
     case 'cascadia':
@@ -204,9 +209,6 @@ function wrapLine(rawLine: string, maxChars: number): string[] {
 
 function wrapPreservingBreaks(text: string, maxChars: number): string {
   const capped = Math.max(18, maxChars)
-  if (capped >= 1000) {
-    return text.replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim()
-  }
   const rawLines = text.replace(/\r/g, '').split('\n')
   const out: string[] = []
 
@@ -218,7 +220,7 @@ function wrapPreservingBreaks(text: string, maxChars: number): string {
     out.push(...wrapLine(raw, capped))
   }
 
-  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return out.join('\n').trim()
 }
 
 function parseHeadingRows(markdown: string, maxDepth: number): HeadingRow[] {
@@ -289,11 +291,18 @@ function createGraphNodes(tree: HeadingTreeNode[], sourcePath: string, options: 
     return current
   }
 
+  const toScriptNodeLabel = (rawText: string): string => {
+    const text = rawText.trim()
+    if (!text) return text
+    if (text.startsWith('📍[[') && text.endsWith(']]')) return text
+    return `📍[[${text}]]`
+  }
+
   const root: MindmapNode = {
     id: ROOT_ID,
     parentId: null,
     kind: 'root',
-    text: titleFromPath(sourcePath),
+    text: toScriptNodeLabel(titleFromPath(sourcePath)),
     depth: 0,
     order: 0,
     branchIndex: 0,
@@ -315,7 +324,7 @@ function createGraphNodes(tree: HeadingTreeNode[], sourcePath: string, options: 
       id: headingId,
       parentId,
       kind: 'heading',
-      text: heading.title,
+      text: toScriptNodeLabel(heading.title),
       depth,
       order: nextOrder(parentId),
       branchIndex,
@@ -370,11 +379,15 @@ function assignTextMetrics(nodes: MindmapNode[], options: MindmapBuildOptions): 
 
     const horizontalPadding = node.kind === 'content' ? 18 : 14
     const verticalPadding = node.kind === 'content' ? 20 : 10
+    const maxNodeWidth = Math.max(
+      node.kind === 'root' ? 240 : 180,
+      options.maxWrapWidth + horizontalPadding * 2,
+    )
 
     const width = clamp(
       Math.round(longest * Math.max(fontSize * 0.56, 7.5) + horizontalPadding * 2),
       node.kind === 'root' ? 220 : 140,
-      node.kind === 'content' ? 2400 : 900,
+      maxNodeWidth,
     )
 
     const baseHeight = Math.round(lines.length * Math.max(fontSize * 1.42, 20) + verticalPadding * 2)
@@ -850,8 +863,51 @@ function buildArrowPoints(params: {
   ]
 }
 
+function toScriptGrowthMode(mode: MindmapGrowthMode): string {
+  switch (mode) {
+    case 'radial':
+      return 'Radial'
+    case 'right-facing':
+      return 'Right-facing'
+    case 'left-facing':
+      return 'Left-facing'
+    case 'right-left':
+      return 'Right-Left'
+    case 'up-facing':
+      return 'Up-facing'
+    case 'down-facing':
+      return 'Down-facing'
+    default:
+      return 'Right-Left'
+  }
+}
+
+function buildNodeCustomData(node: MindmapNode, options: MindmapBuildOptions): Record<string, unknown> {
+  const data: Record<string, unknown> = {
+    mindmapOrder: node.order,
+  }
+
+  if (node.id === ROOT_ID) {
+    data.growthMode = toScriptGrowthMode(options.growthMode)
+    data.autoLayoutDisabled = false
+    data.arrowType = options.arrowType
+    data.centerText = options.centerText
+    data.maxWrapWidth = options.maxWrapWidth
+    data.multicolor = options.multicolorBranches
+    data.boxChildren = options.boxNodes
+    data.roundedCorners = options.roundedCorners
+  }
+
+  if (node.depth === 1) {
+    data.mindmapNew = false
+  }
+
+  return data
+}
+
 function buildScene(nodes: MindmapNode[], options: MindmapBuildOptions): ParsedExcalidrawScene {
   const nodesById = new Map(nodes.map(node => [node.id, node]))
+  const nodeRenderRefs = new Map<string, NodeRenderRefs>()
   const elements: Array<Record<string, unknown>> = []
   let sequence = 0
   const textFamily = fontFamilyId(options.fontFamily)
@@ -870,6 +926,7 @@ function buildScene(nodes: MindmapNode[], options: MindmapBuildOptions): ParsedE
     const colors = isRoot ? { fill: ROOT_FILL, stroke: ROOT_STROKE } : deriveNodeColor(node.branchIndex, options)
     const textAlign = resolveTextAlign(node, parent, options)
     const textPadding = textAlign === 'center' ? 12 : 16
+    const nodeCustomData = buildNodeCustomData(node, options)
 
     elements.push({
       id: rectId,
@@ -892,6 +949,7 @@ function buildScene(nodes: MindmapNode[], options: MindmapBuildOptions): ParsedE
       seed: hashNumber(`seed:${rectId}`),
       version: 1,
       versionNonce: hashNumber(`nonce:${rectId}`),
+      customData: nodeCustomData,
     })
 
     elements.push({
@@ -922,7 +980,10 @@ function buildScene(nodes: MindmapNode[], options: MindmapBuildOptions): ParsedE
       seed: hashNumber(`seed:${textId}`),
       version: 1,
       versionNonce: hashNumber(`nonce:${textId}`),
+      customData: nodeCustomData,
     })
+
+    nodeRenderRefs.set(node.id, { rectId, textId })
   }
 
   for (const node of nodes) {
@@ -932,6 +993,8 @@ function buildScene(nodes: MindmapNode[], options: MindmapBuildOptions): ParsedE
 
     const arrowId = nextId('arrow')
     const colors = deriveNodeColor(node.branchIndex, options)
+    const parentRefs = nodeRenderRefs.get(parent.id)
+    const nodeRefs = nodeRenderRefs.get(node.id)
 
     const parentCenterX = parent.x + parent.width / 2
     const parentCenterY = parent.y + parent.height / 2
@@ -992,13 +1055,16 @@ function buildScene(nodes: MindmapNode[], options: MindmapBuildOptions): ParsedE
       opacity: 100,
       angle: 0,
       roundness: options.arrowType === 'curved' ? { type: 2 } : null,
-      startBinding: null,
-      endBinding: null,
+      startBinding: parentRefs ? { elementId: parentRefs.rectId } : null,
+      endBinding: nodeRefs ? { elementId: nodeRefs.rectId } : null,
+      startArrowhead: null,
+      endArrowhead: null,
       isDeleted: false,
       groupIds: [],
       seed: hashNumber(`seed:${arrowId}`),
       version: 1,
       versionNonce: hashNumber(`nonce:${arrowId}`),
+      customData: { isBranch: true },
     })
   }
 

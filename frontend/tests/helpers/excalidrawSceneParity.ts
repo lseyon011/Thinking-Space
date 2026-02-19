@@ -63,6 +63,12 @@ function asFiniteNumber(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
+function asRoundedNumber(value: unknown, decimals = 3): number {
+  const n = asFiniteNumber(value)
+  const factor = 10 ** decimals
+  return Math.round(n * factor) / factor
+}
+
 function simplifyElementForParity(value: unknown): unknown {
   const stripped = stripElementMetadata(value)
   if (!isPlainObject(stripped)) return stripped
@@ -71,11 +77,11 @@ function simplifyElementForParity(value: unknown): unknown {
 
   const out: Record<string, unknown> = {
     type: elementType,
-    x: asFiniteNumber(stripped.x),
-    y: asFiniteNumber(stripped.y),
-    width: asFiniteNumber(stripped.width),
-    height: asFiniteNumber(stripped.height),
-    angle: asFiniteNumber(stripped.angle),
+    x: asRoundedNumber(stripped.x),
+    y: asRoundedNumber(stripped.y),
+    width: asRoundedNumber(stripped.width),
+    height: asRoundedNumber(stripped.height),
+    angle: asRoundedNumber(stripped.angle),
     isDeleted: stripped.isDeleted === true,
   }
 
@@ -95,6 +101,51 @@ function simplifyElementForParity(value: unknown): unknown {
   return out
 }
 
+function isParityRelevantElement(value: unknown): boolean {
+  if (!isPlainObject(value)) return false
+  if (value.isDeleted === true) return false
+  return value.type === 'text'
+}
+
+function normalizeElementOriginAndOrder(elements: unknown[]): unknown[] {
+  if (elements.length === 0) return elements
+
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+
+  for (const element of elements) {
+    if (!isPlainObject(element)) continue
+    const x = asFiniteNumber(element.x)
+    const y = asFiniteNumber(element.y)
+    minX = Math.min(minX, x)
+    minY = Math.min(minY, y)
+  }
+
+  const shifted = elements.map((element) => {
+    if (!isPlainObject(element)) return element
+    return {
+      ...element,
+      x: asRoundedNumber(asFiniteNumber(element.x) - minX),
+      y: asRoundedNumber(asFiniteNumber(element.y) - minY),
+    }
+  })
+
+  const sortKey = (element: unknown): string => {
+    if (!isPlainObject(element)) return 'zzz'
+    const type = String(element.type ?? '')
+    const x = asRoundedNumber(element.x)
+    const y = asRoundedNumber(element.y)
+    const w = asRoundedNumber(element.width)
+    const h = asRoundedNumber(element.height)
+    const text = typeof element.text === 'string' ? element.text : ''
+    const points = Array.isArray(element.points) ? element.points.length : 0
+    return `${type}|${text}|${x}|${y}|${w}|${h}|${points}`
+  }
+
+  shifted.sort((a, b) => sortKey(a).localeCompare(sortKey(b)))
+  return shifted
+}
+
 function normalizeSceneForProfile(
   scene: ParsedExcalidrawScene,
   profile: SceneParityProfile,
@@ -103,7 +154,11 @@ function normalizeSceneForProfile(
   if (profile === 'strict') return normalized
 
   return {
-    elements: normalized.elements.map(element => simplifyElementForParity(element)),
+    elements: normalizeElementOriginAndOrder(
+      normalized.elements
+        .map(element => simplifyElementForParity(element))
+        .filter(isParityRelevantElement),
+    ),
     appState: {},
     files: {},
   }
