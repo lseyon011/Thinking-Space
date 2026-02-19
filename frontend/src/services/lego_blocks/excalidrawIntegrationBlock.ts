@@ -9,7 +9,9 @@ export interface ExcalidrawViewportStateBlock {
 export interface ExcalidrawCanvasApiBlock {
   getSceneElementsBlock(): readonly unknown[]
   getSceneElementsIncludingDeletedBlock(): readonly unknown[]
+  getAppStateBlock(): Record<string, unknown>
   getViewportStateBlock(): ExcalidrawViewportStateBlock
+  updateAppStateBlock(next: Record<string, unknown>): void
   updateViewportBlock(next: Partial<ExcalidrawViewportStateBlock>): void
   fitViewportToContentBlock(elements: readonly unknown[]): void
   onViewportChangeBlock(listener: (viewport: ExcalidrawViewportStateBlock) => void): (() => void) | null
@@ -73,7 +75,16 @@ export function createExcalidrawCanvasApiBlock(rawApi: unknown): ExcalidrawCanva
   return {
     getSceneElementsBlock: () => rawApi.getSceneElements?.() ?? [],
     getSceneElementsIncludingDeletedBlock: () => rawApi.getSceneElementsIncludingDeleted?.() ?? [],
+    getAppStateBlock: () => ({ ...(rawApi.getAppState?.() ?? {}) }),
     getViewportStateBlock: () => readViewportState(rawApi),
+    updateAppStateBlock: (next) => {
+      const appState = Object.entries(next).reduce<Record<string, unknown>>((acc, [key, value]) => {
+        if (value !== undefined) acc[key] = value
+        return acc
+      }, {})
+      if (Object.keys(appState).length === 0) return
+      rawApi.updateScene?.({ appState })
+    },
     updateViewportBlock: (next) => {
       const appState: Record<string, unknown> = {}
       if (typeof next.scrollX === 'number' && Number.isFinite(next.scrollX)) appState.scrollX = next.scrollX

@@ -54,7 +54,38 @@ After enabling iCloud, Xcode creates `App.entitlements` with:
 Folder selection is implemented by `FolderPickerPlugin` in `frontend/ios/App/App/AppDelegate.swift`.
 It is registered manually from `LTMBridgeViewController.capacitorDidLoad()`.
 
+Apple Pencil native bridge is implemented by `PencilEventsPlugin` in the same file and is also
+registered from `LTMBridgeViewController.capacitorDidLoad()`.
+
 `frontend/ios/App/App/Base.lproj/Main.storyboard` must use `LTMBridgeViewController` (module: `App`) as the bridge view controller class.
+
+### 4. PencilEvents Plugin Contract (Capacitor iOS only)
+
+JS plugin name: `PencilEvents`
+
+Methods:
+- `start(): Promise<{ monitoring: boolean }>`: attaches native Pencil interaction + sampling recognizer.
+- `stop(): Promise<{ monitoring: boolean }>`: detaches listeners and stops sampling.
+- `status(): Promise<{ monitoring: boolean; supportsPencilInteraction: boolean }>`
+
+Events:
+- `pencilDoubleTap`
+  - `timestamp: number` (epoch ms)
+  - `preferredAction: "switchPrevious" | "switchEraser" | "showColorPalette" | "ignore" | "unknown"`
+- `pencilMetrics`
+  - `phase: "began" | "moved" | "ended" | "cancelled"`
+  - `timestamp: number` (epoch ms)
+  - `force?: number`
+  - `maxForce?: number`
+  - `normalizedPressure?: number` (0..1 clamp)
+  - `altitudeAngle?: number` (radians)
+  - `azimuthAngle?: number` (radians)
+  - `locationX?: number`
+  - `locationY?: number`
+
+Frontend integration path:
+- `frontend/src/services/orchestrators/pencilBridgeOrch.ts`
+- `frontend/src/components/lego_blocks/ExcalidrawDocumentBlock.tsx`
 
 ## Building for Simulator
 

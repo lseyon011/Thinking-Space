@@ -32,7 +32,23 @@ describe('excalidrawIntegrationBlock', () => {
     expect(api).not.toBeNull()
     expect(api?.getSceneElementsBlock().length).toBe(1)
     expect(api?.getSceneElementsIncludingDeletedBlock().length).toBe(2)
+    expect(api?.getAppStateBlock()).toMatchObject({
+      scrollX: 10,
+      scrollY: 20,
+      zoom: { value: 1.25 },
+    })
     expect(api?.getViewportStateBlock()).toEqual({ scrollX: 10, scrollY: 20, zoom: 1.25 })
+
+    api?.updateAppStateBlock({
+      currentItemStrokeWidth: 4,
+      currentItemOpacity: 80,
+    })
+    expect(updateScene).toHaveBeenCalledWith({
+      appState: {
+        currentItemStrokeWidth: 4,
+        currentItemOpacity: 80,
+      },
+    })
 
     api?.updateViewportBlock({ scrollX: 42, zoom: 1.5 })
     expect(updateScene).toHaveBeenCalledWith({

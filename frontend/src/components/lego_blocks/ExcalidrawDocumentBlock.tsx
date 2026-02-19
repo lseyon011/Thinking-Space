@@ -7,6 +7,13 @@ import {
   createExcalidrawCanvasApiOrch,
   type ExcalidrawCanvasApiOrch,
 } from '@/services/orchestrators/excalidrawIntegrationOrch'
+import {
+  mapPencilPressureToStrokeStyleOrch,
+  nextPencilToolTypeOrch,
+  subscribeNativePencilBridgeOrch,
+  type NativePencilMetricsEventOrch,
+  type PencilPressureStateOrch,
+} from '@/services/orchestrators/pencilBridgeOrch'
 import { cn } from '@/lib/utils'
 
 const ExcalidrawCanvas = lazy(async () => {
@@ -58,6 +65,13 @@ const LARGE_SCENE_ELEMENT_THRESHOLD = 1200
 const MEDIAN_SORT_THRESHOLD = 2000
 const PERF_EVENTS_LIMIT = 400
 
+function readActiveToolType(appState: Record<string, unknown>): string | null {
+  const activeTool = appState.activeTool
+  if (!activeTool || typeof activeTool !== 'object') return null
+  const type = (activeTool as { type?: unknown }).type
+  return typeof type === 'string' ? type : null
+}
+
 function nowMs(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now()
 }
@@ -108,6 +122,10 @@ export default function ExcalidrawDocumentBlock({
     appState: Record<string, unknown>
     files: Record<string, unknown>
   } | null>(null)
+  const pencilPressureStateRef = useRef<PencilPressureStateOrch | null>(null)
+  const pencilBridgeStopRef = useRef<(() => Promise<void>) | null>(null)
+  const pencilAppStateFrameRef = useRef<number | null>(null)
+  const pendingPencilAppStateRef = useRef<Record<string, unknown> | null>(null)
 
   const debugLog = useCallback((event: string, data: Record<string, unknown> = {}) => {
     if (!debugEnabled) return
@@ -370,6 +388,55 @@ export default function ExcalidrawDocumentBlock({
     })
   }, [onSceneChange])
 
+  const queuePencilAppStatePatch = useCallback((appState: Record<string, unknown>) => {
+    if (!excalidrawApi) return
+    pendingPencilAppStateRef.current = appState
+    if (pencilAppStateFrameRef.current !== null) return
+
+    pencilAppStateFrameRef.current = window.requestAnimationFrame(() => {
+      pencilAppStateFrameRef.current = null
+      const pending = pendingPencilAppStateRef.current
+      if (!pending || !excalidrawApi) return
+      pendingPencilAppStateRef.current = null
+      excalidrawApi.updateAppStateBlock(pending)
+    })
+  }, [excalidrawApi])
+
+  const handlePencilDoubleTap = useCallback(() => {
+    if (!editable || !excalidrawApi) return
+    const appState = excalidrawApi.getAppStateBlock()
+    const currentType = readActiveToolType(appState)
+    const nextType = nextPencilToolTypeOrch(currentType)
+    const activeToolRaw = appState.activeTool
+    const activeToolBase = activeToolRaw && typeof activeToolRaw === 'object'
+      ? activeToolRaw as Record<string, unknown>
+      : {}
+    excalidrawApi.updateAppStateBlock({
+      activeTool: {
+        ...activeToolBase,
+        type: nextType,
+        customType: null,
+        locked: false,
+        fromSelection: false,
+      },
+    })
+    debugLog('pencil_double_tap', {
+      currentType,
+      nextType,
+    })
+  }, [debugLog, editable, excalidrawApi])
+
+  const handlePencilMetrics = useCallback((event: NativePencilMetricsEventOrch) => {
+    if (!editable || !excalidrawApi) return
+    const mapped = mapPencilPressureToStrokeStyleOrch(event, pencilPressureStateRef.current)
+    pencilPressureStateRef.current = mapped.state
+    if (!mapped.style) return
+    queuePencilAppStatePatch({
+      currentItemStrokeWidth: mapped.style.currentItemStrokeWidth,
+      currentItemOpacity: mapped.style.currentItemOpacity,
+    })
+  }, [editable, excalidrawApi, queuePencilAppStatePatch])
+
   const countDrawableCentersInViewport = useCallback((viewport: {
     left: number
     top: number
@@ -398,7 +465,17 @@ export default function ExcalidrawDocumentBlock({
         window.cancelAnimationFrame(autoCenterFrameRef.current)
         autoCenterFrameRef.current = null
       }
+      if (pencilAppStateFrameRef.current !== null) {
+        window.cancelAnimationFrame(pencilAppStateFrameRef.current)
+        pencilAppStateFrameRef.current = null
+      }
+      const stopPencilBridge = pencilBridgeStopRef.current
+      pencilBridgeStopRef.current = null
+      if (stopPencilBridge) {
+        void stopPencilBridge()
+      }
       queuedSceneRef.current = null
+      pendingPencilAppStateRef.current = null
     }
   }, [])
 
@@ -412,8 +489,42 @@ export default function ExcalidrawDocumentBlock({
     }
     onChangeLogCountRef.current = 0
     queuedSceneRef.current = null
+    pencilPressureStateRef.current = null
+    pendingPencilAppStateRef.current = null
     debugLog('scene_reset', { editable, contentLength: content.length })
-  }, [content, editable])
+  }, [content, debugLog, editable])
+
+  useEffect(() => {
+    if (!editable || !excalidrawApi) return undefined
+    let cancelled = false
+    void subscribeNativePencilBridgeOrch({
+      onMetrics: handlePencilMetrics,
+      onDoubleTap: () => handlePencilDoubleTap(),
+    })
+      .then((subscription) => {
+        if (!subscription) return
+        if (cancelled) {
+          void subscription.stop()
+          return
+        }
+        pencilBridgeStopRef.current = () => subscription.stop()
+      })
+      .catch((error) => {
+        debugLog('pencil_bridge_subscription_error', {
+          message: error instanceof Error ? error.message : String(error),
+        })
+      })
+
+    return () => {
+      cancelled = true
+      pencilPressureStateRef.current = null
+      const stopPencilBridge = pencilBridgeStopRef.current
+      pencilBridgeStopRef.current = null
+      if (stopPencilBridge) {
+        void stopPencilBridge()
+      }
+    }
+  }, [debugLog, editable, excalidrawApi, handlePencilDoubleTap, handlePencilMetrics])
 
   const tryAutoCenter = useCallback((source: string, hintedElementCount?: number) => {
     if (!editable || !excalidrawApi || hasAutoCenteredRef.current) return false
