@@ -4,7 +4,10 @@ import { ArrowLeft, PenLine, Loader2, CheckCircle2, LayoutList, Eye, Pencil } fr
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { Switch } from '@/components/lego_blocks/ui/switch'
-import CascadingFolderPicker, { addRecent } from '@/components/lego_blocks/CascadingFolderPickerBlock'
+import CascadingFolderPicker, {
+  addRecent,
+  type CascadingFolderPickerChange,
+} from '@/components/lego_blocks/CascadingFolderPickerBlock'
 import EmotionTagger from '@/components/lego_blocks/EmotionTaggerBlock'
 import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBlock'
 import AiAssistReviewBlock from '@/components/lego_blocks/AiAssistReviewBlock'
@@ -30,6 +33,7 @@ function todayFilename() {
 function CreateTab() {
   const { openFileForEdit } = useMarkdownViewer()
   const [folderSegments, setFolderSegments] = useState<string[]>([])
+  const [folderBasePath, setFolderBasePath] = useState('')
   const [folderPath, setFolderPath] = useState('')
   const [filename, setFilename] = useState(todayFilename())
   const [title, setTitle] = useState('')
@@ -55,9 +59,10 @@ function CreateTab() {
     useCase: 'new_thought.assist',
   })
 
-  const handleFolderChange = (segments: string[], fullPath: string) => {
-    setFolderSegments(segments)
-    setFolderPath(fullPath)
+  const handleFolderChange = (change: CascadingFolderPickerChange) => {
+    setFolderSegments(change.baseSegments)
+    setFolderBasePath(change.basePath)
+    setFolderPath(change.destinationPath)
     setSavedPath(null)
     setError(null)
   }
@@ -120,24 +125,17 @@ function CreateTab() {
             <CardTitle className="text-sm">Destination</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2 pb-4">
-              <label className="text-xs text-muted-foreground">Folder path</label>
-              <input
-                value={folderPath}
-                onChange={(e) => {
-                  const next = e.target.value
-                  setFolderPath(next)
-                  setFolderSegments(next.split('/').filter(Boolean))
-                  setSavedPath(null)
-                  setError(null)
-                }}
-                placeholder="lifeblood_systems/sfdl/thoughts"
-                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              />
+            <div className="space-y-2 pb-1">
+              <label className="text-xs text-muted-foreground">Base folder path</label>
+              <p className="text-[11px] text-muted-foreground/70 break-all">
+                {folderBasePath || '(choose a folder)'}
+              </p>
             </div>
             <CascadingFolderPicker
-              defaultPath={['lifeblood_systems', 'sfdl', 'thoughts']}
+              defaultPath={['lifeblood_systems', 'sfdl']}
               onChange={handleFolderChange}
+              requiredSuffixSegments={['thoughts']}
+              previewLabel="Thought folder preview"
               storageKey={STORAGE_KEY}
             />
           </CardContent>

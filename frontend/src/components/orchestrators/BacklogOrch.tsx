@@ -4,14 +4,16 @@ import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/BacklogListBlock'
 import ExecutionProgressBlock from '@/components/lego_blocks/ExecutionProgressBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/NodeDetailPanelBlock'
-import CascadingFolderPicker, { addRecent } from '@/components/lego_blocks/CascadingFolderPickerBlock'
+import CascadingFolderPicker, {
+  addRecent,
+  type CascadingFolderPickerChange,
+} from '@/components/lego_blocks/CascadingFolderPickerBlock'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import type { NodeType, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
 import {
   THINKING_ORGANIZER_DIR,
-  generateNodeKeyOrch,
   getVaultFsOrch,
   hierarchyToExcalidrawMdOrch,
 } from '@/services/orchestrators/backlogProjectOrch'
@@ -38,6 +40,7 @@ const BACKLOG_ACTOR: CapabilityActor = {
   kind: 'human',
   id: 'ui.backlog',
 }
+const PROJECT_DESTINATION_RECENTS_KEY = 'ltm-thinking-organizer-project-destination-recents'
 const PROJECT_ROOT_QUERY_PARAM = 'projectRoot'
 const SELECTED_NODE_QUERY_PARAM = 'selectedNode'
 
@@ -110,7 +113,11 @@ export default function BacklogOrch() {
   const [destinationSegments, setDestinationSegments] = useState<string[]>(
     () => getJsonStorageItem<string[]>(STORAGE_KEYS.thinkingOrganizerProjectCreateDestination, []),
   )
-  const [destinationPath, setDestinationPath] = useState(() => destinationSegments.join('/'))
+  const [destinationBasePath, setDestinationBasePath] = useState(() => destinationSegments.join('/'))
+  const [destinationPath, setDestinationPath] = useState(() => {
+    const root = destinationSegments.join('/')
+    return normalizePath(root) ? normalizePath(`${root}/${THINKING_ORGANIZER_DIR}`) : ''
+  })
   const [creatingProject, setCreatingProject] = useState(false)
 
   const loadPrograms = useCallback(async (syncVault = false): Promise<boolean> => {
@@ -310,27 +317,28 @@ export default function BacklogOrch() {
     setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, normalized.split('/'))
   }, [])
 
-  const handleDestinationChange = useCallback((segments: string[], fullPath: string) => {
-    setDestinationSegments(segments)
-    setDestinationPath(fullPath)
-    setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectCreateDestination, segments)
+  const handleDestinationChange = useCallback((change: CascadingFolderPickerChange) => {
+    setDestinationSegments(change.baseSegments)
+    setDestinationBasePath(change.basePath)
+    setDestinationPath(change.destinationPath)
+    setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectCreateDestination, change.baseSegments)
+    setError(null)
   }, [])
 
   const createProject = useCallback(async () => {
     const trimmedName = newProjectName.trim()
-    const normalizedDestination = normalizePath(destinationPath)
+    const normalizedProjectRoot = normalizePath(destinationBasePath)
 
     if (!trimmedName) {
       setError('Project name is required.')
       return
     }
-    if (!normalizedDestination) {
+    if (!normalizedProjectRoot) {
       setError('Project destination is required.')
       return
     }
 
-    const projectKey = generateNodeKeyOrch(trimmedName) || 'project'
-    const projectRoot = normalizePath(`${normalizedDestination}/${projectKey}`)
+    const projectRoot = normalizedProjectRoot
 
     setCreatingProject(true)
     setCurrentOperation(`Creating project ${trimmedName}`)
@@ -354,7 +362,7 @@ export default function BacklogOrch() {
       setProjectEntries(nextEntries)
       setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjects, nextEntries)
       selectProject(projectRoot)
-      addRecent(STORAGE_KEYS.thinkingOrganizerProjectRoots, destinationSegments)
+      addRecent(PROJECT_DESTINATION_RECENTS_KEY, destinationSegments)
 
       setProjectModalOpen(false)
       setNewProjectName('')
@@ -366,7 +374,7 @@ export default function BacklogOrch() {
       setCurrentOperation(null)
       void refreshExecutionProgress()
     }
-  }, [destinationPath, destinationSegments, newProjectName, projectEntries, refreshExecutionProgress, selectProject])
+  }, [destinationBasePath, destinationSegments, newProjectName, projectEntries, refreshExecutionProgress, selectProject])
 
   const createChildNode = useCallback(async (
     parent: NodeRecord | null,
@@ -757,33 +765,32 @@ export default function BacklogOrch() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs text-muted-foreground">Destination folder</label>
-                  <input
-                    value={destinationPath}
-                    onChange={e => {
-                      const next = e.target.value
-                      setDestinationPath(next)
-                      const nextSegments = next.split('/').filter(Boolean)
-                      setDestinationSegments(nextSegments)
-                      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectCreateDestination, nextSegments)
-                    }}
-                    placeholder="operations"
-                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  />
+                  <label className="text-xs text-muted-foreground">Project root folder</label>
                   <CascadingFolderPicker
                     defaultPath={destinationSegments}
                     onChange={handleDestinationChange}
-                    storageKey={STORAGE_KEYS.thinkingOrganizerProjectRoots}
+                    requiredSuffixSegments={[THINKING_ORGANIZER_DIR]}
+                    previewLabel="Organizer folder preview"
+                    storageKey={PROJECT_DESTINATION_RECENTS_KEY}
                     maxRecents={12}
                   />
                 </div>
 
                 <div className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
-                  Project root preview:{' '}
+                  Project root:{' '}
                   <span className="font-mono text-foreground">
-                    {destinationPath.trim() && newProjectName.trim()
-                      ? `${normalizePath(destinationPath)}/${generateNodeKeyOrch(newProjectName) || 'project'}`
-                      : '(enter name and destination)'}
+                    {destinationBasePath.trim()
+                      ? normalizePath(destinationBasePath)
+                      : '(choose destination folder)'}
+                  </span>
+                </div>
+
+                <div className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
+                  Organizer storage folder:{' '}
+                  <span className="font-mono text-foreground">
+                    {destinationPath.trim()
+                      ? normalizePath(destinationPath)
+                      : '(choose destination folder)'}
                   </span>
                 </div>
 

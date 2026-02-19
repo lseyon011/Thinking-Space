@@ -3,7 +3,10 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, CheckSquare, Loader2, CheckCircle2, LayoutList, Eye } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import { Button } from '@/components/lego_blocks/ui/button'
-import CascadingFolderPicker, { addRecent } from '@/components/lego_blocks/CascadingFolderPickerBlock'
+import CascadingFolderPicker, {
+  addRecent,
+  type CascadingFolderPickerChange,
+} from '@/components/lego_blocks/CascadingFolderPickerBlock'
 import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBlock'
 import AiAssistReviewBlock from '@/components/lego_blocks/AiAssistReviewBlock'
 import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/AiAssistRuntimeBlock'
@@ -26,6 +29,7 @@ function todayDateStr() {
 
 function CreateTab() {
   const [folderSegments, setFolderSegments] = useState<string[]>([])
+  const [folderBasePath, setFolderBasePath] = useState('')
   const [folderPath, setFolderPath] = useState('')
   const [dateStr, setDateStr] = useState(todayDateStr())
   const [tasksText, setTasksText] = useState('')
@@ -49,9 +53,10 @@ function CreateTab() {
     useCase: 'todos.assist',
   })
 
-  const handleFolderChange = (segments: string[], fullPath: string) => {
-    setFolderSegments(segments)
-    setFolderPath(fullPath)
+  const handleFolderChange = (change: CascadingFolderPickerChange) => {
+    setFolderSegments(change.baseSegments)
+    setFolderBasePath(change.basePath)
+    setFolderPath(change.destinationPath)
     setSavedPath(null)
     setError(null)
   }
@@ -72,7 +77,7 @@ function CreateTab() {
       const data = await invokeCapabilityOrThrow({
         capability: 'todos.create',
         input: {
-          folderPath: folderPath.replace(/\/todos\/?$/, '') + '/todos',
+          folderPath,
           date: dateStr,
           items,
         },
@@ -109,31 +114,19 @@ function CreateTab() {
             <CardTitle className="text-sm">Destination</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2 pb-4">
-              <label className="text-xs text-muted-foreground">Folder path</label>
-              <input
-                value={folderPath}
-                onChange={(e) => {
-                  const next = e.target.value
-                  setFolderPath(next)
-                  setFolderSegments(next.split('/').filter(Boolean))
-                  setSavedPath(null)
-                  setError(null)
-                }}
-                placeholder="acceleration_core/F9"
-                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              />
+            <div className="space-y-2 pb-1">
+              <label className="text-xs text-muted-foreground">Base folder path</label>
+              <p className="text-[11px] text-muted-foreground/70 break-all">
+                {folderBasePath || '(choose a folder)'}
+              </p>
             </div>
             <CascadingFolderPicker
               defaultPath={['lifeblood_systems', 'sfdl']}
               onChange={handleFolderChange}
+              requiredSuffixSegments={['todos']}
+              previewLabel="Todo folder preview"
               storageKey={STORAGE_KEY}
             />
-            {folderPath && (
-              <p className="text-[11px] text-muted-foreground/60 mt-2">
-                Saves to <span className="font-medium">{folderPath.replace(/\/todos\/?$/, '')}/todos/</span>
-              </p>
-            )}
           </CardContent>
         </Card>
       </div>

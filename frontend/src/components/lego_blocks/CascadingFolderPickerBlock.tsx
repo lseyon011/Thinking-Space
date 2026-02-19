@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronRight, Loader2 } from 'lucide-react'
 import {
   Select,
@@ -7,9 +7,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/lego_blocks/ui/select'
-import { listChildFolders } from '@/services/orchestrators/fileSystemOrch'
-
-// ── Simple in-memory cache for folder children ──
+import {
+  getVaultPathKind,
+  type VaultPathKind,
+  listChildFolders,
+} from '@/services/orchestrators/fileSystemOrch'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 const SESSION_PREFIX = 'ltm-folder-children:'
@@ -36,7 +38,6 @@ function getSessionChildren(path: string): string[] | null {
       sessionStorage.removeItem(`${SESSION_PREFIX}${path}`)
       return null
     }
-    // Warm in-memory cache for faster future access
     childrenCache.set(path, { ts: parsed.ts, data: parsed.data })
     return parsed.data
   } catch {
@@ -55,8 +56,6 @@ function setSessionChildren(path: string, data: string[]) {
   }
 }
 
-// ── Recents helper (exported so pages can call it on save) ──
-
 export function addRecent(
   storageKey: string,
   segments: string[],
@@ -64,16 +63,13 @@ export function addRecent(
 ) {
   const raw = localStorage.getItem(storageKey)
   let recents: string[][] = raw ? JSON.parse(raw) : []
-  const path = segments.join('/')
-  recents = recents.filter(r => r.join('/') !== path)
-  recents.unshift(segments)
+  const path = normalizeSegments(segments).join('/')
+  recents = recents.filter(r => normalizeSegments(r).join('/') !== path)
+  recents.unshift(normalizeSegments(segments))
   if (recents.length > max) recents = recents.slice(0, max)
   localStorage.setItem(storageKey, JSON.stringify(recents))
-  // StorageEvent doesn't fire in the same tab, so dispatch a custom one
   window.dispatchEvent(new CustomEvent('folder-recents-updated', { detail: storageKey }))
 }
-
-// ── Types ──
 
 interface Level {
   options: string[]
@@ -81,29 +77,72 @@ interface Level {
   loading: boolean
 }
 
-interface CascadingFolderPickerProps {
-  defaultPath?: string[]
-  onChange: (segments: string[], fullPath: string) => void
-  storageKey?: string
-  maxRecents?: number
+function normalizeSegments(segments: string[]): string[] {
+  return segments
+    .flatMap(segment => segment.split('/'))
+    .map(segment => segment.trim())
+    .filter(Boolean)
 }
 
-// ── Component ──
+function endsWithSegments(path: string[], suffix: string[]): boolean {
+  if (suffix.length === 0) return true
+  if (path.length < suffix.length) return false
+  const offset = path.length - suffix.length
+  for (let i = 0; i < suffix.length; i += 1) {
+    if (path[offset + i] !== suffix[i]) return false
+  }
+  return true
+}
+
+function stripSuffix(path: string[], suffix: string[]): string[] {
+  return endsWithSegments(path, suffix)
+    ? path.slice(0, path.length - suffix.length)
+    : path
+}
+
+function withSuffix(path: string[], suffix: string[]): string[] {
+  return endsWithSegments(path, suffix)
+    ? [...path]
+    : [...path, ...suffix]
+}
+
+export interface CascadingFolderPickerChange {
+  baseSegments: string[]
+  basePath: string
+  destinationSegments: string[]
+  destinationPath: string
+}
+
+interface CascadingFolderPickerProps {
+  defaultPath?: string[]
+  requiredSuffixSegments?: string[]
+  onChange: (change: CascadingFolderPickerChange) => void
+  storageKey?: string
+  maxRecents?: number
+  previewLabel?: string
+}
 
 export default function CascadingFolderPicker({
   defaultPath,
+  requiredSuffixSegments = [],
   onChange,
   storageKey = 'ltm-folder-recents',
   maxRecents = 10,
+  previewLabel = 'Destination preview',
 }: CascadingFolderPickerProps) {
   const [levels, setLevels] = useState<Level[]>([])
   const [recents, setRecents] = useState<string[][]>([])
-  // Whether the last selected level has children (for "go deeper" button)
+  const [customSegments, setCustomSegments] = useState<string[]>([])
+  const [customDraft, setCustomDraft] = useState('')
   const [hasChildren, setHasChildren] = useState(false)
-  // Whether the user has clicked "go deeper" to expand the next level
   const [expanded, setExpanded] = useState(false)
+  const [destinationState, setDestinationState] = useState<'idle' | 'checking' | VaultPathKind | 'error'>('idle')
 
-  // Load recents from localStorage
+  const requiredSuffix = useMemo(
+    () => normalizeSegments(requiredSuffixSegments),
+    [requiredSuffixSegments],
+  )
+
   useEffect(() => {
     const raw = localStorage.getItem(storageKey)
     if (raw) {
@@ -121,7 +160,7 @@ export default function CascadingFolderPicker({
       try {
         setRecents(JSON.parse(raw))
       } catch {
-        // ignore
+        // ignore bad recents payload
       }
     }
   }, [storageKey])
@@ -131,6 +170,7 @@ export default function CascadingFolderPicker({
     if (cached) return cached
     const sessionCached = getSessionChildren(path)
     if (sessionCached) return sessionCached
+
     const inFlightReq = inFlight.get(path)
     if (inFlightReq) return inFlightReq
 
@@ -149,176 +189,201 @@ export default function CascadingFolderPicker({
     return req
   }, [])
 
-  const getSegments = useCallback(
-    (lvls: Level[]) => lvls.filter(l => l.selected).map(l => l.selected!),
+  const getSelectedSegments = useCallback(
+    (lvls: Level[]) => lvls.filter(level => level.selected).map(level => level.selected!),
     [],
   )
 
-  const notifyChange = useCallback(
-    (lvls: Level[]) => {
-      const segs = lvls.filter(l => l.selected).map(l => l.selected!)
-      onChange(segs, segs.join('/'))
-    },
-    [onChange],
-  )
+  const emitChange = useCallback((baseSegmentsInput: string[]) => {
+    const baseSegments = normalizeSegments(baseSegmentsInput)
+    const destinationSegments = withSuffix(baseSegments, requiredSuffix)
+    onChange({
+      baseSegments,
+      basePath: baseSegments.join('/'),
+      destinationSegments,
+      destinationPath: destinationSegments.join('/'),
+    })
+  }, [onChange, requiredSuffix])
 
-  // Initialize: fetch root + auto-select defaultPath
+  const hydrateFromSegments = useCallback(async (segmentsInput: string[]) => {
+    const defaultBaseSegments = stripSuffix(normalizeSegments(segmentsInput), requiredSuffix)
+    const rootChildren = await fetchChildren('')
+    const nextLevels: Level[] = [{ options: rootChildren, selected: null, loading: false }]
+
+    let firstMissingIndex = -1
+    let nextHasChildren = false
+
+    for (let i = 0; i < defaultBaseSegments.length; i += 1) {
+      const segment = defaultBaseSegments[i]
+      if (!nextLevels[i] || !nextLevels[i].options.includes(segment)) {
+        firstMissingIndex = i
+        break
+      }
+
+      nextLevels[i].selected = segment
+      const pathSoFar = defaultBaseSegments.slice(0, i + 1).join('/')
+      const children = await fetchChildren(pathSoFar)
+
+      if (children.length > 0 && i < defaultBaseSegments.length - 1) {
+        nextLevels.push({ options: children, selected: null, loading: false })
+      } else if (i === defaultBaseSegments.length - 1) {
+        nextHasChildren = children.length > 0
+      }
+    }
+
+    const fallbackSegments = firstMissingIndex >= 0
+      ? defaultBaseSegments.slice(firstMissingIndex).filter(Boolean)
+      : []
+
+    const selectedSegments = getSelectedSegments(nextLevels)
+    const baseSegments = [...selectedSegments, ...fallbackSegments]
+
+    setCustomSegments(fallbackSegments)
+    setCustomDraft('')
+    setHasChildren(nextHasChildren)
+    setExpanded(false)
+    setLevels(nextLevels)
+
+    if (baseSegments.length > 0 || defaultBaseSegments.length > 0) {
+      emitChange(baseSegments)
+    }
+  }, [emitChange, fetchChildren, getSelectedSegments, requiredSuffix])
+
   useEffect(() => {
     let cancelled = false
 
-    async function init() {
-      const cachedRoot = getCachedChildren('')
-      if (cachedRoot) {
-        setLevels([{ options: cachedRoot, selected: null, loading: false }])
-      }
-
-      const rootChildren = await fetchChildren('')
+    void (async () => {
       if (cancelled) return
+      await hydrateFromSegments(defaultPath ?? [])
+    })()
 
-      const newLevels: Level[] = [
-        { options: rootChildren, selected: null, loading: false },
-      ]
-
-      if (defaultPath && defaultPath.length > 0) {
-        for (let i = 0; i < defaultPath.length; i++) {
-          const seg = defaultPath[i]
-          if (!newLevels[i].options.includes(seg)) break
-          newLevels[i].selected = seg
-
-          const pathSoFar = defaultPath.slice(0, i + 1).join('/')
-          const children = await fetchChildren(pathSoFar)
-          if (cancelled) return
-
-          if (children.length > 0 && i < defaultPath.length - 1) {
-            // Only auto-expand if there are more segments to follow
-            newLevels.push({ options: children, selected: null, loading: false })
-          } else {
-            // At the last segment, just track whether children exist
-            setHasChildren(children.length > 0)
-          }
-        }
-      }
-
-      setLevels(newLevels)
-      setExpanded(false)
-      const segs = newLevels.filter(l => l.selected).map(l => l.selected!)
-      if (segs.length > 0) {
-        onChange(segs, segs.join('/'))
-      }
-    }
-
-    init()
     return () => {
       cancelled = true
     }
+    // Initialize from incoming default path.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Handle selecting a value at a given level
-  const handleSelect = useCallback(
-    async (levelIndex: number, value: string) => {
-      let pathSegments: string[] = []
-      setLevels(prev => {
-        // Keep only levels up to this one, set selection
-        const updated = prev.slice(0, levelIndex + 1).map((l, i) => {
-          if (i === levelIndex) return { ...l, selected: value }
-          return l
-        })
-        pathSegments = updated.filter(l => l.selected).map(l => l.selected!)
-        return updated
-      })
-      setExpanded(false)
-      setHasChildren(false)
+  const handleSelect = useCallback(async (levelIndex: number, value: string) => {
+    let selectedSegments: string[] = []
 
-      // Check if this folder has children
-      const children = await fetchChildren(pathSegments.join('/'))
-      setHasChildren(children.length > 0)
+    setLevels(prev => {
+      const updated = prev.slice(0, levelIndex + 1).map((level, index) => (
+        index === levelIndex ? { ...level, selected: value } : level
+      ))
+      selectedSegments = getSelectedSegments(updated)
+      return updated
+    })
 
-      // Notify parent immediately - the selected path is valid now
-      setLevels(prev => {
-        const updated = prev.slice(0, levelIndex + 1).map((l, i) => {
-          if (i === levelIndex) return { ...l, selected: value }
-          return l
-        })
-        notifyChange(updated)
-        return updated
-      })
-    },
-    [fetchChildren, notifyChange],
-  )
+    setCustomSegments([])
+    setCustomDraft('')
+    setExpanded(false)
+    setHasChildren(false)
 
-  // User clicked "go deeper" - load and show the next dropdown
+    const children = await fetchChildren(selectedSegments.join('/'))
+    setHasChildren(children.length > 0)
+    emitChange(selectedSegments)
+  }, [emitChange, fetchChildren, getSelectedSegments])
+
   const handleExpand = useCallback(async () => {
-    const segs = getSegments(levels)
-    if (segs.length === 0) return
+    const selectedSegments = getSelectedSegments(levels)
+    if (selectedSegments.length === 0) return
 
     setExpanded(true)
-    const children = await fetchChildren(segs.join('/'))
+    const children = await fetchChildren(selectedSegments.join('/'))
     if (children.length > 0) {
       setLevels(prev => [
         ...prev,
         { options: children, selected: null, loading: false },
       ])
     }
-  }, [levels, getSegments, fetchChildren])
+  }, [fetchChildren, getSelectedSegments, levels])
 
-  // Apply a recent path
-  const applyRecent = useCallback(
-    async (segments: string[]) => {
-      const rootChildren = await fetchChildren('')
-      const newLevels: Level[] = [
-        { options: rootChildren, selected: null, loading: false },
-      ]
+  const applyRecent = useCallback(async (segments: string[]) => {
+    await hydrateFromSegments(segments)
+  }, [hydrateFromSegments])
 
-      for (let i = 0; i < segments.length; i++) {
-        const seg = segments[i]
-        if (!newLevels[i] || !newLevels[i].options.includes(seg)) break
-        newLevels[i].selected = seg
+  const handleAppendCustomSegments = useCallback(() => {
+    const nextSegments = normalizeSegments([customDraft])
+    if (nextSegments.length === 0) return
 
-        const pathSoFar = segments.slice(0, i + 1).join('/')
-        const children = await fetchChildren(pathSoFar)
-        if (children.length > 0 && i < segments.length - 1) {
-          newLevels.push({ options: children, selected: null, loading: false })
-        } else {
-          setHasChildren(children.length > 0)
-        }
-      }
+    const selectedSegments = getSelectedSegments(levels)
 
-      setLevels(newLevels)
-      setExpanded(false)
-      const segs = newLevels.filter(l => l.selected).map(l => l.selected!)
-      onChange(segs, segs.join('/'))
-    },
-    [fetchChildren, onChange],
-  )
+    setCustomSegments(prev => {
+      const merged = [...prev, ...nextSegments]
+      emitChange([...selectedSegments, ...merged])
+      return merged
+    })
+
+    setCustomDraft('')
+    setExpanded(false)
+    setHasChildren(false)
+  }, [customDraft, emitChange, getSelectedSegments, levels])
 
   useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === storageKey) refreshRecents()
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === storageKey) refreshRecents()
     }
-    const onCustom = (e: Event) => {
-      if ((e as CustomEvent).detail === storageKey) refreshRecents()
+
+    const onCustom = (event: Event) => {
+      if ((event as CustomEvent).detail === storageKey) refreshRecents()
     }
+
     window.addEventListener('storage', onStorage)
     window.addEventListener('folder-recents-updated', onCustom)
+
     return () => {
       window.removeEventListener('storage', onStorage)
       window.removeEventListener('folder-recents-updated', onCustom)
     }
-  }, [storageKey, refreshRecents])
+  }, [refreshRecents, storageKey])
 
-  const selectedSegments = getSegments(levels)
-  const fullPath = selectedSegments.join('/')
-  // Show "go deeper" when the last selected level has children and user hasn't expanded yet
+  const selectedSegments = getSelectedSegments(levels)
+  const baseSegments = [...selectedSegments, ...customSegments]
+  const destinationSegments = withSuffix(baseSegments, requiredSuffix)
+  const destinationPath = destinationSegments.join('/')
+  const requiredSuffixPath = requiredSuffix.join('/')
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!destinationPath) {
+      setDestinationState('idle')
+      return () => { cancelled = true }
+    }
+
+    setDestinationState('checking')
+    void getVaultPathKind(destinationPath)
+      .then(kind => {
+        if (!cancelled) setDestinationState(kind)
+      })
+      .catch(() => {
+        if (!cancelled) setDestinationState('error')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [destinationPath])
+
+  const destinationStateLabel = useMemo(() => {
+    if (destinationState === 'checking') return 'Checking destination status...'
+    if (destinationState === 'folder') return 'Using existing folder'
+    if (destinationState === 'missing') return 'Folder does not exist yet. It will be created on save.'
+    if (destinationState === 'file') return 'Destination points to a file. Choose a folder path.'
+    if (destinationState === 'error') return 'Could not verify destination status. Save may still create it.'
+    return null
+  }, [destinationState])
+
   const lastLevelHasSelection = levels.length > 0 && levels[levels.length - 1].selected !== null
-  const showGoDeeper = hasChildren && lastLevelHasSelection && !expanded
+  const showGoDeeper = customSegments.length === 0 && hasChildren && lastLevelHasSelection && !expanded
 
   return (
     <div className="space-y-3">
-      {/* Cascading dropdowns - stacked vertically for sidebar */}
       <div className="space-y-2">
         {levels.map((level, index) => {
           if (!level.loading && level.options.length === 0) return null
+
           return (
             <div key={index}>
               {level.loading ? (
@@ -328,15 +393,15 @@ export default function CascadingFolderPicker({
               ) : (
                 <Select
                   value={level.selected || ''}
-                  onValueChange={(val) => handleSelect(index, val)}
+                  onValueChange={(value) => { void handleSelect(index, value) }}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder={index === 0 ? 'Select folder...' : 'Select subfolder...'} />
                   </SelectTrigger>
                   <SelectContent>
-                    {level.options.map(opt => (
-                      <SelectItem key={opt} value={opt}>
-                        {opt}
+                    {level.options.map(option => (
+                      <SelectItem key={option} value={option}>
+                        {option}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -346,10 +411,10 @@ export default function CascadingFolderPicker({
           )
         })}
 
-        {/* Go deeper button */}
         {showGoDeeper && (
           <button
-            onClick={handleExpand}
+            type="button"
+            onClick={() => { void handleExpand() }}
             className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronRight className="h-3 w-3" />
@@ -358,25 +423,67 @@ export default function CascadingFolderPicker({
         )}
       </div>
 
-      {/* Resolved path */}
-      {fullPath && (
-        <p className="text-xs text-muted-foreground/70 break-all">
-          {fullPath}
-        </p>
+      <div className="space-y-1.5 border-t border-border/40 pt-3">
+        <label className="text-xs text-muted-foreground">Add new folder segment</label>
+        <div className="flex gap-2">
+          <input
+            value={customDraft}
+            onChange={(event) => setCustomDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                handleAppendCustomSegments()
+              }
+            }}
+            placeholder="new-folder or nested/a/b"
+            className="h-9 flex-1 rounded-lg border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          />
+          <button
+            type="button"
+            onClick={handleAppendCustomSegments}
+            className="h-9 rounded-lg border border-input px-3 text-xs text-foreground hover:bg-muted"
+          >
+            Add
+          </button>
+        </div>
+        {customSegments.length > 0 && (
+          <p className="text-[11px] text-muted-foreground/70">
+            Appended: {customSegments.join(' / ')}
+          </p>
+        )}
+      </div>
+
+      {destinationPath && (
+        <div className="space-y-1.5 border-t border-border/40 pt-3">
+          <label className="text-xs text-muted-foreground">{previewLabel}</label>
+          <p className="text-xs text-muted-foreground/80 break-all">
+            {destinationPath}
+          </p>
+          {requiredSuffixPath && (
+            <p className="text-[11px] text-muted-foreground/70 break-all">
+              Required folder suffix: {requiredSuffixPath}
+            </p>
+          )}
+          {destinationStateLabel && (
+            <p className="text-[11px] text-muted-foreground/70 break-all">
+              {destinationStateLabel}
+            </p>
+          )}
+        </div>
       )}
 
-      {/* Recent destinations - below dropdowns */}
       {recents.length > 0 && (
         <div className="space-y-1.5 border-t border-border/40 pt-3">
           <label className="text-xs text-muted-foreground">Recent</label>
           <div className="flex flex-col gap-1.5">
-            {recents.slice(0, maxRecents).map((segs, i) => (
+            {recents.slice(0, maxRecents).map((segments, index) => (
               <button
-                key={i}
-                onClick={() => applyRecent(segs)}
+                key={index}
+                type="button"
+                onClick={() => { void applyRecent(segments) }}
                 className="text-left rounded-lg border border-border/60 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors break-words"
               >
-                {segs.join(' / ')}
+                {normalizeSegments(segments).join(' / ')}
               </button>
             ))}
           </div>
