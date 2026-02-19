@@ -105,7 +105,7 @@ export default function VaultSetup({ onComplete }: Props) {
         <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
           <FolderOpen className="h-8 w-8 text-primary" />
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome to Long Term Memory</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Welcome to Thinking Space</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {isNativeApp
             ? 'Select your vault folder to get started. You can pick a local folder or one in iCloud Drive.'

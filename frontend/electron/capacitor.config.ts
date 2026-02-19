@@ -2,13 +2,13 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.anurag.ltm',
-  appName: 'Long Term Memory',
+  appName: 'Thinking Space',
   webDir: 'dist',
   server: {
     cleartext: true,
   },
   ios: {
-    scheme: 'Long Term Memory',
+    scheme: 'Thinking Space',
     contentInset: 'always',
   },
 };

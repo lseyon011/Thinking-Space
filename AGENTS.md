@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Required operating contract for any coding agent working in `ltm-pilot`.
+Required operating contract for any coding agent working in `Thinking Space`.
 
 If this file conflicts with assumptions, follow this file + `README.md`.
 
@@ -134,7 +134,7 @@ Workspace location:
 - `coding-projects/thinking-space/thinking-organizer/*`
 
 Required session pattern:
-1. Check active tasks: `./ltm organizer.nodes.search --query "status active" --limit 10`
+1. Check active tasks: `./thinkspc organizer.nodes.search --query "status active" --limit 10`
 2. Claim/update tasks through capability operations (`task.claim`, `task.update_status`) or equivalent organizer UI actions.
 3. Every newly created operation node must include a meaningful description in YAML `description` (not empty placeholder text).
 4. Record implementation plans in the organizer for non-trivial tasks (estimated >5 minutes). Quick fixes don't need a plan node.
@@ -145,8 +145,10 @@ Actor and permission rules:
 2. If a capability call returns `Agent capabilities are disabled by feature flag.`, pause and ask the user to enable `agent_capabilities_enabled` before continuing.
 3. If writing to external vault paths (for example iCloud paths outside repo sandbox), request escalated filesystem permission first; do not bypass by changing actor kind.
 
-Capability runner invocation pattern (use `./ltm` wrapper from repo root):
-- Output format: `./ltm` defaults to readable text in interactive terminals; use `--json` when you need machine-parseable output.
+Capability runner invocation pattern (use `./thinkspc` wrapper from repo root):
+- Output format: `./thinkspc` defaults to readable text in interactive terminals; use `--json` when you need machine-parseable output.
+- Legacy alias: `./ltm` still works and forwards to `./thinkspc`.
+- Browser URLs (for example `http://localhost:5173/.../thinking-organizer?...`) are human navigation links, not agent task targets. For agents, translate them with `./thinkspc organizer.context --url "<link>"` and then run `./thinkspc` capability commands.
 
 Required fields for node creation (easy to forget, causes bugs):
 - `--projectRoot coding-projects/thinking-space` — without it, nodes land at vault root and won't appear in organizer UI
@@ -157,30 +159,31 @@ Required fields for node creation (easy to forget, causes bugs):
 
 ```bash
 # Read operations
-./ltm list
-./ltm organizer.nodes.list_roots --typeFilter program
-./ltm organizer.nodes.search --query "my task" --limit 5
+./thinkspc list
+./thinkspc organizer.nodes.list_roots --typeFilter program
+./thinkspc organizer.nodes.search --query "my task" --limit 5
+./thinkspc organizer.context --url "http://localhost:5173/thinking-space/thinking-organizer?tab=backlog&projectRoot=operations%2Fsfw"
 
 # Create node (all required fields shown)
-./ltm organizer.node.create --type task --title "My task" \
+./thinkspc organizer.node.create --type task --title "My task" \
   --parentKey "task-backlog" \
   --projectRoot coding-projects/thinking-space \
   --description "Short description of the task" \
   --extra-record_kind task
 
 # Other write operations
-./ltm task.claim --uuid "abc-123" --owner claude-code
-./ltm task.update_status --uuid "abc-123" --taskStatus done
-./ltm handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space \
+./thinkspc task.claim --uuid "abc-123" --owner claude-code
+./thinkspc task.update_status --uuid "abc-123" --taskStatus done
+./thinkspc handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space \
   --summary "Notes" --fromAgent claude-code --toAgent human \
   --parentKey handoffs-agent-operations
-./ltm comment.add --uuid "abc-123" --text "Done" --addedBy claude-code
+./thinkspc comment.add --uuid "abc-123" --text "Done" --addedBy claude-code
 
 # Raw JSON escape hatch (reads stdin)
-./ltm invoke < payload.json
+./thinkspc invoke < payload.json
 ```
 
-Setup: `.env` at repo root must have `LTM_VAULT_ROOT=/path/to/your/vault`.
+Setup: `.env` at repo root should set `THINKSPC_VAULT_ROOT=/path/to/your/vault` (or legacy `LTM_VAULT_ROOT`).
 
 Recommended node pattern:
 - Program: `development (agent operations)` for active implementation tasks/plans/runs.
@@ -191,7 +194,7 @@ Recommended node pattern:
 ## Multi-Agent Workflow
 Before coding:
 1. `AGENTS.md` (or `CLAUDE.md` for Claude) contains architecture, contracts, and locked decisions — read it.
-2. Check active tasks: `./ltm organizer.nodes.search --query "status active" --limit 10`
+2. Check active tasks: `./thinkspc organizer.nodes.search --query "status active" --limit 10`
 3. Read additional docs only when the task requires it:
    - `README.md` — for phase order or product direction
    - `docs/ADR-005-Agent-Capabilities.md` — when modifying capabilities

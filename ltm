@@ -1,33 +1,8 @@
 #!/usr/bin/env bash
-# ltm — thin wrapper for the LTM capability runner
-# Usage:
-#   ./ltm list                                         List all capabilities
-#   ./ltm organizer.nodes.list_roots --typeFilter program   Invoke a capability
-#   ./ltm invoke < payload.json                        Raw JSON invoke (escape hatch)
+# ltm compatibility alias.
+# Primary CLI is now `thinkspc`.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
-FRONTEND_DIR="$REPO_ROOT/frontend"
-
-# Load .env if present (exports all variables)
-if [ -f "$REPO_ROOT/.env" ]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$REPO_ROOT/.env"
-  set +a
-fi
-
-# Auto-set runner flags
-export LTM_AGENT_CAPABILITIES_ENABLED=1
-export LTM_CAPABILITY_RUNNER_CLI=1
-
-# Validate vault root
-if [ -z "${LTM_VAULT_ROOT:-}" ]; then
-  echo "Error: LTM_VAULT_ROOT is not set." >&2
-  echo "Set it in $REPO_ROOT/.env or export it before running." >&2
-  exit 1
-fi
-
-cd "$FRONTEND_DIR"
-exec npx vite-node scripts/agent/capabilityRunner.ts "$@"
+exec "$REPO_ROOT/thinkspc" "$@"

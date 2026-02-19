@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   buildCLIInvokePayload,
+  buildOrganizerContextFromArgs,
   installLocalStorageShim,
+  parseOrganizerContextUrl,
+  renderOrganizerContextHelp,
   renderCapabilityHelp,
   renderRunnerHelp,
   resolveOutputFormat,
@@ -78,19 +81,52 @@ describe('capabilityRunner CLI argument parsing', () => {
 
   it('renders top-level help with usage and guidance', () => {
     const help = renderRunnerHelp()
-    expect(help).toContain('./ltm [--text|--json] <command>')
-    expect(help).toContain('./ltm help')
-    expect(help).toContain('./ltm <capability> --help')
+    expect(help).toContain('./thinkspc [--text|--json] <command>')
+    expect(help).toContain('./thinkspc help')
+    expect(help).toContain('./thinkspc <capability> --help')
+    expect(help).toContain('./thinkspc organizer.context --url')
     expect(help).toContain('Output defaults: text on TTY, json otherwise.')
     expect(help).toContain('Use comment.add for append-only task notes.')
+  })
+
+  it('parses organizer URL context with decoded project root', () => {
+    const parsed = parseOrganizerContextUrl(
+      'http://localhost:5173/thinking-space/thinking-organizer?tab=backlog&projectRoot=operations%2Fsfw',
+    )
+    expect(parsed.projectRoot).toBe('operations/sfw')
+    expect(parsed.tab).toBe('backlog')
+  })
+
+  it('parses organizer hash-route context', () => {
+    const parsed = parseOrganizerContextUrl(
+      'http://localhost:5173/thinking-space/#/thinking-organizer?tab=backlog&projectRoot=ops%2Falpha',
+    )
+    expect(parsed.projectRoot).toBe('ops/alpha')
+    expect(parsed.tab).toBe('backlog')
+  })
+
+  it('builds organizer context from args with defaults', () => {
+    const context = buildOrganizerContextFromArgs([
+      '--projectRoot', 'operations/sfw',
+    ])
+    expect(context.projectRoot).toBe('operations/sfw')
+    expect(context.tab).toBe('backlog')
+    expect(context.query).toBe('status active')
+    expect(context.limit).toBe(10)
+  })
+
+  it('renders organizer context help', () => {
+    const help = renderOrganizerContextHelp()
+    expect(help).toContain('./thinkspc organizer.context --url')
+    expect(help).toContain('Converts human organizer links into agent-native capability command suggestions.')
   })
 
   it('renders capability-specific help for organizer.node.update', () => {
     const help = renderCapabilityHelp('organizer.node.update')
     expect(help).toContain('Capability: organizer.node.update')
     expect(help).toContain('Update node metadata fields.')
-    expect(help).toContain('./ltm organizer.node.update --uuid "abc-123" --comments')
-    expect(help).toContain('./ltm comment.add --uuid "abc-123" --text')
+    expect(help).toContain('./thinkspc organizer.node.update --uuid "abc-123" --comments')
+    expect(help).toContain('./thinkspc comment.add --uuid "abc-123" --text')
   })
 
   it('uses text output by default in TTY mode', () => {

@@ -1,11 +1,11 @@
-# ltm-pilot
+# Thinking Space
 
-Local-first thinking workspace for Long Term Memory (LTM), built for fast human + AI collaboration on personal knowledge.
+Local-first thinking workspace for Thinking Space, built for fast human + AI collaboration on personal knowledge.
 
 ## Why This Exists
 Most note tools force users into fixed plugin models and fragmented AI workflows.
 
-`ltm-pilot` is moving toward:
+`Thinking Space` is moving toward:
 - A natural thought hierarchy: `Programs -> Epics -> Ideas -> Thoughts`
 - Ambient AI assistance directly where writing happens
 - In-app extensibility so users can build features without leaving the app
@@ -35,7 +35,7 @@ Primary routes in the app:
 - **Desktop/mobile modes**: Electron + Capacitor (`frontend/electron/`, `frontend/ios/`)
 - **Storage**: Markdown files with YAML frontmatter in the vault (source of truth)
 - **Cache**: IndexedDB via Dexie.js (in-browser fast access layer, rebuildable)
-- **Agent CLI**: `./ltm` wrapper for capability invocations (see Agent Capability Transport section)
+- **Agent CLI**: `./thinkspc` wrapper for capability invocations (see Agent Capability Transport section)
 
 ### Recent Delivery Highlights
 - Native AI login support for both Electron and Capacitor runtimes
@@ -98,7 +98,7 @@ Primary routes in the app:
 - Extension host runtime with manifest validation, compatibility gating, declarative action execution, and Electron JS/TS runtime dispatch
 - In-app Extension Builder route for generating/saving local extension artifacts under vault `.extensions/*`
 - Agent capability transport: 30 capabilities via frontend runner + FastAPI proxy
-- Agent CLI wrapper (`./ltm`) for ergonomic capability invocation
+- Agent CLI wrapper (`./thinkspc`) for ergonomic capability invocation
 - Agent workspace with task lifecycle, run logging, handoffs, and audit trail
 - Run utility transforms (excalidraw formatting, transcript cleanup, pdf conversion)
 - Automated frontend test suite (Vitest) with coverage across services/orchestrators and capability parity fixtures
@@ -222,9 +222,11 @@ Recommended organizer layout:
 Quick invocation examples:
 ```bash
 # CLI wrapper (recommended for agents — auto-loads .env, sets flags, defaults actor)
-./ltm organizer.nodes.list_roots --typeFilter program
-./ltm task.claim --uuid "abc-123" --owner claude-code
-./ltm run.log --title "Session" --projectRoot coding-projects/thinking-space --agentName claude-code --result success
+# Legacy alias: `./ltm` still works and forwards to `./thinkspc`
+./thinkspc organizer.nodes.list_roots --typeFilter program
+./thinkspc organizer.context --url "http://localhost:5173/thinking-space/thinking-organizer?tab=backlog&projectRoot=operations%2Fsfw"
+./thinkspc task.claim --uuid "abc-123" --owner claude-code
+./thinkspc run.log --title "Session" --projectRoot coding-projects/thinking-space --agentName claude-code --result success
 
 # curl via FastAPI proxy (requires backend running)
 curl -s http://127.0.0.1:8000/api/capabilities/invoke \
@@ -343,7 +345,7 @@ Exit criteria:
 Completed across DEV-012, DEV-013, DEV-014:
 - 30-capability registry with typed I/O contracts (`capabilityRegistryBlock.ts`)
 - Capability router with policy/audit/dry-run (`capabilityRouterOrch.ts`)
-- Frontend CLI runner (`capabilityRunner.ts`) + `./ltm` shell wrapper
+- Frontend CLI runner (`capabilityRunner.ts`) + `./thinkspc` shell wrapper
 - FastAPI thin proxy (`/api/capabilities`, `/api/capabilities/invoke`)
 - Feature flags, rate limiting, bearer token controls
 - Agent workspace bootstrap + task lifecycle + run/handoff/comment operations

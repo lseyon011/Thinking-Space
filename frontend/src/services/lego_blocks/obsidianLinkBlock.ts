@@ -26,7 +26,7 @@ export function isExcalidrawFile(path: string): boolean {
 }
 
 export function buildObsidianOpenUrl(path: string): string {
-  const vaultName = getConfiguredVaultName() ?? 'Long Term Memory iCloud'
+  const vaultName = getConfiguredVaultName() ?? 'Thinking Space iCloud'
   const fileTarget = toObsidianFileTarget(path)
   return `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(fileTarget)}`
 }

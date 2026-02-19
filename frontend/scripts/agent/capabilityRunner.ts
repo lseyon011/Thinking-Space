@@ -228,6 +228,121 @@ interface ParsedCLIArgsResult {
   warnings: string[]
 }
 
+interface OrganizerContext {
+  sourceUrl: string | null
+  projectRoot: string | null
+  tab: string | null
+  query: string
+  limit: number
+}
+
+function shellQuote(value: string): string {
+  return `"${value.replace(/([\\`"$])/g, '\\$1')}"`
+}
+
+function parseHttpUrl(input: string): URL {
+  try {
+    return new URL(input)
+  } catch {
+    if (/^localhost(?::\d+)?\//.test(input)) {
+      return new URL(`http://${input}`)
+    }
+    throw new Error(`Invalid URL: ${input}`)
+  }
+}
+
+function looksLikeHttpUrl(input: string): boolean {
+  return /^https?:\/\//i.test(input) || /^localhost(?::\d+)?\//i.test(input)
+}
+
+function hashQueryParams(hashValue: string): URLSearchParams {
+  const withoutHash = hashValue.startsWith('#') ? hashValue.slice(1) : hashValue
+  const queryIndex = withoutHash.indexOf('?')
+  if (queryIndex < 0) return new URLSearchParams()
+  return new URLSearchParams(withoutHash.slice(queryIndex + 1))
+}
+
+export function parseOrganizerContextUrl(urlValue: string): { sourceUrl: string; projectRoot: string | null; tab: string | null } {
+  const parsed = parseHttpUrl(urlValue)
+  const queryParams = parsed.searchParams
+  const hashParams = hashQueryParams(parsed.hash)
+
+  const projectRoot = hashParams.get('projectRoot')
+    ?? queryParams.get('projectRoot')
+  const tab = hashParams.get('tab')
+    ?? queryParams.get('tab')
+
+  return {
+    sourceUrl: parsed.toString(),
+    projectRoot: projectRoot?.trim() || null,
+    tab: tab?.trim() || null,
+  }
+}
+
+export function buildOrganizerContextFromArgs(args: string[]): OrganizerContext {
+  const { input } = parseCLIArgs('organizer.context', args)
+  const urlValue = asString(input.url)
+  const parsedFromUrl = urlValue ? parseOrganizerContextUrl(urlValue) : null
+
+  const projectRoot = asString(input.projectRoot)
+    ?? parsedFromUrl?.projectRoot
+    ?? null
+  const tab = asString(input.tab)
+    ?? parsedFromUrl?.tab
+    ?? 'backlog'
+  const query = asString(input.query) ?? 'status active'
+  const parsedLimit = typeof input.limit === 'number' && Number.isFinite(input.limit)
+    ? Math.max(1, Math.trunc(input.limit))
+    : 10
+
+  return {
+    sourceUrl: parsedFromUrl?.sourceUrl ?? null,
+    projectRoot,
+    tab,
+    query,
+    limit: parsedLimit,
+  }
+}
+
+export function renderOrganizerContextHelp(): string {
+  return [
+    'Organizer agent context helper',
+    '',
+    'Usage:',
+    '  ./thinkspc organizer.context --url "http://localhost:5173/thinking-space/thinking-organizer?tab=backlog&projectRoot=operations%2Fsfw"',
+    '  ./thinkspc organizer.context --projectRoot operations/sfw --tab backlog',
+    '  ./thinkspc organizer.context --projectRoot operations/sfw --query "taskStatus ready" --limit 20',
+    '',
+    'Purpose:',
+    '  Converts human organizer links into agent-native capability command suggestions.',
+  ].join('\n')
+}
+
+export function renderOrganizerContextOutput(context: OrganizerContext): string {
+  const lines: string[] = []
+  lines.push('Organizer agent context')
+  if (context.sourceUrl) lines.push(`Source URL: ${context.sourceUrl}`)
+  lines.push(`Project root: ${context.projectRoot || '(not provided)'}`)
+  lines.push(`Tab: ${context.tab || '(not provided)'}`)
+  lines.push(`Default query: ${context.query}`)
+  lines.push(`Default limit: ${context.limit}`)
+  lines.push('')
+  lines.push('Recommended agent commands:')
+
+  const projectRootArg = context.projectRoot
+    ? ` --projectRoot ${shellQuote(context.projectRoot)}`
+    : ''
+  const queryArg = ` --query ${shellQuote(context.query)} --limit ${context.limit}`
+
+  lines.push(`  ./thinkspc organizer.nodes.search${queryArg}${projectRootArg}`)
+  lines.push(`  ./thinkspc organizer.nodes.search --query "taskStatus ready" --limit ${context.limit}${projectRootArg}`)
+  lines.push('  ./thinkspc task.claim --uuid "<task-uuid>" --owner codex-cli')
+  lines.push('  ./thinkspc comment.add --uuid "<task-uuid>" --text "Progress update" --addedBy codex-cli')
+  lines.push('  ./thinkspc task.update_status --uuid "<task-uuid>" --taskStatus done')
+
+  return lines.join('\n')
+}
+
 function parseScalarOrCollectionValue(key: string, value: string): unknown {
   if (NUMBER_FIELDS.has(key)) return Number(value)
   if (ARRAY_FIELDS.has(key)) return value.split(',').map(s => s.trim())
@@ -291,7 +406,7 @@ function parseCLIArgs(capability: string, args: string[]): ParsedCLIArgsResult {
 
 function writeCLIWarnings(warnings: string[]): void {
   for (const warning of warnings) {
-    process.stderr.write(`[ltm] ${warning}\n`)
+    process.stderr.write(`[thinkspc] ${warning}\n`)
   }
 }
 
@@ -302,7 +417,7 @@ export function buildCLIInvokePayload(
   const vaultRoot = process.env.LTM_VAULT_ROOT
   if (!vaultRoot) {
     throw new Error(
-      'LTM_VAULT_ROOT is not set. Use the ./ltm wrapper script or set it in .env.',
+      'LTM_VAULT_ROOT is not set. Use the ./thinkspc wrapper script (or ./ltm compatibility alias), or set it in .env.',
     )
   }
 
@@ -354,21 +469,21 @@ export function buildCLIInvokePayload(
 
 const CAPABILITY_EXAMPLES: Record<string, string[]> = {
   'organizer.node.create': [
-    './ltm organizer.node.create --type task --title "My task" --parentKey task-backlog --projectRoot coding-projects/thinking-space --description "Short description" --extra-record_kind task',
+    './thinkspc organizer.node.create --type task --title "My task" --parentKey task-backlog --projectRoot coding-projects/thinking-space --description "Short description" --extra-record_kind task',
   ],
   'organizer.node.update': [
-    './ltm organizer.node.update --uuid "abc-123" --status active --priority high',
-    './ltm organizer.node.update --uuid "abc-123" --comments "Reconfirmed acceptance criteria"',
-    './ltm comment.add --uuid "abc-123" --text "Append progress note" --addedBy codex-cli',
+    './thinkspc organizer.node.update --uuid "abc-123" --status active --priority high',
+    './thinkspc organizer.node.update --uuid "abc-123" --comments "Reconfirmed acceptance criteria"',
+    './thinkspc comment.add --uuid "abc-123" --text "Append progress note" --addedBy codex-cli',
   ],
   'task.claim': [
-    './ltm task.claim --uuid "abc-123" --owner codex-cli',
+    './thinkspc task.claim --uuid "abc-123" --owner codex-cli',
   ],
   'task.update_status': [
-    './ltm task.update_status --uuid "abc-123" --taskStatus done',
+    './thinkspc task.update_status --uuid "abc-123" --taskStatus done',
   ],
   'comment.add': [
-    './ltm comment.add --uuid "abc-123" --text "Implemented parser hardening" --addedBy codex-cli',
+    './thinkspc comment.add --uuid "abc-123" --text "Implemented parser hardening" --addedBy codex-cli',
   ],
 }
 
@@ -384,15 +499,16 @@ function formatExamples(capability: string): string {
 
 export function renderRunnerHelp(): string {
   return [
-    'ltm capability runner',
+    'Thinking Space capability runner',
     '',
     'Usage:',
-    '  ./ltm [--text|--json] <command>',
-    '  ./ltm list',
-    '  ./ltm invoke < payload.json',
-    '  ./ltm <capability> [--flag value ...]',
-    '  ./ltm help',
-    '  ./ltm <capability> --help',
+    '  ./thinkspc [--text|--json] <command>',
+    '  ./thinkspc list',
+    '  ./thinkspc invoke < payload.json',
+    '  ./thinkspc <capability> [--flag value ...]',
+    '  ./thinkspc organizer.context --url "<organizer-url>"',
+    '  ./thinkspc help',
+    '  ./thinkspc <capability> --help',
     '',
     'Notes:',
     '  - Output defaults: text on TTY, json otherwise.',
@@ -400,16 +516,18 @@ export function renderRunnerHelp(): string {
     '  - --extra-* is for custom metadata only (extraFields).',
     '  - For first-class fields use first-class flags (e.g., --comments, --description).',
     '  - Use comment.add for append-only task notes.',
+    '  - ./ltm remains a compatibility alias for ./thinkspc.',
+    '  - Passing a thinking-organizer URL directly is treated like organizer.context.',
     '',
     'Discover capabilities:',
-    '  ./ltm list',
+    '  ./thinkspc list',
   ].join('\n')
 }
 
 export function renderCapabilityHelp(capability: string): string {
   const definition = listCapabilitiesOrch().find(entry => entry.name === capability)
   if (!definition) {
-    return `Unknown capability: ${capability}\n\nRun ./ltm list to view available capabilities.`
+    return `Unknown capability: ${capability}\n\nRun ./thinkspc list to view available capabilities.`
   }
 
   return [
@@ -417,7 +535,7 @@ export function renderCapabilityHelp(capability: string): string {
     `Description: ${definition.description}`,
     `Mode: ${definition.readOnly ? 'read-only' : 'write'}`,
     '',
-    `Usage: ./ltm ${definition.name} --flag value ...`,
+    `Usage: ./thinkspc ${definition.name} --flag value ...`,
     ...((formatExamples(definition.name)).split('\n')),
   ].join('\n').trim()
 }
@@ -549,7 +667,7 @@ function renderListOutput(payload: unknown): string {
     lines.push(`- ${name} [${mode}]${description ? `: ${description}` : ''}`)
   }
   lines.push('')
-  lines.push('Tip: run ./ltm <capability> --help for usage examples.')
+  lines.push('Tip: run ./thinkspc <capability> --help for usage examples.')
   return lines.join('\n')
 }
 
@@ -648,6 +766,39 @@ async function main(): Promise<void> {
   if (command === 'invoke') {
     const payload = await parseInvokePayload()
     writeOutput(await runCapabilityRunnerCommand('invoke', payload), outputFormat, 'invoke')
+    return
+  }
+
+  if (command && looksLikeHttpUrl(command)) {
+    const context = buildOrganizerContextFromArgs(['--url', command, ...args.slice(1)])
+    if (outputFormat === 'json') {
+      writeJson({
+        ok: true,
+        command: 'organizer.context',
+        data: context,
+      })
+    } else {
+      writeText(renderOrganizerContextOutput(context))
+    }
+    return
+  }
+
+  if (command === 'organizer.context') {
+    const cliArgs = args.slice(1)
+    if (cliArgs.includes('--help') || cliArgs.includes('-h')) {
+      writeText(renderOrganizerContextHelp())
+      return
+    }
+    const context = buildOrganizerContextFromArgs(cliArgs)
+    if (outputFormat === 'json') {
+      writeJson({
+        ok: true,
+        command: 'organizer.context',
+        data: context,
+      })
+    } else {
+      writeText(renderOrganizerContextOutput(context))
+    }
     return
   }
 

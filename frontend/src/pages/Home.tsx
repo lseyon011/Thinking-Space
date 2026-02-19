@@ -16,7 +16,7 @@ export default function Home() {
       <div className="relative z-10 ltm-page-shell ltm-shell-medium py-12 md:py-16">
         <header className="text-center">
           <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">
-            Long Term Memory
+            Thinking Space
           </p>
           <h1 className="mt-4 text-5xl font-semibold tracking-tight text-foreground md:text-6xl">
             Welcome, Anurag

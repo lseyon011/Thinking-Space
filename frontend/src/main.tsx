@@ -7,10 +7,10 @@ import { isElectron, isCapacitorNative } from './services/orchestrators/runtimeO
 import './index.css'
 
 // Electron and Capacitor use HashRouter (no server to handle routes).
-// Web uses BrowserRouter with the /ltm-pilot prefix.
+// Web uses BrowserRouter with the /thinking-space prefix.
 const isLocalApp = isElectron() || isCapacitorNative()
 const Router = isLocalApp ? HashRouter : BrowserRouter
-const routerProps = isLocalApp ? {} : { basename: '/ltm-pilot' }
+const routerProps = isLocalApp ? {} : { basename: '/thinking-space' }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
