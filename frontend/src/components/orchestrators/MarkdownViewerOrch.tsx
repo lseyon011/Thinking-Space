@@ -88,7 +88,10 @@ export function MarkdownViewerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!currentPath) return
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeFile()
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      const target = e.target
+      if (target instanceof Element && target.closest('[data-prevent-sheet-escape="true"]')) return
+      closeFile()
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)

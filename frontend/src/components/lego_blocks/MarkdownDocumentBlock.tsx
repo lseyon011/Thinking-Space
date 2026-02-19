@@ -7,6 +7,10 @@ import {
   readMarkdownDocument,
   saveMarkdownDocument,
 } from '@/services/orchestrators/markdownDocumentsOrch'
+import {
+  serializeExcalidrawSceneOrch,
+  type ParsedExcalidrawScene,
+} from '@/services/orchestrators/excalidrawSceneOrch'
 import { buildObsidianOpenUrlOrch } from '@/services/orchestrators/obsidianLinkOrch'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/ExcalidrawDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/MarkdownMiniNavBlock'
@@ -76,12 +80,18 @@ export default function MarkdownDocumentBlock({
   })
   const isExcalidrawDoc = /\.(excalidraw|excalidraw\.md)$/i.test(path)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
+  const excalidrawSceneRef = useRef<ParsedExcalidrawScene | null>(null)
+  const ignoreInitialExcalidrawChangeRef = useRef(true)
+  const [hasExcalidrawChanges, setHasExcalidrawChanges] = useState(false)
 
   const loadDocument = useCallback(async () => {
     setLoading(true)
     setError(null)
     setSaveError(null)
     setConflict(null)
+    setHasExcalidrawChanges(false)
+    excalidrawSceneRef.current = null
+    ignoreInitialExcalidrawChangeRef.current = true
     clearAssistState()
     try {
       const data = await readMarkdownDocument(path)
@@ -100,12 +110,12 @@ export default function MarkdownDocumentBlock({
     } finally {
       setLoading(false)
     }
-  }, [path])
+  }, [clearAssistState, path])
 
   useEffect(() => {
-    setMode(isExcalidrawDoc ? 'view' : initialMode)
+    setMode(initialMode)
     void loadDocument()
-  }, [initialMode, isExcalidrawDoc, loadDocument, path])
+  }, [initialMode, loadDocument, path])
 
   const meta = content !== null
     ? {
@@ -121,13 +131,28 @@ export default function MarkdownDocumentBlock({
   const obsidianUrl = buildObsidianOpenUrlOrch(path)
 
   const isEditing = mode === 'edit'
-  const hasChanges = isEditing && content !== null && draft !== content
+  const hasTextChanges = isEditing && content !== null && draft !== content
+  const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
+
+  const handleExcalidrawSceneChange = useCallback((scene: ParsedExcalidrawScene) => {
+    excalidrawSceneRef.current = scene
+
+    if (ignoreInitialExcalidrawChangeRef.current) {
+      ignoreInitialExcalidrawChangeRef.current = false
+      return
+    }
+
+    setHasExcalidrawChanges(true)
+  }, [])
 
   const startEditing = () => {
-    if (loading || error || isExcalidrawDoc) return
+    if (loading || error) return
     setMode('edit')
     setSaveError(null)
     setConflict(null)
+    setHasExcalidrawChanges(false)
+    excalidrawSceneRef.current = null
+    ignoreInitialExcalidrawChangeRef.current = true
     clearAssistState()
   }
 
@@ -137,6 +162,9 @@ export default function MarkdownDocumentBlock({
     setSaveError(null)
     setConflict(null)
     setShowPreview(false)
+    setHasExcalidrawChanges(false)
+    excalidrawSceneRef.current = null
+    ignoreInitialExcalidrawChangeRef.current = true
     clearAssistState()
   }
 
@@ -148,17 +176,31 @@ export default function MarkdownDocumentBlock({
     setBaseHash(conflict.currentHash)
     setSaveError(null)
     setConflict(null)
+    setHasExcalidrawChanges(false)
+    excalidrawSceneRef.current = null
+    ignoreInitialExcalidrawChangeRef.current = true
   }
 
   const handleSave = async () => {
     if (!hasChanges || baseMtime === null || !baseHash) return
+
+    let contentToSave = draft
+    if (isExcalidrawDoc) {
+      if (content === null || !excalidrawSceneRef.current) return
+      contentToSave = serializeExcalidrawSceneOrch(content, excalidrawSceneRef.current)
+      if (contentToSave === content) {
+        setHasExcalidrawChanges(false)
+        return
+      }
+    }
+
     setSaving(true)
     setSaveError(null)
     setConflict(null)
     try {
       const result = await saveMarkdownDocument({
         path,
-        content: draft,
+        content: contentToSave,
         baseMtime,
         baseHash,
       })
@@ -170,6 +212,9 @@ export default function MarkdownDocumentBlock({
       setSizeBytes(new Blob([reloaded.content]).size)
       setMode('view')
       setShowPreview(false)
+      setHasExcalidrawChanges(false)
+      excalidrawSceneRef.current = null
+      ignoreInitialExcalidrawChangeRef.current = true
       clearAssistState()
       onSaved?.(result)
     } catch (err) {
@@ -185,7 +230,10 @@ export default function MarkdownDocumentBlock({
   }
 
   return (
-    <div className={cn('flex h-full min-h-0 flex-col bg-card', className)}>
+    <div
+      className={cn('flex h-full min-h-0 flex-col bg-card', className)}
+      data-prevent-sheet-escape={isEditing ? 'true' : undefined}
+    >
       <div className="flex items-start justify-between gap-3 border-b border-border/50 px-5 py-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -206,7 +254,7 @@ export default function MarkdownDocumentBlock({
             <Info className="h-4 w-4" />
           </button>
 
-          {!isEditing && !isExcalidrawDoc && (
+          {!isEditing && (
             <button
               onClick={startEditing}
               disabled={loading || !!error}
@@ -278,6 +326,34 @@ export default function MarkdownDocumentBlock({
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {stripFrontmatter(content)}
             </ReactMarkdown>
+          </div>
+        )}
+
+        {!loading && !error && content !== null && isEditing && isExcalidrawDoc && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              Full Excalidraw tool surface is enabled in edit mode, including highlighter workflows and keyboard shortcuts.
+            </div>
+            <ExcalidrawDocumentBlock
+              content={draft}
+              editable
+              onSceneChange={handleExcalidrawSceneChange}
+              className="min-h-[72vh]"
+            />
+            {saveError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {saveError}
+              </div>
+            )}
+
+            {conflict && (
+              <button
+                onClick={useLatestConflictVersion}
+                className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+              >
+                Load latest file version
+              </button>
+            )}
           </div>
         )}
 
@@ -354,7 +430,7 @@ export default function MarkdownDocumentBlock({
         )}
       </div>
 
-      {isEditing && !isExcalidrawDoc && (
+      {isEditing && (
         <div className="flex items-center justify-between gap-2 border-t border-border/50 px-5 py-3">
           <div className="text-xs text-muted-foreground">
             {hasChanges ? 'Unsaved changes' : 'No changes'}

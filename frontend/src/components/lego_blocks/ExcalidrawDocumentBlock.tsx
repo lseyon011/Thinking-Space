@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { ParsedExcalidrawScene } from '@/services/orchestrators/excalidrawSceneOrch'
 import { parseExcalidrawSceneOrch } from '@/services/orchestrators/excalidrawSceneOrch'
@@ -28,6 +28,10 @@ export default function ExcalidrawDocumentBlock({
   const [scrollState, setScrollState] = useState({ scrollX: 0, scrollY: 0, zoom: 1 })
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [containerSize, setContainerSize] = useState({ width: 1, height: 1 })
+  const scrollFrameRef = useRef<number | null>(null)
+  const pendingScrollRef = useRef({ scrollX: 0, scrollY: 0, zoom: 1 })
+  const sceneChangeFrameRef = useRef<number | null>(null)
+  const latestSceneRef = useRef<ParsedExcalidrawScene | null>(null)
 
   const initialData = useMemo(() => {
     if (!parsedScene) return null
@@ -35,11 +39,11 @@ export default function ExcalidrawDocumentBlock({
       elements: parsedScene.elements as any[],
       appState: {
         ...(parsedScene.appState ?? {}),
-        viewModeEnabled: true,
+        viewModeEnabled: !editable,
       } as any,
       files: (parsedScene.files ?? {}) as any,
     }
-  }, [parsedScene])
+  }, [editable, parsedScene])
 
   const sceneBounds = useMemo(() => {
     if (!parsedScene || parsedScene.elements.length === 0) return null
@@ -77,6 +81,83 @@ export default function ExcalidrawDocumentBlock({
     }
   }, [parsedScene])
 
+  const miniMapRects = useMemo(() => {
+    if (!parsedScene || !sceneBounds) return []
+
+    const rects: Array<{ x: number; y: number; width: number; height: number; key: string }> = []
+    const elements = parsedScene.elements
+    const maxElements = Math.min(elements.length, 400)
+
+    for (let index = 0; index < maxElements; index += 1) {
+      const item = elements[index]
+      if (!item || typeof item !== 'object') continue
+      const element = item as Record<string, unknown>
+      if (element.isDeleted === true) continue
+      const x = Number(element.x)
+      const y = Number(element.y)
+      const w = Math.max(Number(element.width), 1)
+      const h = Math.max(Number(element.height), 1)
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(w) || !Number.isFinite(h)) continue
+
+      rects.push({
+        key: `nav-${index}`,
+        x: ((x - sceneBounds.minX) / sceneBounds.width) * 100,
+        y: ((y - sceneBounds.minY) / sceneBounds.height) * 72,
+        width: Math.max((w / sceneBounds.width) * 100, 0.5),
+        height: Math.max((h / sceneBounds.height) * 72, 0.5),
+      })
+    }
+
+    return rects
+  }, [parsedScene, sceneBounds])
+
+  const uiOptions = useMemo(() => {
+    if (editable) {
+      return {
+        canvasActions: {
+          loadScene: false,
+          saveToActiveFile: false,
+          toggleTheme: false,
+        },
+      }
+    }
+
+    return {
+      canvasActions: {
+        clearCanvas: false,
+        export: false as const,
+        loadScene: false,
+        saveAsImage: false,
+        saveToActiveFile: false,
+        changeViewBackgroundColor: false,
+        toggleTheme: false,
+      },
+    }
+  }, [editable])
+
+  const queueSceneChange = useCallback((scene: ParsedExcalidrawScene) => {
+    if (!onSceneChange) return
+
+    latestSceneRef.current = scene
+    if (sceneChangeFrameRef.current !== null) return
+
+    sceneChangeFrameRef.current = window.requestAnimationFrame(() => {
+      sceneChangeFrameRef.current = null
+      const nextScene = latestSceneRef.current
+      if (!nextScene) return
+      onSceneChange(nextScene)
+    })
+  }, [onSceneChange])
+
+  useEffect(() => {
+    return () => {
+      if (sceneChangeFrameRef.current !== null) {
+        window.cancelAnimationFrame(sceneChangeFrameRef.current)
+        sceneChangeFrameRef.current = null
+      }
+    }
+  }, [])
+
   useEffect(() => {
     if (!excalidrawApi) return undefined
 
@@ -86,10 +167,31 @@ export default function ExcalidrawDocumentBlock({
       scrollY: app.scrollY,
       zoom: app.zoom.value,
     })
+    pendingScrollRef.current = {
+      scrollX: app.scrollX,
+      scrollY: app.scrollY,
+      zoom: app.zoom.value,
+    }
 
-    return excalidrawApi.onScrollChange((scrollX, scrollY, zoom) => {
-      setScrollState({ scrollX, scrollY, zoom: zoom.value })
+    const unsubscribe = excalidrawApi.onScrollChange((scrollX, scrollY, zoom) => {
+      pendingScrollRef.current = { scrollX, scrollY, zoom: zoom.value }
+      if (scrollFrameRef.current !== null) {
+        return
+      }
+
+      scrollFrameRef.current = window.requestAnimationFrame(() => {
+        scrollFrameRef.current = null
+        setScrollState(pendingScrollRef.current)
+      })
     })
+
+    return () => {
+      unsubscribe()
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current)
+        scrollFrameRef.current = null
+      }
+    }
   }, [excalidrawApi])
 
   useEffect(() => {
@@ -122,24 +224,16 @@ export default function ExcalidrawDocumentBlock({
           excalidrawAPI={setExcalidrawApi}
           initialData={initialData}
           viewModeEnabled={!editable}
+          autoFocus={editable}
+          handleKeyboardGlobally={editable}
           onChange={(elements: readonly unknown[], appState: unknown, files: unknown) => {
-            onSceneChange?.({
+            queueSceneChange({
               elements: [...elements],
               appState: (appState as Record<string, unknown>) ?? {},
               files: (files as Record<string, unknown>) ?? {},
             })
           }}
-          UIOptions={{
-            canvasActions: {
-              clearCanvas: false,
-              export: false,
-              loadScene: false,
-              saveAsImage: false,
-              saveToActiveFile: false,
-              changeViewBackgroundColor: false,
-              toggleTheme: false,
-            },
-          }}
+          UIOptions={uiOptions as any}
         />
       </Suspense>
 
@@ -148,10 +242,6 @@ export default function ExcalidrawDocumentBlock({
           type="button"
           className="absolute bottom-3 right-3 z-20 rounded-lg border border-border/70 bg-background/90 p-1 shadow-sm backdrop-blur"
           title="Mini map"
-          onClick={(e) => {
-            const target = e.currentTarget.querySelector('[data-navmap-track]') as HTMLDivElement | null
-            if (!target || !sceneBounds || !excalidrawApi) return
-          }}
         >
           <svg
             data-navmap-track
@@ -184,26 +274,14 @@ export default function ExcalidrawDocumentBlock({
           >
             <rect x="0" y="0" width="100" height="72" rx="4" fill="hsl(var(--muted) / 0.45)" />
 
-            {(parsedScene?.elements ?? []).slice(0, 400).map((item, index) => {
-              if (!item || typeof item !== 'object') return null
-              const element = item as Record<string, unknown>
-              if (element.isDeleted === true) return null
-              const x = Number(element.x)
-              const y = Number(element.y)
-              const w = Math.max(Number(element.width), 1)
-              const h = Math.max(Number(element.height), 1)
-              if (!Number.isFinite(x) || !Number.isFinite(y)) return null
-              const rx = ((x - sceneBounds.minX) / sceneBounds.width) * 100
-              const ry = ((y - sceneBounds.minY) / sceneBounds.height) * 72
-              const rw = Math.max((w / sceneBounds.width) * 100, 0.5)
-              const rh = Math.max((h / sceneBounds.height) * 72, 0.5)
+            {miniMapRects.map((rect) => {
               return (
                 <rect
-                  key={`nav-${index}`}
-                  x={rx}
-                  y={ry}
-                  width={rw}
-                  height={rh}
+                  key={rect.key}
+                  x={rect.x}
+                  y={rect.y}
+                  width={rect.width}
+                  height={rect.height}
                   fill="hsl(var(--foreground) / 0.2)"
                 />
               )

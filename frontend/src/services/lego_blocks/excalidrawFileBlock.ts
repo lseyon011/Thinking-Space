@@ -128,14 +128,25 @@ export function serializeExcalidrawScene(
     }
   }
 
-  const fenceRe = /```(?:json)?\s*([\s\S]*?)\s*```/gi
+  const fenceRe = /```([a-zA-Z0-9_-]+)?\s*([\s\S]*?)\s*```/gi
   let replaced = false
-  const updated = originalContent.replace(fenceRe, (full, block: string) => {
+  const updated = originalContent.replace(fenceRe, (full, rawFenceType: string, block: string) => {
     if (replaced) return full
-    const parsed = tryParseJson((block ?? '').trim())
-    if (!parsed) return full
-    replaced = true
-    return `\`\`\`json\n${serialized}\n\`\`\``
+    const fenceType = (rawFenceType ?? '').trim().toLowerCase()
+
+    if (fenceType === 'compressed-json') {
+      replaced = true
+      return `\`\`\`json\n${serialized}\n\`\`\``
+    }
+
+    if (fenceType === '' || fenceType === 'json') {
+      const parsed = tryParseJson((block ?? '').trim())
+      if (!parsed) return full
+      replaced = true
+      return `\`\`\`json\n${serialized}\n\`\`\``
+    }
+
+    return full
   })
 
   if (replaced) return updated
