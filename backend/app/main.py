@@ -1,5 +1,5 @@
 """
-LTM-Pilot Backend
+Thinking Space backend.
 
 FastAPI backend for vault management tools.
 """
@@ -13,8 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import ai, capabilities, tools
 
 app = FastAPI(
-    title="LTM-Pilot",
-    description="Vault management tools for Long Term Memory",
+    title="Thinking Space API",
+    description="Vault management tools for Thinking Space",
     version="0.1.0",
 )
 
@@ -34,7 +34,7 @@ app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
 
 @app.get("/")
 async def root():
-    return {"message": "LTM-Pilot API", "version": "0.1.0"}
+    return {"message": "Thinking Space API", "version": "0.1.0"}
 
 
 @app.get("/health")

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dev.sh — start/stop the full LTM-Pilot stack
+# dev.sh — start/stop the full Thinking Space stack
 # Usage:
 #   ./dev.sh start       Start backend + frontend dev servers
 #   ./dev.sh start -e    Start backend + frontend + Electron

@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "ltm-pilot-backend"
+name = "thinking-space-backend"
 version = "0.1.0"
-description = "FastAPI backend for LTM vault management tools"
+description = "FastAPI backend for Thinking Space tools"
 authors = ["Anurag"]
 readme = "README.md"
 

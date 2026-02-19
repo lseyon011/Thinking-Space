@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-Project-local Claude instructions for `ltm-pilot`.
+Project-local Claude instructions for `Thinking Space`.
 
-This file applies only when working inside `ltm-pilot/`.
+This file applies only when working inside `Thinking Space/`.
 
 ## Relationship to AGENTS.md
 - `CLAUDE.md` is Claude Code's native project instruction file.
@@ -104,7 +104,7 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 
 ## Startup Sequence (Claude Sessions)
 1. `CLAUDE.md` is auto-loaded — contains architecture, contracts, and locked decisions.
-2. Check active tasks: `./ltm organizer.nodes.search --query "status active" --limit 10`
+2. Check active tasks: `./thinkspc organizer.nodes.search --query "status active" --limit 10`
 3. Read additional docs only when the task requires it:
    - `README.md` — for phase order or product direction questions
    - `docs/ADR-005-Agent-Capabilities.md` — when modifying the capability system
@@ -129,7 +129,8 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - Follow `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md`.
 
 ## Capability Runner Pattern
-Use the `./ltm` wrapper from the repo root. It auto-loads `.env` (for `LTM_VAULT_ROOT`), sets runner flags, and defaults to `actor: {kind: "agent", id: "claude-code"}`.
+Use the `./thinkspc` wrapper from the repo root. It auto-loads `.env` (for `THINKSPC_VAULT_ROOT` or legacy `LTM_VAULT_ROOT`), sets runner flags, and defaults to `actor: {kind: "agent", id: "claude-code"}`.
+Legacy alias: `./ltm` forwards to `./thinkspc`.
 Output defaults to readable text in interactive terminals; pass `--json` for machine parsing.
 
 ### Required fields for node creation (easy to forget, causes bugs):
@@ -141,34 +142,34 @@ Output defaults to readable text in interactive terminals; pass `--json` for mac
 
 ```bash
 # Read operations
-./ltm list
-./ltm organizer.nodes.list_roots --typeFilter program
-./ltm organizer.nodes.list_children --parentKey "epic-auth"
-./ltm organizer.nodes.search --query "auth bug" --limit 10
-./ltm organizer.node.get --uuid "abc-123"
+./thinkspc list
+./thinkspc organizer.nodes.list_roots --typeFilter program
+./thinkspc organizer.nodes.list_children --parentKey "epic-auth"
+./thinkspc organizer.nodes.search --query "auth bug" --limit 10
+./thinkspc organizer.node.get --uuid "abc-123"
 
 # Create node (all required fields shown)
-./ltm organizer.node.create --type task --title "Fix login" \
+./thinkspc organizer.node.create --type task --title "Fix login" \
   --parentKey "task-backlog" \
   --projectRoot coding-projects/thinking-space \
   --description "Login form crashes on submit due to missing validation" \
   --extra-record_kind task
 
 # Other write operations
-./ltm organizer.node.update --uuid "abc-123" --status active --priority high
-./ltm task.claim --uuid "abc-123" --owner claude-code
-./ltm task.update_status --uuid "abc-123" --taskStatus done
-./ltm run.log --title "Session log" --projectRoot coding-projects/thinking-space --agentName claude-code --result success
-./ltm handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space \
+./thinkspc organizer.node.update --uuid "abc-123" --status active --priority high
+./thinkspc task.claim --uuid "abc-123" --owner claude-code
+./thinkspc task.update_status --uuid "abc-123" --taskStatus done
+./thinkspc run.log --title "Session log" --projectRoot coding-projects/thinking-space --agentName claude-code --result success
+./thinkspc handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space \
   --summary "Notes" --fromAgent claude-code --toAgent human \
   --parentKey handoffs-agent-operations
-./ltm comment.add --uuid "abc-123" --text "Done" --addedBy claude-code
+./thinkspc comment.add --uuid "abc-123" --text "Done" --addedBy claude-code
 
 # Raw JSON escape hatch (reads stdin, for complex payloads)
-./ltm invoke < payload.json
+./thinkspc invoke < payload.json
 ```
 
-Setup: ensure `.env` at repo root has `LTM_VAULT_ROOT=/path/to/your/vault`.
+Setup: ensure `.env` at repo root has `THINKSPC_VAULT_ROOT=/path/to/your/vault` (or legacy `LTM_VAULT_ROOT`).
 
 ## Scope Boundary
-These instructions apply to `ltm-pilot` only.
+These instructions apply to `Thinking Space` only.

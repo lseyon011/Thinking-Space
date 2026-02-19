@@ -69,23 +69,24 @@ Operational tool usage pattern:
 
 ## Runner API Pattern (CLI)
 
-Use the `./ltm` wrapper from the repo root. It auto-loads `.env` (for `LTM_VAULT_ROOT`), sets runner flags, and defaults actor to `{kind: "agent", id: "claude-code"}`.
+Use the `./thinkspc` wrapper from the repo root. It auto-loads `.env` (for `THINKSPC_VAULT_ROOT` or legacy `LTM_VAULT_ROOT`), sets runner flags, and defaults actor to `{kind: "agent", id: "claude-code"}`.
+Legacy alias: `./ltm` forwards to `./thinkspc`.
 
 ```bash
 # List capabilities
-./ltm list
+./thinkspc list
 
 # Invoke with --flag syntax
-./ltm organizer.nodes.list_roots --typeFilter program
-./ltm organizer.node.get --uuid "abc-123"
-./ltm organizer.node.create --type task --title "My task" --parentKey "epic-key" --extra-record_kind task
-./ltm task.claim --uuid "abc-123" --owner claude-code
+./thinkspc organizer.nodes.list_roots --typeFilter program
+./thinkspc organizer.node.get --uuid "abc-123"
+./thinkspc organizer.node.create --type task --title "My task" --parentKey "epic-key" --extra-record_kind task
+./thinkspc task.claim --uuid "abc-123" --owner claude-code
 
 # Raw JSON escape hatch (reads stdin, for complex payloads)
-./ltm invoke < payload.json
+./thinkspc invoke < payload.json
 ```
 
-Setup: `.env` at repo root must have `LTM_VAULT_ROOT=/path/to/your/vault`.
+Setup: `.env` at repo root should have `THINKSPC_VAULT_ROOT=/path/to/your/vault` (or legacy `LTM_VAULT_ROOT`).
 
 ## Consequences
 

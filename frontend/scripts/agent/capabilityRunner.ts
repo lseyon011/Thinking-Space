@@ -414,10 +414,10 @@ export function buildCLIInvokePayload(
   capability: string,
   cliArgs: string[],
 ): { payload: InvokePayload; warnings: string[] } {
-  const vaultRoot = process.env.LTM_VAULT_ROOT
+  const vaultRoot = process.env.THINKSPC_VAULT_ROOT || process.env.LTM_VAULT_ROOT
   if (!vaultRoot) {
     throw new Error(
-      'LTM_VAULT_ROOT is not set. Use the ./thinkspc wrapper script (or ./ltm compatibility alias), or set it in .env.',
+      'THINKSPC_VAULT_ROOT/LTM_VAULT_ROOT is not set. Use the ./thinkspc wrapper script (or ./ltm compatibility alias), or set it in .env.',
     )
   }
 
