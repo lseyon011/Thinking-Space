@@ -48,6 +48,20 @@ interface ElectronAPI {
     }
     apiBaseUrl?: string
   }): Promise<unknown>
+  extensionRuntimeInvoke(payload: {
+    vaultRoot: string
+    extensionId: string
+    extensionRegistryKey: string
+    extensionPermissions: string[]
+    runtimeEntry: string
+    runtimeHandler: string
+    actionId: string
+    input: Record<string, unknown>
+    context?: Record<string, unknown>
+    actor?: { kind: 'human' | 'agent' | 'system'; id?: string }
+    requestId?: string
+    dryRun?: boolean
+  }): Promise<unknown>
   selectVaultFolder(): Promise<string | null>
   read(vaultRoot: string, relPath: string): Promise<string>
   write(vaultRoot: string, relPath: string, data: string): Promise<void>
@@ -662,6 +676,7 @@ function createVaultFS(): VaultFS {
 }
 
 export function isElectron(): boolean {
+  if (typeof window === 'undefined') return false
   return !!window.electronAPI?.isElectron
 }
 

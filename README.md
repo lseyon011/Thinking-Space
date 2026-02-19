@@ -49,6 +49,7 @@ Primary routes in the app:
   - Extension manifest validator + compatibility checks
   - Extension loader + registry lifecycle (`discover`, `reload`, `activate`, `deactivate`)
   - Declarative extension actions + runtime UI slots (`sidebar-bottom`, `thought-context-actions`)
+  - Electron-only JS/TS extension runtime sandbox (permission-gated capability bridge, audit-aware extension context)
   - In-app extension builder flow (generate, permission review, preview, save, optional activate)
   - Rollout feature flags for extension host and extension builder
 - Multi-platform packaging progress
@@ -94,7 +95,7 @@ Primary routes in the app:
 - AI telemetry panel and event logging for AI requests
 - Native AI login management on Electron + Capacitor (`AI Settings`)
 - Desktop-to-mobile transfer-code import flow for Claude/Codex OAuth credentials
-- Extension host runtime with manifest validation, compatibility gating, and declarative action execution
+- Extension host runtime with manifest validation, compatibility gating, declarative action execution, and Electron JS/TS runtime dispatch
 - In-app Extension Builder route for generating/saving local extension artifacts under vault `.extensions/*`
 - Agent capability transport: 30 capabilities via frontend runner + FastAPI proxy
 - Agent CLI wrapper (`./ltm`) for ergonomic capability invocation
@@ -105,7 +106,7 @@ Primary routes in the app:
 ### Current Gaps (Important)
 - Thoughts scanner is file/date-oriented only, not fully semantic hierarchy-oriented
 - AI text actions are implemented in key surfaces but not yet unified across every text surface
-- Extension runtime is declarative-first; no arbitrary JS/TS plugin execution sandbox yet
+- Electron supports a sandboxed JS/TS extension runtime; Capacitor/web remain declarative-only
 - No dedicated end-to-end app test harness yet (coverage is primarily unit/service-level)
 - Drag-drop YAML metadata mapping still in progress (DEV-009)
 - YAML Note Block + IndexedDB cache integration still being hardened (DEV-008)
@@ -348,16 +349,17 @@ Completed across DEV-012, DEV-013, DEV-014:
 - Agent workspace bootstrap + task lifecycle + run/handoff/comment operations
 - Adapter parity fixtures and rollout matrix
 
-### EPIC-3: Local-Only Extension Platform — IN PROGRESS (T1-T5 DELIVERED)
+### EPIC-3: Local-Only Extension Platform — IN PROGRESS (T1-T7 DELIVERED)
 Completed:
-- Extension manifest parser/validator + compatibility contract (`api_version`, `min_app_version`)
+- Extension manifest parser/validator + compatibility contract (`api_version`, `min_app_version`, `entry_kind`)
 - Extension loader/registry lifecycle orchestration (`discover`, `reload`, `activate`, `deactivate`)
 - Declarative action schema + slot routing (`sidebar-bottom`, `thought-context-actions`)
 - Runtime extension UI slot component integration in Thinking Space surfaces
+- Electron-only JS/TS runtime sandbox with capability-bridge permission checks + audit propagation
 - In-app extension builder flow (`/extension-builder`) with permission approval gate
 
 Remaining:
-- T6 hardening: docs alignment, rollout checklist/rollback guidance, and full validation sweep
+- Phase E: extension packaging/share/import and migration tooling
 
 Exit criteria:
 - User can generate and enable a local extension safely inside app

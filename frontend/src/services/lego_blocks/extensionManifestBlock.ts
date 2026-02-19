@@ -4,6 +4,7 @@ export interface ExtensionManifest {
   version: string
   api_version: string
   min_app_version: string
+  entry_kind: ExtensionManifestEntryKind
   permissions: string[]
   targets: string[]
   author?: string
@@ -11,11 +12,16 @@ export interface ExtensionManifest {
   entry?: string
 }
 
+export const SUPPORTED_EXTENSION_ENTRY_KINDS = ['declarative', 'electron-js'] as const
+export type ExtensionManifestEntryKind = (typeof SUPPORTED_EXTENSION_ENTRY_KINDS)[number]
+export type ExtensionManifestRuntimeTarget = 'electron' | 'capacitor' | 'web'
+
 export type ExtensionManifestErrorCode =
   | 'MANIFEST_NOT_OBJECT'
   | 'FIELD_REQUIRED'
   | 'FIELD_TYPE_INVALID'
   | 'FIELD_EMPTY'
+  | 'FIELD_VALUE_INVALID'
   | 'FIELD_SEMVER_INVALID'
   | 'ARRAY_ITEM_INVALID'
 
@@ -34,6 +40,7 @@ export type ExtensionManifestCompatibilityCode =
   | 'APP_VERSION_TOO_LOW'
   | 'APP_VERSION_INVALID'
   | 'SUPPORTED_API_VERSIONS_INVALID'
+  | 'ENTRY_KIND_RUNTIME_UNSUPPORTED'
 
 export interface ExtensionManifestCompatibilityReason {
   code: ExtensionManifestCompatibilityCode
@@ -48,6 +55,7 @@ export interface ExtensionManifestCompatibilityResult {
 export interface ExtensionManifestCompatibilityInput {
   appVersion: string
   supportedApiVersions: string[]
+  runtimeTarget?: ExtensionManifestRuntimeTarget
 }
 
 interface ParsedSemver {
@@ -91,6 +99,19 @@ export function parseExtensionManifestBlock(raw: unknown): ExtensionManifestVali
 
   const apiVersion = parseRequiredStringField(record, 'api_version')
   if (!apiVersion.ok) return apiVersion
+  const entryKind = parseRequiredStringField(record, 'entry_kind')
+  if (!entryKind.ok) return entryKind
+  if (!isSupportedExtensionEntryKind(entryKind.value)) {
+    return {
+      ok: false,
+      error: {
+        code: 'FIELD_VALUE_INVALID',
+        field: 'entry_kind',
+        message: `entry_kind must be one of: ${SUPPORTED_EXTENSION_ENTRY_KINDS.join(', ')}.`,
+      },
+    }
+  }
+
   const minAppVersion = parseRequiredStringField(record, 'min_app_version')
   if (!minAppVersion.ok) return minAppVersion
   if (!isSemver(minAppVersion.value)) {
@@ -114,6 +135,16 @@ export function parseExtensionManifestBlock(raw: unknown): ExtensionManifestVali
   if (!description.ok) return description
   const entry = parseOptionalStringField(record, 'entry')
   if (!entry.ok) return entry
+  if (entryKind.value === 'electron-js' && !entry.value) {
+    return {
+      ok: false,
+      error: {
+        code: 'FIELD_REQUIRED',
+        field: 'entry',
+        message: 'entry is required when entry_kind is "electron-js".',
+      },
+    }
+  }
 
   return {
     ok: true,
@@ -122,6 +153,7 @@ export function parseExtensionManifestBlock(raw: unknown): ExtensionManifestVali
       name: name.value,
       version: version.value,
       api_version: apiVersion.value,
+      entry_kind: entryKind.value,
       min_app_version: minAppVersion.value,
       permissions: permissions.value,
       targets: targets.value,
@@ -168,6 +200,17 @@ export function getExtensionManifestCompatibilityBlock(
     }
   }
 
+  const runtimeTarget = input.runtimeTarget ?? 'web'
+  if (manifest.entry_kind === 'electron-js' && runtimeTarget !== 'electron') {
+    return {
+      loadable: false,
+      reason: {
+        code: 'ENTRY_KIND_RUNTIME_UNSUPPORTED',
+        message: `Manifest entry_kind "${manifest.entry_kind}" requires Electron runtime; current target is "${runtimeTarget}".`,
+      },
+    }
+  }
+
   if (compareSemver(appVersion, manifest.min_app_version) < 0) {
     return {
       loadable: false,
@@ -182,6 +225,10 @@ export function getExtensionManifestCompatibilityBlock(
     loadable: true,
     reason: null,
   }
+}
+
+function isSupportedExtensionEntryKind(value: string): value is ExtensionManifestEntryKind {
+  return SUPPORTED_EXTENSION_ENTRY_KINDS.includes(value as ExtensionManifestEntryKind)
 }
 
 function parseRequiredStringField(

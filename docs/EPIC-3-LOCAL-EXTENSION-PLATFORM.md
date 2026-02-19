@@ -33,6 +33,7 @@ Required fields:
 - `name` string
 - `version` semver
 - `api_version` string
+- `entry_kind` enum (`declarative` | `electron-js`)
 - `min_app_version` semver
 - `permissions` string[]
 - `targets` string[]
@@ -41,9 +42,14 @@ Optional fields:
 - `author`, `description`, `entry`
 - `actions` (validated separately by action parser)
 
+`entry` requirements:
+- Required when `entry_kind = electron-js`.
+- Must point to a file under the same extension folder (example: `runtime/main.ts`).
+
 Compatibility gating:
 - `api_version` must be included in runtime `supportedApiVersions`.
 - `min_app_version` must be `<=` current runtime app version.
+- `entry_kind = electron-js` is loadable only on Electron runtime; non-Electron targets auto-disable with an explainable reason.
 
 ### Declarative Action Contract
 Validation entrypoint: `frontend/src/services/lego_blocks/extensionActionBlock.ts`
@@ -100,6 +106,14 @@ Control surface:
 - Permission review required before builder save.
 - Invocation goes through extension capability guardrails.
 
+## Phase D (Electron JS/TS Runtime)
+- Runtime entry is executed from vault via Electron main-process VM sandbox (no direct app imports of vault code).
+- Runtime source is constrained to extension-local entry paths under `.extensions/<id>/`.
+- Forbidden APIs include `require`, dynamic `import()`, `process`, and Node child-process/worker modules.
+- Runtime handlers invoke app functionality only through host `invokeCapability(...)` bridge.
+- Each host capability call is permission-checked against extension-declared scopes and audited with extension context metadata.
+- Declarative mode remains the default and the only mode for Capacitor/web.
+
 ## Test Harness
 
 Focused EPIC-3 tests:
@@ -110,7 +124,8 @@ npm --prefix frontend run test -- \
   extensionUiOrch.test.ts \
   extensionBuilderOrch.test.ts \
   extensionLoaderOrch.test.ts \
-  extensionCapabilityOrch.test.ts
+  extensionCapabilityOrch.test.ts \
+  extensionRuntimeOrch.test.ts
 ```
 
 Regression sweep:

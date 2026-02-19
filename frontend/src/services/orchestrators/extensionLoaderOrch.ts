@@ -7,7 +7,7 @@ import {
   type ExtensionRegistryReason,
   type ExtensionRuntimeRecord,
 } from '../lego_blocks/extensionRegistryBlock'
-import { getVaultFS, type VaultFS } from '../lego_blocks/fsBlock'
+import { getVaultFS, isCapacitorNative, isElectron, type VaultFS } from '../lego_blocks/fsBlock'
 import { parseExtensionActionsFromManifestBlock } from '../lego_blocks/extensionActionBlock'
 import {
   resolveExtensionManifestCompatibilityOrch,
@@ -30,6 +30,7 @@ export interface ExtensionReloadInput extends ExtensionDiscoverInput {
 export async function discoverExtensionsOrch(input: ExtensionDiscoverInput): Promise<ExtensionRuntimeRecord[]> {
   const fs = input.fs ?? getVaultFS()
   const extensionsRoot = normalizePath(input.extensionsRoot ?? DEFAULT_EXTENSIONS_ROOT)
+  const runtimeTarget = input.runtimeTarget ?? resolveRuntimeTarget()
   const currentRecords = new Map(listExtensionRegistryBlock().map(record => [record.registryKey, record]))
   const folders = await listExtensionFolders(fs, extensionsRoot)
   const next: ExtensionRuntimeRecord[] = []
@@ -41,6 +42,7 @@ export async function discoverExtensionsOrch(input: ExtensionDiscoverInput): Pro
       extensionsRoot,
       appVersion: input.appVersion,
       supportedApiVersions: input.supportedApiVersions,
+      runtimeTarget,
     })
 
     const existing = currentRecords.get(loaded.registryKey)
@@ -71,12 +73,14 @@ export async function reloadExtensionsOrch(input: ExtensionDiscoverInput): Promi
 export async function reloadExtensionOrch(input: ExtensionReloadInput): Promise<ExtensionRuntimeRecord> {
   const fs = input.fs ?? getVaultFS()
   const extensionsRoot = normalizePath(input.extensionsRoot ?? DEFAULT_EXTENSIONS_ROOT)
+  const runtimeTarget = input.runtimeTarget ?? resolveRuntimeTarget()
   const loaded = await loadExtensionFolder({
     fs,
     folder: input.registryKey,
     extensionsRoot,
     appVersion: input.appVersion,
     supportedApiVersions: input.supportedApiVersions,
+    runtimeTarget,
   })
   return upsertExtensionRegistryRecordBlock(loaded)
 }
@@ -254,6 +258,7 @@ async function loadExtensionFolder(input: LoadExtensionFolderInput): Promise<Ext
   const compatibility = resolveExtensionManifestCompatibilityOrch(parsed.manifest, {
     appVersion: input.appVersion,
     supportedApiVersions: input.supportedApiVersions,
+    runtimeTarget: input.runtimeTarget,
   })
   if (!compatibility.loadable) {
     return buildRecord({
@@ -341,4 +346,10 @@ function normalizePath(path: string): string {
 
 function joinPath(...parts: string[]): string {
   return parts.map(normalizePath).filter(Boolean).join('/')
+}
+
+function resolveRuntimeTarget(): 'electron' | 'capacitor' | 'web' {
+  if (isElectron()) return 'electron'
+  if (isCapacitorNative()) return 'capacitor'
+  return 'web'
 }

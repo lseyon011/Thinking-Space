@@ -21,6 +21,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
     apiBaseUrl?: string
   }) => ipcRenderer.invoke('capabilities:invoke', payload),
+  extensionRuntimeInvoke: (payload: {
+    vaultRoot: string
+    extensionId: string
+    extensionRegistryKey: string
+    extensionPermissions: string[]
+    runtimeEntry: string
+    runtimeHandler: string
+    actionId: string
+    input: Record<string, unknown>
+    context?: Record<string, unknown>
+    actor?: { kind: 'human' | 'agent' | 'system'; id?: string }
+    requestId?: string
+    dryRun?: boolean
+  }) => ipcRenderer.invoke('extension-runtime:invoke', payload),
 
   // Window management
   newWindow: () => ipcRenderer.invoke('window:new'),

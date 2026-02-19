@@ -101,10 +101,12 @@ export default function ExtensionSlotBlock({ slotId, context, className }: Exten
                         context,
                       })
                       if (!result.ok) {
-                        if ('blocked' in result) {
+                        if ('blocked' in result && result.blocked && 'message' in result) {
                           setError(result.message)
-                        } else {
+                        } else if ('error' in result) {
                           setError(result.error.message)
+                        } else {
+                          setError('Extension action failed.')
                         }
                       }
                     } catch (err) {

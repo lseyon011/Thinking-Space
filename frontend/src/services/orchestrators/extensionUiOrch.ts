@@ -1,5 +1,6 @@
 import type { VaultFS } from '../lego_blocks/fsBlock'
 import {
+  isRuntimeExtensionActionBlock,
   isSupportedExtensionActionTargetBlock,
   resolveExtensionActionInputBlock,
   type ExtensionActionTarget,
@@ -9,6 +10,7 @@ import { getCapabilityFeatureFlags } from '../lego_blocks/capabilityFeatureFlags
 import type { CapabilityInputMap, CapabilityName } from '../lego_blocks/capabilityRegistryBlock'
 import { invokeExtensionCapabilityOrch, type ExtensionCapabilityInvokeResult } from './extensionCapabilityOrch'
 import { discoverExtensionsOrch, listRegisteredExtensionsOrch } from './extensionLoaderOrch'
+import { invokeExtensionRuntimeActionOrch, type ExtensionRuntimeInvokeResult } from './extensionRuntimeOrch'
 
 export const DEFAULT_EXTENSION_UI_APP_VERSION_ORCH = '0.1.0'
 
@@ -18,7 +20,10 @@ export interface ExtensionSlotActionView {
   label: string
   description?: string
   target: ExtensionActionTarget
-  capability: CapabilityName
+  execution_kind: 'declarative' | 'runtime'
+  capability?: CapabilityName
+  runtime_handler?: string
+  runtime_entry?: string
   extensionId: string
   extensionRegistryKey: string
 }
@@ -54,6 +59,10 @@ interface ResolvedRuntimeAction {
   extensionPermissions: string[]
   inputTemplate: Record<string, unknown>
 }
+
+export type ExtensionSlotInvokeResult =
+  | ExtensionCapabilityInvokeResult<CapabilityName>
+  | ExtensionRuntimeInvokeResult
 
 export async function refreshExtensionUiOrch(input: RefreshExtensionUiInput = {}): Promise<void> {
   if (!isExtensionHostEnabled()) return
@@ -101,7 +110,7 @@ export function resolveExtensionSlotActionsOrch(slotId: string): ExtensionSlotRe
 
 export async function invokeExtensionSlotActionOrch(
   input: InvokeExtensionSlotActionInput,
-): Promise<ExtensionCapabilityInvokeResult<CapabilityName>> {
+): Promise<ExtensionSlotInvokeResult> {
   if (!isExtensionHostEnabled()) {
     throw new Error('Extension host is disabled by feature flag.')
   }
@@ -120,11 +129,37 @@ export async function invokeExtensionSlotActionOrch(
     input.context ?? {},
   ) as CapabilityInputMap[CapabilityName]
 
+  if (runtimeAction.view.execution_kind === 'runtime') {
+    const runtimeEntry = runtimeAction.view.runtime_entry
+    if (!runtimeEntry) {
+      throw new Error(`Runtime action "${runtimeAction.view.actionId}" is missing runtime entry path.`)
+    }
+
+    return invokeExtensionRuntimeActionOrch({
+      extensionId: runtimeAction.view.extensionId,
+      extensionRegistryKey: runtimeAction.view.extensionRegistryKey,
+      extensionPermissions: runtimeAction.extensionPermissions,
+      runtimeEntry,
+      runtimeHandler: runtimeAction.view.runtime_handler ?? runtimeAction.view.actionId,
+      actionId: runtimeAction.view.actionId,
+      input: resolvedInput,
+      context: input.context,
+      actor: input.actor,
+      requestId: input.requestId,
+      dryRun: input.dryRun,
+    })
+  }
+
+  const capability = runtimeAction.view.capability
+  if (!capability) {
+    throw new Error(`Declarative action "${runtimeAction.view.actionId}" is missing capability.`)
+  }
+
   return invokeExtensionCapabilityOrch<CapabilityName>({
     extensionId: runtimeAction.view.extensionId,
     extensionRegistryKey: runtimeAction.view.extensionRegistryKey,
     extensionPermissions: runtimeAction.extensionPermissions,
-    capability: runtimeAction.view.capability,
+    capability,
     input: resolvedInput,
     actor: input.actor,
     requestId: input.requestId,
@@ -150,11 +185,14 @@ function getRuntimeActionsForTarget(target: ExtensionActionTarget): ResolvedRunt
     const extensionId = record.manifest?.id ?? record.extensionId
     if (!extensionId) continue
     const permissions = record.manifest?.permissions ?? []
+    const executionKind = record.manifest?.entry_kind === 'electron-js' ? 'runtime' : 'declarative'
+    const runtimeEntry = record.manifest?.entry
 
     for (const action of record.actions) {
       if (action.target !== target) continue
+      if (executionKind === 'declarative' && !action.capability) continue
       actions.push({
-        view: toSlotActionView(record.registryKey, extensionId, action),
+        view: toSlotActionView(record.registryKey, extensionId, action, executionKind, runtimeEntry),
         extensionPermissions: permissions,
         inputTemplate: action.input,
       })
@@ -168,14 +206,25 @@ function toSlotActionView(
   registryKey: string,
   extensionId: string,
   action: ExtensionDeclarativeAction,
+  executionKind: 'declarative' | 'runtime',
+  runtimeEntry?: string,
 ): ExtensionSlotActionView {
+  const runtimeHandler = isRuntimeExtensionActionBlock(action)
+    ? action.runtime_handler
+    : action.id
+
   return {
     actionKey: buildExtensionActionKeyOrch(registryKey, action.id),
     actionId: action.id,
     label: action.label,
     ...(action.description ? { description: action.description } : {}),
     target: action.target,
-    capability: action.capability,
+    execution_kind: executionKind,
+    ...(action.capability ? { capability: action.capability } : {}),
+    ...(executionKind === 'runtime' ? {
+      runtime_handler: runtimeHandler,
+      runtime_entry: runtimeEntry,
+    } : {}),
     extensionId,
     extensionRegistryKey: registryKey,
   }

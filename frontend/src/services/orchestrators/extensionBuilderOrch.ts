@@ -232,6 +232,7 @@ function buildGeneratedFiles(draft: ExtensionBuilderDraft): GeneratedExtensionFi
     name: draft.name,
     version: '1.0.0',
     api_version: '1',
+    entry_kind: 'declarative',
     min_app_version: DEFAULT_EXTENSION_BUILDER_APP_VERSION,
     permissions: draft.permissions,
     targets: targets.length > 0 ? targets : ['sidebar-bottom'],
@@ -312,6 +313,7 @@ function validateGeneratedArtifacts(draft: ExtensionBuilderDraft, files: Generat
 function derivePermissionsFromActions(actions: ExtensionDeclarativeAction[]): string[] {
   const permissions: string[] = []
   for (const action of actions) {
+    if (!action.capability) continue
     for (const permission of getRequiredPermissionsForCapabilityBlock(action.capability)) {
       if (!permissions.includes(permission)) permissions.push(permission)
     }

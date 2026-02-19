@@ -10,6 +10,7 @@ function buildValidManifestRaw(): Record<string, unknown> {
     name: ' Demo Extension ',
     version: ' 1.2.3 ',
     api_version: ' 1 ',
+    entry_kind: ' declarative ',
     min_app_version: ' 0.4.0 ',
     permissions: [' read:thoughts ', 'write:thoughts', 'read:thoughts'],
     targets: [' toolbar ', 'sidebar', 'toolbar'],
@@ -27,6 +28,7 @@ describe('extensionManifestBlock', () => {
       name: 'Demo Extension',
       version: '1.2.3',
       api_version: '1',
+      entry_kind: 'declarative',
       min_app_version: '0.4.0',
       permissions: ['read:thoughts', 'write:thoughts'],
       targets: ['toolbar', 'sidebar'],
@@ -57,6 +59,34 @@ describe('extensionManifestBlock', () => {
         code: 'FIELD_SEMVER_INVALID',
         field: 'min_app_version',
         message: 'min_app_version must be a valid semver string (x.y.z).',
+      },
+    })
+  })
+
+  it('returns deterministic error when entry_kind is invalid', () => {
+    const raw = buildValidManifestRaw()
+    raw.entry_kind = 'node-runtime'
+    const result = parseExtensionManifestBlock(raw)
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'FIELD_VALUE_INVALID',
+        field: 'entry_kind',
+        message: 'entry_kind must be one of: declarative, electron-js.',
+      },
+    })
+  })
+
+  it('requires entry when entry_kind is electron-js', () => {
+    const raw = buildValidManifestRaw()
+    raw.entry_kind = 'electron-js'
+    const result = parseExtensionManifestBlock(raw)
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'FIELD_REQUIRED',
+        field: 'entry',
+        message: 'entry is required when entry_kind is "electron-js".',
       },
     })
   })
@@ -96,5 +126,27 @@ describe('extensionManifestBlock', () => {
       },
     })
   })
-})
 
+  it('disables electron-js entry kind when runtime target is not electron', () => {
+    const parsed = parseExtensionManifestBlock({
+      ...buildValidManifestRaw(),
+      entry_kind: 'electron-js',
+      entry: 'runtime/main.ts',
+    })
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+
+    const compatibility = getExtensionManifestCompatibilityBlock(parsed.manifest, {
+      appVersion: '0.9.0',
+      supportedApiVersions: ['1'],
+      runtimeTarget: 'web',
+    })
+    expect(compatibility).toEqual({
+      loadable: false,
+      reason: {
+        code: 'ENTRY_KIND_RUNTIME_UNSUPPORTED',
+        message: 'Manifest entry_kind "electron-js" requires Electron runtime; current target is "web".',
+      },
+    })
+  })
+})

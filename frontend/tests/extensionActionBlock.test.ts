@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   parseExtensionActionsBlock,
+  parseExtensionActionsFromManifestBlock,
   resolveExtensionActionInputBlock,
 } from '@/services/lego_blocks/extensionActionBlock'
 
@@ -78,5 +79,35 @@ describe('extensionActionBlock', () => {
       },
     })
   })
-})
 
+  it('parses runtime action schema from electron-js manifests', () => {
+    const result = parseExtensionActionsFromManifestBlock({
+      entry_kind: 'electron-js',
+      actions: [
+        {
+          id: 'runtime-frontmatter',
+          label: 'Runtime frontmatter',
+          target: 'thought-context-actions',
+          runtime_handler: 'readFrontmatter',
+          input: {
+            filePath: '{{context.filePath}}',
+          },
+        },
+      ],
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.actions).toEqual([
+      {
+        id: 'runtime-frontmatter',
+        label: 'Runtime frontmatter',
+        target: 'thought-context-actions',
+        runtime_handler: 'readFrontmatter',
+        input: {
+          filePath: '{{context.filePath}}',
+        },
+      },
+    ])
+  })
+})

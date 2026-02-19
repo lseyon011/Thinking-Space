@@ -1,4 +1,5 @@
 import type { CapabilityName } from './capabilityRegistryBlock'
+import type { ExtensionManifestEntryKind } from './extensionManifestBlock'
 
 export const SUPPORTED_EXTENSION_ACTION_TARGETS = [
   'sidebar-bottom',
@@ -11,9 +12,10 @@ export interface ExtensionDeclarativeAction {
   id: string
   label: string
   target: ExtensionActionTarget
-  capability: CapabilityName
+  capability?: CapabilityName
   input: Record<string, unknown>
   description?: string
+  runtime_handler?: string
 }
 
 export type ExtensionActionValidationCode =
@@ -131,6 +133,10 @@ export function parseExtensionActionsFromManifestBlock(manifestRaw: unknown): Ex
     }
   }
   const record = manifestRaw as Record<string, unknown>
+  const entryKind = normalizeEntryKind(record.entry_kind)
+  if (entryKind === 'electron-js') {
+    return parseRuntimeExtensionActionsBlock(record.actions)
+  }
   return parseExtensionActionsBlock(record.actions)
 }
 
@@ -143,6 +149,10 @@ export function resolveExtensionActionInputBlock(
 
 export function isSupportedExtensionActionTargetBlock(value: string): value is ExtensionActionTarget {
   return SUPPORTED_EXTENSION_ACTION_TARGETS.includes(value as ExtensionActionTarget)
+}
+
+export function isRuntimeExtensionActionBlock(action: ExtensionDeclarativeAction): boolean {
+  return typeof action.runtime_handler === 'string' && action.runtime_handler.trim().length > 0
 }
 
 function parseRequiredStringField(
@@ -225,6 +235,107 @@ function parseInputField(
   return { ok: true, value: record.input as Record<string, unknown> }
 }
 
+function parseRuntimeExtensionActionsBlock(raw: unknown): ExtensionActionValidationResult {
+  if (raw == null) return { ok: true, actions: [] }
+  if (!Array.isArray(raw)) {
+    return {
+      ok: false,
+      error: {
+        code: 'ACTIONS_TYPE_INVALID',
+        field: 'actions',
+        message: 'actions must be an array when provided.',
+      },
+    }
+  }
+
+  const actions: ExtensionDeclarativeAction[] = []
+  const ids = new Set<string>()
+
+  for (let idx = 0; idx < raw.length; idx += 1) {
+    const value = raw[idx]
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {
+        ok: false,
+        error: {
+          code: 'ACTION_TYPE_INVALID',
+          field: `actions[${idx}]`,
+          message: `actions[${idx}] must be an object.`,
+        },
+      }
+    }
+
+    const record = value as Record<string, unknown>
+    const id = parseRequiredStringField(record, 'id', idx)
+    if (!id.ok) return id
+    if (ids.has(id.value)) {
+      return {
+        ok: false,
+        error: {
+          code: 'ACTION_ID_DUPLICATE',
+          field: `actions[${idx}].id`,
+          message: `Duplicate action id "${id.value}" is not allowed.`,
+        },
+      }
+    }
+    ids.add(id.value)
+
+    const label = parseRequiredStringField(record, 'label', idx)
+    if (!label.ok) return label
+    const target = parseRequiredStringField(record, 'target', idx)
+    if (!target.ok) return target
+    if (!isSupportedExtensionActionTargetBlock(target.value)) {
+      return {
+        ok: false,
+        error: {
+          code: 'ACTION_TARGET_UNSUPPORTED',
+          field: `actions[${idx}].target`,
+          message: `Unsupported action target "${target.value}".`,
+        },
+      }
+    }
+
+    const inputField = parseInputField(record, idx)
+    if (!inputField.ok) return inputField
+    const description = parseOptionalStringField(record, 'description', idx)
+    if (!description.ok) return description
+    const runtimeHandler = parseOptionalStringField(record, 'runtime_handler', idx)
+    if (!runtimeHandler.ok) return runtimeHandler
+
+    let capability: CapabilityName | undefined
+    if ('capability' in record && record.capability != null) {
+      if (typeof record.capability !== 'string') {
+        return {
+          ok: false,
+          error: {
+            code: 'ACTION_FIELD_TYPE_INVALID',
+            field: `actions[${idx}].capability`,
+            message: 'capability must be a string when provided.',
+          },
+        }
+      }
+      const trimmedCapability = record.capability.trim()
+      if (trimmedCapability) capability = trimmedCapability as CapabilityName
+    }
+
+    actions.push({
+      id: id.value,
+      label: label.value,
+      target: target.value,
+      ...(capability ? { capability } : {}),
+      input: inputField.value,
+      ...(description.value ? { description: description.value } : {}),
+      runtime_handler: runtimeHandler.value ?? id.value,
+    })
+  }
+
+  return { ok: true, actions }
+}
+
+function normalizeEntryKind(raw: unknown): ExtensionManifestEntryKind {
+  if (typeof raw !== 'string') return 'declarative'
+  return raw.trim() === 'electron-js' ? 'electron-js' : 'declarative'
+}
+
 function resolveTemplateValue(value: unknown, context: Record<string, unknown>): unknown {
   if (typeof value === 'string') {
     const exact = value.match(/^\{\{\s*context\.([a-zA-Z0-9_.-]+)\s*\}\}$/)
@@ -268,4 +379,3 @@ function getByPath(value: Record<string, unknown>, path: string): unknown {
   }
   return current
 }
-

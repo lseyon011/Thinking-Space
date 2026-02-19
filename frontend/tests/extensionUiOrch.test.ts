@@ -24,6 +24,12 @@ function installLocalStorageMock(): void {
   })
 }
 
+function setElectronApiMock(value: unknown): void {
+  const root = globalThis as unknown as { window?: { electronAPI?: unknown } }
+  if (!root.window) root.window = {}
+  root.window.electronAPI = value
+}
+
 class FakeVaultFS implements VaultFS {
   private readonly files = new Map<string, string>()
   private readonly dirs = new Set<string>([''])
@@ -153,6 +159,7 @@ function manifestWithActions(): string {
     name: 'UI demo',
     version: '1.0.0',
     api_version: '1',
+    entry_kind: 'declarative',
     min_app_version: '0.1.0',
     permissions: ['organizer:read'],
     targets: ['sidebar-bottom', 'thought-context-actions'],
@@ -177,6 +184,31 @@ function manifestWithActions(): string {
   })
 }
 
+function runtimeManifestWithActions(): string {
+  return JSON.stringify({
+    id: 'com.thinking-space.runtime-demo',
+    name: 'Runtime demo',
+    version: '1.0.0',
+    api_version: '1',
+    entry_kind: 'electron-js',
+    entry: 'runtime/main.ts',
+    min_app_version: '0.1.0',
+    permissions: ['organizer:read'],
+    targets: ['thought-context-actions'],
+    actions: [
+      {
+        id: 'runtime-frontmatter',
+        runtime_handler: 'readFrontmatter',
+        label: 'Runtime frontmatter',
+        target: 'thought-context-actions',
+        input: {
+          filePath: '{{context.filePath}}',
+        },
+      },
+    ],
+  })
+}
+
 describe('extensionUiOrch', () => {
   beforeEach(() => {
     installLocalStorageMock()
@@ -188,6 +220,7 @@ describe('extensionUiOrch', () => {
       extension_builder_enabled: true,
     })
     clearExtensionRegistryOrch()
+    setElectronApiMock(undefined)
   })
 
   it('resolves actions for supported slot targets', async () => {
@@ -281,5 +314,51 @@ describe('extensionUiOrch', () => {
     expect(result.ok).toBe(true)
     if (!result.ok || 'blocked' in result) return
     expect(result.data.frontmatter?.title).toBe('Sample')
+  })
+
+  it('routes runtime actions through electron runtime adapter', async () => {
+    const invokedPayloads: Record<string, unknown>[] = []
+    setElectronApiMock({
+      isElectron: true,
+      extensionRuntimeInvoke: async (payload: Record<string, unknown>) => {
+        invokedPayloads.push(payload)
+        return {
+          ok: true,
+          requestId: 'req-runtime',
+          extensionId: 'com.thinking-space.runtime-demo',
+          extensionRegistryKey: 'runtime',
+          actionId: 'runtime-frontmatter',
+          runtimeHandler: 'readFrontmatter',
+          warnings: [],
+          data: { echoed: payload.input },
+        }
+      },
+    } as unknown)
+    localStorage.setItem('ltm-vault-root', '/tmp/vault')
+
+    const fs = new FakeVaultFS({
+      '.extensions/runtime/manifest.json': runtimeManifestWithActions(),
+    })
+    await refreshExtensionUiOrch({ fs, appVersion: '0.1.0' })
+
+    const result = await invokeExtensionSlotActionOrch({
+      slotId: 'thought-context-actions',
+      actionKey: buildExtensionActionKeyOrch('runtime', 'runtime-frontmatter'),
+      context: {
+        filePath: 'notes/runtime.md',
+      },
+      fs,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(invokedPayloads).toHaveLength(1)
+    expect(invokedPayloads[0]).toMatchObject({
+      runtimeEntry: 'runtime/main.ts',
+      runtimeHandler: 'readFrontmatter',
+      actionId: 'runtime-frontmatter',
+      input: {
+        filePath: 'notes/runtime.md',
+      },
+    })
   })
 })

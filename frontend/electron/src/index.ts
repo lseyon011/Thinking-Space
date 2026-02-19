@@ -39,6 +39,10 @@ import {
 } from './orchestrators/hierarchyOrch';
 import { getHierarchyDbStatusOrch, initializeHierarchyDbOrch } from './orchestrators/hierarchyDbOrch';
 import { EXCLUDED_DIRS } from './lego_blocks/vaultConstantsBlock';
+import {
+  invokeSandboxedExtensionActionBlock,
+  type ExtensionRuntimeInvokePayload,
+} from './lego_blocks/extensionRuntimeSandboxBlock';
 
 // Graceful handling of unhandled errors.
 unhandled();
@@ -166,6 +170,10 @@ interface ElectronCapabilityInvokePayload {
     actor?: { kind: CapabilityActorKind; id?: string };
     requestId?: string;
     dryRun?: boolean;
+    extensionContext?: {
+      extensionId: string;
+      extensionRegistryKey?: string;
+    };
   };
   apiBaseUrl?: string;
 }
@@ -490,6 +498,19 @@ ipcMain.handle('capabilities:invoke', async (_event, payload: ElectronCapability
     throw new Error('Capability invoke payload requires a "request" object.');
   }
   return runCapabilityRunnerViaViteNode('invoke', payload);
+});
+
+// -- Extension runtime sandbox invoke --
+ipcMain.handle('extension-runtime:invoke', async (_event, payload: ExtensionRuntimeInvokePayload) => {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Extension runtime payload must be an object.');
+  }
+  if (!payload.vaultRoot || typeof payload.vaultRoot !== 'string') {
+    throw new Error('Extension runtime payload requires a string "vaultRoot".');
+  }
+  return invokeSandboxedExtensionActionBlock(payload, {
+    runCapability: (invokePayload) => runCapabilityRunnerViaViteNode('invoke', invokePayload as ElectronCapabilityInvokePayload),
+  });
 });
 
 // -- Vault folder picker --

@@ -139,6 +139,7 @@ function validManifest(overrides?: Partial<Record<string, unknown>>): string {
     name: 'Demo Extension',
     version: '1.0.0',
     api_version: '1',
+    entry_kind: 'declarative',
     min_app_version: '0.4.0',
     permissions: ['read:thoughts'],
     targets: ['toolbar'],
@@ -217,6 +218,33 @@ describe('extensionLoaderOrch', () => {
     })
   })
 
+  it('marks electron-js extensions inactive on non-electron runtimes', async () => {
+    const fs = new FakeVaultFS({
+      '.extensions/runtime/manifest.json': validManifest({
+        entry_kind: 'electron-js',
+        entry: 'runtime/main.ts',
+      }),
+    })
+
+    const records = await discoverExtensionsOrch({
+      fs,
+      appVersion: '0.4.1',
+      supportedApiVersions: ['1'],
+      runtimeTarget: 'web',
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      registryKey: 'runtime',
+      status: 'inactive',
+      loadable: false,
+      reason: {
+        code: 'MANIFEST_INCOMPATIBLE',
+      },
+    })
+    expect(records[0].reason?.message).toContain('requires Electron runtime')
+  })
+
   it('handles missing .extensions root safely', async () => {
     const fs = new FakeVaultFS({})
     const records = await discoverExtensionsOrch({
@@ -254,4 +282,3 @@ describe('extensionLoaderOrch', () => {
     })
   })
 })
-

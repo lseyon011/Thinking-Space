@@ -16,6 +16,7 @@ describe('extensionHostOrch', () => {
       name: 'Host smoke',
       version: '1.0.0',
       api_version: '1',
+      entry_kind: 'declarative',
       min_app_version: '0.4.0',
       permissions: ['read:thoughts'],
       targets: ['toolbar'],
@@ -32,4 +33,3 @@ describe('extensionHostOrch', () => {
     })
   })
 })
-
