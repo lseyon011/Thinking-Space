@@ -1,7 +1,12 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { ParsedExcalidrawScene } from '@/services/orchestrators/excalidrawSceneOrch'
 import { parseExcalidrawSceneOrch } from '@/services/orchestrators/excalidrawSceneOrch'
+import {
+  buildExcalidrawInitialDataOrch,
+  cloneExcalidrawSceneChangeOrch,
+  createExcalidrawCanvasApiOrch,
+  type ExcalidrawCanvasApiOrch,
+} from '@/services/orchestrators/excalidrawIntegrationOrch'
 import { cn } from '@/lib/utils'
 
 const ExcalidrawCanvas = lazy(async () => {
@@ -86,7 +91,7 @@ export default function ExcalidrawDocumentBlock({
     parseDurationMsRef.current = nowMs() - started
     return parsed
   }, [content])
-  const [excalidrawApi, setExcalidrawApi] = useState<ExcalidrawImperativeAPI | null>(null)
+  const [excalidrawApi, setExcalidrawApi] = useState<ExcalidrawCanvasApiOrch | null>(null)
   const [scrollState, setScrollState] = useState({ scrollX: 0, scrollY: 0, zoom: 1 })
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [containerSize, setContainerSize] = useState({ width: 1, height: 1 })
@@ -124,15 +129,7 @@ export default function ExcalidrawDocumentBlock({
 
   const initialData = useMemo(() => {
     if (!parsedScene) return null
-    const baseAppState = (parsedScene.appState ?? {}) as Record<string, unknown>
-    return {
-      elements: parsedScene.elements as any[],
-      appState: {
-        ...baseAppState,
-        viewModeEnabled: !editable,
-      } as any,
-      files: (parsedScene.files ?? {}) as any,
-    }
+    return buildExcalidrawInitialDataOrch(parsedScene, editable)
   }, [editable, parsedScene])
 
   const sceneAnalysis = useMemo<SceneAnalysis>(() => {
@@ -359,11 +356,11 @@ export default function ExcalidrawDocumentBlock({
       const queued = queuedSceneRef.current
       if (!queued) return
       const flushStarted = nowMs()
-      onSceneChange({
-        elements: [...queued.elements],
-        appState: { ...queued.appState },
-        files: { ...queued.files },
-      })
+      onSceneChange(cloneExcalidrawSceneChangeOrch(
+        queued.elements,
+        queued.appState,
+        queued.files,
+      ))
       pushGlobalExcalidrawPerfEvent({
         name: 'scene_change_flush',
         durationMs: nowMs() - flushStarted,
@@ -425,7 +422,7 @@ export default function ExcalidrawDocumentBlock({
 
     autoCenterAttemptsRef.current += 1
     const attempt = autoCenterAttemptsRef.current
-    const elements = excalidrawApi.getSceneElements()
+    const elements = excalidrawApi.getSceneElementsBlock()
     debugLog('auto_center_attempt', {
       source,
       attempt,
@@ -446,7 +443,7 @@ export default function ExcalidrawDocumentBlock({
 
     const autoCenterStarted = nowMs()
     try {
-      const baseAppState = excalidrawApi.getAppState()
+      const baseViewport = excalidrawApi.getViewportStateBlock()
       const parsedAppState = (parsedScene.appState ?? {}) as Record<string, unknown>
       const parsedZoomCandidate = (() => {
         const rawZoom = parsedAppState.zoom as { value?: unknown } | undefined
@@ -458,7 +455,7 @@ export default function ExcalidrawDocumentBlock({
       })()
 
       if (sceneBounds && containerSize.width > 0 && containerSize.height > 0) {
-        const currentZoom = Number.isFinite(baseAppState.zoom.value) ? baseAppState.zoom.value : 1
+        const currentZoom = Number.isFinite(baseViewport.zoom) ? baseViewport.zoom : 1
         const targetZoom = Math.min(Math.max(parsedZoomCandidate ?? currentZoom ?? 1, 0.1), 2)
         const viewportWorldW = containerSize.width / targetZoom
         const viewportWorldH = containerSize.height / targetZoom
@@ -466,12 +463,10 @@ export default function ExcalidrawDocumentBlock({
         const centerY = sceneBounds.anchorCount > 0 ? sceneBounds.medianAnchorCenterY : sceneBounds.medianCenterY
         const nextScrollX = -centerX + viewportWorldW / 2
         const nextScrollY = -centerY + viewportWorldH / 2
-        excalidrawApi.updateScene({
-          appState: {
-            scrollX: nextScrollX,
-            scrollY: nextScrollY,
-            zoom: { value: targetZoom as any },
-          },
+        excalidrawApi.updateViewportBlock({
+          scrollX: nextScrollX,
+          scrollY: nextScrollY,
+          zoom: targetZoom,
         })
         debugLog('auto_center_strategy', {
           strategy: sceneBounds.anchorCount > 0 ? 'anchor_median_preserve_zoom' : 'median_center_preserve_zoom',
@@ -483,24 +478,18 @@ export default function ExcalidrawDocumentBlock({
           nextScrollY,
         })
       } else {
-        excalidrawApi.scrollToContent(elements, {
-          fitToViewport: true,
-          viewportZoomFactor: 0.9,
-          animate: false,
-          minZoom: 0.1,
-          maxZoom: 4,
-        })
+        excalidrawApi.fitViewportToContentBlock(elements)
         debugLog('auto_center_strategy', {
           strategy: 'scroll_to_content_fallback',
         })
       }
-      const app = excalidrawApi.getAppState()
+      const viewport = excalidrawApi.getViewportStateBlock()
       debugLog('auto_center_done', {
         source,
         attempt,
-        appScrollX: app.scrollX,
-        appScrollY: app.scrollY,
-        appZoom: app.zoom.value,
+        appScrollX: viewport.scrollX,
+        appScrollY: viewport.scrollY,
+        appZoom: viewport.zoom,
       })
       pushGlobalExcalidrawPerfEvent({
         name: 'auto_center',
@@ -552,43 +541,43 @@ export default function ExcalidrawDocumentBlock({
   useEffect(() => {
     if (!excalidrawApi) return undefined
 
-    const app = excalidrawApi.getAppState()
+    const viewport = excalidrawApi.getViewportStateBlock()
     if (!editable) {
       setScrollState({
-        scrollX: app.scrollX,
-        scrollY: app.scrollY,
-        zoom: app.zoom.value,
+        scrollX: viewport.scrollX,
+        scrollY: viewport.scrollY,
+        zoom: viewport.zoom,
       })
       pendingScrollRef.current = {
-        scrollX: app.scrollX,
-        scrollY: app.scrollY,
-        zoom: app.zoom.value,
+        scrollX: viewport.scrollX,
+        scrollY: viewport.scrollY,
+        zoom: viewport.zoom,
       }
     }
     debugLog('api_ready', {
-      appScrollX: app.scrollX,
-      appScrollY: app.scrollY,
-      appZoom: app.zoom.value,
-      apiElements: excalidrawApi.getSceneElements().length,
-      apiElementsIncludingDeleted: excalidrawApi.getSceneElementsIncludingDeleted().length,
+      appScrollX: viewport.scrollX,
+      appScrollY: viewport.scrollY,
+      appZoom: viewport.zoom,
+      apiElements: excalidrawApi.getSceneElementsBlock().length,
+      apiElementsIncludingDeleted: excalidrawApi.getSceneElementsIncludingDeletedBlock().length,
     })
 
     if (editable && sceneBounds) {
-      const zoom = Number.isFinite(app.zoom.value) ? app.zoom.value : 0
+      const zoom = Number.isFinite(viewport.zoom) ? viewport.zoom : 0
       const zoomValid = zoom >= 0.02 && zoom <= 4
       const viewportWorldW = containerSize.width / Math.max(zoom, 0.001)
       const viewportWorldH = containerSize.height / Math.max(zoom, 0.001)
-      const left = -app.scrollX
-      const top = -app.scrollY
+      const left = -viewport.scrollX
+      const top = -viewport.scrollY
       const right = left + viewportWorldW
       const bottom = top + viewportWorldH
       const intersectsScene = right >= sceneBounds.minX
         && left <= sceneBounds.maxX
         && bottom >= sceneBounds.minY
         && top <= sceneBounds.maxY
-      const viewport = { left, top, right, bottom, viewportWorldW, viewportWorldH }
-      const visibleCenterCount = countDrawableCentersInViewport(viewport)
-      const visibleAnchorCenterCount = countDrawableCentersInViewport(viewport, { anchorsOnly: true })
+      const viewportBounds = { left, top, right, bottom, viewportWorldW, viewportWorldH }
+      const visibleCenterCount = countDrawableCentersInViewport(viewportBounds)
+      const visibleAnchorCenterCount = countDrawableCentersInViewport(viewportBounds, { anchorsOnly: true })
       const visibleCenterThreshold = parsedScene && parsedScene.elements.length >= 1000 ? 10 : 1
       const sparseViewport = visibleCenterCount < visibleCenterThreshold
       const hasAnchorElements = sceneBounds.anchorCount > 0
@@ -609,7 +598,7 @@ export default function ExcalidrawDocumentBlock({
         hasAnchorElements,
         missingAnchors,
         shouldAutoCenter,
-        viewport,
+        viewport: viewportBounds,
       })
       if (shouldAutoCenter) {
         scheduleAutoCenter('api_ready')
@@ -618,8 +607,8 @@ export default function ExcalidrawDocumentBlock({
 
     const unsubscribe = editable
       ? null
-      : excalidrawApi.onScrollChange((scrollX, scrollY, zoom) => {
-        pendingScrollRef.current = { scrollX, scrollY, zoom: zoom.value }
+      : excalidrawApi.onViewportChangeBlock((nextViewport) => {
+        pendingScrollRef.current = nextViewport
         if (scrollFrameRef.current !== null) {
           return
         }
@@ -678,8 +667,8 @@ export default function ExcalidrawDocumentBlock({
     <div ref={containerRef} className={cn('relative h-full min-h-[60vh] overflow-hidden rounded-lg border border-border/60', className)}>
       <Suspense fallback={<div className="px-4 py-3 text-sm text-muted-foreground">Loading Excalidraw canvas...</div>}>
         <ExcalidrawCanvas
-          excalidrawAPI={setExcalidrawApi}
-          initialData={initialData}
+          excalidrawAPI={(api: unknown) => setExcalidrawApi(createExcalidrawCanvasApiOrch(api))}
+          initialData={initialData as any}
           viewModeEnabled={!editable}
           autoFocus={editable}
           handleKeyboardGlobally={editable}
@@ -743,11 +732,9 @@ export default function ExcalidrawDocumentBlock({
               const nextScrollX = -worldX + viewportWorldW / 2
               const nextScrollY = -worldY + viewportWorldH / 2
 
-              excalidrawApi.updateScene({
-                appState: {
-                  scrollX: nextScrollX,
-                  scrollY: nextScrollY,
-                },
+              excalidrawApi.updateViewportBlock({
+                scrollX: nextScrollX,
+                scrollY: nextScrollY,
               })
             }}
           >
