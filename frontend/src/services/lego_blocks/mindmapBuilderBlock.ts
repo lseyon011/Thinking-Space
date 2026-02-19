@@ -470,7 +470,7 @@ function assignTextMetrics(nodes: MindmapNode[], options: MindmapBuildOptions): 
     const measuredText = shouldWrap
       ? wrapText(normalizedText, effectiveMaxWidth, fontSize, node.kind === 'content')
       : normalizedText
-    const wrapped = node.kind === 'content' ? normalizedText : measuredText
+    const wrapped = measuredText
     const lines = measuredText ? measuredText.split('\n') : ['']
     const measuredMaxLineWidth = shouldWrap
       ? lines.reduce(
@@ -876,9 +876,17 @@ function layoutByGrowthMode(nodes: MindmapNode[], options: MindmapBuildOptions):
       break
     }
     case 'right-left': {
-      const splitIndex = Math.ceil(l1Nodes.length / 2)
-      const rightNodes = l1Nodes.slice(0, splitIndex)
-      const leftNodes = l1Nodes.slice(splitIndex)
+      const sideForIndex = (index: number): 1 | -1 => {
+        if (index < 2) return 1
+        if (index < 4) return -1
+        return index % 2 === 0 ? 1 : -1
+      }
+      const rightNodes: MindmapNode[] = []
+      const leftNodes: MindmapNode[] = []
+      for (const node of l1Nodes) {
+        if (sideForIndex(node.order) === 1) rightNodes.push(node)
+        else leftNodes.push(node)
+      }
       if (rightNodes.length > 0) verticalL1Distribution(rightNodes, root, ctx, 1)
       if (leftNodes.length > 0) verticalL1Distribution(leftNodes, root, ctx, -1)
       break

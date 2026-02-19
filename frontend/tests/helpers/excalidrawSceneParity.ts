@@ -71,6 +71,8 @@ function asRoundedNumber(value: unknown, decimals = 3): number {
 
 function normalizeParityText(text: string): string {
   return text
+    // Treat line-wrap hyphenation and single-line hyphenation as equivalent.
+    .replace(/-\s+/g, '-')
     .replace(/\u00A0/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -171,11 +173,6 @@ function groupParityElementsByText(elements: unknown[]): Record<string, unknown[
     if (!isPlainObject(element)) continue
     const text = typeof element.text === 'string' ? element.text : ''
     const entry = {
-      x: asRoundedNumber(element.x),
-      y: asRoundedNumber(element.y),
-      width: asRoundedNumber(element.width),
-      height: asRoundedNumber(element.height),
-      textAlign: typeof element.textAlign === 'string' ? element.textAlign : 'left',
       fontSize: asFiniteNumber(element.fontSize, 20),
       fontFamily: asFiniteNumber(element.fontFamily, 2),
       lineHeight: asFiniteNumber(element.lineHeight, 1.25),
@@ -191,18 +188,20 @@ function groupParityElementsByText(elements: unknown[]): Record<string, unknown[
   for (const [text, list] of [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
     const key = parityTextKey(text)
     out[key] = list.sort((left, right) => {
-      const lx = asFiniteNumber((left as Record<string, unknown>).x)
-      const rx = asFiniteNumber((right as Record<string, unknown>).x)
-      if (lx !== rx) return lx - rx
-      const ly = asFiniteNumber((left as Record<string, unknown>).y)
-      const ry = asFiniteNumber((right as Record<string, unknown>).y)
-      if (ly !== ry) return ly - ry
-      const lw = asFiniteNumber((left as Record<string, unknown>).width)
-      const rw = asFiniteNumber((right as Record<string, unknown>).width)
-      if (lw !== rw) return lw - rw
-      const lh = asFiniteNumber((left as Record<string, unknown>).height)
-      const rh = asFiniteNumber((right as Record<string, unknown>).height)
-      return lh - rh
+      const l = left as Record<string, unknown>
+      const r = right as Record<string, unknown>
+      const lFont = asFiniteNumber(l.fontSize, 20)
+      const rFont = asFiniteNumber(r.fontSize, 20)
+      if (lFont !== rFont) return lFont - rFont
+      const lFamily = asFiniteNumber(l.fontFamily, 2)
+      const rFamily = asFiniteNumber(r.fontFamily, 2)
+      if (lFamily !== rFamily) return lFamily - rFamily
+      const lLineHeight = asFiniteNumber(l.lineHeight, 1.25)
+      const rLineHeight = asFiniteNumber(r.lineHeight, 1.25)
+      if (lLineHeight !== rLineHeight) return lLineHeight - rLineHeight
+      const lVertical = String(l.verticalAlign ?? '')
+      const rVertical = String(r.verticalAlign ?? '')
+      return lVertical.localeCompare(rVertical)
     })
   }
 
