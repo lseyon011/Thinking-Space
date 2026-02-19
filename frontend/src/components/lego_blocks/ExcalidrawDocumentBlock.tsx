@@ -319,7 +319,7 @@ export default function ExcalidrawDocumentBlock({
             ...baseAppState,
             scrollX: nextScrollX,
             scrollY: nextScrollY,
-            zoom: { value: targetZoom },
+            zoom: { value: targetZoom as any },
           },
         })
         debugLog('auto_center_strategy', {

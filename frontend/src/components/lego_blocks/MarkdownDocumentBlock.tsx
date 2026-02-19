@@ -338,7 +338,7 @@ export default function MarkdownDocumentBlock({
               content={draft}
               editable
               onSceneChange={handleExcalidrawSceneChange}
-              className="min-h-[72vh]"
+              className="h-[72vh]"
             />
             {saveError && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
