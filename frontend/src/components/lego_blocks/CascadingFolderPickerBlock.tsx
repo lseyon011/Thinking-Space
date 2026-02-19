@@ -56,6 +56,19 @@ function setSessionChildren(path: string, data: string[]) {
   }
 }
 
+function parseRecents(raw: string | null): string[][] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map(entry => normalizeSegments(entry))
+      .filter(segments => segments.length > 0)
+  } catch {
+    return []
+  }
+}
+
 export function addRecent(
   storageKey: string,
   segments: string[],
@@ -77,9 +90,11 @@ interface Level {
   loading: boolean
 }
 
-function normalizeSegments(segments: string[]): string[] {
-  return segments
-    .flatMap(segment => segment.split('/'))
+function normalizeSegments(value: unknown): string[] {
+  const parts = Array.isArray(value)
+    ? value.flatMap(segment => (typeof segment === 'string' ? segment.split('/') : []))
+    : (typeof value === 'string' ? value.split('/') : [])
+  return parts
     .map(segment => segment.trim())
     .filter(Boolean)
 }
@@ -144,25 +159,11 @@ export default function CascadingFolderPicker({
   )
 
   useEffect(() => {
-    const raw = localStorage.getItem(storageKey)
-    if (raw) {
-      try {
-        setRecents(JSON.parse(raw))
-      } catch {
-        // ignore bad data
-      }
-    }
+    setRecents(parseRecents(localStorage.getItem(storageKey)))
   }, [storageKey])
 
   const refreshRecents = useCallback(() => {
-    const raw = localStorage.getItem(storageKey)
-    if (raw) {
-      try {
-        setRecents(JSON.parse(raw))
-      } catch {
-        // ignore bad recents payload
-      }
-    }
+    setRecents(parseRecents(localStorage.getItem(storageKey)))
   }, [storageKey])
 
   const fetchChildren = useCallback(async (path: string): Promise<string[]> => {

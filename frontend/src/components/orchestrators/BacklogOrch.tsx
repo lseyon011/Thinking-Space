@@ -61,6 +61,22 @@ function normalizePath(value: string): string {
   return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
 }
 
+function normalizeStoredSegments(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap(segment => (typeof segment === 'string' ? segment.split('/') : []))
+      .map(segment => segment.trim())
+      .filter(Boolean)
+  }
+  if (typeof value === 'string') {
+    return value
+      .split('/')
+      .map(segment => segment.trim())
+      .filter(Boolean)
+  }
+  return []
+}
+
 function humanizeKey(value: string): string {
   return value
     .split(/[-_]+/)
@@ -104,14 +120,18 @@ export default function BacklogOrch() {
     () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
   )
   const [activeProjectRoot, setActiveProjectRoot] = useState<string>(() => {
-    const saved = getJsonStorageItem<string[]>(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, [])
+    const saved = normalizeStoredSegments(
+      getJsonStorageItem<unknown>(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, []),
+    )
     return normalizePath(saved.join('/'))
   })
 
   const [projectModalOpen, setProjectModalOpen] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [destinationSegments, setDestinationSegments] = useState<string[]>(
-    () => getJsonStorageItem<string[]>(STORAGE_KEYS.thinkingOrganizerProjectCreateDestination, []),
+    () => normalizeStoredSegments(
+      getJsonStorageItem<unknown>(STORAGE_KEYS.thinkingOrganizerProjectCreateDestination, []),
+    ),
   )
   const [destinationBasePath, setDestinationBasePath] = useState(() => destinationSegments.join('/'))
   const [destinationPath, setDestinationPath] = useState(() => {
