@@ -1,4 +1,5 @@
 import type { ParsedExcalidrawScene } from '../../src/services/lego_blocks/excalidrawFileBlock'
+import { normalizeExcalidrawSceneForInteropBlock } from '../../src/services/lego_blocks/excalidrawSceneCompatBlock'
 
 const MAX_DIFF_MESSAGES = 30
 
@@ -15,10 +16,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizeScene(scene: ParsedExcalidrawScene): ParsedExcalidrawScene {
+  const normalized = normalizeExcalidrawSceneForInteropBlock(scene)
   return {
-    elements: Array.isArray(scene.elements) ? scene.elements : [],
-    appState: scene.appState ?? {},
-    files: scene.files ?? {},
+    elements: Array.isArray(normalized.elements) ? normalized.elements : [],
+    appState: normalized.appState ?? {},
+    files: normalized.files ?? {},
   }
 }
 

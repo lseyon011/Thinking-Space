@@ -1,4 +1,5 @@
 import type { ParsedExcalidrawScene } from './excalidrawFileBlock'
+import { normalizeExcalidrawSceneForInteropBlock } from './excalidrawSceneCompatBlock'
 
 export type MindmapGrowthMode = 'radial' | 'right-facing' | 'left-facing' | 'right-left' | 'up-facing' | 'down-facing'
 export type MindmapFontScale = 'normal' | 'fibonacci'
@@ -1001,13 +1002,13 @@ function buildScene(nodes: MindmapNode[], options: MindmapBuildOptions): ParsedE
     })
   }
 
-  return {
+  return normalizeExcalidrawSceneForInteropBlock({
     elements,
     appState: {
       viewBackgroundColor: '#ffffff',
       gridSize: 20,
     },
-  }
+  })
 }
 
 export function buildMindmapSceneFromMarkdownBlock(

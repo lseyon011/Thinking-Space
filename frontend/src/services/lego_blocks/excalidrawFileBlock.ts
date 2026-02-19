@@ -1,4 +1,5 @@
 import { decompressFromBase64LzString } from './lzStringBlock'
+import { normalizeExcalidrawSceneForInteropBlock } from './excalidrawSceneCompatBlock'
 
 export interface ParsedExcalidrawScene {
   elements: unknown[]
@@ -71,11 +72,11 @@ function normalizeObsidianHighlighterElements(elements: unknown[]): unknown[] {
 }
 
 function normalizeScene(scene: ParsedExcalidrawScene): ParsedExcalidrawScene {
-  return {
+  return normalizeExcalidrawSceneForInteropBlock({
     elements: normalizeObsidianHighlighterElements(scene.elements),
     appState: scene.appState,
     files: scene.files,
-  }
+  })
 }
 
 function parseFromCodeFences(content: string): ParsedExcalidrawScene | null {
