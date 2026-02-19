@@ -5,6 +5,9 @@ export interface CapabilityAuditEntry {
   timestamp: string
   requestId: string
   capability: string
+  origin?: 'core' | 'extension'
+  extensionId?: string
+  extensionRegistryKey?: string
   actorKind: 'human' | 'agent' | 'system'
   actorId?: string
   dryRun: boolean

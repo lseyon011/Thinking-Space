@@ -51,6 +51,12 @@ export interface CapabilityInvokeRequest<Name extends CapabilityName = Capabilit
   actor?: CapabilityActor
   requestId?: string
   dryRun?: boolean
+  extensionContext?: CapabilityInvokeExtensionContext
+}
+
+export interface CapabilityInvokeExtensionContext {
+  extensionId: string
+  extensionRegistryKey?: string
 }
 
 export interface CapabilityInvokeSuccess<Name extends CapabilityName> {
@@ -1106,6 +1112,9 @@ async function auditCapability<Name extends CapabilityName>(params: {
       timestamp: new Date().toISOString(),
       requestId: params.requestId,
       capability: params.request.capability,
+      origin: params.request.extensionContext ? 'extension' : 'core',
+      extensionId: params.request.extensionContext?.extensionId,
+      extensionRegistryKey: params.request.extensionContext?.extensionRegistryKey,
       actorKind: params.actor.kind,
       actorId: params.actor.id,
       dryRun: params.dryRun,

@@ -1,0 +1,29 @@
+import {
+  getExtensionManifestCompatibilityBlock,
+  parseExtensionManifestBlock,
+  type ExtensionManifest,
+  type ExtensionManifestCompatibilityResult,
+  type ExtensionManifestValidationResult,
+} from '../lego_blocks/extensionManifestBlock'
+
+export const SUPPORTED_EXTENSION_API_VERSIONS_ORCH = ['1']
+
+export interface ExtensionHostCompatibilityInput {
+  appVersion: string
+  supportedApiVersions?: string[]
+}
+
+export function validateExtensionManifestOrch(raw: unknown): ExtensionManifestValidationResult {
+  return parseExtensionManifestBlock(raw)
+}
+
+export function resolveExtensionManifestCompatibilityOrch(
+  manifest: ExtensionManifest,
+  input: ExtensionHostCompatibilityInput,
+): ExtensionManifestCompatibilityResult {
+  return getExtensionManifestCompatibilityBlock(manifest, {
+    appVersion: input.appVersion,
+    supportedApiVersions: input.supportedApiVersions ?? SUPPORTED_EXTENSION_API_VERSIONS_ORCH,
+  })
+}
+
