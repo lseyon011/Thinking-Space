@@ -1,4 +1,5 @@
 import type { ExtensionManifest } from './extensionManifestBlock'
+import type { ExtensionDeclarativeAction } from './extensionActionBlock'
 
 export type ExtensionLifecycleStatus = 'active' | 'inactive' | 'invalid'
 
@@ -7,6 +8,7 @@ export type ExtensionRegistryReasonCode =
   | 'MANIFEST_READ_FAILED'
   | 'MANIFEST_JSON_INVALID'
   | 'MANIFEST_VALIDATION_FAILED'
+  | 'ACTIONS_VALIDATION_FAILED'
   | 'MANIFEST_INCOMPATIBLE'
   | 'EXTENSION_DEACTIVATED'
   | 'EXTENSION_NOT_FOUND'
@@ -25,6 +27,7 @@ export interface ExtensionRuntimeRecord {
   status: ExtensionLifecycleStatus
   loadable: boolean
   manifest: ExtensionManifest | null
+  actions: ExtensionDeclarativeAction[]
   reason: ExtensionRegistryReason | null
   discoveredAt: string
   updatedAt: string
@@ -64,4 +67,3 @@ export function listExtensionRegistryBlock(): ExtensionRuntimeRecord[] {
 export function removeExtensionRegistryRecordBlock(registryKey: string): boolean {
   return extensionRegistry.delete(registryKey)
 }
-

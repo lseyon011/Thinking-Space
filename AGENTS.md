@@ -68,6 +68,7 @@ If sequence changes, update `README.md` first, then align active organizer plan/
 7. Lexical related retrieval first via IndexedDB full-text search.
 8. Local-only extensions first; no early remote code execution.
 9. AI local-first: Ollama (Electron) or WASM LLM (web/PWA).
+10. Extension platform rollout is feature-flagged (`extension_host_enabled`, `extension_builder_enabled`) and defaults to disabled until explicitly enabled.
 
 ## Architecture Reference
 Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`

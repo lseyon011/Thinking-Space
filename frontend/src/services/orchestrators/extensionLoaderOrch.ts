@@ -8,6 +8,7 @@ import {
   type ExtensionRuntimeRecord,
 } from '../lego_blocks/extensionRegistryBlock'
 import { getVaultFS, type VaultFS } from '../lego_blocks/fsBlock'
+import { parseExtensionActionsFromManifestBlock } from '../lego_blocks/extensionActionBlock'
 import {
   resolveExtensionManifestCompatibilityOrch,
   validateExtensionManifestOrch,
@@ -142,6 +143,7 @@ async function loadExtensionFolder(input: LoadExtensionFolderInput): Promise<Ext
       loadable: false,
       extensionId: null,
       manifest: null,
+      actions: [],
       reason: {
         code: 'MANIFEST_MISSING',
         message: 'Extension folder name is empty.',
@@ -160,6 +162,7 @@ async function loadExtensionFolder(input: LoadExtensionFolderInput): Promise<Ext
       loadable: false,
       extensionId: null,
       manifest: null,
+      actions: [],
       reason: {
         code: 'MANIFEST_MISSING',
         message: `Missing manifest.json for extension folder "${folder}".`,
@@ -180,6 +183,7 @@ async function loadExtensionFolder(input: LoadExtensionFolderInput): Promise<Ext
       loadable: false,
       extensionId: null,
       manifest: null,
+      actions: [],
       reason: {
         code: 'MANIFEST_READ_FAILED',
         message: error instanceof Error ? error.message : String(error),
@@ -200,6 +204,7 @@ async function loadExtensionFolder(input: LoadExtensionFolderInput): Promise<Ext
       loadable: false,
       extensionId: null,
       manifest: null,
+      actions: [],
       reason: {
         code: 'MANIFEST_JSON_INVALID',
         message: `Manifest JSON is invalid for extension folder "${folder}".`,
@@ -218,9 +223,29 @@ async function loadExtensionFolder(input: LoadExtensionFolderInput): Promise<Ext
       loadable: false,
       extensionId: null,
       manifest: null,
+      actions: [],
       reason: {
         code: 'MANIFEST_VALIDATION_FAILED',
         message: `${parsed.error.field}: ${parsed.error.message}`,
+      },
+      discoveredAt,
+    })
+  }
+
+  const parsedActions = parseExtensionActionsFromManifestBlock(manifestJson)
+  if (!parsedActions.ok) {
+    return buildRecord({
+      registryKey: folder,
+      folder,
+      manifestPath,
+      status: 'invalid',
+      loadable: false,
+      extensionId: parsed.manifest.id,
+      manifest: parsed.manifest,
+      actions: [],
+      reason: {
+        code: 'ACTIONS_VALIDATION_FAILED',
+        message: `${parsedActions.error.field}: ${parsedActions.error.message}`,
       },
       discoveredAt,
     })
@@ -239,6 +264,7 @@ async function loadExtensionFolder(input: LoadExtensionFolderInput): Promise<Ext
       loadable: false,
       extensionId: parsed.manifest.id,
       manifest: parsed.manifest,
+      actions: parsedActions.actions,
       reason: {
         code: 'MANIFEST_INCOMPATIBLE',
         message: compatibility.reason?.message ?? 'Extension manifest is incompatible.',
@@ -255,6 +281,7 @@ async function loadExtensionFolder(input: LoadExtensionFolderInput): Promise<Ext
     loadable: true,
     extensionId: parsed.manifest.id,
     manifest: parsed.manifest,
+    actions: parsedActions.actions,
     reason: null,
     discoveredAt,
   })
@@ -268,6 +295,7 @@ function buildRecord(params: {
   status: ExtensionRuntimeRecord['status']
   loadable: boolean
   manifest: ExtensionRuntimeRecord['manifest']
+  actions: ExtensionRuntimeRecord['actions']
   reason: ExtensionRegistryReason | null
   discoveredAt: string
 }): ExtensionRuntimeRecord {
@@ -279,6 +307,7 @@ function buildRecord(params: {
     status: params.status,
     loadable: params.loadable,
     manifest: params.manifest,
+    actions: params.actions,
     reason: params.reason,
     discoveredAt: params.discoveredAt,
     updatedAt: params.discoveredAt,
@@ -313,4 +342,3 @@ function normalizePath(path: string): string {
 function joinPath(...parts: string[]): string {
   return parts.map(normalizePath).filter(Boolean).join('/')
 }
-

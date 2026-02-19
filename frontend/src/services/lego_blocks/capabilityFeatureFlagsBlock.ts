@@ -3,11 +3,15 @@ import { getJsonStorageItem, setJsonStorageItem, STORAGE_KEYS } from './storageK
 export interface CapabilityFeatureFlags {
   agent_capabilities_enabled: boolean
   fastapi_capability_adapter_enabled: boolean
+  extension_host_enabled: boolean
+  extension_builder_enabled: boolean
 }
 
 const DEFAULT_FLAGS: CapabilityFeatureFlags = {
   agent_capabilities_enabled: false,
   fastapi_capability_adapter_enabled: false,
+  extension_host_enabled: false,
+  extension_builder_enabled: false,
 }
 
 export function getCapabilityFeatureFlags(): CapabilityFeatureFlags {

@@ -11,7 +11,7 @@ Most note tools force users into fixed plugin models and fragmented AI workflows
 - In-app extensibility so users can build features without leaving the app
 - Local-first ownership of data and behavior
 
-## Current Codebase Understanding (As of 2026-02-18)
+## Current Codebase Understanding (As of 2026-02-19)
 
 ### Product Surface Today
 The app has both tool-centric and hierarchy-centric UI surfaces.
@@ -24,6 +24,7 @@ Primary routes in the app:
 - `Insights`
 - `Chat`
 - `AI Settings`
+- `Extension Builder` (feature-flagged)
 - `Capabilities`
 - `Thinking Organizer` (hierarchy tree view with create, reparent, drag-drop)
 - `Excalidraw++` tools (`Format for Excalidraw`, `PDF to Markdown`, `Transcript Cleaner`)
@@ -44,6 +45,12 @@ Primary routes in the app:
   - Generate transfer code from Electron login state
   - Import transfer code on mobile native runtime for Claude/Codex OAuth usage
 - Capability IPC adapter parity hardening against FastAPI transport
+- EPIC-3 local extension platform foundations (declarative-first)
+  - Extension manifest validator + compatibility checks
+  - Extension loader + registry lifecycle (`discover`, `reload`, `activate`, `deactivate`)
+  - Declarative extension actions + runtime UI slots (`sidebar-bottom`, `thought-context-actions`)
+  - In-app extension builder flow (generate, permission review, preview, save, optional activate)
+  - Rollout feature flags for extension host and extension builder
 - Multi-platform packaging progress
   - Electron app packaging path
   - iOS build/sync path for Capacitor app testing
@@ -87,6 +94,8 @@ Primary routes in the app:
 - AI telemetry panel and event logging for AI requests
 - Native AI login management on Electron + Capacitor (`AI Settings`)
 - Desktop-to-mobile transfer-code import flow for Claude/Codex OAuth credentials
+- Extension host runtime with manifest validation, compatibility gating, and declarative action execution
+- In-app Extension Builder route for generating/saving local extension artifacts under vault `.extensions/*`
 - Agent capability transport: 30 capabilities via frontend runner + FastAPI proxy
 - Agent CLI wrapper (`./ltm`) for ergonomic capability invocation
 - Agent workspace with task lifecycle, run logging, handoffs, and audit trail
@@ -96,7 +105,7 @@ Primary routes in the app:
 ### Current Gaps (Important)
 - Thoughts scanner is file/date-oriented only, not fully semantic hierarchy-oriented
 - AI text actions are implemented in key surfaces but not yet unified across every text surface
-- No extension runtime for in-app feature generation yet
+- Extension runtime is declarative-first; no arbitrary JS/TS plugin execution sandbox yet
 - No dedicated end-to-end app test harness yet (coverage is primarily unit/service-level)
 - Drag-drop YAML metadata mapping still in progress (DEV-009)
 - YAML Note Block + IndexedDB cache integration still being hardened (DEV-008)
@@ -180,6 +189,8 @@ Operational controls:
 - Frontend feature flags:
   - `agent_capabilities_enabled` (default: `false`)
   - `fastapi_capability_adapter_enabled` (default: `false`)
+  - `extension_host_enabled` (default: `false`)
+  - `extension_builder_enabled` (default: `false`)
 - FastAPI adapter environment controls:
   - `LTM_FASTAPI_CAPABILITY_ADAPTER_ENABLED=true`
   - `LTM_CAPABILITY_BEARER_TOKEN=<token>` (optional)
@@ -337,14 +348,23 @@ Completed across DEV-012, DEV-013, DEV-014:
 - Agent workspace bootstrap + task lifecycle + run/handoff/comment operations
 - Adapter parity fixtures and rollout matrix
 
-### EPIC-3: Local-Only Extension Platform — NOT STARTED
-Scope:
-- Extension manifest + permission scopes + lifecycle hooks
-- UI extension points + command registration
-- In-app feature builder scaffold
+### EPIC-3: Local-Only Extension Platform — IN PROGRESS (T1-T5 DELIVERED)
+Completed:
+- Extension manifest parser/validator + compatibility contract (`api_version`, `min_app_version`)
+- Extension loader/registry lifecycle orchestration (`discover`, `reload`, `activate`, `deactivate`)
+- Declarative action schema + slot routing (`sidebar-bottom`, `thought-context-actions`)
+- Runtime extension UI slot component integration in Thinking Space surfaces
+- In-app extension builder flow (`/extension-builder`) with permission approval gate
+
+Remaining:
+- T6 hardening: docs alignment, rollout checklist/rollback guidance, and full validation sweep
 
 Exit criteria:
 - User can generate and enable a local extension safely inside app
+- Extension platform can be enabled/disabled with deterministic feature flags
+
+Reference:
+- `docs/EPIC-3-LOCAL-EXTENSION-PLATFORM.md` (manifest/actions contract, rollout controls, test harness commands)
 
 ### EPIC-5: AI Actions Everywhere — NOT STARTED
 Scope:
@@ -367,7 +387,7 @@ Exit criteria:
 - `v0.2`: Phase 1-2 (YAML notes + IndexedDB cache) — hardening in progress
 - `v0.3`: Phase 3-4 (hierarchy UI + edit flow) — Phase 4 done, Phase 3 nearly done
 - `v0.4`: Phase 5 (AI actions + native AI login/runtime parity) — in progress
-- `v0.5`: EPIC-3 (extension platform)
+- `v0.5`: EPIC-3 (extension platform foundations delivered, rollout hardening in progress)
 
 ## Success Metrics
 - Thought edit completion without overwrite/data loss regressions
@@ -384,7 +404,9 @@ Exit criteria:
 - **Risk**: Large vault performance with file-based scanning
   - **Mitigation**: incremental sync, file watcher events, IndexedDB caching
 - **Risk**: Unsafe extension behaviors
-  - **Mitigation**: explicit permission model + local-only policy + restricted capability surface
+  - **Mitigation**: explicit permission model + local-only policy + restricted capability surface + feature-flagged rollout
+- **Risk**: Cross-platform runtime policy mismatch (especially iOS dynamic execution constraints)
+  - **Mitigation**: declarative-first extension contract (`manifest.json` + actions/templates), avoid arbitrary remote code execution
 - **Risk**: Context bloat for multi-agent work
   - **Mitigation**: organizer tool-native operations + capability audit logs + required in-tool plan/handoff records
 

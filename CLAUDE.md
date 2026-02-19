@@ -40,15 +40,14 @@ These are architecture constraints, not optional positioning variants.
 Use `README.md` as source of truth.
 
 Current status:
-- Phase 0–4: DONE (architecture, YAML, IndexedDB, hierarchy UI, thought edit)
-- Phase 1–2 hardening: IN PROGRESS (DEV-008)
-- Phase 3 drag-drop: IN PROGRESS (DEV-009)
+- Phase 0: IN PROGRESS (architecture/doc drift alignment)
+- Phase 1–4: DONE (with hardening tracks active in DEV-008/DEV-009)
 - Agent Capability Transport: DONE (DEV-012/013/014)
+- EPIC-3: IN PROGRESS (manifest/loader/actions/builder foundations delivered; rollout hardening active)
 
 Next up:
 - Phase 5: AI Actions (related, summarize, cleanup)
 - Phase 6: Migration + Polish (remove SQLite code, migrate old thoughts)
-- EPIC-3: Local-Only Extension Platform
 - EPIC-5: AI Actions Everywhere
 - EPIC-6: Optional Remote/Agent Backends (later)
 
@@ -97,7 +96,11 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - `frontend/src/services/orchestrators/vaultSyncOrch.ts` — vault scan to IndexedDB sync
 - `frontend/src/services/lego_blocks/capabilityRegistryBlock.ts` — capability registry with typed I/O contracts
 - `frontend/src/services/orchestrators/capabilityRouterOrch.ts` — capability router with policy/audit/dry-run
-- `frontend/src/services/lego_blocks/aiBlock.ts` — local AI action primitives (TO BE CREATED)
+- `frontend/src/services/lego_blocks/extensionManifestBlock.ts` — extension manifest validation + semver compatibility helpers
+- `frontend/src/services/lego_blocks/extensionActionBlock.ts` — declarative action schema + context template resolution
+- `frontend/src/services/orchestrators/extensionLoaderOrch.ts` — extension discovery/reload/activation lifecycle
+- `frontend/src/services/orchestrators/extensionUiOrch.ts` — UI slot resolve + action invocation orchestration
+- `frontend/src/services/orchestrators/extensionBuilderOrch.ts` — generate/preview/save/activate extension builder workflow
 
 ## Startup Sequence (Claude Sessions)
 1. `CLAUDE.md` is auto-loaded — contains architecture, contracts, and locked decisions.

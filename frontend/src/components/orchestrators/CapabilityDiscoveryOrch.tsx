@@ -149,7 +149,9 @@ export default function CapabilityDiscoveryOrch() {
       <Card>
         <CardHeader>
           <CardTitle>Operational Controls</CardTitle>
-          <CardDescription>Feature flags for local agent and FastAPI adapter paths (Electron IPC is runtime-driven).</CardDescription>
+          <CardDescription>
+            Feature flags for local agent, extension rollout, and FastAPI adapter paths (Electron IPC is runtime-driven).
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between gap-4">
@@ -170,6 +172,30 @@ export default function CapabilityDiscoveryOrch() {
             <Switch
               checked={flags.fastapi_capability_adapter_enabled}
               onCheckedChange={(checked) => updateFlag('fastapi_capability_adapter_enabled', checked)}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-medium">extension_host_enabled</div>
+              <div className="text-xs text-muted-foreground">
+                Enable runtime extension discovery/slot execution from vault `.extensions`.
+              </div>
+            </div>
+            <Switch
+              checked={flags.extension_host_enabled}
+              onCheckedChange={(checked) => updateFlag('extension_host_enabled', checked)}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-medium">extension_builder_enabled</div>
+              <div className="text-xs text-muted-foreground">
+                Enable Extension Builder route and generated extension save/activate flow.
+              </div>
+            </div>
+            <Switch
+              checked={flags.extension_builder_enabled}
+              onCheckedChange={(checked) => updateFlag('extension_builder_enabled', checked)}
             />
           </div>
         </CardContent>

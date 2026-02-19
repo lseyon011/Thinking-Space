@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/lego_blocks/ui/select'
+import ExtensionSlotBlock from '@/components/lego_blocks/ExtensionSlotBlock'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import type { NodeType, NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
 
@@ -312,6 +313,19 @@ export default function NodeDetailPanelBlock({
               </SelectContent>
             </Select>
           </div>
+
+          <ExtensionSlotBlock
+            slotId="thought-context-actions"
+            context={{
+              nodeUuid: node.uuid,
+              nodeKey: node.key,
+              nodeTitle: node.title,
+              nodeType: node.type,
+              filePath: node.filePath,
+              projectRoot: node.projectRoot ?? null,
+              parentKey: node.parent ?? null,
+            }}
+          />
 
           {/* Tags */}
           {node.tags && node.tags.length > 0 && (

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { PanelLeft, PanelLeftClose, Sparkles, FileText } from 'lucide-react'
 import VaultExplorerBlock from '@/components/lego_blocks/VaultExplorerBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/MarkdownDocumentBlock'
+import ExtensionSlotBlock from '@/components/lego_blocks/ExtensionSlotBlock'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
 
@@ -31,11 +32,19 @@ export default function ThinkingSpaceOrch() {
 
       <div className="ltm-fill-panel overflow-hidden rounded-2xl border border-border/70 bg-card/90 shadow-sm backdrop-blur">
         <div className="grid h-full md:grid-cols-[clamp(240px,28vw,360px)_minmax(0,1fr)]">
-          <aside className="hidden min-h-0 border-r border-border/60 md:block">
-            <VaultExplorerBlock
-              loadEntries={listFolderEntries}
-              onOpenFile={(path) => setInlinePath(path)}
-            />
+          <aside className="hidden min-h-0 border-r border-border/60 md:flex md:flex-col">
+            <div className="min-h-0 flex-1">
+              <VaultExplorerBlock
+                loadEntries={listFolderEntries}
+                onOpenFile={(path) => setInlinePath(path)}
+              />
+            </div>
+            <div className="border-t border-border/60 p-2">
+              <ExtensionSlotBlock
+                slotId="sidebar-bottom"
+                context={{ inlinePath }}
+              />
+            </div>
           </aside>
 
           <section className="relative min-h-[360px] md:min-h-0">
@@ -94,6 +103,12 @@ export default function ThinkingSpaceOrch() {
                   setInlinePath(path)
                   setMobileExplorerOpen(false)
                 }}
+              />
+            </div>
+            <div className="border-t border-border/60 p-2">
+              <ExtensionSlotBlock
+                slotId="sidebar-bottom"
+                context={{ inlinePath }}
               />
             </div>
           </aside>

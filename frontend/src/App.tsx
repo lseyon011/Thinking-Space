@@ -1,4 +1,4 @@
-import { Routes, Route, Link, useLocation } from 'react-router-dom'
+import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import Home from './pages/Home'
 import FormatExcalidraw from './pages/FormatExcalidraw'
@@ -14,15 +14,19 @@ import ThinkingOrganizer from './pages/ThinkingOrganizer'
 import Chat from './pages/Chat'
 import CapabilityDiscovery from './pages/CapabilityDiscovery'
 import AiSettings from './pages/AiSettings'
+import ExtensionBuilder from './pages/ExtensionBuilder'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { smartSync } from './services/orchestrators/vaultSyncOrch'
 import { getStoredVaultRoot } from './services/orchestrators/storageOrch'
+import { getCapabilityFeatureFlags } from './services/orchestrators/capabilityFeatureFlagsOrch'
 import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from './services/lego_blocks/fsBlock'
 
 function App() {
   const location = useLocation()
   const isActive = (path: string) => location.pathname === path
+  const featureFlags = getCapabilityFeatureFlags()
+  const extensionBuilderEnabled = featureFlags.extension_host_enabled && featureFlags.extension_builder_enabled
   const [showTools, setShowTools] = useState(false)
   const [needsVaultSetup, setNeedsVaultSetup] = useState(() => {
     const stored = getStoredVaultRoot()
@@ -166,6 +170,17 @@ function App() {
               >
                 AI Settings
               </Link>
+              {extensionBuilderEnabled && (
+                <Link
+                  to="/extension-builder"
+                  onClick={() => setShowTools(false)}
+                  className={`shrink-0 transition-colors hover:text-foreground ${
+                    isActive('/extension-builder') ? 'text-foreground' : ''
+                  }`}
+                >
+                  Extension Builder
+                </Link>
+              )}
               <Link
                 to="/capabilities"
                 onClick={() => setShowTools(false)}
@@ -288,6 +303,10 @@ function App() {
           <Route path="/todos" element={<Todos />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/ai-settings" element={<AiSettings />} />
+          <Route
+            path="/extension-builder"
+            element={extensionBuilderEnabled ? <ExtensionBuilder /> : <Navigate to="/capabilities" replace />}
+          />
           <Route path="/capabilities" element={<CapabilityDiscovery />} />
         </Routes>
       </main>
