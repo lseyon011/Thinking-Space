@@ -140,12 +140,22 @@ export function setLastSyncTimestamp(ts?: number): void {
 export async function smartSync(fs?: VaultFS): Promise<SyncResult> {
   const lastSync = getLastSyncTimestamp()
   const nodeCount = await getNodeCount()
+  const usedFullSync = lastSync === 0 || nodeCount === 0
 
   let result: SyncResult
-  if (lastSync === 0 || nodeCount === 0) {
+  if (usedFullSync) {
     result = await fullSync(fs)
   } else {
     result = await incrementalSync(lastSync, fs)
+  }
+
+  // Keep retry surface intact on partial failures.
+  // For failed full-sync runs, force next run to full sync again.
+  if (result.errors.length > 0) {
+    if (usedFullSync) {
+      setLastSyncTimestamp(0)
+    }
+    return result
   }
 
   setLastSyncTimestamp()

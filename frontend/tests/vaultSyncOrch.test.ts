@@ -6,11 +6,37 @@ import {
   type YAMLNote,
 } from '@/services/lego_blocks/yamlNoteBlock'
 
+function createMemoryLocalStorage(): Storage {
+  const store = new Map<string, string>()
+  return {
+    get length() {
+      return store.size
+    },
+    clear() {
+      store.clear()
+    },
+    getItem(key: string) {
+      return store.has(key) ? store.get(key)! : null
+    },
+    key(index: number) {
+      const keys = [...store.keys()]
+      return keys[index] ?? null
+    },
+    removeItem(key: string) {
+      store.delete(key)
+    },
+    setItem(key: string, value: string) {
+      store.set(key, String(value))
+    },
+  } as Storage
+}
+
 // ── Fake VaultFS ──
 
 class FakeVaultFS implements VaultFS {
   private readonly files = new Map<string, string>()
   private readonly mtimes = new Map<string, number>()
+  private readonly readFailures = new Set<string>()
 
   seedFile(path: string, content: string, mtime: number = Date.now() / 1000): void {
     this.files.set(path, content)
@@ -20,9 +46,21 @@ class FakeVaultFS implements VaultFS {
   removeFile(path: string): void {
     this.files.delete(path)
     this.mtimes.delete(path)
+    this.readFailures.delete(path)
+  }
+
+  failRead(path: string): void {
+    this.readFailures.add(path)
+  }
+
+  clearReadFailure(path: string): void {
+    this.readFailures.delete(path)
   }
 
   async read(path: string): Promise<string> {
+    if (this.readFailures.has(path)) {
+      throw new Error(`Injected read failure: ${path}`)
+    }
     const content = this.files.get(path)
     if (content == null) throw new Error(`Missing file: ${path}`)
     return content
@@ -78,6 +116,16 @@ class FakeVaultFS implements VaultFS {
 let fakeIdb: typeof import('fake-indexeddb') | null = null
 
 beforeEach(async () => {
+  if (typeof globalThis.localStorage === 'undefined') {
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: createMemoryLocalStorage(),
+      configurable: true,
+      writable: true,
+    })
+  } else {
+    globalThis.localStorage.clear()
+  }
+
   // Dynamically import fake-indexeddb if available, skip tests otherwise
   try {
     fakeIdb = await import('fake-indexeddb')
@@ -96,6 +144,11 @@ afterEach(async () => {
     await deleteDb()
   } catch {
     // ignore cleanup errors
+  }
+  try {
+    localStorage.removeItem('thinkingspace:lastSyncTimestamp')
+  } catch {
+    // ignore localStorage cleanup errors
   }
 })
 
@@ -236,6 +289,72 @@ describe('vaultSyncOrch', () => {
     const epic = nodes.find(n => n.type === 'epic')
     expect(epic).toBeDefined()
     expect(epic!.parent).toBe('personal-growth')
+  })
+
+  it('smartSync keeps last sync timestamp unchanged when incremental sync has errors', async () => {
+    if (!fakeIdb) return
+
+    const {
+      fullSync,
+      smartSync,
+      setLastSyncTimestamp,
+      getLastSyncTimestamp,
+    } = await import('@/services/orchestrators/vaultSyncOrch')
+
+    const fs = createSeededVault()
+    await fullSync(fs)
+
+    setLastSyncTimestamp(100)
+    fs.seedFile('thoughts/thought-ai-extensibility.md', '# broken read target', 200)
+    fs.failRead('thoughts/thought-ai-extensibility.md')
+
+    const result = await smartSync(fs)
+    expect(result.errors).toHaveLength(1)
+    expect(getLastSyncTimestamp()).toBe(100)
+  })
+
+  it('smartSync resets timestamp to 0 when full sync fails', async () => {
+    if (!fakeIdb) return
+
+    const {
+      smartSync,
+      setLastSyncTimestamp,
+      getLastSyncTimestamp,
+    } = await import('@/services/orchestrators/vaultSyncOrch')
+
+    const fs = createSeededVault()
+    fs.failRead('program-personal-growth.md')
+    setLastSyncTimestamp(999)
+
+    const result = await smartSync(fs)
+    expect(result.errors).toHaveLength(1)
+    expect(getLastSyncTimestamp()).toBe(0)
+  })
+
+  it('smartSync advances timestamp when sync succeeds', async () => {
+    if (!fakeIdb) return
+
+    const {
+      fullSync,
+      smartSync,
+      setLastSyncTimestamp,
+      getLastSyncTimestamp,
+    } = await import('@/services/orchestrators/vaultSyncOrch')
+
+    const fs = createSeededVault()
+    await fullSync(fs)
+    setLastSyncTimestamp(100)
+    const existingThought = await fs.read('thoughts/thought-ai-extensibility.md')
+    fs.seedFile('thoughts/thought-ai-extensibility.md', existingThought, 200)
+
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_234_000)
+    try {
+      const result = await smartSync(fs)
+      expect(result.errors).toHaveLength(0)
+      expect(getLastSyncTimestamp()).toBe(1234)
+    } finally {
+      nowSpy.mockRestore()
+    }
   })
 })
 
