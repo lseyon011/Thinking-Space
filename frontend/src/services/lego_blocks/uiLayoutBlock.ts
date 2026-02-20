@@ -17,6 +17,8 @@ export interface UILayoutState {
   isCapacitorNative: boolean
   hasSidebar: boolean
   hasBottomBar: boolean
+  keyboardVisible: boolean
+  keyboardInset: number
   safeAreaInsets: UISafeAreaInsets
   viewport: {
     width: number
@@ -30,6 +32,7 @@ export interface UILayoutDeriveInput {
   isElectron: boolean
   isCapacitorNative: boolean
   platformName?: 'electron' | 'ios' | 'android' | 'web'
+  keyboardInset?: number
   safeAreaInsets?: Partial<UISafeAreaInsets> | null
 }
 
@@ -50,6 +53,11 @@ function normalizeDimension(value: number, fallback: number): number {
 }
 
 function normalizeInset(value: number | null | undefined): number {
+  if (!Number.isFinite(value ?? Number.NaN)) return 0
+  return Math.max(0, Math.round((value ?? 0) * 100) / 100)
+}
+
+function normalizeKeyboardInset(value: number | null | undefined): number {
   if (!Number.isFinite(value ?? Number.NaN)) return 0
   return Math.max(0, Math.round((value ?? 0) * 100) / 100)
 }
@@ -82,6 +90,8 @@ function deriveSurface(input: UILayoutDeriveInput): UILayoutSurface {
 export function deriveUILayoutStateBlock(input: UILayoutDeriveInput): UILayoutState {
   const viewportWidth = normalizeDimension(input.viewportWidth, DESKTOP_MIN_WIDTH)
   const viewportHeight = normalizeDimension(input.viewportHeight, 800)
+  const keyboardInset = normalizeKeyboardInset(input.keyboardInset)
+  const keyboardVisible = keyboardInset > 0
   const mode = deriveLayoutModeFromWidthBlock(viewportWidth)
   const orientation: UILayoutOrientation = viewportHeight >= viewportWidth ? 'portrait' : 'landscape'
   const hasSidebar = mode === 'desktop'
@@ -96,6 +106,8 @@ export function deriveUILayoutStateBlock(input: UILayoutDeriveInput): UILayoutSt
     isCapacitorNative: input.isCapacitorNative,
     hasSidebar,
     hasBottomBar,
+    keyboardVisible,
+    keyboardInset,
     safeAreaInsets: normalizeSafeAreaInsetsBlock(input.safeAreaInsets),
     viewport: {
       width: viewportWidth,
@@ -103,4 +115,3 @@ export function deriveUILayoutStateBlock(input: UILayoutDeriveInput): UILayoutSt
     },
   }
 }
-

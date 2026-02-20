@@ -57,6 +57,7 @@ export interface UILayoutRuntimeFlags {
 export interface UILayoutSnapshotOptions {
   windowRef?: UILayoutWindowLike | null
   runtimeFlags?: Partial<UILayoutRuntimeFlags>
+  keyboardInset?: number
   safeAreaInsets?: Partial<UISafeAreaInsets> | null
 }
 
@@ -65,6 +66,7 @@ export interface UILayoutSubscriptionOptions extends UILayoutSnapshotOptions {
 }
 
 const DEFAULT_DEBOUNCE_MS = 120
+const KEYBOARD_INSET_MIN_PX = 120
 
 function parseInsetPx(value: string | undefined): number {
   const parsed = Number.parseFloat((value ?? '').trim())
@@ -136,10 +138,20 @@ function readViewport(windowRef: UILayoutWindowLike | null): { width: number; he
   }
 }
 
+function readKeyboardInset(windowRef: UILayoutWindowLike | null): number {
+  if (!windowRef?.visualViewport) return 0
+  const inset = windowRef.innerHeight - windowRef.visualViewport.height
+  if (!Number.isFinite(inset) || inset < KEYBOARD_INSET_MIN_PX) return 0
+  return inset
+}
+
 export function getUILayoutStateOrch(options: UILayoutSnapshotOptions = {}): UILayoutState {
   const windowRef = resolveWindowRef(options.windowRef)
   const viewport = readViewport(windowRef)
   const runtime = resolveRuntimeFlags(options.runtimeFlags)
+  const keyboardInset = typeof options.keyboardInset === 'number'
+    ? options.keyboardInset
+    : readKeyboardInset(windowRef)
   const safeAreaInsets = options.safeAreaInsets
     ? normalizeSafeAreaInsetsBlock(options.safeAreaInsets)
     : readSafeAreaInsetsFromWindow(windowRef)
@@ -150,6 +162,7 @@ export function getUILayoutStateOrch(options: UILayoutSnapshotOptions = {}): UIL
     isElectron: runtime.isElectron,
     isCapacitorNative: runtime.isCapacitorNative,
     platformName: runtime.platformName,
+    keyboardInset,
     safeAreaInsets,
   })
 }
@@ -182,6 +195,8 @@ export function subscribeUILayoutOrch(
   emit()
   windowRef.addEventListener('resize', scheduleEmit)
   windowRef.addEventListener('orientationchange', scheduleEmit)
+  windowRef.addEventListener('focusin', scheduleEmit)
+  windowRef.addEventListener('focusout', scheduleEmit)
   windowRef.visualViewport?.addEventListener('resize', scheduleEmit)
 
   return () => {
@@ -191,6 +206,8 @@ export function subscribeUILayoutOrch(
     }
     windowRef.removeEventListener('resize', scheduleEmit)
     windowRef.removeEventListener('orientationchange', scheduleEmit)
+    windowRef.removeEventListener('focusin', scheduleEmit)
+    windowRef.removeEventListener('focusout', scheduleEmit)
     windowRef.visualViewport?.removeEventListener('resize', scheduleEmit)
   }
 }

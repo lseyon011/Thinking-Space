@@ -65,5 +65,18 @@ describe('uiLayoutBlock', () => {
       left: 0,
     })
   })
-})
 
+  it('sets keyboard visibility from keyboard inset', () => {
+    const layout = deriveUILayoutStateBlock({
+      viewportWidth: 430,
+      viewportHeight: 520,
+      isElectron: false,
+      isCapacitorNative: true,
+      platformName: 'ios',
+      keyboardInset: 312,
+    })
+
+    expect(layout.keyboardVisible).toBe(true)
+    expect(layout.keyboardInset).toBe(312)
+  })
+})

@@ -3,12 +3,17 @@ import { PanelLeft, PanelLeftClose, Sparkles, FileText } from 'lucide-react'
 import VaultExplorerBlock from '@/components/lego_blocks/VaultExplorerBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/MarkdownDocumentBlock'
 import ExtensionSlotBlock from '@/components/lego_blocks/ExtensionSlotBlock'
+import { useUILayoutBlock } from '@/components/lego_blocks/UILayoutBlock'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
 
 export default function ThinkingSpaceOrch() {
+  const { layout } = useUILayoutBlock()
   const [inlinePath, setInlinePath] = useState<string | null>(null)
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
+  const topInset = Math.max(0, Math.round(layout.safeAreaInsets.top))
+  const bottomInset = Math.max(0, Math.round(layout.safeAreaInsets.bottom))
+  const drawerBottomPadding = Math.max(bottomInset, layout.keyboardVisible ? Math.round(layout.keyboardInset) : 0)
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -76,8 +81,11 @@ export default function ThinkingSpaceOrch() {
             className="fixed inset-0 z-40 bg-background/70 backdrop-blur-sm"
             onClick={() => setMobileExplorerOpen(false)}
           />
-          <aside className="fixed inset-y-0 left-0 z-50 w-[88vw] max-w-[360px] border-r border-border/70 bg-card shadow-xl">
-            <div className="flex h-11 items-center justify-between border-b border-border/60 px-2">
+          <aside className="fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-[360px] flex-col border-r border-border/70 bg-card shadow-xl">
+            <div
+              className="flex h-11 shrink-0 items-center justify-between border-b border-border/60 px-2"
+              style={topInset ? { paddingTop: `${topInset}px`, height: `${44 + topInset}px` } : undefined}
+            >
               <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 Explorer
               </span>
@@ -91,7 +99,7 @@ export default function ThinkingSpaceOrch() {
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
             </div>
-            <div className="h-[calc(100%-2.75rem)]">
+            <div className="min-h-0 flex-1">
               <VaultExplorerBlock
                 loadEntries={listFolderEntries}
                 onOpenFile={(path) => {
@@ -100,7 +108,10 @@ export default function ThinkingSpaceOrch() {
                 }}
               />
             </div>
-            <div className="border-t border-border/60 p-2">
+            <div
+              className="border-t border-border/60 p-2"
+              style={drawerBottomPadding ? { paddingBottom: `${drawerBottomPadding + 8}px` } : undefined}
+            >
               <ExtensionSlotBlock
                 slotId="sidebar-bottom"
                 context={{ inlinePath }}

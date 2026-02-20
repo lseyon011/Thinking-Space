@@ -93,6 +93,8 @@ describe('uiLayoutOrch', () => {
     expect(state.mode).toBe('phone')
     expect(state.hasBottomBar).toBe(true)
     expect(state.surface).toBe('capacitor-ios')
+    expect(state.keyboardVisible).toBe(false)
+    expect(state.keyboardInset).toBe(0)
     expect(state.safeAreaInsets).toEqual({
       top: 11,
       right: 3,
@@ -145,5 +147,22 @@ describe('uiLayoutOrch', () => {
     vi.runAllTimers()
     expect(modes).toEqual(['tablet', 'desktop'])
   })
-})
 
+  it('marks keyboard visible when visual viewport shrink exceeds threshold', () => {
+    const windowRef = createFakeWindow(430, 932)
+    windowRef.visualViewport!.height = 610
+
+    const state = getUILayoutStateOrch({
+      windowRef,
+      runtimeFlags: {
+        isElectron: false,
+        isCapacitorNative: true,
+        platformName: 'ios',
+      },
+    })
+
+    expect(state.mode).toBe('phone')
+    expect(state.keyboardVisible).toBe(true)
+    expect(state.keyboardInset).toBe(322)
+  })
+})

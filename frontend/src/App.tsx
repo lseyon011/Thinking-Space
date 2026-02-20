@@ -123,9 +123,13 @@ function App() {
   )
 
   const compactNav = !layout.hasSidebar
-  const showBottomNav = compactNav && layout.hasBottomBar
+  const keyboardVisible = layout.keyboardVisible && compactNav
+  const showBottomNav = compactNav && layout.hasBottomBar && !keyboardVisible
+  const topInset = Math.max(0, Math.round(layout.safeAreaInsets.top))
   const bottomInset = Math.max(0, Math.round(layout.safeAreaInsets.bottom))
+  const drawerBottomInset = Math.max(bottomInset, keyboardVisible ? Math.round(layout.keyboardInset) : 0)
   const bottomOffset = showBottomNav ? 60 + bottomInset : 0
+  const mainBottomPadding = Math.max(bottomOffset, keyboardVisible ? Math.round(layout.keyboardInset) : 0)
 
   // On mount, restore security-scoped bookmark for picker-selected Capacitor vaults
   useEffect(() => {
@@ -175,6 +179,12 @@ function App() {
   }, [compactNav])
 
   useEffect(() => {
+    if (keyboardVisible) {
+      setDrawerOpen(false)
+    }
+  }, [keyboardVisible])
+
+  useEffect(() => {
     if (needsVaultSetup) return
     smartSync().catch((err) => {
       console.error('Failed to sync vault to IndexedDB cache', err)
@@ -194,7 +204,10 @@ function App() {
 
   return (
     <div className="ltm-app-shell">
-      <header className="sticky top-0 z-50 border-b border-border/70 bg-background/85 backdrop-blur-xl">
+      <header
+        className="sticky top-0 z-50 border-b border-border/70 bg-background/85 backdrop-blur-xl"
+        style={topInset ? { paddingTop: `${topInset}px` } : undefined}
+      >
         <div className="mx-auto w-full px-2 sm:px-3 md:px-4">
           <div className="flex h-14 items-center justify-between gap-2">
             {compactNav ? (
@@ -331,7 +344,7 @@ function App() {
 
         <main
           className="ltm-app-main min-w-0"
-          style={bottomOffset ? { paddingBottom: `${bottomOffset}px` } : undefined}
+          style={mainBottomPadding ? { paddingBottom: `${mainBottomPadding}px` } : undefined}
         >
           <Routes>
             <Route path="/" element={<Home />} />
@@ -376,7 +389,10 @@ function App() {
               </button>
             </div>
 
-            <div className="h-[calc(100%-3rem)] overflow-y-auto p-3">
+            <div
+              className="h-[calc(100%-3rem)] overflow-y-auto p-3"
+              style={drawerBottomInset ? { paddingBottom: `${drawerBottomInset + 12}px` } : undefined}
+            >
               <div className="space-y-1">
                 <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Core
