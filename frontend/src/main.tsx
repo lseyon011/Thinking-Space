@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { HashRouter, BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { MarkdownViewerProvider } from './components/orchestrators/MarkdownViewerOrch'
+import { UILayoutProviderBlock } from './components/lego_blocks/UILayoutBlock'
 import { isElectron, isCapacitorNative } from './services/orchestrators/runtimeOrch'
 import './index.css'
 
@@ -18,9 +19,11 @@ const routerProps = isLocalApp ? {} : { basename: webBasename }
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <Router {...routerProps}>
-      <MarkdownViewerProvider>
-        <App />
-      </MarkdownViewerProvider>
+      <UILayoutProviderBlock>
+        <MarkdownViewerProvider>
+          <App />
+        </MarkdownViewerProvider>
+      </UILayoutProviderBlock>
     </Router>
   </React.StrictMode>,
 )
