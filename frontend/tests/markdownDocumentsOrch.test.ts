@@ -91,6 +91,23 @@ describe('markdownDocumentsOrch', () => {
     })).rejects.toBeInstanceOf(mod.MarkdownDocumentConflictError)
   })
 
+  it('supports hash-free read mode and detects conflict via base content', async () => {
+    const mod = await import('@/services/orchestrators/markdownDocumentsOrch')
+    const opened = await mod.readMarkdownDocument('notes/a.md', { includeHash: false })
+
+    expect(opened.hash).toBeNull()
+    expect(opened.size).toBeGreaterThan(0)
+
+    await fakeFs.write('notes/a.md', 'changed elsewhere')
+
+    await expect(mod.saveMarkdownDocument({
+      path: 'notes/a.md',
+      content: 'my edit',
+      baseMtime: opened.mtime,
+      baseContent: opened.content,
+    })).rejects.toBeInstanceOf(mod.MarkdownDocumentConflictError)
+  })
+
   it('writes revision snapshot before save on content changes', async () => {
     const mod = await import('@/services/orchestrators/markdownDocumentsOrch')
     const opened = await mod.readMarkdownDocument('notes/a.md')

@@ -54,15 +54,38 @@ export async function readMarkdownDocument(path: string): Promise<{
   path: string
   content: string
   mtime: number
+  size: number
   hash: string
+}>
+export async function readMarkdownDocument(
+  path: string,
+  options: { includeHash: false },
+): Promise<{
+  path: string
+  content: string
+  mtime: number
+  size: number
+  hash: null
+}>
+export async function readMarkdownDocument(
+  path: string,
+  options?: { includeHash?: boolean },
+): Promise<{
+  path: string
+  content: string
+  mtime: number
+  size: number
+  hash: string | null
 }> {
   const fs = getVaultFS()
   const [content, stat] = await Promise.all([fs.read(path), fs.stat(path)])
+  const includeHash = options?.includeHash ?? true
   return {
     path,
     content,
     mtime: stat.mtime,
-    hash: hashContent(content),
+    size: stat.size,
+    hash: includeHash ? hashContent(content) : null,
   }
 }
 
@@ -70,7 +93,8 @@ export async function saveMarkdownDocument(params: {
   path: string
   content: string
   baseMtime: number
-  baseHash: string
+  baseHash?: string | null
+  baseContent?: string | null
 }): Promise<{ output_path: string; revision_path: string | null }> {
   const fs = getVaultFS()
 
@@ -78,14 +102,18 @@ export async function saveMarkdownDocument(params: {
     fs.read(params.path),
     fs.stat(params.path),
   ])
-  const currentHash = hashContent(currentContent)
+  const mtimeChanged = currentStat.mtime !== params.baseMtime
+  const hashProvided = typeof params.baseHash === 'string' && params.baseHash.length > 0
+  const contentProvided = typeof params.baseContent === 'string'
+  const hashChanged = hashProvided ? hashContent(currentContent) !== params.baseHash : false
+  const contentChanged = contentProvided ? currentContent !== params.baseContent : false
 
-  if (currentStat.mtime !== params.baseMtime || currentHash !== params.baseHash) {
+  if (mtimeChanged || hashChanged || (!hashProvided && contentProvided && contentChanged)) {
     throw new MarkdownDocumentConflictError(
       'This file changed since you opened it. Reload latest content before saving.',
       {
         currentMtime: currentStat.mtime,
-        currentHash,
+        currentHash: hashContent(currentContent),
         currentContent,
       },
     )

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { X, FileText, ExternalLink, Info, Pencil, Save, Eye } from 'lucide-react'
@@ -42,6 +42,25 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+const DEFERRED_RENDER_CHARS = 180_000
+
+interface MarkdownMeta {
+  lines: number | null
+  words: number | null
+  headings: number | null
+  size: string
+}
+
+function scheduleDeferredWork(callback: () => void): () => void {
+  if (typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function') {
+    const idleId = (window as any).requestIdleCallback(() => callback(), { timeout: 240 })
+    return () => (window as any).cancelIdleCallback?.(idleId)
+  }
+
+  const timeoutId = window.setTimeout(callback, 32)
+  return () => window.clearTimeout(timeoutId)
+}
+
 function MarkdownDocumentBlock({
   path,
   initialMode = 'view',
@@ -69,6 +88,9 @@ function MarkdownDocumentBlock({
 
   const [showMeta, setShowMeta] = useState(true)
   const [showPreview, setShowPreview] = useState(false)
+  const [meta, setMeta] = useState<MarkdownMeta | null>(null)
+  const [viewMarkdown, setViewMarkdown] = useState('')
+  const [pendingFullRender, setPendingFullRender] = useState(false)
   const {
     aiSelectionLoading,
     selectedProvider,
@@ -91,7 +113,7 @@ function MarkdownDocumentBlock({
   const [hasExcalidrawChanges, setHasExcalidrawChanges] = useState(false)
   const [excalidrawImmersive, setExcalidrawImmersive] = useState(false)
 
-  const loadDocument = useCallback(async () => {
+  const loadDocument = useCallback(async (seedDraft = false) => {
     setLoading(true)
     setError(null)
     setSaveError(null)
@@ -105,12 +127,12 @@ function MarkdownDocumentBlock({
     ignoreInitialExcalidrawChangeRef.current = true
     clearAssistState()
     try {
-      const data = await readMarkdownDocument(path)
+      const data = await readMarkdownDocument(path, { includeHash: false })
       setContent(data.content)
-      setDraft(data.content)
+      setDraft(seedDraft ? data.content : '')
       setBaseMtime(data.mtime)
       setBaseHash(data.hash)
-      setSizeBytes(new Blob([data.content]).size)
+      setSizeBytes(data.size)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load file')
       setContent(null)
@@ -125,7 +147,7 @@ function MarkdownDocumentBlock({
 
   useEffect(() => {
     setMode(initialMode)
-    void loadDocument()
+    void loadDocument(initialMode === 'edit')
   }, [initialMode, loadDocument, path])
 
   useEffect(() => {
@@ -137,15 +159,6 @@ function MarkdownDocumentBlock({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [excalidrawImmersive])
 
-  const meta = content !== null
-    ? {
-      lines: content.split('\n').length,
-      words: content.split(/\s+/).filter(Boolean).length,
-      headings: (content.match(/^#{1,6}\s/gm) || []).length,
-      size: formatBytes(sizeBytes),
-    }
-    : null
-
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const obsidianUrl = buildObsidianOpenUrlOrch(path)
@@ -154,6 +167,74 @@ function MarkdownDocumentBlock({
   const hasTextChanges = isEditing && content !== null && draft !== content
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
   const splitPreviewOnWide = isEditing && !isExcalidrawDoc && showPreview
+  const displayContent = useMemo(
+    () => (content !== null ? stripFrontmatter(content) : ''),
+    [content],
+  )
+  const displayDraft = useMemo(
+    () => stripFrontmatter(draft),
+    [draft],
+  )
+
+  useEffect(() => {
+    if (content === null) {
+      setMeta(null)
+      return
+    }
+
+    setMeta({
+      lines: null,
+      words: null,
+      headings: null,
+      size: formatBytes(sizeBytes),
+    })
+
+    if (!showMeta) return
+
+    let cancelled = false
+    const cancelDeferred = scheduleDeferredWork(() => {
+      if (cancelled) return
+      setMeta({
+        lines: content.split('\n').length,
+        words: content.split(/\s+/).filter(Boolean).length,
+        headings: (content.match(/^#{1,6}\s/gm) || []).length,
+        size: formatBytes(sizeBytes),
+      })
+    })
+
+    return () => {
+      cancelled = true
+      cancelDeferred()
+    }
+  }, [content, showMeta, sizeBytes])
+
+  useEffect(() => {
+    if (content === null || isEditing || isExcalidrawDoc) {
+      setPendingFullRender(false)
+      setViewMarkdown(displayContent)
+      return
+    }
+
+    if (displayContent.length <= DEFERRED_RENDER_CHARS) {
+      setPendingFullRender(false)
+      setViewMarkdown(displayContent)
+      return
+    }
+
+    let cancelled = false
+    setViewMarkdown(displayContent.slice(0, DEFERRED_RENDER_CHARS))
+    setPendingFullRender(true)
+    const cancelDeferred = scheduleDeferredWork(() => {
+      if (cancelled) return
+      setViewMarkdown(displayContent)
+      setPendingFullRender(false)
+    })
+
+    return () => {
+      cancelled = true
+      cancelDeferred()
+    }
+  }, [content, displayContent, isEditing, isExcalidrawDoc, path])
 
   useEffect(() => {
     if (!isEditing || isExcalidrawDoc || loading || error || content === null) {
@@ -215,6 +296,7 @@ function MarkdownDocumentBlock({
   const startEditing = () => {
     if (loading || error) return
     setMode('edit')
+    setDraft(content ?? '')
     setSaveError(null)
     setConflict(null)
     setHasExcalidrawChanges(false)
@@ -226,7 +308,7 @@ function MarkdownDocumentBlock({
 
   const cancelEditing = () => {
     setMode('view')
-    setDraft(content ?? '')
+    setDraft('')
     setSaveError(null)
     setConflict(null)
     setShowPreview(false)
@@ -252,7 +334,7 @@ function MarkdownDocumentBlock({
   }
 
   const handleSave = async () => {
-    if (!hasChanges || baseMtime === null || !baseHash) return
+    if (!hasChanges || baseMtime === null) return
 
     let contentToSave = draft
     if (isExcalidrawDoc) {
@@ -273,13 +355,14 @@ function MarkdownDocumentBlock({
         content: contentToSave,
         baseMtime,
         baseHash,
+        baseContent: content,
       })
-      const reloaded = await readMarkdownDocument(path)
+      const reloaded = await readMarkdownDocument(path, { includeHash: false })
       setContent(reloaded.content)
-      setDraft(reloaded.content)
+      setDraft('')
       setBaseMtime(reloaded.mtime)
       setBaseHash(reloaded.hash)
-      setSizeBytes(new Blob([reloaded.content]).size)
+      setSizeBytes(reloaded.size)
       setMode('view')
       setShowPreview(false)
       setHasExcalidrawChanges(false)
@@ -368,9 +451,9 @@ function MarkdownDocumentBlock({
 
       {showMeta && meta && (
         <div className="flex items-center gap-4 border-b border-border/30 bg-muted/30 px-5 py-2 text-xs text-muted-foreground">
-          <span><strong className="text-foreground/70">{meta.lines}</strong> lines</span>
-          <span><strong className="text-foreground/70">{meta.words}</strong> words</span>
-          <span><strong className="text-foreground/70">{meta.headings}</strong> headings</span>
+          <span><strong className="text-foreground/70">{meta.lines ?? '…'}</strong> lines</span>
+          <span><strong className="text-foreground/70">{meta.words ?? '…'}</strong> words</span>
+          <span><strong className="text-foreground/70">{meta.headings ?? '…'}</strong> headings</span>
           <span>{meta.size}</span>
         </div>
       )}
@@ -393,10 +476,17 @@ function MarkdownDocumentBlock({
         )}
 
         {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && (
-          <div className="prose">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {stripFrontmatter(content)}
-            </ReactMarkdown>
+          <div className="space-y-2">
+            {pendingFullRender && (
+              <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                Rendering full document...
+              </div>
+            )}
+            <div className="prose">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {viewMarkdown}
+              </ReactMarkdown>
+            </div>
           </div>
         )}
 
@@ -452,7 +542,7 @@ function MarkdownDocumentBlock({
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={!hasChanges || saving || baseMtime === null || !baseHash}
+                  disabled={!hasChanges || saving || baseMtime === null}
                   className="rounded-md bg-primary px-2.5 py-1 text-xs text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saving ? 'Saving...' : 'Save'}
@@ -530,7 +620,7 @@ function MarkdownDocumentBlock({
                     <div className="mb-3 text-xs font-medium text-muted-foreground">Preview</div>
                     <div className="prose">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {stripFrontmatter(draft)}
+                        {displayDraft}
                       </ReactMarkdown>
                     </div>
                   </div>
@@ -589,7 +679,7 @@ function MarkdownDocumentBlock({
           </div>
         )}
 
-        {!loading && !error && content !== null && !isExcalidrawDoc && (
+        {!loading && !error && content !== null && !isExcalidrawDoc && !pendingFullRender && (
           <MarkdownMiniNavBlock content={isEditing ? draft : content} container={contentScrollRef.current} />
         )}
       </div>
@@ -608,7 +698,7 @@ function MarkdownDocumentBlock({
             </button>
             <button
               onClick={handleSave}
-              disabled={!hasChanges || saving || baseMtime === null || !baseHash}
+              disabled={!hasChanges || saving || baseMtime === null}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Save className="h-4 w-4" />
