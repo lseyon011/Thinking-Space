@@ -30,6 +30,7 @@ import AiSettings from './pages/AiSettings'
 import ExtensionBuilder from './pages/ExtensionBuilder'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import { useUILayoutBlock } from './components/lego_blocks/UILayoutBlock'
+import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { smartSync } from './services/orchestrators/vaultSyncOrch'
 import { getStoredVaultRoot } from './services/orchestrators/storageOrch'
@@ -122,14 +123,14 @@ function App() {
     [allNavItems, location.pathname],
   )
 
-  const compactNav = !layout.hasSidebar
-  const keyboardVisible = layout.keyboardVisible && compactNav
-  const showBottomNav = compactNav && layout.hasBottomBar && !keyboardVisible
-  const topInset = Math.max(0, Math.round(layout.safeAreaInsets.top))
-  const bottomInset = Math.max(0, Math.round(layout.safeAreaInsets.bottom))
-  const drawerBottomInset = Math.max(bottomInset, keyboardVisible ? Math.round(layout.keyboardInset) : 0)
-  const bottomOffset = showBottomNav ? 60 + bottomInset : 0
-  const mainBottomPadding = Math.max(bottomOffset, keyboardVisible ? Math.round(layout.keyboardInset) : 0)
+  const shell = useMemo(() => deriveAdaptiveShellStateOrch(layout), [layout])
+  const compactNav = shell.compactNav
+  const keyboardVisible = shell.keyboardVisibleCompact
+  const showBottomNav = shell.showBottomNav
+  const topInset = shell.topInset
+  const bottomInset = shell.bottomInset
+  const drawerBottomInset = shell.drawerBottomInset
+  const mainBottomPadding = shell.mainBottomPadding
 
   // On mount, restore security-scoped bookmark for picker-selected Capacitor vaults
   useEffect(() => {
