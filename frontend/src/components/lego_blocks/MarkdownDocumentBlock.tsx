@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X, FileText, ExternalLink, Info, Pencil, Save, Eye } from 'lucide-react'
+import { X, FileText, ExternalLink, Info, Pencil, Save } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -14,6 +14,7 @@ import {
 import { buildObsidianOpenUrlOrch } from '@/services/orchestrators/obsidianLinkOrch'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/ExcalidrawDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/MarkdownMiniNavBlock'
+import MarkdownRichEditorBlock from '@/components/lego_blocks/MarkdownRichEditorBlock'
 import { cn } from '@/lib/utils'
 import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/AiAssistRuntimeBlock'
 import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBlock'
@@ -34,6 +35,15 @@ interface MarkdownDocumentBlockProps {
 
 function stripFrontmatter(content: string): string {
   return content.replace(/^---\n[\s\S]*?\n---\n?/, '')
+}
+
+function splitFrontmatter(content: string): { frontmatter: string; body: string } {
+  const match = content.match(/^(---\n[\s\S]*?\n---\n?)([\s\S]*)$/)
+  if (!match) return { frontmatter: '', body: content }
+  return {
+    frontmatter: match[1],
+    body: match[2],
+  }
 }
 
 function formatBytes(bytes: number): string {
@@ -97,7 +107,8 @@ function MarkdownDocumentBlock({
   const [relatedError, setRelatedError] = useState<string | null>(null)
 
   const [showMeta, setShowMeta] = useState(true)
-  const [showPreview, setShowPreview] = useState(false)
+  const [showAssistPanel, setShowAssistPanel] = useState(false)
+  const [showRelatedPanel, setShowRelatedPanel] = useState(false)
   const [meta, setMeta] = useState<MarkdownMeta | null>(null)
   const [viewMarkdown, setViewMarkdown] = useState('')
   const [pendingFullRender, setPendingFullRender] = useState(false)
@@ -176,7 +187,6 @@ function MarkdownDocumentBlock({
   const isEditing = mode === 'edit'
   const hasTextChanges = isEditing && content !== null && draft !== content
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
-  const splitPreviewOnWide = isEditing && !isExcalidrawDoc && showPreview
   const displayContent = useMemo(
     () => (content !== null ? stripFrontmatter(content) : ''),
     [content],
@@ -185,10 +195,17 @@ function MarkdownDocumentBlock({
     () => stripFrontmatter(draft),
     [draft],
   )
+  const draftFrontmatter = useMemo(
+    () => splitFrontmatter(draft).frontmatter,
+    [draft],
+  )
   const excalidrawEditorContent = useMemo(
     () => (draft || content || ''),
     [content, draft],
   )
+  const setDraftBody = useCallback((nextBody: string) => {
+    setDraft((current) => `${splitFrontmatter(current).frontmatter}${nextBody}`)
+  }, [])
 
   useEffect(() => {
     if (content === null) {
@@ -251,14 +268,14 @@ function MarkdownDocumentBlock({
   }, [content, displayContent, isEditing, isExcalidrawDoc, path])
 
   useEffect(() => {
-    if (!isEditing || isExcalidrawDoc || loading || error || content === null) {
+    if (!isEditing || isExcalidrawDoc || loading || error || content === null || !showRelatedPanel) {
       setRelatedThoughts([])
       setRelatedError(null)
       setRelatedLoading(false)
       return
     }
 
-    const source = draft.trim()
+    const source = displayDraft.trim()
     if (source.length < 24) {
       setRelatedThoughts([])
       setRelatedError(null)
@@ -294,7 +311,7 @@ function MarkdownDocumentBlock({
       cancelled = true
       window.clearTimeout(timeoutId)
     }
-  }, [content, draft, error, isEditing, isExcalidrawDoc, loading, path])
+  }, [content, displayDraft, error, isEditing, isExcalidrawDoc, loading, path, showRelatedPanel])
 
   const handleExcalidrawSceneChange = useCallback((scene: ParsedExcalidrawScene) => {
     excalidrawSceneRef.current = scene
@@ -311,6 +328,8 @@ function MarkdownDocumentBlock({
     if (loading || error) return
     setMode('edit')
     setDraft(isExcalidrawDoc ? '' : (content ?? ''))
+    setShowAssistPanel(false)
+    setShowRelatedPanel(false)
     setSaveError(null)
     setConflict(null)
     setHasExcalidrawChanges(false)
@@ -325,7 +344,8 @@ function MarkdownDocumentBlock({
     setDraft('')
     setSaveError(null)
     setConflict(null)
-    setShowPreview(false)
+    setShowAssistPanel(false)
+    setShowRelatedPanel(false)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(false)
     excalidrawSceneRef.current = null
@@ -384,7 +404,6 @@ function MarkdownDocumentBlock({
       setBaseHash(reloaded.hash)
       setSizeBytes(reloaded.size)
       setMode('view')
-      setShowPreview(false)
       setHasExcalidrawChanges(false)
       setExcalidrawImmersive(false)
       excalidrawSceneRef.current = null
@@ -442,13 +461,24 @@ function MarkdownDocumentBlock({
           )}
 
           {isEditing && !isExcalidrawDoc && (
-            <button
-              onClick={() => setShowPreview(v => !v)}
-              className={`rounded-lg p-1.5 transition-colors ${showPreview ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-              title="Toggle preview"
-            >
-              <Eye className="h-4 w-4" />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setShowAssistPanel(v => !v)}
+                className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showAssistPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                title="Toggle AI assist"
+              >
+                AI Assist
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowRelatedPanel(v => !v)}
+                className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showRelatedPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                title="Toggle related thoughts"
+              >
+                Related Thoughts
+              </button>
+            </>
           )}
 
           <a
@@ -597,114 +627,98 @@ function MarkdownDocumentBlock({
         )}
 
         {!loading && !error && content !== null && isEditing && !isExcalidrawDoc && (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-            <div className="space-y-4">
-              <AiAssistControlsBlock
-                selectedProvider={selectedProvider}
-                selectedModel={selectedModel}
-                runningAction={assistRunningAction}
-                loading={aiSelectionLoading}
-                disabled={loading || isExcalidrawDoc}
-                onRun={(action) => { void runAssistAction(action, draft) }}
-                helperText="Preview-first only. Suggestions never auto-save until you click Save. Configure provider/model in AI Settings."
-              />
-
-              {assistSuggestion && (
-                <AiAssistReviewBlock
-                  suggestion={assistSuggestion}
-                  onApply={() => {
-                    const applied = applyAssistSuggestion((next) => {
-                      setDraft(next)
-                    })
-                    if (applied) setShowPreview(true)
-                  }}
-                  onDiscard={dismissAssistSuggestion}
-                />
-              )}
-
-              {assistError && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  {assistError}
-                </div>
-              )}
-
-              <div className={cn('grid gap-4', splitPreviewOnWide ? 'xl:grid-cols-2' : 'grid-cols-1')}>
-                <textarea
-                  value={draft}
-                  onChange={(e) => {
-                    setDraft(e.target.value)
-                    if (assistSuggestion || assistError) clearAssistState()
-                  }}
-                  className={cn(
-                    'w-full resize-y rounded-lg border border-input bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-                    splitPreviewOnWide ? 'min-h-[62vh]' : 'min-h-[52vh]',
-                  )}
+          <div className="space-y-4">
+            {showAssistPanel && (
+              <div className="space-y-3">
+                <AiAssistControlsBlock
+                  selectedProvider={selectedProvider}
+                  selectedModel={selectedModel}
+                  runningAction={assistRunningAction}
+                  loading={aiSelectionLoading}
+                  disabled={loading || isExcalidrawDoc}
+                  onRun={(action) => { void runAssistAction(action, displayDraft) }}
+                  helperText="Suggestions apply inline and never auto-save until you click Save. Configure provider/model in AI Settings."
                 />
 
-                {showPreview && !isExcalidrawDoc && (
-                  <div className={cn(
-                    'rounded-lg border border-border/50 bg-muted/20 p-4',
-                    splitPreviewOnWide && 'min-h-[62vh] overflow-y-auto',
-                  )}>
-                    <div className="mb-3 text-xs font-medium text-muted-foreground">Preview</div>
-                    <div className="prose">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {displayDraft}
-                      </ReactMarkdown>
-                    </div>
+                {assistSuggestion && (
+                  <AiAssistReviewBlock
+                    suggestion={assistSuggestion}
+                    onApply={() => {
+                      applyAssistSuggestion((next) => {
+                        setDraftBody(next)
+                      })
+                    }}
+                    onDiscard={dismissAssistSuggestion}
+                  />
+                )}
+
+                {assistError && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {assistError}
                   </div>
                 )}
               </div>
+            )}
 
-              {saveError && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  {saveError}
+            {showRelatedPanel && (
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Related Thoughts
                 </div>
-              )}
-
-              {conflict && (
-                <button
-                  onClick={useLatestConflictVersion}
-                  className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
-                >
-                  Load latest file version
-                </button>
-              )}
-            </div>
-
-            <aside className="space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3 lg:sticky lg:top-4 lg:h-fit">
-              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Related Thoughts
-              </div>
-              {relatedLoading && (
-                <div className="text-xs text-muted-foreground">Finding related notes...</div>
-              )}
-              {relatedError && (
-                <div className="text-xs text-destructive">{relatedError}</div>
-              )}
-              {!relatedLoading && !relatedError && relatedThoughts.length === 0 && (
-                <div className="text-xs text-muted-foreground">
-                  Keep typing to see lexical matches from your thought cache.
-                </div>
-              )}
-              {relatedThoughts.map(match => (
-                <button
-                  key={match.node.uuid}
-                  type="button"
-                  className="w-full rounded-md border border-border/70 bg-background px-2.5 py-2 text-left transition-colors hover:bg-muted/40"
-                  onClick={() => {
-                    if (!onOpenPathForEdit || match.node.filePath === path) return
-                    onOpenPathForEdit(match.node.filePath)
-                  }}
-                >
-                  <div className="truncate text-xs font-medium text-foreground">{match.node.title}</div>
-                  <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{match.node.filePath}</div>
-                  <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                    Score {Math.round(match.normalizedScore * 100)}% · {match.reasons.join(', ') || 'lexical'}
+                {relatedLoading && (
+                  <div className="text-xs text-muted-foreground">Finding related notes...</div>
+                )}
+                {relatedError && (
+                  <div className="text-xs text-destructive">{relatedError}</div>
+                )}
+                {!relatedLoading && !relatedError && relatedThoughts.length === 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    Keep typing to see lexical matches from your thought cache.
                   </div>
-                </button>
-              ))}
-            </aside>
+                )}
+                {relatedThoughts.map(match => (
+                  <button
+                    key={match.node.uuid}
+                    type="button"
+                    className="w-full rounded-md border border-border/70 bg-background px-2.5 py-2 text-left transition-colors hover:bg-muted/40"
+                    onClick={() => {
+                      if (!onOpenPathForEdit || match.node.filePath === path) return
+                      onOpenPathForEdit(match.node.filePath)
+                    }}
+                  >
+                    <div className="truncate text-xs font-medium text-foreground">{match.node.title}</div>
+                    <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{match.node.filePath}</div>
+                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                      Score {Math.round(match.normalizedScore * 100)}% · {match.reasons.join(', ') || 'lexical'}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <MarkdownRichEditorBlock
+              value={displayDraft}
+              onChange={(next) => {
+                setDraft(`${draftFrontmatter}${next}`)
+                if (assistSuggestion || assistError) clearAssistState()
+              }}
+              className="min-h-[62vh]"
+            />
+
+            {saveError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {saveError}
+              </div>
+            )}
+
+            {conflict && (
+              <button
+                onClick={useLatestConflictVersion}
+                className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+              >
+                Load latest file version
+              </button>
+            )}
           </div>
         )}
 
