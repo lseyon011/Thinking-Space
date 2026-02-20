@@ -5,7 +5,9 @@ export interface UIShellLayoutState {
   keyboardVisibleCompact: boolean
   showBottomNav: boolean
   topInset: number
+  rightInset: number
   bottomInset: number
+  leftInset: number
   drawerBottomInset: number
   bottomOffset: number
   mainBottomPadding: number
@@ -23,7 +25,9 @@ export function deriveAdaptiveShellStateBlock(layout: UILayoutState): UIShellLay
   const keyboardVisibleCompact = compactNav && layout.keyboardVisible
   const showBottomNav = compactNav && layout.hasBottomBar && !keyboardVisibleCompact
   const topInset = normalizeInset(layout.safeAreaInsets.top)
+  const rightInset = normalizeInset(layout.safeAreaInsets.right)
   const bottomInset = normalizeInset(layout.safeAreaInsets.bottom)
+  const leftInset = normalizeInset(layout.safeAreaInsets.left)
   const keyboardInset = normalizeInset(layout.keyboardInset)
   const drawerBottomInset = Math.max(bottomInset, keyboardVisibleCompact ? keyboardInset : 0)
   const bottomOffset = showBottomNav ? COMPACT_BOTTOM_NAV_BASE_HEIGHT + bottomInset : 0
@@ -34,10 +38,11 @@ export function deriveAdaptiveShellStateBlock(layout: UILayoutState): UIShellLay
     keyboardVisibleCompact,
     showBottomNav,
     topInset,
+    rightInset,
     bottomInset,
+    leftInset,
     drawerBottomInset,
     bottomOffset,
     mainBottomPadding,
   }
 }
-

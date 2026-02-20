@@ -128,5 +128,21 @@ describe('uiNavigationBlock', () => {
       expect(shell.drawerBottomInset).toBe(scenario.expected.drawerBottomInset)
     })
   }
-})
 
+  it('maps horizontal safe-area insets into shell state', () => {
+    const layout = deriveUILayoutStateBlock({
+      viewportWidth: 1024,
+      viewportHeight: 768,
+      isElectron: false,
+      isCapacitorNative: true,
+      platformName: 'ios',
+      safeAreaInsets: { top: 0, right: 20, bottom: 20, left: 24 },
+      keyboardInset: 0,
+    })
+
+    const shell = deriveAdaptiveShellStateBlock(layout)
+
+    expect(shell.leftInset).toBe(24)
+    expect(shell.rightInset).toBe(20)
+  })
+})

@@ -134,6 +134,10 @@
 
   .ltm-app-shell {
     @apply h-dvh min-h-dvh flex flex-col overflow-hidden bg-background;
+    --ltm-safe-top: env(safe-area-inset-top, 0px);
+    --ltm-safe-right: env(safe-area-inset-right, 0px);
+    --ltm-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --ltm-safe-left: env(safe-area-inset-left, 0px);
     --ltm-shell-inset: clamp(0.55rem, 1.15vw, 1rem);
     --ltm-shell-gap: clamp(0.5rem, 0.9vw, 0.85rem);
     --ltm-shell-surface-radius: calc(var(--radius) + 0.45rem);
@@ -323,11 +327,14 @@
   }
 
   .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='tablet'] .ltm-shell-mobile-drawer {
-    top: max(env(safe-area-inset-top, 0px), 10px);
-    bottom: max(env(safe-area-inset-bottom, 0px), 10px);
-    left: max(env(safe-area-inset-left, 0px), 10px);
-    width: min(var(--ltm-theme-drawer-width-tablet, 420px), calc(100vw - 20px));
-    max-width: calc(100vw - 20px);
+    top: max(var(--ltm-safe-top), 10px);
+    bottom: max(var(--ltm-safe-bottom), 10px);
+    left: max(var(--ltm-safe-left), 10px);
+    width: min(
+      var(--ltm-theme-drawer-width-tablet, 420px),
+      calc(100vw - max(var(--ltm-safe-left), 10px) - max(var(--ltm-safe-right), 10px))
+    );
+    max-width: calc(100vw - max(var(--ltm-safe-left), 10px) - max(var(--ltm-safe-right), 10px));
     border-radius: calc(var(--ltm-shell-surface-radius) + 0.2rem);
   }
 
@@ -338,6 +345,29 @@
 
   .ltm-shell-command-surface {
     background: var(--ltm-shell-surface-muted-bg);
+  }
+
+  .ltm-app-shell [data-ltm-shell-region='command-stage'] {
+    padding-left: max(0.75rem, var(--ltm-safe-left));
+    padding-right: max(0.75rem, var(--ltm-safe-right));
+  }
+
+  .ltm-shell-command-card {
+    width: min(100%, calc(100vw - max(0.75rem, var(--ltm-safe-left)) - max(0.75rem, var(--ltm-safe-right))));
+  }
+
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='tablet'] [data-ltm-shell-region='command-stage'] {
+    padding-left: max(1rem, calc(var(--ltm-safe-left) + 0.45rem));
+    padding-right: max(1rem, calc(var(--ltm-safe-right) + 0.45rem));
+    padding-top: max(0.9rem, calc(var(--ltm-safe-top) + 0.45rem)) !important;
+    padding-bottom: max(0.9rem, calc(var(--ltm-safe-bottom) + 0.45rem)) !important;
+  }
+
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] [data-ltm-shell-region='command-stage'] {
+    padding-left: max(0.625rem, calc(var(--ltm-safe-left) + 0.3rem));
+    padding-right: max(0.625rem, calc(var(--ltm-safe-right) + 0.3rem));
+    padding-top: max(0.625rem, calc(var(--ltm-safe-top) + 0.3rem)) !important;
+    padding-bottom: max(0.625rem, calc(var(--ltm-safe-bottom) + 0.3rem)) !important;
   }
 
   .ltm-shell-bottom-surface {

@@ -1,5 +1,5 @@
 import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from 'react'
 import {
   Bot,
   CheckSquare2,
@@ -299,7 +299,9 @@ function App() {
   const hideBottomNavOnIosApp = layout.surface === 'capacitor-ios'
   const showBottomNav = shell.showBottomNav && !hideBottomNavOnIosApp
   const topInset = shell.topInset
+  const rightInset = shell.rightInset
   const bottomInset = shell.bottomInset
+  const leftInset = shell.leftInset
   const drawerBottomInset = shell.drawerBottomInset
   const mainBottomPadding = hideBottomNavOnIosApp
     ? (keyboardVisible ? Math.max(0, Math.round(layout.keyboardInset)) : 0)
@@ -307,6 +309,13 @@ function App() {
   const commandPaletteTopPadding = Math.max(80, topInset + 56)
   const commandPaletteBottomPadding = Math.max(16, bottomInset + 12)
   const compactDrawerTriggerBottom = Math.max(bottomInset + (showBottomNav ? 72 : 16), 16)
+  const compactDrawerTriggerLeft = Math.max(12, leftInset + 12)
+  const shellSafeAreaVars = useMemo<CSSProperties>(() => ({
+    '--ltm-safe-top': `${topInset}px`,
+    '--ltm-safe-right': `${rightInset}px`,
+    '--ltm-safe-bottom': `${bottomInset}px`,
+    '--ltm-safe-left': `${leftInset}px`,
+  }) as CSSProperties, [bottomInset, leftInset, rightInset, topInset])
 
   const openCommandPalette = useCallback(() => {
     setCommandQuery('')
@@ -589,6 +598,7 @@ function App() {
   return (
     <div
       className="ltm-app-shell"
+      style={shellSafeAreaVars}
       data-ltm-mode={layout.mode}
       data-ltm-surface={layout.surface}
       data-ltm-route={location.pathname}
@@ -825,8 +835,8 @@ function App() {
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className="ltm-mobile-drawer-trigger ltm-shell-fab-surface ltm-motion-fast ltm-touch-target fixed left-3 z-30 inline-flex h-12 min-w-[3rem] items-center justify-center rounded-full px-3 text-foreground shadow-lg"
-          style={{ bottom: `${compactDrawerTriggerBottom}px` }}
+          className="ltm-mobile-drawer-trigger ltm-shell-fab-surface ltm-motion-fast ltm-touch-target fixed z-30 inline-flex h-12 min-w-[3rem] items-center justify-center rounded-full px-3 text-foreground shadow-lg"
+          style={{ bottom: `${compactDrawerTriggerBottom}px`, left: `${compactDrawerTriggerLeft}px` }}
           aria-label="Open navigation"
         >
           <Menu className="h-4 w-4" />
@@ -1009,9 +1019,10 @@ function App() {
           />
           <div
             className="fixed inset-0 z-[60] flex items-start justify-center p-3 sm:p-4"
+            data-ltm-shell-region="command-stage"
             style={{ paddingTop: `${commandPaletteTopPadding}px`, paddingBottom: `${commandPaletteBottomPadding}px` }}
           >
-            <div className="ltm-cmd-card ltm-shell-command-surface ltm-shell-motion-modal max-h-full w-full max-w-2xl overflow-hidden rounded-2xl">
+            <div className="ltm-cmd-card ltm-shell-command-card ltm-shell-command-surface ltm-shell-motion-modal max-h-full w-full max-w-2xl overflow-hidden rounded-2xl">
               <div className="ltm-shell-segment-header p-3">
                 <div className="ltm-shell-field-surface flex items-center gap-2 rounded-lg px-2.5">
                   <Search className="h-4 w-4 text-muted-foreground" />
