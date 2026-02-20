@@ -192,7 +192,6 @@ function App() {
   const bottomInset = shell.bottomInset
   const drawerBottomInset = shell.drawerBottomInset
   const mainBottomPadding = shell.mainBottomPadding
-  const iosSurface = layout.surface === 'capacitor-ios'
   const commandPaletteTopPadding = Math.max(80, topInset + 56)
   const commandPaletteBottomPadding = Math.max(16, bottomInset + 12)
 
@@ -389,11 +388,7 @@ function App() {
   return (
     <div className="ltm-app-shell">
       <header
-        className={`sticky top-0 z-50 border-b border-border/70 ${
-          iosSurface
-            ? 'bg-background/70 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/60'
-            : 'bg-background/85 backdrop-blur-xl'
-        }`}
+        className="sticky top-0 z-50 border-b border-border/70 bg-background/85 backdrop-blur-xl"
         style={topInset ? { paddingTop: `${topInset}px` } : undefined}
       >
         <div className="mx-auto w-full px-2 sm:px-3 md:px-4">
@@ -493,9 +488,9 @@ function App() {
 
       <div className="flex min-h-0 flex-1">
         {!compactNav && (
-          <aside className={`hidden shrink-0 border-r border-border/70 transition-[width] duration-200 lg:block ${
-            iosSurface ? 'bg-card/40 backdrop-blur-md' : 'bg-card/30'
-          } ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
+          <aside className={`hidden shrink-0 border-r border-border/70 bg-card/30 transition-[width] duration-200 lg:block ${
+            sidebarCollapsed ? 'w-16' : 'w-64'
+          }`}>
             <div className={`h-[calc(100dvh-3.5rem)] overflow-y-auto py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
               <div className="space-y-1">
                 {!sidebarCollapsed && (
@@ -612,15 +607,11 @@ function App() {
       {compactNav && drawerOpen && (
         <>
           <div
-            className={`fixed inset-0 z-40 ltm-animate-fade-in ${
-              iosSurface ? 'bg-background/55 backdrop-blur-md' : 'bg-background/65 backdrop-blur-sm'
-            }`}
+            className="fixed inset-0 z-40 bg-background/65 backdrop-blur-sm ltm-animate-fade-in"
             onClick={() => setDrawerOpen(false)}
           />
           <aside
-            className={`fixed inset-y-0 left-0 z-50 w-[84vw] max-w-[420px] border-r border-border/70 ltm-animate-slide-in-left ${
-              iosSurface ? 'bg-background/88 backdrop-blur-xl' : 'bg-background'
-            } shadow-2xl`}
+            className="fixed inset-y-0 left-0 z-50 w-[84vw] max-w-[420px] border-r border-border/70 bg-background shadow-2xl ltm-animate-slide-in-left"
             onTouchStart={handleDrawerTouchStart}
             onTouchMove={handleDrawerTouchMove}
             onTouchEnd={handleDrawerTouchEnd}
@@ -717,18 +708,14 @@ function App() {
       {commandPaletteOpen && (
         <>
           <div
-            className={`fixed inset-0 z-50 ltm-animate-fade-in ${
-              iosSurface ? 'bg-background/55 backdrop-blur-md' : 'bg-background/70 backdrop-blur-sm'
-            }`}
+            className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm ltm-animate-fade-in"
             onClick={closeCommandPalette}
           />
           <div
             className="fixed inset-0 z-[60] flex items-start justify-center p-3 sm:p-4"
             style={{ paddingTop: `${commandPaletteTopPadding}px`, paddingBottom: `${commandPaletteBottomPadding}px` }}
           >
-            <div className={`max-h-full w-full max-w-2xl overflow-hidden rounded-2xl border border-border/70 ltm-animate-slide-up shadow-2xl ${
-              iosSurface ? 'bg-background/88 backdrop-blur-xl' : 'bg-background'
-            }`}>
+            <div className="max-h-full w-full max-w-2xl overflow-hidden rounded-2xl border border-border/70 bg-background shadow-2xl ltm-animate-slide-up">
               <div className="border-b border-border/60 p-3">
                 <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-2.5">
                   <Search className="h-4 w-4 text-muted-foreground" />
@@ -788,11 +775,7 @@ function App() {
 
       {showBottomNav && (
         <nav
-          className={`fixed bottom-0 left-0 right-0 z-40 border-t border-border/70 ${
-            iosSurface
-              ? 'bg-background/78 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/68'
-              : 'bg-background/95 backdrop-blur-xl'
-          }`}
+          className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/70 bg-background/95 backdrop-blur-xl"
           style={bottomInset ? { paddingBottom: `${bottomInset}px` } : undefined}
         >
           <div className="grid h-14 grid-cols-5 items-center px-1">

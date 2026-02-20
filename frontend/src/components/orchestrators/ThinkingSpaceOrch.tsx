@@ -26,7 +26,6 @@ export default function ThinkingSpaceOrch() {
   const showInlineSidebar = layout.hasSidebar
   const showCollapsedInlineExplorer = showInlineSidebar && !explorerCollapsed
   const showExplorerTrigger = !showCollapsedInlineExplorer
-  const iosSurface = layout.surface === 'capacitor-ios'
   const topInset = Math.max(0, Math.round(layout.safeAreaInsets.top))
   const bottomInset = Math.max(0, Math.round(layout.safeAreaInsets.bottom))
   const drawerBottomPadding = Math.max(bottomInset, layout.keyboardVisible ? Math.round(layout.keyboardInset) : 0)
@@ -222,15 +221,11 @@ export default function ThinkingSpaceOrch() {
       {!showInlineSidebar && mobileExplorerOpen && (
         <>
           <div
-            className={`fixed inset-0 z-40 ltm-animate-fade-in ${
-              iosSurface ? 'bg-background/55 backdrop-blur-md' : 'bg-background/70 backdrop-blur-sm'
-            }`}
+            className="fixed inset-0 z-40 bg-background/70 backdrop-blur-sm ltm-animate-fade-in"
             onClick={() => setMobileExplorerOpen(false)}
           />
           <aside
-            className={`fixed inset-y-0 left-0 z-50 flex w-[84vw] max-w-[420px] flex-col border-r border-border/70 ltm-animate-slide-in-left shadow-xl ${
-              iosSurface ? 'bg-background/88 backdrop-blur-xl' : 'bg-card'
-            }`}
+            className="fixed inset-y-0 left-0 z-50 flex w-[84vw] max-w-[420px] flex-col border-r border-border/70 bg-card shadow-xl ltm-animate-slide-in-left"
             onTouchStart={handleExplorerDrawerTouchStart}
             onTouchMove={handleExplorerDrawerTouchMove}
             onTouchEnd={handleExplorerDrawerTouchEnd}
