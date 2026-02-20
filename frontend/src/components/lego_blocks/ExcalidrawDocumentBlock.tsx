@@ -18,7 +18,20 @@ import {
 } from '@/services/orchestrators/pencilBridgeOrch'
 import { cn } from '@/lib/utils'
 
+declare global {
+  interface Window {
+    EXCALIDRAW_ASSET_PATH?: string | string[]
+  }
+}
+
+function ensureExcalidrawAssetPath(): void {
+  if (typeof window === 'undefined') return
+  if (window.EXCALIDRAW_ASSET_PATH != null) return
+  window.EXCALIDRAW_ASSET_PATH = import.meta.env.BASE_URL || '/'
+}
+
 const ExcalidrawCanvas = lazy(async () => {
+  ensureExcalidrawAssetPath()
   await import('@excalidraw/excalidraw/index.css')
   const mod = await import('@excalidraw/excalidraw')
   return { default: mod.Excalidraw }
