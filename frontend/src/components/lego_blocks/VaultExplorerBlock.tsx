@@ -26,6 +26,7 @@ interface NodeState extends FolderEntries {
 interface VaultExplorerBlockProps {
   loadEntries: (path: string) => Promise<FolderEntries>
   onOpenFile: (path: string) => void
+  selectedPath?: string | null
   onSelectFile?: (path: string) => void
   onDropNode?: (nodeUuid: string, targetPath: string) => Promise<void>
   draggableFiles?: boolean
@@ -42,6 +43,12 @@ function getFileIcon(name: string) {
   const lower = name.toLowerCase()
   if (lower.endsWith('.md')) return FileText
   return File
+}
+
+function getParentPath(path: string): string {
+  const idx = path.lastIndexOf('/')
+  if (idx < 0) return ''
+  return path.slice(0, idx)
 }
 
 function hasNodeDragType(event: React.DragEvent): boolean {
@@ -62,6 +69,7 @@ function readDroppedNodeId(event: React.DragEvent): string | null {
 export default function VaultExplorerBlock({
   loadEntries,
   onOpenFile,
+  selectedPath = null,
   onSelectFile,
   onDropNode,
   draggableFiles = false,
@@ -71,6 +79,7 @@ export default function VaultExplorerBlock({
 }: VaultExplorerBlockProps) {
   const [nodes, setNodes] = useState<Record<string, NodeState>>({})
   const [expandedPaths, setExpandedPaths] = useState<string[]>([''])
+  const [selectedFolderPath, setSelectedFolderPath] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [dropOverPath, setDropOverPath] = useState<string | null>(null)
@@ -135,6 +144,12 @@ export default function VaultExplorerBlock({
     void loadPath('')
   }, [loadPath])
 
+  useEffect(() => {
+    if (!selectedPath) return
+    setSelectedFilePath(selectedPath)
+    setSelectedFolderPath(getParentPath(selectedPath))
+  }, [selectedPath])
+
   const normalizedQuery = query.trim().toLowerCase()
   const hasTitle = title.trim().length > 0
 
@@ -177,6 +192,8 @@ export default function VaultExplorerBlock({
   const refreshRoot = useCallback(() => {
     setNodes({})
     setExpandedPaths([''])
+    setSelectedFolderPath(null)
+    setSelectedFilePath(null)
     void loadPath('', true)
   }, [loadPath])
 
@@ -202,6 +219,8 @@ export default function VaultExplorerBlock({
         const folderPath = joinPath(path, folderName)
         const expanded = isExpanded(folderPath)
         const folderNode = getNode(folderPath)
+        const inSelectionTrail = selectedFolderPath === folderPath
+          || (selectedFolderPath?.startsWith(`${folderPath}/`) ?? false)
 
         rows.push(
           <button
@@ -232,21 +251,29 @@ export default function VaultExplorerBlock({
               const nodeId = readDroppedNodeId(event)
               if (nodeId) void onDropNode(nodeId, folderPath)
             }) : undefined}
-            onClick={() => toggleFolder(folderPath)}
+            onClick={() => {
+              setSelectedFolderPath(folderPath)
+              toggleFolder(folderPath)
+            }}
             className={cn(
               'group flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/90 transition-colors hover:bg-muted/70',
-              expanded && 'bg-muted/50',
+              inSelectionTrail && 'border border-border/60 bg-muted/85 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_2px_8px_-6px_rgba(0,0,0,0.35)] hover:bg-muted/90',
+              expanded && !inSelectionTrail && 'bg-muted/50',
               onDropNode && dropOverPath === folderPath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
             )}
             style={{ paddingLeft: `${8 + depth * 14}px` }}
           >
             <ChevronRight
-              className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', expanded && 'rotate-90')}
+              className={cn(
+                'h-3.5 w-3.5 text-muted-foreground transition-transform',
+                expanded && 'rotate-90',
+                inSelectionTrail && 'text-foreground/75',
+              )}
             />
             {expanded ? (
-              <FolderOpen className="h-3.5 w-3.5 text-blue-500" />
+              <FolderOpen className={cn('h-3.5 w-3.5 text-blue-500', inSelectionTrail && 'text-foreground/85')} />
             ) : (
-              <Folder className="h-3.5 w-3.5 text-blue-500" />
+              <Folder className={cn('h-3.5 w-3.5 text-blue-500', inSelectionTrail && 'text-foreground/85')} />
             )}
             <span className="truncate">{folderName}</span>
             {folderNode.loading && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-muted-foreground" />}
@@ -320,17 +347,18 @@ export default function VaultExplorerBlock({
             }) : undefined}
             onClick={() => {
               setSelectedFilePath(filePath)
+              setSelectedFolderPath(getParentPath(filePath))
               onSelectFile?.(filePath)
               onOpenFile(filePath)
             }}
             className={cn(
               'group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/80 transition-colors hover:bg-muted/70',
-              selectedFilePath === filePath && 'bg-accent text-accent-foreground',
+              selectedFilePath === filePath && 'border border-[#c73773]/95 bg-[#c73773] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_2px_8px_-6px_rgba(0,0,0,0.45)] hover:bg-[#c73773]',
               onDropNode && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
             )}
             style={{ paddingLeft: `${26 + depth * 14}px` }}
           >
-            <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <Icon className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground', selectedFilePath === filePath && 'text-white')} />
             <span className="truncate">{fileName}</span>
           </button>,
         )
@@ -338,7 +366,7 @@ export default function VaultExplorerBlock({
 
       return rows
     },
-    [dropOverPath, getNode, isExpanded, normalizedQuery, onDropNode, onOpenFile, onSelectFile, pathMatchesQuery, selectedFilePath, toggleFolder],
+    [dropOverPath, getNode, isExpanded, normalizedQuery, onDropNode, onOpenFile, onSelectFile, pathMatchesQuery, selectedFilePath, selectedFolderPath, toggleFolder],
   )
 
   const rootNode = getNode('')

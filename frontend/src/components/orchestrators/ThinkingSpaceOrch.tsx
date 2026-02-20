@@ -53,10 +53,6 @@ export default function ThinkingSpaceOrch() {
     setSearchParams(next)
   }, [searchParams, setSearchParams])
 
-  const handleInlineFileOpen = useCallback((path: string) => {
-    setInlinePathAndSyncUrl(path)
-  }, [setInlinePathAndSyncUrl])
-
   const handleInlineDocumentClose = useCallback(() => {
     setInlinePathAndSyncUrl(null)
   }, [setInlinePathAndSyncUrl])
@@ -155,7 +151,8 @@ export default function ThinkingSpaceOrch() {
       <div className="min-h-0 flex-1">
         <VaultExplorerBlock
           loadEntries={listFolderEntries}
-          onOpenFile={handleInlineFileOpen}
+          selectedPath={inlinePath}
+          onOpenFile={setInlinePathAndSyncUrl}
           title=""
         />
       </div>
@@ -166,7 +163,7 @@ export default function ThinkingSpaceOrch() {
         />
       </div>
     </>
-  ), [handleInlineFileOpen, inlinePath])
+  ), [inlinePath, setInlinePathAndSyncUrl])
 
   const inlineDocumentContent = useMemo(() => {
     if (!inlinePath) return null
@@ -182,7 +179,10 @@ export default function ThinkingSpaceOrch() {
   }, [handleInlineDocumentClose, inlinePath])
 
   return (
-    <div className="ltm-thinking-space-shell flex h-full min-h-0 flex-col overflow-hidden">
+    <div
+      className="ltm-thinking-space-shell flex h-full min-h-0 flex-col overflow-hidden"
+      data-ltm-explorer-open={showCollapsedInlineExplorer ? 'true' : 'false'}
+    >
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {showInlineSidebar && (
           <aside
@@ -207,7 +207,9 @@ export default function ThinkingSpaceOrch() {
           <Button
             variant="outline"
             size="sm"
-            className={`ltm-shell-action ltm-motion-fast ltm-touch-target absolute left-3 top-3 z-20 h-8 ${showExplorerTrigger ? 'inline-flex' : 'hidden'}`}
+            className={`ltm-shell-action ltm-motion-fast ltm-touch-target absolute left-3 top-3 z-20 h-11 w-11 p-0 ${showExplorerTrigger ? 'inline-flex' : 'hidden'}`}
+            title="Open explorer"
+            aria-label="Open explorer"
             onClick={() => {
               if (showInlineSidebar) {
                 setExplorerCollapsed(false)
@@ -216,8 +218,7 @@ export default function ThinkingSpaceOrch() {
               setMobileExplorerOpen(true)
             }}
           >
-            <PanelLeft className="mr-2 h-4 w-4" />
-            Explorer
+            <PanelLeft className="h-4 w-4" />
           </Button>
           {inlineDocumentContent ? (
             <div className={cn('h-full min-h-0', showExplorerTrigger && '[&_.ts-md-header]:pl-32')}>
@@ -275,6 +276,7 @@ export default function ThinkingSpaceOrch() {
             <div className="min-h-0 flex-1">
               <VaultExplorerBlock
                 loadEntries={listFolderEntries}
+                selectedPath={inlinePath}
                 onOpenFile={handleDrawerFileOpen}
                 title=""
               />
