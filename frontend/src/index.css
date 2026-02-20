@@ -52,6 +52,7 @@
   #root {
     min-height: 100%;
     height: 100%;
+    overflow: hidden;
   }
   body {
     @apply bg-background text-foreground;
@@ -137,6 +138,7 @@
 
   .ltm-app-main {
     @apply flex-1 min-h-0 overflow-y-auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .ltm-page {
@@ -175,6 +177,7 @@
   .ltm-nav-scroll {
     scrollbar-width: none;
     -ms-overflow-style: none;
+    overscroll-behavior: contain;
   }
 
   .ltm-nav-scroll::-webkit-scrollbar {
