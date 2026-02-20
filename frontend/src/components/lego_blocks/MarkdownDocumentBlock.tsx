@@ -89,6 +89,7 @@ export default function MarkdownDocumentBlock({
   const excalidrawSceneRef = useRef<ParsedExcalidrawScene | null>(null)
   const ignoreInitialExcalidrawChangeRef = useRef(true)
   const [hasExcalidrawChanges, setHasExcalidrawChanges] = useState(false)
+  const [excalidrawImmersive, setExcalidrawImmersive] = useState(false)
 
   const loadDocument = useCallback(async () => {
     setLoading(true)
@@ -99,6 +100,7 @@ export default function MarkdownDocumentBlock({
     setRelatedError(null)
     setRelatedLoading(false)
     setHasExcalidrawChanges(false)
+    setExcalidrawImmersive(false)
     excalidrawSceneRef.current = null
     ignoreInitialExcalidrawChangeRef.current = true
     clearAssistState()
@@ -126,6 +128,15 @@ export default function MarkdownDocumentBlock({
     void loadDocument()
   }, [initialMode, loadDocument, path])
 
+  useEffect(() => {
+    if (!excalidrawImmersive) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExcalidrawImmersive(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [excalidrawImmersive])
+
   const meta = content !== null
     ? {
       lines: content.split('\n').length,
@@ -142,6 +153,7 @@ export default function MarkdownDocumentBlock({
   const isEditing = mode === 'edit'
   const hasTextChanges = isEditing && content !== null && draft !== content
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
+  const splitPreviewOnWide = isEditing && !isExcalidrawDoc && showPreview
 
   useEffect(() => {
     if (!isEditing || isExcalidrawDoc || loading || error || content === null) {
@@ -206,6 +218,7 @@ export default function MarkdownDocumentBlock({
     setSaveError(null)
     setConflict(null)
     setHasExcalidrawChanges(false)
+    setExcalidrawImmersive(isExcalidrawDoc)
     excalidrawSceneRef.current = null
     ignoreInitialExcalidrawChangeRef.current = true
     clearAssistState()
@@ -218,6 +231,7 @@ export default function MarkdownDocumentBlock({
     setConflict(null)
     setShowPreview(false)
     setHasExcalidrawChanges(false)
+    setExcalidrawImmersive(false)
     excalidrawSceneRef.current = null
     ignoreInitialExcalidrawChangeRef.current = true
     clearAssistState()
@@ -232,6 +246,7 @@ export default function MarkdownDocumentBlock({
     setSaveError(null)
     setConflict(null)
     setHasExcalidrawChanges(false)
+    setExcalidrawImmersive(false)
     excalidrawSceneRef.current = null
     ignoreInitialExcalidrawChangeRef.current = true
   }
@@ -268,6 +283,7 @@ export default function MarkdownDocumentBlock({
       setMode('view')
       setShowPreview(false)
       setHasExcalidrawChanges(false)
+      setExcalidrawImmersive(false)
       excalidrawSceneRef.current = null
       ignoreInitialExcalidrawChangeRef.current = true
       clearAssistState()
@@ -386,8 +402,15 @@ export default function MarkdownDocumentBlock({
 
         {!loading && !error && content !== null && isEditing && isExcalidrawDoc && (
           <div className="space-y-4">
-            <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              Full Excalidraw tool surface is enabled in edit mode, including highlighter workflows and keyboard shortcuts.
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              <span>Full Excalidraw tool surface is enabled in edit mode.</span>
+              <button
+                type="button"
+                onClick={() => setExcalidrawImmersive(true)}
+                className="rounded-md border border-border/70 px-2 py-1 text-xs text-foreground hover:bg-muted"
+              >
+                Focus Canvas
+              </button>
             </div>
             <ExcalidrawDocumentBlock
               content={draft}
@@ -409,6 +432,48 @@ export default function MarkdownDocumentBlock({
                 Load latest file version
               </button>
             )}
+          </div>
+        )}
+
+        {!loading && !error && content !== null && isEditing && isExcalidrawDoc && excalidrawImmersive && (
+          <div className="fixed inset-0 z-[70] flex flex-col bg-background">
+            <div className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-3">
+              <span className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Excalidraw Focus Mode
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={cancelEditing}
+                  className="rounded-md border border-border/70 px-2.5 py-1 text-xs text-foreground hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={!hasChanges || saving || baseMtime === null || !baseHash}
+                  className="rounded-md bg-primary px-2.5 py-1 text-xs text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExcalidrawImmersive(false)}
+                  className="rounded-md border border-border/70 px-2.5 py-1 text-xs text-foreground hover:bg-muted"
+                >
+                  Exit Focus
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1">
+              <ExcalidrawDocumentBlock
+                content={draft}
+                editable
+                onSceneChange={handleExcalidrawSceneChange}
+                className="h-full"
+              />
+            </div>
           </div>
         )}
 
@@ -444,25 +509,33 @@ export default function MarkdownDocumentBlock({
                 </div>
               )}
 
-              <textarea
-                value={draft}
-                onChange={(e) => {
-                  setDraft(e.target.value)
-                  if (assistSuggestion || assistError) clearAssistState()
-                }}
-                className="min-h-[52vh] w-full resize-y rounded-lg border border-input bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              />
+              <div className={cn('grid gap-4', splitPreviewOnWide ? 'xl:grid-cols-2' : 'grid-cols-1')}>
+                <textarea
+                  value={draft}
+                  onChange={(e) => {
+                    setDraft(e.target.value)
+                    if (assistSuggestion || assistError) clearAssistState()
+                  }}
+                  className={cn(
+                    'w-full resize-y rounded-lg border border-input bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+                    splitPreviewOnWide ? 'min-h-[62vh]' : 'min-h-[52vh]',
+                  )}
+                />
 
-              {showPreview && !isExcalidrawDoc && (
-                <div className="rounded-lg border border-border/50 bg-muted/20 p-4">
-                  <div className="mb-3 text-xs font-medium text-muted-foreground">Preview</div>
-                  <div className="prose">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {stripFrontmatter(draft)}
-                    </ReactMarkdown>
+                {showPreview && !isExcalidrawDoc && (
+                  <div className={cn(
+                    'rounded-lg border border-border/50 bg-muted/20 p-4',
+                    splitPreviewOnWide && 'min-h-[62vh] overflow-y-auto',
+                  )}>
+                    <div className="mb-3 text-xs font-medium text-muted-foreground">Preview</div>
+                    <div className="prose">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {stripFrontmatter(draft)}
+                      </ReactMarkdown>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {saveError && (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -521,7 +594,7 @@ export default function MarkdownDocumentBlock({
         )}
       </div>
 
-      {isEditing && (
+      {isEditing && !excalidrawImmersive && (
         <div className="flex items-center justify-between gap-2 border-t border-border/50 px-5 py-3">
           <div className="text-xs text-muted-foreground">
             {hasChanges ? 'Unsaved changes' : 'No changes'}

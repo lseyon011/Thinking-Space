@@ -9,6 +9,7 @@ export const STORAGE_KEYS = {
   thinkingOrganizerSelectedProjectRoot: 'ltm-thinking-organizer-selected-project-root',
   thinkingOrganizerProjects: 'ltm-thinking-organizer-projects',
   thinkingOrganizerProjectCreateDestination: 'ltm-thinking-organizer-project-create-destination',
+  appShellSidebarCollapsed: 'ltm-app-shell-sidebar-collapsed',
   capabilityFeatureFlags: 'ltm-capability-feature-flags',
   stewardProposalQueue: 'ltm-steward-proposal-queue',
   aiTelemetryEvents: 'ltm-ai-telemetry-events',

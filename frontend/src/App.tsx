@@ -1,5 +1,5 @@
-import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom'
-import { useEffect, useMemo, useState, type ComponentType } from 'react'
+import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import {
   Bot,
   CheckSquare2,
@@ -8,7 +8,10 @@ import {
   GitBranch,
   Menu,
   MessageSquare,
+  PanelLeft,
+  PanelLeftClose,
   PlusSquare,
+  Search,
   Sparkles,
   Wrench,
   X,
@@ -33,7 +36,12 @@ import { useUILayoutBlock } from './components/lego_blocks/UILayoutBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { smartSync } from './services/orchestrators/vaultSyncOrch'
-import { getStoredVaultRoot } from './services/orchestrators/storageOrch'
+import {
+  STORAGE_KEYS,
+  getStoredVaultRoot,
+  getStorageItem,
+  setStorageItem,
+} from './services/orchestrators/storageOrch'
 import { getCapabilityFeatureFlags } from './services/orchestrators/capabilityFeatureFlagsOrch'
 import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from './services/lego_blocks/fsBlock'
 
@@ -44,6 +52,14 @@ interface NavItem {
   label: string
   icon: NavIcon
   activePaths?: string[]
+}
+
+interface CommandItem {
+  to: string
+  label: string
+  group: 'Core' | 'Workspace' | 'Excalidraw++'
+  activePaths?: string[]
+  keywords?: string
 }
 
 const PRIMARY_NAV_ITEMS: NavItem[] = [
@@ -83,12 +99,19 @@ function isNavItemActive(pathname: string, item: NavItem): boolean {
 
 function App() {
   const location = useLocation()
+  const navigate = useNavigate()
   const { layout } = useUILayoutBlock()
 
   const featureFlags = getCapabilityFeatureFlags()
   const extensionBuilderEnabled = featureFlags.extension_host_enabled && featureFlags.extension_builder_enabled
 
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => getStorageItem(STORAGE_KEYS.appShellSidebarCollapsed) === '1',
+  )
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [commandQuery, setCommandQuery] = useState('')
+  const commandInputRef = useRef<HTMLInputElement | null>(null)
   const [needsVaultSetup, setNeedsVaultSetup] = useState(() => {
     const stored = getStoredVaultRoot()
     if (!stored) return true
@@ -113,6 +136,29 @@ function App() {
     [utilityNavItems],
   )
 
+  const commandItems = useMemo<CommandItem[]>(() => ([
+    { to: '/', label: 'Home', group: 'Core', keywords: 'dashboard start' },
+    ...PRIMARY_NAV_ITEMS.map(item => ({
+      to: item.to,
+      label: item.label,
+      group: 'Core' as const,
+      activePaths: item.activePaths,
+      keywords: (item.activePaths ?? []).join(' '),
+    })),
+    ...utilityNavItems.map(item => ({
+      to: item.to,
+      label: item.label,
+      group: 'Workspace' as const,
+      activePaths: item.activePaths,
+    })),
+    ...TOOL_NAV_ITEMS.map(item => ({
+      to: item.to,
+      label: item.label,
+      group: 'Excalidraw++' as const,
+      activePaths: item.activePaths,
+    })),
+  ]), [utilityNavItems])
+
   const bottomNavItems = useMemo(
     () => PRIMARY_NAV_ITEMS.filter(item => BOTTOM_NAV_PATHS.has(item.to)),
     [],
@@ -123,6 +169,14 @@ function App() {
     [allNavItems, location.pathname],
   )
 
+  const filteredCommandItems = useMemo(() => {
+    const query = commandQuery.trim().toLowerCase()
+    if (!query) return commandItems
+    return commandItems.filter(item => (
+      `${item.label} ${item.to} ${item.group} ${item.keywords ?? ''}`.toLowerCase().includes(query)
+    ))
+  }, [commandItems, commandQuery])
+
   const shell = useMemo(() => deriveAdaptiveShellStateOrch(layout), [layout])
   const compactNav = shell.compactNav
   const keyboardVisible = shell.keyboardVisibleCompact
@@ -131,6 +185,21 @@ function App() {
   const bottomInset = shell.bottomInset
   const drawerBottomInset = shell.drawerBottomInset
   const mainBottomPadding = shell.mainBottomPadding
+
+  const openCommandPalette = useCallback(() => {
+    setCommandQuery('')
+    setCommandPaletteOpen(true)
+  }, [])
+
+  const closeCommandPalette = useCallback(() => {
+    setCommandPaletteOpen(false)
+  }, [])
+
+  const runCommandItem = useCallback((item: CommandItem) => {
+    setCommandPaletteOpen(false)
+    setCommandQuery('')
+    navigate(item.to)
+  }, [navigate])
 
   // On mount, restore security-scoped bookmark for picker-selected Capacitor vaults
   useEffect(() => {
@@ -171,6 +240,7 @@ function App() {
 
   useEffect(() => {
     setDrawerOpen(false)
+    setCommandPaletteOpen(false)
   }, [location.pathname])
 
   useEffect(() => {
@@ -184,6 +254,43 @@ function App() {
       setDrawerOpen(false)
     }
   }, [keyboardVisible])
+
+  useEffect(() => {
+    setStorageItem(STORAGE_KEYS.appShellSidebarCollapsed, sidebarCollapsed ? '1' : '0')
+  }, [sidebarCollapsed])
+
+  useEffect(() => {
+    if (!commandPaletteOpen) return
+    setDrawerOpen(false)
+    const handle = window.setTimeout(() => {
+      commandInputRef.current?.focus()
+      commandInputRef.current?.select()
+    }, 0)
+    return () => window.clearTimeout(handle)
+  }, [commandPaletteOpen])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const withMeta = event.metaKey || event.ctrlKey
+      if (withMeta && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setCommandQuery('')
+        setCommandPaletteOpen(true)
+        return
+      }
+      if (withMeta && event.code === 'Backslash' && !compactNav) {
+        event.preventDefault()
+        setSidebarCollapsed(prev => !prev)
+        return
+      }
+      if (event.key === 'Escape') {
+        setCommandPaletteOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [compactNav])
 
   useEffect(() => {
     if (needsVaultSetup) return
@@ -224,46 +331,79 @@ function App() {
                 <div className="min-w-0 flex-1 truncate px-1 text-sm font-semibold tracking-tight">
                   {currentRouteLabel}
                 </div>
-                <Link
-                  to="/"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background"
-                  aria-label="Home"
-                >
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-foreground text-background">
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 16 16"
-                      fill="currentColor"
-                      xmlns="http://www.w3.org/2000/svg"
-                      aria-hidden="true"
-                    >
-                      <path d="M9.167 4.5a1.167 1.167 0 1 1-2.334 0 1.167 1.167 0 0 1 2.334 0" />
-                      <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0M1 8a7 7 0 0 1 7-7 3.5 3.5 0 1 1 0 7 3.5 3.5 0 1 0 0 7 7 7 0 0 1-7-7m7 4.667a1.167 1.167 0 1 1 0-2.334 1.167 1.167 0 0 1 0 2.334" />
-                    </svg>
-                  </span>
-                </Link>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={openCommandPalette}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-foreground"
+                    aria-label="Open quick search"
+                  >
+                    <Search className="h-4 w-4" />
+                  </button>
+                  <Link
+                    to="/"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background"
+                    aria-label="Home"
+                  >
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-foreground text-background">
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true"
+                      >
+                        <path d="M9.167 4.5a1.167 1.167 0 1 1-2.334 0 1.167 1.167 0 0 1 2.334 0" />
+                        <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0M1 8a7 7 0 0 1 7-7 3.5 3.5 0 1 1 0 7 3.5 3.5 0 1 0 0 7 7 7 0 0 1-7-7m7 4.667a1.167 1.167 0 1 1 0-2.334 1.167 1.167 0 0 1 0 2.334" />
+                      </svg>
+                    </span>
+                  </Link>
+                </div>
               </>
             ) : (
               <>
-                <Link to="/" className="flex shrink-0 items-center gap-2 text-sm font-semibold tracking-tight">
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-background">
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 16 16"
-                      fill="currentColor"
-                      xmlns="http://www.w3.org/2000/svg"
-                      aria-hidden="true"
-                    >
-                      <path d="M9.167 4.5a1.167 1.167 0 1 1-2.334 0 1.167 1.167 0 0 1 2.334 0" />
-                      <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0M1 8a7 7 0 0 1 7-7 3.5 3.5 0 1 1 0 7 3.5 3.5 0 1 0 0 7 7 7 0 0 1-7-7m7 4.667a1.167 1.167 0 1 1 0-2.334 1.167 1.167 0 0 1 0 2.334" />
-                    </svg>
-                  </span>
-                  LTM Pilot
-                </Link>
-                <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                  {layout.mode} · {layout.orientation}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSidebarCollapsed(prev => !prev)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-foreground"
+                    title={sidebarCollapsed ? 'Expand sidebar (Cmd/Ctrl+\\)' : 'Collapse sidebar (Cmd/Ctrl+\\)'}
+                    aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                  >
+                    {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                  </button>
+                  <Link to="/" className="flex shrink-0 items-center gap-2 text-sm font-semibold tracking-tight">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-background">
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true"
+                      >
+                        <path d="M9.167 4.5a1.167 1.167 0 1 1-2.334 0 1.167 1.167 0 0 1 2.334 0" />
+                        <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0M1 8a7 7 0 0 1 7-7 3.5 3.5 0 1 1 0 7 3.5 3.5 0 1 0 0 7 7 7 0 0 1-7-7m7 4.667a1.167 1.167 0 1 1 0-2.334 1.167 1.167 0 0 1 0 2.334" />
+                      </svg>
+                    </span>
+                    LTM Pilot
+                  </Link>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={openCommandPalette}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-border/60 bg-background px-3 text-sm text-muted-foreground hover:text-foreground"
+                    aria-label="Open quick search"
+                  >
+                    <Search className="h-4 w-4" />
+                    <span className="hidden lg:inline">Search</span>
+                    <span className="rounded border border-border/60 px-1.5 py-0.5 text-[10px] leading-none">⌘K</span>
+                  </button>
+                  <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                    {layout.mode} · {layout.orientation}
+                  </div>
                 </div>
               </>
             )}
@@ -273,12 +413,14 @@ function App() {
 
       <div className="flex min-h-0 flex-1">
         {!compactNav && (
-          <aside className="hidden w-64 shrink-0 border-r border-border/70 bg-card/30 lg:block">
-            <div className="h-[calc(100dvh-3.5rem)] overflow-y-auto px-3 py-3">
+          <aside className={`hidden shrink-0 border-r border-border/70 bg-card/30 transition-[width] duration-200 lg:block ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
+            <div className={`h-[calc(100dvh-3.5rem)] overflow-y-auto py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
               <div className="space-y-1">
-                <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Core
-                </div>
+                {!sidebarCollapsed && (
+                  <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Core
+                  </div>
+                )}
                 {PRIMARY_NAV_ITEMS.map((item) => {
                   const Icon = item.icon
                   const active = isNavItemActive(location.pathname, item)
@@ -286,21 +428,26 @@ function App() {
                     <Link
                       key={item.to}
                       to={item.to}
-                      className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                      title={sidebarCollapsed ? item.label : undefined}
+                      className={`flex items-center rounded-lg py-2 text-sm transition-colors ${
+                        sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                      } ${
                         active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                       }`}
                     >
                       <Icon className="h-4 w-4" />
-                      <span className="truncate">{item.label}</span>
+                      {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
                     </Link>
                   )
                 })}
               </div>
 
               <div className="mt-5 space-y-1">
-                <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Workspace
-                </div>
+                {!sidebarCollapsed && (
+                  <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Workspace
+                  </div>
+                )}
                 {utilityNavItems.map((item) => {
                   const Icon = item.icon
                   const active = isNavItemActive(location.pathname, item)
@@ -308,33 +455,42 @@ function App() {
                     <Link
                       key={item.to}
                       to={item.to}
-                      className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                      title={sidebarCollapsed ? item.label : undefined}
+                      className={`flex items-center rounded-lg py-2 text-sm transition-colors ${
+                        sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                      } ${
                         active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                       }`}
                     >
                       <Icon className="h-4 w-4" />
-                      <span className="truncate">{item.label}</span>
+                      {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
                     </Link>
                   )
                 })}
               </div>
 
               <div className="mt-5 space-y-1">
-                <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Excalidraw++
-                </div>
+                {!sidebarCollapsed && (
+                  <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Excalidraw++
+                  </div>
+                )}
                 {TOOL_NAV_ITEMS.map((item) => {
+                  const Icon = item.icon
                   const active = isNavItemActive(location.pathname, item)
                   return (
                     <Link
                       key={item.to}
                       to={item.to}
-                      className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                      title={sidebarCollapsed ? item.label : undefined}
+                      className={`flex items-center rounded-lg py-2 text-sm transition-colors ${
+                        sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                      } ${
                         active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                       }`}
                     >
-                      <Sparkles className="h-4 w-4" />
-                      <span className="truncate">{item.label}</span>
+                      <Icon className="h-4 w-4" />
+                      {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
                     </Link>
                   )
                 })}
@@ -463,6 +619,71 @@ function App() {
               </div>
             </div>
           </aside>
+        </>
+      )}
+
+      {commandPaletteOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm"
+            onClick={closeCommandPalette}
+          />
+          <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-20 sm:pt-24">
+            <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border/70 bg-background shadow-2xl">
+              <div className="border-b border-border/60 p-3">
+                <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-2.5">
+                  <Search className="h-4 w-4 text-muted-foreground" />
+                  <input
+                    ref={commandInputRef}
+                    value={commandQuery}
+                    onChange={(event) => setCommandQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && filteredCommandItems.length > 0) {
+                        event.preventDefault()
+                        runCommandItem(filteredCommandItems[0])
+                      }
+                    }}
+                    placeholder="Jump to a page..."
+                    className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  />
+                </div>
+              </div>
+              <div className="max-h-[58vh] overflow-y-auto p-2">
+                {filteredCommandItems.length === 0 ? (
+                  <div className="rounded-lg px-3 py-4 text-sm text-muted-foreground">
+                    No matches. Try another keyword.
+                  </div>
+                ) : (
+                  filteredCommandItems.map(item => {
+                    const active = isNavItemActive(location.pathname, {
+                      to: item.to,
+                      label: item.label,
+                      icon: Sparkles,
+                      activePaths: item.activePaths,
+                    })
+                    return (
+                      <button
+                        key={`${item.group}:${item.to}`}
+                        type="button"
+                        onClick={() => runCommandItem(item)}
+                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                          active ? 'bg-foreground text-background' : 'hover:bg-muted'
+                        }`}
+                      >
+                        <span className="truncate">{item.label}</span>
+                        <span className={`ml-2 text-[10px] uppercase tracking-[0.14em] ${active ? 'text-background/80' : 'text-muted-foreground'}`}>
+                          {item.group}
+                        </span>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+              <div className="border-t border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
+                Enter to open first result · Esc to close · Cmd/Ctrl+K to reopen
+              </div>
+            </div>
+          </div>
         </>
       )}
 
