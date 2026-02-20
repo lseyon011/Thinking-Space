@@ -30,8 +30,6 @@ interface MarkdownDocumentBlockProps {
   onOpenPathForEdit?: (path: string) => void
   onClose?: () => void
   showCloseButton?: boolean
-  hideHeaderChrome?: boolean
-  showMiniNav?: boolean
   className?: string
 }
 
@@ -90,8 +88,6 @@ function MarkdownDocumentBlock({
   onOpenPathForEdit,
   onClose,
   showCloseButton = false,
-  hideHeaderChrome = false,
-  showMiniNav = true,
   className,
 }: MarkdownDocumentBlockProps) {
   const [mode, setMode] = useState<MarkdownViewerMode>(initialMode)
@@ -197,12 +193,6 @@ function MarkdownDocumentBlock({
   }, [chromeCollapsed])
 
   useEffect(() => {
-    if (hideHeaderChrome) {
-      chromeCollapsedRef.current = false
-      setChromeCollapsed(false)
-      return
-    }
-
     const scroller = contentScrollRef.current
     if (!scroller) return
 
@@ -242,14 +232,9 @@ function MarkdownDocumentBlock({
 
     scroller.addEventListener('scroll', onScroll, { passive: true })
     return () => scroller.removeEventListener('scroll', onScroll)
-  }, [content, hideHeaderChrome, mode, path])
+  }, [content, mode, path])
 
   useLayoutEffect(() => {
-    if (hideHeaderChrome) {
-      setChromeMaxHeight(0)
-      return
-    }
-
     const chromeEl = chromeContentRef.current
     if (!chromeEl) return
 
@@ -264,7 +249,7 @@ function MarkdownDocumentBlock({
     const observer = new ResizeObserver(() => updateHeight())
     observer.observe(chromeEl)
     return () => observer.disconnect()
-  }, [hideHeaderChrome, mode, path, showMeta])
+  }, [mode, path, showMeta])
 
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
@@ -584,138 +569,132 @@ function MarkdownDocumentBlock({
 
   return (
     <div
-      className={cn(
-        'ltm-markdown-document-block flex h-full min-h-0 flex-col bg-card',
-        hideHeaderChrome && 'ltm-markdown-document-block-compact',
-        className,
-      )}
+      className={cn('flex h-full min-h-0 flex-col bg-card', className)}
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
-      {!hideHeaderChrome && (
-        <div
-          className="overflow-hidden"
-          style={{
-            maxHeight: chromeCollapsed ? 0 : (chromeMaxHeight > 0 ? chromeMaxHeight : undefined),
-            opacity: chromeCollapsed ? 0 : 1,
-            transform: `translateY(${chromeCollapsed ? -8 : 0}px)`,
-            transition: 'max-height 300ms cubic-bezier(0.22,1,0.36,1), opacity 220ms ease, transform 300ms cubic-bezier(0.22,1,0.36,1)',
-            willChange: 'max-height, opacity, transform',
-            pointerEvents: chromeCollapsed ? 'none' : 'auto',
-          }}
-        >
-          <div ref={chromeContentRef} className="min-h-0 overflow-hidden">
-            <div className="ts-md-header flex items-start justify-between gap-3 border-b border-border/50 px-5 py-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="truncate font-medium">{filename}</span>
-                </div>
-                {breadcrumb && (
-                  <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>
-                )}
+      <div
+        className="overflow-hidden"
+        style={{
+          maxHeight: chromeCollapsed ? 0 : (chromeMaxHeight > 0 ? chromeMaxHeight : undefined),
+          opacity: chromeCollapsed ? 0 : 1,
+          transform: `translateY(${chromeCollapsed ? -8 : 0}px)`,
+          transition: 'max-height 300ms cubic-bezier(0.22,1,0.36,1), opacity 220ms ease, transform 300ms cubic-bezier(0.22,1,0.36,1)',
+          willChange: 'max-height, opacity, transform',
+          pointerEvents: chromeCollapsed ? 'none' : 'auto',
+        }}
+      >
+        <div ref={chromeContentRef} className="min-h-0 overflow-hidden">
+          <div className="ts-md-header flex items-start justify-between gap-3 border-b border-border/50 px-5 py-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="truncate font-medium">{filename}</span>
               </div>
-
-              <div className="flex shrink-0 items-center gap-1">
-                <button
-                  onClick={() => setShowMeta(v => !v)}
-                  className={`rounded-lg p-1.5 transition-colors ${showMeta ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                  title="File metadata"
-                >
-                  <Info className="h-4 w-4" />
-                </button>
-
-                {!isEditing && (
-                  <button
-                    onClick={startEditing}
-                    disabled={loading || !!error}
-                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Edit file"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                )}
-
-                {isEditing && !isExcalidrawDoc && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setAutoSaveEnabled(v => !v)}
-                      className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                      title="Toggle auto save"
-                    >
-                      {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowAssistPanel(v => !v)}
-                      className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showAssistPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                      title="Toggle AI assist"
-                    >
-                      AI Assist
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowRelatedPanel(v => !v)}
-                      className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showRelatedPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                      title="Toggle related thoughts"
-                    >
-                      Related Thoughts
-                    </button>
-                    <button
-                      type="button"
-                      onClick={cancelEditing}
-                      className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { void handleSave() }}
-                      disabled={!hasChanges || saving || baseMtime === null}
-                      className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Save className="h-3.5 w-3.5" />
-                      {saving ? 'Saving...' : 'Save'}
-                    </button>
-                  </>
-                )}
-
-                <a
-                  href={obsidianUrl}
-                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  title="Open in Obsidian"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                </a>
-
-                {showCloseButton && onClose && (
-                  <button
-                    onClick={onClose}
-                    className="rounded-lg p-1.5 transition-colors hover:bg-muted"
-                    title="Close"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
+              {breadcrumb && (
+                <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>
+              )}
             </div>
 
-            {showMeta && meta && (
-              <div className="flex items-center gap-4 border-b border-border/30 bg-muted/30 px-5 py-2 text-xs text-muted-foreground">
-                <span><strong className="text-foreground/70">{meta.lines ?? '…'}</strong> lines</span>
-                <span><strong className="text-foreground/70">{meta.words ?? '…'}</strong> words</span>
-                <span><strong className="text-foreground/70">{meta.headings ?? '…'}</strong> headings</span>
-                <span>{meta.size}</span>
-              </div>
-            )}
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                onClick={() => setShowMeta(v => !v)}
+                className={`rounded-lg p-1.5 transition-colors ${showMeta ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                title="File metadata"
+              >
+                <Info className="h-4 w-4" />
+              </button>
+
+              {!isEditing && (
+                <button
+                  onClick={startEditing}
+                  disabled={loading || !!error}
+                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Edit file"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+              )}
+
+              {isEditing && !isExcalidrawDoc && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setAutoSaveEnabled(v => !v)}
+                    className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                    title="Toggle auto save"
+                  >
+                    {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAssistPanel(v => !v)}
+                    className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showAssistPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                    title="Toggle AI assist"
+                  >
+                    AI Assist
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowRelatedPanel(v => !v)}
+                    className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showRelatedPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                    title="Toggle related thoughts"
+                  >
+                    Related Thoughts
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelEditing}
+                    className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void handleSave() }}
+                    disabled={!hasChanges || saving || baseMtime === null}
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </>
+              )}
+
+              <a
+                href={obsidianUrl}
+                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title="Open in Obsidian"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </a>
+
+              {showCloseButton && onClose && (
+                <button
+                  onClick={onClose}
+                  className="rounded-lg p-1.5 transition-colors hover:bg-muted"
+                  title="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
+
+          {showMeta && meta && (
+            <div className="flex items-center gap-4 border-b border-border/30 bg-muted/30 px-5 py-2 text-xs text-muted-foreground">
+              <span><strong className="text-foreground/70">{meta.lines ?? '…'}</strong> lines</span>
+              <span><strong className="text-foreground/70">{meta.words ?? '…'}</strong> words</span>
+              <span><strong className="text-foreground/70">{meta.headings ?? '…'}</strong> headings</span>
+              <span>{meta.size}</span>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       <div className="relative min-h-0 flex-1">
         <div
           ref={contentScrollRef}
-          className="ltm-markdown-document-scroll relative h-full min-h-0 overflow-y-auto p-0"
+          className="relative h-full min-h-0 overflow-y-auto p-0"
         >
           {loading && (
             <div className={cn('space-y-3', shouldPadViewerContent && 'px-6 py-5')}>
@@ -734,7 +713,7 @@ function MarkdownDocumentBlock({
           )}
 
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && (
-            <div className="ltm-markdown-document-reading space-y-2 px-6 py-5">
+            <div className="space-y-2 px-6 py-5">
               {pendingFullRender && (
                 <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                   Rendering full document...
@@ -927,7 +906,7 @@ function MarkdownDocumentBlock({
 
         </div>
 
-        {!loading && !error && content !== null && !isExcalidrawDoc && !pendingFullRender && showMiniNav && (
+        {!loading && !error && content !== null && !isExcalidrawDoc && !pendingFullRender && (
           <MarkdownMiniNavBlock
             content={isEditing ? displayDraft : viewMarkdown}
             container={contentScrollRef.current}

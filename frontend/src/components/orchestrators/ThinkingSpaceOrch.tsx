@@ -8,6 +8,7 @@ import { useUILayoutBlock } from '@/components/lego_blocks/UILayoutBlock'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { cn } from '@/lib/utils'
 import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
+import { STORAGE_KEYS, getStorageItem, setStorageItem } from '@/services/orchestrators/storageOrch'
 import {
   shouldCloseDrawerFromSwipeBlock,
   shouldOpenDrawerFromSwipeBlock,
@@ -22,11 +23,14 @@ export default function ThinkingSpaceOrch() {
   const { layout } = useUILayoutBlock()
   const [inlinePath, setInlinePath] = useState<string | null>(inlinePathFromUrl)
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
+  const [explorerCollapsed, setExplorerCollapsed] = useState(
+    () => getStorageItem(STORAGE_KEYS.thinkingSpaceExplorerCollapsed) === '1',
+  )
   const edgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const showInlineSidebar = layout.hasSidebar
-  const showCollapsedInlineExplorer = showInlineSidebar
-  const showExplorerTrigger = !showInlineSidebar
+  const showCollapsedInlineExplorer = showInlineSidebar && !explorerCollapsed
+  const showExplorerTrigger = !showCollapsedInlineExplorer
   const topInset = Math.max(0, Math.round(layout.safeAreaInsets.top))
   const bottomInset = Math.max(0, Math.round(layout.safeAreaInsets.bottom))
   const drawerBottomPadding = Math.max(bottomInset, layout.keyboardVisible ? Math.round(layout.keyboardInset) : 0)
@@ -65,6 +69,10 @@ export default function ThinkingSpaceOrch() {
   useEffect(() => {
     if (showInlineSidebar) setMobileExplorerOpen(false)
   }, [showInlineSidebar])
+
+  useEffect(() => {
+    setStorageItem(STORAGE_KEYS.thinkingSpaceExplorerCollapsed, explorerCollapsed ? '1' : '0')
+  }, [explorerCollapsed])
 
   useEffect(() => {
     if (showInlineSidebar || mobileExplorerOpen) {
@@ -129,17 +137,36 @@ export default function ThinkingSpaceOrch() {
   }
 
   const inlineExplorerContent = useMemo(() => (
-    <div className="min-h-0 flex-1">
-      <VaultExplorerBlock
-        loadEntries={listFolderEntries}
-        onOpenFile={handleInlineFileOpen}
-        title=""
-        showSearch={false}
-        styleVariant="cupertino_screenshot"
-        className="ltm-thinking-space-parity-explorer"
-      />
-    </div>
-  ), [handleInlineFileOpen])
+    <>
+      <div className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between px-2">
+        <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Thinking Space Explorer
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="ltm-touch-target h-8 w-8"
+          title="Collapse explorer"
+          onClick={() => setExplorerCollapsed(true)}
+        >
+          <PanelLeftClose className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1">
+        <VaultExplorerBlock
+          loadEntries={listFolderEntries}
+          onOpenFile={handleInlineFileOpen}
+          title=""
+        />
+      </div>
+      <div className="ltm-shell-segment-footer p-2">
+        <ExtensionSlotBlock
+          slotId="sidebar-bottom"
+          context={{ inlinePath }}
+        />
+      </div>
+    </>
+  ), [handleInlineFileOpen, inlinePath])
 
   const inlineDocumentContent = useMemo(() => {
     if (!inlinePath) return null
@@ -148,9 +175,8 @@ export default function ThinkingSpaceOrch() {
         key={inlinePath}
         path={inlinePath}
         onClose={handleInlineDocumentClose}
-        hideHeaderChrome
-        showMiniNav={false}
-        className="ltm-thinking-space-parity-document h-full min-h-0"
+        showCloseButton
+        className="h-full min-h-0"
       />
     )
   }, [handleInlineDocumentClose, inlinePath])
@@ -163,7 +189,7 @@ export default function ThinkingSpaceOrch() {
             className={cn(
               'ltm-thinking-space-explorer-surface min-h-0 shrink-0 overflow-hidden md:flex md:flex-col',
               showCollapsedInlineExplorer
-                ? 'w-[clamp(260px,27vw,420px)] opacity-100'
+                ? 'w-[clamp(240px,28vw,360px)] opacity-100'
                 : 'w-0 opacity-0',
             )}
             data-ltm-nav-region="explorer"
@@ -183,6 +209,10 @@ export default function ThinkingSpaceOrch() {
             size="sm"
             className={`ltm-shell-action ltm-motion-fast ltm-touch-target absolute left-3 top-3 z-20 h-8 ${showExplorerTrigger ? 'inline-flex' : 'hidden'}`}
             onClick={() => {
+              if (showInlineSidebar) {
+                setExplorerCollapsed(false)
+                return
+              }
               setMobileExplorerOpen(true)
             }}
           >
@@ -247,9 +277,6 @@ export default function ThinkingSpaceOrch() {
                 loadEntries={listFolderEntries}
                 onOpenFile={handleDrawerFileOpen}
                 title=""
-                showSearch={false}
-                styleVariant="cupertino_screenshot"
-                className="ltm-thinking-space-parity-explorer"
               />
             </div>
             <div

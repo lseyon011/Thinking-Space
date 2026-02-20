@@ -31,8 +31,6 @@ interface VaultExplorerBlockProps {
   draggableFiles?: boolean
   draggableFolders?: boolean
   title?: string
-  showSearch?: boolean
-  styleVariant?: 'default' | 'cupertino_screenshot'
   className?: string
 }
 
@@ -69,8 +67,6 @@ export default function VaultExplorerBlock({
   draggableFiles = false,
   draggableFolders = false,
   title = 'Thinking Space Explorer',
-  showSearch = true,
-  styleVariant = 'default',
   className,
 }: VaultExplorerBlockProps) {
   const [nodes, setNodes] = useState<Record<string, NodeState>>({})
@@ -141,8 +137,6 @@ export default function VaultExplorerBlock({
 
   const normalizedQuery = query.trim().toLowerCase()
   const hasTitle = title.trim().length > 0
-  const showTopChrome = hasTitle || showSearch
-  const isCupertinoScreenshotVariant = styleVariant === 'cupertino_screenshot'
 
   const pathMatchesQuery = useCallback(
     (path: string, visited: Set<string>): boolean => {
@@ -240,15 +234,11 @@ export default function VaultExplorerBlock({
             }) : undefined}
             onClick={() => toggleFolder(folderPath)}
             className={cn(
-              'ltm-vault-explorer-row ltm-vault-explorer-folder-row group flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/90 transition-colors hover:bg-muted/70',
+              'group flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/90 transition-colors hover:bg-muted/70',
               expanded && 'bg-muted/50',
               onDropNode && dropOverPath === folderPath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
             )}
-            style={{
-              paddingLeft: isCupertinoScreenshotVariant
-                ? `${10 + depth * 12}px`
-                : `${8 + depth * 14}px`,
-            }}
+            style={{ paddingLeft: `${8 + depth * 14}px` }}
           >
             <ChevronRight
               className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', expanded && 'rotate-90')}
@@ -269,11 +259,7 @@ export default function VaultExplorerBlock({
               <div
                 key={`folder-error-${folderPath}`}
                 className="px-2 py-1 text-xs text-destructive"
-                style={{
-                  paddingLeft: isCupertinoScreenshotVariant
-                    ? `${26 + depth * 12}px`
-                    : `${26 + depth * 14}px`,
-                }}
+                style={{ paddingLeft: `${26 + depth * 14}px` }}
               >
                 {folderNode.error}
               </div>,
@@ -285,11 +271,7 @@ export default function VaultExplorerBlock({
               <div
                 key={`folder-loading-${folderPath}`}
                 className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground"
-                style={{
-                  paddingLeft: isCupertinoScreenshotVariant
-                    ? `${26 + depth * 12}px`
-                    : `${26 + depth * 14}px`,
-                }}
+                style={{ paddingLeft: `${26 + depth * 14}px` }}
               >
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Loading...
@@ -342,21 +324,13 @@ export default function VaultExplorerBlock({
               onOpenFile(filePath)
             }}
             className={cn(
-              'ltm-vault-explorer-row ltm-vault-explorer-file-row group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/80 transition-colors hover:bg-muted/70',
-              selectedFilePath === filePath && 'ltm-vault-explorer-file-selected bg-accent text-accent-foreground',
+              'group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/80 transition-colors hover:bg-muted/70',
+              selectedFilePath === filePath && 'bg-accent text-accent-foreground',
               onDropNode && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
             )}
-            style={{
-              paddingLeft: isCupertinoScreenshotVariant
-                ? `${24 + depth * 12}px`
-                : `${26 + depth * 14}px`,
-            }}
+            style={{ paddingLeft: `${26 + depth * 14}px` }}
           >
-            {isCupertinoScreenshotVariant ? (
-              <span className="ltm-vault-explorer-file-dot" aria-hidden />
-            ) : (
-              <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            )}
+            <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate">{fileName}</span>
           </button>,
         )
@@ -364,7 +338,7 @@ export default function VaultExplorerBlock({
 
       return rows
     },
-    [dropOverPath, getNode, isCupertinoScreenshotVariant, isExpanded, normalizedQuery, onDropNode, onOpenFile, onSelectFile, pathMatchesQuery, selectedFilePath, toggleFolder],
+    [dropOverPath, getNode, isExpanded, normalizedQuery, onDropNode, onOpenFile, onSelectFile, pathMatchesQuery, selectedFilePath, toggleFolder],
   )
 
   const rootNode = getNode('')
@@ -392,15 +366,8 @@ export default function VaultExplorerBlock({
   }, [normalizedQuery, renderPath, rootNode.loaded, rootNode.loading])
 
   return (
-    <div
-      className={cn(
-        'ltm-vault-explorer flex h-full min-h-0 flex-col',
-        isCupertinoScreenshotVariant && 'ltm-vault-explorer-cupertino',
-        className,
-      )}
-    >
-      {showTopChrome && (
-        <div className="ltm-vault-explorer-toolbar border-b border-border/60 px-3 py-2">
+    <div className={cn('flex h-full min-h-0 flex-col', className)}>
+      <div className="border-b border-border/60 px-3 py-2">
         {hasTitle && (
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -418,21 +385,18 @@ export default function VaultExplorerBlock({
           </div>
         )}
 
-        {showSearch && (
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Filter files..."
-              className="ltm-vault-explorer-filter h-8 w-full rounded-md border border-input bg-background pl-8 pr-2 text-xs text-foreground outline-none ring-0 transition-colors placeholder:text-muted-foreground focus:border-ring"
-            />
-          </label>
-        )}
+        <label className="relative block">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Filter files..."
+            className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-2 text-xs text-foreground outline-none ring-0 transition-colors placeholder:text-muted-foreground focus:border-ring"
+          />
+        </label>
       </div>
-      )}
 
-      <div className="ltm-vault-explorer-scroll min-h-0 flex-1 overflow-auto px-1.5 py-2">{content}</div>
+      <div className="min-h-0 flex-1 overflow-auto px-1.5 py-2">{content}</div>
     </div>
   )
 }
