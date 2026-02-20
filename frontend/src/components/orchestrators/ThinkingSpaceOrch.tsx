@@ -138,7 +138,7 @@ export default function ThinkingSpaceOrch() {
 
   const inlineExplorerContent = useMemo(() => (
     <>
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/60 px-2">
+      <div className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between px-2">
         <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
           Thinking Space Explorer
         </span>
@@ -159,7 +159,7 @@ export default function ThinkingSpaceOrch() {
           title=""
         />
       </div>
-      <div className="border-t border-border/60 p-2">
+      <div className="ltm-shell-segment-footer p-2">
         <ExtensionSlotBlock
           slotId="sidebar-bottom"
           context={{ inlinePath }}
@@ -256,7 +256,7 @@ export default function ThinkingSpaceOrch() {
             onTouchCancel={handleExplorerDrawerTouchEnd}
           >
             <div
-              className="flex h-11 shrink-0 items-center justify-between border-b border-border/60 px-2"
+              className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between px-2"
               style={topInset ? { paddingTop: `${topInset}px`, height: `${44 + topInset}px` } : undefined}
             >
               <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -280,7 +280,7 @@ export default function ThinkingSpaceOrch() {
               />
             </div>
             <div
-              className="border-t border-border/60 p-2"
+              className="ltm-shell-segment-footer p-2"
               style={drawerBottomPadding ? { paddingBottom: `${drawerBottomPadding + 8}px` } : undefined}
             >
               <ExtensionSlotBlock

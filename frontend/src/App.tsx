@@ -608,7 +608,7 @@ function App() {
                 to="/"
                 title={sidebarCollapsed ? 'Home' : undefined}
                 aria-label="Home"
-                className={`ltm-shell-logo ltm-motion-fast mb-3 inline-flex items-center rounded-lg border border-border/60 bg-background/80 ${
+                className={`ltm-shell-logo ltm-shell-field-surface ltm-motion-fast mb-3 inline-flex items-center rounded-lg ${
                   sidebarCollapsed
                     ? 'h-10 w-full justify-center'
                     : 'gap-2 px-2.5 py-2 text-sm font-semibold tracking-tight'
@@ -713,7 +713,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="ltm-sidebar-actions mt-3 space-y-2 border-t border-border/60 pt-3">
+              <div className="ltm-sidebar-actions ltm-shell-segment-footer mt-3 space-y-2 pt-3">
                 {!sidebarCollapsed && (
                   <div className="space-y-1 px-0.5">
                     <label htmlFor="ltm-theme-select-desktop" className="px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -843,7 +843,7 @@ function App() {
             onTouchCancel={handleDrawerTouchEnd}
             style={topInset ? { paddingTop: `${topInset}px` } : undefined}
           >
-            <div className="ltm-mobile-drawer-header flex h-14 items-center justify-between border-b border-border/60 px-3">
+            <div className="ltm-mobile-drawer-header ltm-shell-segment-header flex h-14 items-center justify-between px-3">
               <Link
                 to="/"
                 onClick={() => setDrawerOpen(false)}
@@ -948,7 +948,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
+              <div className="ltm-shell-segment-footer mt-3 space-y-2 pt-3">
                 <div className="space-y-1">
                   <label htmlFor="ltm-theme-select-mobile" className="px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Theme
@@ -1008,8 +1008,8 @@ function App() {
             style={{ paddingTop: `${commandPaletteTopPadding}px`, paddingBottom: `${commandPaletteBottomPadding}px` }}
           >
             <div className="ltm-cmd-card ltm-shell-command-surface ltm-modern-animate-modal max-h-full w-full max-w-2xl overflow-hidden rounded-2xl ltm-animate-slide-up">
-              <div className="border-b border-border/60 p-3">
-                <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-2.5">
+              <div className="ltm-shell-segment-header p-3">
+                <div className="ltm-shell-field-surface flex items-center gap-2 rounded-lg px-2.5">
                   <Search className="h-4 w-4 text-muted-foreground" />
                   <input
                     ref={commandInputRef}
@@ -1057,7 +1057,7 @@ function App() {
                   })
                 )}
               </div>
-              <div className="border-t border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
+              <div className="ltm-shell-segment-footer px-3 py-2 text-[11px] text-muted-foreground">
                 Enter to open first result · Esc to close · Cmd/Ctrl+K to reopen
               </div>
             </div>
