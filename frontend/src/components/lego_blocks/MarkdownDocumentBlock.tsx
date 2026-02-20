@@ -458,7 +458,13 @@ function MarkdownDocumentBlock({
         </div>
       )}
 
-      <div ref={contentScrollRef} className="relative min-h-0 flex-1 overflow-y-auto px-6 py-5">
+      <div
+        ref={contentScrollRef}
+        className={cn(
+          'relative min-h-0 flex-1 overflow-y-auto',
+          isExcalidrawDoc ? 'p-0' : 'px-6 py-5',
+        )}
+      >
         {loading && (
           <div className="space-y-3">
             {Array.from({ length: 8 }).map((_, i) => (

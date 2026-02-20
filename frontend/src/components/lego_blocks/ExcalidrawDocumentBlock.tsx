@@ -1,6 +1,8 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ParsedExcalidrawScene } from '@/services/orchestrators/excalidrawSceneOrch'
-import { parseExcalidrawSceneOrch } from '@/services/orchestrators/excalidrawSceneOrch'
+import {
+  parseExcalidrawSceneOrch,
+} from '@/services/orchestrators/excalidrawSceneOrch'
 import {
   buildExcalidrawInitialDataOrch,
   cloneExcalidrawSceneChangeOrch,
@@ -64,6 +66,13 @@ interface ExcalidrawPerfEvent {
 const LARGE_SCENE_ELEMENT_THRESHOLD = 1200
 const MEDIAN_SORT_THRESHOLD = 2000
 const PERF_EVENTS_LIMIT = 400
+const VIEW_ANALYSIS_TIMEOUT_MS = 180
+
+const EMPTY_SCENE_ANALYSIS: SceneAnalysis = {
+  sceneBounds: null,
+  drawableCenters: [],
+  durationMs: 0,
+}
 
 function readActiveToolType(appState: Record<string, unknown>): string | null {
   const activeTool = appState.activeTool
@@ -74,6 +83,16 @@ function readActiveToolType(appState: Record<string, unknown>): string | null {
 
 function nowMs(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now()
+}
+
+function scheduleDeferredWork(callback: () => void): () => void {
+  if (typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function') {
+    const idleId = (window as any).requestIdleCallback(() => callback(), { timeout: VIEW_ANALYSIS_TIMEOUT_MS })
+    return () => (window as any).cancelIdleCallback?.(idleId)
+  }
+
+  const timeoutId = window.setTimeout(callback, 16)
+  return () => window.clearTimeout(timeoutId)
 }
 
 function pushGlobalExcalidrawPerfEvent(event: ExcalidrawPerfEvent): void {
@@ -88,6 +107,126 @@ function pushGlobalExcalidrawPerfEvent(event: ExcalidrawPerfEvent): void {
   if (events.length > PERF_EVENTS_LIMIT) events.shift()
   state.__ltmExcalidrawPerfEvents = events
   state.__ltmExcalidrawPerfLast = event
+}
+
+function analyzeScene(parsedScene: ParsedExcalidrawScene | null): SceneAnalysis {
+  const started = nowMs()
+  if (!parsedScene || parsedScene.elements.length === 0) {
+    return {
+      sceneBounds: null,
+      drawableCenters: [],
+      durationMs: nowMs() - started,
+    }
+  }
+
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  let found = false
+  let centerSumX = 0
+  let centerSumY = 0
+  let anchorCenterSumX = 0
+  let anchorCenterSumY = 0
+  let anchorCount = 0
+  let centerCount = 0
+  const centersX: number[] = []
+  const centersY: number[] = []
+  const anchorCentersX: number[] = []
+  const anchorCentersY: number[] = []
+  const drawableCenters: SceneDrawableCenter[] = []
+
+  for (const item of parsedScene.elements) {
+    if (!item || typeof item !== 'object') continue
+    const element = item as Record<string, unknown>
+    if (element.isDeleted === true) continue
+    const x = Number(element.x)
+    const y = Number(element.y)
+    const width = Number(element.width)
+    const height = Number(element.height)
+    const type = typeof element.type === 'string' ? element.type : ''
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) continue
+    minX = Math.min(minX, x)
+    minY = Math.min(minY, y)
+    maxX = Math.max(maxX, x + Math.max(width, 1))
+    maxY = Math.max(maxY, y + Math.max(height, 1))
+    const cx = x + Math.max(width, 1) / 2
+    const cy = y + Math.max(height, 1) / 2
+    centerCount += 1
+    centerSumX += cx
+    centerSumY += cy
+    drawableCenters.push({
+      x: cx,
+      y: cy,
+      isAnchor: type !== 'freedraw',
+    })
+    if (centerCount <= MEDIAN_SORT_THRESHOLD) {
+      centersX.push(cx)
+      centersY.push(cy)
+    }
+    if (type !== 'freedraw') {
+      anchorCount += 1
+      anchorCenterSumX += cx
+      anchorCenterSumY += cy
+      if (anchorCount <= MEDIAN_SORT_THRESHOLD) {
+        anchorCentersX.push(cx)
+        anchorCentersY.push(cy)
+      }
+    }
+    found = true
+  }
+
+  if (!found || centerCount === 0) {
+    return {
+      sceneBounds: null,
+      drawableCenters,
+      durationMs: nowMs() - started,
+    }
+  }
+
+  const useAveragesForCenter = centerCount > MEDIAN_SORT_THRESHOLD
+  let medianCenterX = minX + (maxX - minX) / 2
+  let medianCenterY = minY + (maxY - minY) / 2
+  let medianAnchorCenterX = medianCenterX
+  let medianAnchorCenterY = medianCenterY
+
+  if (useAveragesForCenter) {
+    medianCenterX = centerSumX / centerCount
+    medianCenterY = centerSumY / centerCount
+    if (anchorCount > 0) {
+      medianAnchorCenterX = anchorCenterSumX / anchorCount
+      medianAnchorCenterY = anchorCenterSumY / anchorCount
+    }
+  } else {
+    centersX.sort((a, b) => a - b)
+    centersY.sort((a, b) => a - b)
+    anchorCentersX.sort((a, b) => a - b)
+    anchorCentersY.sort((a, b) => a - b)
+    const mid = Math.floor(centersX.length / 2)
+    medianCenterX = centersX[mid] ?? medianCenterX
+    medianCenterY = centersY[mid] ?? medianCenterY
+    const anchorMid = Math.floor(anchorCentersX.length / 2)
+    medianAnchorCenterX = anchorCentersX[anchorMid] ?? medianCenterX
+    medianAnchorCenterY = anchorCentersY[anchorMid] ?? medianCenterY
+  }
+
+  return {
+    sceneBounds: {
+      minX,
+      minY,
+      maxX,
+      maxY,
+      width: Math.max(maxX - minX, 1),
+      height: Math.max(maxY - minY, 1),
+      medianCenterX,
+      medianCenterY,
+      anchorCount,
+      medianAnchorCenterX,
+      medianAnchorCenterY,
+    },
+    drawableCenters,
+    durationMs: nowMs() - started,
+  }
 }
 
 export default function ExcalidrawDocumentBlock({
@@ -150,125 +289,35 @@ export default function ExcalidrawDocumentBlock({
     return buildExcalidrawInitialDataOrch(parsedScene, editable)
   }, [editable, parsedScene])
 
+  const [deferredSceneAnalysis, setDeferredSceneAnalysis] = useState<SceneAnalysis>(EMPTY_SCENE_ANALYSIS)
   const sceneAnalysis = useMemo<SceneAnalysis>(() => {
-    const started = nowMs()
+    if (editable) return analyzeScene(parsedScene)
+    return deferredSceneAnalysis
+  }, [deferredSceneAnalysis, editable, parsedScene])
+
+  useEffect(() => {
+    if (editable) {
+      setDeferredSceneAnalysis(EMPTY_SCENE_ANALYSIS)
+      return
+    }
+
     if (!parsedScene || parsedScene.elements.length === 0) {
-      return {
-        sceneBounds: null,
-        drawableCenters: [],
-        durationMs: nowMs() - started,
-      }
+      setDeferredSceneAnalysis(EMPTY_SCENE_ANALYSIS)
+      return
     }
 
-    let minX = Number.POSITIVE_INFINITY
-    let minY = Number.POSITIVE_INFINITY
-    let maxX = Number.NEGATIVE_INFINITY
-    let maxY = Number.NEGATIVE_INFINITY
-    let found = false
-    let centerSumX = 0
-    let centerSumY = 0
-    let anchorCenterSumX = 0
-    let anchorCenterSumY = 0
-    let anchorCount = 0
-    let centerCount = 0
-    const centersX: number[] = []
-    const centersY: number[] = []
-    const anchorCentersX: number[] = []
-    const anchorCentersY: number[] = []
-    const drawableCenters: SceneDrawableCenter[] = []
+    let cancelled = false
+    setDeferredSceneAnalysis(EMPTY_SCENE_ANALYSIS)
+    const cancelDeferred = scheduleDeferredWork(() => {
+      if (cancelled) return
+      setDeferredSceneAnalysis(analyzeScene(parsedScene))
+    })
 
-    for (const item of parsedScene.elements) {
-      if (!item || typeof item !== 'object') continue
-      const element = item as Record<string, unknown>
-      if (element.isDeleted === true) continue
-      const x = Number(element.x)
-      const y = Number(element.y)
-      const width = Number(element.width)
-      const height = Number(element.height)
-      const type = typeof element.type === 'string' ? element.type : ''
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) continue
-      minX = Math.min(minX, x)
-      minY = Math.min(minY, y)
-      maxX = Math.max(maxX, x + Math.max(width, 1))
-      maxY = Math.max(maxY, y + Math.max(height, 1))
-      const cx = x + Math.max(width, 1) / 2
-      const cy = y + Math.max(height, 1) / 2
-      centerCount += 1
-      centerSumX += cx
-      centerSumY += cy
-      drawableCenters.push({
-        x: cx,
-        y: cy,
-        isAnchor: type !== 'freedraw',
-      })
-      if (centerCount <= MEDIAN_SORT_THRESHOLD) {
-        centersX.push(cx)
-        centersY.push(cy)
-      }
-      if (type !== 'freedraw') {
-        anchorCount += 1
-        anchorCenterSumX += cx
-        anchorCenterSumY += cy
-        if (anchorCount <= MEDIAN_SORT_THRESHOLD) {
-          anchorCentersX.push(cx)
-          anchorCentersY.push(cy)
-        }
-      }
-      found = true
+    return () => {
+      cancelled = true
+      cancelDeferred()
     }
-
-    if (!found || centerCount === 0) {
-      return {
-        sceneBounds: null,
-        drawableCenters,
-        durationMs: nowMs() - started,
-      }
-    }
-
-    const useAveragesForCenter = centerCount > MEDIAN_SORT_THRESHOLD
-    let medianCenterX = minX + (maxX - minX) / 2
-    let medianCenterY = minY + (maxY - minY) / 2
-    let medianAnchorCenterX = medianCenterX
-    let medianAnchorCenterY = medianCenterY
-
-    if (useAveragesForCenter) {
-      medianCenterX = centerSumX / centerCount
-      medianCenterY = centerSumY / centerCount
-      if (anchorCount > 0) {
-        medianAnchorCenterX = anchorCenterSumX / anchorCount
-        medianAnchorCenterY = anchorCenterSumY / anchorCount
-      }
-    } else {
-      centersX.sort((a, b) => a - b)
-      centersY.sort((a, b) => a - b)
-      anchorCentersX.sort((a, b) => a - b)
-      anchorCentersY.sort((a, b) => a - b)
-      const mid = Math.floor(centersX.length / 2)
-      medianCenterX = centersX[mid] ?? medianCenterX
-      medianCenterY = centersY[mid] ?? medianCenterY
-      const anchorMid = Math.floor(anchorCentersX.length / 2)
-      medianAnchorCenterX = anchorCentersX[anchorMid] ?? medianCenterX
-      medianAnchorCenterY = anchorCentersY[anchorMid] ?? medianCenterY
-    }
-
-    return {
-      sceneBounds: {
-        minX,
-        minY,
-        maxX,
-        maxY,
-        width: Math.max(maxX - minX, 1),
-        height: Math.max(maxY - minY, 1),
-        medianCenterX,
-        medianCenterY,
-        anchorCount,
-        medianAnchorCenterX,
-        medianAnchorCenterY,
-      },
-      drawableCenters,
-      durationMs: nowMs() - started,
-    }
-  }, [parsedScene])
+  }, [editable, parsedScene])
 
   const sceneBounds = sceneAnalysis.sceneBounds
   const isLargeScene = (parsedScene?.elements.length ?? 0) >= LARGE_SCENE_ELEMENT_THRESHOLD
@@ -775,7 +824,7 @@ export default function ExcalidrawDocumentBlock({
   }
 
   return (
-    <div ref={containerRef} className={cn('relative h-full min-h-[60vh] overflow-hidden rounded-lg border border-border/60', className)}>
+    <div ref={containerRef} className={cn('relative h-full min-h-[60vh] overflow-hidden', className)}>
       <Suspense fallback={<div className="px-4 py-3 text-sm text-muted-foreground">Loading Excalidraw canvas...</div>}>
         <ExcalidrawCanvas
           excalidrawAPI={(api: unknown) => setExcalidrawApi(createExcalidrawCanvasApiOrch(api))}

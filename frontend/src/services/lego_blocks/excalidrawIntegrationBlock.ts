@@ -121,12 +121,12 @@ export function buildExcalidrawInitialDataBlock(
 ): ParsedExcalidrawScene {
   const baseAppState = (scene.appState ?? {}) as Record<string, unknown>
   return {
-    elements: [...scene.elements],
+    elements: scene.elements,
     appState: {
       ...baseAppState,
       viewModeEnabled: !editable,
     },
-    files: { ...(scene.files ?? {}) },
+    files: scene.files ?? {},
   }
 }
 
