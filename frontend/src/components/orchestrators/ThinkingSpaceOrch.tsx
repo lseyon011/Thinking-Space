@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { PanelLeft, PanelLeftClose, Sparkles, FileText } from 'lucide-react'
 import VaultExplorerBlock from '@/components/lego_blocks/VaultExplorerBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/MarkdownDocumentBlock'
@@ -14,9 +15,13 @@ import {
   shouldStartEdgeSwipeOpenBlock,
 } from '@/services/lego_blocks/uiGestureBlock'
 
+const FILE_QUERY_PARAM = 'file'
+
 export default function ThinkingSpaceOrch() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const inlinePathFromUrl = searchParams.get(FILE_QUERY_PARAM)?.trim() || null
   const { layout } = useUILayoutBlock()
-  const [inlinePath, setInlinePath] = useState<string | null>(null)
+  const [inlinePath, setInlinePath] = useState<string | null>(inlinePathFromUrl)
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
   const [explorerCollapsed, setExplorerCollapsed] = useState(
     () => getStorageItem(STORAGE_KEYS.thinkingSpaceExplorerCollapsed) === '1',
@@ -30,18 +35,36 @@ export default function ThinkingSpaceOrch() {
   const bottomInset = Math.max(0, Math.round(layout.safeAreaInsets.bottom))
   const drawerBottomPadding = Math.max(bottomInset, layout.keyboardVisible ? Math.round(layout.keyboardInset) : 0)
 
-  const handleInlineFileOpen = useCallback((path: string) => {
+  useEffect(() => {
+    if (inlinePathFromUrl === inlinePath) return
+    setInlinePath(inlinePathFromUrl)
+  }, [inlinePath, inlinePathFromUrl])
+
+  const setInlinePathAndSyncUrl = useCallback((path: string | null) => {
     setInlinePath(path)
-  }, [])
+    const current = searchParams.get(FILE_QUERY_PARAM)?.trim() || null
+    if (current === path) return
+    const next = new URLSearchParams(searchParams)
+    if (path) {
+      next.set(FILE_QUERY_PARAM, path)
+    } else {
+      next.delete(FILE_QUERY_PARAM)
+    }
+    setSearchParams(next)
+  }, [searchParams, setSearchParams])
+
+  const handleInlineFileOpen = useCallback((path: string) => {
+    setInlinePathAndSyncUrl(path)
+  }, [setInlinePathAndSyncUrl])
 
   const handleInlineDocumentClose = useCallback(() => {
-    setInlinePath(null)
-  }, [])
+    setInlinePathAndSyncUrl(null)
+  }, [setInlinePathAndSyncUrl])
 
   const handleDrawerFileOpen = useCallback((path: string) => {
-    setInlinePath(path)
+    setInlinePathAndSyncUrl(path)
     setMobileExplorerOpen(false)
-  }, [])
+  }, [setInlinePathAndSyncUrl])
 
   useEffect(() => {
     if (showInlineSidebar) setMobileExplorerOpen(false)

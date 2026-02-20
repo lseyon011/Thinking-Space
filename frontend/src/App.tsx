@@ -32,14 +32,17 @@ import CapabilityDiscovery from './pages/CapabilityDiscovery'
 import AiSettings from './pages/AiSettings'
 import ExtensionBuilder from './pages/ExtensionBuilder'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
+import AppTabsBlock, { type AppWorkspaceTabBlockModel } from './components/lego_blocks/AppTabsBlock'
 import { useUILayoutBlock } from './components/lego_blocks/UILayoutBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { smartSync } from './services/orchestrators/vaultSyncOrch'
 import {
   STORAGE_KEYS,
+  getJsonStorageItem,
   getStoredVaultRoot,
   getStorageItem,
+  setJsonStorageItem,
   setStorageItem,
 } from './services/orchestrators/storageOrch'
 import { getCapabilityFeatureFlags } from './services/orchestrators/capabilityFeatureFlagsOrch'
@@ -65,6 +68,11 @@ interface CommandItem {
   group: 'Core' | 'Workspace' | 'Excalidraw++'
   activePaths?: string[]
   keywords?: string
+}
+
+interface AppWorkspaceTab {
+  id: string
+  route: string
 }
 
 const PRIMARY_NAV_ITEMS: NavItem[] = [
@@ -102,10 +110,64 @@ function isNavItemActive(pathname: string, item: NavItem): boolean {
   return (item.activePaths ?? []).includes(pathname)
 }
 
+function createWorkspaceTabId(): string {
+  return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function normalizeTabRoute(route: string): string {
+  const trimmed = route.trim()
+  if (!trimmed) return '/thinking-space'
+  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+}
+
+function parseTabRoute(route: string): { pathname: string; search: URLSearchParams } {
+  try {
+    const parsed = new URL(normalizeTabRoute(route), 'https://ltm.local')
+    return { pathname: parsed.pathname, search: parsed.searchParams }
+  } catch {
+    return { pathname: '/thinking-space', search: new URLSearchParams() }
+  }
+}
+
+function toTitleCase(value: string): string {
+  return value
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map(part => `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`)
+    .join(' ')
+}
+
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+function getTabLabel(route: string, labelByPath: Map<string, string>): string {
+  const { pathname, search } = parseTabRoute(route)
+  if (pathname === '/thinking-space') {
+    const filePath = search.get('file')?.trim()
+    if (filePath) {
+      const name = safeDecodeURIComponent(filePath).split('/').filter(Boolean).pop() || 'File'
+      return `Space · ${name}`
+    }
+  }
+
+  if (pathname === '/thinking-organizer' || pathname === '/file-organizer') {
+    const tab = search.get('tab')?.trim()
+    if (tab) return `Organizer · ${toTitleCase(tab)}`
+  }
+
+  return labelByPath.get(pathname) ?? 'Workspace'
+}
+
 function App() {
   const location = useLocation()
   const navigate = useNavigate()
   const { layout } = useUILayoutBlock()
+  const currentRoute = `${location.pathname}${location.search}${location.hash}`
 
   const featureFlags = getCapabilityFeatureFlags()
   const extensionBuilderEnabled = featureFlags.extension_host_enabled && featureFlags.extension_builder_enabled
@@ -126,6 +188,28 @@ function App() {
     if (isCapacitorNative() && stored.startsWith('/')) return true
     return false
   })
+  const [workspaceTabs, setWorkspaceTabs] = useState<AppWorkspaceTab[]>(() => {
+    const savedTabs = getJsonStorageItem<AppWorkspaceTab[]>(STORAGE_KEYS.appShellTabs, [])
+      .filter((candidate) => (
+        !!candidate
+        && typeof candidate.id === 'string'
+        && typeof candidate.route === 'string'
+        && candidate.id.trim().length > 0
+        && candidate.route.trim().length > 0
+      ))
+      .slice(0, 24)
+      .map((candidate) => ({
+        id: candidate.id.trim(),
+        route: normalizeTabRoute(candidate.route),
+      }))
+
+    if (savedTabs.length > 0) return savedTabs
+
+    return [{ id: createWorkspaceTabId(), route: normalizeTabRoute(currentRoute) }]
+  })
+  const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState(
+    () => getStorageItem(STORAGE_KEYS.appShellActiveTabId) ?? '',
+  )
 
   const utilityNavItems = useMemo(() => {
     const items: NavItem[] = [
@@ -160,6 +244,29 @@ function App() {
       activePaths: item.activePaths,
     })),
   ]), [utilityNavItems])
+
+  const routeLabelByPath = useMemo(() => {
+    const entries = new Map<string, string>()
+    entries.set('/', 'Home')
+    entries.set('/file-organizer', 'Thinking Organizer')
+    commandItems.forEach((item) => {
+      entries.set(item.to, item.label)
+    })
+    return entries
+  }, [commandItems])
+
+  const activeWorkspaceTab = useMemo(
+    () => workspaceTabs.find(tab => tab.id === activeWorkspaceTabId) ?? null,
+    [activeWorkspaceTabId, workspaceTabs],
+  )
+
+  const workspaceTabItems = useMemo<AppWorkspaceTabBlockModel[]>(
+    () => workspaceTabs.map(tab => ({
+      id: tab.id,
+      label: getTabLabel(tab.route, routeLabelByPath),
+    })),
+    [routeLabelByPath, workspaceTabs],
+  )
 
   const bottomNavItems = useMemo(
     () => PRIMARY_NAV_ITEMS.filter(item => BOTTOM_NAV_PATHS.has(item.to)),
@@ -203,6 +310,41 @@ function App() {
     setCommandQuery('')
     navigate(item.to)
   }, [navigate])
+
+  const handleCreateWorkspaceTab = useCallback(() => {
+    const tab: AppWorkspaceTab = {
+      id: createWorkspaceTabId(),
+      route: '/thinking-space',
+    }
+    setWorkspaceTabs(prev => [...prev, tab])
+    setActiveWorkspaceTabId(tab.id)
+    navigate(tab.route)
+  }, [navigate])
+
+  const handleSelectWorkspaceTab = useCallback((tabId: string) => {
+    if (tabId === activeWorkspaceTabId) return
+    const target = workspaceTabs.find(tab => tab.id === tabId)
+    if (!target) return
+    setActiveWorkspaceTabId(tabId)
+    if (target.route !== currentRoute) {
+      navigate(target.route)
+    }
+  }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
+
+  const handleCloseWorkspaceTab = useCallback((tabId: string) => {
+    if (workspaceTabs.length <= 1) return
+    const closeIndex = workspaceTabs.findIndex(tab => tab.id === tabId)
+    if (closeIndex === -1) return
+    const nextTabs = workspaceTabs.filter(tab => tab.id !== tabId)
+    setWorkspaceTabs(nextTabs)
+    if (tabId !== activeWorkspaceTabId) return
+    const nextActive = nextTabs[Math.max(0, closeIndex - 1)] ?? nextTabs[0]
+    if (!nextActive) return
+    setActiveWorkspaceTabId(nextActive.id)
+    if (nextActive.route !== currentRoute) {
+      navigate(nextActive.route)
+    }
+  }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
 
   const handleDrawerTouchStart = useCallback((event: React.TouchEvent<HTMLElement>) => {
     const touch = event.touches[0]
@@ -267,7 +409,7 @@ function App() {
   useEffect(() => {
     setDrawerOpen(false)
     setCommandPaletteOpen(false)
-  }, [location.pathname])
+  }, [currentRoute])
 
   useEffect(() => {
     if (!compactNav) {
@@ -347,6 +489,18 @@ function App() {
         setCommandPaletteOpen(true)
         return
       }
+      if (withMeta && event.key.toLowerCase() === 't') {
+        event.preventDefault()
+        handleCreateWorkspaceTab()
+        return
+      }
+      if (withMeta && event.key.toLowerCase() === 'w') {
+        event.preventDefault()
+        if (activeWorkspaceTab) {
+          handleCloseWorkspaceTab(activeWorkspaceTab.id)
+        }
+        return
+      }
       if (withMeta && event.code === 'Backslash' && !compactNav) {
         event.preventDefault()
         setSidebarCollapsed(prev => !prev)
@@ -359,7 +513,7 @@ function App() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [compactNav])
+  }, [activeWorkspaceTab, compactNav, handleCloseWorkspaceTab, handleCreateWorkspaceTab])
 
   useEffect(() => {
     if (needsVaultSetup) return
@@ -367,6 +521,43 @@ function App() {
       console.error('Failed to sync vault to IndexedDB cache', err)
     })
   }, [needsVaultSetup])
+
+  useEffect(() => {
+    if (workspaceTabs.length === 0) {
+      const fallbackTab: AppWorkspaceTab = {
+        id: createWorkspaceTabId(),
+        route: normalizeTabRoute(currentRoute),
+      }
+      setWorkspaceTabs([fallbackTab])
+      setActiveWorkspaceTabId(fallbackTab.id)
+      return
+    }
+    if (activeWorkspaceTabId && workspaceTabs.some(tab => tab.id === activeWorkspaceTabId)) return
+    const matchingRouteTab = workspaceTabs.find(tab => tab.route === normalizeTabRoute(currentRoute))
+    setActiveWorkspaceTabId((matchingRouteTab ?? workspaceTabs[0]).id)
+  }, [activeWorkspaceTabId, currentRoute, workspaceTabs])
+
+  useEffect(() => {
+    if (!activeWorkspaceTabId) return
+    setWorkspaceTabs((prev) => {
+      const index = prev.findIndex(tab => tab.id === activeWorkspaceTabId)
+      if (index === -1) return prev
+      const normalizedCurrentRoute = normalizeTabRoute(currentRoute)
+      if (prev[index].route === normalizedCurrentRoute) return prev
+      const next = prev.slice()
+      next[index] = { ...next[index], route: normalizedCurrentRoute }
+      return next
+    })
+  }, [activeWorkspaceTabId, currentRoute])
+
+  useEffect(() => {
+    setJsonStorageItem(STORAGE_KEYS.appShellTabs, workspaceTabs)
+  }, [workspaceTabs])
+
+  useEffect(() => {
+    if (!activeWorkspaceTabId) return
+    setStorageItem(STORAGE_KEYS.appShellActiveTabId, activeWorkspaceTabId)
+  }, [activeWorkspaceTabId])
 
   if (needsVaultSetup) {
     return (
@@ -526,30 +717,40 @@ function App() {
         )}
 
         <main
-          className="ltm-app-main min-w-0"
+          className="ltm-app-main flex min-w-0 min-h-0 flex-1 flex-col"
           style={mainBottomPadding ? { paddingBottom: `${mainBottomPadding}px` } : undefined}
         >
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/thinking-space" element={<ThinkingSpace />} />
-            <Route path="/thinking-organizer" element={<ThinkingOrganizer />} />
-            <Route path="/file-organizer" element={<ThinkingOrganizer />} />
-            <Route path="/excalidraw-plugin" element={<ExcalidrawPlugin />} />
-            <Route path="/format-excalidraw" element={<FormatExcalidraw />} />
-            <Route path="/mindmap-builder" element={<MindmapBuilder />} />
-            <Route path="/git-insights" element={<GitInsights />} />
-            <Route path="/pdf-to-markdown" element={<PdfToMarkdown />} />
-            <Route path="/transcript-cleaner" element={<TranscriptCleaner />} />
-            <Route path="/new-thought" element={<NewThought />} />
-            <Route path="/todos" element={<Todos />} />
-            <Route path="/chat" element={<Chat />} />
-            <Route path="/ai-settings" element={<AiSettings />} />
-            <Route
-              path="/extension-builder"
-              element={extensionBuilderEnabled ? <ExtensionBuilder /> : <Navigate to="/capabilities" replace />}
-            />
-            <Route path="/capabilities" element={<CapabilityDiscovery />} />
-          </Routes>
+          <AppTabsBlock
+            tabs={workspaceTabItems}
+            activeTabId={activeWorkspaceTabId}
+            onSelectTab={handleSelectWorkspaceTab}
+            onCreateTab={handleCreateWorkspaceTab}
+            onCloseTab={handleCloseWorkspaceTab}
+            className="sticky top-0 z-20 shrink-0"
+          />
+          <div className="min-h-0 flex-1">
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/thinking-space" element={<ThinkingSpace />} />
+              <Route path="/thinking-organizer" element={<ThinkingOrganizer />} />
+              <Route path="/file-organizer" element={<ThinkingOrganizer />} />
+              <Route path="/excalidraw-plugin" element={<ExcalidrawPlugin />} />
+              <Route path="/format-excalidraw" element={<FormatExcalidraw />} />
+              <Route path="/mindmap-builder" element={<MindmapBuilder />} />
+              <Route path="/git-insights" element={<GitInsights />} />
+              <Route path="/pdf-to-markdown" element={<PdfToMarkdown />} />
+              <Route path="/transcript-cleaner" element={<TranscriptCleaner />} />
+              <Route path="/new-thought" element={<NewThought />} />
+              <Route path="/todos" element={<Todos />} />
+              <Route path="/chat" element={<Chat />} />
+              <Route path="/ai-settings" element={<AiSettings />} />
+              <Route
+                path="/extension-builder"
+                element={extensionBuilderEnabled ? <ExtensionBuilder /> : <Navigate to="/capabilities" replace />}
+              />
+              <Route path="/capabilities" element={<CapabilityDiscovery />} />
+            </Routes>
+          </div>
         </main>
       </div>
 
