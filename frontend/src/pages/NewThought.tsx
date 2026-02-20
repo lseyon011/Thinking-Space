@@ -270,19 +270,21 @@ export default function NewThought() {
   const [tab, setTab] = useState<Tab>('create')
 
   return (
-    <div className="relative ltm-page overflow-hidden">
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        <div className="absolute inset-0 bg-[radial-gradient(1200px_600px_at_20%_-10%,rgba(59,130,246,0.25),transparent_60%),radial-gradient(900px_500px_at_80%_0%,rgba(168,85,247,0.18),transparent_55%),radial-gradient(800px_500px_at_50%_100%,rgba(16,185,129,0.12),transparent_55%)]" />
-        <div
-          className="absolute inset-0 opacity-28"
-          style={{
-            backgroundImage:
-              'radial-gradient(rgba(31,41,55,0.25) 1px, transparent 1px), radial-gradient(rgba(31,41,55,0.15) 1px, transparent 1px)',
-            backgroundSize: '180px 180px, 300px 300px',
-            backgroundPosition: '0 0, 90px 110px',
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-background/10 via-transparent to-background/60" />
+    <div className="relative isolate ltm-page overflow-hidden">
+      <div className="ltm-page-fixed-bg-anchor">
+        <div className="ltm-page-fixed-bg-canvas">
+          <div className="absolute inset-0 bg-[radial-gradient(1200px_600px_at_20%_-10%,rgba(59,130,246,0.25),transparent_60%),radial-gradient(900px_500px_at_80%_0%,rgba(168,85,247,0.18),transparent_55%),radial-gradient(800px_500px_at_50%_100%,rgba(16,185,129,0.12),transparent_55%)]" />
+          <div
+            className="absolute inset-0 opacity-28"
+            style={{
+              backgroundImage:
+                'radial-gradient(rgba(31,41,55,0.25) 1px, transparent 1px), radial-gradient(rgba(31,41,55,0.15) 1px, transparent 1px)',
+              backgroundSize: '180px 180px, 300px 300px',
+              backgroundPosition: '0 0, 90px 110px',
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-background/10 via-transparent to-background/60" />
+        </div>
       </div>
 
       <div className="relative z-10 ltm-page-shell ltm-shell-wide">
