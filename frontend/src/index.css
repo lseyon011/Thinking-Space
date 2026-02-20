@@ -211,17 +211,12 @@
 
   .ltm-shell-top-chrome {
     @apply flex shrink-0 items-center justify-center;
-    padding-inline: clamp(0.2rem, 0.9vw, 0.6rem);
+    padding-inline: clamp(0.08rem, 0.55vw, 0.35rem);
   }
 
   .ltm-shell-top-tab-capsule {
-    @apply w-full max-w-[980px];
-  }
-
-  .ltm-shell-top-tab-capsule .ltm-shell-tabs-surface {
-    box-shadow:
-      0 12px 24px -20px rgb(0 0 0 / 0.5),
-      var(--ltm-shell-surface-shadow);
+    width: min(100%, 880px);
+    margin-inline: auto;
   }
 
   .ltm-shell-content-stage {
@@ -233,7 +228,6 @@
   }
 
   .ltm-shell-nav-surface,
-  .ltm-shell-top-tab-capsule,
   .ltm-shell-drawer-surface,
   .ltm-shell-command-surface,
   .ltm-shell-bottom-surface,
@@ -252,7 +246,7 @@
 
   @media (min-width: 1024px) {
     .ltm-shell-main-stage {
-      gap: max(calc(var(--ltm-shell-gap) * 0.55), 0.375rem);
+      gap: clamp(0.04rem, 0.18vw, 0.16rem);
     }
 
     .ltm-shell-body-stage {
@@ -419,11 +413,11 @@
   }
 
   .ltm-shell-tabs {
-    @apply w-full;
-  }
-
-  .ltm-shell-tabs-surface {
-    border-radius: calc(var(--ltm-shell-surface-radius) + 0.2rem);
+    @apply flex w-full items-center justify-center;
+    padding-block: 0.1rem;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
   }
 
   .ltm-shell-motion-chrome {
