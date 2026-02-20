@@ -187,11 +187,14 @@ function App() {
   const shell = useMemo(() => deriveAdaptiveShellStateOrch(layout), [layout])
   const compactNav = shell.compactNav
   const keyboardVisible = shell.keyboardVisibleCompact
-  const showBottomNav = shell.showBottomNav
+  const hideBottomNavOnIosApp = layout.surface === 'capacitor-ios'
+  const showBottomNav = shell.showBottomNav && !hideBottomNavOnIosApp
   const topInset = shell.topInset
   const bottomInset = shell.bottomInset
   const drawerBottomInset = shell.drawerBottomInset
-  const mainBottomPadding = shell.mainBottomPadding
+  const mainBottomPadding = hideBottomNavOnIosApp
+    ? (keyboardVisible ? Math.max(0, Math.round(layout.keyboardInset)) : 0)
+    : shell.mainBottomPadding
   const commandPaletteTopPadding = Math.max(80, topInset + 56)
   const commandPaletteBottomPadding = Math.max(16, bottomInset + 12)
 

@@ -504,7 +504,7 @@ function MarkdownDocumentBlock({
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
       <div
-        className="ts-md-header sticky top-0 z-40 flex items-start justify-between gap-3 border-b border-border/50 bg-card/95 px-5 py-4 backdrop-blur"
+        className="ts-md-header flex items-start justify-between gap-3 border-b border-border/50 px-5 py-4"
       >
         <div className="min-w-0">
           <div className="flex items-center gap-2">
