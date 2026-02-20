@@ -560,7 +560,8 @@ export default function BacklogListBlock({
           onDragLeave={() => handleDragLeave(node.uuid)}
           onDrop={e => { void handleDrop(node, e) }}
           className={cn(
-            'flex cursor-pointer items-center gap-2 border-l-[3px] bg-background px-3 py-2 transition-colors hover:bg-zinc-50',
+            'flex cursor-pointer items-center gap-2 border-l-[3px] px-3 py-2 transition-colors',
+            'bg-card hover:bg-zinc-50',
             borderColorClass,
             selectedNodeId === node.uuid && 'bg-accent/40',
             dragOverNodeId === node.uuid && 'ring-2 ring-primary/40 bg-primary/5',
@@ -570,7 +571,7 @@ export default function BacklogListBlock({
           <button
             type="button"
             onClick={() => toggleNode(node)}
-            className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-muted-foreground outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0 hover:bg-transparent active:bg-transparent hover:text-foreground"
           >
             <ChevronRight className={cn('h-4 w-4 transition-transform', isExpanded && 'rotate-90')} />
           </button>
@@ -633,7 +634,7 @@ export default function BacklogListBlock({
         )}
 
         {isExpanded && (
-          <div className="bg-background/95">
+          <div className="bg-muted/15">
             {childState?.loading && (
               <div className="flex items-center gap-2 border-t border-border/70 px-6 py-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -670,7 +671,7 @@ export default function BacklogListBlock({
     const programIconColorClass = iconColorForNodeType(program.type)
 
     return (
-      <div key={program.uuid} className="rounded-xl border border-border/70 bg-muted/30 p-2">
+      <div key={program.uuid} className="overflow-hidden rounded-xl border border-border/70 bg-muted/25">
         <div
           draggable
           onDragStart={makeDragStart(program)}
@@ -679,7 +680,7 @@ export default function BacklogListBlock({
           onDragLeave={() => handleDragLeave(program.uuid)}
           onDrop={e => { void handleDrop(program, e) }}
           className={cn(
-            'flex cursor-pointer items-center gap-2 rounded-md bg-muted/40 px-3 py-2 transition-colors hover:bg-muted/60',
+            'flex cursor-pointer items-center gap-2 border-b border-border/70 bg-card px-3 py-2 transition-colors hover:bg-zinc-50',
             selectedNodeId === program.uuid && 'bg-accent/40',
             dragOverNodeId === program.uuid && 'ring-2 ring-primary/40 bg-primary/5',
           )}
@@ -704,7 +705,7 @@ export default function BacklogListBlock({
           </button>
         </div>
 
-        <div className="mt-2 overflow-hidden rounded-md border border-border/70 bg-background">
+        <div className="bg-muted/15">
           {childState?.loading && (
             <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
