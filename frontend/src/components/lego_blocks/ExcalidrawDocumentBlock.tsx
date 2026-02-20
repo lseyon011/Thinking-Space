@@ -55,6 +55,13 @@ interface SceneAnalysis {
   durationMs: number
 }
 
+interface MiniMapBounds {
+  minX: number
+  minY: number
+  width: number
+  height: number
+}
+
 interface ExcalidrawPerfEvent {
   name: string
   durationMs: number
@@ -68,6 +75,7 @@ const MEDIAN_SORT_THRESHOLD = 2000
 const PERF_EVENTS_LIMIT = 400
 const VIEW_ANALYSIS_TIMEOUT_MS = 180
 const PARSED_SCENE_CACHE_MAX_ENTRIES = 4
+const MINIMAP_MAX_RECTS = 400
 
 const EMPTY_SCENE_ANALYSIS: SceneAnalysis = {
   sceneBounds: null,
@@ -77,11 +85,49 @@ const EMPTY_SCENE_ANALYSIS: SceneAnalysis = {
 
 const parsedSceneCache = new Map<string, ParsedExcalidrawScene | null>()
 
+interface SceneElementRect {
+  left: number
+  top: number
+  width: number
+  height: number
+  centerX: number
+  centerY: number
+  type: string
+}
+
 function readActiveToolType(appState: Record<string, unknown>): string | null {
   const activeTool = appState.activeTool
   if (!activeTool || typeof activeTool !== 'object') return null
   const type = (activeTool as { type?: unknown }).type
   return typeof type === 'string' ? type : null
+}
+
+function readZoomFromAppState(appState: Record<string, unknown>): number | null {
+  const zoomValue = (appState.zoom as { value?: unknown } | undefined)?.value
+  if (typeof zoomValue === 'number' && Number.isFinite(zoomValue)) return zoomValue
+  if (typeof appState.zoom === 'number' && Number.isFinite(appState.zoom)) return appState.zoom
+  return null
+}
+
+function resolveViewportWorldSize(params: {
+  excalidrawApi: ExcalidrawCanvasApiOrch | null
+  zoom: number
+  fallbackWidth: number
+  fallbackHeight: number
+}): { viewportWorldW: number; viewportWorldH: number } {
+  const { excalidrawApi, zoom, fallbackWidth, fallbackHeight } = params
+  const safeZoom = Math.max(zoom, 0.01)
+  const appState = excalidrawApi?.getAppStateBlock?.() ?? {}
+  const width = typeof appState.width === 'number' && Number.isFinite(appState.width) && appState.width > 0
+    ? appState.width
+    : fallbackWidth
+  const height = typeof appState.height === 'number' && Number.isFinite(appState.height) && appState.height > 0
+    ? appState.height
+    : fallbackHeight
+  return {
+    viewportWorldW: width / safeZoom,
+    viewportWorldH: height / safeZoom,
+  }
 }
 
 function nowMs(): number {
@@ -111,6 +157,66 @@ function parseSceneWithCache(content: string): ParsedExcalidrawScene | null {
     }
   }
   return parsed
+}
+
+function readSceneElementRect(item: unknown): SceneElementRect | null {
+  if (!item || typeof item !== 'object') return null
+  const element = item as Record<string, unknown>
+  if (element.isDeleted === true) return null
+
+  const x = Number(element.x)
+  const y = Number(element.y)
+  const widthRaw = Number(element.width)
+  const heightRaw = Number(element.height)
+  const type = typeof element.type === 'string' ? element.type : ''
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(widthRaw) || !Number.isFinite(heightRaw)) {
+    return null
+  }
+
+  const x2 = x + widthRaw
+  const y2 = y + heightRaw
+  const left = Math.min(x, x2)
+  const right = Math.max(x, x2)
+  const top = Math.min(y, y2)
+  const bottom = Math.max(y, y2)
+  const width = Math.max(right - left, 1)
+  const height = Math.max(bottom - top, 1)
+
+  return {
+    left,
+    top,
+    width,
+    height,
+    centerX: left + width / 2,
+    centerY: top + height / 2,
+    type,
+  }
+}
+
+function computeMiniMapBounds(elements: readonly unknown[]): MiniMapBounds | null {
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  let found = false
+
+  for (const item of elements) {
+    const rect = readSceneElementRect(item)
+    if (!rect) continue
+    minX = Math.min(minX, rect.left)
+    minY = Math.min(minY, rect.top)
+    maxX = Math.max(maxX, rect.left + rect.width)
+    maxY = Math.max(maxY, rect.top + rect.height)
+    found = true
+  }
+
+  if (!found) return null
+  return {
+    minX,
+    minY,
+    width: Math.max(maxX - minX, 1),
+    height: Math.max(maxY - minY, 1),
+  }
 }
 
 function pushGlobalExcalidrawPerfEvent(event: ExcalidrawPerfEvent): void {
@@ -155,34 +261,27 @@ function analyzeScene(parsedScene: ParsedExcalidrawScene | null): SceneAnalysis 
   const drawableCenters: SceneDrawableCenter[] = []
 
   for (const item of parsedScene.elements) {
-    if (!item || typeof item !== 'object') continue
-    const element = item as Record<string, unknown>
-    if (element.isDeleted === true) continue
-    const x = Number(element.x)
-    const y = Number(element.y)
-    const width = Number(element.width)
-    const height = Number(element.height)
-    const type = typeof element.type === 'string' ? element.type : ''
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) continue
-    minX = Math.min(minX, x)
-    minY = Math.min(minY, y)
-    maxX = Math.max(maxX, x + Math.max(width, 1))
-    maxY = Math.max(maxY, y + Math.max(height, 1))
-    const cx = x + Math.max(width, 1) / 2
-    const cy = y + Math.max(height, 1) / 2
+    const rect = readSceneElementRect(item)
+    if (!rect) continue
+    minX = Math.min(minX, rect.left)
+    minY = Math.min(minY, rect.top)
+    maxX = Math.max(maxX, rect.left + rect.width)
+    maxY = Math.max(maxY, rect.top + rect.height)
+    const cx = rect.centerX
+    const cy = rect.centerY
     centerCount += 1
     centerSumX += cx
     centerSumY += cy
     drawableCenters.push({
       x: cx,
       y: cy,
-      isAnchor: type !== 'freedraw',
+      isAnchor: rect.type !== 'freedraw',
     })
     if (centerCount <= MEDIAN_SORT_THRESHOLD) {
       centersX.push(cx)
       centersY.push(cy)
     }
-    if (type !== 'freedraw') {
+    if (rect.type !== 'freedraw') {
       anchorCount += 1
       anchorCenterSumX += cx
       anchorCenterSumY += cy
@@ -283,6 +382,10 @@ export default function ExcalidrawDocumentBlock({
   const pencilBridgeStopRef = useRef<(() => Promise<void>) | null>(null)
   const pencilAppStateFrameRef = useRef<number | null>(null)
   const pendingPencilAppStateRef = useRef<Record<string, unknown> | null>(null)
+  const viewportSubscriptionActiveRef = useRef(false)
+  const [miniMapElements, setMiniMapElements] = useState<readonly unknown[] | null>(null)
+  const pendingMiniMapElementsRef = useRef<readonly unknown[] | null>(null)
+  const miniMapElementsFrameRef = useRef<number | null>(null)
 
   const debugLog = useCallback((event: string, data: Record<string, unknown> = {}) => {
     if (!debugEnabled) return
@@ -306,6 +409,18 @@ export default function ExcalidrawDocumentBlock({
     if (!parsedScene) return null
     return buildExcalidrawInitialDataOrch(parsedScene, editable)
   }, [editable, parsedScene])
+
+  const queueMiniMapElements = useCallback((elements: readonly unknown[]) => {
+    pendingMiniMapElementsRef.current = elements
+    if (miniMapElementsFrameRef.current !== null) return
+    miniMapElementsFrameRef.current = window.requestAnimationFrame(() => {
+      miniMapElementsFrameRef.current = null
+      const next = pendingMiniMapElementsRef.current
+      pendingMiniMapElementsRef.current = null
+      if (!next) return
+      setMiniMapElements(prev => (prev === next ? prev : next))
+    })
+  }, [])
 
   const [deferredSceneAnalysis, setDeferredSceneAnalysis] = useState<SceneAnalysis>(EMPTY_SCENE_ANALYSIS)
   const sceneAnalysis = deferredSceneAnalysis
@@ -331,6 +446,24 @@ export default function ExcalidrawDocumentBlock({
 
   const sceneBounds = sceneAnalysis.sceneBounds
   const isLargeScene = (parsedScene?.elements.length ?? 0) >= LARGE_SCENE_ELEMENT_THRESHOLD
+  const elementsForMiniMap = useMemo<readonly unknown[]>(() => {
+    if (editable) return miniMapElements ?? parsedScene?.elements ?? []
+    return parsedScene?.elements ?? []
+  }, [editable, miniMapElements, parsedScene?.elements])
+  const miniMapBounds = useMemo(() => computeMiniMapBounds(elementsForMiniMap), [elementsForMiniMap])
+
+  useEffect(() => {
+    if (!editable) {
+      setMiniMapElements(null)
+      pendingMiniMapElementsRef.current = null
+      if (miniMapElementsFrameRef.current !== null) {
+        window.cancelAnimationFrame(miniMapElementsFrameRef.current)
+        miniMapElementsFrameRef.current = null
+      }
+      return
+    }
+    setMiniMapElements(parsedScene?.elements ?? null)
+  }, [editable, parsedScene])
 
   useEffect(() => {
     pushGlobalExcalidrawPerfEvent({
@@ -365,34 +498,26 @@ export default function ExcalidrawDocumentBlock({
   }, [content.length, debugLog, isLargeScene, parsedScene, sceneAnalysis.durationMs, sceneBounds])
 
   const miniMapRects = useMemo(() => {
-    if (editable || !parsedScene || !sceneBounds) return []
+    if (!miniMapBounds || elementsForMiniMap.length === 0) return []
 
     const rects: Array<{ x: number; y: number; width: number; height: number; key: string }> = []
-    const elements = parsedScene.elements
-    const maxElements = Math.min(elements.length, 400)
+    const step = Math.max(1, Math.ceil(elementsForMiniMap.length / MINIMAP_MAX_RECTS))
 
-    for (let index = 0; index < maxElements; index += 1) {
-      const item = elements[index]
-      if (!item || typeof item !== 'object') continue
-      const element = item as Record<string, unknown>
-      if (element.isDeleted === true) continue
-      const x = Number(element.x)
-      const y = Number(element.y)
-      const w = Math.max(Number(element.width), 1)
-      const h = Math.max(Number(element.height), 1)
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(w) || !Number.isFinite(h)) continue
+    for (let index = 0; index < elementsForMiniMap.length; index += step) {
+      const rect = readSceneElementRect(elementsForMiniMap[index])
+      if (!rect) continue
 
       rects.push({
         key: `nav-${index}`,
-        x: ((x - sceneBounds.minX) / sceneBounds.width) * 100,
-        y: ((y - sceneBounds.minY) / sceneBounds.height) * 72,
-        width: Math.max((w / sceneBounds.width) * 100, 0.5),
-        height: Math.max((h / sceneBounds.height) * 72, 0.5),
+        x: ((rect.left - miniMapBounds.minX) / miniMapBounds.width) * 100,
+        y: ((rect.top - miniMapBounds.minY) / miniMapBounds.height) * 72,
+        width: Math.max((rect.width / miniMapBounds.width) * 100, 0.5),
+        height: Math.max((rect.height / miniMapBounds.height) * 72, 0.5),
       })
     }
 
     return rects
-  }, [editable, parsedScene, sceneBounds])
+  }, [elementsForMiniMap, miniMapBounds])
 
   const uiOptions = useMemo(() => {
     if (editable) {
@@ -528,6 +653,10 @@ export default function ExcalidrawDocumentBlock({
         window.cancelAnimationFrame(pencilAppStateFrameRef.current)
         pencilAppStateFrameRef.current = null
       }
+      if (miniMapElementsFrameRef.current !== null) {
+        window.cancelAnimationFrame(miniMapElementsFrameRef.current)
+        miniMapElementsFrameRef.current = null
+      }
       const stopPencilBridge = pencilBridgeStopRef.current
       pencilBridgeStopRef.current = null
       if (stopPencilBridge) {
@@ -535,6 +664,7 @@ export default function ExcalidrawDocumentBlock({
       }
       queuedSceneRef.current = null
       pendingPencilAppStateRef.current = null
+      pendingMiniMapElementsRef.current = null
     }
   }, [])
 
@@ -711,8 +841,9 @@ export default function ExcalidrawDocumentBlock({
   useEffect(() => {
     if (!excalidrawApi) return undefined
 
+    const trackViewport = miniMapBounds !== null
     const viewport = excalidrawApi.getViewportStateBlock()
-    if (!editable) {
+    if (trackViewport) {
       setScrollState({
         scrollX: viewport.scrollX,
         scrollY: viewport.scrollY,
@@ -733,6 +864,7 @@ export default function ExcalidrawDocumentBlock({
     })
 
     if (editable) {
+      queueMiniMapElements(excalidrawApi.getSceneElementsBlock())
       if (sceneBounds) {
         const zoom = Number.isFinite(viewport.zoom) ? viewport.zoom : 0
         const zoomValid = zoom >= 0.02 && zoom <= 4
@@ -780,9 +912,8 @@ export default function ExcalidrawDocumentBlock({
       }
     }
 
-    const unsubscribe = editable
-      ? null
-      : excalidrawApi.onViewportChangeBlock((nextViewport) => {
+    const unsubscribe = trackViewport
+      ? excalidrawApi.onViewportChangeBlock((nextViewport) => {
         pendingScrollRef.current = nextViewport
         if (scrollFrameRef.current !== null) {
           return
@@ -793,15 +924,18 @@ export default function ExcalidrawDocumentBlock({
           setScrollState(pendingScrollRef.current)
         })
       })
+      : null
+    viewportSubscriptionActiveRef.current = unsubscribe !== null
 
     return () => {
+      viewportSubscriptionActiveRef.current = false
       unsubscribe?.()
       if (scrollFrameRef.current !== null) {
         window.cancelAnimationFrame(scrollFrameRef.current)
         scrollFrameRef.current = null
       }
     }
-  }, [containerSize.height, containerSize.width, countDrawableCentersInViewport, debugLog, editable, excalidrawApi, parsedScene, sceneBounds, scheduleAutoCenter])
+  }, [containerSize.height, containerSize.width, countDrawableCentersInViewport, debugLog, editable, excalidrawApi, miniMapBounds, parsedScene, queueMiniMapElements, sceneBounds, scheduleAutoCenter])
 
   useEffect(() => {
     const container = containerRef.current
@@ -865,6 +999,27 @@ export default function ExcalidrawDocumentBlock({
             if (editable && excalidrawApi && !hasAutoCenteredRef.current && autoCenterRequestedRef.current && elements.length > 0) {
               scheduleAutoCenter('on_change', elements.length)
             }
+            if (editable && miniMapBounds && !viewportSubscriptionActiveRef.current) {
+              const zoom = readZoomFromAppState(typedAppState)
+              const scrollX = typeof typedAppState.scrollX === 'number' && Number.isFinite(typedAppState.scrollX)
+                ? typedAppState.scrollX
+                : null
+              const scrollY = typeof typedAppState.scrollY === 'number' && Number.isFinite(typedAppState.scrollY)
+                ? typedAppState.scrollY
+                : null
+              if (zoom !== null && scrollX !== null && scrollY !== null) {
+                pendingScrollRef.current = { scrollX, scrollY, zoom }
+                if (scrollFrameRef.current === null) {
+                  scrollFrameRef.current = window.requestAnimationFrame(() => {
+                    scrollFrameRef.current = null
+                    setScrollState(pendingScrollRef.current)
+                  })
+                }
+              }
+            }
+            if (editable) {
+              queueMiniMapElements(elements)
+            }
             queueSceneChange({
               elements,
               appState: typedAppState,
@@ -881,7 +1036,7 @@ export default function ExcalidrawDocumentBlock({
         </div>
       )}
 
-      {!editable && sceneBounds && (
+      {miniMapBounds && (
         <button
           type="button"
           className="absolute bottom-3 right-3 z-20 rounded-lg border border-border/70 bg-background/90 p-1 shadow-sm backdrop-blur"
@@ -893,17 +1048,21 @@ export default function ExcalidrawDocumentBlock({
             className="h-16 w-24"
             onClick={(event) => {
               event.stopPropagation()
-              if (!sceneBounds || !excalidrawApi) return
+              if (!miniMapBounds || !excalidrawApi) return
               const rect = (event.currentTarget as SVGSVGElement).getBoundingClientRect()
               const px = (event.clientX - rect.left) / Math.max(rect.width, 1)
               const py = (event.clientY - rect.top) / Math.max(rect.height, 1)
 
-              const worldX = sceneBounds.minX + px * sceneBounds.width
-              const worldY = sceneBounds.minY + py * sceneBounds.height
+              const worldX = miniMapBounds.minX + px * miniMapBounds.width
+              const worldY = miniMapBounds.minY + py * miniMapBounds.height
 
-              const zoom = Math.max(scrollState.zoom, 0.01)
-              const viewportWorldW = containerSize.width / zoom
-              const viewportWorldH = containerSize.height / zoom
+              const zoom = Math.max(excalidrawApi.getViewportStateBlock().zoom, 0.01)
+              const { viewportWorldW, viewportWorldH } = resolveViewportWorldSize({
+                excalidrawApi,
+                zoom,
+                fallbackWidth: containerSize.width,
+                fallbackHeight: containerSize.height,
+              })
               const nextScrollX = -worldX + viewportWorldW / 2
               const nextScrollY = -worldY + viewportWorldH / 2
 
@@ -932,12 +1091,16 @@ export default function ExcalidrawDocumentBlock({
               const zoom = Math.max(scrollState.zoom, 0.01)
               const leftWorld = -scrollState.scrollX
               const topWorld = -scrollState.scrollY
-              const viewportWorldW = containerSize.width / zoom
-              const viewportWorldH = containerSize.height / zoom
-              const vx = ((leftWorld - sceneBounds.minX) / sceneBounds.width) * 100
-              const vy = ((topWorld - sceneBounds.minY) / sceneBounds.height) * 72
-              const vw = (viewportWorldW / sceneBounds.width) * 100
-              const vh = (viewportWorldH / sceneBounds.height) * 72
+              const { viewportWorldW, viewportWorldH } = resolveViewportWorldSize({
+                excalidrawApi,
+                zoom,
+                fallbackWidth: containerSize.width,
+                fallbackHeight: containerSize.height,
+              })
+              const vx = ((leftWorld - miniMapBounds.minX) / miniMapBounds.width) * 100
+              const vy = ((topWorld - miniMapBounds.minY) / miniMapBounds.height) * 72
+              const vw = (viewportWorldW / miniMapBounds.width) * 100
+              const vh = (viewportWorldH / miniMapBounds.height) * 72
               return (
                 <rect
                   x={vx}
