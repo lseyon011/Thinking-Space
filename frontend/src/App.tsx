@@ -112,6 +112,8 @@ function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [commandQuery, setCommandQuery] = useState('')
   const commandInputRef = useRef<HTMLInputElement | null>(null)
+  const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
+  const drawerPanelSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const [needsVaultSetup, setNeedsVaultSetup] = useState(() => {
     const stored = getStoredVaultRoot()
     if (!stored) return true
@@ -185,6 +187,9 @@ function App() {
   const bottomInset = shell.bottomInset
   const drawerBottomInset = shell.drawerBottomInset
   const mainBottomPadding = shell.mainBottomPadding
+  const iosSurface = layout.surface === 'capacitor-ios'
+  const commandPaletteTopPadding = Math.max(80, topInset + 56)
+  const commandPaletteBottomPadding = Math.max(16, bottomInset + 12)
 
   const openCommandPalette = useCallback(() => {
     setCommandQuery('')
@@ -200,6 +205,29 @@ function App() {
     setCommandQuery('')
     navigate(item.to)
   }, [navigate])
+
+  const handleDrawerTouchStart = useCallback((event: React.TouchEvent<HTMLElement>) => {
+    const touch = event.touches[0]
+    if (!touch) return
+    drawerPanelSwipeStartRef.current = { x: touch.clientX, y: touch.clientY }
+  }, [])
+
+  const handleDrawerTouchMove = useCallback((event: React.TouchEvent<HTMLElement>) => {
+    const start = drawerPanelSwipeStartRef.current
+    if (!start) return
+    const touch = event.touches[0]
+    if (!touch) return
+    const deltaX = touch.clientX - start.x
+    const deltaY = Math.abs(touch.clientY - start.y)
+    if (deltaX < -56 && deltaY < 44) {
+      drawerPanelSwipeStartRef.current = null
+      setDrawerOpen(false)
+    }
+  }, [])
+
+  const handleDrawerTouchEnd = useCallback(() => {
+    drawerPanelSwipeStartRef.current = null
+  }, [])
 
   // On mount, restore security-scoped bookmark for picker-selected Capacitor vaults
   useEffect(() => {
@@ -248,6 +276,49 @@ function App() {
       setDrawerOpen(false)
     }
   }, [compactNav])
+
+  useEffect(() => {
+    if (!compactNav || drawerOpen) {
+      drawerEdgeSwipeStartRef.current = null
+      return
+    }
+
+    const handleTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0]
+      if (!touch) return
+      if (touch.clientX > 24) return
+      drawerEdgeSwipeStartRef.current = { x: touch.clientX, y: touch.clientY }
+    }
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const start = drawerEdgeSwipeStartRef.current
+      if (!start) return
+      const touch = event.touches[0]
+      if (!touch) return
+      const deltaX = touch.clientX - start.x
+      const deltaY = Math.abs(touch.clientY - start.y)
+      if (deltaX > 72 && deltaY < 44) {
+        drawerEdgeSwipeStartRef.current = null
+        setDrawerOpen(true)
+      }
+    }
+
+    const clearGesture = () => {
+      drawerEdgeSwipeStartRef.current = null
+    }
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: true })
+    window.addEventListener('touchmove', handleTouchMove, { passive: true })
+    window.addEventListener('touchend', clearGesture)
+    window.addEventListener('touchcancel', clearGesture)
+
+    return () => {
+      window.removeEventListener('touchstart', handleTouchStart)
+      window.removeEventListener('touchmove', handleTouchMove)
+      window.removeEventListener('touchend', clearGesture)
+      window.removeEventListener('touchcancel', clearGesture)
+    }
+  }, [compactNav, drawerOpen])
 
   useEffect(() => {
     if (keyboardVisible) {
@@ -313,7 +384,11 @@ function App() {
   return (
     <div className="ltm-app-shell">
       <header
-        className="sticky top-0 z-50 border-b border-border/70 bg-background/85 backdrop-blur-xl"
+        className={`sticky top-0 z-50 border-b border-border/70 ${
+          iosSurface
+            ? 'bg-background/70 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/60'
+            : 'bg-background/85 backdrop-blur-xl'
+        }`}
         style={topInset ? { paddingTop: `${topInset}px` } : undefined}
       >
         <div className="mx-auto w-full px-2 sm:px-3 md:px-4">
@@ -323,7 +398,7 @@ function App() {
                 <button
                   type="button"
                   onClick={() => setDrawerOpen(true)}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-foreground"
+                  className="ltm-motion-fast ltm-touch-target inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-foreground"
                   aria-label="Open navigation"
                 >
                   <Menu className="h-4 w-4" />
@@ -335,14 +410,14 @@ function App() {
                   <button
                     type="button"
                     onClick={openCommandPalette}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-foreground"
+                    className="ltm-motion-fast ltm-touch-target inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-foreground"
                     aria-label="Open quick search"
                   >
                     <Search className="h-4 w-4" />
                   </button>
                   <Link
                     to="/"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background"
+                    className="ltm-motion-fast ltm-touch-target inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background"
                     aria-label="Home"
                   >
                     <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-foreground text-background">
@@ -367,7 +442,7 @@ function App() {
                   <button
                     type="button"
                     onClick={() => setSidebarCollapsed(prev => !prev)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-foreground"
+                    className="ltm-motion-fast ltm-touch-target inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-foreground"
                     title={sidebarCollapsed ? 'Expand sidebar (Cmd/Ctrl+\\)' : 'Collapse sidebar (Cmd/Ctrl+\\)'}
                     aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                   >
@@ -394,7 +469,7 @@ function App() {
                   <button
                     type="button"
                     onClick={openCommandPalette}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-border/60 bg-background px-3 text-sm text-muted-foreground hover:text-foreground"
+                    className="ltm-motion-fast ltm-touch-target inline-flex h-9 items-center gap-2 rounded-lg border border-border/60 bg-background px-3 text-sm text-muted-foreground hover:text-foreground"
                     aria-label="Open quick search"
                   >
                     <Search className="h-4 w-4" />
@@ -413,7 +488,9 @@ function App() {
 
       <div className="flex min-h-0 flex-1">
         {!compactNav && (
-          <aside className={`hidden shrink-0 border-r border-border/70 bg-card/30 transition-[width] duration-200 lg:block ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
+          <aside className={`hidden shrink-0 border-r border-border/70 transition-[width] duration-200 lg:block ${
+            iosSurface ? 'bg-card/40 backdrop-blur-md' : 'bg-card/30'
+          } ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
             <div className={`h-[calc(100dvh-3.5rem)] overflow-y-auto py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
               <div className="space-y-1">
                 {!sidebarCollapsed && (
@@ -429,7 +506,7 @@ function App() {
                       key={item.to}
                       to={item.to}
                       title={sidebarCollapsed ? item.label : undefined}
-                      className={`flex items-center rounded-lg py-2 text-sm transition-colors ${
+                      className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
                         sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
                       } ${
                         active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -456,7 +533,7 @@ function App() {
                       key={item.to}
                       to={item.to}
                       title={sidebarCollapsed ? item.label : undefined}
-                      className={`flex items-center rounded-lg py-2 text-sm transition-colors ${
+                      className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
                         sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
                       } ${
                         active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -483,7 +560,7 @@ function App() {
                       key={item.to}
                       to={item.to}
                       title={sidebarCollapsed ? item.label : undefined}
-                      className={`flex items-center rounded-lg py-2 text-sm transition-colors ${
+                      className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
                         sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
                       } ${
                         active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -530,16 +607,26 @@ function App() {
       {compactNav && drawerOpen && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-background/65 backdrop-blur-sm"
+            className={`fixed inset-0 z-40 ltm-animate-fade-in ${
+              iosSurface ? 'bg-background/55 backdrop-blur-md' : 'bg-background/65 backdrop-blur-sm'
+            }`}
             onClick={() => setDrawerOpen(false)}
           />
-          <aside className="fixed inset-y-0 left-0 z-50 w-[84vw] max-w-[360px] border-r border-border/70 bg-background shadow-2xl">
+          <aside
+            className={`fixed inset-y-0 left-0 z-50 w-[84vw] max-w-[420px] border-r border-border/70 ltm-animate-slide-in-left ${
+              iosSurface ? 'bg-background/88 backdrop-blur-xl' : 'bg-background'
+            } shadow-2xl`}
+            onTouchStart={handleDrawerTouchStart}
+            onTouchMove={handleDrawerTouchMove}
+            onTouchEnd={handleDrawerTouchEnd}
+            onTouchCancel={handleDrawerTouchEnd}
+          >
             <div className="flex h-12 items-center justify-between border-b border-border/60 px-3">
               <span className="text-sm font-semibold tracking-tight">Navigation</span>
               <button
                 type="button"
                 onClick={() => setDrawerOpen(false)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/60"
+                className="ltm-touch-target inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/60"
                 aria-label="Close navigation"
               >
                 <X className="h-4 w-4" />
@@ -562,7 +649,7 @@ function App() {
                       key={item.to}
                       to={item.to}
                       onClick={() => setDrawerOpen(false)}
-                      className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                      className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
                         active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                       }`}
                     >
@@ -585,7 +672,7 @@ function App() {
                       key={item.to}
                       to={item.to}
                       onClick={() => setDrawerOpen(false)}
-                      className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                      className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
                         active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                       }`}
                     >
@@ -607,7 +694,7 @@ function App() {
                       key={item.to}
                       to={item.to}
                       onClick={() => setDrawerOpen(false)}
-                      className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                      className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
                         active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                       }`}
                     >
@@ -625,11 +712,18 @@ function App() {
       {commandPaletteOpen && (
         <>
           <div
-            className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm"
+            className={`fixed inset-0 z-50 ltm-animate-fade-in ${
+              iosSurface ? 'bg-background/55 backdrop-blur-md' : 'bg-background/70 backdrop-blur-sm'
+            }`}
             onClick={closeCommandPalette}
           />
-          <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-20 sm:pt-24">
-            <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border/70 bg-background shadow-2xl">
+          <div
+            className="fixed inset-0 z-[60] flex items-start justify-center p-3 sm:p-4"
+            style={{ paddingTop: `${commandPaletteTopPadding}px`, paddingBottom: `${commandPaletteBottomPadding}px` }}
+          >
+            <div className={`max-h-full w-full max-w-2xl overflow-hidden rounded-2xl border border-border/70 ltm-animate-slide-up shadow-2xl ${
+              iosSurface ? 'bg-background/88 backdrop-blur-xl' : 'bg-background'
+            }`}>
               <div className="border-b border-border/60 p-3">
                 <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-2.5">
                   <Search className="h-4 w-4 text-muted-foreground" />
@@ -648,7 +742,7 @@ function App() {
                   />
                 </div>
               </div>
-              <div className="max-h-[58vh] overflow-y-auto p-2">
+              <div className="max-h-[min(58vh,520px)] overflow-y-auto p-2">
                 {filteredCommandItems.length === 0 ? (
                   <div className="rounded-lg px-3 py-4 text-sm text-muted-foreground">
                     No matches. Try another keyword.
@@ -666,7 +760,7 @@ function App() {
                         key={`${item.group}:${item.to}`}
                         type="button"
                         onClick={() => runCommandItem(item)}
-                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                        className={`ltm-motion-fast ltm-touch-row flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                           active ? 'bg-foreground text-background' : 'hover:bg-muted'
                         }`}
                       >
@@ -689,7 +783,11 @@ function App() {
 
       {showBottomNav && (
         <nav
-          className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/70 bg-background/95 backdrop-blur-xl"
+          className={`fixed bottom-0 left-0 right-0 z-40 border-t border-border/70 ${
+            iosSurface
+              ? 'bg-background/78 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/68'
+              : 'bg-background/95 backdrop-blur-xl'
+          }`}
           style={bottomInset ? { paddingBottom: `${bottomInset}px` } : undefined}
         >
           <div className="grid h-14 grid-cols-5 items-center px-1">
@@ -700,7 +798,7 @@ function App() {
                 <Link
                   key={item.to}
                   to={item.to}
-                  className={`flex h-full min-w-0 flex-col items-center justify-center gap-1 text-[11px] ${
+                  className={`ltm-touch-row flex h-full min-w-0 flex-col items-center justify-center gap-1 text-[11px] ${
                     active ? 'text-foreground' : 'text-muted-foreground'
                   }`}
                 >

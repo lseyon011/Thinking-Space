@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { PanelLeft, PanelLeftClose, Sparkles, FileText } from 'lucide-react'
 import VaultExplorerBlock from '@/components/lego_blocks/VaultExplorerBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/MarkdownDocumentBlock'
@@ -11,44 +11,46 @@ export default function ThinkingSpaceOrch() {
   const { layout } = useUILayoutBlock()
   const [inlinePath, setInlinePath] = useState<string | null>(null)
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
+  const showInlineSidebar = layout.hasSidebar
+  const iosSurface = layout.surface === 'capacitor-ios'
   const topInset = Math.max(0, Math.round(layout.safeAreaInsets.top))
   const bottomInset = Math.max(0, Math.round(layout.safeAreaInsets.bottom))
   const drawerBottomPadding = Math.max(bottomInset, layout.keyboardVisible ? Math.round(layout.keyboardInset) : 0)
 
+  useEffect(() => {
+    if (showInlineSidebar) setMobileExplorerOpen(false)
+  }, [showInlineSidebar])
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/60 bg-background/90 px-2 md:px-3">
-        <span className="px-1 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Thinking Space
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 md:hidden"
-          onClick={() => setMobileExplorerOpen(true)}
-        >
-          <PanelLeft className="mr-2 h-4 w-4" />
-          Explorer
-        </Button>
-      </div>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className={`grid min-h-0 flex-1 overflow-hidden ${showInlineSidebar ? 'grid-cols-[clamp(240px,28vw,360px)_minmax(0,1fr)]' : 'grid-cols-1'}`}>
+        {showInlineSidebar && (
+          <aside className="min-h-0 border-r border-border/60 bg-card/20 md:flex md:flex-col">
+            <div className="min-h-0 flex-1">
+              <VaultExplorerBlock
+                loadEntries={listFolderEntries}
+                onOpenFile={(path) => setInlinePath(path)}
+              />
+            </div>
+            <div className="border-t border-border/60 p-2">
+              <ExtensionSlotBlock
+                slotId="sidebar-bottom"
+                context={{ inlinePath }}
+              />
+            </div>
+          </aside>
+        )}
 
-      <div className="grid min-h-0 flex-1 md:grid-cols-[clamp(240px,28vw,360px)_minmax(0,1fr)]">
-        <aside className="hidden min-h-0 border-r border-border/60 md:flex md:flex-col">
-          <div className="min-h-0 flex-1">
-            <VaultExplorerBlock
-              loadEntries={listFolderEntries}
-              onOpenFile={(path) => setInlinePath(path)}
-            />
-          </div>
-          <div className="border-t border-border/60 p-2">
-            <ExtensionSlotBlock
-              slotId="sidebar-bottom"
-              context={{ inlinePath }}
-            />
-          </div>
-        </aside>
-
-        <section className="relative min-h-0">
+        <section className="relative min-h-0 bg-background">
+          <Button
+            variant="outline"
+            size="sm"
+            className={`ltm-motion-fast ltm-touch-target absolute left-3 top-3 z-20 h-8 ${showInlineSidebar ? 'hidden' : 'inline-flex'}`}
+            onClick={() => setMobileExplorerOpen(true)}
+          >
+            <PanelLeft className="mr-2 h-4 w-4" />
+            Explorer
+          </Button>
           {inlinePath ? (
             <MarkdownDocumentBlock
               path={inlinePath}
@@ -75,13 +77,17 @@ export default function ThinkingSpaceOrch() {
         </section>
       </div>
 
-      {mobileExplorerOpen && (
+      {!showInlineSidebar && mobileExplorerOpen && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-background/70 backdrop-blur-sm"
+            className={`fixed inset-0 z-40 ltm-animate-fade-in ${
+              iosSurface ? 'bg-background/55 backdrop-blur-md' : 'bg-background/70 backdrop-blur-sm'
+            }`}
             onClick={() => setMobileExplorerOpen(false)}
           />
-          <aside className="fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-[360px] flex-col border-r border-border/70 bg-card shadow-xl">
+          <aside className={`fixed inset-y-0 left-0 z-50 flex w-[84vw] max-w-[420px] flex-col border-r border-border/70 ltm-animate-slide-in-left shadow-xl ${
+            iosSurface ? 'bg-background/88 backdrop-blur-xl' : 'bg-card'
+          }`}>
             <div
               className="flex h-11 shrink-0 items-center justify-between border-b border-border/60 px-2"
               style={topInset ? { paddingTop: `${topInset}px`, height: `${44 + topInset}px` } : undefined}
@@ -92,7 +98,7 @@ export default function ThinkingSpaceOrch() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className="ltm-touch-target h-8 w-8"
                 onClick={() => setMobileExplorerOpen(false)}
                 title="Close explorer"
               >
