@@ -192,23 +192,6 @@ function MarkdownDocumentBlock({
     chromeCollapsedRef.current = chromeCollapsed
   }, [chromeCollapsed])
 
-  useLayoutEffect(() => {
-    const chromeEl = chromeContentRef.current
-    if (!chromeEl) return
-
-    const updateHeight = () => {
-      const next = chromeEl.scrollHeight
-      if (next > 0) setChromeMaxHeight(next)
-    }
-
-    updateHeight()
-
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(() => updateHeight())
-    observer.observe(chromeEl)
-    return () => observer.disconnect()
-  }, [mode, path, showMeta])
-
   useEffect(() => {
     const scroller = contentScrollRef.current
     if (!scroller) return
@@ -251,6 +234,23 @@ function MarkdownDocumentBlock({
     return () => scroller.removeEventListener('scroll', onScroll)
   }, [content, mode, path])
 
+  useLayoutEffect(() => {
+    const chromeEl = chromeContentRef.current
+    if (!chromeEl) return
+
+    const updateHeight = () => {
+      const next = chromeEl.scrollHeight
+      if (next > 0) setChromeMaxHeight(next)
+    }
+
+    updateHeight()
+
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => updateHeight())
+    observer.observe(chromeEl)
+    return () => observer.disconnect()
+  }, [mode, path, showMeta])
+
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const obsidianUrl = buildObsidianOpenUrlOrch(path)
@@ -258,6 +258,7 @@ function MarkdownDocumentBlock({
   const isEditing = mode === 'edit'
   const hasTextChanges = isEditing && content !== null && draft !== content
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
+  const shouldPadViewerContent = !isEditing && !isExcalidrawDoc
   const displayContent = useMemo(
     () => (content !== null ? stripFrontmatter(content) : ''),
     [content],
@@ -693,13 +694,10 @@ function MarkdownDocumentBlock({
       <div className="relative min-h-0 flex-1">
         <div
           ref={contentScrollRef}
-          className={cn(
-            'relative h-full min-h-0',
-            isExcalidrawDoc ? 'overflow-y-auto p-0' : (isEditing ? 'overflow-y-auto p-0' : 'overflow-y-auto px-6 py-5'),
-          )}
+          className="relative h-full min-h-0 overflow-y-auto p-0"
         >
           {loading && (
-            <div className="space-y-3">
+            <div className={cn('space-y-3', shouldPadViewerContent && 'px-6 py-5')}>
               {Array.from({ length: 8 }).map((_, i) => (
                 <div key={i} className="h-4 animate-pulse rounded bg-muted/40" style={{ width: `${60 + Math.random() * 40}%` }} />
               ))}
@@ -707,7 +705,7 @@ function MarkdownDocumentBlock({
           )}
 
           {error && (
-            <div className="text-sm text-destructive">{error}</div>
+            <div className={cn('text-sm text-destructive', shouldPadViewerContent && 'px-6 py-5')}>{error}</div>
           )}
 
           {!loading && !error && content !== null && !isEditing && isExcalidrawDoc && (
@@ -715,7 +713,7 @@ function MarkdownDocumentBlock({
           )}
 
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && (
-            <div className="space-y-2">
+            <div className="space-y-2 px-6 py-5">
               {pendingFullRender && (
                 <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                   Rendering full document...
