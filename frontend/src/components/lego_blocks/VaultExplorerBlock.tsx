@@ -136,6 +136,7 @@ export default function VaultExplorerBlock({
   }, [loadPath])
 
   const normalizedQuery = query.trim().toLowerCase()
+  const hasTitle = title.trim().length > 0
 
   const pathMatchesQuery = useCallback(
     (path: string, visited: Set<string>): boolean => {
@@ -367,20 +368,22 @@ export default function VaultExplorerBlock({
   return (
     <div className={cn('flex h-full min-h-0 flex-col', className)}>
       <div className="border-b border-border/60 px-3 py-2">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            {title}
+        {hasTitle && (
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              {title}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={refreshRoot}
+              title="Refresh explorer"
+            >
+              <RefreshCcw className="h-3.5 w-3.5" />
+            </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={refreshRoot}
-            title="Refresh explorer"
-          >
-            <RefreshCcw className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+        )}
 
         <label className="relative block">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />

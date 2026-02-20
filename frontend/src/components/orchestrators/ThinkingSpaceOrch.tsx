@@ -117,7 +117,7 @@ export default function ThinkingSpaceOrch() {
     <>
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/60 px-2">
         <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Explorer
+          Thinking Space Explorer
         </span>
         <Button
           variant="ghost"
@@ -133,6 +133,7 @@ export default function ThinkingSpaceOrch() {
         <VaultExplorerBlock
           loadEntries={listFolderEntries}
           onOpenFile={handleInlineFileOpen}
+          title=""
         />
       </div>
       <div className="border-t border-border/60 p-2">
@@ -251,6 +252,7 @@ export default function ThinkingSpaceOrch() {
               <VaultExplorerBlock
                 loadEntries={listFolderEntries}
                 onOpenFile={handleDrawerFileOpen}
+                title=""
               />
             </div>
             <div
