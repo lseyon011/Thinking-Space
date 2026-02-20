@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { PanelLeft, PanelLeftClose, Sparkles, FileText } from 'lucide-react'
 import VaultExplorerBlock from '@/components/lego_blocks/VaultExplorerBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/MarkdownDocumentBlock'
@@ -6,11 +6,18 @@ import ExtensionSlotBlock from '@/components/lego_blocks/ExtensionSlotBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/UILayoutBlock'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
+import {
+  shouldCloseDrawerFromSwipeBlock,
+  shouldOpenDrawerFromSwipeBlock,
+  shouldStartEdgeSwipeOpenBlock,
+} from '@/services/lego_blocks/uiGestureBlock'
 
 export default function ThinkingSpaceOrch() {
   const { layout } = useUILayoutBlock()
   const [inlinePath, setInlinePath] = useState<string | null>(null)
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
+  const edgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
+  const drawerSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const showInlineSidebar = layout.hasSidebar
   const iosSurface = layout.surface === 'capacitor-ios'
   const topInset = Math.max(0, Math.round(layout.safeAreaInsets.top))
@@ -20,6 +27,68 @@ export default function ThinkingSpaceOrch() {
   useEffect(() => {
     if (showInlineSidebar) setMobileExplorerOpen(false)
   }, [showInlineSidebar])
+
+  useEffect(() => {
+    if (showInlineSidebar || mobileExplorerOpen) {
+      edgeSwipeStartRef.current = null
+      return
+    }
+
+    const handleTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0]
+      if (!touch) return
+      if (!shouldStartEdgeSwipeOpenBlock(touch.clientX)) return
+      edgeSwipeStartRef.current = { x: touch.clientX, y: touch.clientY }
+    }
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const start = edgeSwipeStartRef.current
+      if (!start) return
+      const touch = event.touches[0]
+      if (!touch) return
+      if (shouldOpenDrawerFromSwipeBlock(touch.clientX - start.x, touch.clientY - start.y)) {
+        edgeSwipeStartRef.current = null
+        setMobileExplorerOpen(true)
+      }
+    }
+
+    const clearGesture = () => {
+      edgeSwipeStartRef.current = null
+    }
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: true })
+    window.addEventListener('touchmove', handleTouchMove, { passive: true })
+    window.addEventListener('touchend', clearGesture)
+    window.addEventListener('touchcancel', clearGesture)
+
+    return () => {
+      window.removeEventListener('touchstart', handleTouchStart)
+      window.removeEventListener('touchmove', handleTouchMove)
+      window.removeEventListener('touchend', clearGesture)
+      window.removeEventListener('touchcancel', clearGesture)
+    }
+  }, [mobileExplorerOpen, showInlineSidebar])
+
+  const handleExplorerDrawerTouchStart = (event: React.TouchEvent<HTMLElement>) => {
+    const touch = event.touches[0]
+    if (!touch) return
+    drawerSwipeStartRef.current = { x: touch.clientX, y: touch.clientY }
+  }
+
+  const handleExplorerDrawerTouchMove = (event: React.TouchEvent<HTMLElement>) => {
+    const start = drawerSwipeStartRef.current
+    if (!start) return
+    const touch = event.touches[0]
+    if (!touch) return
+    if (shouldCloseDrawerFromSwipeBlock(touch.clientX - start.x, touch.clientY - start.y)) {
+      drawerSwipeStartRef.current = null
+      setMobileExplorerOpen(false)
+    }
+  }
+
+  const handleExplorerDrawerTouchEnd = () => {
+    drawerSwipeStartRef.current = null
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -85,9 +154,15 @@ export default function ThinkingSpaceOrch() {
             }`}
             onClick={() => setMobileExplorerOpen(false)}
           />
-          <aside className={`fixed inset-y-0 left-0 z-50 flex w-[84vw] max-w-[420px] flex-col border-r border-border/70 ltm-animate-slide-in-left shadow-xl ${
-            iosSurface ? 'bg-background/88 backdrop-blur-xl' : 'bg-card'
-          }`}>
+          <aside
+            className={`fixed inset-y-0 left-0 z-50 flex w-[84vw] max-w-[420px] flex-col border-r border-border/70 ltm-animate-slide-in-left shadow-xl ${
+              iosSurface ? 'bg-background/88 backdrop-blur-xl' : 'bg-card'
+            }`}
+            onTouchStart={handleExplorerDrawerTouchStart}
+            onTouchMove={handleExplorerDrawerTouchMove}
+            onTouchEnd={handleExplorerDrawerTouchEnd}
+            onTouchCancel={handleExplorerDrawerTouchEnd}
+          >
             <div
               className="flex h-11 shrink-0 items-center justify-between border-b border-border/60 px-2"
               style={topInset ? { paddingTop: `${topInset}px`, height: `${44 + topInset}px` } : undefined}

@@ -44,6 +44,11 @@ import {
 } from './services/orchestrators/storageOrch'
 import { getCapabilityFeatureFlags } from './services/orchestrators/capabilityFeatureFlagsOrch'
 import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from './services/lego_blocks/fsBlock'
+import {
+  shouldCloseDrawerFromSwipeBlock,
+  shouldOpenDrawerFromSwipeBlock,
+  shouldStartEdgeSwipeOpenBlock,
+} from './services/lego_blocks/uiGestureBlock'
 
 type NavIcon = ComponentType<{ className?: string }>
 
@@ -218,8 +223,8 @@ function App() {
     const touch = event.touches[0]
     if (!touch) return
     const deltaX = touch.clientX - start.x
-    const deltaY = Math.abs(touch.clientY - start.y)
-    if (deltaX < -56 && deltaY < 44) {
+    const deltaY = touch.clientY - start.y
+    if (shouldCloseDrawerFromSwipeBlock(deltaX, deltaY)) {
       drawerPanelSwipeStartRef.current = null
       setDrawerOpen(false)
     }
@@ -286,7 +291,7 @@ function App() {
     const handleTouchStart = (event: TouchEvent) => {
       const touch = event.touches[0]
       if (!touch) return
-      if (touch.clientX > 24) return
+      if (!shouldStartEdgeSwipeOpenBlock(touch.clientX)) return
       drawerEdgeSwipeStartRef.current = { x: touch.clientX, y: touch.clientY }
     }
 
@@ -296,8 +301,8 @@ function App() {
       const touch = event.touches[0]
       if (!touch) return
       const deltaX = touch.clientX - start.x
-      const deltaY = Math.abs(touch.clientY - start.y)
-      if (deltaX > 72 && deltaY < 44) {
+      const deltaY = touch.clientY - start.y
+      if (shouldOpenDrawerFromSwipeBlock(deltaX, deltaY)) {
         drawerEdgeSwipeStartRef.current = null
         setDrawerOpen(true)
       }
