@@ -52,6 +52,7 @@ function MarkdownSideSheet({
 
       <div className="fixed inset-y-0 right-0 z-50 w-full max-w-4xl border-l border-border shadow-2xl animate-slide-in">
         <MarkdownDocumentBlock
+          key={path}
           path={path}
           initialMode={initialMode}
           onSaved={onSaved}

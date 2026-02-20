@@ -148,6 +148,7 @@ export default function ThinkingSpaceOrch() {
     if (!inlinePath) return null
     return (
       <MarkdownDocumentBlock
+        key={inlinePath}
         path={inlinePath}
         onClose={handleInlineDocumentClose}
         showCloseButton
