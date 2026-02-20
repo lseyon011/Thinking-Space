@@ -31,7 +31,6 @@ export default function ThinkingSpaceOrch() {
   const showInlineSidebar = layout.hasSidebar
   const showCollapsedInlineExplorer = showInlineSidebar && !explorerCollapsed
   const showExplorerTrigger = !showCollapsedInlineExplorer
-  const topInset = Math.max(0, Math.round(layout.safeAreaInsets.top))
   const bottomInset = Math.max(0, Math.round(layout.safeAreaInsets.bottom))
   const drawerBottomPadding = Math.max(bottomInset, layout.keyboardVisible ? Math.round(layout.keyboardInset) : 0)
 
@@ -251,16 +250,13 @@ export default function ThinkingSpaceOrch() {
             onClick={() => setMobileExplorerOpen(false)}
           />
           <aside
-            className="ltm-shell-mobile-drawer ltm-shell-drawer-surface ltm-shell-motion-drawer fixed inset-y-0 left-0 z-50 flex flex-col"
+            className="ltm-mobile-drawer ltm-shell-mobile-drawer ltm-shell-drawer-surface ltm-shell-motion-drawer fixed inset-y-0 left-0 z-50 flex flex-col"
             onTouchStart={handleExplorerDrawerTouchStart}
             onTouchMove={handleExplorerDrawerTouchMove}
             onTouchEnd={handleExplorerDrawerTouchEnd}
             onTouchCancel={handleExplorerDrawerTouchEnd}
           >
-            <div
-              className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between px-2"
-              style={topInset ? { paddingTop: `${topInset}px`, height: `${44 + topInset}px` } : undefined}
-            >
+            <div className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between px-2">
               <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 Explorer
               </span>

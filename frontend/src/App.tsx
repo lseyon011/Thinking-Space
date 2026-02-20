@@ -101,14 +101,6 @@ const TOOL_NAV_ITEMS: NavItem[] = [
   { to: '/transcript-cleaner', label: 'Transcript Cleaner', icon: Sparkles },
 ]
 
-const BOTTOM_NAV_PATHS = new Set([
-  '/thinking-space',
-  '/new-thought',
-  '/todos',
-  '/chat',
-  '/thinking-organizer',
-])
-
 function isNavItemActive(pathname: string, item: NavItem): boolean {
   if (pathname === item.to) return true
   return (item.activePaths ?? []).includes(pathname)
@@ -282,11 +274,6 @@ function App() {
     [routeLabelByPath, workspaceTabs],
   )
 
-  const bottomNavItems = useMemo(
-    () => PRIMARY_NAV_ITEMS.filter(item => BOTTOM_NAV_PATHS.has(item.to)),
-    [],
-  )
-
   const filteredCommandItems = useMemo(() => {
     const query = commandQuery.trim().toLowerCase()
     if (!query) return commandItems
@@ -298,16 +285,13 @@ function App() {
   const shell = useMemo(() => deriveAdaptiveShellStateOrch(layout), [layout])
   const compactNav = shell.compactNav
   const keyboardVisible = shell.keyboardVisibleCompact
-  const hideBottomNavOnIosApp = layout.surface === 'capacitor-ios'
-  const showBottomNav = shell.showBottomNav && !hideBottomNavOnIosApp
+  const showBottomNav = false
   const topInset = shell.topInset
   const rightInset = shell.rightInset
   const bottomInset = shell.bottomInset
   const leftInset = shell.leftInset
   const drawerBottomInset = shell.drawerBottomInset
-  const mainBottomPadding = hideBottomNavOnIosApp
-    ? (keyboardVisible ? Math.max(0, Math.round(layout.keyboardInset)) : 0)
-    : shell.mainBottomPadding
+  const mainBottomPadding = keyboardVisible ? Math.max(0, Math.round(layout.keyboardInset)) : 0
   const commandPaletteTopPadding = Math.max(80, topInset + 56)
   const commandPaletteBottomPadding = Math.max(16, bottomInset + 12)
   const compactDrawerTriggerBottom = Math.max(bottomInset + (showBottomNav ? 72 : 16), 16)
@@ -858,7 +842,6 @@ function App() {
             onTouchMove={handleDrawerTouchMove}
             onTouchEnd={handleDrawerTouchEnd}
             onTouchCancel={handleDrawerTouchEnd}
-            style={topInset ? { paddingTop: `${topInset}px` } : undefined}
           >
             <div className="ltm-mobile-drawer-header ltm-shell-segment-header flex h-14 items-center justify-between px-3">
               <Link
@@ -1083,31 +1066,6 @@ function App() {
         </>
       )}
 
-      {showBottomNav && (
-        <nav
-          className="ltm-bottom-nav ltm-shell-bottom-surface fixed bottom-0 left-0 right-0 z-40"
-          style={bottomInset ? { paddingBottom: `${bottomInset}px` } : undefined}
-        >
-          <div className="grid h-14 grid-cols-5 items-center px-1">
-            {bottomNavItems.map((item) => {
-              const Icon = item.icon
-              const active = isNavItemActive(location.pathname, item)
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className={`ltm-touch-row flex h-full min-w-0 flex-col items-center justify-center gap-1 text-[11px] ${
-                    active ? 'text-foreground' : 'text-muted-foreground'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span className="truncate px-1">{item.label}</span>
-                </Link>
-              )
-            })}
-          </div>
-        </nav>
-      )}
     </div>
   )
 }

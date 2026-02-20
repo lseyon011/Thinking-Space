@@ -368,15 +368,37 @@
     max-width: var(--ltm-theme-drawer-max-width-phone, 420px);
   }
 
+  .ltm-app-shell[data-ltm-mode='phone'] .ltm-mobile-drawer.ltm-shell-mobile-drawer {
+    top: max(var(--ltm-safe-top), 10px);
+    bottom: max(var(--ltm-safe-bottom), 10px);
+    left: max(var(--ltm-safe-left), 10px);
+    width: min(
+      var(--ltm-theme-drawer-width-phone, 84vw),
+      calc(100vw - max(var(--ltm-safe-left), 10px) - max(var(--ltm-safe-right), 10px))
+    );
+    max-width: calc(100vw - max(var(--ltm-safe-left), 10px) - max(var(--ltm-safe-right), 10px));
+    border-radius: calc(var(--ltm-shell-surface-radius) + 0.2rem);
+    overflow: hidden;
+    box-shadow:
+      var(--ltm-shell-surface-shadow),
+      0 24px 48px -28px rgb(0 0 0 / 0.5);
+  }
+
   .ltm-app-shell[data-ltm-mode='tablet'] .ltm-shell-mobile-drawer {
     width: min(var(--ltm-theme-drawer-width-tablet, 420px), calc(100vw - (var(--ltm-shell-inset) * 2)));
     max-width: calc(100vw - (var(--ltm-shell-inset) * 2));
   }
 
   .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-shell-mobile-drawer {
-    width: 100vw;
-    max-width: 100vw;
-    border-radius: 0;
+    top: max(var(--ltm-safe-top), 10px);
+    bottom: max(var(--ltm-safe-bottom), 10px);
+    left: max(var(--ltm-safe-left), 10px);
+    width: min(
+      var(--ltm-theme-drawer-width-phone, 84vw),
+      calc(100vw - max(var(--ltm-safe-left), 10px) - max(var(--ltm-safe-right), 10px))
+    );
+    max-width: calc(100vw - max(var(--ltm-safe-left), 10px) - max(var(--ltm-safe-right), 10px));
+    border-radius: calc(var(--ltm-shell-surface-radius) + 0.2rem);
   }
 
   .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='tablet'] .ltm-shell-mobile-drawer {
