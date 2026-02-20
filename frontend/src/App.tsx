@@ -300,8 +300,7 @@ function App() {
     bottomInset + (showBottomNav ? 72 : compactDrawerBaseOffset),
     compactDrawerBaseOffset,
   )
-  const compactDrawerTriggerTop = Math.max(topInset + 10, 10)
-  const compactDrawerTriggerLeft = Math.max(12, leftInset + 12)
+  const compactDrawerTriggerLeft = Math.max(16, leftInset + 16)
   const shellSafeAreaVars = useMemo<CSSProperties>(() => ({
     '--ltm-safe-top': `${topInset}px`,
     '--ltm-safe-right': `${rightInset}px`,
@@ -604,7 +603,18 @@ function App() {
           style={topInset ? { paddingTop: `calc(${topInset}px + var(--ltm-shell-inset))` } : undefined}
         >
         <section className="ltm-shell-main-stage">
-          <header className="ltm-shell-top-chrome ltm-shell-motion-chrome">
+          <header className="ltm-shell-top-chrome ltm-shell-motion-chrome relative">
+            {compactNav && !drawerOpen && isCapacitorSurface && (
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(true)}
+                className="ltm-mobile-drawer-trigger ltm-motion-fast ltm-shell-field-surface absolute left-1.5 top-1/2 z-30 inline-flex h-8 min-w-[5.5rem] -translate-y-1/2 items-center justify-center gap-1.5 rounded-full px-3 text-[10px] font-semibold uppercase tracking-[0.13em] text-foreground shadow-sm"
+                aria-label="Open navigation"
+              >
+                <Menu className="h-3 w-3" />
+                <span>Menu</span>
+              </button>
+            )}
             <AppTabsBlock
               tabs={workspaceTabItems}
               activeTabId={activeWorkspaceTabId}
@@ -824,22 +834,15 @@ function App() {
         </div>
       </div>
 
-      {compactNav && !drawerOpen && (
+      {compactNav && !drawerOpen && !isCapacitorSurface && (
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className={`ltm-mobile-drawer-trigger ltm-motion-fast fixed z-30 inline-flex items-center text-foreground ${
-            isCapacitorSurface
-              ? 'ltm-shell-field-surface ltm-touch-target h-10 min-w-[5.25rem] justify-center gap-1.5 rounded-full px-3 text-[11px] font-semibold uppercase tracking-[0.14em] shadow-sm'
-              : 'ltm-shell-fab-surface ltm-touch-target h-11 w-11 justify-center rounded-full p-0 shadow-lg'
-          }`}
-          style={isCapacitorSurface
-            ? { top: `${compactDrawerTriggerTop}px`, left: `${compactDrawerTriggerLeft}px` }
-            : { bottom: `${compactDrawerTriggerBottom}px`, left: `${compactDrawerTriggerLeft}px` }}
+          className="ltm-mobile-drawer-trigger ltm-motion-fast ltm-shell-fab-surface ltm-touch-target fixed z-30 inline-flex h-11 w-11 items-center justify-center rounded-full p-0 text-foreground shadow-lg"
+          style={{ bottom: `${compactDrawerTriggerBottom}px`, left: `${compactDrawerTriggerLeft}px` }}
           aria-label="Open navigation"
         >
-          <Menu className={isCapacitorSurface ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-          {isCapacitorSurface && <span>Menu</span>}
+          <Menu className="h-4 w-4" />
         </button>
       )}
 
