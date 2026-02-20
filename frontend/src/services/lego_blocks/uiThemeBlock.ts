@@ -1,5 +1,13 @@
 export type UIThemeId = 'classic' | 'modern-classic' | 'modern'
 
+export type UIShellMaterialProfileBlock = 'baseline' | 'glass'
+export type UIShellMotionProfileBlock = 'baseline' | 'cupertino'
+
+export interface UIShellThemeProfileBlock {
+  material: UIShellMaterialProfileBlock
+  motion: UIShellMotionProfileBlock
+}
+
 export interface UIThemeOptionBlock {
   id: UIThemeId
   label: string
@@ -35,4 +43,18 @@ export function isUIThemeIdBlock(value: unknown): value is UIThemeId {
 export function normalizeUIThemeIdBlock(value: unknown): UIThemeId {
   if (isUIThemeIdBlock(value)) return value
   return DEFAULT_UI_THEME_ID_BLOCK
+}
+
+export function getUIShellThemeProfileBlock(themeId: UIThemeId): UIShellThemeProfileBlock {
+  if (themeId === 'modern-classic' || themeId === 'modern') {
+    return {
+      material: 'glass',
+      motion: 'cupertino',
+    }
+  }
+
+  return {
+    material: 'baseline',
+    motion: 'baseline',
+  }
 }

@@ -49,6 +49,7 @@ import {
 } from './services/orchestrators/storageOrch'
 import { getCapabilityFeatureFlags } from './services/orchestrators/capabilityFeatureFlagsOrch'
 import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from './services/lego_blocks/fsBlock'
+import { getUIShellThemeProfileOrch } from './services/orchestrators/uiThemeOrch'
 import {
   shouldCloseDrawerFromSwipeBlock,
   shouldOpenDrawerFromSwipeBlock,
@@ -177,6 +178,7 @@ function App() {
   const navigate = useNavigate()
   const { layout } = useUILayoutBlock()
   const { themeId, setThemeId } = useUIThemeBlock()
+  const shellThemeProfile = useMemo(() => getUIShellThemeProfileOrch(themeId), [themeId])
   const currentRoute = `${location.pathname}${location.search}${location.hash}`
 
   const featureFlags = getCapabilityFeatureFlags()
@@ -590,6 +592,8 @@ function App() {
       data-ltm-mode={layout.mode}
       data-ltm-surface={layout.surface}
       data-ltm-route={location.pathname}
+      data-ltm-shell-material={shellThemeProfile.material}
+      data-ltm-shell-motion={shellThemeProfile.motion}
       data-ltm-theme={themeId}
     >
       <div className="ltm-shell-layer-base">

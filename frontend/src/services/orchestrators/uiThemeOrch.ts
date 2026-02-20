@@ -1,6 +1,8 @@
 import {
   DEFAULT_UI_THEME_ID_BLOCK,
+  getUIShellThemeProfileBlock,
   normalizeUIThemeIdBlock,
+  type UIShellThemeProfileBlock,
   type UIThemeId,
 } from '../lego_blocks/uiThemeBlock'
 import { STORAGE_KEYS, getStorageItem, setStorageItem } from './storageOrch'
@@ -40,5 +42,14 @@ export function initializeUIThemeOrch(options: ApplyUIThemeOptions = {}): UIThem
   return storedTheme
 }
 
+export function getUIShellThemeProfileOrch(themeId: UIThemeId): UIShellThemeProfileBlock {
+  return getUIShellThemeProfileBlock(normalizeUIThemeIdBlock(themeId))
+}
+
 export type { UIThemeId } from '../lego_blocks/uiThemeBlock'
+export type {
+  UIShellMaterialProfileBlock,
+  UIShellMotionProfileBlock,
+  UIShellThemeProfileBlock,
+} from '../lego_blocks/uiThemeBlock'
 export { UI_THEME_OPTIONS_BLOCK } from '../lego_blocks/uiThemeBlock'

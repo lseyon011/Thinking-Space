@@ -146,14 +146,13 @@
     --ltm-shell-divider-strong: hsl(var(--border) / 0.48);
     --ltm-shell-divider-soft: hsl(var(--border) / 0.32);
     --ltm-shell-section-highlight: rgb(255 255 255 / 0.12);
+    --ltm-anim-baseline: cubic-bezier(0.22, 1, 0.36, 1);
+    --ltm-anim-fast: 140ms;
+    --ltm-anim-moderate: 220ms;
+    --ltm-anim-slow: 360ms;
   }
 
-  .ltm-app-shell[data-ltm-theme='modern-classic'],
-  .ltm-app-shell[data-ltm-theme='modern'] {
-    --ltm-anim-baseline: cubic-bezier(0.32, 0.72, 0, 1);
-    --ltm-anim-fast: 160ms;
-    --ltm-anim-moderate: 320ms;
-    --ltm-anim-slow: 480ms;
+  .ltm-app-shell[data-ltm-shell-material='glass'] {
     --ltm-shell-surface-bg: hsl(var(--card) / 0.72);
     --ltm-shell-surface-muted-bg: hsl(var(--card) / 0.62);
     --ltm-shell-surface-border: hsl(var(--border) / 0.4);
@@ -163,6 +162,13 @@
     --ltm-shell-divider-strong: hsl(var(--border) / 0.4);
     --ltm-shell-divider-soft: hsl(var(--border) / 0.26);
     --ltm-shell-section-highlight: rgb(255 255 255 / 0.2);
+  }
+
+  .ltm-app-shell[data-ltm-shell-motion='cupertino'] {
+    --ltm-anim-baseline: cubic-bezier(0.32, 0.72, 0, 1);
+    --ltm-anim-fast: 160ms;
+    --ltm-anim-moderate: 320ms;
+    --ltm-anim-slow: 480ms;
   }
 
   .ltm-shell-layer-base {
@@ -500,7 +506,7 @@
   animation: slide-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Cupertino animations — used by modern themes */
+/* Cupertino animations — enabled by shell motion profile */
 @keyframes ltm-menu-in {
   from { opacity: 0; filter: blur(4px); transform: translateY(-8px); }
   to { opacity: 1; filter: blur(0); transform: translateY(0); }
@@ -521,34 +527,28 @@
   to { opacity: 1; transform: scale(1); }
 }
 
-/* Apply Cupertino animations to modern themes */
-.ltm-app-shell[data-ltm-theme='modern-classic'] .ltm-animate-slide-up,
-.ltm-app-shell[data-ltm-theme='modern'] .ltm-animate-slide-up {
+/* Apply Cupertino animations to shell profiles with cupertino motion */
+.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-animate-slide-up {
   animation: ltm-modal-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
 }
 
-.ltm-app-shell[data-ltm-theme='modern-classic'] .ltm-animate-slide-in-left,
-.ltm-app-shell[data-ltm-theme='modern'] .ltm-animate-slide-in-left {
+.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-animate-slide-in-left {
   animation: ltm-leaf-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
 }
 
-.ltm-app-shell[data-ltm-theme='modern-classic'] .ltm-animate-fade-in,
-.ltm-app-shell[data-ltm-theme='modern'] .ltm-animate-fade-in {
+.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-animate-fade-in {
   animation: ltm-fade-scale-in var(--ltm-anim-fast, 160ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
 }
 
-.ltm-app-shell[data-ltm-theme='modern-classic'] .ltm-modern-animate-menu,
-.ltm-app-shell[data-ltm-theme='modern'] .ltm-modern-animate-menu {
+.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-modern-animate-menu {
   animation: ltm-menu-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
 }
 
-.ltm-app-shell[data-ltm-theme='modern-classic'] .ltm-modern-animate-modal,
-.ltm-app-shell[data-ltm-theme='modern'] .ltm-modern-animate-modal {
+.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-modern-animate-modal {
   animation: ltm-modal-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
 }
 
-.ltm-app-shell[data-ltm-theme='modern-classic'] .ltm-modern-animate-leaf,
-.ltm-app-shell[data-ltm-theme='modern'] .ltm-modern-animate-leaf {
+.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-modern-animate-leaf {
   animation: ltm-leaf-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
 }
 
