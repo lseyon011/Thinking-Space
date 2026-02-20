@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { X, FileText, ExternalLink, Info, Pencil, Save } from 'lucide-react'
@@ -108,8 +108,6 @@ function MarkdownDocumentBlock({
   const [relatedError, setRelatedError] = useState<string | null>(null)
 
   const [showMeta, setShowMeta] = useState(true)
-  const [chromeCollapsed, setChromeCollapsed] = useState(false)
-  const [chromeMaxHeight, setChromeMaxHeight] = useState(0)
   const [showAssistPanel, setShowAssistPanel] = useState(false)
   const [showRelatedPanel, setShowRelatedPanel] = useState(false)
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true)
@@ -132,8 +130,8 @@ function MarkdownDocumentBlock({
     useCase: 'markdown.assist',
   })
   const isExcalidrawDoc = /\.(excalidraw|excalidraw\.md)$/i.test(path)
+  const chromeContainerRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
-  const chromeContentRef = useRef<HTMLDivElement | null>(null)
   const lastScrollTopRef = useRef(0)
   const chromeCollapsedRef = useRef(false)
   const excalidrawSceneRef = useRef<ParsedExcalidrawScene | null>(null)
@@ -189,19 +187,23 @@ function MarkdownDocumentBlock({
   }, [excalidrawImmersive])
 
   useEffect(() => {
-    chromeCollapsedRef.current = chromeCollapsed
-  }, [chromeCollapsed])
-
-  useEffect(() => {
+    const chromeContainer = chromeContainerRef.current
     const scroller = contentScrollRef.current
-    if (!scroller) return
+    if (!chromeContainer || !scroller) return
 
-    const SCROLL_DELTA_THRESHOLD = 1.5
     const TOP_RESET_THRESHOLD = 12
+    let touchY: number | null = null
+
+    const setChromeHidden = (hidden: boolean) => {
+      if (chromeCollapsedRef.current === hidden) return
+      chromeCollapsedRef.current = hidden
+      if (hidden) chromeContainer.classList.add('hidden')
+      else chromeContainer.classList.remove('hidden')
+    }
 
     lastScrollTopRef.current = scroller.scrollTop
     chromeCollapsedRef.current = false
-    setChromeCollapsed(false)
+    chromeContainer.classList.remove('hidden')
 
     const onScroll = () => {
       const nextTop = scroller.scrollTop
@@ -209,47 +211,51 @@ function MarkdownDocumentBlock({
       lastScrollTopRef.current = nextTop
 
       if (nextTop <= TOP_RESET_THRESHOLD) {
-        if (chromeCollapsedRef.current) {
-          chromeCollapsedRef.current = false
-          setChromeCollapsed(false)
-        }
+        setChromeHidden(false)
         return
       }
-      if (Math.abs(delta) < SCROLL_DELTA_THRESHOLD) return
-
       if (delta > 0) {
-        if (!chromeCollapsedRef.current) {
-          chromeCollapsedRef.current = true
-          setChromeCollapsed(true)
-        }
-      } else {
-        if (chromeCollapsedRef.current) {
-          chromeCollapsedRef.current = false
-          setChromeCollapsed(false)
-        }
+        setChromeHidden(true)
+      } else if (delta < 0) {
+        setChromeHidden(false)
+      }
+    }
+
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY > 0 && scroller.scrollTop > TOP_RESET_THRESHOLD) {
+        setChromeHidden(true)
+      } else if (event.deltaY < 0) {
+        setChromeHidden(false)
+      }
+    }
+
+    const onTouchStart = (event: TouchEvent) => {
+      touchY = event.touches[0]?.clientY ?? null
+    }
+
+    const onTouchMove = (event: TouchEvent) => {
+      const nextY = event.touches[0]?.clientY
+      if (nextY === undefined || touchY === null) return
+      const deltaY = touchY - nextY
+      touchY = nextY
+      if (deltaY > 0 && scroller.scrollTop > TOP_RESET_THRESHOLD) {
+        setChromeHidden(true)
+      } else if (deltaY < 0) {
+        setChromeHidden(false)
       }
     }
 
     scroller.addEventListener('scroll', onScroll, { passive: true })
-    return () => scroller.removeEventListener('scroll', onScroll)
-  }, [content, mode, path])
-
-  useLayoutEffect(() => {
-    const chromeEl = chromeContentRef.current
-    if (!chromeEl) return
-
-    const updateHeight = () => {
-      const next = chromeEl.scrollHeight
-      if (next > 0) setChromeMaxHeight(next)
+    scroller.addEventListener('wheel', onWheel, { passive: true })
+    scroller.addEventListener('touchstart', onTouchStart, { passive: true })
+    scroller.addEventListener('touchmove', onTouchMove, { passive: true })
+    return () => {
+      scroller.removeEventListener('scroll', onScroll)
+      scroller.removeEventListener('wheel', onWheel)
+      scroller.removeEventListener('touchstart', onTouchStart)
+      scroller.removeEventListener('touchmove', onTouchMove)
     }
-
-    updateHeight()
-
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(() => updateHeight())
-    observer.observe(chromeEl)
-    return () => observer.disconnect()
-  }, [mode, path, showMeta])
+  }, [content, mode, path])
 
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
@@ -572,18 +578,8 @@ function MarkdownDocumentBlock({
       className={cn('flex h-full min-h-0 flex-col bg-card', className)}
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
-      <div
-        className="overflow-hidden"
-        style={{
-          maxHeight: chromeCollapsed ? 0 : (chromeMaxHeight > 0 ? chromeMaxHeight : undefined),
-          opacity: chromeCollapsed ? 0 : 1,
-          transform: `translateY(${chromeCollapsed ? -8 : 0}px)`,
-          transition: 'max-height 300ms cubic-bezier(0.22,1,0.36,1), opacity 220ms ease, transform 300ms cubic-bezier(0.22,1,0.36,1)',
-          willChange: 'max-height, opacity, transform',
-          pointerEvents: chromeCollapsed ? 'none' : 'auto',
-        }}
-      >
-        <div ref={chromeContentRef} className="min-h-0 overflow-hidden">
+      <div ref={chromeContainerRef} className="min-h-0 overflow-hidden">
+        <div className="min-h-0 overflow-hidden">
           <div className="ts-md-header flex items-start justify-between gap-3 border-b border-border/50 px-5 py-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
