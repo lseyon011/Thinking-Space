@@ -100,6 +100,7 @@ function MarkdownDocumentBlock({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [autoSaving, setAutoSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [conflict, setConflict] = useState<MarkdownDocumentConflictError | null>(null)
   const [relatedThoughts, setRelatedThoughts] = useState<SimilarityMatch[]>([])
@@ -109,6 +110,7 @@ function MarkdownDocumentBlock({
   const [showMeta, setShowMeta] = useState(true)
   const [showAssistPanel, setShowAssistPanel] = useState(false)
   const [showRelatedPanel, setShowRelatedPanel] = useState(false)
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(true)
   const [meta, setMeta] = useState<MarkdownMeta | null>(null)
   const [viewMarkdown, setViewMarkdown] = useState('')
   const [pendingFullRender, setPendingFullRender] = useState(false)
@@ -133,6 +135,7 @@ function MarkdownDocumentBlock({
   const ignoreInitialExcalidrawChangeRef = useRef(true)
   const [hasExcalidrawChanges, setHasExcalidrawChanges] = useState(false)
   const [excalidrawImmersive, setExcalidrawImmersive] = useState(false)
+  const markdownSaveInFlightRef = useRef(false)
 
   const loadDocument = useCallback(async (seedDraft = false) => {
     setLoading(true)
@@ -341,16 +344,19 @@ function MarkdownDocumentBlock({
 
   const cancelEditing = () => {
     setMode('view')
-    setDraft('')
     setSaveError(null)
     setConflict(null)
     setShowAssistPanel(false)
     setShowRelatedPanel(false)
+    setAutoSaving(false)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(false)
     excalidrawSceneRef.current = null
     ignoreInitialExcalidrawChangeRef.current = true
-    clearAssistState()
+    // Keep cancel interaction instant on very large drafts; clear assist state off the click path.
+    window.requestAnimationFrame(() => {
+      clearAssistState()
+    })
   }
 
   const useLatestConflictVersion = () => {
@@ -367,8 +373,49 @@ function MarkdownDocumentBlock({
     ignoreInitialExcalidrawChangeRef.current = true
   }
 
+  const saveMarkdownDraft = useCallback(async (): Promise<boolean> => {
+    if (markdownSaveInFlightRef.current) return false
+    if (isExcalidrawDoc || content === null || baseMtime === null) return false
+    if (draft === content) return true
+
+    markdownSaveInFlightRef.current = true
+    setSaveError(null)
+    setConflict(null)
+    try {
+      const result = await saveMarkdownDocument({
+        path,
+        content: draft,
+        baseMtime,
+        baseHash,
+        baseContent: content,
+      })
+      setContent(draft)
+      setBaseMtime(result.mtime)
+      setBaseHash(result.hash)
+      setSizeBytes(result.size)
+      onSaved?.(result)
+      return true
+    } catch (err) {
+      if (err instanceof MarkdownDocumentConflictError) {
+        setConflict(err)
+        setSaveError(err.message)
+      } else {
+        setSaveError(err instanceof Error ? err.message : 'Failed to save file')
+      }
+      return false
+    } finally {
+      markdownSaveInFlightRef.current = false
+    }
+  }, [baseHash, baseMtime, content, draft, isExcalidrawDoc, onSaved, path])
+
   const handleSave = async () => {
     if (!hasChanges || baseMtime === null) return
+    if (!isExcalidrawDoc) {
+      setSaving(true)
+      await saveMarkdownDraft()
+      setSaving(false)
+      return
+    }
 
     setSaving(true)
     setSaveError(null)
@@ -422,13 +469,42 @@ function MarkdownDocumentBlock({
     }
   }
 
+  useEffect(() => {
+    if (!autoSaveEnabled) return
+    if (!isEditing || isExcalidrawDoc || loading || error || baseMtime === null) return
+    if (!hasTextChanges || saving || autoSaving || conflict) return
+
+    const timeoutId = window.setTimeout(() => {
+      setAutoSaving(true)
+      void saveMarkdownDraft().finally(() => {
+        setAutoSaving(false)
+      })
+    }, 900)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [
+    autoSaveEnabled,
+    baseMtime,
+    conflict,
+    error,
+    hasTextChanges,
+    isEditing,
+    isExcalidrawDoc,
+    loading,
+    saveMarkdownDraft,
+    saving,
+    autoSaving,
+  ])
+
   return (
     <div
       className={cn('flex h-full min-h-0 flex-col bg-card', className)}
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
       <div
-        className="ts-md-header flex items-start justify-between gap-3 border-b border-border/50 px-5 py-4"
+        className="ts-md-header sticky top-0 z-40 flex items-start justify-between gap-3 border-b border-border/50 bg-card/95 px-5 py-4 backdrop-blur"
       >
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -464,6 +540,14 @@ function MarkdownDocumentBlock({
             <>
               <button
                 type="button"
+                onClick={() => setAutoSaveEnabled(v => !v)}
+                className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                title="Toggle auto save"
+              >
+                {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
+              </button>
+              <button
+                type="button"
                 onClick={() => setShowAssistPanel(v => !v)}
                 className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showAssistPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
                 title="Toggle AI assist"
@@ -477,6 +561,22 @@ function MarkdownDocumentBlock({
                 title="Toggle related thoughts"
               >
                 Related Thoughts
+              </button>
+              <button
+                type="button"
+                onClick={cancelEditing}
+                className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => { void handleSave() }}
+                disabled={!hasChanges || saving || baseMtime === null}
+                className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Save className="h-3.5 w-3.5" />
+                {saving ? 'Saving...' : 'Save'}
               </button>
             </>
           )}
@@ -514,8 +614,8 @@ function MarkdownDocumentBlock({
         <div
           ref={contentScrollRef}
           className={cn(
-            'relative h-full min-h-0 overflow-y-auto',
-            isExcalidrawDoc ? 'p-0' : 'px-6 py-5',
+            'relative h-full min-h-0',
+            isExcalidrawDoc ? 'overflow-y-auto p-0' : (isEditing ? 'overflow-visible p-0' : 'overflow-y-auto px-6 py-5'),
           )}
         >
           {loading && (
@@ -637,7 +737,7 @@ function MarkdownDocumentBlock({
                   loading={aiSelectionLoading}
                   disabled={loading || isExcalidrawDoc}
                   onRun={(action) => { void runAssistAction(action, displayDraft) }}
-                  helperText="Suggestions apply inline and never auto-save until you click Save. Configure provider/model in AI Settings."
+                  helperText="Suggestions apply inline. Auto-save is enabled by default; use Save for immediate commit. Configure provider/model in AI Settings."
                 />
 
                 {assistSuggestion && (
@@ -705,6 +805,10 @@ function MarkdownDocumentBlock({
               className="min-h-[62vh]"
             />
 
+            {autoSaving && !saving && (
+              <div className="text-xs text-muted-foreground">Auto-saving…</div>
+            )}
+
             {saveError && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {saveError}
@@ -735,7 +839,7 @@ function MarkdownDocumentBlock({
         )}
       </div>
 
-      {isEditing && !excalidrawImmersive && (
+      {isEditing && !excalidrawImmersive && isExcalidrawDoc && (
         <div className="flex items-center justify-between gap-2 border-t border-border/50 px-5 py-3">
           <div className="text-xs text-muted-foreground">
             {hasChanges ? 'Unsaved changes' : 'No changes'}

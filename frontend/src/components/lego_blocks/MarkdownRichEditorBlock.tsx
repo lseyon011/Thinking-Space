@@ -56,20 +56,26 @@ export default function MarkdownRichEditorBlock({
   const extensions = useMemo(() => {
     const uiTheme = EditorView.theme({
       '&': {
-        height: '100%',
+        height: 'auto',
         backgroundColor: 'transparent',
       },
       '.cm-scroller': {
+        overflow: 'visible',
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
         lineHeight: '1.6',
       },
       '.cm-content': {
         minHeight: '24rem',
-        padding: '0.75rem',
+        padding: '0.75rem 0.75rem 0.75rem 0.5rem',
       },
       '.cm-gutters': {
         backgroundColor: 'transparent',
         border: 'none',
+        marginRight: '0.4rem',
+        paddingLeft: '0.25rem',
+      },
+      '.cm-lineNumbers .cm-gutterElement': {
+        padding: '0 0.35rem 0 0',
       },
       '.cm-activeLine, .cm-activeLineGutter': {
         backgroundColor: 'hsl(var(--muted) / 0.35)',
@@ -113,8 +119,8 @@ export default function MarkdownRichEditorBlock({
   }
 
   return (
-    <div className={cn('flex min-h-0 flex-col rounded-lg border border-border/60 bg-background', className)}>
-      <div className="flex flex-wrap items-center gap-1 border-b border-border/50 p-2">
+    <div className={cn('flex min-h-0 flex-col bg-transparent', className)}>
+      <div className="sticky top-16 z-30 flex flex-wrap items-center gap-1 border-b border-border/50 bg-background/95 p-2 backdrop-blur">
         <button
           type="button"
           onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '# ', '', 'Heading'))}
@@ -181,10 +187,9 @@ export default function MarkdownRichEditorBlock({
         </button>
       </div>
 
-      <div className={cn('min-h-0 flex-1 overflow-hidden', editorClassName)}>
+      <div className={cn('min-h-0 flex-1', editorClassName)}>
         <CodeMirror
           value={value}
-          height="100%"
           minHeight="24rem"
           basicSetup={{
             lineNumbers: true,

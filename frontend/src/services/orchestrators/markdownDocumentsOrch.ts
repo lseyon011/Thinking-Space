@@ -95,7 +95,7 @@ export async function saveMarkdownDocument(params: {
   baseMtime: number
   baseHash?: string | null
   baseContent?: string | null
-}): Promise<{ output_path: string; revision_path: string | null }> {
+}): Promise<{ output_path: string; revision_path: string | null; mtime: number; size: number; hash: string }> {
   const fs = getVaultFS()
 
   const [currentContent, currentStat] = await Promise.all([
@@ -132,5 +132,12 @@ export async function saveMarkdownDocument(params: {
   }
 
   await fs.write(params.path, params.content)
-  return { output_path: params.path, revision_path: revisionPath }
+  const savedStat = await fs.stat(params.path)
+  return {
+    output_path: params.path,
+    revision_path: revisionPath,
+    mtime: savedStat.mtime,
+    size: savedStat.size,
+    hash: hashContent(params.content),
+  }
 }
