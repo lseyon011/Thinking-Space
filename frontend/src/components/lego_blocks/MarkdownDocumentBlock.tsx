@@ -480,43 +480,44 @@ function MarkdownDocumentBlock({
         </div>
       )}
 
-      <div
-        ref={contentScrollRef}
-        className={cn(
-          'relative min-h-0 flex-1 overflow-y-auto',
-          isExcalidrawDoc ? 'p-0' : 'px-6 py-5',
-        )}
-      >
-        {loading && (
-          <div className="space-y-3">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="h-4 animate-pulse rounded bg-muted/40" style={{ width: `${60 + Math.random() * 40}%` }} />
-            ))}
-          </div>
-        )}
-
-        {error && (
-          <div className="text-sm text-destructive">{error}</div>
-        )}
-
-        {!loading && !error && content !== null && !isEditing && isExcalidrawDoc && (
-          <ExcalidrawDocumentBlock content={content} />
-        )}
-
-        {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && (
-          <div className="space-y-2">
-            {pendingFullRender && (
-              <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                Rendering full document...
-              </div>
-            )}
-            <div className="prose">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {viewMarkdown}
-              </ReactMarkdown>
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={contentScrollRef}
+          className={cn(
+            'relative h-full min-h-0 overflow-y-auto',
+            isExcalidrawDoc ? 'p-0' : 'px-6 py-5',
+          )}
+        >
+          {loading && (
+            <div className="space-y-3">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="h-4 animate-pulse rounded bg-muted/40" style={{ width: `${60 + Math.random() * 40}%` }} />
+              ))}
             </div>
-          </div>
-        )}
+          )}
+
+          {error && (
+            <div className="text-sm text-destructive">{error}</div>
+          )}
+
+          {!loading && !error && content !== null && !isEditing && isExcalidrawDoc && (
+            <ExcalidrawDocumentBlock content={content} />
+          )}
+
+          {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && (
+            <div className="space-y-2">
+              {pendingFullRender && (
+                <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                  Rendering full document...
+                </div>
+              )}
+              <div className="prose" data-markdown-nav-root>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {viewMarkdown}
+                </ReactMarkdown>
+              </div>
+            </div>
+          )}
 
         {!loading && !error && content !== null && isEditing && isExcalidrawDoc && (
           <div className="space-y-4">
@@ -707,8 +708,16 @@ function MarkdownDocumentBlock({
           </div>
         )}
 
+        </div>
+
         {!loading && !error && content !== null && !isExcalidrawDoc && !pendingFullRender && (
-          <MarkdownMiniNavBlock content={isEditing ? draft : content} container={contentScrollRef.current} />
+          <MarkdownMiniNavBlock
+            content={isEditing ? displayDraft : viewMarkdown}
+            container={contentScrollRef.current}
+            useRenderedHeadings={!isEditing}
+            renderRootSelector="[data-markdown-nav-root]"
+            className="fixed right-3 top-32 z-30 select-none rounded-lg border border-border/70 bg-background/90 p-1 shadow-sm backdrop-blur"
+          />
         )}
       </div>
 

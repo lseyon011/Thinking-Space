@@ -1,15 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 interface MarkdownMiniNavBlockProps {
   content: string
   container: HTMLDivElement | null
   className?: string
+  useRenderedHeadings?: boolean
+  renderRootSelector?: string
 }
 
 interface HeadingMark {
   level: number
   ratio: number
 }
+
+type ScrollTargetMode = 'container' | 'page'
 
 function extractHeadingMarks(markdown: string): HeadingMark[] {
   const lines = markdown.split('\n')
@@ -32,31 +36,143 @@ export default function MarkdownMiniNavBlock({
   content,
   container,
   className,
+  useRenderedHeadings = true,
+  renderRootSelector,
 }: MarkdownMiniNavBlockProps) {
   const [scrollTop, setScrollTop] = useState(0)
   const [scrollHeight, setScrollHeight] = useState(1)
   const [clientHeight, setClientHeight] = useState(1)
-  const headingMarks = useMemo(() => extractHeadingMarks(content), [content])
+  const fallbackHeadingMarks = useMemo(() => extractHeadingMarks(content), [content])
+  const [headingMarks, setHeadingMarks] = useState<HeadingMark[]>(fallbackHeadingMarks)
+
+  const readPageMetrics = useCallback((): { top: number; height: number; viewportHeight: number } => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      return { top: 0, height: 1, viewportHeight: 1 }
+    }
+    const scrollingElement = document.scrollingElement ?? document.documentElement
+    const top = Number.isFinite(window.scrollY) ? window.scrollY : scrollingElement.scrollTop
+    const height = Math.max(scrollingElement.scrollHeight, 1)
+    const viewportHeight = Math.max(window.innerHeight || scrollingElement.clientHeight, 1)
+    return { top: Math.max(top, 0), height, viewportHeight }
+  }, [])
+
+  const readScrollTargetMode = useCallback((): ScrollTargetMode => {
+    if (!container) return 'page'
+    return container.scrollHeight - container.clientHeight > 1 ? 'container' : 'page'
+  }, [container])
+
+  const resolveRenderedHeadingMarks = useCallback((): HeadingMark[] => {
+    if (!useRenderedHeadings) return fallbackHeadingMarks
+    const mode = readScrollTargetMode()
+
+    const roots = renderRootSelector
+      ? (container
+          ? Array.from(container.querySelectorAll<HTMLElement>(renderRootSelector))
+          : Array.from(document.querySelectorAll<HTMLElement>(renderRootSelector)))
+      : (container ? [container] : [])
+    const headings: HTMLHeadingElement[] = roots.flatMap((root) =>
+      Array.from(root.querySelectorAll<HTMLHeadingElement>('h1, h2, h3, h4, h5, h6')),
+    )
+    if (headings.length === 0) return fallbackHeadingMarks
+
+    const containerRect = container?.getBoundingClientRect() ?? null
+    const pageMetrics = readPageMetrics()
+    const maxScroll = mode === 'container'
+      ? Math.max((container?.scrollHeight ?? 1) - (container?.clientHeight ?? 1), 1)
+      : Math.max(pageMetrics.height - pageMetrics.viewportHeight, 1)
+    const marks: HeadingMark[] = []
+
+    for (const heading of headings) {
+      const level = Number(heading.tagName.slice(1))
+      if (!Number.isFinite(level)) continue
+      const headingRect = heading.getBoundingClientRect()
+      const offsetTop = mode === 'container' && containerRect && container
+        ? headingRect.top - containerRect.top + container.scrollTop
+        : headingRect.top + pageMetrics.top
+      const ratio = Math.max(0, Math.min(1, offsetTop / maxScroll))
+      marks.push({ level, ratio })
+    }
+
+    return marks.length > 0 ? marks : fallbackHeadingMarks
+  }, [container, fallbackHeadingMarks, readPageMetrics, readScrollTargetMode, renderRootSelector, useRenderedHeadings])
 
   useEffect(() => {
-    if (!container) return undefined
+    setHeadingMarks(fallbackHeadingMarks)
+  }, [fallbackHeadingMarks])
 
-    const update = () => {
-      setScrollTop(container.scrollTop)
-      setScrollHeight(Math.max(container.scrollHeight, 1))
-      setClientHeight(Math.max(container.clientHeight, 1))
+  useEffect(() => {
+    let headingFrame: number | null = null
+    const scheduleHeadingUpdate = () => {
+      if (headingFrame !== null) return
+      headingFrame = window.requestAnimationFrame(() => {
+        headingFrame = null
+        setHeadingMarks(resolveRenderedHeadingMarks())
+      })
     }
 
-    update()
-    container.addEventListener('scroll', update, { passive: true })
-    const ro = new ResizeObserver(update)
-    ro.observe(container)
+    const updateMetrics = () => {
+      const mode = readScrollTargetMode()
+      if (mode === 'container' && container) {
+        setScrollTop(container.scrollTop)
+        setScrollHeight(Math.max(container.scrollHeight, 1))
+        setClientHeight(Math.max(container.clientHeight, 1))
+        return
+      }
+
+      const page = readPageMetrics()
+      setScrollTop(page.top)
+      setScrollHeight(page.height)
+      setClientHeight(page.viewportHeight)
+    }
+
+    updateMetrics()
+    scheduleHeadingUpdate()
+
+    const handleContainerScroll = () => {
+      if (readScrollTargetMode() !== 'container' || !container) return
+      setScrollTop(container.scrollTop)
+    }
+    container?.addEventListener('scroll', handleContainerScroll, { passive: true })
+
+    const handleWindowScroll = () => {
+      if (readScrollTargetMode() !== 'page') return
+      const page = readPageMetrics()
+      setScrollTop(page.top)
+    }
+    window.addEventListener('scroll', handleWindowScroll, { passive: true })
+
+    const ro = new ResizeObserver(() => {
+      updateMetrics()
+      scheduleHeadingUpdate()
+    })
+    if (container) ro.observe(container)
+
+    const mo = new MutationObserver(() => {
+      updateMetrics()
+      scheduleHeadingUpdate()
+    })
+    if (container) {
+      mo.observe(container, { subtree: true, childList: true, attributes: true })
+    }
+
+    const handleWindowResize = () => {
+      updateMetrics()
+      scheduleHeadingUpdate()
+    }
+    window.addEventListener('resize', handleWindowResize)
 
     return () => {
-      container.removeEventListener('scroll', update)
+      if (headingFrame !== null) {
+        window.cancelAnimationFrame(headingFrame)
+        headingFrame = null
+      }
+      container?.removeEventListener('scroll', handleContainerScroll)
+      window.removeEventListener('scroll', handleWindowScroll)
+      window.removeEventListener('resize', handleWindowResize)
       ro.disconnect()
+      mo.disconnect()
     }
-  }, [container])
+  }, [container, fallbackHeadingMarks, readPageMetrics, readScrollTargetMode, resolveRenderedHeadingMarks])
 
   const trackHeight = 112
   const maxScroll = Math.max(scrollHeight - clientHeight, 1)
@@ -65,10 +181,20 @@ export default function MarkdownMiniNavBlock({
   const viewportTop = (scrollTop / maxScroll) * (trackHeight - viewportHeight)
 
   const scrollToRatio = (ratio: number) => {
-    if (!container) return
     const clamped = Math.max(0, Math.min(1, ratio))
-    container.scrollTo({
-      top: clamped * maxScroll,
+    const mode = readScrollTargetMode()
+    if (mode === 'container' && container) {
+      container.scrollTo({
+        top: clamped * maxScroll,
+        behavior: 'smooth',
+      })
+      return
+    }
+
+    const page = readPageMetrics()
+    const pageMaxScroll = Math.max(page.height - page.viewportHeight, 1)
+    window.scrollTo({
+      top: clamped * pageMaxScroll,
       behavior: 'smooth',
     })
   }
@@ -109,4 +235,3 @@ export default function MarkdownMiniNavBlock({
     </div>
   )
 }
-

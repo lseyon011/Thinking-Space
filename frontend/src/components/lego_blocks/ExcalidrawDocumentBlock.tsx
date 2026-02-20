@@ -1039,7 +1039,7 @@ export default function ExcalidrawDocumentBlock({
       {miniMapBounds && (
         <button
           type="button"
-          className="absolute bottom-3 right-3 z-20 rounded-lg border border-border/70 bg-background/90 p-1 shadow-sm backdrop-blur"
+          className="fixed bottom-4 right-4 z-30 rounded-lg border border-border/70 bg-background/90 p-1 shadow-sm backdrop-blur"
           title="Mini map"
         >
           <svg
