@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { X, FileText, ExternalLink, Info, Pencil, Save, Eye } from 'lucide-react'
@@ -42,7 +42,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export default function MarkdownDocumentBlock({
+function MarkdownDocumentBlock({
   path,
   initialMode = 'view',
   onSaved,
@@ -620,3 +620,5 @@ export default function MarkdownDocumentBlock({
     </div>
   )
 }
+
+export default memo(MarkdownDocumentBlock)

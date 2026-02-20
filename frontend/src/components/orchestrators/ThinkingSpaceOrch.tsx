@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PanelLeft, PanelLeftClose, Sparkles, FileText } from 'lucide-react'
 import VaultExplorerBlock from '@/components/lego_blocks/VaultExplorerBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/MarkdownDocumentBlock'
 import ExtensionSlotBlock from '@/components/lego_blocks/ExtensionSlotBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/UILayoutBlock'
 import { Button } from '@/components/lego_blocks/ui/button'
+import { cn } from '@/lib/utils'
 import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
+import { STORAGE_KEYS, getStorageItem, setStorageItem } from '@/services/orchestrators/storageOrch'
 import {
   shouldCloseDrawerFromSwipeBlock,
   shouldOpenDrawerFromSwipeBlock,
@@ -16,17 +18,38 @@ export default function ThinkingSpaceOrch() {
   const { layout } = useUILayoutBlock()
   const [inlinePath, setInlinePath] = useState<string | null>(null)
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
+  const [explorerCollapsed, setExplorerCollapsed] = useState(
+    () => getStorageItem(STORAGE_KEYS.thinkingSpaceExplorerCollapsed) === '1',
+  )
   const edgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const showInlineSidebar = layout.hasSidebar
+  const showCollapsedInlineExplorer = showInlineSidebar && !explorerCollapsed
   const iosSurface = layout.surface === 'capacitor-ios'
   const topInset = Math.max(0, Math.round(layout.safeAreaInsets.top))
   const bottomInset = Math.max(0, Math.round(layout.safeAreaInsets.bottom))
   const drawerBottomPadding = Math.max(bottomInset, layout.keyboardVisible ? Math.round(layout.keyboardInset) : 0)
 
+  const handleInlineFileOpen = useCallback((path: string) => {
+    setInlinePath(path)
+  }, [])
+
+  const handleInlineDocumentClose = useCallback(() => {
+    setInlinePath(null)
+  }, [])
+
+  const handleDrawerFileOpen = useCallback((path: string) => {
+    setInlinePath(path)
+    setMobileExplorerOpen(false)
+  }, [])
+
   useEffect(() => {
     if (showInlineSidebar) setMobileExplorerOpen(false)
   }, [showInlineSidebar])
+
+  useEffect(() => {
+    setStorageItem(STORAGE_KEYS.thinkingSpaceExplorerCollapsed, explorerCollapsed ? '1' : '0')
+  }, [explorerCollapsed])
 
   useEffect(() => {
     if (showInlineSidebar || mobileExplorerOpen) {
@@ -90,44 +113,87 @@ export default function ThinkingSpaceOrch() {
     drawerSwipeStartRef.current = null
   }
 
+  const inlineExplorerContent = useMemo(() => (
+    <>
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/60 px-2">
+        <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Explorer
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="ltm-touch-target h-8 w-8"
+          title="Collapse explorer"
+          onClick={() => setExplorerCollapsed(true)}
+        >
+          <PanelLeftClose className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1">
+        <VaultExplorerBlock
+          loadEntries={listFolderEntries}
+          onOpenFile={handleInlineFileOpen}
+        />
+      </div>
+      <div className="border-t border-border/60 p-2">
+        <ExtensionSlotBlock
+          slotId="sidebar-bottom"
+          context={{ inlinePath }}
+        />
+      </div>
+    </>
+  ), [handleInlineFileOpen, inlinePath])
+
+  const inlineDocumentContent = useMemo(() => {
+    if (!inlinePath) return null
+    return (
+      <MarkdownDocumentBlock
+        path={inlinePath}
+        onClose={handleInlineDocumentClose}
+        showCloseButton
+        className="h-full"
+      />
+    )
+  }, [handleInlineDocumentClose, inlinePath])
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className={`grid min-h-0 flex-1 overflow-hidden ${showInlineSidebar ? 'grid-cols-[clamp(240px,28vw,360px)_minmax(0,1fr)]' : 'grid-cols-1'}`}>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {showInlineSidebar && (
-          <aside className="min-h-0 border-r border-border/60 bg-card/20 md:flex md:flex-col">
-            <div className="min-h-0 flex-1">
-              <VaultExplorerBlock
-                loadEntries={listFolderEntries}
-                onOpenFile={(path) => setInlinePath(path)}
-              />
-            </div>
-            <div className="border-t border-border/60 p-2">
-              <ExtensionSlotBlock
-                slotId="sidebar-bottom"
-                context={{ inlinePath }}
-              />
+          <aside
+            className={cn(
+              'min-h-0 shrink-0 overflow-hidden bg-card/20 md:flex md:flex-col',
+              showCollapsedInlineExplorer
+                ? 'w-[clamp(240px,28vw,360px)] border-r border-border/60 opacity-100'
+                : 'w-0 border-r border-transparent opacity-0',
+            )}
+          >
+            <div
+              className={cn('flex h-full min-h-0 flex-col', !showCollapsedInlineExplorer && 'pointer-events-none')}
+              aria-hidden={!showCollapsedInlineExplorer}
+            >
+              {inlineExplorerContent}
             </div>
           </aside>
         )}
 
-        <section className="relative min-h-0 bg-background">
+        <section className="relative min-h-0 flex-1 bg-background">
           <Button
             variant="outline"
             size="sm"
-            className={`ltm-motion-fast ltm-touch-target absolute left-3 top-3 z-20 h-8 ${showInlineSidebar ? 'hidden' : 'inline-flex'}`}
-            onClick={() => setMobileExplorerOpen(true)}
+            className={`ltm-motion-fast ltm-touch-target absolute left-3 top-3 z-20 h-8 ${showCollapsedInlineExplorer ? 'hidden' : 'inline-flex'}`}
+            onClick={() => {
+              if (showInlineSidebar) {
+                setExplorerCollapsed(false)
+                return
+              }
+              setMobileExplorerOpen(true)
+            }}
           >
             <PanelLeft className="mr-2 h-4 w-4" />
             Explorer
           </Button>
-          {inlinePath ? (
-            <MarkdownDocumentBlock
-              path={inlinePath}
-              onClose={() => setInlinePath(null)}
-              showCloseButton
-              className="h-full"
-            />
-          ) : (
+          {inlineDocumentContent ?? (
             <div className="flex h-full flex-col items-center justify-center px-5 py-10 text-center md:px-8">
               <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-background">
                 <FileText className="h-7 w-7 text-muted-foreground" />
@@ -183,10 +249,7 @@ export default function ThinkingSpaceOrch() {
             <div className="min-h-0 flex-1">
               <VaultExplorerBlock
                 loadEntries={listFolderEntries}
-                onOpenFile={(path) => {
-                  setInlinePath(path)
-                  setMobileExplorerOpen(false)
-                }}
+                onOpenFile={handleDrawerFileOpen}
               />
             </div>
             <div
