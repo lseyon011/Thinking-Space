@@ -245,11 +245,11 @@ export default function ThinkingSpaceOrch() {
       {!showInlineSidebar && mobileExplorerOpen && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-background/70 backdrop-blur-sm ltm-animate-fade-in"
+            className="ltm-shell-motion-overlay fixed inset-0 z-40 bg-background/70 backdrop-blur-sm"
             onClick={() => setMobileExplorerOpen(false)}
           />
           <aside
-            className="ltm-shell-mobile-drawer ltm-shell-drawer-surface fixed inset-y-0 left-0 z-50 flex flex-col ltm-animate-slide-in-left"
+            className="ltm-shell-mobile-drawer ltm-shell-drawer-surface ltm-shell-motion-drawer fixed inset-y-0 left-0 z-50 flex flex-col"
             onTouchStart={handleExplorerDrawerTouchStart}
             onTouchMove={handleExplorerDrawerTouchMove}
             onTouchEnd={handleExplorerDrawerTouchEnd}

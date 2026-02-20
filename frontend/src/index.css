@@ -150,6 +150,13 @@
     --ltm-anim-fast: 140ms;
     --ltm-anim-moderate: 220ms;
     --ltm-anim-slow: 360ms;
+    --ltm-shell-motion-ease: var(--ltm-anim-baseline);
+    --ltm-shell-motion-chrome-duration: var(--ltm-anim-moderate);
+    --ltm-shell-motion-overlay-duration: var(--ltm-anim-fast);
+    --ltm-shell-motion-drawer-duration: var(--ltm-anim-moderate);
+    --ltm-shell-motion-modal-duration: var(--ltm-anim-moderate);
+    --ltm-shell-motion-capsule-duration: var(--ltm-anim-fast);
+    --ltm-shell-motion-tab-duration: var(--ltm-anim-fast);
   }
 
   .ltm-app-shell[data-ltm-shell-material='glass'] {
@@ -169,6 +176,13 @@
     --ltm-anim-fast: 160ms;
     --ltm-anim-moderate: 320ms;
     --ltm-anim-slow: 480ms;
+    --ltm-shell-motion-ease: var(--ltm-anim-baseline);
+    --ltm-shell-motion-chrome-duration: var(--ltm-anim-slow);
+    --ltm-shell-motion-overlay-duration: var(--ltm-anim-fast);
+    --ltm-shell-motion-drawer-duration: var(--ltm-anim-moderate);
+    --ltm-shell-motion-modal-duration: var(--ltm-anim-moderate);
+    --ltm-shell-motion-capsule-duration: var(--ltm-anim-fast);
+    --ltm-shell-motion-tab-duration: var(--ltm-anim-fast);
   }
 
   .ltm-shell-layer-base {
@@ -338,15 +352,61 @@
     border-radius: calc(var(--ltm-shell-surface-radius) + 0.2rem);
   }
 
+  .ltm-shell-motion-chrome {
+    animation: ltm-shell-chrome-enter var(--ltm-shell-motion-chrome-duration, 220ms) var(--ltm-shell-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+    animation-fill-mode: both;
+    transform-origin: top center;
+    will-change: transform, opacity;
+  }
+
+  .ltm-shell-motion-capsule {
+    animation: ltm-shell-capsule-enter var(--ltm-shell-motion-capsule-duration, 140ms) var(--ltm-shell-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+    animation-delay: 34ms;
+    animation-fill-mode: both;
+    transform-origin: top center;
+    will-change: transform, opacity;
+  }
+
+  .ltm-shell-motion-overlay {
+    animation: ltm-fade-in var(--ltm-shell-motion-overlay-duration, 140ms) var(--ltm-shell-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+    animation-fill-mode: both;
+    will-change: opacity;
+  }
+
+  .ltm-shell-motion-drawer {
+    animation: ltm-slide-in-left var(--ltm-shell-motion-drawer-duration, 220ms) var(--ltm-shell-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+    animation-fill-mode: both;
+    transform-origin: left center;
+    will-change: transform, opacity;
+  }
+
+  .ltm-shell-motion-modal {
+    animation: ltm-slide-up var(--ltm-shell-motion-modal-duration, 220ms) var(--ltm-shell-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+    animation-fill-mode: both;
+    transform-origin: top center;
+    will-change: transform, opacity;
+  }
+
   .ltm-shell-tabs .ltm-tab-item {
+    transform: translateY(0) scale(1);
     transition:
       opacity var(--ltm-anim-moderate, 220ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
       background-color var(--ltm-anim-fast, 140ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
       box-shadow var(--ltm-anim-fast, 140ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
-      border-color var(--ltm-anim-fast, 140ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1));
+      border-color var(--ltm-anim-fast, 140ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
+      transform var(--ltm-shell-motion-tab-duration, 140ms) var(--ltm-shell-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  }
+
+  .ltm-shell-tabs .ltm-tab-item:hover {
+    transform: translateY(-1px);
+  }
+
+  .ltm-shell-tabs .ltm-tab-item:active {
+    transform: translateY(0) scale(0.985);
   }
 
   .ltm-shell-tabs .ltm-tab-item.ltm-tab-active {
+    transform: translateY(-1px);
     box-shadow:
       inset 0 1px 0 rgb(255 255 255 / 0.48),
       0 2px 8px -6px rgb(0 0 0 / 0.35);
@@ -498,6 +558,16 @@
   to { opacity: 1; transform: translateX(0); }
 }
 
+@keyframes ltm-shell-chrome-enter {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ltm-shell-capsule-enter {
+  from { opacity: 0; transform: translateY(-6px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 @keyframes slide-in {
   from { transform: translateX(100%); }
   to { transform: translateX(0); }
@@ -552,6 +622,22 @@
   animation: ltm-leaf-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
 }
 
+.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-shell-motion-overlay {
+  animation: ltm-fade-scale-in var(--ltm-shell-motion-overlay-duration, 160ms) var(--ltm-shell-motion-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-shell-motion-drawer {
+  animation: ltm-leaf-in var(--ltm-shell-motion-drawer-duration, 320ms) var(--ltm-shell-motion-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-shell-motion-modal {
+  animation: ltm-modal-in var(--ltm-shell-motion-modal-duration, 320ms) var(--ltm-shell-motion-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-shell-motion-capsule {
+  animation: ltm-modal-in var(--ltm-shell-motion-capsule-duration, 160ms) var(--ltm-shell-motion-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
 @media (pointer: coarse) {
   .ltm-touch-target {
     min-width: 2.75rem !important;
@@ -581,6 +667,11 @@
   .ltm-animate-fade-in,
   .ltm-animate-slide-up,
   .ltm-animate-slide-in-left,
+  .ltm-shell-motion-chrome,
+  .ltm-shell-motion-capsule,
+  .ltm-shell-motion-overlay,
+  .ltm-shell-motion-drawer,
+  .ltm-shell-motion-modal,
   .ltm-modern-animate-menu,
   .ltm-modern-animate-modal,
   .ltm-modern-animate-leaf,

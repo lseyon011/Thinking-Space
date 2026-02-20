@@ -781,7 +781,7 @@ function App() {
           )}
 
         <section className="ltm-shell-main-stage">
-          <header className="ltm-shell-top-chrome">
+          <header className="ltm-shell-top-chrome ltm-shell-motion-chrome">
             <AppTabsBlock
               tabs={workspaceTabItems}
               activeTabId={activeWorkspaceTabId}
@@ -836,11 +836,11 @@ function App() {
       {compactNav && drawerOpen && (
         <>
           <div
-            className="ltm-mobile-drawer-overlay ltm-modern-animate-menu fixed inset-0 z-40 bg-background/65 backdrop-blur-sm ltm-animate-fade-in"
+            className="ltm-mobile-drawer-overlay ltm-shell-motion-overlay fixed inset-0 z-40 bg-background/65 backdrop-blur-sm"
             onClick={() => setDrawerOpen(false)}
           />
           <aside
-            className="ltm-mobile-drawer ltm-shell-mobile-drawer ltm-shell-drawer-surface ltm-modern-animate-leaf fixed inset-y-0 left-0 z-50 flex flex-col ltm-animate-slide-in-left"
+            className="ltm-mobile-drawer ltm-shell-mobile-drawer ltm-shell-drawer-surface ltm-shell-motion-drawer fixed inset-y-0 left-0 z-50 flex flex-col"
             onTouchStart={handleDrawerTouchStart}
             onTouchMove={handleDrawerTouchMove}
             onTouchEnd={handleDrawerTouchEnd}
@@ -1004,14 +1004,14 @@ function App() {
       {commandPaletteOpen && (
         <>
           <div
-            className="ltm-cmd-overlay ltm-modern-animate-menu fixed inset-0 z-50 bg-background/70 ltm-animate-fade-in"
+            className="ltm-cmd-overlay ltm-shell-motion-overlay fixed inset-0 z-50 bg-background/70"
             onClick={closeCommandPalette}
           />
           <div
             className="fixed inset-0 z-[60] flex items-start justify-center p-3 sm:p-4"
             style={{ paddingTop: `${commandPaletteTopPadding}px`, paddingBottom: `${commandPaletteBottomPadding}px` }}
           >
-            <div className="ltm-cmd-card ltm-shell-command-surface ltm-modern-animate-modal max-h-full w-full max-w-2xl overflow-hidden rounded-2xl ltm-animate-slide-up">
+            <div className="ltm-cmd-card ltm-shell-command-surface ltm-shell-motion-modal max-h-full w-full max-w-2xl overflow-hidden rounded-2xl">
               <div className="ltm-shell-segment-header p-3">
                 <div className="ltm-shell-field-surface flex items-center gap-2 rounded-lg px-2.5">
                   <Search className="h-4 w-4 text-muted-foreground" />

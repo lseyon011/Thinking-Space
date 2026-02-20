@@ -25,7 +25,7 @@ export default function AppTabsBlock({
 }: AppTabsBlockProps) {
   return (
     <div className={cn('ltm-shell-tabs', className)}>
-      <div className="ltm-shell-tabs-surface ltm-tab-container flex items-center gap-2 px-2.5 py-2" style={{ containerType: 'inline-size' }}>
+      <div className="ltm-shell-tabs-surface ltm-shell-motion-capsule ltm-tab-container flex items-center gap-2 px-2.5 py-2" style={{ containerType: 'inline-size' }}>
         <div className="min-w-0 flex-1 overflow-x-auto">
           <div className="ltm-tab-scroll-inner inline-flex min-w-full items-center gap-1">
             {tabs.map((tab) => {
