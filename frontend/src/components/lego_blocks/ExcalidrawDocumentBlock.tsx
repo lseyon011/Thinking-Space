@@ -67,12 +67,15 @@ const LARGE_SCENE_ELEMENT_THRESHOLD = 1200
 const MEDIAN_SORT_THRESHOLD = 2000
 const PERF_EVENTS_LIMIT = 400
 const VIEW_ANALYSIS_TIMEOUT_MS = 180
+const PARSED_SCENE_CACHE_MAX_ENTRIES = 4
 
 const EMPTY_SCENE_ANALYSIS: SceneAnalysis = {
   sceneBounds: null,
   drawableCenters: [],
   durationMs: 0,
 }
+
+const parsedSceneCache = new Map<string, ParsedExcalidrawScene | null>()
 
 function readActiveToolType(appState: Record<string, unknown>): string | null {
   const activeTool = appState.activeTool
@@ -93,6 +96,21 @@ function scheduleDeferredWork(callback: () => void): () => void {
 
   const timeoutId = window.setTimeout(callback, 16)
   return () => window.clearTimeout(timeoutId)
+}
+
+function parseSceneWithCache(content: string): ParsedExcalidrawScene | null {
+  const cached = parsedSceneCache.get(content)
+  if (cached !== undefined) return cached
+
+  const parsed = parseExcalidrawSceneOrch(content)
+  parsedSceneCache.set(content, parsed)
+  if (parsedSceneCache.size > PARSED_SCENE_CACHE_MAX_ENTRIES) {
+    const oldestKey = parsedSceneCache.keys().next().value
+    if (typeof oldestKey === 'string') {
+      parsedSceneCache.delete(oldestKey)
+    }
+  }
+  return parsed
 }
 
 function pushGlobalExcalidrawPerfEvent(event: ExcalidrawPerfEvent): void {
@@ -240,7 +258,7 @@ export default function ExcalidrawDocumentBlock({
   const parseDurationMsRef = useRef(0)
   const parsedScene = useMemo(() => {
     const started = nowMs()
-    const parsed = parseExcalidrawSceneOrch(content)
+    const parsed = parseSceneWithCache(content)
     parseDurationMsRef.current = nowMs() - started
     return parsed
   }, [content])
@@ -290,17 +308,9 @@ export default function ExcalidrawDocumentBlock({
   }, [editable, parsedScene])
 
   const [deferredSceneAnalysis, setDeferredSceneAnalysis] = useState<SceneAnalysis>(EMPTY_SCENE_ANALYSIS)
-  const sceneAnalysis = useMemo<SceneAnalysis>(() => {
-    if (editable) return analyzeScene(parsedScene)
-    return deferredSceneAnalysis
-  }, [deferredSceneAnalysis, editable, parsedScene])
+  const sceneAnalysis = deferredSceneAnalysis
 
   useEffect(() => {
-    if (editable) {
-      setDeferredSceneAnalysis(EMPTY_SCENE_ANALYSIS)
-      return
-    }
-
     if (!parsedScene || parsedScene.elements.length === 0) {
       setDeferredSceneAnalysis(EMPTY_SCENE_ANALYSIS)
       return
@@ -722,46 +732,51 @@ export default function ExcalidrawDocumentBlock({
       apiElementsIncludingDeleted: excalidrawApi.getSceneElementsIncludingDeletedBlock().length,
     })
 
-    if (editable && sceneBounds) {
-      const zoom = Number.isFinite(viewport.zoom) ? viewport.zoom : 0
-      const zoomValid = zoom >= 0.02 && zoom <= 4
-      const viewportWorldW = containerSize.width / Math.max(zoom, 0.001)
-      const viewportWorldH = containerSize.height / Math.max(zoom, 0.001)
-      const left = -viewport.scrollX
-      const top = -viewport.scrollY
-      const right = left + viewportWorldW
-      const bottom = top + viewportWorldH
-      const intersectsScene = right >= sceneBounds.minX
-        && left <= sceneBounds.maxX
-        && bottom >= sceneBounds.minY
-        && top <= sceneBounds.maxY
-      const viewportBounds = { left, top, right, bottom, viewportWorldW, viewportWorldH }
-      const visibleCenterCount = countDrawableCentersInViewport(viewportBounds)
-      const visibleAnchorCenterCount = countDrawableCentersInViewport(viewportBounds, { anchorsOnly: true })
-      const visibleCenterThreshold = parsedScene && parsedScene.elements.length >= 1000 ? 10 : 1
-      const sparseViewport = visibleCenterCount < visibleCenterThreshold
-      const hasAnchorElements = sceneBounds.anchorCount > 0
-      const missingAnchors = hasAnchorElements && visibleAnchorCenterCount === 0
-      const shouldAutoCenter = !zoomValid || !intersectsScene || sparseViewport || missingAnchors
-      autoCenterRequestedRef.current = shouldAutoCenter
-      if (!shouldAutoCenter) {
-        hasAutoCenteredRef.current = true
-      }
-      debugLog('viewport_validation', {
-        zoom,
-        zoomValid,
-        intersectsScene,
-        visibleCenterCount,
-        visibleAnchorCenterCount,
-        visibleCenterThreshold,
-        sparseViewport,
-        hasAnchorElements,
-        missingAnchors,
-        shouldAutoCenter,
-        viewport: viewportBounds,
-      })
-      if (shouldAutoCenter) {
-        scheduleAutoCenter('api_ready')
+    if (editable) {
+      if (sceneBounds) {
+        const zoom = Number.isFinite(viewport.zoom) ? viewport.zoom : 0
+        const zoomValid = zoom >= 0.02 && zoom <= 4
+        const viewportWorldW = containerSize.width / Math.max(zoom, 0.001)
+        const viewportWorldH = containerSize.height / Math.max(zoom, 0.001)
+        const left = -viewport.scrollX
+        const top = -viewport.scrollY
+        const right = left + viewportWorldW
+        const bottom = top + viewportWorldH
+        const intersectsScene = right >= sceneBounds.minX
+          && left <= sceneBounds.maxX
+          && bottom >= sceneBounds.minY
+          && top <= sceneBounds.maxY
+        const viewportBounds = { left, top, right, bottom, viewportWorldW, viewportWorldH }
+        const visibleCenterCount = countDrawableCentersInViewport(viewportBounds)
+        const visibleAnchorCenterCount = countDrawableCentersInViewport(viewportBounds, { anchorsOnly: true })
+        const visibleCenterThreshold = parsedScene && parsedScene.elements.length >= 1000 ? 10 : 1
+        const sparseViewport = visibleCenterCount < visibleCenterThreshold
+        const hasAnchorElements = sceneBounds.anchorCount > 0
+        const missingAnchors = hasAnchorElements && visibleAnchorCenterCount === 0
+        const shouldAutoCenter = !zoomValid || !intersectsScene || sparseViewport || missingAnchors
+        autoCenterRequestedRef.current = shouldAutoCenter
+        if (!shouldAutoCenter) {
+          hasAutoCenteredRef.current = true
+        }
+        debugLog('viewport_validation', {
+          zoom,
+          zoomValid,
+          intersectsScene,
+          visibleCenterCount,
+          visibleAnchorCenterCount,
+          visibleCenterThreshold,
+          sparseViewport,
+          hasAnchorElements,
+          missingAnchors,
+          shouldAutoCenter,
+          viewport: viewportBounds,
+        })
+        if (shouldAutoCenter) {
+          scheduleAutoCenter('api_ready')
+        }
+      } else if (parsedScene && parsedScene.elements.length > 0) {
+        autoCenterRequestedRef.current = true
+        scheduleAutoCenter('api_ready_pending_analysis')
       }
     }
 

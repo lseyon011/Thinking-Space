@@ -61,6 +61,16 @@ function scheduleDeferredWork(callback: () => void): () => void {
   return () => window.clearTimeout(timeoutId)
 }
 
+function yieldToNextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+      resolve()
+      return
+    }
+    window.requestAnimationFrame(() => resolve())
+  })
+}
+
 function MarkdownDocumentBlock({
   path,
   initialMode = 'view',
@@ -129,7 +139,7 @@ function MarkdownDocumentBlock({
     try {
       const data = await readMarkdownDocument(path, { includeHash: false })
       setContent(data.content)
-      setDraft(seedDraft ? data.content : '')
+      setDraft(seedDraft && !isExcalidrawDoc ? data.content : '')
       setBaseMtime(data.mtime)
       setBaseHash(data.hash)
       setSizeBytes(data.size)
@@ -143,7 +153,7 @@ function MarkdownDocumentBlock({
     } finally {
       setLoading(false)
     }
-  }, [clearAssistState, path])
+  }, [clearAssistState, isExcalidrawDoc, path])
 
   useEffect(() => {
     setMode(initialMode)
@@ -174,6 +184,10 @@ function MarkdownDocumentBlock({
   const displayDraft = useMemo(
     () => stripFrontmatter(draft),
     [draft],
+  )
+  const excalidrawEditorContent = useMemo(
+    () => (draft || content || ''),
+    [content, draft],
   )
 
   useEffect(() => {
@@ -296,7 +310,7 @@ function MarkdownDocumentBlock({
   const startEditing = () => {
     if (loading || error) return
     setMode('edit')
-    setDraft(content ?? '')
+    setDraft(isExcalidrawDoc ? '' : (content ?? ''))
     setSaveError(null)
     setConflict(null)
     setHasExcalidrawChanges(false)
@@ -322,7 +336,7 @@ function MarkdownDocumentBlock({
   const useLatestConflictVersion = () => {
     if (!conflict) return
     setContent(conflict.currentContent)
-    setDraft(conflict.currentContent)
+    setDraft(isExcalidrawDoc ? '' : conflict.currentContent)
     setBaseMtime(conflict.currentMtime)
     setBaseHash(conflict.currentHash)
     setSaveError(null)
@@ -336,19 +350,25 @@ function MarkdownDocumentBlock({
   const handleSave = async () => {
     if (!hasChanges || baseMtime === null) return
 
+    setSaving(true)
+    setSaveError(null)
+    setConflict(null)
+
     let contentToSave = draft
     if (isExcalidrawDoc) {
-      if (content === null || !excalidrawSceneRef.current) return
+      if (content === null || !excalidrawSceneRef.current) {
+        setSaving(false)
+        return
+      }
+      await yieldToNextFrame()
       contentToSave = serializeExcalidrawSceneOrch(content, excalidrawSceneRef.current)
       if (contentToSave === content) {
         setHasExcalidrawChanges(false)
+        setSaving(false)
         return
       }
     }
 
-    setSaving(true)
-    setSaveError(null)
-    setConflict(null)
     try {
       const result = await saveMarkdownDocument({
         path,
@@ -511,7 +531,7 @@ function MarkdownDocumentBlock({
               </button>
             </div>
             <ExcalidrawDocumentBlock
-              content={draft}
+              content={excalidrawEditorContent}
               editable
               onSceneChange={handleExcalidrawSceneChange}
               className="h-[72vh]"
@@ -566,7 +586,7 @@ function MarkdownDocumentBlock({
             </div>
             <div className="min-h-0 flex-1">
               <ExcalidrawDocumentBlock
-                content={draft}
+                content={excalidrawEditorContent}
                 editable
                 onSceneChange={handleExcalidrawSceneChange}
                 className="h-full"
