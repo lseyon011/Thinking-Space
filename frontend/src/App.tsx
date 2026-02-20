@@ -589,6 +589,7 @@ function App() {
       className="ltm-app-shell"
       data-ltm-mode={layout.mode}
       data-ltm-surface={layout.surface}
+      data-ltm-route={location.pathname}
       data-ltm-theme={themeId}
     >
       <div className="ltm-shell-layer-base">
@@ -601,7 +602,7 @@ function App() {
               sidebarCollapsed ? 'ltm-sidebar-collapsed' : 'ltm-sidebar-expanded'
             } ${
               sidebarCollapsed ? 'w-16' : 'w-64'
-            }`}>
+            }`} data-ltm-nav-region="rail">
               <div className={`flex h-full flex-col py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
               <Link
                 to="/"
@@ -835,7 +836,7 @@ function App() {
             onClick={() => setDrawerOpen(false)}
           />
           <aside
-            className="ltm-mobile-drawer ltm-shell-drawer-surface ltm-modern-animate-leaf fixed inset-y-0 left-0 z-50 flex w-[84vw] max-w-[420px] flex-col ltm-animate-slide-in-left"
+            className="ltm-mobile-drawer ltm-shell-mobile-drawer ltm-shell-drawer-surface ltm-modern-animate-leaf fixed inset-y-0 left-0 z-50 flex flex-col ltm-animate-slide-in-left"
             onTouchStart={handleDrawerTouchStart}
             onTouchMove={handleDrawerTouchMove}
             onTouchEnd={handleDrawerTouchEnd}

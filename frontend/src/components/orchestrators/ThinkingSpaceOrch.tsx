@@ -182,16 +182,17 @@ export default function ThinkingSpaceOrch() {
   }, [handleInlineDocumentClose, inlinePath])
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="ltm-thinking-space-shell flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {showInlineSidebar && (
           <aside
             className={cn(
-              'min-h-0 shrink-0 overflow-hidden bg-card/20 md:flex md:flex-col',
+              'ltm-thinking-space-explorer-surface min-h-0 shrink-0 overflow-hidden md:flex md:flex-col',
               showCollapsedInlineExplorer
-                ? 'w-[clamp(240px,28vw,360px)] border-r border-border/60 opacity-100'
-                : 'w-0 border-r border-transparent opacity-0',
+                ? 'w-[clamp(240px,28vw,360px)] opacity-100'
+                : 'w-0 opacity-0',
             )}
+            data-ltm-nav-region="explorer"
           >
             <div
               className={cn('flex h-full min-h-0 flex-col', !showCollapsedInlineExplorer && 'pointer-events-none')}
@@ -202,11 +203,11 @@ export default function ThinkingSpaceOrch() {
           </aside>
         )}
 
-        <section className="relative min-h-0 flex-1 bg-background">
+        <section className="ltm-thinking-space-document-stage relative min-h-0 flex-1">
           <Button
             variant="outline"
             size="sm"
-            className={`ltm-motion-fast ltm-touch-target absolute left-3 top-3 z-20 h-8 ${showExplorerTrigger ? 'inline-flex' : 'hidden'}`}
+            className={`ltm-shell-action ltm-motion-fast ltm-touch-target absolute left-3 top-3 z-20 h-8 ${showExplorerTrigger ? 'inline-flex' : 'hidden'}`}
             onClick={() => {
               if (showInlineSidebar) {
                 setExplorerCollapsed(false)
@@ -248,7 +249,7 @@ export default function ThinkingSpaceOrch() {
             onClick={() => setMobileExplorerOpen(false)}
           />
           <aside
-            className="fixed inset-y-0 left-0 z-50 flex w-[84vw] max-w-[420px] flex-col border-r border-border/70 bg-card shadow-xl ltm-animate-slide-in-left"
+            className="ltm-shell-mobile-drawer ltm-shell-drawer-surface fixed inset-y-0 left-0 z-50 flex flex-col ltm-animate-slide-in-left"
             onTouchStart={handleExplorerDrawerTouchStart}
             onTouchMove={handleExplorerDrawerTouchMove}
             onTouchEnd={handleExplorerDrawerTouchEnd}
