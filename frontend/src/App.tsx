@@ -185,9 +185,11 @@ function App() {
   const extensionBuilderEnabled = featureFlags.extension_host_enabled && featureFlags.extension_builder_enabled
 
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    () => getStorageItem(STORAGE_KEYS.appShellSidebarCollapsed) === '1',
-  )
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const stored = getStorageItem(STORAGE_KEYS.appShellSidebarCollapsed)
+    if (stored === null) return true
+    return stored === '1'
+  })
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [commandQuery, setCommandQuery] = useState('')
   const commandInputRef = useRef<HTMLInputElement | null>(null)
@@ -611,185 +613,6 @@ function App() {
           className="ltm-shell-stage"
           style={topInset ? { paddingTop: `calc(${topInset}px + var(--ltm-shell-inset))` } : undefined}
         >
-          {!compactNav && (
-            <aside className={`ltm-shell-sidebar ltm-shell-nav-surface hidden shrink-0 transition-[width] duration-200 lg:block ${
-              sidebarCollapsed ? 'ltm-sidebar-collapsed' : 'ltm-sidebar-expanded'
-            } ${
-              sidebarCollapsed ? 'w-16' : 'w-64'
-            }`} data-ltm-nav-region="rail">
-              <div className={`flex h-full flex-col py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
-              <Link
-                to="/"
-                title={sidebarCollapsed ? 'Home' : undefined}
-                aria-label="Home"
-                className={`ltm-shell-logo ltm-shell-field-surface ltm-motion-fast mb-3 inline-flex items-center rounded-lg ${
-                  sidebarCollapsed
-                    ? 'h-10 w-full justify-center'
-                    : 'gap-2 px-2.5 py-2 text-sm font-semibold tracking-tight'
-                }`}
-              >
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-background">
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                    xmlns="http://www.w3.org/2000/svg"
-                    aria-hidden="true"
-                  >
-                    <path d="M9.167 4.5a1.167 1.167 0 1 1-2.334 0 1.167 1.167 0 0 1 2.334 0" />
-                    <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0M1 8a7 7 0 0 1 7-7 3.5 3.5 0 1 1 0 7 3.5 3.5 0 1 0 0 7 7 7 0 0 1-7-7m7 4.667a1.167 1.167 0 1 1 0-2.334 1.167 1.167 0 0 1 0 2.334" />
-                  </svg>
-                </span>
-                {!sidebarCollapsed && <span>LTM Pilot</span>}
-              </Link>
-
-              <div className="ltm-nav-scroll ltm-sidebar-nav-scroll min-h-0 flex-1 overflow-y-auto">
-                <div className="space-y-1">
-                  {!sidebarCollapsed && (
-                    <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Core
-                    </div>
-                  )}
-                  {PRIMARY_NAV_ITEMS.map((item) => {
-                    const Icon = item.icon
-                    const active = isNavItemActive(location.pathname, item)
-                    return (
-                      <Link
-                        key={item.to}
-                        to={item.to}
-                        title={sidebarCollapsed ? item.label : undefined}
-                        className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
-                          sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                        } ${
-                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
-                      </Link>
-                    )
-                  })}
-                </div>
-
-                <div className="mt-5 space-y-1">
-                  {!sidebarCollapsed && (
-                    <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Workspace
-                    </div>
-                  )}
-                  {utilityNavItems.map((item) => {
-                    const Icon = item.icon
-                    const active = isNavItemActive(location.pathname, item)
-                    return (
-                      <Link
-                        key={item.to}
-                        to={item.to}
-                        title={sidebarCollapsed ? item.label : undefined}
-                        className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
-                          sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                        } ${
-                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
-                      </Link>
-                    )
-                  })}
-                </div>
-
-                <div className="mt-5 space-y-1">
-                  {!sidebarCollapsed && (
-                    <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Excalidraw++
-                    </div>
-                  )}
-                  {TOOL_NAV_ITEMS.map((item) => {
-                    const Icon = item.icon
-                    const active = isNavItemActive(location.pathname, item)
-                    return (
-                      <Link
-                        key={item.to}
-                        to={item.to}
-                        title={sidebarCollapsed ? item.label : undefined}
-                        className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
-                          sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                        } ${
-                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
-                      </Link>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div className="ltm-sidebar-actions ltm-shell-segment-footer mt-3 space-y-2 pt-3">
-                {!sidebarCollapsed && (
-                  <div className="space-y-1 px-0.5">
-                    <label htmlFor="ltm-theme-select-desktop" className="px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Theme
-                    </label>
-                    <div className="relative">
-                      <Palette className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                      <select
-                        id="ltm-theme-select-desktop"
-                        value={themeId}
-                        onChange={(event) => setThemeId(event.target.value as UIThemeId)}
-                        className="ltm-shell-theme-select h-9 w-full rounded-lg pl-8 pr-7 text-sm text-foreground outline-none"
-                        aria-label="Select app theme"
-                      >
-                        {UI_THEME_OPTIONS_BLOCK.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                )}
-                {sidebarCollapsed && (
-                  <button
-                    type="button"
-                    onClick={handleCycleTheme}
-                    className="ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center justify-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-                    aria-label={`Switch theme (current: ${themeId})`}
-                    title={`Switch theme (current: ${themeId})`}
-                  >
-                    <Palette className="h-4 w-4" />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={openCommandPalette}
-                  className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
-                    sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                  }`}
-                  aria-label="Open quick search"
-                >
-                  <Search className="h-4 w-4" />
-                  {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">Search</span>}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSidebarCollapsed(prev => !prev)}
-                  className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
-                    sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                  }`}
-                  title={sidebarCollapsed ? 'Expand sidebar (Cmd/Ctrl+\\)' : 'Collapse sidebar (Cmd/Ctrl+\\)'}
-                  aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                >
-                  {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-                  {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">{sidebarCollapsed ? 'Expand drawer' : 'Collapse drawer'}</span>}
-                </button>
-              </div>
-              </div>
-            </aside>
-          )}
-
         <section className="ltm-shell-main-stage">
           <header className="ltm-shell-top-chrome ltm-shell-motion-chrome">
             <AppTabsBlock
@@ -801,6 +624,185 @@ function App() {
               className="ltm-shell-top-tab-capsule"
             />
           </header>
+          <div className="ltm-shell-body-stage">
+            {!compactNav && (
+              <aside className={`ltm-shell-sidebar ltm-shell-nav-surface hidden shrink-0 transition-[width] duration-200 lg:block ${
+                sidebarCollapsed ? 'ltm-sidebar-collapsed' : 'ltm-sidebar-expanded'
+              } ${
+                sidebarCollapsed ? 'w-16' : 'w-64'
+              }`} data-ltm-nav-region="rail">
+                <div className={`flex h-full flex-col py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
+                <div className="ltm-nav-scroll ltm-sidebar-nav-scroll min-h-0 flex-1 overflow-y-auto">
+                  <div className="space-y-1">
+                    {!sidebarCollapsed && (
+                      <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Core
+                      </div>
+                    )}
+                    {PRIMARY_NAV_ITEMS.map((item) => {
+                      const Icon = item.icon
+                      const active = isNavItemActive(location.pathname, item)
+                      return (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          title={sidebarCollapsed ? item.label : undefined}
+                          className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
+                            sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                          } ${
+                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                        </Link>
+                      )
+                    })}
+                  </div>
+
+                  <div className="mt-5 space-y-1">
+                    {!sidebarCollapsed && (
+                      <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Workspace
+                      </div>
+                    )}
+                    {utilityNavItems.map((item) => {
+                      const Icon = item.icon
+                      const active = isNavItemActive(location.pathname, item)
+                      return (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          title={sidebarCollapsed ? item.label : undefined}
+                          className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
+                            sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                          } ${
+                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                        </Link>
+                      )
+                    })}
+                  </div>
+
+                  <div className="mt-5 space-y-1">
+                    {!sidebarCollapsed && (
+                      <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Excalidraw++
+                      </div>
+                    )}
+                    {TOOL_NAV_ITEMS.map((item) => {
+                      const Icon = item.icon
+                      const active = isNavItemActive(location.pathname, item)
+                      return (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          title={sidebarCollapsed ? item.label : undefined}
+                          className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
+                            sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                          } ${
+                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="ltm-sidebar-actions ltm-shell-segment-footer mt-3 space-y-2 pt-3">
+                  {!sidebarCollapsed && (
+                    <div className="space-y-1 px-0.5">
+                      <label htmlFor="ltm-theme-select-desktop" className="px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Theme
+                      </label>
+                      <div className="relative">
+                        <Palette className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <select
+                          id="ltm-theme-select-desktop"
+                          value={themeId}
+                          onChange={(event) => setThemeId(event.target.value as UIThemeId)}
+                          className="ltm-shell-theme-select h-9 w-full rounded-lg pl-8 pr-7 text-sm text-foreground outline-none"
+                          aria-label="Select app theme"
+                        >
+                          {UI_THEME_OPTIONS_BLOCK.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  {sidebarCollapsed && (
+                    <button
+                      type="button"
+                      onClick={handleCycleTheme}
+                      className="ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center justify-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label={`Switch theme (current: ${themeId})`}
+                      title={`Switch theme (current: ${themeId})`}
+                    >
+                      <Palette className="h-4 w-4" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={openCommandPalette}
+                    className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
+                      sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                    }`}
+                    aria-label="Open quick search"
+                  >
+                    <Search className="h-4 w-4" />
+                    {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">Search</span>}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSidebarCollapsed(prev => !prev)}
+                    className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
+                      sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                    }`}
+                    title={sidebarCollapsed ? 'Expand sidebar (Cmd/Ctrl+\\)' : 'Collapse sidebar (Cmd/Ctrl+\\)'}
+                    aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                  >
+                    {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                    {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">{sidebarCollapsed ? 'Expand drawer' : 'Collapse drawer'}</span>}
+                  </button>
+
+                  <Link
+                    to="/"
+                    title={sidebarCollapsed ? 'Home' : undefined}
+                    aria-label="Home"
+                    className={`ltm-shell-logo ltm-shell-field-surface ltm-motion-fast mt-2 inline-flex items-center rounded-lg ${
+                      sidebarCollapsed
+                        ? 'h-10 w-full justify-center'
+                        : 'gap-2 px-2.5 py-2 text-sm font-semibold tracking-tight'
+                    }`}
+                  >
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-background">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true"
+                      >
+                        <path d="M9.167 4.5a1.167 1.167 0 1 1-2.334 0 1.167 1.167 0 0 1 2.334 0" />
+                        <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0M1 8a7 7 0 0 1 7-7 3.5 3.5 0 1 1 0 7 3.5 3.5 0 1 0 0 7 7 7 0 0 1-7-7m7 4.667a1.167 1.167 0 1 1 0-2.334 1.167 1.167 0 0 1 0 2.334" />
+                      </svg>
+                    </span>
+                    {!sidebarCollapsed && <span>LTM Pilot</span>}
+                  </Link>
+                </div>
+                </div>
+              </aside>
+            )}
           <main
             className="ltm-app-main ltm-shell-main ltm-shell-content-stage"
             style={mainBottomPadding ? { paddingBottom: `${mainBottomPadding}px` } : undefined}
@@ -827,6 +829,7 @@ function App() {
               <Route path="/capabilities" element={<CapabilityDiscovery />} />
             </Routes>
           </main>
+          </div>
           </section>
         </div>
       </div>
