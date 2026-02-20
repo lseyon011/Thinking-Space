@@ -31,9 +31,38 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 // Main.storyboard must reference "LTMBridgeViewController" as the custom class.
 
 class LTMBridgeViewController: CAPBridgeViewController {
+    private let shellBackgroundColor = UIColor(
+        red: 242.0 / 255.0,
+        green: 242.0 / 255.0,
+        blue: 247.0 / 255.0,
+        alpha: 1.0
+    )
+
+    override open func viewDidLoad() {
+        super.viewDidLoad()
+        configureShellSurface()
+    }
+
     override open func capacitorDidLoad() {
+        super.capacitorDidLoad()
+        configureShellSurface()
         bridge?.registerPluginInstance(FolderPickerPlugin())
         bridge?.registerPluginInstance(PencilEventsPlugin())
+    }
+
+    private func configureShellSurface() {
+        view.backgroundColor = shellBackgroundColor
+        guard let nativeWebView = webView ?? bridge?.webView else { return }
+        nativeWebView.isOpaque = false
+        nativeWebView.backgroundColor = shellBackgroundColor
+        nativeWebView.scrollView.backgroundColor = shellBackgroundColor
+
+        if #available(iOS 11.0, *) {
+            nativeWebView.scrollView.contentInsetAdjustmentBehavior = .never
+        }
+
+        nativeWebView.scrollView.contentInset = .zero
+        nativeWebView.scrollView.scrollIndicatorInsets = .zero
     }
 }
 

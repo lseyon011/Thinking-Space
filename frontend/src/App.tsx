@@ -286,6 +286,7 @@ function App() {
   const compactNav = shell.compactNav
   const keyboardVisible = shell.keyboardVisibleCompact
   const showBottomNav = false
+  const isCapacitorSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
   const topInset = shell.topInset
   const rightInset = shell.rightInset
   const bottomInset = shell.bottomInset
@@ -294,7 +295,12 @@ function App() {
   const mainBottomPadding = keyboardVisible ? Math.max(0, Math.round(layout.keyboardInset)) : 0
   const commandPaletteTopPadding = Math.max(80, topInset + 56)
   const commandPaletteBottomPadding = Math.max(16, bottomInset + 12)
-  const compactDrawerTriggerBottom = Math.max(bottomInset + (showBottomNav ? 72 : 16), 16)
+  const compactDrawerBaseOffset = layout.surface === 'capacitor-ios' ? 24 : 16
+  const compactDrawerTriggerBottom = Math.max(
+    bottomInset + (showBottomNav ? 72 : compactDrawerBaseOffset),
+    compactDrawerBaseOffset,
+  )
+  const compactDrawerTriggerTop = Math.max(topInset + 10, 10)
   const compactDrawerTriggerLeft = Math.max(12, leftInset + 12)
   const shellSafeAreaVars = useMemo<CSSProperties>(() => ({
     '--ltm-safe-top': `${topInset}px`,
@@ -822,11 +828,18 @@ function App() {
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className="ltm-mobile-drawer-trigger ltm-shell-fab-surface ltm-motion-fast ltm-touch-target fixed z-30 inline-flex h-12 min-w-[3rem] items-center justify-center rounded-full px-3 text-foreground shadow-lg"
-          style={{ bottom: `${compactDrawerTriggerBottom}px`, left: `${compactDrawerTriggerLeft}px` }}
+          className={`ltm-mobile-drawer-trigger ltm-motion-fast fixed z-30 inline-flex items-center text-foreground ${
+            isCapacitorSurface
+              ? 'ltm-shell-field-surface ltm-touch-target h-10 min-w-[5.25rem] justify-center gap-1.5 rounded-full px-3 text-[11px] font-semibold uppercase tracking-[0.14em] shadow-sm'
+              : 'ltm-shell-fab-surface ltm-touch-target h-11 w-11 justify-center rounded-full p-0 shadow-lg'
+          }`}
+          style={isCapacitorSurface
+            ? { top: `${compactDrawerTriggerTop}px`, left: `${compactDrawerTriggerLeft}px` }
+            : { bottom: `${compactDrawerTriggerBottom}px`, left: `${compactDrawerTriggerLeft}px` }}
           aria-label="Open navigation"
         >
-          <Menu className="h-4 w-4" />
+          <Menu className={isCapacitorSurface ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+          {isCapacitorSurface && <span>Menu</span>}
         </button>
       )}
 

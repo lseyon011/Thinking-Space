@@ -101,6 +101,18 @@ export class ElectronCapacitorApp {
     return this.customScheme;
   }
 
+  private getWindowChromeOptions() {
+    if (process.platform === 'darwin') {
+      return {
+        titleBarStyle: 'hiddenInset' as const,
+        roundedCorners: true,
+      };
+    }
+    return {
+      roundedCorners: true,
+    };
+  }
+
   // Create a new window (used for multi-window support).
   async createWindow(): Promise<BrowserWindow> {
     const icon = nativeImage.createFromPath(
@@ -119,6 +131,7 @@ export class ElectronCapacitorApp {
       y: winState.y,
       width: winState.width,
       height: winState.height,
+      ...this.getWindowChromeOptions(),
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: true,
@@ -180,6 +193,7 @@ export class ElectronCapacitorApp {
       y: this.mainWindowState.y,
       width: this.mainWindowState.width,
       height: this.mainWindowState.height,
+      ...this.getWindowChromeOptions(),
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: true,

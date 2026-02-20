@@ -35,16 +35,16 @@ export default function AppTabsBlock({
                 <div
                   key={tab.id}
                   className={cn(
-                    'ltm-tab-item ltm-tab-fade group inline-flex h-7 max-w-[220px] items-center gap-1 rounded-full border px-2 transition-colors',
+                    'ltm-tab-item ltm-tab-fade group inline-flex h-8 max-w-[236px] items-center gap-1.5 rounded-full border px-2.5 transition-colors',
                     active
-                      ? 'ltm-tab-active border-border/60 bg-background/90 text-foreground'
+                      ? 'ltm-tab-active border-white/90 bg-white text-black'
                       : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground',
                   )}
                 >
                   <button
                     type="button"
                     onClick={() => onSelectTab(tab.id)}
-                    className="min-w-0 flex-1 truncate text-left text-[11px] font-medium"
+                    className="min-w-0 flex-1 truncate text-left text-xs font-medium"
                     title={tab.label}
                     aria-current={active ? 'page' : undefined}
                   >
@@ -54,10 +54,10 @@ export default function AppTabsBlock({
                     <button
                       type="button"
                       onClick={() => onCloseTab(tab.id)}
-                      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                      className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                       aria-label={`Close ${tab.label} tab`}
                     >
-                      <X className="h-3 w-3" />
+                      <X className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </div>
@@ -68,7 +68,7 @@ export default function AppTabsBlock({
         <button
           type="button"
           onClick={onCreateTab}
-          className="ltm-motion-fast ltm-touch-target inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+          className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
           aria-label="Create new app tab"
           title="New tab"
         >
