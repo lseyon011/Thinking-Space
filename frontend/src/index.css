@@ -136,6 +136,14 @@
     @apply h-dvh min-h-dvh flex flex-col overflow-hidden bg-background;
   }
 
+  .ltm-app-shell[data-ltm-theme='modern-classic'],
+  .ltm-app-shell[data-ltm-theme='modern'] {
+    --ltm-anim-baseline: cubic-bezier(0.32, 0.72, 0, 1);
+    --ltm-anim-fast: 160ms;
+    --ltm-anim-moderate: 320ms;
+    --ltm-anim-slow: 480ms;
+  }
+
   .ltm-app-main {
     @apply flex-1 min-h-0 overflow-y-auto;
     -webkit-overflow-scrolling: touch;
@@ -202,20 +210,20 @@
 
   .ltm-motion-fast {
     transition-property: color, background-color, border-color, opacity, transform, box-shadow;
-    transition-duration: 140ms;
-    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    transition-duration: var(--ltm-anim-fast, 140ms);
+    transition-timing-function: var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1));
   }
 
   .ltm-motion-normal {
     transition-property: color, background-color, border-color, opacity, transform, box-shadow;
-    transition-duration: 220ms;
-    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    transition-duration: var(--ltm-anim-moderate, 220ms);
+    transition-timing-function: var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1));
   }
 
   .ltm-motion-slow {
     transition-property: color, background-color, border-color, opacity, transform, box-shadow;
-    transition-duration: 320ms;
-    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    transition-duration: var(--ltm-anim-slow, 320ms);
+    transition-timing-function: var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1));
   }
 
   .ltm-animate-fade-in {
@@ -263,6 +271,58 @@
   animation: slide-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Cupertino animations — used by modern themes */
+@keyframes ltm-menu-in {
+  from { opacity: 0; filter: blur(4px); transform: translateY(-8px); }
+  to { opacity: 1; filter: blur(0); transform: translateY(0); }
+}
+
+@keyframes ltm-modal-in {
+  from { opacity: 0; filter: blur(4px); transform: scale(0.975); }
+  to { opacity: 1; filter: blur(0); transform: scale(1); }
+}
+
+@keyframes ltm-leaf-in {
+  from { opacity: 0; filter: blur(4px); transform: scale(0.95); }
+  to { opacity: 1; filter: blur(0); transform: scale(1); }
+}
+
+@keyframes ltm-fade-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Apply Cupertino animations to modern themes */
+.ltm-app-shell[data-ltm-theme='modern-classic'] .ltm-animate-slide-up,
+.ltm-app-shell[data-ltm-theme='modern'] .ltm-animate-slide-up {
+  animation: ltm-modal-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.ltm-app-shell[data-ltm-theme='modern-classic'] .ltm-animate-slide-in-left,
+.ltm-app-shell[data-ltm-theme='modern'] .ltm-animate-slide-in-left {
+  animation: ltm-leaf-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.ltm-app-shell[data-ltm-theme='modern-classic'] .ltm-animate-fade-in,
+.ltm-app-shell[data-ltm-theme='modern'] .ltm-animate-fade-in {
+  animation: ltm-fade-scale-in var(--ltm-anim-fast, 160ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.ltm-app-shell[data-ltm-theme='modern-classic'] .ltm-modern-animate-menu,
+.ltm-app-shell[data-ltm-theme='modern'] .ltm-modern-animate-menu {
+  animation: ltm-menu-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.ltm-app-shell[data-ltm-theme='modern-classic'] .ltm-modern-animate-modal,
+.ltm-app-shell[data-ltm-theme='modern'] .ltm-modern-animate-modal {
+  animation: ltm-modal-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.ltm-app-shell[data-ltm-theme='modern-classic'] .ltm-modern-animate-leaf,
+.ltm-app-shell[data-ltm-theme='modern'] .ltm-modern-animate-leaf {
+  animation: ltm-leaf-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
 @media (pointer: coarse) {
   .ltm-touch-target {
     min-width: 2.75rem !important;
@@ -277,6 +337,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  :root {
+    --ltm-anim-fast: 1ms !important;
+    --ltm-anim-moderate: 1ms !important;
+    --ltm-anim-slow: 1ms !important;
+  }
+
   .ltm-motion-fast,
   .ltm-motion-normal,
   .ltm-motion-slow {
@@ -286,6 +352,9 @@
   .ltm-animate-fade-in,
   .ltm-animate-slide-up,
   .ltm-animate-slide-in-left,
+  .ltm-modern-animate-menu,
+  .ltm-modern-animate-modal,
+  .ltm-modern-animate-leaf,
   .animate-slide-in {
     animation: none !important;
   }

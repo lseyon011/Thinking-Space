@@ -25,9 +25,9 @@ export default function AppTabsBlock({
 }: AppTabsBlockProps) {
   return (
     <div className={cn('ltm-shell-tabs border-b border-border/60 bg-card/40', className)}>
-      <div className="flex items-center gap-2 px-2 py-1.5">
+      <div className="ltm-tab-container flex items-center gap-2 px-2 py-1.5" style={{ containerType: 'inline-size' }}>
         <div className="min-w-0 flex-1 overflow-x-auto">
-          <div className="inline-flex min-w-full items-center gap-1">
+          <div className="ltm-tab-scroll-inner inline-flex min-w-full items-center gap-1">
             {tabs.map((tab) => {
               const active = tab.id === activeTabId
               const canClose = tabs.length > 1
@@ -35,9 +35,9 @@ export default function AppTabsBlock({
                 <div
                   key={tab.id}
                   className={cn(
-                    'group inline-flex h-8 max-w-[260px] items-center gap-1 rounded-md border px-2 transition-colors',
+                    'ltm-tab-item ltm-tab-fade group inline-flex h-8 max-w-[260px] items-center gap-1 rounded-md border px-2 transition-colors',
                     active
-                      ? 'border-border bg-background text-foreground'
+                      ? 'ltm-tab-active border-border bg-background text-foreground'
                       : 'border-transparent bg-transparent text-muted-foreground hover:border-border/60 hover:bg-background/70 hover:text-foreground',
                   )}
                 >

@@ -594,6 +594,8 @@ function App() {
       <div className="flex min-h-0 flex-1" style={topInset ? { paddingTop: `${topInset}px` } : undefined}>
         {!compactNav && (
           <aside className={`ltm-shell-sidebar hidden shrink-0 border-r border-border/70 bg-card/30 transition-[width] duration-200 lg:block ${
+            sidebarCollapsed ? 'ltm-sidebar-collapsed' : 'ltm-sidebar-expanded'
+          } ${
             sidebarCollapsed ? 'w-16' : 'w-64'
           }`}>
             <div className={`flex h-full flex-col py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
@@ -623,7 +625,7 @@ function App() {
                 {!sidebarCollapsed && <span>LTM Pilot</span>}
               </Link>
 
-              <div className="ltm-nav-scroll min-h-0 flex-1 overflow-y-auto">
+              <div className="ltm-nav-scroll ltm-sidebar-nav-scroll min-h-0 flex-1 overflow-y-auto">
                 <div className="space-y-1">
                   {!sidebarCollapsed && (
                     <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -706,7 +708,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
+              <div className="ltm-sidebar-actions mt-3 space-y-2 border-t border-border/60 pt-3">
                 {!sidebarCollapsed && (
                   <div className="space-y-1 px-0.5">
                     <label htmlFor="ltm-theme-select-desktop" className="px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -734,7 +736,7 @@ function App() {
                   <button
                     type="button"
                     onClick={handleCycleTheme}
-                    className="ltm-shell-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center justify-center rounded-lg border border-border/60 bg-background py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    className="ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center justify-center rounded-lg border border-border/60 bg-background py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
                     aria-label={`Switch theme (current: ${themeId})`}
                     title={`Switch theme (current: ${themeId})`}
                   >
@@ -744,25 +746,25 @@ function App() {
                 <button
                   type="button"
                   onClick={openCommandPalette}
-                  className={`ltm-shell-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg border border-border/60 bg-background py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
+                  className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg border border-border/60 bg-background py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
                     sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
                   }`}
                   aria-label="Open quick search"
                 >
                   <Search className="h-4 w-4" />
-                  {!sidebarCollapsed && <span className="truncate">Search</span>}
+                  {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">Search</span>}
                 </button>
                 <button
                   type="button"
                   onClick={() => setSidebarCollapsed(prev => !prev)}
-                  className={`ltm-shell-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg border border-border/60 bg-background py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
+                  className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg border border-border/60 bg-background py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
                     sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
                   }`}
                   title={sidebarCollapsed ? 'Expand sidebar (Cmd/Ctrl+\\)' : 'Collapse sidebar (Cmd/Ctrl+\\)'}
                   aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 >
                   {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-                  {!sidebarCollapsed && <span className="truncate">{sidebarCollapsed ? 'Expand drawer' : 'Collapse drawer'}</span>}
+                  {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">{sidebarCollapsed ? 'Expand drawer' : 'Collapse drawer'}</span>}
                 </button>
               </div>
             </div>
@@ -811,7 +813,7 @@ function App() {
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className="ltm-mobile-drawer-trigger ltm-motion-fast ltm-touch-target fixed left-3 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/60 bg-background/95 text-foreground shadow-lg backdrop-blur"
+          className="ltm-mobile-drawer-trigger ltm-motion-fast ltm-touch-target fixed left-3 z-30 inline-flex h-12 min-w-[3rem] items-center justify-center rounded-full border border-border/60 bg-background/95 px-3 text-foreground shadow-lg backdrop-blur"
           style={{ bottom: `${compactDrawerTriggerBottom}px` }}
           aria-label="Open navigation"
         >
@@ -822,11 +824,11 @@ function App() {
       {compactNav && drawerOpen && (
         <>
           <div
-            className="ltm-mobile-drawer-overlay fixed inset-0 z-40 bg-background/65 backdrop-blur-sm ltm-animate-fade-in"
+            className="ltm-mobile-drawer-overlay ltm-modern-animate-menu fixed inset-0 z-40 bg-background/65 backdrop-blur-sm ltm-animate-fade-in"
             onClick={() => setDrawerOpen(false)}
           />
           <aside
-            className="ltm-mobile-drawer fixed inset-y-0 left-0 z-50 flex w-[84vw] max-w-[420px] flex-col border-r border-border/70 bg-background shadow-2xl ltm-animate-slide-in-left"
+            className="ltm-mobile-drawer ltm-modern-animate-leaf fixed inset-y-0 left-0 z-50 flex w-[84vw] max-w-[420px] flex-col border-r border-border/70 bg-background shadow-2xl ltm-animate-slide-in-left"
             onTouchStart={handleDrawerTouchStart}
             onTouchMove={handleDrawerTouchMove}
             onTouchEnd={handleDrawerTouchEnd}
@@ -990,14 +992,14 @@ function App() {
       {commandPaletteOpen && (
         <>
           <div
-            className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm ltm-animate-fade-in"
+            className="ltm-cmd-overlay ltm-modern-animate-menu fixed inset-0 z-50 bg-background/70 ltm-animate-fade-in"
             onClick={closeCommandPalette}
           />
           <div
             className="fixed inset-0 z-[60] flex items-start justify-center p-3 sm:p-4"
             style={{ paddingTop: `${commandPaletteTopPadding}px`, paddingBottom: `${commandPaletteBottomPadding}px` }}
           >
-            <div className="max-h-full w-full max-w-2xl overflow-hidden rounded-2xl border border-border/70 bg-background shadow-2xl ltm-animate-slide-up">
+            <div className="ltm-cmd-card ltm-modern-animate-modal max-h-full w-full max-w-2xl overflow-hidden rounded-2xl border border-border/70 bg-background shadow-2xl ltm-animate-slide-up">
               <div className="border-b border-border/60 p-3">
                 <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-2.5">
                   <Search className="h-4 w-4 text-muted-foreground" />
@@ -1057,7 +1059,7 @@ function App() {
 
       {showBottomNav && (
         <nav
-          className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/70 bg-background/95 backdrop-blur-xl"
+          className="ltm-bottom-nav fixed bottom-0 left-0 right-0 z-40 border-t border-border/70"
           style={bottomInset ? { paddingBottom: `${bottomInset}px` } : undefined}
         >
           <div className="grid h-14 grid-cols-5 items-center px-1">
