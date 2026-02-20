@@ -132,11 +132,11 @@
   }
 
   .ltm-app-shell {
-    @apply min-h-dvh flex flex-col bg-background;
+    @apply h-dvh min-h-dvh flex flex-col overflow-hidden bg-background;
   }
 
   .ltm-app-main {
-    @apply flex-1 min-h-0;
+    @apply flex-1 min-h-0 overflow-y-auto;
   }
 
   .ltm-page {

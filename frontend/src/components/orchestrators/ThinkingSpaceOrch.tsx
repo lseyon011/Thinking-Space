@@ -153,7 +153,7 @@ export default function ThinkingSpaceOrch() {
         path={inlinePath}
         onClose={handleInlineDocumentClose}
         showCloseButton
-        className="h-full"
+        className="h-full min-h-0"
       />
     )
   }, [handleInlineDocumentClose, inlinePath])
@@ -196,7 +196,7 @@ export default function ThinkingSpaceOrch() {
             Explorer
           </Button>
           {inlineDocumentContent ? (
-            <div className={cn('h-full', showExplorerTrigger && '[&_.ts-md-header]:pl-32')}>
+            <div className={cn('h-full min-h-0', showExplorerTrigger && '[&_.ts-md-header]:pl-32')}>
               {inlineDocumentContent}
             </div>
           ) : (
