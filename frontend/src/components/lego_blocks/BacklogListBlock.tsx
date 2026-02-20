@@ -54,6 +54,14 @@ const STATUS_COLORS: Record<NodeStatus, string> = {
   archived: 'bg-zinc-500/15 text-zinc-500',
 }
 
+const TASK_STATUS_COLORS = {
+  ready: 'bg-indigo-500/15 text-indigo-700',
+  in_progress: 'bg-emerald-500/15 text-emerald-700',
+  blocked: 'bg-amber-500/15 text-amber-700',
+  done: 'bg-blue-500/15 text-blue-700',
+  cancelled: 'bg-zinc-500/15 text-zinc-500',
+} as const
+
 const PRIORITY_COLORS: Record<NonNullable<NodePriority>, string> = {
   low: 'bg-zinc-400',
   medium: 'bg-blue-400',
@@ -87,6 +95,14 @@ function StatusBadge({ status }: { status: NodeStatus }) {
   return (
     <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium', STATUS_COLORS[status])}>
       {status}
+    </span>
+  )
+}
+
+function TaskStatusBadge({ taskStatus }: { taskStatus: keyof typeof TASK_STATUS_COLORS }) {
+  return (
+    <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium', TASK_STATUS_COLORS[taskStatus])}>
+      {taskStatus}
     </span>
   )
 }
@@ -211,6 +227,30 @@ async function copyTextToClipboard(text: string): Promise<void> {
 
 function isTaskNode(node: NodeRecord): boolean {
   return node.type === 'task' || node.recordKind === 'task' || !!node.taskStatus
+}
+
+function normalizeTaskStatus(value: string | undefined): keyof typeof TASK_STATUS_COLORS | null {
+  if (!value) return null
+  const canonical = value.trim().toLowerCase().replace(/\s+/g, '_')
+  if (!canonical) return null
+  if (canonical === 'inprogress' || canonical === 'doing' || canonical === 'underway') return 'in_progress'
+  if (canonical === 'open' || canonical === 'todo' || canonical === 'to_do' || canonical === 'pending' || canonical === 'backlog') return 'ready'
+  if (canonical === 'stuck' || canonical === 'waiting' || canonical === 'on_hold' || canonical === 'paused') return 'blocked'
+  if (canonical === 'complete' || canonical === 'completed' || canonical === 'closed' || canonical === 'resolved' || canonical === 'shipped') return 'done'
+  if (canonical === 'archived' || canonical === 'canceled' || canonical === 'dropped') return 'cancelled'
+  if (canonical in TASK_STATUS_COLORS) return canonical as keyof typeof TASK_STATUS_COLORS
+  return null
+}
+
+function taskStatusFromNodeStatus(status: NodeStatus): keyof typeof TASK_STATUS_COLORS {
+  if (status === 'completed') return 'done'
+  if (status === 'archived') return 'cancelled'
+  if (status === 'paused') return 'blocked'
+  return 'in_progress'
+}
+
+function getTaskStatusBadge(node: NodeRecord): keyof typeof TASK_STATUS_COLORS {
+  return normalizeTaskStatus(node.taskStatus) ?? taskStatusFromNodeStatus(node.status)
 }
 
 export default function BacklogListBlock({
@@ -579,7 +619,9 @@ export default function BacklogListBlock({
               {childCount}
             </span>
           )}
-          <StatusBadge status={node.status} />
+          {isTaskNode(node)
+            ? <TaskStatusBadge taskStatus={getTaskStatusBadge(node)} />
+            : <StatusBadge status={node.status} />}
           <PriorityDot priority={node.priority} />
         </div>
         {canShowGroupingInfo && groupingInfoOpen && (

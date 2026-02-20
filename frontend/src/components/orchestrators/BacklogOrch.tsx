@@ -98,6 +98,10 @@ function allowedChildTypes(parentType: NodeType | null): NodeType[] {
   return [preferred, ...all.filter(type => type !== preferred)]
 }
 
+function isTaskLikeNode(node: Pick<NodeRecord, 'type' | 'recordKind' | 'taskStatus'>): boolean {
+  return node.type === 'task' || node.recordKind === 'task' || !!node.taskStatus
+}
+
 export default function BacklogOrch() {
   const { openFile } = useMarkdownViewer()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -119,6 +123,7 @@ export default function BacklogOrch() {
   const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>(
     () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
   )
+  const [initialProjectLoadResolved, setInitialProjectLoadResolved] = useState(false)
   const [activeProjectRoot, setActiveProjectRoot] = useState<string>(() => {
     const saved = normalizeStoredSegments(
       getJsonStorageItem<unknown>(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, []),
@@ -166,7 +171,12 @@ export default function BacklogOrch() {
   }, [])
 
   useEffect(() => {
-    void loadPrograms(true)
+    let cancelled = false
+    void (async () => {
+      await loadPrograms(true)
+      if (!cancelled) setInitialProjectLoadResolved(true)
+    })()
+    return () => { cancelled = true }
   }, [loadPrograms])
 
   useEffect(() => {
@@ -310,13 +320,8 @@ export default function BacklogOrch() {
   }, [projectEntries, programs])
 
   useEffect(() => {
-    if (availableProjects.length === 0) {
-      if (activeProjectRoot) {
-        setActiveProjectRoot('')
-        setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, [])
-      }
-      return
-    }
+    if (!initialProjectLoadResolved) return
+    if (availableProjects.length === 0) return
 
     const exists = availableProjects.some(project => project.root === activeProjectRoot)
     if (exists) return
@@ -324,7 +329,7 @@ export default function BacklogOrch() {
     const fallback = availableProjects[0].root
     setActiveProjectRoot(fallback)
     setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, fallback.split('/'))
-  }, [activeProjectRoot, availableProjects])
+  }, [activeProjectRoot, availableProjects, initialProjectLoadResolved])
 
   const visiblePrograms = useMemo(() => {
     if (!activeProjectRoot) return programs
@@ -516,6 +521,30 @@ export default function BacklogOrch() {
       setSelectedNode(updated)
     } catch (err) {
       setError(errorMessage(err, 'Failed to update status'))
+    } finally {
+      setWorking(false)
+      setCurrentOperation(null)
+      void refreshExecutionProgress()
+    }
+  }, [refreshExecutionProgress, selectedNode])
+
+  const updateTaskStatus = useCallback(async (taskStatus: string) => {
+    if (!selectedNode) return
+    if (!isTaskLikeNode(selectedNode)) return
+    setWorking(true)
+    setCurrentOperation(`Updating task state for ${selectedNode.title}`)
+    try {
+      const { node: updated } = await invokeCapabilityOrThrow({
+        capability: 'task.update_status',
+        input: {
+          uuid: selectedNode.uuid,
+          taskStatus,
+        },
+        actor: BACKLOG_ACTOR,
+      })
+      setSelectedNode(updated)
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to update task state'))
     } finally {
       setWorking(false)
       setCurrentOperation(null)
@@ -744,6 +773,7 @@ export default function BacklogOrch() {
           onClose={() => setSelectedNode(null)}
           onRename={renameNode}
           onUpdateStatus={updateStatus}
+          onUpdateTaskStatus={updateTaskStatus}
           onUpdatePriority={updatePriority}
           onUpdateNotes={updateNodeNotes}
           onOpenFile={() => openFile(selectedNode.filePath)}

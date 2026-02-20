@@ -61,6 +61,29 @@ function formatTimestamp(value: string | undefined): string {
 
 const STATUS_OPTIONS: NodeStatus[] = ['active', 'paused', 'completed', 'archived']
 const PRIORITY_OPTIONS: NodePriority[] = ['low', 'medium', 'high', 'critical']
+const TASK_STATUS_OPTIONS = ['ready', 'in_progress', 'blocked', 'done', 'cancelled'] as const
+
+function normalizeTaskStatus(value: string | undefined): (typeof TASK_STATUS_OPTIONS)[number] | null {
+  if (!value) return null
+  const canonical = value.trim().toLowerCase().replace(/\s+/g, '_')
+  if (!canonical) return null
+  if (canonical === 'inprogress' || canonical === 'doing' || canonical === 'underway') return 'in_progress'
+  if (canonical === 'open' || canonical === 'todo' || canonical === 'to_do' || canonical === 'pending' || canonical === 'backlog') return 'ready'
+  if (canonical === 'stuck' || canonical === 'waiting' || canonical === 'on_hold' || canonical === 'paused') return 'blocked'
+  if (canonical === 'complete' || canonical === 'completed' || canonical === 'closed' || canonical === 'resolved' || canonical === 'shipped') return 'done'
+  if (canonical === 'archived' || canonical === 'canceled' || canonical === 'dropped') return 'cancelled'
+  if (TASK_STATUS_OPTIONS.includes(canonical as (typeof TASK_STATUS_OPTIONS)[number])) {
+    return canonical as (typeof TASK_STATUS_OPTIONS)[number]
+  }
+  return null
+}
+
+function taskStatusFromNodeStatus(status: NodeStatus): (typeof TASK_STATUS_OPTIONS)[number] {
+  if (status === 'completed') return 'done'
+  if (status === 'archived') return 'cancelled'
+  if (status === 'paused') return 'blocked'
+  return 'in_progress'
+}
 
 export interface NodeDetailPanelBlockProps {
   node: NodeRecord
@@ -68,6 +91,7 @@ export interface NodeDetailPanelBlockProps {
   onClose: () => void
   onRename: (newTitle: string) => Promise<void>
   onUpdateStatus: (status: string) => Promise<void>
+  onUpdateTaskStatus: (taskStatus: string) => Promise<void>
   onUpdatePriority: (priority: string) => Promise<void>
   onUpdateNotes: (description: string, comments: YAMLCommentEntry[]) => Promise<void>
   onOpenFile: () => void
@@ -80,6 +104,7 @@ export default function NodeDetailPanelBlock({
   onClose,
   onRename,
   onUpdateStatus,
+  onUpdateTaskStatus,
   onUpdatePriority,
   onUpdateNotes,
   onOpenFile,
@@ -141,7 +166,11 @@ export default function NodeDetailPanelBlock({
   }, [onClose, onDelete])
 
   const Icon = iconForNodeType(node.type)
-  const statusEditable = node.type !== 'epic'
+  const taskLikeNode = node.type === 'task' || node.recordKind === 'task' || !!node.taskStatus
+  const statusEditable = node.type !== 'epic' && !taskLikeNode
+  const currentTaskStatus = useMemo(() => (
+    normalizeTaskStatus(node.taskStatus) ?? taskStatusFromNodeStatus(node.status)
+  ), [node.status, node.taskStatus])
   const commentsDirty = useMemo(() => {
     if (commentsDraft.length !== sourceComments.length) return true
     for (let i = 0; i < commentsDraft.length; i += 1) {
@@ -273,28 +302,50 @@ export default function NodeDetailPanelBlock({
           />
 
           {/* Status */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Status</label>
-            <Select
-              value={node.status}
-              onValueChange={val => { if (statusEditable) void onUpdateStatus(val) }}
-              disabled={!statusEditable}
-            >
-              <SelectTrigger className="h-9 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map(s => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {!statusEditable && (
+          {taskLikeNode ? (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Task State</label>
+              <Select
+                value={currentTaskStatus}
+                onValueChange={val => { void onUpdateTaskStatus(val) }}
+              >
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TASK_STATUS_OPTIONS.map(s => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <p className="text-[11px] text-muted-foreground">
-                Epic status is derived automatically from descendant task states.
+                Derived node status: <span className="font-medium text-foreground">{node.status}</span>
               </p>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Status</label>
+              <Select
+                value={node.status}
+                onValueChange={val => { if (statusEditable) void onUpdateStatus(val) }}
+                disabled={!statusEditable}
+              >
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map(s => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!statusEditable && (
+                <p className="text-[11px] text-muted-foreground">
+                  Epic status is derived automatically from descendant task states.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Priority */}
           <div className="space-y-1">
