@@ -60,7 +60,7 @@ export default function MarkdownRichEditorBlock({
         backgroundColor: 'transparent',
       },
       '.cm-scroller': {
-        overflow: 'visible',
+        overflow: 'auto',
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
         lineHeight: '1.6',
       },
@@ -120,7 +120,7 @@ export default function MarkdownRichEditorBlock({
 
   return (
     <div className={cn('flex min-h-0 flex-col bg-transparent', className)}>
-      <div className="sticky top-16 z-30 flex flex-wrap items-center gap-1 border-b border-border/50 bg-background/95 p-2 backdrop-blur">
+      <div className="sticky top-0 z-30 flex flex-wrap items-center gap-1 border-b border-border/50 bg-background/95 p-2 backdrop-blur">
         <button
           type="button"
           onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '# ', '', 'Heading'))}

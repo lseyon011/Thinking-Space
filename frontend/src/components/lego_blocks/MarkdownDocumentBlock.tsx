@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { X, FileText, ExternalLink, Info, Pencil, Save } from 'lucide-react'
@@ -108,6 +108,8 @@ function MarkdownDocumentBlock({
   const [relatedError, setRelatedError] = useState<string | null>(null)
 
   const [showMeta, setShowMeta] = useState(true)
+  const [chromeCollapsed, setChromeCollapsed] = useState(false)
+  const [chromeMaxHeight, setChromeMaxHeight] = useState(0)
   const [showAssistPanel, setShowAssistPanel] = useState(false)
   const [showRelatedPanel, setShowRelatedPanel] = useState(false)
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true)
@@ -131,6 +133,9 @@ function MarkdownDocumentBlock({
   })
   const isExcalidrawDoc = /\.(excalidraw|excalidraw\.md)$/i.test(path)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
+  const chromeContentRef = useRef<HTMLDivElement | null>(null)
+  const lastScrollTopRef = useRef(0)
+  const chromeCollapsedRef = useRef(false)
   const excalidrawSceneRef = useRef<ParsedExcalidrawScene | null>(null)
   const ignoreInitialExcalidrawChangeRef = useRef(true)
   const [hasExcalidrawChanges, setHasExcalidrawChanges] = useState(false)
@@ -182,6 +187,69 @@ function MarkdownDocumentBlock({
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [excalidrawImmersive])
+
+  useEffect(() => {
+    chromeCollapsedRef.current = chromeCollapsed
+  }, [chromeCollapsed])
+
+  useLayoutEffect(() => {
+    const chromeEl = chromeContentRef.current
+    if (!chromeEl) return
+
+    const updateHeight = () => {
+      const next = chromeEl.scrollHeight
+      if (next > 0) setChromeMaxHeight(next)
+    }
+
+    updateHeight()
+
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => updateHeight())
+    observer.observe(chromeEl)
+    return () => observer.disconnect()
+  }, [mode, path, showMeta])
+
+  useEffect(() => {
+    const scroller = contentScrollRef.current
+    if (!scroller) return
+
+    const SCROLL_DELTA_THRESHOLD = 1.5
+    const TOP_RESET_THRESHOLD = 12
+
+    lastScrollTopRef.current = scroller.scrollTop
+    chromeCollapsedRef.current = false
+    setChromeCollapsed(false)
+
+    const onScroll = () => {
+      const nextTop = scroller.scrollTop
+      const delta = nextTop - lastScrollTopRef.current
+      lastScrollTopRef.current = nextTop
+
+      if (nextTop <= TOP_RESET_THRESHOLD) {
+        if (chromeCollapsedRef.current) {
+          chromeCollapsedRef.current = false
+          setChromeCollapsed(false)
+        }
+        return
+      }
+      if (Math.abs(delta) < SCROLL_DELTA_THRESHOLD) return
+
+      if (delta > 0) {
+        if (!chromeCollapsedRef.current) {
+          chromeCollapsedRef.current = true
+          setChromeCollapsed(true)
+        }
+      } else {
+        if (chromeCollapsedRef.current) {
+          chromeCollapsedRef.current = false
+          setChromeCollapsed(false)
+        }
+      }
+    }
+
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+    return () => scroller.removeEventListener('scroll', onScroll)
+  }, [content, mode, path])
 
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
@@ -504,118 +572,130 @@ function MarkdownDocumentBlock({
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
       <div
-        className="ts-md-header flex items-start justify-between gap-3 border-b border-border/50 px-5 py-4"
+        className="overflow-hidden"
+        style={{
+          maxHeight: chromeCollapsed ? 0 : (chromeMaxHeight > 0 ? chromeMaxHeight : undefined),
+          opacity: chromeCollapsed ? 0 : 1,
+          transform: `translateY(${chromeCollapsed ? -8 : 0}px)`,
+          transition: 'max-height 300ms cubic-bezier(0.22,1,0.36,1), opacity 220ms ease, transform 300ms cubic-bezier(0.22,1,0.36,1)',
+          willChange: 'max-height, opacity, transform',
+          pointerEvents: chromeCollapsed ? 'none' : 'auto',
+        }}
       >
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="truncate font-medium">{filename}</span>
+        <div ref={chromeContentRef} className="min-h-0 overflow-hidden">
+          <div className="ts-md-header flex items-start justify-between gap-3 border-b border-border/50 px-5 py-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="truncate font-medium">{filename}</span>
+              </div>
+              {breadcrumb && (
+                <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>
+              )}
+            </div>
+
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                onClick={() => setShowMeta(v => !v)}
+                className={`rounded-lg p-1.5 transition-colors ${showMeta ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                title="File metadata"
+              >
+                <Info className="h-4 w-4" />
+              </button>
+
+              {!isEditing && (
+                <button
+                  onClick={startEditing}
+                  disabled={loading || !!error}
+                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Edit file"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+              )}
+
+              {isEditing && !isExcalidrawDoc && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setAutoSaveEnabled(v => !v)}
+                    className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                    title="Toggle auto save"
+                  >
+                    {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAssistPanel(v => !v)}
+                    className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showAssistPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                    title="Toggle AI assist"
+                  >
+                    AI Assist
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowRelatedPanel(v => !v)}
+                    className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showRelatedPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                    title="Toggle related thoughts"
+                  >
+                    Related Thoughts
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelEditing}
+                    className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void handleSave() }}
+                    disabled={!hasChanges || saving || baseMtime === null}
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </>
+              )}
+
+              <a
+                href={obsidianUrl}
+                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title="Open in Obsidian"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </a>
+
+              {showCloseButton && onClose && (
+                <button
+                  onClick={onClose}
+                  className="rounded-lg p-1.5 transition-colors hover:bg-muted"
+                  title="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
-          {breadcrumb && (
-            <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>
-          )}
-        </div>
 
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            onClick={() => setShowMeta(v => !v)}
-            className={`rounded-lg p-1.5 transition-colors ${showMeta ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-            title="File metadata"
-          >
-            <Info className="h-4 w-4" />
-          </button>
-
-          {!isEditing && (
-            <button
-              onClick={startEditing}
-              disabled={loading || !!error}
-              className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-              title="Edit file"
-            >
-              <Pencil className="h-4 w-4" />
-            </button>
-          )}
-
-          {isEditing && !isExcalidrawDoc && (
-            <>
-              <button
-                type="button"
-                onClick={() => setAutoSaveEnabled(v => !v)}
-                className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                title="Toggle auto save"
-              >
-                {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowAssistPanel(v => !v)}
-                className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showAssistPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                title="Toggle AI assist"
-              >
-                AI Assist
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowRelatedPanel(v => !v)}
-                className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showRelatedPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                title="Toggle related thoughts"
-              >
-                Related Thoughts
-              </button>
-              <button
-                type="button"
-                onClick={cancelEditing}
-                className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => { void handleSave() }}
-                disabled={!hasChanges || saving || baseMtime === null}
-                className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Save className="h-3.5 w-3.5" />
-                {saving ? 'Saving...' : 'Save'}
-              </button>
-            </>
-          )}
-
-          <a
-            href={obsidianUrl}
-            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            title="Open in Obsidian"
-          >
-            <ExternalLink className="h-4 w-4" />
-          </a>
-
-          {showCloseButton && onClose && (
-            <button
-              onClick={onClose}
-              className="rounded-lg p-1.5 transition-colors hover:bg-muted"
-              title="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
+          {showMeta && meta && (
+            <div className="flex items-center gap-4 border-b border-border/30 bg-muted/30 px-5 py-2 text-xs text-muted-foreground">
+              <span><strong className="text-foreground/70">{meta.lines ?? '…'}</strong> lines</span>
+              <span><strong className="text-foreground/70">{meta.words ?? '…'}</strong> words</span>
+              <span><strong className="text-foreground/70">{meta.headings ?? '…'}</strong> headings</span>
+              <span>{meta.size}</span>
+            </div>
           )}
         </div>
       </div>
-
-      {showMeta && meta && (
-        <div className="flex items-center gap-4 border-b border-border/30 bg-muted/30 px-5 py-2 text-xs text-muted-foreground">
-          <span><strong className="text-foreground/70">{meta.lines ?? '…'}</strong> lines</span>
-          <span><strong className="text-foreground/70">{meta.words ?? '…'}</strong> words</span>
-          <span><strong className="text-foreground/70">{meta.headings ?? '…'}</strong> headings</span>
-          <span>{meta.size}</span>
-        </div>
-      )}
 
       <div className="relative min-h-0 flex-1">
         <div
           ref={contentScrollRef}
           className={cn(
             'relative h-full min-h-0',
-            isExcalidrawDoc ? 'overflow-y-auto p-0' : (isEditing ? 'overflow-visible p-0' : 'overflow-y-auto px-6 py-5'),
+            isExcalidrawDoc ? 'overflow-y-auto p-0' : (isEditing ? 'overflow-y-auto p-0' : 'overflow-y-auto px-6 py-5'),
           )}
         >
           {loading && (
