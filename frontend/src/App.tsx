@@ -138,11 +138,6 @@ function App() {
     return items
   }, [extensionBuilderEnabled])
 
-  const allNavItems = useMemo(
-    () => [...PRIMARY_NAV_ITEMS, ...utilityNavItems, ...TOOL_NAV_ITEMS],
-    [utilityNavItems],
-  )
-
   const commandItems = useMemo<CommandItem[]>(() => ([
     { to: '/', label: 'Home', group: 'Core', keywords: 'dashboard start' },
     ...PRIMARY_NAV_ITEMS.map(item => ({
@@ -171,11 +166,6 @@ function App() {
     [],
   )
 
-  const currentRouteLabel = useMemo(
-    () => allNavItems.find(item => isNavItemActive(location.pathname, item))?.label ?? 'Thinking Space',
-    [allNavItems, location.pathname],
-  )
-
   const filteredCommandItems = useMemo(() => {
     const query = commandQuery.trim().toLowerCase()
     if (!query) return commandItems
@@ -197,6 +187,7 @@ function App() {
     : shell.mainBottomPadding
   const commandPaletteTopPadding = Math.max(80, topInset + 56)
   const commandPaletteBottomPadding = Math.max(16, bottomInset + 12)
+  const compactDrawerTriggerBottom = Math.max(bottomInset + (showBottomNav ? 72 : 16), 16)
 
   const openCommandPalette = useCallback(() => {
     setCommandQuery('')
@@ -390,190 +381,145 @@ function App() {
 
   return (
     <div className="ltm-app-shell">
-      <header
-        className="sticky top-0 z-50 border-b border-border/70 bg-background/85 backdrop-blur-xl"
-        style={topInset ? { paddingTop: `${topInset}px` } : undefined}
-      >
-        <div className="mx-auto w-full px-2 sm:px-3 md:px-4">
-          <div className="flex h-14 items-center justify-between gap-2">
-            {compactNav ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setDrawerOpen(true)}
-                  className="ltm-motion-fast ltm-touch-target inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-foreground"
-                  aria-label="Open navigation"
-                >
-                  <Menu className="h-4 w-4" />
-                </button>
-                <div className="min-w-0 flex-1 truncate px-1 text-sm font-semibold tracking-tight">
-                  {currentRouteLabel}
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={openCommandPalette}
-                    className="ltm-motion-fast ltm-touch-target inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-foreground"
-                    aria-label="Open quick search"
-                  >
-                    <Search className="h-4 w-4" />
-                  </button>
-                  <Link
-                    to="/"
-                    className="ltm-motion-fast ltm-touch-target inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background"
-                    aria-label="Home"
-                  >
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-foreground text-background">
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 16 16"
-                        fill="currentColor"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden="true"
-                      >
-                        <path d="M9.167 4.5a1.167 1.167 0 1 1-2.334 0 1.167 1.167 0 0 1 2.334 0" />
-                        <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0M1 8a7 7 0 0 1 7-7 3.5 3.5 0 1 1 0 7 3.5 3.5 0 1 0 0 7 7 7 0 0 1-7-7m7 4.667a1.167 1.167 0 1 1 0-2.334 1.167 1.167 0 0 1 0 2.334" />
-                      </svg>
-                    </span>
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSidebarCollapsed(prev => !prev)}
-                    className="ltm-motion-fast ltm-touch-target inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-foreground"
-                    title={sidebarCollapsed ? 'Expand sidebar (Cmd/Ctrl+\\)' : 'Collapse sidebar (Cmd/Ctrl+\\)'}
-                    aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                  >
-                    {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-                  </button>
-                  <Link to="/" className="flex shrink-0 items-center gap-2 text-sm font-semibold tracking-tight">
-                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-background">
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 16 16"
-                        fill="currentColor"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden="true"
-                      >
-                        <path d="M9.167 4.5a1.167 1.167 0 1 1-2.334 0 1.167 1.167 0 0 1 2.334 0" />
-                        <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0M1 8a7 7 0 0 1 7-7 3.5 3.5 0 1 1 0 7 3.5 3.5 0 1 0 0 7 7 7 0 0 1-7-7m7 4.667a1.167 1.167 0 1 1 0-2.334 1.167 1.167 0 0 1 0 2.334" />
-                      </svg>
-                    </span>
-                    LTM Pilot
-                  </Link>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={openCommandPalette}
-                    className="ltm-motion-fast ltm-touch-target inline-flex h-9 items-center gap-2 rounded-lg border border-border/60 bg-background px-3 text-sm text-muted-foreground hover:text-foreground"
-                    aria-label="Open quick search"
-                  >
-                    <Search className="h-4 w-4" />
-                    <span className="hidden lg:inline">Search</span>
-                    <span className="rounded border border-border/60 px-1.5 py-0.5 text-[10px] leading-none">⌘K</span>
-                  </button>
-                  <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                    {layout.mode} · {layout.orientation}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
-
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1" style={topInset ? { paddingTop: `${topInset}px` } : undefined}>
         {!compactNav && (
           <aside className={`hidden shrink-0 border-r border-border/70 bg-card/30 transition-[width] duration-200 lg:block ${
             sidebarCollapsed ? 'w-16' : 'w-64'
           }`}>
-            <div className={`h-[calc(100dvh-3.5rem)] overflow-y-auto py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
-              <div className="space-y-1">
-                {!sidebarCollapsed && (
-                  <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Core
-                  </div>
-                )}
-                {PRIMARY_NAV_ITEMS.map((item) => {
-                  const Icon = item.icon
-                  const active = isNavItemActive(location.pathname, item)
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      title={sidebarCollapsed ? item.label : undefined}
-                      className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
-                        sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                      } ${
-                        active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
-                    </Link>
-                  )
-                })}
+            <div className={`flex h-full flex-col py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
+              <Link
+                to="/"
+                title={sidebarCollapsed ? 'Home' : undefined}
+                aria-label="Home"
+                className={`ltm-motion-fast mb-3 inline-flex items-center rounded-lg border border-border/60 bg-background/80 ${
+                  sidebarCollapsed
+                    ? 'h-10 w-full justify-center'
+                    : 'gap-2 px-2.5 py-2 text-sm font-semibold tracking-tight'
+                }`}
+              >
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-background">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true"
+                  >
+                    <path d="M9.167 4.5a1.167 1.167 0 1 1-2.334 0 1.167 1.167 0 0 1 2.334 0" />
+                    <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0M1 8a7 7 0 0 1 7-7 3.5 3.5 0 1 1 0 7 3.5 3.5 0 1 0 0 7 7 7 0 0 1-7-7m7 4.667a1.167 1.167 0 1 1 0-2.334 1.167 1.167 0 0 1 0 2.334" />
+                  </svg>
+                </span>
+                {!sidebarCollapsed && <span>LTM Pilot</span>}
+              </Link>
+
+              <div className="ltm-nav-scroll min-h-0 flex-1 overflow-y-auto">
+                <div className="space-y-1">
+                  {!sidebarCollapsed && (
+                    <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Core
+                    </div>
+                  )}
+                  {PRIMARY_NAV_ITEMS.map((item) => {
+                    const Icon = item.icon
+                    const active = isNavItemActive(location.pathname, item)
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        title={sidebarCollapsed ? item.label : undefined}
+                        className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
+                          sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                        } ${
+                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                      </Link>
+                    )
+                  })}
+                </div>
+
+                <div className="mt-5 space-y-1">
+                  {!sidebarCollapsed && (
+                    <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Workspace
+                    </div>
+                  )}
+                  {utilityNavItems.map((item) => {
+                    const Icon = item.icon
+                    const active = isNavItemActive(location.pathname, item)
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        title={sidebarCollapsed ? item.label : undefined}
+                        className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
+                          sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                        } ${
+                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                      </Link>
+                    )
+                  })}
+                </div>
+
+                <div className="mt-5 space-y-1">
+                  {!sidebarCollapsed && (
+                    <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Excalidraw++
+                    </div>
+                  )}
+                  {TOOL_NAV_ITEMS.map((item) => {
+                    const Icon = item.icon
+                    const active = isNavItemActive(location.pathname, item)
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        title={sidebarCollapsed ? item.label : undefined}
+                        className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
+                          sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                        } ${
+                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                      </Link>
+                    )
+                  })}
+                </div>
               </div>
 
-              <div className="mt-5 space-y-1">
-                {!sidebarCollapsed && (
-                  <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Workspace
-                  </div>
-                )}
-                {utilityNavItems.map((item) => {
-                  const Icon = item.icon
-                  const active = isNavItemActive(location.pathname, item)
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      title={sidebarCollapsed ? item.label : undefined}
-                      className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
-                        sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                      } ${
-                        active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
-                    </Link>
-                  )
-                })}
-              </div>
-
-              <div className="mt-5 space-y-1">
-                {!sidebarCollapsed && (
-                  <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Excalidraw++
-                  </div>
-                )}
-                {TOOL_NAV_ITEMS.map((item) => {
-                  const Icon = item.icon
-                  const active = isNavItemActive(location.pathname, item)
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      title={sidebarCollapsed ? item.label : undefined}
-                      className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
-                        sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                      } ${
-                        active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
-                    </Link>
-                  )
-                })}
+              <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
+                <button
+                  type="button"
+                  onClick={openCommandPalette}
+                  className={`ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg border border-border/60 bg-background py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
+                    sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                  }`}
+                  aria-label="Open quick search"
+                >
+                  <Search className="h-4 w-4" />
+                  {!sidebarCollapsed && <span className="truncate">Search</span>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSidebarCollapsed(prev => !prev)}
+                  className={`ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg border border-border/60 bg-background py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
+                    sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                  }`}
+                  title={sidebarCollapsed ? 'Expand sidebar (Cmd/Ctrl+\\)' : 'Collapse sidebar (Cmd/Ctrl+\\)'}
+                  aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                >
+                  {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                  {!sidebarCollapsed && <span className="truncate">{sidebarCollapsed ? 'Expand drawer' : 'Collapse drawer'}</span>}
+                </button>
               </div>
             </div>
           </aside>
@@ -607,6 +553,18 @@ function App() {
         </main>
       </div>
 
+      {compactNav && !drawerOpen && (
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          className="ltm-motion-fast ltm-touch-target fixed left-3 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/60 bg-background/95 text-foreground shadow-lg backdrop-blur"
+          style={{ bottom: `${compactDrawerTriggerBottom}px` }}
+          aria-label="Open navigation"
+        >
+          <Menu className="h-4 w-4" />
+        </button>
+      )}
+
       {compactNav && drawerOpen && (
         <>
           <div
@@ -614,14 +572,34 @@ function App() {
             onClick={() => setDrawerOpen(false)}
           />
           <aside
-            className="fixed inset-y-0 left-0 z-50 w-[84vw] max-w-[420px] border-r border-border/70 bg-background shadow-2xl ltm-animate-slide-in-left"
+            className="fixed inset-y-0 left-0 z-50 flex w-[84vw] max-w-[420px] flex-col border-r border-border/70 bg-background shadow-2xl ltm-animate-slide-in-left"
             onTouchStart={handleDrawerTouchStart}
             onTouchMove={handleDrawerTouchMove}
             onTouchEnd={handleDrawerTouchEnd}
             onTouchCancel={handleDrawerTouchEnd}
+            style={topInset ? { paddingTop: `${topInset}px` } : undefined}
           >
-            <div className="flex h-12 items-center justify-between border-b border-border/60 px-3">
-              <span className="text-sm font-semibold tracking-tight">Navigation</span>
+            <div className="flex h-14 items-center justify-between border-b border-border/60 px-3">
+              <Link
+                to="/"
+                onClick={() => setDrawerOpen(false)}
+                className="inline-flex items-center gap-2 text-sm font-semibold tracking-tight"
+              >
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-background">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true"
+                  >
+                    <path d="M9.167 4.5a1.167 1.167 0 1 1-2.334 0 1.167 1.167 0 0 1 2.334 0" />
+                    <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0M1 8a7 7 0 0 1 7-7 3.5 3.5 0 1 1 0 7 3.5 3.5 0 1 0 0 7 7 7 0 0 1-7-7m7 4.667a1.167 1.167 0 1 1 0-2.334 1.167 1.167 0 0 1 0 2.334" />
+                  </svg>
+                </span>
+                LTM Pilot
+              </Link>
               <button
                 type="button"
                 onClick={() => setDrawerOpen(false)}
@@ -633,75 +611,101 @@ function App() {
             </div>
 
             <div
-              className="h-[calc(100%-3rem)] overflow-y-auto p-3"
+              className="flex min-h-0 flex-1 flex-col p-3"
               style={drawerBottomInset ? { paddingBottom: `${drawerBottomInset + 12}px` } : undefined}
             >
-              <div className="space-y-1">
-                <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Core
+              <div className="ltm-nav-scroll min-h-0 flex-1 overflow-y-auto">
+                <div className="space-y-1">
+                  <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Core
+                  </div>
+                  {PRIMARY_NAV_ITEMS.map((item) => {
+                    const Icon = item.icon
+                    const active = isNavItemActive(location.pathname, item)
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        onClick={() => setDrawerOpen(false)}
+                        className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span className="truncate">{item.label}</span>
+                      </Link>
+                    )
+                  })}
                 </div>
-                {PRIMARY_NAV_ITEMS.map((item) => {
-                  const Icon = item.icon
-                  const active = isNavItemActive(location.pathname, item)
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setDrawerOpen(false)}
-                      className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                        active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      <span className="truncate">{item.label}</span>
-                    </Link>
-                  )
-                })}
+
+                <div className="mt-5 space-y-1">
+                  <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Workspace
+                  </div>
+                  {utilityNavItems.map((item) => {
+                    const Icon = item.icon
+                    const active = isNavItemActive(location.pathname, item)
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        onClick={() => setDrawerOpen(false)}
+                        className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span className="truncate">{item.label}</span>
+                      </Link>
+                    )
+                  })}
+                </div>
+
+                <div className="mt-5 space-y-1">
+                  <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Excalidraw++
+                  </div>
+                  {TOOL_NAV_ITEMS.map((item) => {
+                    const active = isNavItemActive(location.pathname, item)
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        onClick={() => setDrawerOpen(false)}
+                        className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        <span className="truncate">{item.label}</span>
+                      </Link>
+                    )
+                  })}
+                </div>
               </div>
 
-              <div className="mt-5 space-y-1">
-                <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Workspace
-                </div>
-                {utilityNavItems.map((item) => {
-                  const Icon = item.icon
-                  const active = isNavItemActive(location.pathname, item)
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setDrawerOpen(false)}
-                      className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                        active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      <span className="truncate">{item.label}</span>
-                    </Link>
-                  )
-                })}
-              </div>
-
-              <div className="mt-5 space-y-1">
-                <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Excalidraw++
-                </div>
-                {TOOL_NAV_ITEMS.map((item) => {
-                  const active = isNavItemActive(location.pathname, item)
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setDrawerOpen(false)}
-                      className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                        active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                      }`}
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      <span className="truncate">{item.label}</span>
-                    </Link>
-                  )
-                })}
+              <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDrawerOpen(false)
+                    openCommandPalette()
+                  }}
+                  className="ltm-motion-fast ltm-touch-row inline-flex w-full items-center gap-2 rounded-lg border border-border/60 bg-background px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label="Open quick search"
+                >
+                  <Search className="h-4 w-4" />
+                  <span className="truncate">Search</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  className="ltm-motion-fast ltm-touch-row inline-flex w-full items-center gap-2 rounded-lg border border-border/60 bg-background px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label="Collapse drawer"
+                >
+                  <X className="h-4 w-4" />
+                  <span className="truncate">Collapse drawer</span>
+                </button>
               </div>
             </div>
           </aside>

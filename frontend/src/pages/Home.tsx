@@ -22,8 +22,8 @@ export default function Home() {
             Welcome, Anurag
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-            A calm, focused control panel for your vault. Pick a tool from the top bar to
-            begin, or jump straight into your most-used workflows.
+            A calm, focused control panel for your vault. Open the side drawer to pick a tool,
+            or jump straight into your most-used workflows.
           </p>
         </header>
 
