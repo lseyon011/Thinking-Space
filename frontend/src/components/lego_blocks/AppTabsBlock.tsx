@@ -24,8 +24,8 @@ export default function AppTabsBlock({
   className,
 }: AppTabsBlockProps) {
   return (
-    <div className={cn('ltm-shell-tabs border-b border-border/60 bg-card/40', className)}>
-      <div className="ltm-tab-container flex items-center gap-2 px-2 py-1.5" style={{ containerType: 'inline-size' }}>
+    <div className={cn('ltm-shell-tabs', className)}>
+      <div className="ltm-shell-tabs-surface ltm-tab-container flex items-center gap-2 px-2.5 py-2" style={{ containerType: 'inline-size' }}>
         <div className="min-w-0 flex-1 overflow-x-auto">
           <div className="ltm-tab-scroll-inner inline-flex min-w-full items-center gap-1">
             {tabs.map((tab) => {
@@ -35,10 +35,10 @@ export default function AppTabsBlock({
                 <div
                   key={tab.id}
                   className={cn(
-                    'ltm-tab-item ltm-tab-fade group inline-flex h-8 max-w-[260px] items-center gap-1 rounded-md border px-2 transition-colors',
+                    'ltm-tab-item ltm-tab-fade group inline-flex h-8 max-w-[260px] items-center gap-1 rounded-full border px-2.5 transition-colors',
                     active
-                      ? 'ltm-tab-active border-border bg-background text-foreground'
-                      : 'border-transparent bg-transparent text-muted-foreground hover:border-border/60 hover:bg-background/70 hover:text-foreground',
+                      ? 'ltm-tab-active border-border/60 bg-background/90 text-foreground'
+                      : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground',
                   )}
                 >
                   <button
@@ -54,7 +54,7 @@ export default function AppTabsBlock({
                     <button
                       type="button"
                       onClick={() => onCloseTab(tab.id)}
-                      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                       aria-label={`Close ${tab.label} tab`}
                     >
                       <X className="h-3.5 w-3.5" />
@@ -68,7 +68,7 @@ export default function AppTabsBlock({
         <button
           type="button"
           onClick={onCreateTab}
-          className="ltm-motion-fast ltm-touch-target inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/70 bg-background text-muted-foreground hover:text-foreground"
+          className="ltm-shell-action ltm-motion-fast ltm-touch-target inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
           aria-label="Create new app tab"
           title="New tab"
         >
