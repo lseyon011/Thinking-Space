@@ -388,7 +388,9 @@ function MarkdownDocumentBlock({
       className={cn('flex h-full min-h-0 flex-col bg-card', className)}
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
-      <div className="flex items-start justify-between gap-3 border-b border-border/50 px-5 py-4">
+      <div
+        className="ts-md-header flex items-start justify-between gap-3 border-b border-border/50 px-5 py-4"
+      >
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />

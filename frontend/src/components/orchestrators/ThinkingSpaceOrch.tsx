@@ -25,6 +25,7 @@ export default function ThinkingSpaceOrch() {
   const drawerSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const showInlineSidebar = layout.hasSidebar
   const showCollapsedInlineExplorer = showInlineSidebar && !explorerCollapsed
+  const showExplorerTrigger = !showCollapsedInlineExplorer
   const iosSurface = layout.surface === 'capacitor-ios'
   const topInset = Math.max(0, Math.round(layout.safeAreaInsets.top))
   const bottomInset = Math.max(0, Math.round(layout.safeAreaInsets.bottom))
@@ -183,7 +184,7 @@ export default function ThinkingSpaceOrch() {
           <Button
             variant="outline"
             size="sm"
-            className={`ltm-motion-fast ltm-touch-target absolute left-3 top-3 z-20 h-8 ${showCollapsedInlineExplorer ? 'hidden' : 'inline-flex'}`}
+            className={`ltm-motion-fast ltm-touch-target absolute left-3 top-3 z-20 h-8 ${showExplorerTrigger ? 'inline-flex' : 'hidden'}`}
             onClick={() => {
               if (showInlineSidebar) {
                 setExplorerCollapsed(false)
@@ -195,7 +196,11 @@ export default function ThinkingSpaceOrch() {
             <PanelLeft className="mr-2 h-4 w-4" />
             Explorer
           </Button>
-          {inlineDocumentContent ?? (
+          {inlineDocumentContent ? (
+            <div className={cn('h-full', showExplorerTrigger && '[&_.ts-md-header]:pl-32')}>
+              {inlineDocumentContent}
+            </div>
+          ) : (
             <div className="flex h-full flex-col items-center justify-center px-5 py-10 text-center md:px-8">
               <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-background">
                 <FileText className="h-7 w-7 text-muted-foreground" />
