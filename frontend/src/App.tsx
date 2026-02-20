@@ -715,7 +715,7 @@ function App() {
                   </div>
                 </div>
 
-                <div className="ltm-sidebar-actions ltm-shell-segment-footer mt-3 space-y-2 pt-3">
+                <div className="ltm-sidebar-actions space-y-2">
                   {!sidebarCollapsed && (
                     <div className="space-y-1 px-0.5">
                       <label htmlFor="ltm-theme-select-desktop" className="px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">

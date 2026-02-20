@@ -207,7 +207,7 @@ export default function ThinkingSpaceOrch() {
           <Button
             variant="outline"
             size="sm"
-            className={`ltm-shell-action ltm-motion-fast ltm-touch-target absolute left-3 top-3 z-20 h-11 w-11 p-0 ${showExplorerTrigger ? 'inline-flex' : 'hidden'}`}
+            className={`ltm-shell-action ltm-motion-fast ltm-touch-target absolute left-3 top-3 z-20 h-11 items-center gap-1.5 px-3 ${showExplorerTrigger ? 'inline-flex' : 'hidden'}`}
             title="Open explorer"
             aria-label="Open explorer"
             onClick={() => {
@@ -219,9 +219,10 @@ export default function ThinkingSpaceOrch() {
             }}
           >
             <PanelLeft className="h-4 w-4" />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">Explorer</span>
           </Button>
           {inlineDocumentContent ? (
-            <div className={cn('h-full min-h-0', showExplorerTrigger && '[&_.ts-md-header]:pl-32')}>
+            <div className={cn('h-full min-h-0', showExplorerTrigger && '[&_.ts-md-header]:pl-44')}>
               {inlineDocumentContent}
             </div>
           ) : (

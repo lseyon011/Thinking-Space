@@ -502,6 +502,31 @@
     border-color: var(--ltm-shell-surface-border);
   }
 
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--ltm-shell-divider-soft);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-nav-action,
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-logo {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-nav-action:hover,
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-logo:hover {
+    background: hsl(var(--accent) / 0.55);
+  }
+
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-field-surface {
+    border: 1px solid var(--ltm-shell-divider-soft);
+    background: transparent;
+  }
+
   @media (max-width: 1023px) {
     .ltm-shell-stage {
       padding-left: max(var(--ltm-shell-inset), env(safe-area-inset-left, 0px));
