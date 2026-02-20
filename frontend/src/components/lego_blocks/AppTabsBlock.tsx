@@ -24,7 +24,7 @@ export default function AppTabsBlock({
   className,
 }: AppTabsBlockProps) {
   return (
-    <div className={cn('border-b border-border/60 bg-card/40', className)}>
+    <div className={cn('ltm-shell-tabs border-b border-border/60 bg-card/40', className)}>
       <div className="flex items-center gap-2 px-2 py-1.5">
         <div className="min-w-0 flex-1 overflow-x-auto">
           <div className="inline-flex min-w-full items-center gap-1">

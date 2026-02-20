@@ -6,40 +6,40 @@
 
 @layer base {
   :root {
-    --background: var(--ltm-cupertino-bg-hsl, 240 14% 97%);
-    --foreground: var(--ltm-cupertino-fg-hsl, 0 0% 9%);
-    --card: var(--ltm-cupertino-card-hsl, 0 0% 100%);
-    --card-foreground: var(--ltm-cupertino-fg-hsl, 0 0% 9%);
-    --primary: var(--ltm-cupertino-primary-hsl, 0 0% 9%);
-    --primary-foreground: var(--ltm-cupertino-primary-foreground-hsl, 0 0% 100%);
-    --secondary: var(--ltm-cupertino-muted-hsl, 0 0% 96%);
-    --secondary-foreground: var(--ltm-cupertino-fg-hsl, 0 0% 9%);
-    --muted: var(--ltm-cupertino-muted-hsl, 0 0% 96%);
-    --muted-foreground: var(--ltm-cupertino-muted-fg-hsl, 0 0% 45%);
-    --accent: var(--ltm-cupertino-accent-hsl, 0 0% 96%);
-    --accent-foreground: var(--ltm-cupertino-fg-hsl, 0 0% 9%);
-    --border: var(--ltm-cupertino-border-hsl, 0 0% 90%);
-    --input: var(--ltm-cupertino-border-hsl, 0 0% 90%);
-    --ring: var(--ltm-cupertino-ring-hsl, 0 0% 9%);
-    --radius: var(--ltm-cupertino-radius, 0.75rem);
+    --background: var(--ltm-theme-bg-hsl, 240 14% 97%);
+    --foreground: var(--ltm-theme-fg-hsl, 0 0% 9%);
+    --card: var(--ltm-theme-card-hsl, 0 0% 100%);
+    --card-foreground: var(--ltm-theme-fg-hsl, 0 0% 9%);
+    --primary: var(--ltm-theme-primary-hsl, 0 0% 9%);
+    --primary-foreground: var(--ltm-theme-primary-foreground-hsl, 0 0% 100%);
+    --secondary: var(--ltm-theme-muted-hsl, 0 0% 96%);
+    --secondary-foreground: var(--ltm-theme-fg-hsl, 0 0% 9%);
+    --muted: var(--ltm-theme-muted-hsl, 0 0% 96%);
+    --muted-foreground: var(--ltm-theme-muted-fg-hsl, 0 0% 45%);
+    --accent: var(--ltm-theme-accent-hsl, 0 0% 96%);
+    --accent-foreground: var(--ltm-theme-fg-hsl, 0 0% 9%);
+    --border: var(--ltm-theme-border-hsl, 0 0% 90%);
+    --input: var(--ltm-theme-border-hsl, 0 0% 90%);
+    --ring: var(--ltm-theme-ring-hsl, 0 0% 9%);
+    --radius: var(--ltm-theme-radius, 0.75rem);
   }
 
   .dark {
-    --background: var(--ltm-cupertino-bg-hsl, 0 0% 9%);
-    --foreground: var(--ltm-cupertino-fg-hsl, 0 0% 95%);
-    --card: var(--ltm-cupertino-card-hsl, 0 0% 12%);
-    --card-foreground: var(--ltm-cupertino-fg-hsl, 0 0% 95%);
-    --primary: var(--ltm-cupertino-primary-hsl, 221 83% 53%);
-    --primary-foreground: var(--ltm-cupertino-primary-foreground-hsl, 0 0% 100%);
-    --secondary: var(--ltm-cupertino-muted-hsl, 0 0% 15%);
-    --secondary-foreground: var(--ltm-cupertino-fg-hsl, 0 0% 95%);
-    --muted: var(--ltm-cupertino-muted-hsl, 0 0% 15%);
-    --muted-foreground: var(--ltm-cupertino-muted-fg-hsl, 0 0% 65%);
-    --accent: var(--ltm-cupertino-accent-hsl, 0 0% 15%);
-    --accent-foreground: var(--ltm-cupertino-fg-hsl, 0 0% 95%);
-    --border: var(--ltm-cupertino-border-hsl, 0 0% 20%);
-    --input: var(--ltm-cupertino-border-hsl, 0 0% 20%);
-    --ring: var(--ltm-cupertino-ring-hsl, 221 83% 53%);
+    --background: var(--ltm-theme-bg-hsl, 0 0% 9%);
+    --foreground: var(--ltm-theme-fg-hsl, 0 0% 95%);
+    --card: var(--ltm-theme-card-hsl, 0 0% 12%);
+    --card-foreground: var(--ltm-theme-fg-hsl, 0 0% 95%);
+    --primary: var(--ltm-theme-primary-hsl, 221 83% 53%);
+    --primary-foreground: var(--ltm-theme-primary-foreground-hsl, 0 0% 100%);
+    --secondary: var(--ltm-theme-muted-hsl, 0 0% 15%);
+    --secondary-foreground: var(--ltm-theme-fg-hsl, 0 0% 95%);
+    --muted: var(--ltm-theme-muted-hsl, 0 0% 15%);
+    --muted-foreground: var(--ltm-theme-muted-fg-hsl, 0 0% 65%);
+    --accent: var(--ltm-theme-accent-hsl, 0 0% 15%);
+    --accent-foreground: var(--ltm-theme-fg-hsl, 0 0% 95%);
+    --border: var(--ltm-theme-border-hsl, 0 0% 20%);
+    --input: var(--ltm-theme-border-hsl, 0 0% 20%);
+    --ring: var(--ltm-theme-ring-hsl, 221 83% 53%);
   }
 }
 

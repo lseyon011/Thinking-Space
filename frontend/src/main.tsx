@@ -4,6 +4,7 @@ import { HashRouter, BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { MarkdownViewerProvider } from './components/orchestrators/MarkdownViewerOrch'
 import { UILayoutProviderBlock } from './components/lego_blocks/UILayoutBlock'
+import { UIThemeProviderBlock } from './components/lego_blocks/UIThemeBlock'
 import { isElectron, isCapacitorNative } from './services/orchestrators/runtimeOrch'
 import './index.css'
 
@@ -19,11 +20,13 @@ const routerProps = isLocalApp ? {} : { basename: webBasename }
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <Router {...routerProps}>
-      <UILayoutProviderBlock>
-        <MarkdownViewerProvider>
-          <App />
-        </MarkdownViewerProvider>
-      </UILayoutProviderBlock>
+      <UIThemeProviderBlock>
+        <UILayoutProviderBlock>
+          <MarkdownViewerProvider>
+            <App />
+          </MarkdownViewerProvider>
+        </UILayoutProviderBlock>
+      </UIThemeProviderBlock>
     </Router>
   </React.StrictMode>,
 )

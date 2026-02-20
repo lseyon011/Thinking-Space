@@ -12,6 +12,7 @@ export const STORAGE_KEYS = {
   appShellSidebarCollapsed: 'ltm-app-shell-sidebar-collapsed',
   appShellTabs: 'ltm-app-shell-tabs',
   appShellActiveTabId: 'ltm-app-shell-active-tab-id',
+  appTheme: 'ltm-app-theme',
   thinkingSpaceExplorerCollapsed: 'ltm-thinking-space-explorer-collapsed',
   capabilityFeatureFlags: 'ltm-capability-feature-flags',
   stewardProposalQueue: 'ltm-steward-proposal-queue',

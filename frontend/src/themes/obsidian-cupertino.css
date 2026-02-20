@@ -1,42 +1,308 @@
 /*
-  Default visual tokens derived from the open-source Obsidian Cupertino theme:
+  Theme token system derived from the open-source Obsidian Cupertino theme:
   https://github.com/aaaaalexis/obsidian-cupertino
   License: MIT (Copyright (c) 2025 aaaaalexis)
 */
 
-:root {
-  --ltm-cupertino-bg-hsl: 0 0% 100%;
-  --ltm-cupertino-fg-hsl: 0 0% 15%;
-  --ltm-cupertino-card-hsl: 0 0% 100%;
-  --ltm-cupertino-muted-hsl: 0 0% 95%;
-  --ltm-cupertino-muted-fg-hsl: 0 0% 45%;
-  --ltm-cupertino-accent-hsl: 0 0% 95%;
-  --ltm-cupertino-border-hsl: 0 0% 90%;
-  --ltm-cupertino-ring-hsl: 208 100% 50%;
+:root,
+:root[data-ltm-theme='classic'] {
+  --ltm-theme-bg-hsl: 0 0% 100%;
+  --ltm-theme-fg-hsl: 0 0% 15%;
+  --ltm-theme-card-hsl: 0 0% 100%;
+  --ltm-theme-muted-hsl: 0 0% 95%;
+  --ltm-theme-muted-fg-hsl: 0 0% 45%;
+  --ltm-theme-accent-hsl: 0 0% 95%;
+  --ltm-theme-border-hsl: 0 0% 90%;
+  --ltm-theme-ring-hsl: 208 100% 50%;
+  --ltm-theme-primary-hsl: 208 100% 50%;
+  --ltm-theme-primary-foreground-hsl: 0 0% 100%;
 
-  --ltm-cupertino-primary-hsl: 208 100% 50%;
-  --ltm-cupertino-primary-foreground-hsl: 0 0% 100%;
+  --ltm-theme-radius: 0.75rem;
+  --ltm-theme-panel-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 8px 32px rgba(0, 0, 0, 0.06);
+  --ltm-theme-page-glow: radial-gradient(circle at top, rgba(0, 136, 255, 0.06), transparent 44%);
+  --ltm-theme-shell-gradient: none;
 
-  --ltm-cupertino-radius: 0.75rem;
-  --ltm-cupertino-panel-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 8px 32px rgba(0, 0, 0, 0.06);
+  --ltm-theme-sidebar-bg: hsl(var(--card) / 0.3);
+  --ltm-theme-sidebar-border-hsl: var(--ltm-theme-border-hsl);
+  --ltm-theme-sidebar-shadow: none;
+  --ltm-theme-sidebar-blur: 0px;
+
+  --ltm-theme-tabs-bg: hsl(var(--card) / 0.4);
+  --ltm-theme-tabs-shadow: none;
+
+  --ltm-theme-control-bg: hsl(var(--background) / 0.95);
+  --ltm-theme-control-border-hsl: var(--ltm-theme-border-hsl);
+
+  --ltm-theme-drawer-width-phone: 84vw;
+  --ltm-theme-drawer-max-width-phone: 420px;
+  --ltm-theme-drawer-width-tablet: 420px;
+  --ltm-theme-drawer-overlay: hsl(var(--background) / 0.65);
+  --ltm-theme-drawer-bg: hsl(var(--background));
+  --ltm-theme-drawer-shadow: 0 24px 64px rgba(0, 0, 0, 0.24);
 }
 
-.dark {
-  --ltm-cupertino-bg-hsl: 0 0% 12%;
-  --ltm-cupertino-fg-hsl: 0 0% 87%;
-  --ltm-cupertino-card-hsl: 0 0% 14%;
-  --ltm-cupertino-muted-hsl: 0 0% 17%;
-  --ltm-cupertino-muted-fg-hsl: 0 0% 60%;
-  --ltm-cupertino-accent-hsl: 0 0% 18%;
-  --ltm-cupertino-border-hsl: 0 0% 22%;
-  --ltm-cupertino-ring-hsl: 208 100% 54%;
+:root[data-ltm-theme='modern-classic'] {
+  --ltm-theme-bg-hsl: 220 28% 97%;
+  --ltm-theme-fg-hsl: 224 22% 16%;
+  --ltm-theme-card-hsl: 0 0% 100%;
+  --ltm-theme-muted-hsl: 220 24% 95%;
+  --ltm-theme-muted-fg-hsl: 220 12% 44%;
+  --ltm-theme-accent-hsl: 216 52% 93%;
+  --ltm-theme-border-hsl: 218 22% 86%;
+  --ltm-theme-ring-hsl: 212 100% 48%;
+  --ltm-theme-primary-hsl: 212 96% 46%;
+  --ltm-theme-primary-foreground-hsl: 0 0% 100%;
 
-  --ltm-cupertino-primary-hsl: 208 100% 54%;
-  --ltm-cupertino-primary-foreground-hsl: 0 0% 100%;
+  --ltm-theme-radius: 0.875rem;
+  --ltm-theme-panel-shadow: 0 20px 48px rgba(71, 92, 140, 0.16), 0 0 0 1px rgba(162, 181, 214, 0.28);
+  --ltm-theme-page-glow: radial-gradient(circle at 0% 0%, rgba(65, 130, 255, 0.16), transparent 48%),
+    radial-gradient(circle at 100% -12%, rgba(90, 190, 255, 0.14), transparent 44%);
+  --ltm-theme-shell-gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.84));
 
-  --ltm-cupertino-panel-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 16px 48px rgba(0, 0, 0, 0.4);
+  --ltm-theme-sidebar-bg: rgba(255, 255, 255, 0.72);
+  --ltm-theme-sidebar-border-hsl: 218 28% 82%;
+  --ltm-theme-sidebar-shadow: 0 18px 44px rgba(84, 106, 149, 0.16);
+  --ltm-theme-sidebar-blur: 14px;
+
+  --ltm-theme-tabs-bg: rgba(255, 255, 255, 0.66);
+  --ltm-theme-tabs-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.72);
+
+  --ltm-theme-control-bg: rgba(255, 255, 255, 0.78);
+  --ltm-theme-control-border-hsl: 218 26% 80%;
+
+  --ltm-theme-drawer-width-phone: 94vw;
+  --ltm-theme-drawer-max-width-phone: 460px;
+  --ltm-theme-drawer-width-tablet: 440px;
+  --ltm-theme-drawer-overlay: rgba(219, 229, 246, 0.56);
+  --ltm-theme-drawer-bg: rgba(255, 255, 255, 0.82);
+  --ltm-theme-drawer-shadow: 0 26px 64px rgba(66, 88, 128, 0.28);
+}
+
+:root[data-ltm-theme='modern'] {
+  --ltm-theme-bg-hsl: 220 36% 96%;
+  --ltm-theme-fg-hsl: 224 20% 15%;
+  --ltm-theme-card-hsl: 0 0% 100%;
+  --ltm-theme-muted-hsl: 220 34% 93%;
+  --ltm-theme-muted-fg-hsl: 220 14% 40%;
+  --ltm-theme-accent-hsl: 214 65% 92%;
+  --ltm-theme-border-hsl: 220 31% 82%;
+  --ltm-theme-ring-hsl: 209 100% 52%;
+  --ltm-theme-primary-hsl: 209 100% 49%;
+  --ltm-theme-primary-foreground-hsl: 0 0% 100%;
+
+  --ltm-theme-radius: 1rem;
+  --ltm-theme-panel-shadow: 0 30px 70px rgba(66, 84, 122, 0.24), 0 0 0 1px rgba(163, 183, 222, 0.35);
+  --ltm-theme-page-glow: radial-gradient(circle at 0% -8%, rgba(50, 120, 255, 0.22), transparent 52%),
+    radial-gradient(circle at 100% 0%, rgba(58, 214, 255, 0.22), transparent 48%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0));
+  --ltm-theme-shell-gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(248, 251, 255, 0.84));
+
+  --ltm-theme-sidebar-bg: rgba(255, 255, 255, 0.7);
+  --ltm-theme-sidebar-border-hsl: 218 34% 78%;
+  --ltm-theme-sidebar-shadow: 0 26px 58px rgba(72, 98, 145, 0.26);
+  --ltm-theme-sidebar-blur: 18px;
+
+  --ltm-theme-tabs-bg: rgba(255, 255, 255, 0.62);
+  --ltm-theme-tabs-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.85), 0 10px 26px rgba(120, 145, 197, 0.2);
+
+  --ltm-theme-control-bg: rgba(255, 255, 255, 0.76);
+  --ltm-theme-control-border-hsl: 217 31% 76%;
+
+  --ltm-theme-drawer-width-phone: 100vw;
+  --ltm-theme-drawer-max-width-phone: 100vw;
+  --ltm-theme-drawer-width-tablet: 460px;
+  --ltm-theme-drawer-overlay: rgba(214, 226, 246, 0.58);
+  --ltm-theme-drawer-bg: rgba(249, 252, 255, 0.86);
+  --ltm-theme-drawer-shadow: 0 30px 72px rgba(55, 76, 112, 0.3);
+}
+
+.dark,
+.dark[data-ltm-theme='classic'] {
+  --ltm-theme-bg-hsl: 0 0% 12%;
+  --ltm-theme-fg-hsl: 0 0% 87%;
+  --ltm-theme-card-hsl: 0 0% 14%;
+  --ltm-theme-muted-hsl: 0 0% 17%;
+  --ltm-theme-muted-fg-hsl: 0 0% 60%;
+  --ltm-theme-accent-hsl: 0 0% 18%;
+  --ltm-theme-border-hsl: 0 0% 22%;
+  --ltm-theme-ring-hsl: 208 100% 54%;
+  --ltm-theme-primary-hsl: 208 100% 54%;
+  --ltm-theme-primary-foreground-hsl: 0 0% 100%;
+
+  --ltm-theme-panel-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 16px 48px rgba(0, 0, 0, 0.4);
+  --ltm-theme-page-glow: radial-gradient(circle at top, rgba(0, 136, 255, 0.08), transparent 44%);
+  --ltm-theme-shell-gradient: none;
+
+  --ltm-theme-sidebar-bg: hsl(var(--card) / 0.32);
+  --ltm-theme-sidebar-border-hsl: var(--ltm-theme-border-hsl);
+  --ltm-theme-sidebar-shadow: none;
+  --ltm-theme-sidebar-blur: 0px;
+
+  --ltm-theme-tabs-bg: hsl(var(--card) / 0.42);
+  --ltm-theme-tabs-shadow: none;
+
+  --ltm-theme-control-bg: hsl(var(--background) / 0.94);
+  --ltm-theme-control-border-hsl: var(--ltm-theme-border-hsl);
+
+  --ltm-theme-drawer-overlay: hsl(var(--background) / 0.72);
+  --ltm-theme-drawer-bg: hsl(var(--background));
+  --ltm-theme-drawer-shadow: 0 26px 72px rgba(0, 0, 0, 0.5);
+}
+
+.dark[data-ltm-theme='modern-classic'] {
+  --ltm-theme-bg-hsl: 222 25% 13%;
+  --ltm-theme-fg-hsl: 216 31% 91%;
+  --ltm-theme-card-hsl: 223 22% 16%;
+  --ltm-theme-muted-hsl: 223 20% 21%;
+  --ltm-theme-muted-fg-hsl: 220 14% 68%;
+  --ltm-theme-accent-hsl: 218 33% 26%;
+  --ltm-theme-border-hsl: 218 22% 30%;
+  --ltm-theme-ring-hsl: 208 100% 58%;
+  --ltm-theme-primary-hsl: 208 100% 58%;
+
+  --ltm-theme-panel-shadow: 0 22px 64px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(165, 187, 232, 0.15);
+  --ltm-theme-page-glow: radial-gradient(circle at 0% 0%, rgba(83, 141, 255, 0.24), transparent 52%),
+    radial-gradient(circle at 100% 0%, rgba(38, 170, 220, 0.2), transparent 42%);
+  --ltm-theme-shell-gradient: linear-gradient(180deg, rgba(15, 20, 33, 0.72), rgba(15, 20, 33, 0.82));
+
+  --ltm-theme-sidebar-bg: rgba(21, 29, 46, 0.72);
+  --ltm-theme-sidebar-border-hsl: 218 27% 34%;
+  --ltm-theme-sidebar-shadow: 0 26px 62px rgba(0, 0, 0, 0.46);
+  --ltm-theme-sidebar-blur: 14px;
+
+  --ltm-theme-tabs-bg: rgba(20, 28, 43, 0.68);
+  --ltm-theme-tabs-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+
+  --ltm-theme-control-bg: rgba(16, 24, 38, 0.74);
+  --ltm-theme-control-border-hsl: 218 24% 36%;
+
+  --ltm-theme-drawer-overlay: rgba(9, 14, 24, 0.62);
+  --ltm-theme-drawer-bg: rgba(14, 21, 34, 0.86);
+  --ltm-theme-drawer-shadow: 0 30px 72px rgba(0, 0, 0, 0.58);
+}
+
+.dark[data-ltm-theme='modern'] {
+  --ltm-theme-bg-hsl: 222 28% 11%;
+  --ltm-theme-fg-hsl: 214 32% 92%;
+  --ltm-theme-card-hsl: 223 24% 15%;
+  --ltm-theme-muted-hsl: 223 23% 20%;
+  --ltm-theme-muted-fg-hsl: 219 16% 70%;
+  --ltm-theme-accent-hsl: 216 37% 25%;
+  --ltm-theme-border-hsl: 218 28% 30%;
+  --ltm-theme-ring-hsl: 208 100% 62%;
+  --ltm-theme-primary-hsl: 208 100% 60%;
+
+  --ltm-theme-panel-shadow: 0 28px 76px rgba(0, 0, 0, 0.56), 0 0 0 1px rgba(166, 194, 245, 0.2);
+  --ltm-theme-page-glow: radial-gradient(circle at 0% -6%, rgba(82, 140, 255, 0.3), transparent 52%),
+    radial-gradient(circle at 100% 0%, rgba(35, 196, 255, 0.25), transparent 48%);
+  --ltm-theme-shell-gradient: linear-gradient(180deg, rgba(11, 16, 30, 0.72), rgba(11, 16, 30, 0.84));
+
+  --ltm-theme-sidebar-bg: rgba(16, 24, 39, 0.7);
+  --ltm-theme-sidebar-border-hsl: 218 30% 35%;
+  --ltm-theme-sidebar-shadow: 0 28px 64px rgba(0, 0, 0, 0.52);
+  --ltm-theme-sidebar-blur: 18px;
+
+  --ltm-theme-tabs-bg: rgba(15, 24, 40, 0.65);
+  --ltm-theme-tabs-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.09), 0 16px 34px rgba(0, 0, 0, 0.42);
+
+  --ltm-theme-control-bg: rgba(13, 21, 35, 0.72);
+  --ltm-theme-control-border-hsl: 218 27% 37%;
+
+  --ltm-theme-drawer-overlay: rgba(7, 12, 24, 0.64);
+  --ltm-theme-drawer-bg: rgba(14, 22, 36, 0.86);
+  --ltm-theme-drawer-shadow: 0 34px 78px rgba(0, 0, 0, 0.6);
 }
 
 body {
-  background-image: radial-gradient(circle at top, rgba(0, 136, 255, 0.06), transparent 44%);
+  background-image: var(--ltm-theme-page-glow, none);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-attachment: fixed;
+}
+
+.ltm-app-shell {
+  background-image: var(--ltm-theme-shell-gradient, none);
+  background-color: hsl(var(--background));
+}
+
+.ltm-shell-sidebar {
+  background: var(--ltm-theme-sidebar-bg, hsl(var(--card) / 0.3));
+  border-right-color: hsl(var(--ltm-theme-sidebar-border-hsl, var(--border)) / 0.72);
+  box-shadow: var(--ltm-theme-sidebar-shadow, none);
+  backdrop-filter: blur(var(--ltm-theme-sidebar-blur, 0px));
+}
+
+.ltm-shell-logo,
+.ltm-shell-action,
+.ltm-shell-theme-select,
+.ltm-mobile-drawer-trigger {
+  background: var(--ltm-theme-control-bg, hsl(var(--background) / 0.95));
+  border-color: hsl(var(--ltm-theme-control-border-hsl, var(--border)) / 0.8);
+}
+
+.ltm-shell-theme-select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 14px) calc(50% + 1px), calc(100% - 9px) calc(50% + 1px);
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.ltm-shell-theme-select:focus {
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.18);
+}
+
+.ltm-shell-tabs {
+  background: var(--ltm-theme-tabs-bg, hsl(var(--card) / 0.4));
+  box-shadow: var(--ltm-theme-tabs-shadow, none);
+}
+
+.ltm-mobile-drawer-overlay {
+  background-color: var(--ltm-theme-drawer-overlay, hsl(var(--background) / 0.65));
+}
+
+.ltm-mobile-drawer {
+  width: var(--ltm-theme-drawer-width-phone, 84vw);
+  max-width: var(--ltm-theme-drawer-max-width-phone, 420px);
+  background: var(--ltm-theme-drawer-bg, hsl(var(--background)));
+  box-shadow: var(--ltm-theme-drawer-shadow, 0 24px 64px rgba(0, 0, 0, 0.24));
+  backdrop-filter: blur(var(--ltm-theme-sidebar-blur, 0px));
+}
+
+.ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'][data-ltm-theme='modern-classic'] .ltm-mobile-drawer,
+.ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'][data-ltm-theme='modern'] .ltm-mobile-drawer {
+  width: 100vw;
+  max-width: 100vw;
+  border-right: none;
+  border-radius: 0;
+}
+
+.ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='tablet'][data-ltm-theme='modern-classic'] .ltm-mobile-drawer,
+.ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='tablet'][data-ltm-theme='modern'] .ltm-mobile-drawer {
+  top: max(env(safe-area-inset-top, 0px), 8px);
+  bottom: max(env(safe-area-inset-bottom, 0px), 8px);
+  left: max(env(safe-area-inset-left, 0px), 8px);
+  width: min(var(--ltm-theme-drawer-width-tablet, 440px), calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  height: auto;
+  border: 1px solid hsl(var(--ltm-theme-sidebar-border-hsl, var(--border)) / 0.8);
+  border-radius: calc(var(--ltm-theme-radius) + 0.5rem);
+}
+
+.ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='tablet'][data-ltm-theme='modern-classic'] .ltm-mobile-drawer-header,
+.ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='tablet'][data-ltm-theme='modern'] .ltm-mobile-drawer-header {
+  min-height: 3.5rem;
+}
+
+.ltm-app-shell[data-ltm-theme='modern'] .ltm-mobile-drawer-trigger,
+.ltm-app-shell[data-ltm-theme='modern-classic'] .ltm-mobile-drawer-trigger {
+  backdrop-filter: blur(calc(var(--ltm-theme-sidebar-blur, 0px) + 6px));
+}
+
+@supports not (backdrop-filter: blur(2px)) {
+  .ltm-shell-sidebar,
+  .ltm-mobile-drawer,
+  .ltm-mobile-drawer-trigger {
+    backdrop-filter: none;
+  }
 }
