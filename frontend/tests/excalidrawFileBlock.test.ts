@@ -130,4 +130,63 @@ describe('excalidrawFileBlock serialize', () => {
     expect((parsed?.appState?.first as Record<string, unknown> | undefined)?.x).toBe(3)
     expect((parsed?.appState?.second as Record<string, unknown> | undefined)?.x).toBe(3)
   })
+
+  it('serializes safely even when scene objects include throwing getters', () => {
+    const original = [
+      '```json',
+      '{"elements":[],"appState":{},"files":{}}',
+      '```',
+      '',
+    ].join('\n')
+
+    const trouble: Record<string, unknown> = {}
+    Object.defineProperty(trouble, 'explode', {
+      enumerable: true,
+      get() {
+        throw new Error('getter exploded')
+      },
+    })
+
+    const updated = serializeExcalidrawScene(original, {
+      elements: [{ id: 'rect-1', type: 'rectangle', x: 0, y: 0, width: 10, height: 10 }],
+      appState: {
+        viewBackgroundColor: '#ffffff',
+        trouble,
+      },
+      files: {},
+    })
+
+    const parsed = parseExcalidrawScene(updated)
+    expect(parsed).not.toBeNull()
+    expect(parsed?.appState?.viewBackgroundColor).toBe('#ffffff')
+  })
+
+  it('does not invoke custom toJSON functions while serializing scene payload', () => {
+    const original = [
+      '```json',
+      '{"elements":[],"appState":{},"files":{}}',
+      '```',
+      '',
+    ].join('\n')
+
+    const toJsonTrap = {
+      stable: true,
+      toJSON() {
+        throw new Error('should not be called')
+      },
+    }
+
+    const updated = serializeExcalidrawScene(original, {
+      elements: [{ id: 'ellipse-1', type: 'ellipse', x: 1, y: 2, width: 3, height: 4 }],
+      appState: {
+        trap: toJsonTrap,
+      },
+      files: {},
+    })
+
+    const parsed = parseExcalidrawScene(updated)
+    expect(parsed).not.toBeNull()
+    expect((parsed?.appState?.trap as Record<string, unknown> | undefined)?.stable).toBe(true)
+    expect((parsed?.appState?.trap as Record<string, unknown> | undefined)?.toJSON).toBeUndefined()
+  })
 })

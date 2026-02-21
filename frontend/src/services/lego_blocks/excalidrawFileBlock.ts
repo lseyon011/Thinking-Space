@@ -7,32 +7,118 @@ export interface ParsedExcalidrawScene {
   files?: Record<string, unknown>
 }
 
-function sceneToJson(scene: ParsedExcalidrawScene): string {
-  const ancestors: object[] = []
-  return JSON.stringify({
-    elements: scene.elements,
-    appState: scene.appState ?? {},
-    files: scene.files ?? {},
-  }, function (_key, value: unknown) {
-    if (typeof value === 'bigint') return Number(value)
-    if (typeof value === 'number' && !Number.isFinite(value)) return null
+type JsonPrimitive = string | number | boolean | null
+type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 
-    if (value && typeof value === 'object') {
-      if (value instanceof Date) return value.toISOString()
-      if (value instanceof Map) return Object.fromEntries(value.entries())
-      if (value instanceof Set) return Array.from(value.values())
-      if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return undefined
+const MAX_SERIALIZE_DEPTH = 80
 
-      const holder = this as object | undefined
-      while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== holder) {
-        ancestors.pop()
-      }
-      if (ancestors.includes(value)) return undefined
-      ancestors.push(value)
+function sanitizeMapKey(value: unknown, stack: object[], depth: number): string | null {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : null
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  if (typeof value === 'bigint') return value.toString()
+  if (value instanceof Date) return value.toISOString()
+
+  const sanitized = sanitizeJsonValue(value, stack, depth + 1)
+  if (sanitized === undefined) return null
+  if (typeof sanitized === 'string') return sanitized
+  if (typeof sanitized === 'number' || typeof sanitized === 'boolean' || sanitized === null) {
+    return String(sanitized)
+  }
+  try {
+    return JSON.stringify(sanitized)
+  } catch {
+    return null
+  }
+}
+
+function sanitizeJsonValue(value: unknown, stack: object[], depth: number): JsonValue | undefined {
+  if (depth > MAX_SERIALIZE_DEPTH) return undefined
+  if (value === null) return null
+
+  if (typeof value === 'string' || typeof value === 'boolean') return value
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'bigint') {
+    const asNumber = Number(value)
+    return Number.isFinite(asNumber) ? asNumber : null
+  }
+  if (typeof value === 'undefined' || typeof value === 'function' || typeof value === 'symbol') {
+    return undefined
+  }
+
+  if (!(value instanceof Object)) return undefined
+  if (value instanceof Date) return value.toISOString()
+  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return undefined
+  if (stack.includes(value)) return undefined
+
+  stack.push(value)
+  try {
+    if (Array.isArray(value)) {
+      return value.map((item) => {
+        const sanitized = sanitizeJsonValue(item, stack, depth + 1)
+        return sanitized === undefined ? null : sanitized
+      })
     }
 
-    return value
-  }, 2)
+    if (value instanceof Set) {
+      return Array.from(value.values()).map((item) => {
+        const sanitized = sanitizeJsonValue(item, stack, depth + 1)
+        return sanitized === undefined ? null : sanitized
+      })
+    }
+
+    if (value instanceof Map) {
+      const output: Record<string, JsonValue> = {}
+      for (const [key, entryValue] of value.entries()) {
+        const safeKey = sanitizeMapKey(key, stack, depth + 1)
+        if (!safeKey) continue
+        const safeValue = sanitizeJsonValue(entryValue, stack, depth + 1)
+        if (safeValue === undefined) continue
+        output[safeKey] = safeValue
+      }
+      return output
+    }
+
+    const output: Record<string, JsonValue> = {}
+    for (const key of Object.keys(value)) {
+      let raw: unknown
+      try {
+        raw = (value as Record<string, unknown>)[key]
+      } catch {
+        continue
+      }
+      const sanitized = sanitizeJsonValue(raw, stack, depth + 1)
+      if (sanitized === undefined) continue
+      output[key] = sanitized
+    }
+    return output
+  } finally {
+    stack.pop()
+  }
+}
+
+function sanitizeSceneObject(value: unknown): Record<string, JsonValue> {
+  const sanitized = sanitizeJsonValue(value, [], 0)
+  if (!sanitized || typeof sanitized !== 'object' || Array.isArray(sanitized)) return {}
+  return sanitized as Record<string, JsonValue>
+}
+
+function sanitizeSceneElements(elements: unknown[]): Record<string, JsonValue>[] {
+  const output: Record<string, JsonValue>[] = []
+  for (const element of elements) {
+    const sanitized = sanitizeJsonValue(element, [], 0)
+    if (!sanitized || typeof sanitized !== 'object' || Array.isArray(sanitized)) continue
+    output.push(sanitized as Record<string, JsonValue>)
+  }
+  return output
+}
+
+function sceneToJson(scene: ParsedExcalidrawScene): string {
+  return JSON.stringify({
+    elements: sanitizeSceneElements(scene.elements ?? []),
+    appState: sanitizeSceneObject(scene.appState ?? {}),
+    files: sanitizeSceneObject(scene.files ?? {}),
+  }, null, 2)
 }
 
 function tryParseJson(value: string): ParsedExcalidrawScene | null {
