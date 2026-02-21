@@ -677,13 +677,17 @@ export default function VaultExplorerBlock({
                 }
               }}
               onContextMenu={event => openContextMenu(event, filePath, 'file')}
-              onClick={() => {
+              onClick={(event) => {
                 setSelectedFilePath(filePath)
                 setSelectedFolderPath(getParentPath(filePath))
                 setPendingRename(prev => (
                   prev?.kind === 'file' && prev.path === filePath ? prev : null
                 ))
                 onSelectFile?.(filePath)
+                if ((event.metaKey || event.ctrlKey) && onOpenInNewTab) {
+                  void onOpenInNewTab(filePath)
+                  return
+                }
                 onOpenFile(filePath)
               }}
               ref={bindRowRef('file', filePath)}
@@ -715,6 +719,7 @@ export default function VaultExplorerBlock({
       normalizedQuery,
       onDropNode,
       onOpenFile,
+      onOpenInNewTab,
       onSelectFile,
       openContextMenu,
       pathMatchesQuery,
