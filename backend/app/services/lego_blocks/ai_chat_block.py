@@ -66,7 +66,12 @@ def _codex_cli_runner_script_block(frontend_root: Path) -> Path:
 
 
 def _vault_root_block() -> Path:
-    raw = (os.getenv("LTM_VAULT_ROOT") or os.getenv("THINK_SPACE_VAULT_ROOT") or "").strip()
+    raw = (
+        os.getenv("LTM_VAULT_ROOT")
+        or os.getenv("THINK_SPACE_VAULT_ROOT")
+        or os.getenv("LTM_PILOT_VAULT_ROOT")
+        or ""
+    ).strip()
     if raw:
         return Path(raw).expanduser().resolve(strict=False)
     return _repo_root_block()

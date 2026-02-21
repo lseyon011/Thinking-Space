@@ -4,7 +4,12 @@ import {
   type ChatResponse,
   type ChatSendOptions,
 } from '../lego_blocks/aiChatBlock'
-import { listProvidersBlock, type AiProvider, type AiProviderStatus } from '../lego_blocks/aiProviderBlock'
+import {
+  listProvidersBlock,
+  type AiProvider,
+  type AiProviderStatus,
+  type ListProvidersBlockOptions,
+} from '../lego_blocks/aiProviderBlock'
 import { recordAiTelemetryOrch, type AiTelemetryEvent, type RecordAiTelemetryInput } from './aiTelemetryOrch'
 
 export type {
@@ -44,8 +49,8 @@ function promptChars(messages: ChatMessage[]): number {
   return messages.reduce((total, msg) => total + (msg.content?.length ?? 0), 0)
 }
 
-export async function listProvidersOrch(): Promise<AiProviderStatus[]> {
-  return listProvidersBlock()
+export async function listProvidersOrch(options?: ListProvidersBlockOptions): Promise<AiProviderStatus[]> {
+  return listProvidersBlock(options)
 }
 
 export async function sendChatOrch(

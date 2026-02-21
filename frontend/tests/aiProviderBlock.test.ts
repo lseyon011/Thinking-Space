@@ -20,6 +20,10 @@ describe('aiProviderBlock', () => {
     vi.resetModules()
     installLocalStorageMock()
     localStorage.clear()
+    Object.defineProperty(globalThis, 'electronAPI', {
+      configurable: true,
+      value: undefined,
+    })
   })
 
   it('uses manual credentials for Capacitor-native provider availability', async () => {
@@ -94,5 +98,153 @@ describe('aiProviderBlock', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/ai/providers')
     expect(byProvider.get('claude')).toBe(true)
     expect(byProvider.get('openai-codex')).toBe(false)
+  })
+
+  it('falls back to local credential availability when backend provider listing fails', async () => {
+    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+      isElectron: () => false,
+      isCapacitorNative: () => false,
+    }))
+
+    const credentials = await import('@/services/lego_blocks/aiCredentialStoreBlock')
+    credentials.setManualClaudeCredentialsBlock('claude-key')
+
+    const oauth = await import('@/services/lego_blocks/aiOauthCredentialStoreBlock')
+    oauth.writeNativeAiOauthCredentialsBlock({
+      openaiCodex: {
+        accessToken: 'codex-access',
+        refreshToken: 'codex-refresh',
+        expiresAt: '2026-02-19T00:00:00Z',
+        accountId: 'acct-123',
+      },
+    })
+
+    const fetchMock = vi.fn().mockRejectedValue(new Error('network down'))
+    ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
+
+    const { listProvidersBlock } = await import('@/services/lego_blocks/aiProviderBlock')
+    const providers = await listProvidersBlock()
+    const byProvider = new Map(providers.map((item) => [item.provider, item.available]))
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/ai/providers')
+    expect(byProvider.get('claude')).toBe(true)
+    expect(byProvider.get('openai-codex')).toBe(true)
+    expect(byProvider.get('codex-cli')).toBe(false)
+  })
+
+  it('reuses last known backend provider statuses when the next backend probe fails', async () => {
+    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+      isElectron: () => false,
+      isCapacitorNative: () => false,
+    }))
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          { provider: 'codex-cli', available: true, model: 'gpt-5.3-codex' },
+          { provider: 'claude', available: false, model: 'claude-sonnet-4-5-20250929' },
+        ],
+      })
+      .mockRejectedValue(new Error('network down'))
+    ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
+
+    const { listProvidersBlock } = await import('@/services/lego_blocks/aiProviderBlock')
+    const first = await listProvidersBlock()
+    const second = await listProvidersBlock()
+
+    const firstByProvider = new Map(first.map((item) => [item.provider, item.available]))
+    const secondByProvider = new Map(second.map((item) => [item.provider, item.available]))
+
+    expect(firstByProvider.get('codex-cli')).toBe(true)
+    expect(secondByProvider.get('codex-cli')).toBe(true)
+  })
+
+  it('supports forced backend hard refresh that bypasses cached provider statuses', async () => {
+    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+      isElectron: () => false,
+      isCapacitorNative: () => false,
+    }))
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          { provider: 'codex-cli', available: true, model: 'gpt-5.3-codex' },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          { provider: 'codex-cli', available: false, model: 'gpt-5.3-codex' },
+        ],
+      })
+    ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
+
+    const { listProvidersBlock } = await import('@/services/lego_blocks/aiProviderBlock')
+    const first = await listProvidersBlock()
+    const refreshed = await listProvidersBlock({ forceBackendRefresh: true })
+
+    const firstByProvider = new Map(first.map((item) => [item.provider, item.available]))
+    const refreshedByProvider = new Map(refreshed.map((item) => [item.provider, item.available]))
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/ai/providers')
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/ai/providers', { cache: 'no-store' })
+    expect(firstByProvider.get('codex-cli')).toBe(true)
+    expect(refreshedByProvider.get('codex-cli')).toBe(false)
+  })
+
+  it('uses Electron credential reads for availability without requiring token refresh', async () => {
+    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+      isElectron: () => true,
+      isCapacitorNative: () => false,
+    }))
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { provider: 'codex-cli', available: true, model: 'gpt-5.3-codex' },
+      ],
+    })
+    ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
+
+    const aiRefreshClaudeToken = vi.fn()
+    const aiRefreshCodexToken = vi.fn()
+
+    Object.defineProperty(globalThis, 'electronAPI', {
+      configurable: true,
+      value: {
+        isElectron: true,
+        aiGetClaudeCredentials: vi.fn().mockResolvedValue({
+          accessToken: 'claude-access',
+          refreshToken: 'claude-refresh',
+          expiresAt: '2026-02-21T00:00:00Z',
+        }),
+        aiGetCodexCredentials: vi.fn().mockResolvedValue({
+          accessToken: 'codex-access',
+          refreshToken: 'codex-refresh',
+          expiresAt: '2026-02-21T00:00:00Z',
+        }),
+        aiGetAzureCredentials: vi.fn().mockResolvedValue({
+          accessToken: 'azure-access',
+          expiresOn: '2026-02-21T00:00:00Z',
+        }),
+        aiRefreshClaudeToken,
+        aiRefreshCodexToken,
+      },
+    })
+
+    const { listProvidersBlock } = await import('@/services/lego_blocks/aiProviderBlock')
+    const providers = await listProvidersBlock()
+    const byProvider = new Map(providers.map((item) => [item.provider, item.available]))
+
+    expect(byProvider.get('claude')).toBe(true)
+    expect(byProvider.get('openai-codex')).toBe(true)
+    expect(byProvider.get('azure-gpt')).toBe(true)
+    expect(byProvider.get('codex-cli')).toBe(true)
+    expect(aiRefreshClaudeToken).not.toHaveBeenCalled()
+    expect(aiRefreshCodexToken).not.toHaveBeenCalled()
   })
 })

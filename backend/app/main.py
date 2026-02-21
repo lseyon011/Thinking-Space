@@ -4,8 +4,15 @@ Thinking Space backend.
 FastAPI backend for vault management tools.
 """
 
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()  # Load .env before any module reads os.getenv
+
+# Load backend-local .env first, then repo-root .env for shared variables like vault root.
+# `override=False` preserves backend-local overrides while still filling missing keys.
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(_BACKEND_ROOT / ".env", override=False)
+load_dotenv(_REPO_ROOT / ".env", override=False)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

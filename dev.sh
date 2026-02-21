@@ -85,12 +85,37 @@ cmd_start() {
     export PATH="$PYENV_ROOT/bin:$PATH"
     eval "$(pyenv init -)" 2>/dev/null || true
     eval "$(pyenv virtualenv-init -)" 2>/dev/null || true
-    pyenv activate thinkspace_venv 2>/dev/null || true
+    local selected_env=""
+    local env_candidate
+    for env_candidate in thinkspace_venv thinking_space_venv_310 ltmpilot_venv; do
+      if pyenv activate "$env_candidate" >/dev/null 2>&1; then
+        selected_env="$env_candidate"
+        break
+      fi
+    done
 
-    uvicorn app.main:app --reload --port 8000 \
+    if ! python -c "import uvicorn" >/dev/null 2>&1; then
+      red "Backend failed to start: uvicorn is not available in the active Python environment."
+      red "Try activating a pyenv virtualenv with uvicorn installed (for example: thinking_space_venv_310 or ltmpilot_venv)."
+      return 1
+    fi
+
+    python -m uvicorn app.main:app --reload --port 8000 \
       > "$LOG_DIR/backend.log" 2>&1 &
     echo $! > "$PID_DIR/backend.pid"
+
+    sleep 1
+    if ! kill -0 "$!" 2>/dev/null; then
+      red "Backend failed to stay running. Last log lines:"
+      tail -n 40 "$LOG_DIR/backend.log" || true
+      rm -f "$PID_DIR/backend.pid"
+      return 1
+    fi
+
     green "  Backend started (pid $!) — http://localhost:8000"
+    if [ -n "$selected_env" ]; then
+      green "  Python env: $selected_env"
+    fi
     green "  Log: $LOG_DIR/backend.log"
   fi
 

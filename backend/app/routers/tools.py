@@ -32,7 +32,7 @@ from app.services.lego_blocks.vault_path_block import get_vault_root_block
 
 router = APIRouter()
 
-# Vault root path — read from THINK_SPACE_VAULT_ROOT (or legacy LTM_VAULT_ROOT) env var.
+# Vault root path — read from THINK_SPACE_VAULT_ROOT (or legacy LTM_VAULT_ROOT/LTM_PILOT_VAULT_ROOT).
 VAULT_ROOT = get_vault_root_block()
 
 

@@ -128,4 +128,49 @@ describe('aiChatBlock native routing', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0]?.[0]).toBe('https://chatgpt.com/backend-api/codex/responses')
   })
+
+  it('uses imported Codex OAuth credentials on Electron when keychain credentials are unavailable', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => [
+        'data: {"type":"response.output_text.delta","delta":"electron-"}',
+        'data: {"type":"response.output_text.delta","delta":"oauth-ok"}',
+        'data: {"type":"response.completed","response":{"model":"gpt-5.3-codex","usage":{"input_tokens":4,"output_tokens":3,"total_tokens":7}}}',
+      ].join('\n'),
+    })
+    ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
+
+    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+      isElectron: () => true,
+      isCapacitorNative: () => false,
+    }))
+    vi.doMock('@/services/lego_blocks/aiCredentialStoreBlock', () => ({
+      getManualClaudeApiKeyBlock: () => null,
+      getManualOpenAiApiKeyBlock: () => null,
+      getManualAzureCredentialsBlock: () => null,
+    }))
+    vi.doMock('@/services/lego_blocks/aiOauthCredentialStoreBlock', () => ({
+      getNativeClaudeOauthCredentialsBlock: () => null,
+      getNativeCodexOauthCredentialsBlock: () => ({
+        accessToken: 'codex-access',
+        refreshToken: 'codex-refresh',
+        expiresAt: '2026-02-19T00:00:00Z',
+        accountId: 'acct-electron',
+      }),
+    }))
+    vi.doMock('@/services/lego_blocks/aiProviderBlock', () => ({
+      defaultProviderModelBlock: () => 'gpt-5.3-codex',
+      getClaudeCredentialsBlock: async () => null,
+      getCodexCredentialsBlock: async () => null,
+      getAzureCredentialsBlock: async () => null,
+    }))
+
+    const { sendChatBlock } = await import('@/services/lego_blocks/aiChatBlock')
+    const response = await sendChatBlock('openai-codex', [{ role: 'user', content: 'hello' }])
+
+    expect(response.provider).toBe('openai-codex')
+    expect(response.content).toContain('electron-oauth-ok')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://chatgpt.com/backend-api/codex/responses')
+  })
 })

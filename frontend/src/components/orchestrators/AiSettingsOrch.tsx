@@ -47,6 +47,7 @@ export default function AiSettingsOrch() {
   const nativeRuntime = isElectron() || isCapacitorNative()
   const [providers, setProviders] = useState<AiProviderStatus[]>([])
   const [loadingProviders, setLoadingProviders] = useState(true)
+  const [hardRefreshingProviders, setHardRefreshingProviders] = useState(false)
   const [selectedProvider, setSelectedProvider] = useState<AiProvider | null>(null)
   const [modelInput, setModelInput] = useState('')
   const [scopeModelInputs, setScopeModelInputs] = useState<Partial<Record<AiSettingsScope, string>>>({})
@@ -106,18 +107,20 @@ export default function AiSettingsOrch() {
     setAzureApiVersionInput(state.azureApiVersion)
   }, [])
 
-  const loadProviders = useCallback(async () => {
+  const loadProviders = useCallback(async (options?: { forceBackendRefresh?: boolean }): Promise<boolean> => {
     setLoadingProviders(true)
     try {
-      const items = await listProvidersOrch()
+      const items = await listProvidersOrch({ forceBackendRefresh: !!options?.forceBackendRefresh })
       setProviders(items)
       const selection = resolveAiSelectionFromProvidersOrch(items)
       setSelectedProvider(selection?.provider ?? null)
       setModelInput(selection?.model ?? '')
       hydrateScopeInputs(items)
       setError(null)
+      return true
     } catch (err) {
       setError(errorMessage(err, 'Failed to load AI providers'))
+      return false
     } finally {
       setLoadingProviders(false)
     }
@@ -156,6 +159,19 @@ export default function AiSettingsOrch() {
     hydrateScopeInputs(providers)
     setMessage(`Default provider set to ${provider}.`)
     setError(null)
+  }
+
+  const onHardRefreshProviders = async () => {
+    setHardRefreshingProviders(true)
+    try {
+      const ok = await loadProviders({ forceBackendRefresh: true })
+      if (ok) {
+        setMessage('Provider status hard-refreshed from backend.')
+        setError(null)
+      }
+    } finally {
+      setHardRefreshingProviders(false)
+    }
   }
 
   const onSaveModel = async () => {
@@ -404,10 +420,22 @@ export default function AiSettingsOrch() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Global AI Defaults</CardTitle>
-          <CardDescription>
-            Provider + fallback model used across AI actions. You can override provider and model per tab below.
-          </CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <CardTitle className="text-sm">Global AI Defaults</CardTitle>
+              <CardDescription>
+                Provider + fallback model used across AI actions. You can override provider and model per tab below.
+              </CardDescription>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={loadingProviders || hardRefreshingProviders}
+              onClick={() => { void onHardRefreshProviders() }}
+            >
+              {hardRefreshingProviders ? 'Hard Refreshing…' : 'Hard Refresh Backend'}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {loadingProviders ? (

@@ -19,6 +19,7 @@ import {
   type AiProvider,
   type AiProviderStatus,
 } from '../lego_blocks/aiProviderBlock'
+import { aiDebugBlock, aiDebugWarnBlock } from '../lego_blocks/aiDebugBlock'
 
 export interface ResolveAiSelectionInput {
   provider?: AiProvider | null
@@ -102,7 +103,18 @@ export function resolveAiSelectionFromProvidersOrch(
     ...AI_PROVIDER_ORDER,
   ])
 
-  if (!provider) return null
+  if (!provider) {
+    aiDebugWarnBlock('selection_unresolved_no_available_provider', {
+      input: input ?? null,
+      settings,
+      providers: providers.map((item) => ({
+        provider: item.provider,
+        available: item.available,
+        model: item.model,
+      })),
+    })
+    return null
+  }
 
   if (!scope && settings.selectedProvider !== provider) {
     setSelectedAiProviderBlock(provider)
@@ -119,6 +131,20 @@ export function resolveAiSelectionFromProvidersOrch(
       ? resolveAiModelForScopeProviderBlock(scope, provider, settings)
       : resolveAiModelForProviderBlock(provider, settings)
   )
+
+  aiDebugBlock('selection_resolved', {
+    input: input ?? null,
+    scope,
+    provider,
+    model,
+    requestedModel,
+    selectedProviderSetting: settings.selectedProvider,
+    providers: providers.map((item) => ({
+      provider: item.provider,
+      available: item.available,
+      model: item.model,
+    })),
+  })
 
   return {
     provider,

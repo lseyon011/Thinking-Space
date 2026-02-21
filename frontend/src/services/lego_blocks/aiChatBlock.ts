@@ -22,6 +22,7 @@ import {
   getNativeClaudeOauthCredentialsBlock,
   getNativeCodexOauthCredentialsBlock,
 } from './aiOauthCredentialStoreBlock'
+import { aiDebugBlock, aiDebugErrorMessageBlock, aiDebugWarnBlock } from './aiDebugBlock'
 
 const CLAUDE_MAX_OUTPUT_TOKENS = 64000
 
@@ -61,7 +62,7 @@ function resolveRequestedModel(provider: AiProvider, requested?: string): string
 async function sendClaudeDirectBlock(messages: ChatMessage[], model?: string): Promise<ChatResponse> {
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
   const manualApiKey = getManualClaudeApiKeyBlock()
-  const oauthCredentials = isElectron() ? null : getNativeClaudeOauthCredentialsBlock()
+  const oauthCredentials = getNativeClaudeOauthCredentialsBlock()
   const client = manualApiKey
     ? new Anthropic({
       apiKey: manualApiKey,
@@ -269,7 +270,7 @@ async function sendCodexOauthDirectBlock(
 async function sendCodexDirectBlock(messages: ChatMessage[], model?: string): Promise<ChatResponse> {
   const requestedModel = resolveRequestedModel('openai-codex', model)
   const manualApiKey = getManualOpenAiApiKeyBlock()
-  const oauthCredentials = isElectron() ? null : getNativeCodexOauthCredentialsBlock()
+  const oauthCredentials = getNativeCodexOauthCredentialsBlock()
 
   if (manualApiKey) {
     const requestedAt = new Date().toISOString()
@@ -386,12 +387,33 @@ export async function sendChatBlock(
   messages: ChatMessage[],
   options?: ChatSendOptions,
 ): Promise<ChatResponse> {
-  if (provider === 'codex-cli') return sendCodexCliViaBackendBlock(messages, options)
-  if (isElectron() || isCapacitorNative()) {
-    if (provider === 'claude') return sendClaudeDirectBlock(messages, options?.model)
-    if (provider === 'openai-codex') return sendCodexDirectBlock(messages, options?.model)
-    if (provider === 'azure-gpt') return sendAzureDirectBlock(messages, options?.model)
-    throw new Error(`Unknown provider: ${provider}`)
+  const runtime = isElectron() ? 'electron' : (isCapacitorNative() ? 'capacitor' : 'web')
+  const requestedModel = typeof options?.model === 'string' ? options.model.trim() : null
+  aiDebugBlock('chat_send_start', {
+    provider,
+    requestedModel,
+    threadId: options?.threadId ?? null,
+    messageCount: messages.length,
+    runtime,
+  })
+
+  try {
+    if (provider === 'codex-cli') return sendCodexCliViaBackendBlock(messages, options)
+    if (runtime === 'electron' || runtime === 'capacitor') {
+      if (provider === 'claude') return sendClaudeDirectBlock(messages, options?.model)
+      if (provider === 'openai-codex') return sendCodexDirectBlock(messages, options?.model)
+      if (provider === 'azure-gpt') return sendAzureDirectBlock(messages, options?.model)
+      throw new Error(`Unknown provider: ${provider}`)
+    }
+    return sendViaBackendBlock(provider, messages, options)
+  } catch (error) {
+    aiDebugWarnBlock('chat_send_failed', {
+      provider,
+      requestedModel,
+      threadId: options?.threadId ?? null,
+      runtime,
+      error: aiDebugErrorMessageBlock(error),
+    })
+    throw error
   }
-  return sendViaBackendBlock(provider, messages, options)
 }

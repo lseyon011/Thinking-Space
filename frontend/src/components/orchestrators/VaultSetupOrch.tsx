@@ -10,6 +10,8 @@ import {
   setVaultFSInstance,
   setVaultRoot,
 } from '@/services/lego_blocks/fsBlock'
+import { getStoredVaultRoot } from '@/services/lego_blocks/storageKeyBlock'
+import { probeBackendConnectionBlock } from '@/services/lego_blocks/backendConnectionBlock'
 import { registerPlugin } from '@capacitor/core'
 
 // Native folder picker plugin (defined in AppDelegate.swift)
@@ -33,6 +35,7 @@ export default function VaultSetup({ onComplete }: Props) {
   const isNativeApp = isElectronApp || isCapacitor
   const hasBrowserFS = !isNativeApp && isBrowserFSAvailable()
   const hasBackendOption = !isNativeApp
+  const isBackendReconnect = getStoredVaultRoot() === 'web-backend'
 
   // Electron: use native folder picker via IPC
   const handleElectronSelect = async () => {
@@ -91,10 +94,22 @@ export default function VaultSetup({ onComplete }: Props) {
     }
   }
 
-  // Web: connect to FastAPI backend
-  const handleBackendConnect = () => {
-    setVaultRoot('web-backend')
-    onComplete('web-backend')
+  // Web: connect/refresh FastAPI backend and verify vault access.
+  const handleBackendConnect = async () => {
+    setSelecting(true)
+    setError(null)
+    try {
+      const probe = await probeBackendConnectionBlock(true)
+      if (!probe.connected) {
+        throw new Error(probe.error || 'Backend is reachable but vault is unavailable')
+      }
+      setVaultRoot('web-backend')
+      onComplete('web-backend')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to connect to backend')
+    } finally {
+      setSelecting(false)
+    }
   }
 
   const handleNativeSelect = isElectronApp ? handleElectronSelect : handleCapacitorSelect
@@ -136,15 +151,24 @@ export default function VaultSetup({ onComplete }: Props) {
           )}
 
           {hasBackendOption && (
-            <Button
-              size="lg"
-              variant={hasBrowserFS ? 'outline' : 'default'}
-              onClick={handleBackendConnect}
-              disabled={selecting}
-            >
-              <Server className="mr-2 h-4 w-4" />
-              Connect to Backend
-            </Button>
+            <div className="space-y-2 text-left">
+              <Button
+                size="lg"
+                variant={hasBrowserFS ? 'outline' : 'default'}
+                onClick={() => { void handleBackendConnect() }}
+                disabled={selecting}
+                className="w-full"
+              >
+                <Server className="mr-2 h-4 w-4" />
+                {selecting
+                  ? (isBackendReconnect ? 'Refreshing Backend...' : 'Connecting Backend...')
+                  : (isBackendReconnect ? 'Refresh Backend Connection' : 'Connect to Backend')}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Backend mode does not use a browser folder picker. The vault path is configured on the backend via
+                `LTM_VAULT_ROOT` or `THINK_SPACE_VAULT_ROOT`.
+              </p>
+            </div>
           )}
         </div>
 
