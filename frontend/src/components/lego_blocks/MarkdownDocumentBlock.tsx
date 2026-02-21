@@ -10,7 +10,8 @@ import {
 } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X, FileText, ExternalLink, Info, Pencil, Save } from 'lucide-react'
+import yaml from 'js-yaml'
+import { X, FileText, ExternalLink, Info, Pencil, Save, Sparkles, Loader2 } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -38,6 +39,7 @@ import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBloc
 import AiAssistReviewBlock from '@/components/lego_blocks/AiAssistReviewBlock'
 import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/aiBlock'
 import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/markdownUrlTransformBlock'
+import { generateStewardMetadataSuggestionForFileOrch, type StewardMetadataSuggestion } from '@/services/orchestrators/stewardMetadataOrch'
 
 export type MarkdownViewerMode = 'view' | 'edit'
 
@@ -80,6 +82,18 @@ interface MarkdownMeta {
   size: string
 }
 
+interface MarkdownFrontmatterMetaEntry {
+  key: string
+  value: string
+}
+
+interface MarkdownFrontmatterMetaState {
+  hasFrontmatter: boolean
+  yamlText: string
+  entries: MarkdownFrontmatterMetaEntry[]
+  parseError: string | null
+}
+
 function scheduleDeferredWork(callback: () => void): () => void {
   if (typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function') {
     const idleId = (window as any).requestIdleCallback(() => callback(), { timeout: 240 })
@@ -100,6 +114,116 @@ function yieldToNextFrame(): Promise<void> {
   })
 }
 
+function frontmatterBlockToYamlText(frontmatterBlock: string): string {
+  if (!frontmatterBlock) return ''
+  const normalized = frontmatterBlock.replace(/\r\n/g, '\n')
+  const lines = normalized.split('\n')
+  if (lines[0]?.trim() === '---') lines.shift()
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
+  if (lines[lines.length - 1]?.trim() === '---') lines.pop()
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
+  return lines.join('\n')
+}
+
+function yamlTextToFrontmatterBlock(yamlText: string): string {
+  const normalized = yamlText.replace(/\r\n/g, '\n').replace(/^\n+/, '').trimEnd()
+  if (normalized.trim() === '') return ''
+  return `---\n${normalized}\n---\n`
+}
+
+function parseFrontmatterObject(frontmatterBlock: string): Record<string, unknown> {
+  const yamlText = frontmatterBlockToYamlText(frontmatterBlock)
+  if (!yamlText.trim()) return {}
+  try {
+    const parsed = yaml.load(yamlText)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return { ...(parsed as Record<string, unknown>) }
+    }
+  } catch {
+    return {}
+  }
+  return {}
+}
+
+function frontmatterObjectToBlock(frontmatter: Record<string, unknown>): string {
+  const sanitized: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(frontmatter)) {
+    if (value === undefined) continue
+    sanitized[key] = value
+  }
+  const dumped = yaml.dump(sanitized, { lineWidth: 120, noRefs: true }).trimEnd()
+  return yamlTextToFrontmatterBlock(dumped)
+}
+
+function toFrontmatterEntryValue(value: unknown): string {
+  if (value === null) return 'null'
+  if (value === undefined) return 'undefined'
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function buildFrontmatterMetaState(content: string): MarkdownFrontmatterMetaState {
+  const { frontmatter } = splitFrontmatter(content)
+  if (!frontmatter) {
+    return {
+      hasFrontmatter: false,
+      yamlText: '',
+      entries: [],
+      parseError: null,
+    }
+  }
+
+  const yamlText = frontmatterBlockToYamlText(frontmatter)
+  if (yamlText.trim() === '') {
+    return {
+      hasFrontmatter: true,
+      yamlText,
+      entries: [],
+      parseError: null,
+    }
+  }
+
+  try {
+    const parsed = yaml.load(yamlText)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const entries = Object.entries(parsed as Record<string, unknown>).map(([key, value]) => ({
+        key,
+        value: toFrontmatterEntryValue(value),
+      }))
+      return {
+        hasFrontmatter: true,
+        yamlText,
+        entries,
+        parseError: null,
+      }
+    }
+
+    return {
+      hasFrontmatter: true,
+      yamlText,
+      entries: [
+        {
+          key: '(value)',
+          value: toFrontmatterEntryValue(parsed),
+        },
+      ],
+      parseError: null,
+    }
+  } catch (error) {
+    return {
+      hasFrontmatter: true,
+      yamlText,
+      entries: [],
+      parseError: error instanceof Error ? error.message : 'Invalid YAML frontmatter',
+    }
+  }
+}
+
 function MarkdownDocumentBlock({
   path,
   initialMode = 'view',
@@ -111,6 +235,8 @@ function MarkdownDocumentBlock({
   className,
 }: MarkdownDocumentBlockProps) {
   const { layout } = useUILayoutBlock()
+  const isIosSurface = layout.surface === 'capacitor-ios'
+  const isIosPhone = isIosSurface && layout.mode === 'phone'
   const [mode, setMode] = useState<MarkdownViewerMode>(initialMode)
   const [content, setContent] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -130,8 +256,10 @@ function MarkdownDocumentBlock({
   const [relatedError, setRelatedError] = useState<string | null>(null)
 
   const [showMeta, setShowMeta] = useState(true)
-  const [showAssistPanel, setShowAssistPanel] = useState(false)
-  const [showRelatedPanel, setShowRelatedPanel] = useState(false)
+  const [showAiPanel, setShowAiPanel] = useState(false)
+  const [purposeLoading, setPurposeLoading] = useState(false)
+  const [purposeError, setPurposeError] = useState<string | null>(null)
+  const [purposeMessage, setPurposeMessage] = useState<string | null>(null)
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true)
   const [meta, setMeta] = useState<MarkdownMeta | null>(null)
   const [viewMarkdown, setViewMarkdown] = useState('')
@@ -171,6 +299,9 @@ function MarkdownDocumentBlock({
     setRelatedThoughts([])
     setRelatedError(null)
     setRelatedLoading(false)
+    setPurposeError(null)
+    setPurposeMessage(null)
+    setPurposeLoading(false)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(false)
     excalidrawSceneRef.current = null
@@ -299,6 +430,11 @@ function MarkdownDocumentBlock({
     () => stripFrontmatter(draft),
     [draft],
   )
+  const frontmatterMetaSource = isEditing ? draft : (content ?? '')
+  const frontmatterMeta = useMemo(
+    () => buildFrontmatterMetaState(frontmatterMetaSource),
+    [frontmatterMetaSource],
+  )
   const draftFrontmatter = useMemo(
     () => splitFrontmatter(draft).frontmatter,
     [draft],
@@ -310,6 +446,114 @@ function MarkdownDocumentBlock({
   const setDraftBody = useCallback((nextBody: string) => {
     setDraft((current) => `${splitFrontmatter(current).frontmatter}${nextBody}`)
   }, [])
+  const setDraftFrontmatterYaml = useCallback((nextYamlText: string) => {
+    setDraft((current) => {
+      const { body } = splitFrontmatter(current)
+      const nextFrontmatter = yamlTextToFrontmatterBlock(nextYamlText)
+      return `${nextFrontmatter}${body}`
+    })
+    if (assistSuggestion || assistError) clearAssistState()
+  }, [assistError, assistSuggestion, clearAssistState])
+  const applyStewardSuggestionToDraft = useCallback((suggestion: StewardMetadataSuggestion) => {
+    setDraft((current) => {
+      const { frontmatter, body } = splitFrontmatter(current)
+      const next = parseFrontmatterObject(frontmatter)
+      const now = new Date().toISOString()
+      const summary = suggestion.summary.trim()
+      const suggestionParent = suggestion.suggestedIdeaKey || suggestion.suggestedEpicKey
+      const tags = suggestion.tags.map(tag => tag.trim()).filter(Boolean)
+
+      next.tags = tags
+      next.ai_summary = summary
+      next.ai_generated = true
+      next.last_ai_update = now
+      next.updated_at = now
+      const existingDescription = typeof next.description === 'string' ? next.description.trim() : ''
+      if (!existingDescription && summary) next.description = summary
+
+      const rawAiSuggestions = next.ai_suggestions
+      const aiSuggestions = (
+        rawAiSuggestions && typeof rawAiSuggestions === 'object' && !Array.isArray(rawAiSuggestions)
+          ? { ...(rawAiSuggestions as Record<string, unknown>) }
+          : {}
+      )
+      const related = Array.isArray(aiSuggestions.related)
+        ? [...aiSuggestions.related]
+        : []
+      const relatedMap = new Map<string, { key: string; reason: string; score: number }>()
+      for (const entry of related) {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue
+        const key = typeof (entry as Record<string, unknown>).key === 'string'
+          ? String((entry as Record<string, unknown>).key).trim()
+          : ''
+        if (!key) continue
+        const reason = typeof (entry as Record<string, unknown>).reason === 'string'
+          ? String((entry as Record<string, unknown>).reason)
+          : 'Suggested related context'
+        const scoreRaw = (entry as Record<string, unknown>).score
+        const score = typeof scoreRaw === 'number' ? scoreRaw : 0.5
+        relatedMap.set(key, { key, reason, score })
+      }
+      if (suggestion.suggestedEpicKey) {
+        relatedMap.set(suggestion.suggestedEpicKey, {
+          key: suggestion.suggestedEpicKey,
+          reason: 'Suggested epic context',
+          score: 0.6,
+        })
+      }
+      if (suggestion.suggestedIdeaKey) {
+        relatedMap.set(suggestion.suggestedIdeaKey, {
+          key: suggestion.suggestedIdeaKey,
+          reason: 'Suggested idea context',
+          score: 0.8,
+        })
+      }
+
+      aiSuggestions.related = [...relatedMap.values()]
+      if (suggestionParent) {
+        aiSuggestions.suggested_move = { parent: suggestionParent }
+      } else {
+        delete aiSuggestions.suggested_move
+      }
+      next.ai_suggestions = aiSuggestions
+
+      return `${frontmatterObjectToBlock(next)}${body}`
+    })
+  }, [])
+  const generatePurposeForFile = useCallback(async () => {
+    if (isExcalidrawDoc || !isEditing) return
+    if (frontmatterMeta.parseError) {
+      setPurposeError('Fix YAML parse errors before applying steward purpose metadata.')
+      setPurposeMessage(null)
+      return
+    }
+
+    setPurposeLoading(true)
+    setPurposeError(null)
+    setPurposeMessage(null)
+    try {
+      const suggestion = await generateStewardMetadataSuggestionForFileOrch(path)
+      applyStewardSuggestionToDraft(suggestion)
+      if (assistSuggestion || assistError) clearAssistState()
+      const source = suggestion.usedAi
+        ? `AI (${suggestion.provider}${suggestion.model ? `/${suggestion.model}` : ''})`
+        : 'heuristics'
+      setPurposeMessage(`Applied purpose metadata from ${source}.`)
+    } catch (err) {
+      setPurposeError(err instanceof Error ? err.message : 'Failed to generate purpose metadata')
+    } finally {
+      setPurposeLoading(false)
+    }
+  }, [
+    applyStewardSuggestionToDraft,
+    assistError,
+    assistSuggestion,
+    clearAssistState,
+    frontmatterMeta.parseError,
+    isEditing,
+    isExcalidrawDoc,
+    path,
+  ])
   const markdownRemarkPlugins = useMemo(() => [remarkGfm, remarkObsidianWikilinksOrch], [])
 
   type MarkdownAnchorProps = ComponentPropsWithoutRef<'a'> & { node?: unknown }
@@ -438,7 +682,7 @@ function MarkdownDocumentBlock({
   }, [content, displayContent, isEditing, isExcalidrawDoc, path])
 
   useEffect(() => {
-    if (!isEditing || isExcalidrawDoc || loading || error || content === null || !showRelatedPanel) {
+    if (!isEditing || isExcalidrawDoc || loading || error || content === null || !showAiPanel) {
       setRelatedThoughts([])
       setRelatedError(null)
       setRelatedLoading(false)
@@ -481,7 +725,7 @@ function MarkdownDocumentBlock({
       cancelled = true
       window.clearTimeout(timeoutId)
     }
-  }, [content, displayDraft, error, isEditing, isExcalidrawDoc, loading, path, showRelatedPanel])
+  }, [content, displayDraft, error, isEditing, isExcalidrawDoc, loading, path, showAiPanel])
 
   const handleExcalidrawSceneChange = useCallback((scene: ParsedExcalidrawScene) => {
     excalidrawSceneRef.current = scene
@@ -498,11 +742,13 @@ function MarkdownDocumentBlock({
     if (loading || error) return
     setMode('edit')
     setDraft(isExcalidrawDoc ? '' : (content ?? ''))
-    setShowAssistPanel(false)
-    setShowRelatedPanel(false)
+    setShowAiPanel(false)
     setSaveError(null)
     setNavigationError(null)
     setConflict(null)
+    setPurposeError(null)
+    setPurposeMessage(null)
+    setPurposeLoading(false)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(isExcalidrawDoc)
     excalidrawSceneRef.current = null
@@ -514,10 +760,12 @@ function MarkdownDocumentBlock({
     setMode('view')
     setSaveError(null)
     setConflict(null)
-    setShowAssistPanel(false)
-    setShowRelatedPanel(false)
+    setShowAiPanel(false)
     setAutoSaving(false)
     setNavigationError(null)
+    setPurposeError(null)
+    setPurposeMessage(null)
+    setPurposeLoading(false)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(false)
     excalidrawSceneRef.current = null
@@ -667,7 +915,10 @@ function MarkdownDocumentBlock({
     >
       <div ref={chromeContainerRef} className="min-h-0 overflow-hidden">
         <div className="min-h-0 overflow-hidden">
-          <div className="ts-md-header flex items-start justify-between gap-3 border-b border-border/50 px-5 py-4">
+          <div className={cn(
+            'ts-md-header flex items-start justify-between gap-3 border-b border-border/50',
+            isIosPhone ? 'px-3 py-2.5' : 'px-5 py-4',
+          )}>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -682,7 +933,7 @@ function MarkdownDocumentBlock({
               <button
                 onClick={() => setShowMeta(v => !v)}
                 className={`rounded-lg p-1.5 transition-colors ${showMeta ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                title="File metadata"
+                title="Metadata & YAML"
               >
                 <Info className="h-4 w-4" />
               </button>
@@ -710,19 +961,11 @@ function MarkdownDocumentBlock({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowAssistPanel(v => !v)}
-                    className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showAssistPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                    title="Toggle AI assist"
+                    onClick={() => setShowAiPanel(v => !v)}
+                    className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showAiPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                    title="Toggle AI panel"
                   >
-                    AI Assist
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowRelatedPanel(v => !v)}
-                    className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showRelatedPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                    title="Toggle related thoughts"
-                  >
-                    Related Thoughts
+                    AI
                   </button>
                   <button
                     type="button"
@@ -764,11 +1007,70 @@ function MarkdownDocumentBlock({
           </div>
 
           {showMeta && meta && (
-            <div className="flex items-center gap-4 border-b border-border/30 bg-muted/30 px-5 py-2 text-xs text-muted-foreground">
-              <span><strong className="text-foreground/70">{meta.lines ?? '…'}</strong> lines</span>
-              <span><strong className="text-foreground/70">{meta.words ?? '…'}</strong> words</span>
-              <span><strong className="text-foreground/70">{meta.headings ?? '…'}</strong> headings</span>
-              <span>{meta.size}</span>
+            <div className={cn(
+              'space-y-2 border-b border-border/30 bg-muted/30 py-2.5 text-xs text-muted-foreground',
+              isIosPhone ? 'px-3' : 'px-5',
+            )}>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span><strong className="text-foreground/70">{meta.lines ?? '…'}</strong> lines</span>
+                <span><strong className="text-foreground/70">{meta.words ?? '…'}</strong> words</span>
+                <span><strong className="text-foreground/70">{meta.headings ?? '…'}</strong> headings</span>
+                <span>{meta.size}</span>
+              </div>
+
+              {!isExcalidrawDoc && (
+                <div className="space-y-1.5 border-t border-border/30 pt-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    YAML Metadata
+                  </div>
+
+                  {isEditing ? (
+                    <div className="space-y-1.5">
+                      <textarea
+                        value={frontmatterMeta.yamlText}
+                        onChange={(event) => setDraftFrontmatterYaml(event.target.value)}
+                        spellCheck={false}
+                        className="min-h-[8rem] w-full rounded-md border border-border/60 bg-background px-2.5 py-2 font-mono text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        placeholder="title: My note&#10;type: thought&#10;parent: project-root"
+                        aria-label="YAML frontmatter editor"
+                      />
+                      {frontmatterMeta.parseError ? (
+                        <div className="text-[11px] text-destructive">
+                          YAML parse error: {frontmatterMeta.parseError}
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-muted-foreground">
+                          {frontmatterMeta.hasFrontmatter ? 'Frontmatter is valid YAML.' : 'Add YAML above to create frontmatter.'}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {frontmatterMeta.parseError && (
+                        <div className="text-[11px] text-destructive">
+                          YAML parse error: {frontmatterMeta.parseError}
+                        </div>
+                      )}
+                      {!frontmatterMeta.hasFrontmatter && (
+                        <div className="text-[11px] text-muted-foreground">No YAML frontmatter.</div>
+                      )}
+                      {frontmatterMeta.hasFrontmatter && !frontmatterMeta.parseError && frontmatterMeta.entries.length === 0 && (
+                        <div className="text-[11px] text-muted-foreground">YAML frontmatter is empty.</div>
+                      )}
+                      {frontmatterMeta.entries.length > 0 && (
+                        <dl className="grid grid-cols-[minmax(6rem,auto)_1fr] gap-x-3 gap-y-1 text-[11px]">
+                          {frontmatterMeta.entries.map((entry) => (
+                            <div key={entry.key} className="contents">
+                              <dt className="font-medium text-foreground/80">{entry.key}</dt>
+                              <dd className="break-all text-muted-foreground">{entry.value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -795,7 +1097,7 @@ function MarkdownDocumentBlock({
           )}
 
           {!loading && !error && navigationError && (
-            <div className="px-6 pt-4">
+            <div className={cn(isIosPhone ? 'px-3 pt-2.5' : 'px-6 pt-4')}>
               <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {navigationError}
               </div>
@@ -807,7 +1109,7 @@ function MarkdownDocumentBlock({
           )}
 
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && (
-            <div className="space-y-2 px-6 py-5">
+            <div className={cn('space-y-2', isIosPhone ? 'px-3 py-3' : 'px-6 py-5')}>
               {pendingFullRender && (
                 <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                   Rendering full document...
@@ -861,12 +1163,20 @@ function MarkdownDocumentBlock({
         )}
 
         {!loading && !error && content !== null && isEditing && isExcalidrawDoc && excalidrawImmersive && (
-          <div className="fixed inset-0 z-[70] flex flex-col bg-background">
-            <div className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-3">
+          <div className={cn('fixed inset-0 z-[70] flex bg-background', isIosSurface ? 'flex-col-reverse' : 'flex-col')}>
+            <div
+              className={cn(
+                'flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 px-3 py-2',
+                isIosSurface ? 'border-t border-border/60' : 'border-b border-border/60',
+              )}
+              style={isIosSurface
+                ? { paddingBottom: 'calc(var(--ltm-safe-bottom, 0px) + 0.5rem)' }
+                : undefined}
+            >
               <span className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                 Excalidraw Focus Mode
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-1.5">
                 <button
                   type="button"
                   onClick={cancelEditing}
@@ -903,9 +1213,37 @@ function MarkdownDocumentBlock({
         )}
 
         {!loading && !error && content !== null && isEditing && !isExcalidrawDoc && (
-          <div className="space-y-4">
-            {showAssistPanel && (
+          <div className={cn('space-y-4', isIosPhone && 'px-3 pb-[calc(var(--ltm-safe-bottom,0px)+0.4rem)]')}>
+            {showAiPanel && (
               <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2">
+                  <button
+                    type="button"
+                    onClick={() => { void generatePurposeForFile() }}
+                    disabled={purposeLoading || loading}
+                    className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Generate steward purpose metadata for this file"
+                  >
+                    {purposeLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    Purpose for This File
+                  </button>
+                  <span className="text-[11px] text-muted-foreground">
+                    Uses steward metadata generation to update YAML frontmatter in-place.
+                  </span>
+                </div>
+
+                {purposeMessage && (
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
+                    {purposeMessage}
+                  </div>
+                )}
+
+                {purposeError && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    {purposeError}
+                  </div>
+                )}
+
                 <AiAssistControlsBlock
                   selectedProvider={selectedProvider}
                   selectedModel={selectedModel}
@@ -933,53 +1271,55 @@ function MarkdownDocumentBlock({
                     {assistError}
                   </div>
                 )}
-              </div>
-            )}
 
-            {showRelatedPanel && (
-              <div className="space-y-2">
-                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Related Thoughts
-                </div>
-                {relatedLoading && (
-                  <div className="text-xs text-muted-foreground">Finding related notes...</div>
-                )}
-                {relatedError && (
-                  <div className="text-xs text-destructive">{relatedError}</div>
-                )}
-                {!relatedLoading && !relatedError && relatedThoughts.length === 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    Keep typing to see lexical matches from your thought cache.
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Related Thoughts
                   </div>
-                )}
-                {relatedThoughts.map(match => (
-                  <button
-                    key={match.node.uuid}
-                    type="button"
-                    className="w-full rounded-md border border-border/70 bg-background px-2.5 py-2 text-left transition-colors hover:bg-muted/40"
-                    onClick={() => {
-                      if (!onOpenPathForEdit || match.node.filePath === path) return
-                      onOpenPathForEdit(match.node.filePath)
-                    }}
-                  >
-                    <div className="truncate text-xs font-medium text-foreground">{match.node.title}</div>
-                    <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{match.node.filePath}</div>
-                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                      Score {Math.round(match.normalizedScore * 100)}% · {match.reasons.join(', ') || 'lexical'}
+                  {relatedLoading && (
+                    <div className="text-xs text-muted-foreground">Finding related notes...</div>
+                  )}
+                  {relatedError && (
+                    <div className="text-xs text-destructive">{relatedError}</div>
+                  )}
+                  {!relatedLoading && !relatedError && relatedThoughts.length === 0 && (
+                    <div className="text-xs text-muted-foreground">
+                      Keep typing to see lexical matches from your thought cache.
                     </div>
-                  </button>
-                ))}
+                  )}
+                  {relatedThoughts.map(match => (
+                    <button
+                      key={match.node.uuid}
+                      type="button"
+                      className="w-full rounded-md border border-border/70 bg-background px-2.5 py-2 text-left transition-colors hover:bg-muted/40"
+                      onClick={() => {
+                        if (!onOpenPathForEdit || match.node.filePath === path) return
+                        onOpenPathForEdit(match.node.filePath)
+                      }}
+                    >
+                      <div className="truncate text-xs font-medium text-foreground">{match.node.title}</div>
+                      <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{match.node.filePath}</div>
+                      <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Score {Math.round(match.normalizedScore * 100)}% · {match.reasons.join(', ') || 'lexical'}
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
             <MarkdownRichEditorBlock
               value={displayDraft}
               currentPath={path}
+              compactMobile={isIosPhone}
               onChange={(next) => {
                 setDraft(`${draftFrontmatter}${next}`)
                 if (assistSuggestion || assistError) clearAssistState()
               }}
-              className="min-h-[44vh] sm:min-h-[52vh] lg:min-h-[62vh]"
+              className={cn(
+                'min-h-[44vh] sm:min-h-[52vh] lg:min-h-[62vh]',
+                isIosPhone && 'min-h-0 h-full',
+              )}
             />
 
             {autoSaving && !saving && (
@@ -1017,7 +1357,10 @@ function MarkdownDocumentBlock({
       </div>
 
       {isEditing && !excalidrawImmersive && isExcalidrawDoc && (
-        <div className="flex items-center justify-between gap-2 border-t border-border/50 px-5 py-3">
+        <div className={cn(
+          'flex items-center justify-between gap-2 border-t border-border/50',
+          isIosPhone ? 'px-3 py-2.5' : 'px-5 py-3',
+        )}>
           <div className="text-xs text-muted-foreground">
             {hasChanges ? 'Unsaved changes' : 'No changes'}
           </div>
