@@ -496,22 +496,15 @@ function MarkdownDocumentBlock({
     setSaveError(null)
     setConflict(null)
 
-    let contentToSave = draft
-    if (isExcalidrawDoc) {
-      if (content === null || !excalidrawSceneRef.current) {
-        setSaving(false)
-        return
-      }
+    try {
+      if (content === null || !excalidrawSceneRef.current) return
       await yieldToNextFrame()
-      contentToSave = serializeExcalidrawSceneOrch(content, excalidrawSceneRef.current)
+      const contentToSave = serializeExcalidrawSceneOrch(content, excalidrawSceneRef.current)
       if (contentToSave === content) {
         setHasExcalidrawChanges(false)
-        setSaving(false)
         return
       }
-    }
 
-    try {
       const result = await saveMarkdownDocument({
         path,
         content: contentToSave,

@@ -1,7 +1,7 @@
 import type { CapacitorElectronConfig } from '@capacitor-community/electron';
 import { getCapacitorElectronConfig, setupElectronDeepLinking } from '@capacitor-community/electron';
 import type { MenuItemConstructorOptions } from 'electron';
-import { app, dialog, ipcMain, MenuItem } from 'electron';
+import { app, dialog, ipcMain, MenuItem, shell } from 'electron';
 import electronIsDev from 'electron-is-dev';
 import unhandled from 'electron-unhandled';
 import { autoUpdater } from 'electron-updater';
@@ -617,6 +617,40 @@ ipcMain.handle('vault:exists', async (_event, vaultRoot: string, relPath: string
 ipcMain.handle('vault:mkdir', async (_event, vaultRoot: string, relPath: string) => {
   const full = assertInsideVault(vaultRoot, relPath);
   await fsPromises.mkdir(full, { recursive: true });
+});
+
+// -- Rename path --
+ipcMain.handle('vault:rename', async (_event, vaultRoot: string, fromRelPath: string, toRelPath: string) => {
+  const fromFull = assertInsideVault(vaultRoot, fromRelPath);
+  const toFull = assertInsideVault(vaultRoot, toRelPath);
+  await fsPromises.mkdir(path.dirname(toFull), { recursive: true });
+  await fsPromises.rename(fromFull, toFull);
+});
+
+// -- Delete path --
+ipcMain.handle('vault:delete', async (_event, vaultRoot: string, relPath: string, recursive = true) => {
+  const full = assertInsideVault(vaultRoot, relPath);
+  await fsPromises.rm(full, { recursive: Boolean(recursive), force: false });
+});
+
+// -- Copy path --
+ipcMain.handle('vault:copy', async (_event, vaultRoot: string, fromRelPath: string, toRelPath: string) => {
+  const fromFull = assertInsideVault(vaultRoot, fromRelPath);
+  const toFull = assertInsideVault(vaultRoot, toRelPath);
+  await fsPromises.mkdir(path.dirname(toFull), { recursive: true });
+  await fsPromises.cp(fromFull, toFull, { recursive: true, force: false, errorOnExist: true });
+});
+
+// -- Reveal path in file manager --
+ipcMain.handle('vault:reveal', async (_event, vaultRoot: string, relPath: string) => {
+  const full = assertInsideVault(vaultRoot, relPath);
+  const stat = await fsPromises.stat(full);
+  if (stat.isDirectory()) {
+    const openErr = await shell.openPath(full);
+    if (openErr) throw new Error(openErr);
+    return;
+  }
+  shell.showItemInFolder(full);
 });
 
 // -- Git command --

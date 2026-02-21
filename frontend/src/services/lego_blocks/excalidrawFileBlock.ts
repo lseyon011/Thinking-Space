@@ -8,11 +8,31 @@ export interface ParsedExcalidrawScene {
 }
 
 function sceneToJson(scene: ParsedExcalidrawScene): string {
+  const ancestors: object[] = []
   return JSON.stringify({
     elements: scene.elements,
     appState: scene.appState ?? {},
     files: scene.files ?? {},
-  }, null, 2)
+  }, function (_key, value: unknown) {
+    if (typeof value === 'bigint') return Number(value)
+    if (typeof value === 'number' && !Number.isFinite(value)) return null
+
+    if (value && typeof value === 'object') {
+      if (value instanceof Date) return value.toISOString()
+      if (value instanceof Map) return Object.fromEntries(value.entries())
+      if (value instanceof Set) return Array.from(value.values())
+      if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return undefined
+
+      const holder = this as object | undefined
+      while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== holder) {
+        ancestors.pop()
+      }
+      if (ancestors.includes(value)) return undefined
+      ancestors.push(value)
+    }
+
+    return value
+  }, 2)
 }
 
 function tryParseJson(value: string): ParsedExcalidrawScene | null {

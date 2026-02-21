@@ -2,12 +2,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PanelLeft, PanelLeftClose, Sparkles, FileText } from 'lucide-react'
 import VaultExplorerBlock from '@/components/lego_blocks/VaultExplorerBlock'
-import MarkdownDocumentBlock from '@/components/lego_blocks/MarkdownDocumentBlock'
+import MarkdownDocumentBlock, { type MarkdownViewerMode } from '@/components/lego_blocks/MarkdownDocumentBlock'
 import ExtensionSlotBlock from '@/components/lego_blocks/ExtensionSlotBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/UILayoutBlock'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { cn } from '@/lib/utils'
-import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
+import {
+  createDrawingOrch,
+  createFileOrch,
+  createFolderOrch,
+  deleteVaultPathOrch,
+  duplicateFileOrch,
+  getAbsolutePathForClipboardOrch,
+  getRelativePathForClipboardOrch,
+  listFolderEntries,
+  openFileInNewTabOrch,
+  openFileInNewWindowOrch,
+  renameVaultPathOrch,
+  revealVaultPathOrch,
+} from '@/services/orchestrators/fileSystemOrch'
 import { STORAGE_KEYS, getStorageItem, setStorageItem } from '@/services/orchestrators/storageOrch'
 import {
   shouldCloseDrawerFromSwipeBlock,
@@ -17,11 +30,17 @@ import {
 
 const FILE_QUERY_PARAM = 'file'
 
+function leafNameOf(path: string): string {
+  const idx = path.lastIndexOf('/')
+  return idx < 0 ? path : path.slice(idx + 1)
+}
+
 export default function ThinkingSpaceOrch() {
   const [searchParams, setSearchParams] = useSearchParams()
   const inlinePathFromUrl = searchParams.get(FILE_QUERY_PARAM)?.trim() || null
   const { layout } = useUILayoutBlock()
   const [inlinePath, setInlinePath] = useState<string | null>(inlinePathFromUrl)
+  const [inlineInitialMode, setInlineInitialMode] = useState<MarkdownViewerMode>('view')
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
   const [explorerCollapsed, setExplorerCollapsed] = useState(
     () => getStorageItem(STORAGE_KEYS.thinkingSpaceExplorerCollapsed) === '1',
@@ -37,10 +56,12 @@ export default function ThinkingSpaceOrch() {
   useEffect(() => {
     if (inlinePathFromUrl === inlinePath) return
     setInlinePath(inlinePathFromUrl)
+    setInlineInitialMode('view')
   }, [inlinePath, inlinePathFromUrl])
 
-  const setInlinePathAndSyncUrl = useCallback((path: string | null) => {
+  const setInlinePathAndSyncUrl = useCallback((path: string | null, mode: MarkdownViewerMode = 'view') => {
     setInlinePath(path)
+    setInlineInitialMode(mode)
     const current = searchParams.get(FILE_QUERY_PARAM)?.trim() || null
     if (current === path) return
     const next = new URLSearchParams(searchParams)
@@ -60,6 +81,92 @@ export default function ThinkingSpaceOrch() {
     setInlinePathAndSyncUrl(path)
     setMobileExplorerOpen(false)
   }, [setInlinePathAndSyncUrl])
+
+  const copyToClipboard = useCallback(async (value: string): Promise<boolean> => {
+    if (!value.trim()) return false
+    await navigator.clipboard.writeText(value)
+    return true
+  }, [])
+
+  const handleExplorerCreateFolder = useCallback(async (parentPath: string): Promise<string | boolean> => {
+    const input = window.prompt('New folder name', 'New Folder')
+    if (!input) return false
+    return createFolderOrch(parentPath, input)
+  }, [])
+
+  const handleExplorerCreateFile = useCallback(async (parentPath: string): Promise<string> => {
+    const outputPath = await createFileOrch(parentPath, 'New File.md')
+    setInlinePathAndSyncUrl(outputPath, 'edit')
+    return outputPath
+  }, [setInlinePathAndSyncUrl])
+
+  const handleExplorerCreateDrawing = useCallback(async (parentPath: string): Promise<string | boolean> => {
+    const input = window.prompt('New drawing file name', 'New Drawing.excalidraw.md')
+    if (!input) return false
+    const clean = input.trim()
+    if (!clean) return false
+    const fileName = clean.toLowerCase().endsWith('.excalidraw.md')
+      ? clean
+      : `${clean.replace(/\.md$/i, '')}.excalidraw.md`
+    const outputPath = await createDrawingOrch(parentPath, fileName)
+    setInlinePathAndSyncUrl(outputPath)
+    return outputPath
+  }, [setInlinePathAndSyncUrl])
+
+  const handleExplorerCopyRelativePath = useCallback(async (path: string): Promise<boolean> => {
+    return copyToClipboard(getRelativePathForClipboardOrch(path))
+  }, [copyToClipboard])
+
+  const handleExplorerCopyAbsolutePath = useCallback(async (path: string): Promise<boolean> => {
+    const absolute = getAbsolutePathForClipboardOrch(path)
+    if (!absolute) {
+      throw new Error('Absolute path is unavailable for this runtime.')
+    }
+    return copyToClipboard(absolute)
+  }, [copyToClipboard])
+
+  const handleExplorerOpenInNewTab = useCallback((path: string): boolean => {
+    openFileInNewTabOrch(path)
+    return true
+  }, [])
+
+  const handleExplorerOpenInNewWindow = useCallback((path: string): boolean => {
+    openFileInNewWindowOrch(path)
+    return true
+  }, [])
+
+  const handleExplorerDuplicateFile = useCallback(async (path: string): Promise<boolean> => {
+    const duplicatePath = await duplicateFileOrch(path)
+    setInlinePathAndSyncUrl(duplicatePath)
+    return true
+  }, [setInlinePathAndSyncUrl])
+
+  const handleExplorerRenamePath = useCallback(async (
+    path: string,
+    kind: 'file' | 'folder',
+    nextName: string,
+  ): Promise<string> => {
+    const nextPath = await renameVaultPathOrch(path, nextName)
+    if (kind === 'file' && inlinePath === path) {
+      setInlinePathAndSyncUrl(nextPath)
+    }
+    return nextPath
+  }, [inlinePath, setInlinePathAndSyncUrl])
+
+  const handleExplorerDeleteFile = useCallback(async (path: string): Promise<boolean> => {
+    const confirmed = window.confirm(`Delete file "${leafNameOf(path)}"?`)
+    if (!confirmed) return false
+    await deleteVaultPathOrch(path)
+    if (inlinePath === path) {
+      setInlinePathAndSyncUrl(null)
+    }
+    return true
+  }, [inlinePath, setInlinePathAndSyncUrl])
+
+  const handleExplorerOpenInFinder = useCallback(async (path: string): Promise<boolean> => {
+    await revealVaultPathOrch(path)
+    return true
+  }, [])
 
   useEffect(() => {
     if (showInlineSidebar) setMobileExplorerOpen(false)
@@ -152,6 +259,17 @@ export default function ThinkingSpaceOrch() {
           loadEntries={listFolderEntries}
           selectedPath={inlinePath}
           onOpenFile={setInlinePathAndSyncUrl}
+          onCreateFolder={handleExplorerCreateFolder}
+          onCreateFile={handleExplorerCreateFile}
+          onCreateDrawing={handleExplorerCreateDrawing}
+          onCopyRelativePath={handleExplorerCopyRelativePath}
+          onCopyAbsolutePath={handleExplorerCopyAbsolutePath}
+          onOpenInNewTab={handleExplorerOpenInNewTab}
+          onOpenInNewWindow={handleExplorerOpenInNewWindow}
+          onDuplicateFile={handleExplorerDuplicateFile}
+          onRenamePath={handleExplorerRenamePath}
+          onDeleteFile={handleExplorerDeleteFile}
+          onOpenInFinder={handleExplorerOpenInFinder}
           title=""
         />
       </div>
@@ -170,12 +288,13 @@ export default function ThinkingSpaceOrch() {
       <MarkdownDocumentBlock
         key={inlinePath}
         path={inlinePath}
+        initialMode={inlineInitialMode}
         onClose={handleInlineDocumentClose}
         showCloseButton
         className="h-full min-h-0"
       />
     )
-  }, [handleInlineDocumentClose, inlinePath])
+  }, [handleInlineDocumentClose, inlineInitialMode, inlinePath])
 
   return (
     <div
@@ -275,6 +394,17 @@ export default function ThinkingSpaceOrch() {
                 loadEntries={listFolderEntries}
                 selectedPath={inlinePath}
                 onOpenFile={handleDrawerFileOpen}
+                onCreateFolder={handleExplorerCreateFolder}
+                onCreateFile={handleExplorerCreateFile}
+                onCreateDrawing={handleExplorerCreateDrawing}
+                onCopyRelativePath={handleExplorerCopyRelativePath}
+                onCopyAbsolutePath={handleExplorerCopyAbsolutePath}
+                onOpenInNewTab={handleExplorerOpenInNewTab}
+                onOpenInNewWindow={handleExplorerOpenInNewWindow}
+                onDuplicateFile={handleExplorerDuplicateFile}
+                onRenamePath={handleExplorerRenamePath}
+                onDeleteFile={handleExplorerDeleteFile}
+                onOpenInFinder={handleExplorerOpenInFinder}
                 title=""
               />
             </div>

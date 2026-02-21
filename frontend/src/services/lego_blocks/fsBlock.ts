@@ -63,6 +63,7 @@ interface ElectronAPI {
     dryRun?: boolean
   }): Promise<unknown>
   selectVaultFolder(): Promise<string | null>
+  newWindow?(): Promise<void>
   read(vaultRoot: string, relPath: string): Promise<string>
   write(vaultRoot: string, relPath: string, data: string): Promise<void>
   list(vaultRoot: string, relPath: string): Promise<ListedFiles>
@@ -70,6 +71,10 @@ interface ElectronAPI {
   stat(vaultRoot: string, relPath: string): Promise<VaultStat>
   exists(vaultRoot: string, relPath: string): Promise<boolean>
   mkdir(vaultRoot: string, relPath: string): Promise<void>
+  rename?(vaultRoot: string, fromRelPath: string, toRelPath: string): Promise<void>
+  deletePath?(vaultRoot: string, relPath: string, recursive?: boolean): Promise<void>
+  copyPath?(vaultRoot: string, fromRelPath: string, toRelPath: string): Promise<void>
+  revealPath?(vaultRoot: string, relPath: string): Promise<void>
   git(vaultRoot: string, args: string[]): Promise<string>
   excalidrawPluginStatus(vaultRoot: string): Promise<import('./typesBlock').ExcalidrawPluginStatus>
   installLatestExcalidrawPlugin(vaultRoot: string): Promise<import('./typesBlock').ExcalidrawPluginStatus>

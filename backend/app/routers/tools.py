@@ -788,6 +788,15 @@ async def thoughts_section_month(year: int, month: int, sections: str):
 _VAULT_EXCLUDED = EXCLUDED_DIRS
 
 
+def _resolve_vault_target(path: str) -> Path:
+    target = (VAULT_ROOT / path).resolve() if path else VAULT_ROOT.resolve()
+    try:
+        target.relative_to(VAULT_ROOT.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    return target
+
+
 @router.get("/vault/walk")
 async def vault_walk(extensions: str = ".md"):
     """Walk entire vault, return all files with stat info."""
@@ -822,11 +831,7 @@ async def vault_walk(extensions: str = ".md"):
 async def vault_readdir(path: str = ""):
     """List immediate children of a vault directory."""
     import os
-    if path:
-        target = (VAULT_ROOT / path).resolve()
-        target.relative_to(VAULT_ROOT.resolve())
-    else:
-        target = VAULT_ROOT
+    target = _resolve_vault_target(path)
     if not target.is_dir():
         raise HTTPException(status_code=404, detail=f"Not a directory: {path}")
     entries = []
@@ -843,11 +848,7 @@ async def vault_readdir(path: str = ""):
 async def vault_stat(path: str):
     """Stat a single vault file."""
     import os
-    target = (VAULT_ROOT / path).resolve()
-    try:
-        target.relative_to(VAULT_ROOT.resolve())
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid path")
+    target = _resolve_vault_target(path)
     if not target.exists():
         raise HTTPException(status_code=404, detail=f"Not found: {path}")
     st = os.stat(str(target))
@@ -868,11 +869,7 @@ class VaultWriteRequest(BaseModel):
 @router.post("/vault/write")
 async def vault_write(request: VaultWriteRequest):
     """Write a file in the vault."""
-    target = (VAULT_ROOT / request.path).resolve()
-    try:
-        target.relative_to(VAULT_ROOT.resolve())
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid path")
+    target = _resolve_vault_target(request.path)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(request.content, encoding="utf-8")
     return {"success": True, "path": request.path}
@@ -885,10 +882,71 @@ class VaultMkdirRequest(BaseModel):
 @router.post("/vault/mkdir")
 async def vault_mkdir(request: VaultMkdirRequest):
     """Create a directory in the vault."""
-    target = (VAULT_ROOT / request.path).resolve()
-    try:
-        target.relative_to(VAULT_ROOT.resolve())
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid path")
+    target = _resolve_vault_target(request.path)
     target.mkdir(parents=True, exist_ok=True)
     return {"success": True, "path": request.path}
+
+
+class VaultRenameRequest(BaseModel):
+    from_path: str = Field(..., description="Current relative path from vault root")
+    to_path: str = Field(..., description="Target relative path from vault root")
+
+
+@router.post("/vault/rename")
+async def vault_rename(request: VaultRenameRequest):
+    """Rename or move a file/folder in the vault."""
+    source = _resolve_vault_target(request.from_path)
+    target = _resolve_vault_target(request.to_path)
+    if not source.exists():
+        raise HTTPException(status_code=404, detail=f"Not found: {request.from_path}")
+    if target.exists():
+        raise HTTPException(status_code=409, detail=f"Target already exists: {request.to_path}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    source.rename(target)
+    return {"success": True, "from_path": request.from_path, "to_path": request.to_path}
+
+
+class VaultDeleteRequest(BaseModel):
+    path: str = Field(..., description="Relative path from vault root")
+    recursive: bool = Field(default=True, description="Whether recursive deletion is allowed for directories")
+
+
+@router.post("/vault/delete")
+async def vault_delete(request: VaultDeleteRequest):
+    """Delete a file/folder in the vault."""
+    import shutil
+
+    target = _resolve_vault_target(request.path)
+    if not target.exists():
+        raise HTTPException(status_code=404, detail=f"Not found: {request.path}")
+    if target.is_dir():
+        if not request.recursive:
+            raise HTTPException(status_code=400, detail="Directory deletion requires recursive=true")
+        shutil.rmtree(target)
+    else:
+        target.unlink()
+    return {"success": True, "path": request.path}
+
+
+class VaultCopyRequest(BaseModel):
+    from_path: str = Field(..., description="Source relative path from vault root")
+    to_path: str = Field(..., description="Target relative path from vault root")
+
+
+@router.post("/vault/copy")
+async def vault_copy(request: VaultCopyRequest):
+    """Copy a file/folder in the vault."""
+    import shutil
+
+    source = _resolve_vault_target(request.from_path)
+    target = _resolve_vault_target(request.to_path)
+    if not source.exists():
+        raise HTTPException(status_code=404, detail=f"Not found: {request.from_path}")
+    if target.exists():
+        raise HTTPException(status_code=409, detail=f"Target already exists: {request.to_path}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if source.is_dir():
+        shutil.copytree(source, target)
+    else:
+        shutil.copy2(source, target)
+    return {"success": True, "from_path": request.from_path, "to_path": request.to_path}

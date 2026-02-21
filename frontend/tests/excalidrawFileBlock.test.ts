@@ -73,4 +73,61 @@ describe('excalidrawFileBlock serialize', () => {
     expect(parsed).not.toBeNull()
     expect((parsed?.elements[0] as Record<string, unknown>).id).toBe('ellipse-1')
   })
+
+  it('serializes scenes with circular and non-json-safe values without throwing', () => {
+    const original = [
+      '```json',
+      '{"elements":[],"appState":{},"files":{}}',
+      '```',
+      '',
+    ].join('\n')
+
+    const appState: Record<string, unknown> = {
+      viewBackgroundColor: '#ffffff',
+      collaboratorCount: BigInt(2),
+      collaborators: new Set(['alpha', 'beta']),
+      pointer: new Map([['x', 12], ['y', 18]]),
+    }
+    appState.self = appState
+
+    const updated = serializeExcalidrawScene(original, {
+      elements: [],
+      appState,
+      files: {},
+    })
+
+    const parsed = parseExcalidrawScene(updated)
+    expect(parsed).not.toBeNull()
+    expect(parsed?.appState?.viewBackgroundColor).toBe('#ffffff')
+    expect(parsed?.appState?.collaboratorCount).toBe(2)
+    expect((parsed?.appState?.collaborators as unknown[] | undefined)?.length).toBe(2)
+    expect((parsed?.appState?.pointer as Record<string, unknown> | undefined)?.x).toBe(12)
+  })
+
+  it('preserves repeated shared object values while removing only circular refs', () => {
+    const original = [
+      '```json',
+      '{"elements":[],"appState":{},"files":{}}',
+      '```',
+      '',
+    ].join('\n')
+
+    const sharedPoint = { x: 3, y: 7 }
+    const appState: Record<string, unknown> = {
+      first: sharedPoint,
+      second: sharedPoint,
+    }
+    appState.self = appState
+
+    const updated = serializeExcalidrawScene(original, {
+      elements: [],
+      appState,
+      files: {},
+    })
+
+    const parsed = parseExcalidrawScene(updated)
+    expect(parsed).not.toBeNull()
+    expect((parsed?.appState?.first as Record<string, unknown> | undefined)?.x).toBe(3)
+    expect((parsed?.appState?.second as Record<string, unknown> | undefined)?.x).toBe(3)
+  })
 })

@@ -576,6 +576,25 @@ function App() {
     setStorageItem(STORAGE_KEYS.appShellActiveTabId, activeWorkspaceTabId)
   }, [activeWorkspaceTabId])
 
+  useEffect(() => {
+    const onOpenRouteInNewTab = (event: Event) => {
+      const customEvent = event as CustomEvent<string>
+      const route = normalizeTabRoute(customEvent.detail ?? '/thinking-space')
+      const tab: AppWorkspaceTab = {
+        id: createWorkspaceTabId(),
+        route,
+      }
+      setWorkspaceTabs(prev => [...prev, tab])
+      setActiveWorkspaceTabId(tab.id)
+      navigate(route)
+    }
+
+    window.addEventListener('ltm:workspace-open-route-in-new-tab', onOpenRouteInNewTab as EventListener)
+    return () => {
+      window.removeEventListener('ltm:workspace-open-route-in-new-tab', onOpenRouteInNewTab as EventListener)
+    }
+  }, [navigate])
+
   if (needsVaultSetup) {
     return (
       <VaultSetup

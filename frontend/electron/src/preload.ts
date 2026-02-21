@@ -57,6 +57,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('vault:exists', vaultRoot, relPath),
   mkdir: (vaultRoot: string, relPath: string) =>
     ipcRenderer.invoke('vault:mkdir', vaultRoot, relPath),
+  rename: (vaultRoot: string, fromRelPath: string, toRelPath: string) =>
+    ipcRenderer.invoke('vault:rename', vaultRoot, fromRelPath, toRelPath),
+  deletePath: (vaultRoot: string, relPath: string, recursive = true) =>
+    ipcRenderer.invoke('vault:delete', vaultRoot, relPath, recursive),
+  copyPath: (vaultRoot: string, fromRelPath: string, toRelPath: string) =>
+    ipcRenderer.invoke('vault:copy', vaultRoot, fromRelPath, toRelPath),
+  revealPath: (vaultRoot: string, relPath: string) =>
+    ipcRenderer.invoke('vault:reveal', vaultRoot, relPath),
 
   // Git (desktop-only)
   git: (vaultRoot: string, args: string[]) =>
