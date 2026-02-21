@@ -334,7 +334,10 @@ function App() {
   const bottomInset = shell.bottomInset
   const leftInset = shell.leftInset
   const drawerBottomInset = shell.drawerBottomInset
-  const mainBottomPadding = keyboardVisible ? Math.max(0, Math.round(layout.keyboardInset)) : 0
+  const shouldUsePhoneSafeBottomPadding = layout.surface === 'capacitor-ios' && layout.mode === 'phone' && !keyboardVisible
+  const mainBottomPadding = keyboardVisible
+    ? Math.max(0, Math.round(layout.keyboardInset))
+    : (shouldUsePhoneSafeBottomPadding ? Math.max(bottomInset, 14) : 0)
   const commandPaletteTopPadding = Math.max(80, topInset + 56)
   const commandPaletteBottomPadding = Math.max(16, bottomInset + 12)
   const compactDrawerBaseOffset = layout.surface === 'capacitor-ios' ? 24 : 16

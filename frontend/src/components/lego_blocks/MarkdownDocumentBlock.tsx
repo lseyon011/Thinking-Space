@@ -20,6 +20,7 @@ import {
   serializeExcalidrawSceneOrch,
   type ParsedExcalidrawScene,
 } from '@/services/orchestrators/excalidrawSceneOrch'
+import { useUILayoutBlock } from '@/components/lego_blocks/UILayoutBlock'
 import {
   buildObsidianOpenUrlOrch,
   isThinkingSpaceWikilinkHrefOrch,
@@ -109,6 +110,7 @@ function MarkdownDocumentBlock({
   showCloseButton = false,
   className,
 }: MarkdownDocumentBlockProps) {
+  const { layout } = useUILayoutBlock()
   const [mode, setMode] = useState<MarkdownViewerMode>(initialMode)
   const [content, setContent] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -287,6 +289,7 @@ function MarkdownDocumentBlock({
   const hasTextChanges = isEditing && content !== null && draft !== content
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
   const shouldPadViewerContent = !isEditing && !isExcalidrawDoc
+  const showMiniNavRail = layout.mode === 'desktop' && !layout.isCapacitorNative
   const displayContent = useMemo(
     () => (content !== null ? stripFrontmatter(content) : ''),
     [content],
@@ -834,7 +837,7 @@ function MarkdownDocumentBlock({
               content={excalidrawEditorContent}
               editable
               onSceneChange={handleExcalidrawSceneChange}
-              className="h-[72vh]"
+              className="h-[52vh] sm:h-[60vh] lg:h-[72vh]"
             />
             {saveError && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -972,7 +975,7 @@ function MarkdownDocumentBlock({
                 setDraft(`${draftFrontmatter}${next}`)
                 if (assistSuggestion || assistError) clearAssistState()
               }}
-              className="min-h-[62vh]"
+              className="min-h-[44vh] sm:min-h-[52vh] lg:min-h-[62vh]"
             />
 
             {autoSaving && !saving && (
@@ -998,7 +1001,7 @@ function MarkdownDocumentBlock({
 
         </div>
 
-        {!loading && !error && content !== null && !isExcalidrawDoc && !pendingFullRender && (
+        {!loading && !error && content !== null && !isExcalidrawDoc && !pendingFullRender && showMiniNavRail && (
           <MarkdownMiniNavBlock
             content={isEditing ? displayDraft : viewMarkdown}
             container={contentScrollRef.current}

@@ -151,7 +151,7 @@
   }
 
   .ltm-app-shell {
-    @apply h-dvh min-h-dvh flex flex-col overflow-hidden bg-background;
+    @apply h-dvh min-h-dvh flex w-full max-w-full flex-col overflow-hidden bg-background;
     position: relative;
     --ltm-safe-top: env(safe-area-inset-top, 0px);
     --ltm-safe-right: env(safe-area-inset-right, 0px);
@@ -242,13 +242,16 @@
   }
 
   .ltm-shell-layer-base {
-    @apply min-h-0 flex flex-1;
+    @apply min-h-0 min-w-0 flex flex-1 w-full max-w-full;
   }
 
   .ltm-shell-stage {
-    @apply flex min-h-0 flex-1;
+    @apply flex min-h-0 min-w-0 flex-1;
     gap: var(--ltm-shell-gap);
     padding: var(--ltm-shell-inset);
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   .ltm-shell-main-stage {
@@ -263,6 +266,7 @@
 
   .ltm-shell-top-chrome {
     @apply flex shrink-0 items-center justify-center;
+    min-width: 0;
     padding-inline: clamp(0.08rem, 0.55vw, 0.35rem);
   }
 
@@ -272,11 +276,13 @@
   }
 
   .ltm-shell-content-stage {
-    @apply min-h-0 flex-1 overflow-hidden;
+    @apply min-h-0 min-w-0 flex-1 overflow-hidden;
     border: 1px solid var(--ltm-shell-surface-border);
     border-radius: var(--ltm-shell-main-panel-radius);
     background: var(--ltm-shell-stage-bg);
     box-shadow: var(--ltm-shell-surface-shadow);
+    width: 100%;
+    max-width: 100%;
   }
 
   .ltm-shell-nav-surface,
@@ -513,6 +519,7 @@
 
   .ltm-shell-tabs {
     @apply flex w-full items-center justify-center;
+    min-width: 0;
     padding-block: 0.1rem;
     background: transparent;
     border: 0;
@@ -629,15 +636,35 @@
       box-shadow: none;
       background: transparent;
     }
+
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-shell-stage {
+      /* Let the content panel reach lower into the viewport; content inset is handled by main padding. */
+      padding-bottom: var(--ltm-shell-inset);
+    }
+
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-shell-content-stage {
+      /* No direct Web API exposes hardware corner radius; infer from safe-area insets. */
+      --ltm-ios-corner-hint: max(var(--ltm-safe-bottom), var(--ltm-safe-left), var(--ltm-safe-right));
+      --ltm-ios-bottom-corner-radius: clamp(1.05rem, calc(0.82rem + (var(--ltm-ios-corner-hint) * 0.42)), 2rem);
+      border-bottom-left-radius: var(--ltm-ios-bottom-corner-radius);
+      border-bottom-right-radius: var(--ltm-ios-bottom-corner-radius);
+    }
+
+    .ltm-page {
+      min-height: 100%;
+    }
   }
 
   .ltm-app-main {
-    @apply flex-1 min-h-0 overflow-y-auto;
+    @apply flex-1 min-h-0 min-w-0 overflow-y-auto;
+    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
 
   .ltm-page {
+    width: 100%;
+    max-width: 100%;
     min-height: calc(100dvh - 3.5rem);
   }
 
@@ -656,7 +683,7 @@
   }
 
   .ltm-page-shell {
-    @apply mx-auto w-full px-3 py-4 sm:px-4 sm:py-6 md:px-6 md:py-7;
+    @apply mx-auto min-w-0 w-full px-3 py-4 sm:px-4 sm:py-6 md:px-6 md:py-7;
   }
 
   .ltm-shell-narrow {

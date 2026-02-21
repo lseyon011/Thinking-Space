@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useUILayoutBlock } from '@/components/lego_blocks/UILayoutBlock'
 import type { ParsedExcalidrawScene } from '@/services/orchestrators/excalidrawSceneOrch'
 import {
   parseExcalidrawSceneOrch,
@@ -89,6 +90,7 @@ const PERF_EVENTS_LIMIT = 400
 const VIEW_ANALYSIS_TIMEOUT_MS = 180
 const PARSED_SCENE_CACHE_MAX_ENTRIES = 4
 const MINIMAP_MAX_RECTS = 400
+const COMPACT_VIEW_MIN_ZOOM = 0.22
 
 const EMPTY_SCENE_ANALYSIS: SceneAnalysis = {
   sceneBounds: null,
@@ -365,6 +367,8 @@ export default function ExcalidrawDocumentBlock({
   onSceneChange,
   className,
 }: ExcalidrawDocumentBlockProps) {
+  const { layout } = useUILayoutBlock()
+  const isCompactLayout = layout.mode !== 'desktop'
   const debugEnabled = editable
     && (globalThis as { __ltmExcalidrawDebugEnabled?: unknown }).__ltmExcalidrawDebugEnabled === true
   const parseDurationMsRef = useRef(0)
@@ -983,6 +987,31 @@ export default function ExcalidrawDocumentBlock({
     return () => ro.disconnect()
   }, [debugLog, editable, excalidrawApi, scheduleAutoCenter])
 
+  useEffect(() => {
+    if (editable || !isCompactLayout || !excalidrawApi) return
+    if (containerSize.width <= 8 || containerSize.height <= 8) return
+    const viewport = excalidrawApi.getViewportStateBlock()
+    const currentZoom = Number.isFinite(viewport.zoom) ? Math.max(viewport.zoom, 0.01) : 1
+    if (currentZoom >= COMPACT_VIEW_MIN_ZOOM) return
+
+    const { viewportWorldW, viewportWorldH } = resolveViewportWorldSize({
+      excalidrawApi,
+      zoom: currentZoom,
+      fallbackWidth: containerSize.width,
+      fallbackHeight: containerSize.height,
+    })
+    const centerX = -viewport.scrollX + viewportWorldW / 2
+    const centerY = -viewport.scrollY + viewportWorldH / 2
+    const targetWorldW = containerSize.width / COMPACT_VIEW_MIN_ZOOM
+    const targetWorldH = containerSize.height / COMPACT_VIEW_MIN_ZOOM
+
+    excalidrawApi.updateViewportBlock({
+      zoom: COMPACT_VIEW_MIN_ZOOM,
+      scrollX: -centerX + targetWorldW / 2,
+      scrollY: -centerY + targetWorldH / 2,
+    })
+  }, [containerSize.height, containerSize.width, editable, excalidrawApi, isCompactLayout])
+
   if (!initialData) {
     debugLog('initial_data_missing')
     return (
@@ -993,7 +1022,7 @@ export default function ExcalidrawDocumentBlock({
   }
 
   return (
-    <div ref={containerRef} className={cn('relative h-full min-h-[60vh] overflow-hidden', className)}>
+    <div ref={containerRef} className={cn('relative h-full min-h-0 overflow-hidden', className)}>
       <Suspense fallback={<div className="px-4 py-3 text-sm text-muted-foreground">Loading Excalidraw canvas...</div>}>
         <ExcalidrawCanvas
           excalidrawAPI={(api: unknown) => setExcalidrawApi(createExcalidrawCanvasApiOrch(api))}
@@ -1056,7 +1085,7 @@ export default function ExcalidrawDocumentBlock({
         </div>
       )}
 
-      {miniMapBounds && (
+      {miniMapBounds && !isCompactLayout && (
         <button
           type="button"
           className="fixed bottom-4 right-4 z-30 rounded-lg border border-border/70 bg-background/90 p-1 shadow-sm backdrop-blur"
