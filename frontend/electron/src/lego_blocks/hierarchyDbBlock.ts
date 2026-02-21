@@ -5,6 +5,10 @@ import { spawnSync } from 'child_process'
 import { HIERARCHY_MIGRATIONS_BLOCK } from './hierarchySchemaBlock'
 
 const MIGRATIONS_TABLE_BLOCK = 'schema_migrations'
+const STORAGE_DIR_BLOCK = '.think-space'
+const LEGACY_STORAGE_DIR_BLOCK = '.ltm-pilot'
+const DB_FILENAME_BLOCK = 'ltm.db'
+const CONTENT_PREFIX_BLOCK = '.think-space/thinking_organizer'
 
 export interface HierarchyDbStatusBlock {
   db_path: string
@@ -25,8 +29,44 @@ function assertInsideVaultBlock(vaultRoot: string, targetRelativePath: string): 
   return resolved
 }
 
+function migrateLegacyStorageDirBlock(vaultRoot: string): void {
+  const legacyDir = assertInsideVaultBlock(vaultRoot, LEGACY_STORAGE_DIR_BLOCK)
+  const currentDir = assertInsideVaultBlock(vaultRoot, STORAGE_DIR_BLOCK)
+
+  if (!fs.existsSync(legacyDir)) return
+  if (!fs.existsSync(currentDir)) {
+    fs.renameSync(legacyDir, currentDir)
+    return
+  }
+
+  const migrateEntries = [
+    DB_FILENAME_BLOCK,
+    `${DB_FILENAME_BLOCK}-wal`,
+    `${DB_FILENAME_BLOCK}-shm`,
+    'thinking_organizer',
+    'audit',
+    'revisions',
+    'archive',
+  ]
+  for (const entry of migrateEntries) {
+    const fromPath = path.join(legacyDir, entry)
+    const toPath = path.join(currentDir, entry)
+    if (!fs.existsSync(fromPath) || fs.existsSync(toPath)) continue
+    fs.mkdirSync(path.dirname(toPath), { recursive: true })
+    fs.renameSync(fromPath, toPath)
+  }
+
+  try {
+    if (fs.readdirSync(legacyDir).length === 0) {
+      fs.rmdirSync(legacyDir)
+    }
+  } catch {
+    // Best-effort cleanup only.
+  }
+}
+
 export function resolveHierarchyDbPathBlock(vaultRoot: string): string {
-  return assertInsideVaultBlock(vaultRoot, path.join('.ltm-pilot', 'ltm.db'))
+  return assertInsideVaultBlock(vaultRoot, path.join(STORAGE_DIR_BLOCK, DB_FILENAME_BLOCK))
 }
 
 export function runSqliteExecBlock(dbPath: string, sql: string): void {
@@ -95,8 +135,6 @@ COMMIT;
   return readAppliedMigrationsBlock(dbPath)
 }
 
-const CONTENT_PREFIX_BLOCK = '.ltm-pilot/thinking_organizer'
-
 function migrateFilesToThinkingOrganizerBlock(vaultRoot: string, dbPath: string): void {
   const rows = runSqliteJsonQueryBlock<{ file_path: string }>(
     dbPath,
@@ -116,6 +154,7 @@ function migrateFilesToThinkingOrganizerBlock(vaultRoot: string, dbPath: string)
 }
 
 export function initHierarchyDbBlock(vaultRoot: string): HierarchyDbStatusBlock {
+  migrateLegacyStorageDirBlock(vaultRoot)
   const dbPath = resolveHierarchyDbPathBlock(vaultRoot)
   fs.mkdirSync(path.dirname(dbPath), { recursive: true })
   const appliedBefore = new Set(
@@ -143,6 +182,7 @@ export function ensureHierarchyDbInitializedBlock(vaultRoot: string): string {
 }
 
 export function getHierarchyDbStatusBlock(vaultRoot: string): HierarchyDbStatusBlock {
+  migrateLegacyStorageDirBlock(vaultRoot)
   const dbPath = resolveHierarchyDbPathBlock(vaultRoot)
   if (!fs.existsSync(dbPath)) {
     return {

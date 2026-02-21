@@ -297,7 +297,7 @@ function fetchBuffer(url: string, headers: Record<string, string> = {}, redirect
       url,
       {
         headers: {
-          'User-Agent': 'ltm-pilot-electron',
+          'User-Agent': 'think-space-electron',
           ...headers,
         },
       },

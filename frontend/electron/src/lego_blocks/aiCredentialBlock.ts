@@ -323,7 +323,7 @@ export function chatCodexWithOauthBlock(
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
-          'User-Agent': 'ltm-pilot-electron',
+          'User-Agent': 'think-space-electron',
           ...(accountId ? { 'ChatGPT-Account-Id': accountId } : {}),
           'Content-Length': Buffer.byteLength(body),
         },

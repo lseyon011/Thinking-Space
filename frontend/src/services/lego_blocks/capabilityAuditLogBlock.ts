@@ -19,7 +19,7 @@ export interface CapabilityAuditEntry {
   errorMessage?: string
 }
 
-const AUDIT_DIR = '.ltm-pilot/audit'
+const AUDIT_DIR = '.think-space/audit'
 const AUDIT_FILE = `${AUDIT_DIR}/capability-audit.log`
 
 export async function writeCapabilityAuditEntry(
@@ -70,7 +70,7 @@ function hashString(value: string): string {
 
 async function ensureAuditDir(fs: VaultFS): Promise<void> {
   try {
-    await fs.mkdir('.ltm-pilot')
+    await fs.mkdir('.think-space')
   } catch {
     // Directory likely exists.
   }

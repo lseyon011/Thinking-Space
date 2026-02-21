@@ -44,7 +44,7 @@ Execution source of truth:
 - `frontend/src/services/orchestrators/capabilityRouterOrch.ts`
 
 Audit + safety requirements:
-- Every invocation attempts to write audit entry under `.ltm-pilot/audit/capability-audit.log`.
+- Every invocation attempts to write audit entry under `.think-space/audit/capability-audit.log`.
 - Policy checks run before execution (payload size + optional node-type/project-root restrictions + agent write controls).
 - Destructive dry-run support is required for:
   - `organizer.node.move`

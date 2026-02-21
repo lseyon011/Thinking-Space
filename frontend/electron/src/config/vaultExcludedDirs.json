@@ -3,7 +3,7 @@
   "node_modules",
   "__pycache__",
   ".venv",
-  "ltm-pilot",
+  "think-space",
   ".git",
   ".trash"
 ]

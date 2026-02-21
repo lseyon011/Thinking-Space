@@ -19,7 +19,7 @@ def _load_excluded_dirs() -> frozenset[str]:
     except Exception:
         pass
     # Safe fallback if shared config is missing/unreadable.
-    return frozenset({".obsidian", "node_modules", "__pycache__", ".venv", "ltm-pilot", ".git", ".trash"})
+    return frozenset({".obsidian", "node_modules", "__pycache__", ".venv", "think-space", ".git", ".trash"})
 
 
 EXCLUDED_DIRS: Final[frozenset[str]] = _load_excluded_dirs()

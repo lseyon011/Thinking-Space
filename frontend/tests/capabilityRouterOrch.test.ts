@@ -573,7 +573,7 @@ describe('capabilityRouterOrch', () => {
       actor: ACTOR,
     }, { fs })
 
-    const log = await fs.read('.ltm-pilot/audit/capability-audit.log')
+    const log = await fs.read('.think-space/audit/capability-audit.log')
     const lines = log.split('\n').filter(Boolean)
     expect(lines.length).toBeGreaterThan(0)
 

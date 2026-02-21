@@ -87,11 +87,11 @@ CREATE INDEX IF NOT EXISTS idx_revisions_created_at ON revisions(created_at);
   {
     migrationId: '0002_move_content_to_thinking_organizer',
     sql: `
-UPDATE nodes SET file_path = '.ltm-pilot/thinking_organizer/' || file_path
-WHERE file_path NOT LIKE '.ltm-pilot/thinking_organizer/%';
+UPDATE nodes SET file_path = '.think-space/thinking_organizer/' || file_path
+WHERE file_path NOT LIKE '.think-space/thinking_organizer/%';
 
-UPDATE path_aliases SET alias_path = '.ltm-pilot/thinking_organizer/' || alias_path
-WHERE alias_path NOT LIKE '.ltm-pilot/%';
+UPDATE path_aliases SET alias_path = '.think-space/thinking_organizer/' || alias_path
+WHERE alias_path NOT LIKE '.think-space/%';
 `.trim(),
   },
   {
@@ -108,6 +108,22 @@ END
 WHERE node_kind = '';
 
 CREATE INDEX IF NOT EXISTS idx_nodes_node_kind ON nodes(node_kind);
+`.trim(),
+  },
+  {
+    migrationId: '0004_rename_hidden_storage_dir_to_think_space',
+    sql: `
+UPDATE nodes
+SET file_path = REPLACE(file_path, '.ltm-pilot/', '.think-space/')
+WHERE file_path LIKE '.ltm-pilot/%';
+
+UPDATE path_aliases
+SET alias_path = REPLACE(alias_path, '.ltm-pilot/', '.think-space/')
+WHERE alias_path LIKE '.ltm-pilot/%';
+
+UPDATE revisions
+SET revision_path = REPLACE(revision_path, '.ltm-pilot/', '.think-space/')
+WHERE revision_path LIKE '.ltm-pilot/%';
 `.trim(),
   },
 ]

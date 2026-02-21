@@ -9,12 +9,10 @@ import { isElectron, isCapacitorNative } from './services/orchestrators/runtimeO
 import './index.css'
 
 // Electron and Capacitor use HashRouter (no server to handle routes).
-// Web uses BrowserRouter with /thinking-space. Keep /ltm-pilot support for legacy links.
+// Web uses BrowserRouter with /thinking-space.
 const isLocalApp = isElectron() || isCapacitorNative()
 const Router = isLocalApp ? HashRouter : BrowserRouter
-const webBasename = window.location.pathname.startsWith('/ltm-pilot')
-  ? '/ltm-pilot'
-  : '/thinking-space'
+const webBasename = '/thinking-space'
 const routerProps = isLocalApp ? {} : { basename: webBasename }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

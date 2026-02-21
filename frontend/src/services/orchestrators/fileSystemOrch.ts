@@ -410,7 +410,7 @@ export function buildThinkingSpaceFileUrlOrch(path: string): string {
     const base = window.location.href.split('#')[0]
     return `${base}#${route}`
   }
-  const basePath = window.location.pathname.startsWith('/ltm-pilot') ? '/ltm-pilot' : '/thinking-space'
+  const basePath = '/thinking-space'
   return `${window.location.origin}${basePath}?file=${encodedPath}`
 }
 

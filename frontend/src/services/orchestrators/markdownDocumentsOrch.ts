@@ -32,7 +32,7 @@ function buildRevisionPath(filePath: string): string {
     .replace(/\\/g, '__')
     .replace(/ /g, '_')
 
-  return `.ltm-pilot/revisions/${day}/${time}--${safePath}`
+  return `.think-space/revisions/${day}/${time}--${safePath}`
 }
 
 export class MarkdownDocumentConflictError extends Error {

@@ -74,7 +74,7 @@ Add and use these capabilities:
 
 All write capabilities must:
 - pass through `capabilityRouterOrch`
-- be audit logged in `.ltm-pilot/audit/capability-audit.log` (legacy path retained for compatibility)
+- be audit logged in `.think-space/audit/capability-audit.log`
 - pass capability policy checks
 
 ### 3.1) Tool Usage Pattern (Mandatory)

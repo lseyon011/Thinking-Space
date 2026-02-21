@@ -85,7 +85,7 @@ cmd_start() {
     export PATH="$PYENV_ROOT/bin:$PATH"
     eval "$(pyenv init -)" 2>/dev/null || true
     eval "$(pyenv virtualenv-init -)" 2>/dev/null || true
-    pyenv activate ltmpilot_venv 2>/dev/null || true
+    pyenv activate thinkspace_venv 2>/dev/null || true
 
     uvicorn app.main:app --reload --port 8000 \
       > "$LOG_DIR/backend.log" 2>&1 &

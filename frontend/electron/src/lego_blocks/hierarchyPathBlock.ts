@@ -58,7 +58,7 @@ export function copyAndArchivePathTransitionBlock(params: {
   const ms = String(now.getUTCMilliseconds()).padStart(3, '0')
 
   const archiveRel = path.join(
-    '.ltm-pilot',
+    '.think-space',
     'archive',
     `${y}-${m}-${d}`,
     `${hh}${mm}${ss}-${ms}`,
