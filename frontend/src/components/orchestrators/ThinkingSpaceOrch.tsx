@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PanelLeft, PanelLeftClose, Sparkles, FileText } from 'lucide-react'
 import VaultExplorerBlock from '@/components/lego_blocks/VaultExplorerBlock'
@@ -122,7 +122,7 @@ export default function ThinkingSpaceOrch() {
     })
   }, [mountedInlinePaths])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (inlinePathFromUrl === inlinePath) return
     setInlinePath(inlinePathFromUrl)
     if (inlinePathFromUrl) {
@@ -135,21 +135,31 @@ export default function ThinkingSpaceOrch() {
       rememberMountedInlinePath(path, mode)
     }
     setInlinePath(path)
-    const current = searchParams.get(FILE_QUERY_PARAM)?.trim() || null
-    if (current === path) return
-    const next = new URLSearchParams(searchParams)
-    if (path) {
-      next.set(FILE_QUERY_PARAM, path)
-    } else {
-      next.delete(FILE_QUERY_PARAM)
-    }
-    setSearchParams(next, { replace: true })
-  }, [rememberMountedInlinePath, searchParams, setSearchParams])
+    setSearchParams((prev) => {
+      const current = prev.get(FILE_QUERY_PARAM)?.trim() || null
+      if (current === path) return prev
+      const next = new URLSearchParams(prev)
+      if (path) {
+        next.set(FILE_QUERY_PARAM, path)
+      } else {
+        next.delete(FILE_QUERY_PARAM)
+      }
+      return next
+    }, { replace: true })
+  }, [rememberMountedInlinePath, setSearchParams])
 
   const handleInlineDocumentClose = useCallback(() => {
     setInlinePathAndSyncUrl(null)
     setMountedInlinePaths([])
     setInlineInitialModeByPath({})
+  }, [setInlinePathAndSyncUrl])
+
+  const handleInlineOpenPath = useCallback((nextPath: string) => {
+    setInlinePathAndSyncUrl(nextPath)
+  }, [setInlinePathAndSyncUrl])
+
+  const handleInlineOpenPathForEdit = useCallback((nextPath: string) => {
+    setInlinePathAndSyncUrl(nextPath, 'edit')
   }, [setInlinePathAndSyncUrl])
 
   const handleDrawerFileOpen = useCallback((path: string) => {
@@ -373,15 +383,22 @@ export default function ThinkingSpaceOrch() {
         <MarkdownDocumentBlock
           path={path}
           initialMode={inlineInitialModeByPath[path] ?? 'view'}
-          onOpenPath={(nextPath) => setInlinePathAndSyncUrl(nextPath)}
-          onOpenPathForEdit={(nextPath) => setInlinePathAndSyncUrl(nextPath, 'edit')}
+          onOpenPath={handleInlineOpenPath}
+          onOpenPathForEdit={handleInlineOpenPathForEdit}
           onClose={handleInlineDocumentClose}
           showCloseButton
           className="h-full min-h-0"
         />
       </section>
     ))
-  }, [handleInlineDocumentClose, inlineInitialModeByPath, inlinePath, mountedInlinePaths, setInlinePathAndSyncUrl])
+  }, [
+    handleInlineDocumentClose,
+    handleInlineOpenPath,
+    handleInlineOpenPathForEdit,
+    inlineInitialModeByPath,
+    inlinePath,
+    mountedInlinePaths,
+  ])
 
   return (
     <div

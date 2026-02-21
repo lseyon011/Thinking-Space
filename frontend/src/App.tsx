@@ -1,5 +1,5 @@
 import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from 'react'
 import {
   Bot,
   CheckSquare2,
@@ -195,6 +195,7 @@ function App() {
   const [commandFileItems, setCommandFileItems] = useState<CommandItem[]>([])
   const [commandFilesLastLoadedAt, setCommandFilesLastLoadedAt] = useState(0)
   const commandInputRef = useRef<HTMLInputElement | null>(null)
+  const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
   const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerPanelSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const [needsVaultSetup, setNeedsVaultSetup] = useState(() => {
@@ -384,23 +385,31 @@ function App() {
       id: createWorkspaceTabId(),
       route: '/thinking-space',
     }
+    pendingWorkspaceTabNavigationRef.current = { tabId: tab.id, route: tab.route }
     setWorkspaceTabs(prev => [...prev, tab])
     setActiveWorkspaceTabId(tab.id)
-    navigate(tab.route)
-  }, [navigate])
+  }, [])
 
   const handleSelectWorkspaceTab = useCallback((tabId: string) => {
     if (tabId === activeWorkspaceTabId) return
     const target = workspaceTabs.find(tab => tab.id === tabId)
     if (!target) return
-    setActiveWorkspaceTabId(tabId)
     if (target.route !== currentRoute) {
-      navigate(target.route)
+      pendingWorkspaceTabNavigationRef.current = {
+        tabId,
+        route: normalizeTabRoute(target.route),
+      }
+    } else if (pendingWorkspaceTabNavigationRef.current?.tabId === tabId) {
+      pendingWorkspaceTabNavigationRef.current = null
     }
-  }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
+    setActiveWorkspaceTabId(tabId)
+  }, [activeWorkspaceTabId, currentRoute, workspaceTabs])
 
   const handleCloseWorkspaceTab = useCallback((tabId: string) => {
     if (workspaceTabs.length <= 1) return
+    if (pendingWorkspaceTabNavigationRef.current?.tabId === tabId) {
+      pendingWorkspaceTabNavigationRef.current = null
+    }
     const closeIndex = workspaceTabs.findIndex(tab => tab.id === tabId)
     if (closeIndex === -1) return
     const nextTabs = workspaceTabs.filter(tab => tab.id !== tabId)
@@ -410,9 +419,12 @@ function App() {
     if (!nextActive) return
     setActiveWorkspaceTabId(nextActive.id)
     if (nextActive.route !== currentRoute) {
-      navigate(nextActive.route)
+      pendingWorkspaceTabNavigationRef.current = {
+        tabId: nextActive.id,
+        route: normalizeTabRoute(nextActive.route),
+      }
     }
-  }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
+  }, [activeWorkspaceTabId, currentRoute, workspaceTabs])
 
   const handleDrawerTouchStart = useCallback((event: React.TouchEvent<HTMLElement>) => {
     const touch = event.touches[0]
@@ -625,13 +637,39 @@ function App() {
     setWorkspaceTabs((prev) => {
       const index = prev.findIndex(tab => tab.id === activeWorkspaceTabId)
       if (index === -1) return prev
+      const pending = pendingWorkspaceTabNavigationRef.current
       const normalizedCurrentRoute = normalizeTabRoute(currentRoute)
+      if (
+        pending
+        && pending.tabId === activeWorkspaceTabId
+        && normalizedCurrentRoute !== pending.route
+      ) {
+        return prev
+      }
       if (prev[index].route === normalizedCurrentRoute) return prev
       const next = prev.slice()
       next[index] = { ...next[index], route: normalizedCurrentRoute }
       return next
     })
   }, [activeWorkspaceTabId, currentRoute])
+
+  useLayoutEffect(() => {
+    const pending = pendingWorkspaceTabNavigationRef.current
+    if (!pending) return
+    if (activeWorkspaceTabId !== pending.tabId) return
+    if (!workspaceTabs.some(tab => tab.id === pending.tabId)) {
+      pendingWorkspaceTabNavigationRef.current = null
+      return
+    }
+
+    const normalizedCurrentRoute = normalizeTabRoute(currentRoute)
+    if (normalizedCurrentRoute !== pending.route) {
+      navigate(pending.route)
+      return
+    }
+
+    pendingWorkspaceTabNavigationRef.current = null
+  }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
 
   useEffect(() => {
     setJsonStorageItem(STORAGE_KEYS.appShellTabs, workspaceTabs)
@@ -650,16 +688,16 @@ function App() {
         id: createWorkspaceTabId(),
         route,
       }
+      pendingWorkspaceTabNavigationRef.current = { tabId: tab.id, route }
       setWorkspaceTabs(prev => [...prev, tab])
       setActiveWorkspaceTabId(tab.id)
-      navigate(route)
     }
 
     window.addEventListener('ltm:workspace-open-route-in-new-tab', onOpenRouteInNewTab as EventListener)
     return () => {
       window.removeEventListener('ltm:workspace-open-route-in-new-tab', onOpenRouteInNewTab as EventListener)
     }
-  }, [navigate])
+  }, [])
 
   if (needsVaultSetup) {
     return (

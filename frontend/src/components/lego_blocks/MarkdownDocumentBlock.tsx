@@ -27,6 +27,7 @@ import {
   remarkObsidianWikilinksOrch,
   resolveWikilinkTargetOrch,
 } from '@/services/orchestrators/obsidianLinkOrch'
+import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/ExcalidrawDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/MarkdownMiniNavBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/MarkdownRichEditorBlock'
@@ -35,6 +36,7 @@ import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/AiAssistRuntim
 import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBlock'
 import AiAssistReviewBlock from '@/components/lego_blocks/AiAssistReviewBlock'
 import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/aiBlock'
+import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/markdownUrlTransformBlock'
 
 export type MarkdownViewerMode = 'view' | 'edit'
 
@@ -318,6 +320,7 @@ function MarkdownDocumentBlock({
         }
         event.preventDefault()
         setNavigationError(null)
+        const openInNewTab = event.metaKey || event.ctrlKey
 
         const parsed = parseThinkingSpaceWikilinkHrefOrch(href)
         if (!parsed) {
@@ -338,6 +341,12 @@ function MarkdownDocumentBlock({
             }
 
             if (resolved.path === path) return
+            if (openInNewTab) {
+              openFileInNewTabOrch(resolved.path)
+              setNavigationError(null)
+              return
+            }
+
             if (!openLinkedPath) {
               setNavigationError('Linked file navigation is unavailable in this view.')
               return
@@ -798,7 +807,11 @@ function MarkdownDocumentBlock({
                 </div>
               )}
               <div className="prose" data-markdown-nav-root>
-                <ReactMarkdown remarkPlugins={markdownRemarkPlugins} components={markdownComponents}>
+                <ReactMarkdown
+                  remarkPlugins={markdownRemarkPlugins}
+                  components={markdownComponents}
+                  urlTransform={thinkingSpaceMarkdownUrlTransformBlock}
+                >
                   {viewMarkdown}
                 </ReactMarkdown>
               </div>
