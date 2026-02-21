@@ -210,6 +210,7 @@ function MarkdownDocumentBlock({
   }, [excalidrawImmersive])
 
   useEffect(() => {
+    if (isExcalidrawDoc) return
     const chromeContainer = chromeContainerRef.current
     const scroller = contentScrollRef.current
     if (!chromeContainer || !scroller) return
@@ -278,7 +279,7 @@ function MarkdownDocumentBlock({
       scroller.removeEventListener('touchstart', onTouchStart)
       scroller.removeEventListener('touchmove', onTouchMove)
     }
-  }, [content, mode, path])
+  }, [content, isExcalidrawDoc, mode, path])
 
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
@@ -776,7 +777,10 @@ function MarkdownDocumentBlock({
       <div className="relative min-h-0 flex-1">
         <div
           ref={contentScrollRef}
-          className="relative h-full min-h-0 overflow-y-auto p-0"
+          className={cn(
+            'relative h-full min-h-0 p-0',
+            isExcalidrawDoc ? 'overflow-hidden' : 'overflow-y-auto',
+          )}
         >
           {loading && (
             <div className={cn('space-y-3', shouldPadViewerContent && 'px-6 py-5')}>

@@ -10,6 +10,8 @@ const config: CapacitorConfig = {
   ios: {
     scheme: 'Thinking Space',
     contentInset: 'automatic',
+    scrollEnabled: false,
+    allowsLinkPreview: false,
   },
 };
 

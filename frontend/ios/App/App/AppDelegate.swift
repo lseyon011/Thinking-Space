@@ -60,6 +60,9 @@ class LTMBridgeViewController: CAPBridgeViewController {
         if #available(iOS 11.0, *) {
             nativeWebView.scrollView.contentInsetAdjustmentBehavior = .automatic
         }
+        nativeWebView.scrollView.bounces = false
+        nativeWebView.scrollView.alwaysBounceVertical = false
+        nativeWebView.scrollView.alwaysBounceHorizontal = false
     }
 }
 

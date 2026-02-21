@@ -22,6 +22,10 @@
     --input: var(--ltm-theme-border-hsl, 0 0% 90%);
     --ring: var(--ltm-theme-ring-hsl, 0 0% 9%);
     --radius: var(--ltm-theme-radius, 0.75rem);
+    --safe-area-inset-top: env(safe-area-inset-top, 0px);
+    --safe-area-inset-right: env(safe-area-inset-right, 0px);
+    --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-inset-left: env(safe-area-inset-left, 0px);
   }
 
   .dark {
@@ -153,10 +157,10 @@
   .ltm-app-shell {
     @apply h-dvh min-h-dvh flex w-full max-w-full flex-col overflow-hidden bg-background;
     position: relative;
-    --ltm-safe-top: env(safe-area-inset-top, 0px);
-    --ltm-safe-right: env(safe-area-inset-right, 0px);
-    --ltm-safe-bottom: env(safe-area-inset-bottom, 0px);
-    --ltm-safe-left: env(safe-area-inset-left, 0px);
+    --ltm-safe-top: var(--safe-area-inset-top);
+    --ltm-safe-right: var(--safe-area-inset-right);
+    --ltm-safe-bottom: var(--safe-area-inset-bottom);
+    --ltm-safe-left: var(--safe-area-inset-left);
     --ltm-shell-inset: clamp(0.22rem, 0.58vw, 0.5rem);
     --ltm-shell-gap: clamp(0.5rem, 0.9vw, 0.85rem);
     --ltm-shell-surface-radius: calc(var(--radius) + 0.45rem);
@@ -835,19 +839,19 @@
   }
 
   .safe-top {
-    padding-top: env(safe-area-inset-top, 0px);
+    padding-top: var(--safe-area-inset-top);
   }
 
   .safe-right {
-    padding-right: env(safe-area-inset-right, 0px);
+    padding-right: var(--safe-area-inset-right);
   }
 
   .safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: var(--safe-area-inset-bottom);
   }
 
   .safe-left {
-    padding-left: env(safe-area-inset-left, 0px);
+    padding-left: var(--safe-area-inset-left);
   }
 
   .ltm-motion-fast {

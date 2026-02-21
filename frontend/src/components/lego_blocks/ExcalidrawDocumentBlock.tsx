@@ -383,7 +383,8 @@ export default function ExcalidrawDocumentBlock({
   className,
 }: ExcalidrawDocumentBlockProps) {
   const { layout } = useUILayoutBlock()
-  const isCompactLayout = layout.mode !== 'desktop'
+  const isIosSurface = layout.surface === 'capacitor-ios'
+  const isCompactLayout = layout.mode === 'phone'
   const debugEnabled = editable
     && (globalThis as { __ltmExcalidrawDebugEnabled?: unknown }).__ltmExcalidrawDebugEnabled === true
   const parseDurationMsRef = useRef(0)
@@ -554,6 +555,7 @@ export default function ExcalidrawDocumentBlock({
 
     return rects
   }, [elementsForMiniMap, miniMapBounds])
+  const showMiniMap = miniMapBounds !== null && (!isCompactLayout || isIosSurface)
 
   const uiOptions = useMemo(() => {
     if (editable) {
@@ -1019,6 +1021,16 @@ export default function ExcalidrawDocumentBlock({
         autoCenterRequestedRef.current = true
         scheduleAutoCenter('api_ready_pending_analysis')
       }
+    } else if (!hasAutoCenteredRef.current) {
+      const elements = excalidrawApi.getSceneElementsBlock()
+      if (elements.length > 0) {
+        try {
+          excalidrawApi.fitViewportToContentBlock(elements)
+          hasAutoCenteredRef.current = true
+        } catch {
+          // Keep readonly rendering intact even if viewport fitting fails.
+        }
+      }
     }
 
     const unsubscribe = trackViewport
@@ -1236,10 +1248,11 @@ export default function ExcalidrawDocumentBlock({
         </div>
       )}
 
-      {miniMapBounds && !isCompactLayout && (
+      {showMiniMap && (
         <button
           type="button"
-          className="fixed bottom-4 right-4 z-30 rounded-lg border border-border/70 bg-background/90 p-1 shadow-sm backdrop-blur"
+          className="absolute right-3 z-30 rounded-lg border border-border/70 bg-background/90 p-1 shadow-sm backdrop-blur"
+          style={{ bottom: isIosSurface ? 'calc(var(--ltm-safe-bottom, 0px) + 0.5rem)' : '0.75rem' }}
           title="Mini map"
         >
           <svg
