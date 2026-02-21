@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PanelLeft, PanelLeftClose, Sparkles, FileText } from 'lucide-react'
 import VaultExplorerBlock from '@/components/lego_blocks/VaultExplorerBlock'
@@ -122,7 +122,7 @@ export default function ThinkingSpaceOrch() {
     })
   }, [mountedInlinePaths])
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (inlinePathFromUrl === inlinePath) return
     setInlinePath(inlinePathFromUrl)
     if (inlinePathFromUrl) {
