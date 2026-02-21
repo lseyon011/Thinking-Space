@@ -58,11 +58,8 @@ class LTMBridgeViewController: CAPBridgeViewController {
         nativeWebView.scrollView.backgroundColor = shellBackgroundColor
 
         if #available(iOS 11.0, *) {
-            nativeWebView.scrollView.contentInsetAdjustmentBehavior = .never
+            nativeWebView.scrollView.contentInsetAdjustmentBehavior = .automatic
         }
-
-        nativeWebView.scrollView.contentInset = .zero
-        nativeWebView.scrollView.scrollIndicatorInsets = .zero
     }
 }
 

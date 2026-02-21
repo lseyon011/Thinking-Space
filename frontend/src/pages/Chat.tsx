@@ -5,7 +5,7 @@ import ChatOrch from '@/components/orchestrators/ChatOrch'
 export default function Chat() {
   return (
     <div className="ltm-page">
-      <div className="ltm-page-shell ltm-shell-wide flex h-[calc(100vh-3.5rem)] flex-col">
+      <div className="ltm-page-shell ltm-shell-wide flex h-[calc(100dvh-3.5rem)] flex-col">
         <header className="mb-4 shrink-0">
           <Link
             to="/"

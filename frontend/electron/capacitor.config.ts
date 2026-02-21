@@ -9,7 +9,7 @@ const config: CapacitorConfig = {
   },
   ios: {
     scheme: 'Thinking Space',
-    contentInset: 'never',
+    contentInset: 'automatic',
   },
 };
 
