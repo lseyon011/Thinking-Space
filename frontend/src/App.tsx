@@ -18,6 +18,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react'
+import treeOfLifeLogo from './assets/tree-of-life-logo.jpg'
 import Home from './pages/Home'
 import FormatExcalidraw from './pages/FormatExcalidraw'
 import ExcalidrawPlugin from './pages/ExcalidrawPlugin'
@@ -171,6 +172,18 @@ function getNextThemeId(themeId: UIThemeId): UIThemeId {
 
 function buildThinkingSpaceFileRoute(path: string): string {
   return `/thinking-space?file=${encodeURIComponent(path)}`
+}
+
+function AppBrandGlyph({ className = 'h-[14px] w-[14px]' }: { className?: string }) {
+  return (
+    <img
+      src={treeOfLifeLogo}
+      alt=""
+      aria-hidden="true"
+      draggable={false}
+      className={`${className} rounded-full object-cover`}
+    />
+  )
 }
 
 function App() {
@@ -913,18 +926,8 @@ function App() {
                         : 'gap-2 px-2.5 py-2 text-sm font-semibold tracking-tight'
                     }`}
                   >
-                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-background">
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 16 16"
-                        fill="currentColor"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden="true"
-                      >
-                        <path d="M9.167 4.5a1.167 1.167 0 1 1-2.334 0 1.167 1.167 0 0 1 2.334 0" />
-                        <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0M1 8a7 7 0 0 1 7-7 3.5 3.5 0 1 1 0 7 3.5 3.5 0 1 0 0 7 7 7 0 0 1-7-7m7 4.667a1.167 1.167 0 1 1 0-2.334 1.167 1.167 0 0 1 0 2.334" />
-                      </svg>
+                    <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full">
+                      <AppBrandGlyph className="h-full w-full" />
                     </span>
                     {!sidebarCollapsed && <span>Think Space</span>}
                   </Link>
@@ -994,18 +997,8 @@ function App() {
                 onClick={() => setDrawerOpen(false)}
                 className="inline-flex items-center gap-2 text-sm font-semibold tracking-tight"
               >
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-background">
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                    xmlns="http://www.w3.org/2000/svg"
-                    aria-hidden="true"
-                  >
-                    <path d="M9.167 4.5a1.167 1.167 0 1 1-2.334 0 1.167 1.167 0 0 1 2.334 0" />
-                    <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0M1 8a7 7 0 0 1 7-7 3.5 3.5 0 1 1 0 7 3.5 3.5 0 1 0 0 7 7 7 0 0 1-7-7m7 4.667a1.167 1.167 0 1 1 0-2.334 1.167 1.167 0 0 1 0 2.334" />
-                  </svg>
+                <span className="inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full">
+                  <AppBrandGlyph />
                 </span>
                 Think Space
               </Link>
