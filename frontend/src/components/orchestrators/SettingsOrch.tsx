@@ -1,22 +1,25 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
+import AiSettingsOrch from '@/components/orchestrators/AiSettingsOrch'
 import { UI_THEME_OPTIONS_BLOCK, useUIThemeBlock } from '@/components/lego_blocks/UIThemeBlock'
 import { clearAppCacheOrch, hardRefreshOrch } from '@/services/orchestrators/appCacheOrch'
 import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeOrch'
 import type { ExplorerIconStyleBlock } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import type { UIThemeId } from '@/services/orchestrators/uiThemeOrch'
 
-type SettingsTabId = 'theme' | 'cache' | 'vault'
+export type SettingsTabId = 'theme' | 'ai' | 'cache' | 'vault'
 
 interface SettingsOrchProps {
   explorerIconStyle: ExplorerIconStyleBlock
   onExplorerIconStyleChange: (nextStyle: ExplorerIconStyleBlock) => void
   onRequestVaultSwitch: () => void
+  initialTab?: SettingsTabId
 }
 
 const TAB_OPTIONS: Array<{ id: SettingsTabId; label: string }> = [
   { id: 'theme', label: 'Theme' },
+  { id: 'ai', label: 'AI' },
   { id: 'cache', label: 'Clear Cache' },
   { id: 'vault', label: 'Select Vault' },
 ]
@@ -25,9 +28,10 @@ export default function SettingsOrch({
   explorerIconStyle,
   onExplorerIconStyleChange,
   onRequestVaultSwitch,
+  initialTab = 'theme',
 }: SettingsOrchProps) {
   const { themeId, setThemeId } = useUIThemeBlock()
-  const [activeTab, setActiveTab] = useState<SettingsTabId>('theme')
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab)
   const [busyAction, setBusyAction] = useState<SettingsTabId | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -36,6 +40,10 @@ export default function SettingsOrch({
     if (isCapacitorNative()) return 'mobile'
     return 'web'
   }, [])
+
+  useEffect(() => {
+    setActiveTab(initialTab)
+  }, [initialTab])
 
   const onClearCache = async () => {
     const confirmed = window.confirm('Clear local cache and hard refresh now?')
@@ -117,6 +125,10 @@ export default function SettingsOrch({
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {activeTab === 'ai' && (
+        <AiSettingsOrch />
       )}
 
       {activeTab === 'cache' && (

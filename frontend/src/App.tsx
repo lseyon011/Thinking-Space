@@ -15,7 +15,6 @@ import {
   Search,
   Settings as SettingsIcon,
   Sparkles,
-  Wrench,
   X,
 } from 'lucide-react'
 import treeOfLifeLogo from './assets/tree-of-life-logo.jpg'
@@ -32,7 +31,6 @@ import ThinkingSpace from './pages/ThinkingSpace'
 import ThinkingOrganizer from './pages/ThinkingOrganizer'
 import Chat from './pages/Chat'
 import CapabilityDiscovery from './pages/CapabilityDiscovery'
-import AiSettings from './pages/AiSettings'
 import ExtensionBuilder from './pages/ExtensionBuilder'
 import Settings from './pages/Settings'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
@@ -245,8 +243,7 @@ function App() {
   const utilityNavItems = useMemo(() => {
     const items: NavItem[] = [
       { to: '/settings', label: 'Settings', icon: SettingsIcon },
-      { to: '/ai-settings', label: 'AI Settings', icon: Bot },
-      { to: '/capabilities', label: 'Capabilities', icon: Wrench },
+      { to: '/capabilities', label: 'Capabilities', icon: Bot },
     ]
     if (extensionBuilderEnabled) {
       items.splice(1, 0, { to: '/extension-builder', label: 'Extension Builder', icon: Sparkles })
@@ -967,7 +964,7 @@ function App() {
                   />
                 }
               />
-              <Route path="/ai-settings" element={<AiSettings />} />
+              <Route path="/ai-settings" element={<Navigate to="/settings?tab=ai" replace />} />
               <Route
                 path="/extension-builder"
                 element={extensionBuilderEnabled ? <ExtensionBuilder /> : <Navigate to="/capabilities" replace />}

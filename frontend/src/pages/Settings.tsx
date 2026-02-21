@@ -1,6 +1,6 @@
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, SlidersHorizontal } from 'lucide-react'
-import SettingsOrch from '@/components/orchestrators/SettingsOrch'
+import SettingsOrch, { type SettingsTabId } from '@/components/orchestrators/SettingsOrch'
 import type { ExplorerIconStyleBlock } from '@/services/orchestrators/vaultUiPreferencesOrch'
 
 interface SettingsPageProps {
@@ -14,6 +14,14 @@ export default function Settings({
   onExplorerIconStyleChange,
   onRequestVaultSwitch,
 }: SettingsPageProps) {
+  const [searchParams] = useSearchParams()
+  const requestedTab = searchParams.get('tab')
+  const initialTab: SettingsTabId = requestedTab === 'ai'
+    ? 'ai'
+    : (requestedTab === 'cache'
+      ? 'cache'
+      : (requestedTab === 'vault' ? 'vault' : 'theme'))
+
   return (
     <div className="ltm-page">
       <div className="ltm-page-shell ltm-shell-wide space-y-4">
@@ -32,7 +40,7 @@ export default function Settings({
             <div>
               <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Settings</h1>
               <p className="text-sm text-muted-foreground">
-                Manage theme, local cache reset, and vault switching.
+                Manage theme, AI configuration, local cache reset, and vault switching.
               </p>
             </div>
           </div>
@@ -41,6 +49,7 @@ export default function Settings({
           explorerIconStyle={explorerIconStyle}
           onExplorerIconStyleChange={onExplorerIconStyleChange}
           onRequestVaultSwitch={onRequestVaultSwitch}
+          initialTab={initialTab}
         />
       </div>
     </div>
