@@ -1,5 +1,6 @@
 import { buildObsidianOpenUrl } from '../lego_blocks/obsidianLinkBlock'
 import {
+  buildWikilinkSuggestionsBlock,
   buildObsidianWikilinkBlock,
   buildThinkingSpaceWikilinkHrefBlock,
   deriveWikilinkLabelBlock,
@@ -9,6 +10,7 @@ import {
   splitTextByWikilinksBlock,
   toObsidianWikilinkTargetBlock,
   type ResolveWikilinkPathBlockResult,
+  type WikilinkSuggestionBlock,
 } from '../lego_blocks/obsidianWikilinkBlock'
 import { listMarkdownEntries } from './fileSystemOrch'
 
@@ -146,5 +148,29 @@ export async function resolveWikilinkTargetOrch(input: {
     currentPath: input.currentPath,
     target: input.target,
     candidatePaths: refreshedPaths,
+  })
+}
+
+export async function getWikilinkSuggestionsOrch(input: {
+  currentPath: string
+  query: string
+  limit?: number
+  candidatePaths?: string[]
+}): Promise<WikilinkSuggestionBlock[]> {
+  const candidatePaths = input.candidatePaths ?? await getCachedMarkdownPaths()
+  const initialSuggestions = buildWikilinkSuggestionsBlock({
+    currentPath: input.currentPath,
+    query: input.query,
+    candidatePaths,
+    limit: input.limit,
+  })
+  if (initialSuggestions.length > 0 || input.candidatePaths) return initialSuggestions
+
+  const refreshedPaths = await refreshMarkdownPathCache()
+  return buildWikilinkSuggestionsBlock({
+    currentPath: input.currentPath,
+    query: input.query,
+    candidatePaths: refreshedPaths,
+    limit: input.limit,
   })
 }

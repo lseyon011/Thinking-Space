@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildWikilinkSuggestionsBlock,
   buildObsidianWikilinkBlock,
   buildThinkingSpaceWikilinkHrefBlock,
   parseThinkingSpaceWikilinkHrefBlock,
@@ -85,5 +86,28 @@ describe('obsidianWikilinkBlock', () => {
     expect(toObsidianWikilinkTargetBlock('drawings/Sketch.excalidraw.md')).toBe('drawings/Sketch.excalidraw')
     expect(buildObsidianWikilinkBlock('notes/Plan.md')).toBe('[[notes/Plan]]')
     expect(buildObsidianWikilinkBlock('notes/Plan.md', 'Plan Link')).toBe('[[notes/Plan|Plan Link]]')
+  })
+
+  it('returns fuzzy-ranked suggestions with current-folder preference', () => {
+    const suggestions = buildWikilinkSuggestionsBlock({
+      currentPath: 'projects/alpha/Today.md',
+      query: 'pln',
+      candidatePaths: [
+        'projects/alpha/Project Plan.md',
+        'archive/Planning Notes.md',
+        'projects/alpha/Meeting.md',
+      ],
+    })
+    expect(suggestions[0]?.target).toBe('projects/alpha/Project Plan')
+    expect(suggestions.some(item => item.target === 'archive/Planning Notes')).toBe(true)
+  })
+
+  it('returns extensionless excalidraw targets in suggestions', () => {
+    const suggestions = buildWikilinkSuggestionsBlock({
+      currentPath: 'notes/Index.md',
+      query: 'sketch',
+      candidatePaths: ['drawings/Sketch.excalidraw.md'],
+    })
+    expect(suggestions[0]?.target).toBe('drawings/Sketch.excalidraw')
   })
 })

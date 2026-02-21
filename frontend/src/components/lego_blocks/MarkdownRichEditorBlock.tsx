@@ -1,14 +1,25 @@
 import { useMemo, useRef } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
+import {
+  autocompletion,
+  startCompletion,
+  type Completion,
+  type CompletionContext,
+  type CompletionResult,
+} from '@codemirror/autocomplete'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
 import { Bold, Code, Heading1, Italic, Link2, List, ListOrdered, Quote } from 'lucide-react'
-import { toObsidianWikilinkTargetOrch } from '@/services/orchestrators/obsidianLinkOrch'
+import {
+  getWikilinkSuggestionsOrch,
+  toObsidianWikilinkTargetOrch,
+} from '@/services/orchestrators/obsidianLinkOrch'
 import { cn } from '@/lib/utils'
 
 interface MarkdownRichEditorBlockProps {
   value: string
   onChange: (next: string) => void
+  currentPath?: string
   className?: string
   editorClassName?: string
   placeholder?: string
@@ -62,14 +73,69 @@ function insertWikilink(
   }
 }
 
+function getWikilinkCompletionQuery(
+  context: CompletionContext,
+): { from: number; to: number; query: string } | null {
+  const match = context.matchBefore(/\[\[[^[\]\n]*$/)
+  if (!match) return null
+
+  const raw = match.text.slice(2)
+  if (raw.includes('|')) return null
+
+  const leadingWhitespace = raw.length - raw.trimStart().length
+  return {
+    from: match.from + 2 + leadingWhitespace,
+    to: context.pos,
+    query: raw.trim(),
+  }
+}
+
 export default function MarkdownRichEditorBlock({
   value,
   onChange,
+  currentPath = '',
   className,
   editorClassName,
   placeholder = 'Write markdown...',
 }: MarkdownRichEditorBlockProps) {
   const editorViewRef = useRef<EditorView | null>(null)
+
+  const wikilinkCompletionSource = useMemo(() => {
+    return async (context: CompletionContext): Promise<CompletionResult | null> => {
+      const query = getWikilinkCompletionQuery(context)
+      if (!query) return null
+
+      const suggestions = await getWikilinkSuggestionsOrch({
+        currentPath,
+        query: query.query,
+        limit: 30,
+      })
+      if (suggestions.length === 0) return null
+
+      const options: Completion[] = suggestions.map((suggestion) => ({
+        label: suggestion.target,
+        detail: suggestion.path,
+        type: 'text',
+        boost: suggestion.score,
+        apply: (view, _completion, from, to) => {
+          const hasClosingBrackets = view.state.sliceDoc(to, to + 2) === ']]'
+          const insertValue = hasClosingBrackets ? suggestion.target : `${suggestion.target}]]`
+          view.dispatch({
+            changes: { from, to, insert: insertValue },
+            selection: { anchor: from + suggestion.target.length },
+          })
+        },
+      }))
+
+      return {
+        from: query.from,
+        to: query.to,
+        options,
+        validFor: /^[^[\]\n|]*$/,
+        filter: false,
+      }
+    }
+  }, [currentPath])
 
   const extensions = useMemo(() => {
     const uiTheme = EditorView.theme({
@@ -111,9 +177,23 @@ export default function MarkdownRichEditorBlock({
       EditorView.lineWrapping,
       cmPlaceholder(placeholder),
       uiTheme,
+      autocompletion({
+        override: [wikilinkCompletionSource],
+        activateOnTyping: true,
+        closeOnBlur: true,
+      }),
+      EditorView.updateListener.of((update) => {
+        if (!update.docChanged) return
+        const selection = update.state.selection.main
+        if (!selection.empty) return
+        const before = update.state.sliceDoc(Math.max(0, selection.from - 2), selection.from)
+        if (before === '[[') {
+          startCompletion(update.view)
+        }
+      }),
       keymap.of([]),
     ]
-  }, [placeholder])
+  }, [placeholder, wikilinkCompletionSource])
 
   const applyPatch = (patchFactory: (text: string, from: number, to: number) => { value: string; start: number; end: number }) => {
     const view = editorViewRef.current
@@ -226,7 +306,7 @@ export default function MarkdownRichEditorBlock({
             indentOnInput: true,
             bracketMatching: true,
             closeBrackets: true,
-            autocompletion: true,
+            autocompletion: false,
             highlightSelectionMatches: true,
           }}
           extensions={extensions}

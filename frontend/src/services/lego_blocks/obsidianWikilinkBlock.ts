@@ -30,6 +30,19 @@ export interface ResolveWikilinkPathBlockResult {
   blockRef: string | null
 }
 
+export interface WikilinkSuggestionBlock {
+  path: string
+  target: string
+  score: number
+}
+
+export interface BuildWikilinkSuggestionsBlockInput {
+  currentPath: string
+  query: string
+  candidatePaths: string[]
+  limit?: number
+}
+
 function normalizeVaultPath(path: string): string {
   const sanitized = path.replace(/\\/g, '/').trim()
   if (!sanitized) return ''
@@ -158,6 +171,36 @@ function splitTargetAndAlias(rawInner: string): { target: string; alias: string 
   const target = rawInner.slice(0, pipeIdx).trim()
   const alias = rawInner.slice(pipeIdx + 1).trim()
   return { target, alias: alias || null }
+}
+
+function fuzzySubsequenceScore(query: string, candidate: string): number {
+  const q = query.trim().toLowerCase()
+  const text = candidate.toLowerCase()
+  if (!q) return 0
+  if (!text) return -1
+
+  let queryIdx = 0
+  let score = 0
+  let lastMatchIdx = -2
+  for (let i = 0; i < text.length; i += 1) {
+    if (queryIdx >= q.length) break
+    if (text[i] !== q[queryIdx]) continue
+
+    const prev = i > 0 ? text[i - 1] : ''
+    const atBoundary = i === 0 || prev === '/' || prev === '-' || prev === '_' || prev === ' ' || prev === '.'
+
+    score += 10
+    if (atBoundary) score += 6
+    if (lastMatchIdx + 1 === i) score += 4
+
+    lastMatchIdx = i
+    queryIdx += 1
+  }
+
+  if (queryIdx < q.length) return -1
+
+  score -= Math.max(0, text.length - q.length) * 0.12
+  return score
 }
 
 function normalizeWikilinkPath(path: string): string {
@@ -376,4 +419,48 @@ export function resolveWikilinkPathBlock(
     heading: parsed.heading,
     blockRef: parsed.blockRef,
   }
+}
+
+export function buildWikilinkSuggestionsBlock(
+  input: BuildWikilinkSuggestionsBlockInput,
+): WikilinkSuggestionBlock[] {
+  const currentDir = dirnameOf(input.currentPath)
+  const query = input.query.trim()
+  const maxItems = input.limit ?? 40
+
+  const ranked: WikilinkSuggestionBlock[] = []
+  for (const rawPath of input.candidatePaths) {
+    const normalizedPath = normalizeVaultPath(rawPath)
+    if (!normalizedPath) continue
+
+    const target = toObsidianWikilinkTargetBlock(normalizedPath)
+    if (!target) continue
+
+    const baseName = stripMarkdownExtension(leafOf(normalizedPath))
+    const targetScore = fuzzySubsequenceScore(query, target)
+    const baseScore = fuzzySubsequenceScore(query, baseName)
+    const bestTextScore = query
+      ? Math.max(targetScore, baseScore >= 0 ? baseScore + 2.5 : -1)
+      : 0
+    if (query && bestTextScore < 0) continue
+
+    const candidateDir = dirnameOf(normalizedPath)
+    const sameDirBonus = candidateDir.toLowerCase() === currentDir.toLowerCase() ? 4 : 0
+    const sharedPrefixBonus = sharedPathPrefixLength(currentDir, candidateDir) * 0.55
+    const score = bestTextScore + sameDirBonus + sharedPrefixBonus
+
+    ranked.push({
+      path: normalizedPath,
+      target,
+      score,
+    })
+  }
+
+  ranked.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score
+    if (a.target !== b.target) return a.target.localeCompare(b.target)
+    return a.path.localeCompare(b.path)
+  })
+
+  return ranked.slice(0, Math.max(1, maxItems))
 }

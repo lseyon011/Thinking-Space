@@ -954,6 +954,7 @@ function MarkdownDocumentBlock({
 
             <MarkdownRichEditorBlock
               value={displayDraft}
+              currentPath={path}
               onChange={(next) => {
                 setDraft(`${draftFrontmatter}${next}`)
                 if (assistSuggestion || assistError) clearAssistState()
