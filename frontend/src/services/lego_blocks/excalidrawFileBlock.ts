@@ -1,5 +1,6 @@
 import { decompressFromBase64LzString } from './lzStringBlock'
 import { normalizeExcalidrawSceneForInteropBlock } from './excalidrawSceneCompatBlock'
+import { restore, serializeAsJSON } from '@excalidraw/excalidraw'
 
 export interface ParsedExcalidrawScene {
   elements: unknown[]
@@ -103,22 +104,27 @@ function sanitizeSceneObject(value: unknown): Record<string, JsonValue> {
   return sanitized as Record<string, JsonValue>
 }
 
-function sanitizeSceneElements(elements: unknown[]): Record<string, JsonValue>[] {
-  const output: Record<string, JsonValue>[] = []
-  for (const element of elements) {
-    const sanitized = sanitizeJsonValue(element, [], 0)
-    if (!sanitized || typeof sanitized !== 'object' || Array.isArray(sanitized)) continue
-    output.push(sanitized as Record<string, JsonValue>)
-  }
-  return output
-}
-
 function sceneToJson(scene: ParsedExcalidrawScene): string {
-  return JSON.stringify({
-    elements: sanitizeSceneElements(scene.elements ?? []),
-    appState: sanitizeSceneObject(scene.appState ?? {}),
-    files: sanitizeSceneObject(scene.files ?? {}),
-  }, null, 2)
+  const restored = restore(
+    {
+      elements: scene.elements as any,
+      appState: sanitizeSceneObject(scene.appState ?? {}) as any,
+      files: sanitizeSceneObject(scene.files ?? {}) as any,
+    },
+    null,
+    null,
+    {
+      refreshDimensions: false,
+      repairBindings: true,
+    },
+  )
+
+  return serializeAsJSON(
+    restored.elements as any,
+    restored.appState as any,
+    restored.files as any,
+    'local',
+  )
 }
 
 function tryParseJson(value: string): ParsedExcalidrawScene | null {
@@ -178,11 +184,34 @@ function normalizeObsidianHighlighterElements(elements: unknown[]): unknown[] {
 }
 
 function normalizeScene(scene: ParsedExcalidrawScene): ParsedExcalidrawScene {
-  return normalizeExcalidrawSceneForInteropBlock({
-    elements: normalizeObsidianHighlighterElements(scene.elements),
-    appState: scene.appState,
-    files: scene.files,
-  })
+  try {
+    const restored = restore(
+      {
+        elements: normalizeObsidianHighlighterElements(scene.elements) as any,
+        appState: (scene.appState ?? {}) as any,
+        files: (scene.files ?? {}) as any,
+      },
+      null,
+      null,
+      {
+        refreshDimensions: false,
+        repairBindings: true,
+      },
+    )
+
+    return {
+      elements: restored.elements as unknown[],
+      appState: restored.appState as Record<string, unknown>,
+      files: restored.files as Record<string, unknown>,
+    }
+  } catch {
+    // Fallback keeps rendering path resilient for partially malformed scenes.
+    return normalizeExcalidrawSceneForInteropBlock({
+      elements: normalizeObsidianHighlighterElements(scene.elements),
+      appState: scene.appState,
+      files: scene.files,
+    })
+  }
 }
 
 function maybeNormalizeScene(scene: ParsedExcalidrawScene, normalize: boolean): ParsedExcalidrawScene {

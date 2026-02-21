@@ -5,6 +5,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@excalidraw/excalidraw': fileURLToPath(new URL('./tests/mocks/excalidrawRuntimeMock.ts', import.meta.url)),
     },
   },
   test: {
@@ -12,4 +13,3 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
   },
 })
-
