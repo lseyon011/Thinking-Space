@@ -287,6 +287,7 @@ function App() {
   const keyboardVisible = shell.keyboardVisibleCompact
   const showBottomNav = false
   const isCapacitorSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
+  const showCapacitorTopChromeMenu = compactNav && !drawerOpen && isCapacitorSurface
   const topInset = shell.topInset
   const rightInset = shell.rightInset
   const bottomInset = shell.bottomInset
@@ -603,12 +604,12 @@ function App() {
           style={topInset ? { paddingTop: `calc(${topInset}px + var(--ltm-shell-inset))` } : undefined}
         >
         <section className="ltm-shell-main-stage">
-          <header className="ltm-shell-top-chrome ltm-shell-motion-chrome relative">
-            {compactNav && !drawerOpen && isCapacitorSurface && (
+          <header className={`ltm-shell-top-chrome ltm-shell-motion-chrome ${showCapacitorTopChromeMenu ? 'justify-start gap-2' : ''}`}>
+            {showCapacitorTopChromeMenu && (
               <button
                 type="button"
                 onClick={() => setDrawerOpen(true)}
-                className="ltm-mobile-drawer-trigger ltm-motion-fast ltm-shell-field-surface absolute left-1.5 top-1/2 z-30 inline-flex h-8 min-w-[5.5rem] -translate-y-1/2 items-center justify-center gap-1.5 rounded-full px-3 text-[10px] font-semibold uppercase tracking-[0.13em] text-foreground shadow-sm"
+                className="ltm-mobile-drawer-trigger ltm-motion-fast ltm-shell-field-surface inline-flex h-8 min-w-[5.5rem] shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-[10px] font-semibold uppercase tracking-[0.13em] text-foreground shadow-sm"
                 aria-label="Open navigation"
               >
                 <Menu className="h-3 w-3" />
@@ -621,7 +622,7 @@ function App() {
               onSelectTab={handleSelectWorkspaceTab}
               onCreateTab={handleCreateWorkspaceTab}
               onCloseTab={handleCloseWorkspaceTab}
-              className="ltm-shell-top-tab-capsule"
+              className={showCapacitorTopChromeMenu ? 'min-w-0 flex-1' : 'ltm-shell-top-tab-capsule'}
             />
           </header>
           <div className="ltm-shell-body-stage">

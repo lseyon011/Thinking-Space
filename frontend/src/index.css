@@ -58,6 +58,8 @@
   html {
     background-color: hsl(var(--background));
     width: 100%;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
   body {
     @apply bg-background text-foreground;
@@ -158,6 +160,7 @@
     --ltm-shell-inset: clamp(0.22rem, 0.58vw, 0.5rem);
     --ltm-shell-gap: clamp(0.5rem, 0.9vw, 0.85rem);
     --ltm-shell-surface-radius: calc(var(--radius) + 0.45rem);
+    --ltm-shell-main-panel-radius: calc(var(--radius) + 0.45rem);
     --ltm-shell-surface-bg: hsl(var(--card) / 0.62);
     --ltm-shell-surface-muted-bg: hsl(var(--card) / 0.5);
     --ltm-shell-surface-border: hsl(var(--border) / 0.54);
@@ -178,6 +181,38 @@
     --ltm-shell-motion-modal-duration: var(--ltm-anim-moderate);
     --ltm-shell-motion-capsule-duration: var(--ltm-anim-fast);
     --ltm-shell-motion-tab-duration: var(--ltm-anim-fast);
+  }
+
+  .ltm-app-shell[data-ltm-surface='electron'][data-ltm-mode='desktop'] {
+    --ltm-shell-main-panel-radius: calc(var(--radius) + 0.24rem);
+  }
+
+  .ltm-app-shell[data-ltm-surface='browser'][data-ltm-mode='desktop'] {
+    --ltm-shell-main-panel-radius: calc(var(--radius) + 0.38rem);
+  }
+
+  .ltm-app-shell[data-ltm-mode='tablet'] {
+    --ltm-shell-main-panel-radius: calc(var(--radius) + 0.58rem);
+  }
+
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='tablet'] {
+    --ltm-shell-main-panel-radius: clamp(0.95rem, 2.1vw, 1.28rem);
+  }
+
+  .ltm-app-shell[data-ltm-surface='capacitor-android'][data-ltm-mode='tablet'] {
+    --ltm-shell-main-panel-radius: clamp(0.9rem, 1.9vw, 1.12rem);
+  }
+
+  .ltm-app-shell[data-ltm-mode='phone'] {
+    --ltm-shell-main-panel-radius: calc(var(--radius) + 0.66rem);
+  }
+
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] {
+    --ltm-shell-main-panel-radius: clamp(1.05rem, 4.2vw, 1.48rem);
+  }
+
+  .ltm-app-shell[data-ltm-surface='capacitor-android'][data-ltm-mode='phone'] {
+    --ltm-shell-main-panel-radius: clamp(0.9rem, 3.2vw, 1.18rem);
   }
 
   .ltm-app-shell[data-ltm-shell-material='glass'] {
@@ -239,7 +274,7 @@
   .ltm-shell-content-stage {
     @apply min-h-0 flex-1 overflow-hidden;
     border: 1px solid var(--ltm-shell-surface-border);
-    border-radius: var(--ltm-shell-surface-radius);
+    border-radius: var(--ltm-shell-main-panel-radius);
     background: var(--ltm-shell-stage-bg);
     box-shadow: var(--ltm-shell-surface-shadow);
   }
@@ -299,8 +334,8 @@
       border: 0;
       border-top-left-radius: 0;
       border-bottom-left-radius: 0;
-      border-top-right-radius: calc(var(--ltm-shell-surface-radius) - 0.22rem);
-      border-bottom-right-radius: calc(var(--ltm-shell-surface-radius) - 0.22rem);
+      border-top-right-radius: calc(var(--ltm-shell-main-panel-radius) - 0.22rem);
+      border-bottom-right-radius: calc(var(--ltm-shell-main-panel-radius) - 0.22rem);
       background: var(--ltm-shell-stage-bg);
       box-shadow: none;
       backdrop-filter: none;
@@ -330,7 +365,7 @@
 
   .ltm-thinking-space-shell .ltm-thinking-space-document-stage {
     border-left: 0;
-    border-radius: calc(var(--ltm-shell-surface-radius) - 0.22rem);
+    border-radius: calc(var(--ltm-shell-main-panel-radius) - 0.22rem);
     overflow: hidden;
     background:
       radial-gradient(circle at top left, rgb(255 255 255 / 0.08), transparent 48%),
