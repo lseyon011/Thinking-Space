@@ -465,10 +465,12 @@ export default function VaultExplorerBlock({
             <div
               key={`folder-${folderPath}`}
               className={cn(
-                'ltm-explorer-row flex w-full items-center gap-1 rounded-md border border-border/60 bg-muted/85 px-2 py-1.5 text-[13px] text-foreground',
+                'ltm-explorer-row ltm-explorer-folder-row flex w-full items-center gap-1 rounded-md border border-border/60 bg-muted/85 px-2 py-1.5 text-[13px] text-foreground',
                 onDropNode && dropOverPath === folderPath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
               )}
               style={{ paddingLeft: `${8 + depth * 14}px` }}
+              data-path={folderPath}
+              data-selected={inSelectionTrail ? 'true' : undefined}
             >
               <ChevronRight
                 className={cn(
@@ -477,9 +479,9 @@ export default function VaultExplorerBlock({
                 )}
               />
               {expanded ? (
-                <FolderOpen className="h-3.5 w-3.5 text-foreground/85" />
+                <FolderOpen className="ltm-explorer-glyph ltm-explorer-folder-icon h-3.5 w-3.5 text-foreground/85" />
               ) : (
-                <Folder className="h-3.5 w-3.5 text-foreground/85" />
+                <Folder className="ltm-explorer-glyph ltm-explorer-folder-icon h-3.5 w-3.5 text-foreground/85" />
               )}
               <input
                 ref={renameInputRef}
@@ -547,12 +549,14 @@ export default function VaultExplorerBlock({
               }}
               ref={bindRowRef('folder', folderPath)}
               className={cn(
-                'ltm-explorer-row ltm-touch-row group flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/90 transition-colors hover:bg-muted/70',
+                'ltm-explorer-row ltm-explorer-folder-row ltm-touch-row group flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/90 transition-colors hover:bg-muted/70',
                 inSelectionTrail && 'border border-border/60 bg-muted/85 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_2px_8px_-6px_rgba(0,0,0,0.35)] hover:bg-muted/90',
                 expanded && !inSelectionTrail && 'bg-muted/50',
                 onDropNode && dropOverPath === folderPath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
               )}
               style={{ paddingLeft: `${8 + depth * 14}px` }}
+              data-path={folderPath}
+              data-selected={inSelectionTrail ? 'true' : undefined}
             >
               <ChevronRight
                 className={cn(
@@ -562,9 +566,9 @@ export default function VaultExplorerBlock({
                 )}
               />
               {expanded ? (
-                <FolderOpen className={cn('h-3.5 w-3.5 text-blue-500', inSelectionTrail && 'text-foreground/85')} />
+                <FolderOpen className={cn('ltm-explorer-glyph ltm-explorer-folder-icon h-3.5 w-3.5 text-blue-500', inSelectionTrail && 'text-foreground/85')} />
               ) : (
-                <Folder className={cn('h-3.5 w-3.5 text-blue-500', inSelectionTrail && 'text-foreground/85')} />
+                <Folder className={cn('ltm-explorer-glyph ltm-explorer-folder-icon h-3.5 w-3.5 text-blue-500', inSelectionTrail && 'text-foreground/85')} />
               )}
               <span className="truncate">{folderName}</span>
               {folderNode.loading && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-muted-foreground" />}
@@ -614,12 +618,14 @@ export default function VaultExplorerBlock({
             <div
               key={`file-${filePath}`}
               className={cn(
-                'ltm-explorer-row flex w-full items-center gap-2 rounded-md border border-[#c73773]/95 bg-[#c73773] px-2 py-1.5 text-[13px] text-white',
+                'ltm-explorer-row ltm-explorer-file-row flex w-full items-center gap-2 rounded-md border border-[#c73773]/95 bg-[#c73773] px-2 py-1.5 text-[13px] text-white',
                 onDropNode && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/10',
               )}
               style={{ paddingLeft: `${26 + depth * 14}px` }}
+              data-path={filePath}
+              data-selected={selectedFilePath === filePath ? 'true' : undefined}
             >
-              <Icon className="h-3.5 w-3.5 shrink-0 text-white" />
+              <Icon className="ltm-explorer-glyph ltm-explorer-file-icon h-3.5 w-3.5 shrink-0 text-white" />
               <input
                 ref={renameInputRef}
                 value={inlineRename.value}
@@ -692,13 +698,15 @@ export default function VaultExplorerBlock({
               }}
               ref={bindRowRef('file', filePath)}
               className={cn(
-                'ltm-explorer-row ltm-touch-row group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/80 transition-colors hover:bg-muted/70',
+                'ltm-explorer-row ltm-explorer-file-row ltm-touch-row group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/80 transition-colors hover:bg-muted/70',
                 selectedFilePath === filePath && 'border border-[#c73773]/95 bg-[#c73773] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_2px_8px_-6px_rgba(0,0,0,0.45)] hover:bg-[#c73773]',
                 onDropNode && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
               )}
               style={{ paddingLeft: `${26 + depth * 14}px` }}
+              data-path={filePath}
+              data-selected={selectedFilePath === filePath ? 'true' : undefined}
             >
-              <Icon className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground', selectedFilePath === filePath && 'text-white')} />
+              <Icon className={cn('ltm-explorer-glyph ltm-explorer-file-icon h-3.5 w-3.5 shrink-0 text-muted-foreground', selectedFilePath === filePath && 'text-white')} />
               <span className="truncate">{fileName}</span>
             </button>,
           )

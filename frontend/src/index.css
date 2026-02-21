@@ -389,6 +389,99 @@
     border-bottom: 0;
   }
 
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] {
+    --ltm-explorer-icon-default: rgb(97 96 96);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row .ltm-explorer-folder-icon,
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-file-row .ltm-explorer-file-icon {
+    color: var(--ltm-explorer-icon-default);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-glyph {
+    fill: currentColor;
+    stroke: currentColor;
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-glyph * {
+    fill: currentColor;
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-file-row[data-selected='true'] .ltm-explorer-file-icon {
+    color: #ffffff;
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-file-row[data-path$='.pdf' i] .ltm-explorer-file-icon {
+    color: rgb(255 176 176);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-file-row[data-path$='.txt' i] .ltm-explorer-file-icon {
+    color: rgb(203 201 201);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path='acceleration_core'] .ltm-explorer-folder-icon {
+    color: rgb(20 145 212);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path='acceleration_core/F9'] .ltm-explorer-folder-icon,
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path^='acceleration_core/F9/'] .ltm-explorer-folder-icon {
+    color: rgb(46 159 229);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path='acceleration_core/ideas.ai'] .ltm-explorer-folder-icon,
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path^='acceleration_core/ideas.ai/'] .ltm-explorer-folder-icon {
+    color: rgb(41 171 135);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path='acceleration_core/sfai'] .ltm-explorer-folder-icon,
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path^='acceleration_core/sfai/'] .ltm-explorer-folder-icon {
+    color: rgb(112 92 202);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path='acceleration_core/sfj'] .ltm-explorer-folder-icon,
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path^='acceleration_core/sfj/'] .ltm-explorer-folder-icon {
+    color: rgb(231 111 81);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path='acceleration_core/sflc'] .ltm-explorer-folder-icon,
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path^='acceleration_core/sflc/'] .ltm-explorer-folder-icon {
+    color: rgb(247 196 76);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path='lifeblood_systems'] .ltm-explorer-folder-icon {
+    color: rgb(150 75 180);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path='lifeblood_systems/FF08'] .ltm-explorer-folder-icon,
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path^='lifeblood_systems/FF08/'] .ltm-explorer-folder-icon {
+    color: rgb(166 90 194);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path='lifeblood_systems/sfcommunication'] .ltm-explorer-folder-icon,
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path^='lifeblood_systems/sfcommunication/'] .ltm-explorer-folder-icon {
+    color: rgb(140 60 170);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path='lifeblood_systems/sfdl'] .ltm-explorer-folder-icon,
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path^='lifeblood_systems/sfdl/'] .ltm-explorer-folder-icon {
+    color: rgb(178 108 205);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path='lifeblood_systems/sftravel'] .ltm-explorer-folder-icon,
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path^='lifeblood_systems/sftravel/'] .ltm-explorer-folder-icon {
+    color: rgb(190 132 220);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path='lifeblood_systems/sfw'] .ltm-explorer-folder-icon,
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path^='lifeblood_systems/sfw/'] .ltm-explorer-folder-icon {
+    color: rgb(170 95 210);
+  }
+
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path='lifeblood_systems/Understanding Myself'] .ltm-explorer-folder-icon,
+  .ltm-app-shell[data-ltm-explorer-icon-style='filled'] .ltm-explorer-folder-row[data-path^='lifeblood_systems/Understanding Myself/'] .ltm-explorer-folder-icon {
+    color: rgb(46 159 229);
+  }
+
   .ltm-thinking-space-shell .ltm-thinking-space-document-stage {
     border-left: 0;
     border-radius: calc(var(--ltm-shell-main-panel-radius) - 0.22rem);

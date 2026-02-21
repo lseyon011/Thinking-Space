@@ -54,6 +54,11 @@ import { getCapabilityFeatureFlags } from './services/orchestrators/capabilityFe
 import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from './services/lego_blocks/fsBlock'
 import { getUIShellThemeProfileOrch } from './services/orchestrators/uiThemeOrch'
 import {
+  readVaultUiPreferencesOrch,
+  setExplorerIconStylePreferenceOrch,
+  type ExplorerIconStyleBlock,
+} from './services/orchestrators/vaultUiPreferencesOrch'
+import {
   shouldCloseDrawerFromSwipeBlock,
   shouldOpenDrawerFromSwipeBlock,
   shouldStartEdgeSwipeOpenBlock,
@@ -207,6 +212,7 @@ function App() {
   const [commandQuery, setCommandQuery] = useState('')
   const [commandFileItems, setCommandFileItems] = useState<CommandItem[]>([])
   const [commandFilesLastLoadedAt, setCommandFilesLastLoadedAt] = useState(0)
+  const [explorerIconStyle, setExplorerIconStyle] = useState<ExplorerIconStyleBlock>('outline')
   const commandInputRef = useRef<HTMLInputElement | null>(null)
   const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
   const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -389,6 +395,13 @@ function App() {
   const handleCycleTheme = useCallback(() => {
     setThemeId(getNextThemeId(themeId))
   }, [setThemeId, themeId])
+
+  const handleExplorerIconStyleChange = useCallback((nextStyle: ExplorerIconStyleBlock) => {
+    setExplorerIconStyle(nextStyle)
+    void setExplorerIconStylePreferenceOrch(nextStyle).catch((error) => {
+      console.warn('[App] Failed to persist explorer icon style preference:', error)
+    })
+  }, [])
 
   const runCommandItem = useCallback((item: CommandItem) => {
     setCommandPaletteOpen(false)
@@ -642,6 +655,24 @@ function App() {
   }, [needsVaultSetup])
 
   useEffect(() => {
+    if (needsVaultSetup) return
+    let cancelled = false
+    void readVaultUiPreferencesOrch()
+      .then((preferences) => {
+        if (cancelled) return
+        setExplorerIconStyle(preferences.explorerIconStyle)
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn('[App] Failed to load vault UI preferences:', error)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [needsVaultSetup])
+
+  useEffect(() => {
     if (workspaceTabs.length === 0) {
       const fallbackTab: AppWorkspaceTab = {
         id: createWorkspaceTabId(),
@@ -741,6 +772,7 @@ function App() {
       data-ltm-shell-material={shellThemeProfile.material}
       data-ltm-shell-motion={shellThemeProfile.motion}
       data-ltm-theme={themeId}
+      data-ltm-explorer-icon-style={explorerIconStyle}
     >
       <div className="ltm-shell-layer-base">
         <div
@@ -880,6 +912,25 @@ function App() {
                               {option.label}
                             </option>
                           ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  {!sidebarCollapsed && (
+                    <div className="space-y-1 px-0.5">
+                      <label htmlFor="ltm-explorer-icon-style-select-desktop" className="px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Explorer Icons
+                      </label>
+                      <div className="relative">
+                        <select
+                          id="ltm-explorer-icon-style-select-desktop"
+                          value={explorerIconStyle}
+                          onChange={(event) => handleExplorerIconStyleChange(event.target.value as ExplorerIconStyleBlock)}
+                          className="ltm-shell-theme-select h-9 w-full rounded-lg px-3 pr-7 text-sm text-foreground outline-none"
+                          aria-label="Select explorer icon style"
+                        >
+                          <option value="outline">Outline</option>
+                          <option value="filled">Filled</option>
                         </select>
                       </div>
                     </div>
@@ -1108,6 +1159,23 @@ function App() {
                           {option.label}
                         </option>
                       ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="ltm-explorer-icon-style-select-mobile" className="px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Explorer Icons
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="ltm-explorer-icon-style-select-mobile"
+                      value={explorerIconStyle}
+                      onChange={(event) => handleExplorerIconStyleChange(event.target.value as ExplorerIconStyleBlock)}
+                      className="ltm-shell-theme-select h-9 w-full rounded-lg px-3 pr-7 text-sm text-foreground outline-none"
+                      aria-label="Select explorer icon style"
+                    >
+                      <option value="outline">Outline</option>
+                      <option value="filled">Filled</option>
                     </select>
                   </div>
                 </div>
