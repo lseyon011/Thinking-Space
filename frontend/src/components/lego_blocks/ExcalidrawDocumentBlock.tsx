@@ -133,6 +133,12 @@ function readZoomFromAppState(appState: Record<string, unknown>): number | null 
   return null
 }
 
+function readCurrentOpacityFromAppState(appState: Record<string, unknown>): number {
+  const raw = appState.currentItemOpacity
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return 100
+  return Math.min(100, Math.max(1, Math.round(raw)))
+}
+
 function resolveViewportWorldSize(params: {
   excalidrawApi: ExcalidrawCanvasApiOrch | null
   zoom: number
@@ -678,8 +684,14 @@ export default function ExcalidrawDocumentBlock({
 
   const handlePencilMetrics = useCallback((event: NativePencilMetricsEventOrch) => {
     if (!editable || !excalidrawApi) return
-    if (isExcalidrawHighlighterEnabledOrch(excalidrawApi.getAppStateBlock())) return
-    const mapped = mapPencilPressureToStrokeStyleOrch(event, pencilPressureStateRef.current)
+    const appState = excalidrawApi.getAppStateBlock()
+    if (readActiveToolType(appState) !== 'freedraw') return
+    if (isExcalidrawHighlighterEnabledOrch(appState)) return
+    const currentOpacity = readCurrentOpacityFromAppState(appState)
+    const mapped = mapPencilPressureToStrokeStyleOrch(event, pencilPressureStateRef.current, {
+      minOpacity: currentOpacity,
+      maxOpacity: currentOpacity,
+    })
     pencilPressureStateRef.current = mapped.state
     if (!mapped.style) return
     queuePencilAppStatePatch({

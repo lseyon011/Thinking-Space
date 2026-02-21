@@ -54,6 +54,32 @@ describe('pencilBridgeBlock', () => {
     expect(second.style?.currentItemStrokeWidth).toBeLessThan(6)
   })
 
+  it('supports fixed opacity mapping when min/max opacity are pinned', () => {
+    const began = normalizeNativePencilMetricsEventBlock({
+      phase: 'began',
+      normalizedPressure: 0.2,
+    })
+    const moved = normalizeNativePencilMetricsEventBlock({
+      phase: 'moved',
+      normalizedPressure: 0.9,
+    })
+
+    expect(began).not.toBeNull()
+    expect(moved).not.toBeNull()
+
+    const first = mapPencilPressureToStrokeStyleBlock(began!, null, {
+      minOpacity: 80,
+      maxOpacity: 80,
+    })
+    const second = mapPencilPressureToStrokeStyleBlock(moved!, first.state, {
+      minOpacity: 80,
+      maxOpacity: 80,
+    })
+
+    expect(first.style?.currentItemOpacity).toBe(80)
+    expect(second.style?.currentItemOpacity).toBe(80)
+  })
+
   it('returns no stroke patch when pressure is unavailable', () => {
     const normalized = normalizeNativePencilMetricsEventBlock({
       phase: 'moved',
