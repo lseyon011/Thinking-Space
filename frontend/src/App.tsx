@@ -11,9 +11,9 @@ import {
   MessageSquare,
   PanelLeft,
   PanelLeftClose,
-  Palette,
   PlusSquare,
   Search,
+  Settings as SettingsIcon,
   Sparkles,
   Wrench,
   X,
@@ -34,10 +34,11 @@ import Chat from './pages/Chat'
 import CapabilityDiscovery from './pages/CapabilityDiscovery'
 import AiSettings from './pages/AiSettings'
 import ExtensionBuilder from './pages/ExtensionBuilder'
+import Settings from './pages/Settings'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import AppTabsBlock, { type AppWorkspaceTabBlockModel } from './components/lego_blocks/AppTabsBlock'
 import { useUILayoutBlock } from './components/lego_blocks/UILayoutBlock'
-import { UI_THEME_OPTIONS_BLOCK, useUIThemeBlock } from './components/lego_blocks/UIThemeBlock'
+import { useUIThemeBlock } from './components/lego_blocks/UIThemeBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { smartSync } from './services/orchestrators/vaultSyncOrch'
@@ -64,7 +65,6 @@ import {
   shouldStartEdgeSwipeOpenBlock,
 } from './services/lego_blocks/uiGestureBlock'
 import { rankFuzzyItemsBlock } from './services/lego_blocks/fuzzySearchBlock'
-import type { UIThemeId } from './services/orchestrators/uiThemeOrch'
 
 type NavIcon = ComponentType<{ className?: string }>
 
@@ -169,12 +169,6 @@ function getTabLabel(route: string, labelByPath: Map<string, string>): string {
   return labelByPath.get(pathname) ?? 'Workspace'
 }
 
-function getNextThemeId(themeId: UIThemeId): UIThemeId {
-  const currentIndex = UI_THEME_OPTIONS_BLOCK.findIndex(option => option.id === themeId)
-  if (currentIndex < 0) return UI_THEME_OPTIONS_BLOCK[0]?.id ?? 'classic'
-  return UI_THEME_OPTIONS_BLOCK[(currentIndex + 1) % UI_THEME_OPTIONS_BLOCK.length]?.id ?? themeId
-}
-
 function buildThinkingSpaceFileRoute(path: string): string {
   return `/thinking-space?file=${encodeURIComponent(path)}`
 }
@@ -195,7 +189,7 @@ function App() {
   const location = useLocation()
   const navigate = useNavigate()
   const { layout } = useUILayoutBlock()
-  const { themeId, setThemeId } = useUIThemeBlock()
+  const { themeId } = useUIThemeBlock()
   const shellThemeProfile = useMemo(() => getUIShellThemeProfileOrch(themeId), [themeId])
   const currentRoute = `${location.pathname}${location.search}${location.hash}`
 
@@ -217,6 +211,7 @@ function App() {
   const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
   const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerPanelSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
+  const [vaultSwitchHardRefreshPending, setVaultSwitchHardRefreshPending] = useState(false)
   const [needsVaultSetup, setNeedsVaultSetup] = useState(() => {
     const stored = getStoredVaultRoot()
     if (!stored) return true
@@ -249,6 +244,7 @@ function App() {
 
   const utilityNavItems = useMemo(() => {
     const items: NavItem[] = [
+      { to: '/settings', label: 'Settings', icon: SettingsIcon },
       { to: '/ai-settings', label: 'AI Settings', icon: Bot },
       { to: '/capabilities', label: 'Capabilities', icon: Wrench },
     ]
@@ -392,15 +388,18 @@ function App() {
     setCommandFilesLastLoadedAt(Date.now())
   }, [commandFilesLastLoadedAt, needsVaultSetup])
 
-  const handleCycleTheme = useCallback(() => {
-    setThemeId(getNextThemeId(themeId))
-  }, [setThemeId, themeId])
-
   const handleExplorerIconStyleChange = useCallback((nextStyle: ExplorerIconStyleBlock) => {
     setExplorerIconStyle(nextStyle)
     void setExplorerIconStylePreferenceOrch(nextStyle).catch((error) => {
       console.warn('[App] Failed to persist explorer icon style preference:', error)
     })
+  }, [])
+
+  const handleRequestVaultSwitch = useCallback(() => {
+    setDrawerOpen(false)
+    setCommandPaletteOpen(false)
+    setVaultSwitchHardRefreshPending(true)
+    setNeedsVaultSetup(true)
   }, [])
 
   const runCommandItem = useCallback((item: CommandItem) => {
@@ -756,6 +755,10 @@ function App() {
       <VaultSetup
         onComplete={(vaultRoot) => {
           setVaultRoot(vaultRoot)
+          if (vaultSwitchHardRefreshPending) {
+            window.location.reload()
+            return
+          }
           setNeedsVaultSetup(false)
         }}
       />
@@ -893,59 +896,6 @@ function App() {
                 </div>
 
                 <div className="ltm-sidebar-actions space-y-2">
-                  {!sidebarCollapsed && (
-                    <div className="space-y-1 px-0.5">
-                      <label htmlFor="ltm-theme-select-desktop" className="px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                        Theme
-                      </label>
-                      <div className="relative">
-                        <Palette className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                        <select
-                          id="ltm-theme-select-desktop"
-                          value={themeId}
-                          onChange={(event) => setThemeId(event.target.value as UIThemeId)}
-                          className="ltm-shell-theme-select h-9 w-full rounded-lg pl-8 pr-7 text-sm text-foreground outline-none"
-                          aria-label="Select app theme"
-                        >
-                          {UI_THEME_OPTIONS_BLOCK.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  )}
-                  {!sidebarCollapsed && (
-                    <div className="space-y-1 px-0.5">
-                      <label htmlFor="ltm-explorer-icon-style-select-desktop" className="px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                        Explorer Icons
-                      </label>
-                      <div className="relative">
-                        <select
-                          id="ltm-explorer-icon-style-select-desktop"
-                          value={explorerIconStyle}
-                          onChange={(event) => handleExplorerIconStyleChange(event.target.value as ExplorerIconStyleBlock)}
-                          className="ltm-shell-theme-select h-9 w-full rounded-lg px-3 pr-7 text-sm text-foreground outline-none"
-                          aria-label="Select explorer icon style"
-                        >
-                          <option value="outline">Outline</option>
-                          <option value="filled">Filled</option>
-                        </select>
-                      </div>
-                    </div>
-                  )}
-                  {sidebarCollapsed && (
-                    <button
-                      type="button"
-                      onClick={handleCycleTheme}
-                      className="ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center justify-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label={`Switch theme (current: ${themeId})`}
-                      title={`Switch theme (current: ${themeId})`}
-                    >
-                      <Palette className="h-4 w-4" />
-                    </button>
-                  )}
                   <button
                     type="button"
                     onClick={openCommandPalette}
@@ -1007,6 +957,16 @@ function App() {
               <Route path="/new-thought" element={<NewThought />} />
               <Route path="/todos" element={<Todos />} />
               <Route path="/chat" element={<Chat />} />
+              <Route
+                path="/settings"
+                element={
+                  <Settings
+                    explorerIconStyle={explorerIconStyle}
+                    onExplorerIconStyleChange={handleExplorerIconStyleChange}
+                    onRequestVaultSwitch={handleRequestVaultSwitch}
+                  />
+                }
+              />
               <Route path="/ai-settings" element={<AiSettings />} />
               <Route
                 path="/extension-builder"
@@ -1141,44 +1101,6 @@ function App() {
               </div>
 
               <div className="ltm-shell-segment-footer mt-3 space-y-2 pt-3">
-                <div className="space-y-1">
-                  <label htmlFor="ltm-theme-select-mobile" className="px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Theme
-                  </label>
-                  <div className="relative">
-                    <Palette className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                    <select
-                      id="ltm-theme-select-mobile"
-                      value={themeId}
-                      onChange={(event) => setThemeId(event.target.value as UIThemeId)}
-                      className="ltm-shell-theme-select h-9 w-full rounded-lg pl-8 pr-7 text-sm text-foreground outline-none"
-                      aria-label="Select app theme"
-                    >
-                      {UI_THEME_OPTIONS_BLOCK.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label htmlFor="ltm-explorer-icon-style-select-mobile" className="px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Explorer Icons
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="ltm-explorer-icon-style-select-mobile"
-                      value={explorerIconStyle}
-                      onChange={(event) => handleExplorerIconStyleChange(event.target.value as ExplorerIconStyleBlock)}
-                      className="ltm-shell-theme-select h-9 w-full rounded-lg px-3 pr-7 text-sm text-foreground outline-none"
-                      aria-label="Select explorer icon style"
-                    >
-                      <option value="outline">Outline</option>
-                      <option value="filled">Filled</option>
-                    </select>
-                  </div>
-                </div>
                 <button
                   type="button"
                   onClick={() => {
