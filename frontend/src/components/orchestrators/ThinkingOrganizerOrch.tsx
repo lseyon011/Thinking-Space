@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ArrowRight, Loader2, FolderTree, Handshake, Layers, Lightbulb, ListChecks, Play } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/lego_blocks/ui/button'
@@ -18,7 +18,6 @@ import LinkingOrch from '@/components/orchestrators/LinkingOrch'
 import OrganizerIntegrityOrch from '@/components/orchestrators/OrganizerIntegrityOrch'
 import StewardQueueOrch from '@/components/orchestrators/StewardQueueOrch'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
-import { useEffect } from 'react'
 
 type TabMode = 'backlog' | 'view' | 'link' | 'steward' | 'integrity'
 const TAB_QUERY_PARAM = 'tab'
@@ -291,6 +290,17 @@ function ViewTab() {
 
 export default function ThinkingOrganizerOrch() {
   const [tab, setTab] = usePersistentTab()
+  const [mountedTabs, setMountedTabs] = useState<Record<TabMode, boolean>>(() => ({
+    backlog: tab === 'backlog',
+    view: tab === 'view',
+    link: tab === 'link',
+    steward: tab === 'steward',
+    integrity: tab === 'integrity',
+  }))
+
+  useEffect(() => {
+    setMountedTabs(prev => (prev[tab] ? prev : { ...prev, [tab]: true }))
+  }, [tab])
 
   return (
     <div className="ltm-page-shell ltm-shell-ultra">
@@ -339,11 +349,21 @@ export default function ThinkingOrganizerOrch() {
         </Button>
       </div>
 
-      {tab === 'backlog' && <BacklogOrch />}
-      {tab === 'view' && <ViewTab />}
-      {tab === 'link' && <LinkingOrch />}
-      {tab === 'steward' && <StewardQueueOrch />}
-      {tab === 'integrity' && <OrganizerIntegrityOrch />}
+      <section hidden={tab !== 'backlog'} aria-hidden={tab !== 'backlog'}>
+        {mountedTabs.backlog ? <BacklogOrch /> : null}
+      </section>
+      <section hidden={tab !== 'view'} aria-hidden={tab !== 'view'}>
+        {mountedTabs.view ? <ViewTab /> : null}
+      </section>
+      <section hidden={tab !== 'link'} aria-hidden={tab !== 'link'}>
+        {mountedTabs.link ? <LinkingOrch /> : null}
+      </section>
+      <section hidden={tab !== 'steward'} aria-hidden={tab !== 'steward'}>
+        {mountedTabs.steward ? <StewardQueueOrch /> : null}
+      </section>
+      <section hidden={tab !== 'integrity'} aria-hidden={tab !== 'integrity'}>
+        {mountedTabs.integrity ? <OrganizerIntegrityOrch /> : null}
+      </section>
     </div>
   )
 }

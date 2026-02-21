@@ -29,6 +29,7 @@ import {
 } from '@/services/lego_blocks/uiGestureBlock'
 
 const FILE_QUERY_PARAM = 'file'
+const MAX_MOUNTED_INLINE_DOCS = 8
 
 function leafNameOf(path: string): string {
   const idx = path.lastIndexOf('/')
@@ -40,7 +41,12 @@ export default function ThinkingSpaceOrch() {
   const inlinePathFromUrl = searchParams.get(FILE_QUERY_PARAM)?.trim() || null
   const { layout } = useUILayoutBlock()
   const [inlinePath, setInlinePath] = useState<string | null>(inlinePathFromUrl)
-  const [inlineInitialMode, setInlineInitialMode] = useState<MarkdownViewerMode>('view')
+  const [mountedInlinePaths, setMountedInlinePaths] = useState<string[]>(
+    () => (inlinePathFromUrl ? [inlinePathFromUrl] : []),
+  )
+  const [inlineInitialModeByPath, setInlineInitialModeByPath] = useState<Record<string, MarkdownViewerMode>>(
+    () => (inlinePathFromUrl ? { [inlinePathFromUrl]: 'view' } : {}),
+  )
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
   const [explorerCollapsed, setExplorerCollapsed] = useState(
     () => getStorageItem(STORAGE_KEYS.thinkingSpaceExplorerCollapsed) === '1',
@@ -53,15 +59,82 @@ export default function ThinkingSpaceOrch() {
   const bottomInset = Math.max(0, Math.round(layout.safeAreaInsets.bottom))
   const drawerBottomPadding = Math.max(bottomInset, layout.keyboardVisible ? Math.round(layout.keyboardInset) : 0)
 
+  const rememberMountedInlinePath = useCallback((path: string, initialMode: MarkdownViewerMode) => {
+    setMountedInlinePaths((prev) => {
+      if (prev.includes(path)) return prev
+      const next = [...prev, path]
+      return next.length > MAX_MOUNTED_INLINE_DOCS ? next.slice(1) : next
+    })
+    setInlineInitialModeByPath((prev) => (prev[path] ? prev : { ...prev, [path]: initialMode }))
+  }, [])
+
+  const removeMountedInlinePath = useCallback((path: string) => {
+    setMountedInlinePaths((prev) => prev.filter((item) => item !== path))
+    setInlineInitialModeByPath((prev) => {
+      if (!(path in prev)) return prev
+      const next = { ...prev }
+      delete next[path]
+      return next
+    })
+  }, [])
+
+  const replaceMountedInlinePath = useCallback((fromPath: string, toPath: string) => {
+    setMountedInlinePaths((prev) => {
+      let changed = false
+      const replaced = prev.map((item) => {
+        if (item !== fromPath) return item
+        changed = true
+        return toPath
+      })
+      if (!changed) return prev
+      const deduped: string[] = []
+      for (const item of replaced) {
+        if (!deduped.includes(item)) deduped.push(item)
+      }
+      return deduped
+    })
+    setInlineInitialModeByPath((prev) => {
+      if (!(fromPath in prev)) return prev
+      if (toPath in prev) {
+        const next = { ...prev }
+        delete next[fromPath]
+        return next
+      }
+      const next = { ...prev, [toPath]: prev[fromPath] }
+      delete next[fromPath]
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    setInlineInitialModeByPath((prev) => {
+      const mounted = new Set(mountedInlinePaths)
+      let changed = false
+      const next: Record<string, MarkdownViewerMode> = {}
+      for (const [path, mode] of Object.entries(prev)) {
+        if (!mounted.has(path)) {
+          changed = true
+          continue
+        }
+        next[path] = mode
+      }
+      return changed ? next : prev
+    })
+  }, [mountedInlinePaths])
+
   useEffect(() => {
     if (inlinePathFromUrl === inlinePath) return
     setInlinePath(inlinePathFromUrl)
-    setInlineInitialMode('view')
-  }, [inlinePath, inlinePathFromUrl])
+    if (inlinePathFromUrl) {
+      rememberMountedInlinePath(inlinePathFromUrl, 'view')
+    }
+  }, [inlinePath, inlinePathFromUrl, rememberMountedInlinePath])
 
   const setInlinePathAndSyncUrl = useCallback((path: string | null, mode: MarkdownViewerMode = 'view') => {
+    if (path) {
+      rememberMountedInlinePath(path, mode)
+    }
     setInlinePath(path)
-    setInlineInitialMode(mode)
     const current = searchParams.get(FILE_QUERY_PARAM)?.trim() || null
     if (current === path) return
     const next = new URLSearchParams(searchParams)
@@ -70,11 +143,13 @@ export default function ThinkingSpaceOrch() {
     } else {
       next.delete(FILE_QUERY_PARAM)
     }
-    setSearchParams(next)
-  }, [searchParams, setSearchParams])
+    setSearchParams(next, { replace: true })
+  }, [rememberMountedInlinePath, searchParams, setSearchParams])
 
   const handleInlineDocumentClose = useCallback(() => {
     setInlinePathAndSyncUrl(null)
+    setMountedInlinePaths([])
+    setInlineInitialModeByPath({})
   }, [setInlinePathAndSyncUrl])
 
   const handleDrawerFileOpen = useCallback((path: string) => {
@@ -147,21 +222,25 @@ export default function ThinkingSpaceOrch() {
     nextName: string,
   ): Promise<string> => {
     const nextPath = await renameVaultPathOrch(path, nextName)
+    if (kind === 'file') {
+      replaceMountedInlinePath(path, nextPath)
+    }
     if (kind === 'file' && inlinePath === path) {
       setInlinePathAndSyncUrl(nextPath)
     }
     return nextPath
-  }, [inlinePath, setInlinePathAndSyncUrl])
+  }, [inlinePath, replaceMountedInlinePath, setInlinePathAndSyncUrl])
 
   const handleExplorerDeleteFile = useCallback(async (path: string): Promise<boolean> => {
     const confirmed = window.confirm(`Delete file "${leafNameOf(path)}"?`)
     if (!confirmed) return false
     await deleteVaultPathOrch(path)
+    removeMountedInlinePath(path)
     if (inlinePath === path) {
       setInlinePathAndSyncUrl(null)
     }
     return true
-  }, [inlinePath, setInlinePathAndSyncUrl])
+  }, [inlinePath, removeMountedInlinePath, setInlinePathAndSyncUrl])
 
   const handleExplorerOpenInFinder = useCallback(async (path: string): Promise<boolean> => {
     await revealVaultPathOrch(path)
@@ -283,18 +362,24 @@ export default function ThinkingSpaceOrch() {
   ), [inlinePath, setInlinePathAndSyncUrl])
 
   const inlineDocumentContent = useMemo(() => {
-    if (!inlinePath) return null
-    return (
-      <MarkdownDocumentBlock
-        key={inlinePath}
-        path={inlinePath}
-        initialMode={inlineInitialMode}
-        onClose={handleInlineDocumentClose}
-        showCloseButton
+    if (mountedInlinePaths.length === 0) return null
+    return mountedInlinePaths.map((path) => (
+      <section
+        key={path}
+        hidden={inlinePath !== path}
+        aria-hidden={inlinePath !== path}
         className="h-full min-h-0"
-      />
-    )
-  }, [handleInlineDocumentClose, inlineInitialMode, inlinePath])
+      >
+        <MarkdownDocumentBlock
+          path={path}
+          initialMode={inlineInitialModeByPath[path] ?? 'view'}
+          onClose={handleInlineDocumentClose}
+          showCloseButton
+          className="h-full min-h-0"
+        />
+      </section>
+    ))
+  }, [handleInlineDocumentClose, inlineInitialModeByPath, inlinePath, mountedInlinePaths])
 
   return (
     <div
@@ -339,7 +424,7 @@ export default function ThinkingSpaceOrch() {
             <PanelLeft className="h-4 w-4" />
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">Explorer</span>
           </Button>
-          {inlineDocumentContent ? (
+          {inlinePath && inlineDocumentContent ? (
             <div className={cn('h-full min-h-0', showExplorerTrigger && '[&_.ts-md-header]:pl-44')}>
               {inlineDocumentContent}
             </div>

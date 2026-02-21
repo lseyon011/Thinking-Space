@@ -208,6 +208,7 @@ export default function VaultExplorerBlock({
 
   const normalizedQuery = query.trim().toLowerCase()
   const hasTitle = title.trim().length > 0
+  const inlineRenameSession = inlineRename ? `${inlineRename.kind}:${inlineRename.path}` : null
 
   const pathMatchesQuery = useCallback(
     (path: string, visited: Set<string>): boolean => {
@@ -397,13 +398,13 @@ export default function VaultExplorerBlock({
   }, [nodes, pendingRename, rowRefKey])
 
   useEffect(() => {
-    if (!inlineRename) return
+    if (!inlineRenameSession) return
     const rafId = window.requestAnimationFrame(() => {
       renameInputRef.current?.focus()
       renameInputRef.current?.select()
     })
     return () => window.cancelAnimationFrame(rafId)
-  }, [inlineRename])
+  }, [inlineRenameSession])
 
   useEffect(() => {
     if (!contextMenu) return
