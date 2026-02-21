@@ -3,6 +3,7 @@ import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
 import { Bold, Code, Heading1, Italic, Link2, List, ListOrdered, Quote } from 'lucide-react'
+import { toObsidianWikilinkTargetOrch } from '@/services/orchestrators/obsidianLinkOrch'
 import { cn } from '@/lib/utils'
 
 interface MarkdownRichEditorBlockProps {
@@ -42,6 +43,23 @@ function prefixSelectionLines(
   const patched = lines.map((line, index) => formatter(line, index)).join('\n')
   const value = `${source.slice(0, lineStart)}${patched}${source.slice(lineEnd)}`
   return { value, start: lineStart, end: lineStart + patched.length }
+}
+
+function insertWikilink(
+  source: string,
+  start: number,
+  end: number,
+): { value: string; start: number; end: number } {
+  const selected = source.slice(start, end).trim()
+  const rawTarget = selected || 'linked note'
+  const target = toObsidianWikilinkTargetOrch(rawTarget) || rawTarget
+  const wrapped = `[[${target}]]`
+  const value = `${source.slice(0, start)}${wrapped}${source.slice(end)}`
+  return {
+    value,
+    start: start + 2,
+    end: start + 2 + target.length,
+  }
 }
 
 export default function MarkdownRichEditorBlock({
@@ -160,6 +178,14 @@ export default function MarkdownRichEditorBlock({
           title="Link"
         >
           <Link2 className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => applyPatch(insertWikilink)}
+          className="rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
+          title="Wikilink"
+        >
+          [[ ]]
         </button>
         <button
           type="button"

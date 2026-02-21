@@ -34,12 +34,14 @@ function MarkdownSideSheet({
   path,
   initialMode,
   onSaved,
+  onOpenPath,
   onOpenPathForEdit,
   onClose,
 }: {
   path: string
   initialMode: MarkdownViewerMode
   onSaved?: MarkdownSavedCallback
+  onOpenPath: (path: string) => void
   onOpenPathForEdit: (path: string) => void
   onClose: () => void
 }) {
@@ -56,6 +58,7 @@ function MarkdownSideSheet({
           path={path}
           initialMode={initialMode}
           onSaved={onSaved}
+          onOpenPath={onOpenPath}
           onOpenPathForEdit={onOpenPathForEdit}
           onClose={onClose}
           showCloseButton
@@ -118,6 +121,7 @@ export function MarkdownViewerProvider({ children }: { children: ReactNode }) {
           path={currentPath}
           initialMode={currentMode}
           onSaved={onSaved}
+          onOpenPath={openFile}
           onOpenPathForEdit={openFileForEdit}
           onClose={closeFile}
         />

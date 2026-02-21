@@ -1,4 +1,13 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentPropsWithoutRef,
+  type MouseEvent as ReactMouseEvent,
+} from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { X, FileText, ExternalLink, Info, Pencil, Save } from 'lucide-react'
@@ -11,7 +20,13 @@ import {
   serializeExcalidrawSceneOrch,
   type ParsedExcalidrawScene,
 } from '@/services/orchestrators/excalidrawSceneOrch'
-import { buildObsidianOpenUrlOrch } from '@/services/orchestrators/obsidianLinkOrch'
+import {
+  buildObsidianOpenUrlOrch,
+  isThinkingSpaceWikilinkHrefOrch,
+  parseThinkingSpaceWikilinkHrefOrch,
+  remarkObsidianWikilinksOrch,
+  resolveWikilinkTargetOrch,
+} from '@/services/orchestrators/obsidianLinkOrch'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/ExcalidrawDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/MarkdownMiniNavBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/MarkdownRichEditorBlock'
@@ -27,6 +42,7 @@ interface MarkdownDocumentBlockProps {
   path: string
   initialMode?: MarkdownViewerMode
   onSaved?: (result: { output_path: string; revision_path: string | null }) => void
+  onOpenPath?: (path: string) => void
   onOpenPathForEdit?: (path: string) => void
   onClose?: () => void
   showCloseButton?: boolean
@@ -85,6 +101,7 @@ function MarkdownDocumentBlock({
   path,
   initialMode = 'view',
   onSaved,
+  onOpenPath,
   onOpenPathForEdit,
   onClose,
   showCloseButton = false,
@@ -102,6 +119,7 @@ function MarkdownDocumentBlock({
   const [saving, setSaving] = useState(false)
   const [autoSaving, setAutoSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [navigationError, setNavigationError] = useState<string | null>(null)
   const [conflict, setConflict] = useState<MarkdownDocumentConflictError | null>(null)
   const [relatedThoughts, setRelatedThoughts] = useState<SimilarityMatch[]>([])
   const [relatedLoading, setRelatedLoading] = useState(false)
@@ -144,6 +162,7 @@ function MarkdownDocumentBlock({
     setLoading(true)
     setError(null)
     setSaveError(null)
+    setNavigationError(null)
     setConflict(null)
     setRelatedThoughts([])
     setRelatedError(null)
@@ -260,6 +279,7 @@ function MarkdownDocumentBlock({
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const obsidianUrl = buildObsidianOpenUrlOrch(path)
+  const openLinkedPath = onOpenPath ?? onOpenPathForEdit
 
   const isEditing = mode === 'edit'
   const hasTextChanges = isEditing && content !== null && draft !== content
@@ -284,6 +304,65 @@ function MarkdownDocumentBlock({
   const setDraftBody = useCallback((nextBody: string) => {
     setDraft((current) => `${splitFrontmatter(current).frontmatter}${nextBody}`)
   }, [])
+  const markdownRemarkPlugins = useMemo(() => [remarkGfm, remarkObsidianWikilinksOrch], [])
+
+  type MarkdownAnchorProps = ComponentPropsWithoutRef<'a'> & { node?: unknown }
+  const markdownComponents = useMemo(() => ({
+    a: ({ href, children, ...props }: MarkdownAnchorProps) => {
+      const isWikilink = isThinkingSpaceWikilinkHrefOrch(href)
+
+      const onClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+        if (!isWikilink || !href) {
+          props.onClick?.(event)
+          return
+        }
+        event.preventDefault()
+        setNavigationError(null)
+
+        const parsed = parseThinkingSpaceWikilinkHrefOrch(href)
+        if (!parsed) {
+          setNavigationError('Invalid wikilink target.')
+          return
+        }
+
+        void (async () => {
+          try {
+            const resolved = await resolveWikilinkTargetOrch({
+              currentPath: path,
+              target: parsed.target,
+            })
+
+            if (!resolved.path) {
+              setNavigationError(`Linked file not found: [[${parsed.target}]]`)
+              return
+            }
+
+            if (resolved.path === path) return
+            if (!openLinkedPath) {
+              setNavigationError('Linked file navigation is unavailable in this view.')
+              return
+            }
+
+            openLinkedPath(resolved.path)
+            setNavigationError(null)
+          } catch (err) {
+            setNavigationError(err instanceof Error ? err.message : 'Failed to open linked file')
+          }
+        })()
+      }
+
+      return (
+        <a
+          {...props}
+          href={href}
+          onClick={onClick}
+          className={cn(props.className, isWikilink && 'cursor-pointer')}
+        >
+          {children}
+        </a>
+      )
+    },
+  }), [openLinkedPath, path])
 
   useEffect(() => {
     if (content === null) {
@@ -409,6 +488,7 @@ function MarkdownDocumentBlock({
     setShowAssistPanel(false)
     setShowRelatedPanel(false)
     setSaveError(null)
+    setNavigationError(null)
     setConflict(null)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(isExcalidrawDoc)
@@ -424,6 +504,7 @@ function MarkdownDocumentBlock({
     setShowAssistPanel(false)
     setShowRelatedPanel(false)
     setAutoSaving(false)
+    setNavigationError(null)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(false)
     excalidrawSceneRef.current = null
@@ -697,6 +778,14 @@ function MarkdownDocumentBlock({
             <div className={cn('text-sm text-destructive', shouldPadViewerContent && 'px-6 py-5')}>{error}</div>
           )}
 
+          {!loading && !error && navigationError && (
+            <div className="px-6 pt-4">
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {navigationError}
+              </div>
+            </div>
+          )}
+
           {!loading && !error && content !== null && !isEditing && isExcalidrawDoc && (
             <ExcalidrawDocumentBlock content={content} />
           )}
@@ -709,7 +798,7 @@ function MarkdownDocumentBlock({
                 </div>
               )}
               <div className="prose" data-markdown-nav-root>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <ReactMarkdown remarkPlugins={markdownRemarkPlugins} components={markdownComponents}>
                   {viewMarkdown}
                 </ReactMarkdown>
               </div>

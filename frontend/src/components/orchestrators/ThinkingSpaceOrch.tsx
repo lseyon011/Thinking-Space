@@ -373,13 +373,15 @@ export default function ThinkingSpaceOrch() {
         <MarkdownDocumentBlock
           path={path}
           initialMode={inlineInitialModeByPath[path] ?? 'view'}
+          onOpenPath={(nextPath) => setInlinePathAndSyncUrl(nextPath)}
+          onOpenPathForEdit={(nextPath) => setInlinePathAndSyncUrl(nextPath, 'edit')}
           onClose={handleInlineDocumentClose}
           showCloseButton
           className="h-full min-h-0"
         />
       </section>
     ))
-  }, [handleInlineDocumentClose, inlineInitialModeByPath, inlinePath, mountedInlinePaths])
+  }, [handleInlineDocumentClose, inlineInitialModeByPath, inlinePath, mountedInlinePaths, setInlinePathAndSyncUrl])
 
   return (
     <div
