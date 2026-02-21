@@ -24,7 +24,8 @@
   },
   "mac": {
     "category": "public.app-category.productivity",
-    "target": "dmg"
+    "target": "dmg",
+    "icon": "assets/appIcon.png"
   },
   "linux": {
     "target": "AppImage",

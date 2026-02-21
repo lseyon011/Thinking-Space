@@ -10,6 +10,7 @@ import { app, BrowserWindow, Menu, MenuItem, nativeImage, Tray, session } from '
 import electronIsDev from 'electron-is-dev';
 import electronServe from 'electron-serve';
 import windowStateKeeper from 'electron-window-state';
+import { existsSync } from 'fs';
 import { join } from 'path';
 
 // Define components for a watcher to detect when the webapp is changed so we can reload in Dev mode.
@@ -135,11 +136,36 @@ export class ElectronCapacitorApp {
     });
   }
 
+  private resolveAppIconPath(): string {
+    const iconFileName = process.platform === 'win32' ? 'appIcon.ico' : 'appIcon.png';
+    const candidates = [
+      join(app.getAppPath(), 'assets', iconFileName),
+      join(process.resourcesPath, 'assets', iconFileName),
+      join(process.cwd(), 'assets', iconFileName),
+      join(process.cwd(), 'electron', 'assets', iconFileName),
+    ];
+
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    return candidates[0];
+  }
+
+  private createAppIcon() {
+    const iconPath = this.resolveAppIconPath();
+    const icon = nativeImage.createFromPath(iconPath);
+    if (icon.isEmpty()) {
+      console.warn(`[electron] Unable to load app icon from ${iconPath}`);
+    }
+    return icon;
+  }
+
   // Create a new window (used for multi-window support).
   async createWindow(route?: string): Promise<BrowserWindow> {
-    const icon = nativeImage.createFromPath(
-      join(app.getAppPath(), 'assets', process.platform === 'win32' ? 'appIcon.ico' : 'appIcon.png')
-    );
+    const icon = this.createAppIcon();
     const preloadPath = join(app.getAppPath(), 'build', 'src', 'preload.js');
     const winState = windowStateKeeper({
       defaultWidth: 1400,
@@ -200,9 +226,10 @@ export class ElectronCapacitorApp {
   }
 
   async init(): Promise<void> {
-    const icon = nativeImage.createFromPath(
-      join(app.getAppPath(), 'assets', process.platform === 'win32' ? 'appIcon.ico' : 'appIcon.png')
-    );
+    const icon = this.createAppIcon();
+    if (process.platform === 'darwin' && !icon.isEmpty()) {
+      app.dock?.setIcon(icon);
+    }
     this.mainWindowState = windowStateKeeper({
       defaultWidth: 1400,
       defaultHeight: 900,
