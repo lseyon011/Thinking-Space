@@ -17,6 +17,13 @@ import {
   type NativePencilMetricsEventOrch,
   type PencilPressureStateOrch,
 } from '@/services/orchestrators/pencilBridgeOrch'
+import {
+  EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH,
+  buildExcalidrawDisableHighlighterAppStatePatchOrch,
+  buildExcalidrawHighlighterAppStatePatchOrch,
+  isExcalidrawHighlighterEnabledOrch,
+  matchExcalidrawHighlighterPresetOrch,
+} from '@/services/orchestrators/excalidrawHighlighterOrch'
 import { cn } from '@/lib/utils'
 
 declare global {
@@ -403,6 +410,7 @@ export default function ExcalidrawDocumentBlock({
   const [miniMapElements, setMiniMapElements] = useState<readonly unknown[] | null>(null)
   const pendingMiniMapElementsRef = useRef<readonly unknown[] | null>(null)
   const miniMapElementsFrameRef = useRef<number | null>(null)
+  const [activeHighlighterPresetId, setActiveHighlighterPresetId] = useState<string | null>(null)
 
   const debugLog = useCallback((event: string, data: Record<string, unknown> = {}) => {
     if (!debugEnabled) return
@@ -560,6 +568,35 @@ export default function ExcalidrawDocumentBlock({
     }
   }, [editable])
 
+  const syncActiveHighlighterPresetFromAppState = useCallback((appState: Record<string, unknown>) => {
+    if (!editable) {
+      setActiveHighlighterPresetId(null)
+      return
+    }
+    const nextPresetId = matchExcalidrawHighlighterPresetOrch(appState)
+    setActiveHighlighterPresetId((prev) => (prev === nextPresetId ? prev : nextPresetId))
+  }, [editable])
+
+  const applyHighlighterPreset = useCallback((presetId: string) => {
+    if (!editable || !excalidrawApi) return
+    const preset = EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH.find((item) => item.id === presetId)
+    if (!preset) return
+    const appState = excalidrawApi.getAppStateBlock()
+    excalidrawApi.updateAppStateBlock(
+      buildExcalidrawHighlighterAppStatePatchOrch(preset, appState),
+    )
+    setActiveHighlighterPresetId(preset.id)
+  }, [editable, excalidrawApi])
+
+  const disableHighlighter = useCallback(() => {
+    if (!editable || !excalidrawApi) return
+    const appState = excalidrawApi.getAppStateBlock()
+    excalidrawApi.updateAppStateBlock(
+      buildExcalidrawDisableHighlighterAppStatePatchOrch(appState),
+    )
+    setActiveHighlighterPresetId(null)
+  }, [editable, excalidrawApi])
+
   const queueSceneChange = useCallback((params: {
     elements: readonly unknown[]
     appState: Record<string, unknown>
@@ -636,6 +673,7 @@ export default function ExcalidrawDocumentBlock({
 
   const handlePencilMetrics = useCallback((event: NativePencilMetricsEventOrch) => {
     if (!editable || !excalidrawApi) return
+    if (isExcalidrawHighlighterEnabledOrch(excalidrawApi.getAppStateBlock())) return
     const mapped = mapPencilPressureToStrokeStyleOrch(event, pencilPressureStateRef.current)
     pencilPressureStateRef.current = mapped.state
     if (!mapped.style) return
@@ -704,6 +742,7 @@ export default function ExcalidrawDocumentBlock({
     queuedSceneRef.current = null
     pencilPressureStateRef.current = null
     pendingPencilAppStateRef.current = null
+    setActiveHighlighterPresetId(null)
     debugLog('scene_reset', { editable, contentLength: content.length })
   }, [content, debugLog, editable])
 
@@ -867,6 +906,9 @@ export default function ExcalidrawDocumentBlock({
 
     const trackViewport = miniMapBounds !== null
     const viewport = excalidrawApi.getViewportStateBlock()
+    if (editable) {
+      syncActiveHighlighterPresetFromAppState(excalidrawApi.getAppStateBlock())
+    }
     if (trackViewport) {
       setScrollState({
         scrollX: viewport.scrollX,
@@ -959,7 +1001,20 @@ export default function ExcalidrawDocumentBlock({
         scrollFrameRef.current = null
       }
     }
-  }, [containerSize.height, containerSize.width, countDrawableCentersInViewport, debugLog, editable, excalidrawApi, miniMapBounds, parsedScene, queueMiniMapElements, sceneBounds, scheduleAutoCenter])
+  }, [
+    containerSize.height,
+    containerSize.width,
+    countDrawableCentersInViewport,
+    debugLog,
+    editable,
+    excalidrawApi,
+    miniMapBounds,
+    parsedScene,
+    queueMiniMapElements,
+    sceneBounds,
+    scheduleAutoCenter,
+    syncActiveHighlighterPresetFromAppState,
+  ])
 
   useEffect(() => {
     const container = containerRef.current
@@ -1048,6 +1103,9 @@ export default function ExcalidrawDocumentBlock({
             if (editable && excalidrawApi && !hasAutoCenteredRef.current && autoCenterRequestedRef.current && elements.length > 0) {
               scheduleAutoCenter('on_change', elements.length)
             }
+            if (editable) {
+              syncActiveHighlighterPresetFromAppState(typedAppState)
+            }
             if (editable && miniMapBounds && !viewportSubscriptionActiveRef.current) {
               const zoom = readZoomFromAppState(typedAppState)
               const scrollX = typeof typedAppState.scrollX === 'number' && Number.isFinite(typedAppState.scrollX)
@@ -1078,6 +1136,56 @@ export default function ExcalidrawDocumentBlock({
           UIOptions={uiOptions as any}
         />
       </Suspense>
+
+      {editable && (
+        <div className="pointer-events-none absolute right-3 top-3 z-30 flex max-w-[min(36rem,calc(100%-1.5rem))] flex-wrap items-center justify-end gap-1 rounded-lg border border-border/70 bg-background/90 px-2 py-1 shadow-sm backdrop-blur">
+          <span className="hidden pr-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:inline">
+            Highlighter
+          </span>
+          <button
+            type="button"
+            onClick={disableHighlighter}
+            className={cn(
+              'pointer-events-auto rounded-md border px-2 py-1 text-[10px] font-medium uppercase tracking-[0.08em] transition-colors',
+              activeHighlighterPresetId === null
+                ? 'border-primary/70 bg-primary/15 text-foreground'
+                : 'border-border/70 bg-background text-muted-foreground hover:bg-muted',
+            )}
+            title="Switch to standard ink"
+          >
+            Ink
+          </button>
+          {EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH.map((preset) => {
+            const isActive = activeHighlighterPresetId === preset.id
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => applyHighlighterPreset(preset.id)}
+                className={cn(
+                  'pointer-events-auto inline-flex items-center gap-1 rounded-md border px-1.5 py-1 text-[10px] transition-colors',
+                  isActive
+                    ? 'border-primary/70 bg-primary/15 text-foreground'
+                    : 'border-border/70 bg-background text-muted-foreground hover:bg-muted',
+                )}
+                title={`Highlighter: ${preset.label}`}
+                aria-label={`Use ${preset.label} highlighter`}
+              >
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-sm border border-border/50"
+                  style={{ backgroundColor: preset.backgroundColor }}
+                />
+                <span className="hidden sm:inline">{preset.label}</span>
+              </button>
+            )
+          })}
+          {activeHighlighterPresetId === 'custom' && (
+            <span className="rounded-md border border-border/60 bg-background px-1.5 py-1 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+              Custom
+            </span>
+          )}
+        </div>
+      )}
 
       {editable && isLargeScene && (
         <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-lg border border-border/70 bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur">
