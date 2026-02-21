@@ -199,10 +199,9 @@ export default function ThinkingSpaceOrch() {
     return true
   }, [])
 
-  const handleExplorerCreateFolder = useCallback(async (parentPath: string): Promise<string | boolean> => {
-    const input = window.prompt('New folder name', 'New Folder')
-    if (!input) return false
-    return createFolderOrch(parentPath, input)
+  const handleExplorerCreateFolder = useCallback(async (parentPath: string): Promise<string> => {
+    // Avoid prompt dependency in Electron; create then rename inline.
+    return createFolderOrch(parentPath, 'New Folder')
   }, [])
 
   const handleExplorerCreateFile = useCallback(async (parentPath: string): Promise<string> => {

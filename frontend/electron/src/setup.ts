@@ -163,6 +163,34 @@ export class ElectronCapacitorApp {
     return icon;
   }
 
+  private attachNativeContextMenu(targetWindow: BrowserWindow): void {
+    targetWindow.webContents.on('context-menu', (_event, params) => {
+      let template: MenuItemConstructorOptions[] = [];
+
+      if (params.isEditable) {
+        template = [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut', enabled: params.editFlags.canCut },
+          { role: 'copy', enabled: params.editFlags.canCopy },
+          { role: 'paste', enabled: params.editFlags.canPaste },
+          { role: 'selectAll' },
+        ];
+      } else if (params.selectionText?.trim()) {
+        template = [
+          { role: 'copy' },
+          { type: 'separator' },
+          { role: 'selectAll' },
+        ];
+      } else {
+        return;
+      }
+
+      Menu.buildFromTemplate(template).popup({ window: targetWindow });
+    });
+  }
+
   // Create a new window (used for multi-window support).
   async createWindow(route?: string): Promise<BrowserWindow> {
     const icon = this.createAppIcon();
@@ -187,6 +215,7 @@ export class ElectronCapacitorApp {
       },
     });
     winState.manage(newWindow);
+    this.attachNativeContextMenu(newWindow);
 
     if (this.CapacitorFileConfig.backgroundColor) {
       newWindow.setBackgroundColor(this.CapacitorFileConfig.electron.backgroundColor);
@@ -252,6 +281,7 @@ export class ElectronCapacitorApp {
     });
     this.mainWindowState.manage(mainWindow);
     this.windows = [mainWindow];
+    this.attachNativeContextMenu(mainWindow);
 
     if (this.CapacitorFileConfig.backgroundColor) {
       mainWindow.setBackgroundColor(this.CapacitorFileConfig.electron.backgroundColor);

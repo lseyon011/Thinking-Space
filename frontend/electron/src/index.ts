@@ -63,6 +63,7 @@ const appMenuBarMenuTemplate: (MenuItemConstructorOptions | MenuItem)[] = [
       { role: 'close' },
     ],
   },
+  { role: 'editMenu' },
   { role: 'viewMenu' },
 ];
 
