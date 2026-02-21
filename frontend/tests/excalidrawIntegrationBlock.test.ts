@@ -107,4 +107,33 @@ describe('excalidrawIntegrationBlock', () => {
     expect(cloned.files).toEqual(files)
     expect(cloned.files).not.toBe(files)
   })
+
+  it('clones scene payloads without throwing on getter traps', () => {
+    const appState: Record<string, unknown> = {
+      zoom: { value: 1.1 },
+    }
+    Object.defineProperty(appState, 'badField', {
+      enumerable: true,
+      get() {
+        throw new Error('boom')
+      },
+    })
+
+    const files: Record<string, unknown> = {
+      fileA: { mimeType: 'image/png' },
+    }
+    Object.defineProperty(files, 'badFile', {
+      enumerable: true,
+      get() {
+        throw new Error('boom-file')
+      },
+    })
+
+    expect(() => cloneExcalidrawSceneChangeBlock([{ id: 'shape' }], appState, files)).not.toThrow()
+    const cloned = cloneExcalidrawSceneChangeBlock([{ id: 'shape' }], appState, files)
+    expect(cloned.appState).toMatchObject({ zoom: { value: 1.1 } })
+    expect(cloned.appState.badField).toBeUndefined()
+    expect(cloned.files).toMatchObject({ fileA: { mimeType: 'image/png' } })
+    expect(cloned.files.badFile).toBeUndefined()
+  })
 })

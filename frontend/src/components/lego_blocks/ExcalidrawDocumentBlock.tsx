@@ -571,11 +571,18 @@ export default function ExcalidrawDocumentBlock({
       const queued = queuedSceneRef.current
       if (!queued) return
       const flushStarted = nowMs()
-      onSceneChange(cloneExcalidrawSceneChangeOrch(
-        queued.elements,
-        queued.appState,
-        queued.files,
-      ))
+      try {
+        onSceneChange(cloneExcalidrawSceneChangeOrch(
+          queued.elements,
+          queued.appState,
+          queued.files,
+        ))
+      } catch (error) {
+        debugLog('scene_change_flush_error', {
+          message: error instanceof Error ? error.message : String(error),
+        })
+        return
+      }
       pushGlobalExcalidrawPerfEvent({
         name: 'scene_change_flush',
         durationMs: nowMs() - flushStarted,
