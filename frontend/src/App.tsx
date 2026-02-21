@@ -5,6 +5,7 @@ import {
   CheckSquare2,
   Compass,
   FolderKanban,
+  FileText,
   GitBranch,
   Menu,
   MessageSquare,
@@ -39,6 +40,7 @@ import { UI_THEME_OPTIONS_BLOCK, useUIThemeBlock } from './components/lego_block
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { smartSync } from './services/orchestrators/vaultSyncOrch'
+import { listMarkdownEntries } from './services/orchestrators/fileSystemOrch'
 import {
   STORAGE_KEYS,
   getJsonStorageItem,
@@ -55,6 +57,7 @@ import {
   shouldOpenDrawerFromSwipeBlock,
   shouldStartEdgeSwipeOpenBlock,
 } from './services/lego_blocks/uiGestureBlock'
+import { rankFuzzyItemsBlock } from './services/lego_blocks/fuzzySearchBlock'
 import type { UIThemeId } from './services/orchestrators/uiThemeOrch'
 
 type NavIcon = ComponentType<{ className?: string }>
@@ -69,9 +72,10 @@ interface NavItem {
 interface CommandItem {
   to: string
   label: string
-  group: 'Core' | 'Workspace' | 'Excalidraw++'
+  group: 'Core' | 'Workspace' | 'Excalidraw++' | 'Files'
   activePaths?: string[]
   keywords?: string
+  description?: string
 }
 
 interface AppWorkspaceTab {
@@ -165,6 +169,10 @@ function getNextThemeId(themeId: UIThemeId): UIThemeId {
   return UI_THEME_OPTIONS_BLOCK[(currentIndex + 1) % UI_THEME_OPTIONS_BLOCK.length]?.id ?? themeId
 }
 
+function buildThinkingSpaceFileRoute(path: string): string {
+  return `/thinking-space?file=${encodeURIComponent(path)}`
+}
+
 function App() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -184,6 +192,8 @@ function App() {
   })
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [commandQuery, setCommandQuery] = useState('')
+  const [commandFileItems, setCommandFileItems] = useState<CommandItem[]>([])
+  const [commandFilesLastLoadedAt, setCommandFilesLastLoadedAt] = useState(0)
   const commandInputRef = useRef<HTMLInputElement | null>(null)
   const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerPanelSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -228,7 +238,7 @@ function App() {
     return items
   }, [extensionBuilderEnabled])
 
-  const commandItems = useMemo<CommandItem[]>(() => ([
+  const baseCommandItems = useMemo<CommandItem[]>(() => ([
     { to: '/', label: 'Home', group: 'Core', keywords: 'dashboard start' },
     ...PRIMARY_NAV_ITEMS.map(item => ({
       to: item.to,
@@ -251,15 +261,20 @@ function App() {
     })),
   ]), [utilityNavItems])
 
+  const allCommandItems = useMemo<CommandItem[]>(
+    () => [...baseCommandItems, ...commandFileItems],
+    [baseCommandItems, commandFileItems],
+  )
+
   const routeLabelByPath = useMemo(() => {
     const entries = new Map<string, string>()
     entries.set('/', 'Home')
     entries.set('/file-organizer', 'Thinking Organizer')
-    commandItems.forEach((item) => {
+    baseCommandItems.forEach((item) => {
       entries.set(item.to, item.label)
     })
     return entries
-  }, [commandItems])
+  }, [baseCommandItems])
 
   const activeWorkspaceTab = useMemo(
     () => workspaceTabs.find(tab => tab.id === activeWorkspaceTabId) ?? null,
@@ -275,12 +290,24 @@ function App() {
   )
 
   const filteredCommandItems = useMemo(() => {
-    const query = commandQuery.trim().toLowerCase()
-    if (!query) return commandItems
-    return commandItems.filter(item => (
-      `${item.label} ${item.to} ${item.group} ${item.keywords ?? ''}`.toLowerCase().includes(query)
-    ))
-  }, [commandItems, commandQuery])
+    const query = commandQuery.trim()
+    if (!query) {
+      return [...baseCommandItems, ...commandFileItems.slice(0, 24)]
+    }
+    const ranked = rankFuzzyItemsBlock({
+      items: allCommandItems,
+      query,
+      limit: 80,
+      getCandidates: (item) => [
+        item.label,
+        item.description ?? '',
+        item.to,
+        item.group,
+        item.keywords ?? '',
+      ],
+    })
+    return ranked.map(entry => entry.item)
+  }, [allCommandItems, baseCommandItems, commandFileItems, commandQuery])
 
   const shell = useMemo(() => deriveAdaptiveShellStateOrch(layout), [layout])
   const compactNav = shell.compactNav
@@ -317,6 +344,30 @@ function App() {
   const closeCommandPalette = useCallback(() => {
     setCommandPaletteOpen(false)
   }, [])
+
+  const ensureCommandFilesLoaded = useCallback(async () => {
+    if (needsVaultSetup) return
+    if (Date.now() - commandFilesLastLoadedAt < 20_000) return
+    const entries = await listMarkdownEntries()
+    const seen = new Set<string>()
+    const fileItems: CommandItem[] = []
+    for (const entry of entries) {
+      const path = entry.path.trim()
+      if (!path || seen.has(path)) continue
+      seen.add(path)
+      const fileName = path.split('/').pop() || path
+      const label = fileName.replace(/\.md$/i, '')
+      fileItems.push({
+        to: buildThinkingSpaceFileRoute(path),
+        label,
+        description: path,
+        group: 'Files',
+        keywords: `file note markdown ${path}`,
+      })
+    }
+    setCommandFileItems(fileItems)
+    setCommandFilesLastLoadedAt(Date.now())
+  }, [commandFilesLastLoadedAt, needsVaultSetup])
 
   const handleCycleTheme = useCallback(() => {
     setThemeId(getNextThemeId(themeId))
@@ -496,6 +547,21 @@ function App() {
     }, 0)
     return () => window.clearTimeout(handle)
   }, [commandPaletteOpen])
+
+  useEffect(() => {
+    if (!commandPaletteOpen) return
+    if (needsVaultSetup) return
+    let cancelled = false
+    void ensureCommandFilesLoaded()
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn('[App] Failed to load command palette files:', error)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [commandPaletteOpen, ensureCommandFilesLoaded, needsVaultSetup])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1058,7 +1124,7 @@ function App() {
                         runCommandItem(filteredCommandItems[0])
                       }
                     }}
-                    placeholder="Jump to a page..."
+                    placeholder="Jump to a page or file..."
                     className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                   />
                 </div>
@@ -1085,10 +1151,18 @@ function App() {
                           active ? 'bg-foreground text-background' : 'hover:bg-muted'
                         }`}
                       >
-                        <span className="truncate">{item.label}</span>
-                        <span className={`ml-2 text-[10px] uppercase tracking-[0.14em] ${active ? 'text-background/80' : 'text-muted-foreground'}`}>
-                          {item.group}
-                        </span>
+                        <div className="min-w-0">
+                          <div className="truncate">{item.label}</div>
+                          {item.description && (
+                            <div className={`mt-0.5 truncate text-[11px] ${active ? 'text-background/80' : 'text-muted-foreground'}`}>
+                              {item.description}
+                            </div>
+                          )}
+                        </div>
+                        <div className={`ml-3 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] ${active ? 'text-background/80' : 'text-muted-foreground'}`}>
+                          {item.group === 'Files' ? <FileText className="h-3 w-3" /> : null}
+                          <span>{item.group}</span>
+                        </div>
                       </button>
                     )
                   })

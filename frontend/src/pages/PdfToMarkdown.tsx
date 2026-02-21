@@ -7,6 +7,7 @@ import { ArrowLeft, FileType, Check, Loader2, Search } from 'lucide-react'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
 import type { ConvertOptions, PdfPreviewData, PdfConvertResult } from '@/services/lego_blocks/typesBlock'
 import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
+import { rankFuzzyItemsBlock } from '@/services/lego_blocks/fuzzySearchBlock'
 
 const PDF_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.tools.pdf' }
 
@@ -28,8 +29,16 @@ export default function PdfToMarkdown() {
   // Filter files based on search query
   const filteredFiles = useMemo(() => {
     if (!searchQuery.trim()) return files.slice(0, 50)
-    const query = searchQuery.toLowerCase()
-    return files.filter(f => f.toLowerCase().includes(query)).slice(0, 50)
+    const ranked = rankFuzzyItemsBlock({
+      items: files,
+      query: searchQuery,
+      limit: 50,
+      getCandidates: (filePath) => {
+        const baseName = filePath.split('/').pop() ?? filePath
+        return [baseName, filePath]
+      },
+    })
+    return ranked.map(entry => entry.item)
   }, [files, searchQuery])
 
   // Load file list on mount

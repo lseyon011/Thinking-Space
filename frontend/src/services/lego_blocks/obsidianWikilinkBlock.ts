@@ -1,3 +1,5 @@
+import { fuzzyMatchScoreBlock } from './fuzzySearchBlock'
+
 const WIKILINK_TOKEN_PATTERN = /(!)?\[\[([^[\]]+?)\]\]/g
 const THINKING_SPACE_WIKILINK_PREFIX = 'ts-wikilink:'
 
@@ -171,36 +173,6 @@ function splitTargetAndAlias(rawInner: string): { target: string; alias: string 
   const target = rawInner.slice(0, pipeIdx).trim()
   const alias = rawInner.slice(pipeIdx + 1).trim()
   return { target, alias: alias || null }
-}
-
-function fuzzySubsequenceScore(query: string, candidate: string): number {
-  const q = query.trim().toLowerCase()
-  const text = candidate.toLowerCase()
-  if (!q) return 0
-  if (!text) return -1
-
-  let queryIdx = 0
-  let score = 0
-  let lastMatchIdx = -2
-  for (let i = 0; i < text.length; i += 1) {
-    if (queryIdx >= q.length) break
-    if (text[i] !== q[queryIdx]) continue
-
-    const prev = i > 0 ? text[i - 1] : ''
-    const atBoundary = i === 0 || prev === '/' || prev === '-' || prev === '_' || prev === ' ' || prev === '.'
-
-    score += 10
-    if (atBoundary) score += 6
-    if (lastMatchIdx + 1 === i) score += 4
-
-    lastMatchIdx = i
-    queryIdx += 1
-  }
-
-  if (queryIdx < q.length) return -1
-
-  score -= Math.max(0, text.length - q.length) * 0.12
-  return score
 }
 
 function normalizeWikilinkPath(path: string): string {
@@ -437,8 +409,8 @@ export function buildWikilinkSuggestionsBlock(
     if (!target) continue
 
     const baseName = stripMarkdownExtension(leafOf(normalizedPath))
-    const targetScore = fuzzySubsequenceScore(query, target)
-    const baseScore = fuzzySubsequenceScore(query, baseName)
+    const targetScore = fuzzyMatchScoreBlock(query, target)
+    const baseScore = fuzzyMatchScoreBlock(query, baseName)
     const bestTextScore = query
       ? Math.max(targetScore, baseScore >= 0 ? baseScore + 2.5 : -1)
       : 0
