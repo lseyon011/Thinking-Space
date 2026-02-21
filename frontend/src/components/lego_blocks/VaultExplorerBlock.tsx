@@ -768,7 +768,7 @@ export default function VaultExplorerBlock({
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col', className)}>
-      <div className="border-b border-border/60 px-3 py-2">
+      <div className="ltm-vault-explorer-search-wrap px-3 py-2">
         {hasTitle && (
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">

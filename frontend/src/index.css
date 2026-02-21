@@ -270,6 +270,18 @@
     padding-inline: clamp(0.08rem, 0.55vw, 0.35rem);
   }
 
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome {
+    -webkit-app-region: drag;
+  }
+
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome button,
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome a,
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome input,
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome select,
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome textarea {
+    -webkit-app-region: no-drag;
+  }
+
   .ltm-shell-top-tab-capsule {
     width: min(100%, 880px);
     margin-inline: auto;
@@ -367,6 +379,14 @@
   .ltm-thinking-space-shell .ltm-thinking-space-explorer-surface .ltm-shell-segment-header,
   .ltm-thinking-space-shell .ltm-thinking-space-explorer-surface .ltm-shell-segment-footer {
     background: transparent;
+  }
+
+  .ltm-thinking-space-shell .ltm-thinking-space-explorer-chrome {
+    box-shadow: none;
+  }
+
+  .ltm-thinking-space-shell .ltm-vault-explorer-search-wrap {
+    border-bottom: 0;
   }
 
   .ltm-thinking-space-shell .ltm-thinking-space-document-stage {

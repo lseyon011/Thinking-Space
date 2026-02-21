@@ -408,7 +408,7 @@ export default function ThinkingSpaceOrch() {
 
   const inlineExplorerContent = useMemo(() => (
     <>
-      <div className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between px-2">
+      <div className="ltm-shell-segment-header ltm-thinking-space-explorer-chrome flex h-11 shrink-0 items-center justify-between px-2">
         <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
           Thinking Space Explorer
         </span>
@@ -441,7 +441,7 @@ export default function ThinkingSpaceOrch() {
           title=""
         />
       </div>
-      <div className="ltm-shell-segment-footer p-2">
+      <div className="ltm-shell-segment-footer ltm-thinking-space-explorer-chrome p-2">
         <ExtensionSlotBlock
           slotId="sidebar-bottom"
           context={{ inlinePath }}
@@ -578,7 +578,7 @@ export default function ThinkingSpaceOrch() {
             onTouchEnd={handleExplorerDrawerTouchEnd}
             onTouchCancel={handleExplorerDrawerTouchEnd}
           >
-            <div className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between px-2">
+            <div className="ltm-shell-segment-header ltm-thinking-space-explorer-chrome flex h-11 shrink-0 items-center justify-between px-2">
               <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 Explorer
               </span>
@@ -612,7 +612,7 @@ export default function ThinkingSpaceOrch() {
               />
             </div>
             <div
-              className="ltm-shell-segment-footer p-2"
+              className="ltm-shell-segment-footer ltm-thinking-space-explorer-chrome p-2"
               style={drawerBottomPadding ? { paddingBottom: `${drawerBottomPadding + 8}px` } : undefined}
             >
               <ExtensionSlotBlock
