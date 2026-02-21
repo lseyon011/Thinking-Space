@@ -37,7 +37,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   }) => ipcRenderer.invoke('extension-runtime:invoke', payload),
 
   // Window management
-  newWindow: () => ipcRenderer.invoke('window:new'),
+  newWindow: (route?: string) => ipcRenderer.invoke('window:new', route),
 
   // Vault folder picker dialog
   selectVaultFolder: () => ipcRenderer.invoke('vault:selectFolder'),

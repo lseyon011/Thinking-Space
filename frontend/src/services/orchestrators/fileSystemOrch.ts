@@ -421,6 +421,16 @@ export function openFileInNewTabOrch(path: string): void {
 }
 
 export function openFileInNewWindowOrch(path: string): void {
+  const normalizedPath = normalizeRelPath(path)
+  const route = `/thinking-space?file=${encodeURIComponent(normalizedPath)}`
+
+  if (isElectron()) {
+    const api = window.electronAPI
+    if (!api?.newWindow) throw new Error('Open in New Window is unavailable in this desktop build')
+    void api.newWindow(route)
+    return
+  }
+
   const url = buildThinkingSpaceFileUrlOrch(path)
   window.open(url, '_blank', 'noopener,noreferrer,popup=yes,width=1280,height=900')
 }

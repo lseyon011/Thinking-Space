@@ -120,8 +120,8 @@ app.on('activate', async function () {
 });
 
 // -- New window IPC --
-ipcMain.handle('window:new', async () => {
-  await myCapacitorApp.createWindow();
+ipcMain.handle('window:new', async (_event, route?: string) => {
+  await myCapacitorApp.createWindow(route);
 });
 
 // =====================================================================

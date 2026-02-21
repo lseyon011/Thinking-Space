@@ -113,8 +113,30 @@ export class ElectronCapacitorApp {
     };
   }
 
+  private normalizeInAppRoute(route?: string): string | null {
+    const trimmed = route?.trim();
+    if (!trimmed) return null;
+    const normalized = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+    return normalized;
+  }
+
+  private routeWindowAfterLoad(targetWindow: BrowserWindow, route?: string): void {
+    const normalizedRoute = this.normalizeInAppRoute(route);
+    if (!normalizedRoute) return;
+    const script = `(() => {
+      const nextRoute = ${JSON.stringify(normalizedRoute)};
+      if (window.location.hash !== \`#\${nextRoute}\`) {
+        window.location.hash = nextRoute;
+      }
+    })();`;
+
+    targetWindow.webContents.once('did-finish-load', () => {
+      void targetWindow.webContents.executeJavaScript(script, true).catch(() => {});
+    });
+  }
+
   // Create a new window (used for multi-window support).
-  async createWindow(): Promise<BrowserWindow> {
+  async createWindow(route?: string): Promise<BrowserWindow> {
     const icon = nativeImage.createFromPath(
       join(app.getAppPath(), 'assets', process.platform === 'win32' ? 'appIcon.ico' : 'appIcon.png')
     );
@@ -172,6 +194,7 @@ export class ElectronCapacitorApp {
       }
     });
 
+    this.routeWindowAfterLoad(newWindow, route);
     await this.loadWebApp(newWindow);
     return newWindow;
   }
