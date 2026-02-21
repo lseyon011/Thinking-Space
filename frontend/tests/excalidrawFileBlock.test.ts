@@ -189,4 +189,88 @@ describe('excalidrawFileBlock serialize', () => {
     expect((parsed?.appState?.trap as Record<string, unknown> | undefined)?.stable).toBe(true)
     expect((parsed?.appState?.trap as Record<string, unknown> | undefined)?.toJSON).toBeUndefined()
   })
+
+  it('parses fenced json when element text contains inline triple backticks', () => {
+    const scenePayload = {
+      elements: [
+        {
+          id: 'text-1',
+          type: 'text',
+          x: 0,
+          y: 0,
+          width: 10,
+          height: 10,
+          version: 1,
+          versionNonce: 1,
+          text: 'Original Credit\\n```js*/\\n/**',
+        },
+      ],
+      appState: {},
+      files: {},
+    }
+
+    const original = [
+      'header',
+      '```json',
+      JSON.stringify(scenePayload, null, 2),
+      '```',
+      'footer',
+      '',
+    ].join('\n')
+
+    const parsed = parseExcalidrawScene(original)
+    expect(parsed).not.toBeNull()
+    expect((parsed?.elements[0] as Record<string, unknown> | undefined)?.id).toBe('text-1')
+  })
+
+  it('replaces the correct json fence when scene text includes triple backticks', () => {
+    const scenePayload = {
+      elements: [
+        {
+          id: 'text-2',
+          type: 'text',
+          x: 0,
+          y: 0,
+          width: 10,
+          height: 10,
+          version: 1,
+          versionNonce: 1,
+          text: 'Ref\\n```js*/\\n/**',
+        },
+      ],
+      appState: {},
+      files: {},
+    }
+
+    const original = [
+      'header',
+      '```json',
+      JSON.stringify(scenePayload, null, 2),
+      '```',
+      'footer',
+      '',
+    ].join('\n')
+
+    const updated = serializeExcalidrawScene(original, {
+      elements: [
+        {
+          id: 'next',
+          type: 'ellipse',
+          x: 1,
+          y: 2,
+          width: 3,
+          height: 4,
+        },
+      ],
+      appState: {},
+      files: {},
+    })
+
+    expect((updated.match(/```json/g) ?? []).length).toBe(1)
+    expect(updated).toContain('header')
+    expect(updated).toContain('footer')
+    const parsed = parseExcalidrawScene(updated)
+    expect(parsed).not.toBeNull()
+    expect((parsed?.elements[0] as Record<string, unknown> | undefined)?.id).toBe('next')
+  })
 })

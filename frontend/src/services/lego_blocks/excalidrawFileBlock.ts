@@ -13,6 +13,49 @@ type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 
 const MAX_SERIALIZE_DEPTH = 80
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function hasValidZoomShape(value: unknown): boolean {
+  if (value === undefined || value === null) return true
+  if (isFiniteNumber(value)) return true
+  if (!isRecord(value)) return false
+  return isFiniteNumber(value.value)
+}
+
+function hasCanonicalElementShape(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  if (typeof value.type !== 'string') return false
+  if (typeof value.id !== 'string') return false
+  if (!isFiniteNumber(value.x)) return false
+  if (!isFiniteNumber(value.y)) return false
+  if (!isFiniteNumber(value.width)) return false
+  if (!isFiniteNumber(value.height)) return false
+  if (!isFiniteNumber(value.version)) return false
+  if (!isFiniteNumber(value.versionNonce)) return false
+  return true
+}
+
+function isLikelyCanonicalScene(scene: ParsedExcalidrawScene): boolean {
+  const appState = scene.appState
+  const files = scene.files
+  if (appState !== undefined && !isRecord(appState)) return false
+  if (files !== undefined && !isRecord(files)) return false
+  if (!hasValidZoomShape(appState?.zoom)) return false
+
+  const elements = scene.elements
+  const sampleSize = Math.min(elements.length, 12)
+  for (let index = 0; index < sampleSize; index += 1) {
+    if (!hasCanonicalElementShape(elements[index])) return false
+  }
+  return true
+}
+
 function sanitizeMapKey(value: unknown, stack: object[], depth: number): string | null {
   if (typeof value === 'string') return value
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : null
@@ -105,11 +148,26 @@ function sanitizeSceneObject(value: unknown): Record<string, JsonValue> {
 }
 
 function sceneToJson(scene: ParsedExcalidrawScene): string {
+  const safeAppState = sanitizeSceneObject(scene.appState ?? {})
+  const safeFiles = sanitizeSceneObject(scene.files ?? {})
+
+  // Fast path: serialize directly for canonical scenes.
+  try {
+    return serializeAsJSON(
+      scene.elements as any,
+      safeAppState as any,
+      safeFiles as any,
+      'local',
+    )
+  } catch {
+    // Fallback: repair malformed/corrupt scenes through restore.
+  }
+
   const restored = restore(
     {
       elements: scene.elements as any,
-      appState: sanitizeSceneObject(scene.appState ?? {}) as any,
-      files: sanitizeSceneObject(scene.files ?? {}) as any,
+      appState: safeAppState as any,
+      files: safeFiles as any,
     },
     null,
     null,
@@ -184,10 +242,19 @@ function normalizeObsidianHighlighterElements(elements: unknown[]): unknown[] {
 }
 
 function normalizeScene(scene: ParsedExcalidrawScene): ParsedExcalidrawScene {
+  const normalizedElements = normalizeObsidianHighlighterElements(scene.elements)
+  if (isLikelyCanonicalScene({ ...scene, elements: normalizedElements })) {
+    return {
+      elements: normalizedElements,
+      appState: scene.appState ?? {},
+      files: scene.files ?? {},
+    }
+  }
+
   try {
     const restored = restore(
       {
-        elements: normalizeObsidianHighlighterElements(scene.elements) as any,
+        elements: normalizedElements as any,
         appState: (scene.appState ?? {}) as any,
         files: (scene.files ?? {}) as any,
       },
@@ -207,7 +274,7 @@ function normalizeScene(scene: ParsedExcalidrawScene): ParsedExcalidrawScene {
   } catch {
     // Fallback keeps rendering path resilient for partially malformed scenes.
     return normalizeExcalidrawSceneForInteropBlock({
-      elements: normalizeObsidianHighlighterElements(scene.elements),
+      elements: normalizedElements,
       appState: scene.appState,
       files: scene.files,
     })
@@ -218,14 +285,46 @@ function maybeNormalizeScene(scene: ParsedExcalidrawScene, normalize: boolean): 
   return normalize ? normalizeScene(scene) : scene
 }
 
+interface CodeFenceMatch {
+  start: number
+  end: number
+  type: string
+  body: string
+}
+
+function findCodeFences(content: string): CodeFenceMatch[] {
+  const matches: CodeFenceMatch[] = []
+  const openFenceRe = /(^|\n)```([a-zA-Z0-9_-]+)?[ \t]*\n/gm
+  const closeFenceRe = /\n```[ \t]*(?=\n|$)/g
+
+  let openMatch: RegExpExecArray | null
+  while ((openMatch = openFenceRe.exec(content)) !== null) {
+    const fenceStart = openMatch.index + (openMatch[1]?.length ?? 0)
+    const type = (openMatch[2] ?? '').trim().toLowerCase()
+    const bodyStart = openFenceRe.lastIndex
+
+    closeFenceRe.lastIndex = bodyStart
+    const closeMatch = closeFenceRe.exec(content)
+    if (!closeMatch) break
+
+    matches.push({
+      start: fenceStart,
+      end: closeMatch.index + closeMatch[0].length,
+      type,
+      body: content.slice(bodyStart, closeMatch.index),
+    })
+
+    openFenceRe.lastIndex = closeMatch.index + closeMatch[0].length
+  }
+
+  return matches
+}
+
 function parseFromCodeFences(content: string, normalize: boolean): ParsedExcalidrawScene | null {
-  const fenceRe = /```([a-zA-Z0-9_-]+)?\s*([\s\S]*?)\s*```/gi
-  let match: RegExpExecArray | null
-  while (true) {
-    match = fenceRe.exec(content)
-    if (!match) break
-    const fenceType = (match[1] ?? '').trim().toLowerCase()
-    const block = match[2]?.trim() ?? ''
+  const fences = findCodeFences(content)
+  for (const fence of fences) {
+    const fenceType = fence.type
+    const block = fence.body.trim()
 
     if (fenceType === '' || fenceType === 'json') {
       const parsed = tryParseJson(block)
@@ -275,28 +374,19 @@ export function serializeExcalidrawScene(
     }
   }
 
-  const fenceRe = /```([a-zA-Z0-9_-]+)?\s*([\s\S]*?)\s*```/gi
-  let replaced = false
-  const updated = originalContent.replace(fenceRe, (full, rawFenceType: string, block: string) => {
-    if (replaced) return full
-    const fenceType = (rawFenceType ?? '').trim().toLowerCase()
-
+  const fences = findCodeFences(originalContent)
+  for (const fence of fences) {
+    const fenceType = fence.type
     if (fenceType === 'compressed-json') {
-      replaced = true
-      return `\`\`\`json\n${serialized}\n\`\`\``
+      return `${originalContent.slice(0, fence.start)}\`\`\`json\n${serialized}\n\`\`\`${originalContent.slice(fence.end)}`
     }
 
     if (fenceType === '' || fenceType === 'json') {
-      const parsed = tryParseJson((block ?? '').trim())
-      if (!parsed) return full
-      replaced = true
-      return `\`\`\`json\n${serialized}\n\`\`\``
+      const parsed = tryParseJson(fence.body.trim())
+      if (!parsed) continue
+      return `${originalContent.slice(0, fence.start)}\`\`\`json\n${serialized}\n\`\`\`${originalContent.slice(fence.end)}`
     }
-
-    return full
-  })
-
-  if (replaced) return updated
+  }
 
   return `\`\`\`json\n${serialized}\n\`\`\`\n`
 }
