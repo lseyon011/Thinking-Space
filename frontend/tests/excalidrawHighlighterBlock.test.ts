@@ -3,8 +3,10 @@ import {
   EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK,
   buildExcalidrawDisableHighlighterAppStatePatchBlock,
   buildExcalidrawHighlighterAppStatePatchBlock,
+  extractObsidianHighlighterPresetsFromPluginDataBlock,
   isExcalidrawHighlighterEnabledBlock,
   matchExcalidrawHighlighterPresetBlock,
+  parseObsidianHighlighterPresetsJsonBlock,
 } from '../src/services/lego_blocks/excalidrawHighlighterBlock'
 
 describe('excalidrawHighlighterBlock', () => {
@@ -73,5 +75,62 @@ describe('excalidrawHighlighterBlock', () => {
     expect((patch.currentStrokeOptions as Record<string, unknown>).highlighter).toBe(false)
     expect((patch.currentStrokeOptions as Record<string, unknown>).hasOutline).toBe(false)
     expect(patch.currentItemBackgroundColor).toBe('transparent')
+  })
+
+  it('extracts highlighter presets from Obsidian customPens data', () => {
+    const presets = extractObsidianHighlighterPresetsFromPluginDataBlock({
+      customPens: [
+        {
+          type: 'highlighter',
+          strokeColor: '#ffffff',
+          backgroundColor: '#fff9db',
+          strokeWidth: 2.6,
+          penOptions: {
+            highlighter: true,
+            constantPressure: true,
+            hasOutline: true,
+            outlineWidth: 4,
+            options: {
+              thinning: 1,
+              smoothing: 0.5,
+              streamline: 0.5,
+              easing: 'linear',
+              start: { taper: 0, cap: true, easing: 'linear' },
+              end: { taper: true, cap: true, easing: 'linear' },
+            },
+          },
+        },
+      ],
+    })
+
+    expect(presets).toHaveLength(1)
+    expect(presets[0]?.label).toBe('Highlighter')
+    expect(presets[0]?.strokeColor).toBe('#fff9db')
+    expect((presets[0]?.strokeOptions.options.end.taper)).toBe(true)
+  })
+
+  it('parses Obsidian plugin settings JSON and ignores non-highlighter pens', () => {
+    const raw = JSON.stringify({
+      customPens: [
+        {
+          type: 'default',
+          strokeColor: '#000000',
+          backgroundColor: 'transparent',
+          strokeWidth: 1,
+          penOptions: { highlighter: false },
+        },
+        {
+          type: 'marker',
+          strokeColor: '#fff',
+          backgroundColor: '#ffe8cc',
+          strokeWidth: 2,
+          penOptions: { highlighter: true },
+        },
+      ],
+    })
+
+    const parsed = parseObsidianHighlighterPresetsJsonBlock(raw)
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0]?.label).toBe('Marker')
   })
 })

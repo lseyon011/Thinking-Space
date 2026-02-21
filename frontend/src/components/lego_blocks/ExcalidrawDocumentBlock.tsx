@@ -22,7 +22,9 @@ import {
   buildExcalidrawDisableHighlighterAppStatePatchOrch,
   buildExcalidrawHighlighterAppStatePatchOrch,
   isExcalidrawHighlighterEnabledOrch,
+  loadExcalidrawHighlighterPresetsOrch,
   matchExcalidrawHighlighterPresetOrch,
+  type ExcalidrawHighlighterPresetBlock,
 } from '@/services/orchestrators/excalidrawHighlighterOrch'
 import { cn } from '@/lib/utils'
 
@@ -410,6 +412,9 @@ export default function ExcalidrawDocumentBlock({
   const [miniMapElements, setMiniMapElements] = useState<readonly unknown[] | null>(null)
   const pendingMiniMapElementsRef = useRef<readonly unknown[] | null>(null)
   const miniMapElementsFrameRef = useRef<number | null>(null)
+  const [highlighterPresets, setHighlighterPresets] = useState<readonly ExcalidrawHighlighterPresetBlock[]>(
+    EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH,
+  )
   const [activeHighlighterPresetId, setActiveHighlighterPresetId] = useState<string | null>(null)
 
   const debugLog = useCallback((event: string, data: Record<string, unknown> = {}) => {
@@ -573,20 +578,20 @@ export default function ExcalidrawDocumentBlock({
       setActiveHighlighterPresetId(null)
       return
     }
-    const nextPresetId = matchExcalidrawHighlighterPresetOrch(appState)
+    const nextPresetId = matchExcalidrawHighlighterPresetOrch(appState, highlighterPresets)
     setActiveHighlighterPresetId((prev) => (prev === nextPresetId ? prev : nextPresetId))
-  }, [editable])
+  }, [editable, highlighterPresets])
 
   const applyHighlighterPreset = useCallback((presetId: string) => {
     if (!editable || !excalidrawApi) return
-    const preset = EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH.find((item) => item.id === presetId)
+    const preset = highlighterPresets.find((item) => item.id === presetId)
     if (!preset) return
     const appState = excalidrawApi.getAppStateBlock()
     excalidrawApi.updateAppStateBlock(
       buildExcalidrawHighlighterAppStatePatchOrch(preset, appState),
     )
     setActiveHighlighterPresetId(preset.id)
-  }, [editable, excalidrawApi])
+  }, [editable, excalidrawApi, highlighterPresets])
 
   const disableHighlighter = useCallback(() => {
     if (!editable || !excalidrawApi) return
@@ -745,6 +750,32 @@ export default function ExcalidrawDocumentBlock({
     setActiveHighlighterPresetId(null)
     debugLog('scene_reset', { editable, contentLength: content.length })
   }, [content, debugLog, editable])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!editable) {
+      setHighlighterPresets(EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    void loadExcalidrawHighlighterPresetsOrch()
+      .then((presets) => {
+        if (cancelled) return
+        setHighlighterPresets(
+          presets.length > 0 ? presets : EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH,
+        )
+      })
+      .catch(() => {
+        if (cancelled) return
+        setHighlighterPresets(EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [editable])
 
   useEffect(() => {
     if (!editable || !excalidrawApi) return undefined
@@ -1155,7 +1186,7 @@ export default function ExcalidrawDocumentBlock({
           >
             Ink
           </button>
-          {EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH.map((preset) => {
+          {highlighterPresets.map((preset) => {
             const isActive = activeHighlighterPresetId === preset.id
             return (
               <button
