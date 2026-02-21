@@ -30,10 +30,23 @@ import {
 
 const FILE_QUERY_PARAM = 'file'
 const MAX_MOUNTED_INLINE_DOCS = 8
+const EXPLORER_DEFAULT_WIDTH_PX = 320
+const EXPLORER_MIN_WIDTH_PX = 220
+const EXPLORER_MAX_WIDTH_PX = 560
 
 function leafNameOf(path: string): string {
   const idx = path.lastIndexOf('/')
   return idx < 0 ? path : path.slice(idx + 1)
+}
+
+function getExplorerMaxWidthPx(): number {
+  if (typeof window === 'undefined') return EXPLORER_MAX_WIDTH_PX
+  return Math.max(EXPLORER_MIN_WIDTH_PX + 24, Math.min(EXPLORER_MAX_WIDTH_PX, Math.floor(window.innerWidth * 0.56)))
+}
+
+function clampExplorerWidthPx(value: number): number {
+  if (!Number.isFinite(value)) return EXPLORER_DEFAULT_WIDTH_PX
+  return Math.max(EXPLORER_MIN_WIDTH_PX, Math.min(getExplorerMaxWidthPx(), Math.round(value)))
 }
 
 export default function ThinkingSpaceOrch() {
@@ -51,8 +64,15 @@ export default function ThinkingSpaceOrch() {
   const [explorerCollapsed, setExplorerCollapsed] = useState(
     () => getStorageItem(STORAGE_KEYS.thinkingSpaceExplorerCollapsed) === '1',
   )
+  const [explorerWidthPx, setExplorerWidthPx] = useState(() => {
+    const raw = getStorageItem(STORAGE_KEYS.thinkingSpaceExplorerWidthPx)
+    if (!raw) return EXPLORER_DEFAULT_WIDTH_PX
+    const parsed = Number.parseInt(raw, 10)
+    return clampExplorerWidthPx(parsed)
+  })
   const edgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
+  const explorerResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const showInlineSidebar = layout.hasSidebar
   const showCollapsedInlineExplorer = showInlineSidebar && !explorerCollapsed
   const showExplorerTrigger = !showCollapsedInlineExplorer
@@ -257,6 +277,42 @@ export default function ThinkingSpaceOrch() {
     return true
   }, [])
 
+  const handleExplorerResizeMove = useCallback((event: PointerEvent) => {
+    const state = explorerResizeRef.current
+    if (!state) return
+    const deltaX = event.clientX - state.startX
+    const nextWidth = clampExplorerWidthPx(state.startWidth + deltaX)
+    setExplorerWidthPx(nextWidth)
+  }, [])
+
+  const stopExplorerResize = useCallback(() => {
+    explorerResizeRef.current = null
+    window.removeEventListener('pointermove', handleExplorerResizeMove)
+    window.removeEventListener('pointerup', stopExplorerResize)
+    window.removeEventListener('pointercancel', stopExplorerResize)
+    document.body.style.removeProperty('user-select')
+    document.body.style.removeProperty('cursor')
+  }, [handleExplorerResizeMove])
+
+  const handleExplorerResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!showCollapsedInlineExplorer) return
+    event.preventDefault()
+    explorerResizeRef.current = { startX: event.clientX, startWidth: explorerWidthPx }
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+    window.addEventListener('pointermove', handleExplorerResizeMove)
+    window.addEventListener('pointerup', stopExplorerResize)
+    window.addEventListener('pointercancel', stopExplorerResize)
+  }, [explorerWidthPx, handleExplorerResizeMove, showCollapsedInlineExplorer, stopExplorerResize])
+
+  const handleExplorerResizeKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const step = event.shiftKey ? 32 : 16
+    const delta = event.key === 'ArrowLeft' ? -step : step
+    setExplorerWidthPx((prev) => clampExplorerWidthPx(prev + delta))
+  }, [])
+
   useEffect(() => {
     if (showInlineSidebar) setMobileExplorerOpen(false)
   }, [showInlineSidebar])
@@ -264,6 +320,24 @@ export default function ThinkingSpaceOrch() {
   useEffect(() => {
     setStorageItem(STORAGE_KEYS.thinkingSpaceExplorerCollapsed, explorerCollapsed ? '1' : '0')
   }, [explorerCollapsed])
+
+  useEffect(() => {
+    setStorageItem(STORAGE_KEYS.thinkingSpaceExplorerWidthPx, String(explorerWidthPx))
+  }, [explorerWidthPx])
+
+  useEffect(() => {
+    const handleResize = () => {
+      setExplorerWidthPx((prev) => clampExplorerWidthPx(prev))
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      stopExplorerResize()
+    }
+  }, [stopExplorerResize])
 
   useEffect(() => {
     if (showInlineSidebar || mobileExplorerOpen) {
@@ -409,11 +483,12 @@ export default function ThinkingSpaceOrch() {
         {showInlineSidebar && (
           <aside
             className={cn(
-              'ltm-thinking-space-explorer-surface min-h-0 shrink-0 overflow-hidden md:flex md:flex-col',
+              'ltm-thinking-space-explorer-surface min-h-0 shrink-0 overflow-hidden transition-[width,opacity] duration-200 md:flex md:flex-col',
               showCollapsedInlineExplorer
-                ? 'w-[clamp(240px,28vw,360px)] opacity-100'
-                : 'w-0 opacity-0',
+                ? 'opacity-100'
+                : 'opacity-0',
             )}
+            style={{ width: showCollapsedInlineExplorer ? `${explorerWidthPx}px` : '0px' }}
             data-ltm-nav-region="explorer"
           >
             <div
@@ -423,6 +498,21 @@ export default function ThinkingSpaceOrch() {
               {inlineExplorerContent}
             </div>
           </aside>
+        )}
+
+        {showInlineSidebar && showCollapsedInlineExplorer && (
+          <div
+            role="separator"
+            aria-label="Resize explorer"
+            aria-orientation="vertical"
+            tabIndex={0}
+            onPointerDown={handleExplorerResizeStart}
+            onDoubleClick={() => setExplorerWidthPx(EXPLORER_DEFAULT_WIDTH_PX)}
+            onKeyDown={handleExplorerResizeKeyDown}
+            className="ltm-thinking-space-explorer-resizer group relative hidden w-2 shrink-0 cursor-col-resize items-stretch md:flex"
+          >
+            <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70 transition-colors group-hover:bg-primary/70 group-focus-visible:bg-primary/80" />
+          </div>
         )}
 
         <section className="ltm-thinking-space-document-stage relative min-h-0 flex-1">
