@@ -12,17 +12,29 @@ describe('excalidrawIntegrationBlock', () => {
   })
 
   it('adapts vendor viewport methods behind local contract', () => {
-    const updateScene = vi.fn()
     const scrollToContent = vi.fn()
     const unsubscribe = vi.fn()
     const onScrollChange = vi.fn((listener: (x: number, y: number, zoom: { value: number }) => void) => {
       listener(4, 5, { value: 0.75 })
       return unsubscribe
     })
+    const appStateStore: Record<string, unknown> = {
+      scrollX: 10,
+      scrollY: 20,
+      zoom: { value: 1.25 },
+      activeTool: { type: 'freedraw' },
+      currentStrokeOptions: { highlighter: true },
+    }
+    const updateScene = vi.fn((scene: { appState?: Record<string, unknown> }) => {
+      if (scene.appState) {
+        Object.assign(appStateStore, scene.appState)
+      }
+    })
+
     const rawApi = {
       getSceneElements: () => [{ id: 'el-1' }],
       getSceneElementsIncludingDeleted: () => [{ id: 'el-1' }, { id: 'el-2', isDeleted: true }],
-      getAppState: () => ({ scrollX: 10, scrollY: 20, zoom: { value: 1.25 } }),
+      getAppState: () => ({ ...appStateStore }),
       updateScene,
       scrollToContent,
       onScrollChange,
@@ -45,6 +57,11 @@ describe('excalidrawIntegrationBlock', () => {
     })
     expect(updateScene).toHaveBeenCalledWith({
       appState: {
+        scrollX: 10,
+        scrollY: 20,
+        zoom: { value: 1.25 },
+        activeTool: { type: 'freedraw' },
+        currentStrokeOptions: { highlighter: true },
         currentItemStrokeWidth: 4,
         currentItemOpacity: 80,
       },
@@ -53,6 +70,11 @@ describe('excalidrawIntegrationBlock', () => {
     api?.updateViewportBlock({ scrollX: 42, zoom: 1.5 })
     expect(updateScene).toHaveBeenCalledWith({
       appState: {
+        scrollY: 20,
+        currentItemStrokeWidth: 4,
+        currentItemOpacity: 80,
+        activeTool: { type: 'freedraw' },
+        currentStrokeOptions: { highlighter: true },
         scrollX: 42,
         zoom: { value: 1.5 },
       },

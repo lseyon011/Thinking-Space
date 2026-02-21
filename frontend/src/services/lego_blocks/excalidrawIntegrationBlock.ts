@@ -104,19 +104,29 @@ export function createExcalidrawCanvasApiBlock(rawApi: unknown): ExcalidrawCanva
     getAppStateBlock: () => ({ ...(rawApi.getAppState?.() ?? {}) }),
     getViewportStateBlock: () => readViewportState(rawApi),
     updateAppStateBlock: (next) => {
-      const appState = Object.entries(next).reduce<Record<string, unknown>>((acc, [key, value]) => {
+      const patch = Object.entries(next).reduce<Record<string, unknown>>((acc, [key, value]) => {
         if (value !== undefined) acc[key] = value
         return acc
       }, {})
-      if (Object.keys(appState).length === 0) return
+      if (Object.keys(patch).length === 0) return
+      const currentAppState = rawApi.getAppState?.() ?? {}
+      const appState = {
+        ...currentAppState,
+        ...patch,
+      }
       rawApi.updateScene?.({ appState })
     },
     updateViewportBlock: (next) => {
-      const appState: Record<string, unknown> = {}
-      if (typeof next.scrollX === 'number' && Number.isFinite(next.scrollX)) appState.scrollX = next.scrollX
-      if (typeof next.scrollY === 'number' && Number.isFinite(next.scrollY)) appState.scrollY = next.scrollY
-      if (typeof next.zoom === 'number' && Number.isFinite(next.zoom)) appState.zoom = { value: next.zoom }
-      if (Object.keys(appState).length === 0) return
+      const patch: Record<string, unknown> = {}
+      if (typeof next.scrollX === 'number' && Number.isFinite(next.scrollX)) patch.scrollX = next.scrollX
+      if (typeof next.scrollY === 'number' && Number.isFinite(next.scrollY)) patch.scrollY = next.scrollY
+      if (typeof next.zoom === 'number' && Number.isFinite(next.zoom)) patch.zoom = { value: next.zoom }
+      if (Object.keys(patch).length === 0) return
+      const currentAppState = rawApi.getAppState?.() ?? {}
+      const appState = {
+        ...currentAppState,
+        ...patch,
+      }
       rawApi.updateScene?.({ appState })
     },
     fitViewportToContentBlock: (elements) => {

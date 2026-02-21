@@ -2,7 +2,7 @@
 
 Required operating contract for any coding agent working in `Thinking Space`.
 
-If this file conflicts with assumptions, follow this file + `README.md`.
+If this file conflicts with assumptions, follow this file + `DEVELOPMENT.md`.
 
 ## Mission
 Build one product that is intentionally all three of these from the ground up:
@@ -42,21 +42,15 @@ These are architecture requirements, not optional positioning variants.
 - If Claude learns useful project knowledge, Claude must manually update `CLAUDE.md` and synchronize durable items into `AGENTS.md` plus organizer principles/decision records.
 
 ## Phase Order
-Use phase order defined in `README.md` as source of truth.
+Use `DEVELOPMENT.md` as source of truth for implementation phases and detailed architecture.
 
-Current order to respect:
-1. Phase 0: Architecture Alignment (docs + deps) — IN PROGRESS
-2. Phase 1: YAML Note Block
-3. Phase 2: IndexedDB Cache Layer
-4. Phase 3: Hierarchy UI
-5. Phase 4: Thought Edit Flow
-6. Phase 5: AI Actions
-7. Phase 6: Migration + Polish
-8. EPIC-3: Local-Only Extension Platform
-9. EPIC-5: AI Actions Everywhere
-10. EPIC-6: Optional Remote/Agent Backends (later)
+Current status (v1.0): Phases 0–5, Agent Capability Transport, and EPIC-3 are all complete.
 
-If sequence changes, update `README.md` first, then align active organizer plan/task nodes.
+Upcoming:
+- EPIC-5: AI Actions Everywhere
+- EPIC-6: Optional Remote/Agent Backends (later)
+
+If sequence changes, update `DEVELOPMENT.md` first, then align active organizer plan/task nodes.
 
 ## Locked Technical Decisions
 1. Electron-first runtime for near-term milestones.
@@ -115,7 +109,7 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 1. Did I place reusable logic in `lego_blocks` and flow wiring in `orchestrators`?
 2. Did I keep naming consistent with `*Block` and `*Orch`?
 3. Did I avoid page-local one-off variants of existing shared components?
-4. Did I update docs (`AGENTS.md`, `CLAUDE.md`, `README.md`) if architecture knowledge changed?
+4. Did I update docs (`AGENTS.md`, `CLAUDE.md`, `DEVELOPMENT.md`) if architecture knowledge changed?
 
 ## Orchestrator Template Rule
 - New major screen-level orchestrators should follow `agents/TEMPLATES/ORCHESTRATOR_TEMPLATE.md`.
@@ -196,7 +190,8 @@ Before coding:
 1. `AGENTS.md` (or `CLAUDE.md` for Claude) contains architecture, contracts, and locked decisions — read it.
 2. Check active tasks: `./thinkspc organizer.nodes.search --query "status active" --limit 10`
 3. Read additional docs only when the task requires it:
-   - `README.md` — for phase order or product direction
+   - `README.md` — for product overview and quick start
+   - `DEVELOPMENT.md` — for architecture contracts, phases, and internal dev docs
    - `docs/ADR-005-Agent-Capabilities.md` — when modifying capabilities
    - `docs/ADR-006-Agent-Workspace-Schema.md` — when modifying workspace schema
 

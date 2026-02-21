@@ -239,6 +239,20 @@ describe('vaultSyncOrch', () => {
     expect(success).toBe(false)
   })
 
+  it('syncSingleFile skips oversized files when maxFileSizeBytes is exceeded', async () => {
+    if (!fakeIdb) return
+
+    const { syncSingleFile } = await import('@/services/orchestrators/vaultSyncOrch')
+
+    const fs = new FakeVaultFS()
+    const note = createNote({ type: 'idea', title: 'Large File Idea' })
+    note.body = 'x'.repeat(2048)
+    fs.seedFile('idea-large.md', stringifyNote(note))
+
+    const success = await syncSingleFile('idea-large.md', fs, { maxFileSizeBytes: 256 })
+    expect(success).toBe(false)
+  })
+
   it('incrementalSync detects deleted files', async () => {
     if (!fakeIdb) return
 
@@ -274,6 +288,24 @@ describe('vaultSyncOrch', () => {
     const thought = nodes.find(n => n.type === 'thought')
     expect(thought).toBeDefined()
     expect(thought!.bodyExcerpt).toContain('AI extensibility')
+  })
+
+  it('fullSync skips oversized files when maxFileSizeBytes is exceeded', async () => {
+    if (!fakeIdb) return
+
+    const { fullSync } = await import('@/services/orchestrators/vaultSyncOrch')
+    const { getNodeCount } = await import('@/services/lego_blocks/dbBlock')
+
+    const fs = new FakeVaultFS()
+    const note = createNote({ type: 'thought', title: 'Oversized Thought' })
+    note.body = 'A'.repeat(4096)
+    fs.seedFile('thoughts/oversized.md', stringifyNote(note))
+
+    const result = await fullSync(fs, { maxFileSizeBytes: 512 })
+    expect(result.parsedNodes).toBe(0)
+    expect(result.skippedFiles).toBe(1)
+    expect(result.errors).toHaveLength(0)
+    expect(await getNodeCount()).toBe(0)
   })
 
   it('fullSync preserves parent relationships', async () => {

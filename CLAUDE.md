@@ -36,18 +36,15 @@ The app must be built as all three from the ground up:
 
 These are architecture constraints, not optional positioning variants.
 
-## Phase Order (Follow README)
-Use `README.md` as source of truth.
+## Phase Order
+Use `DEVELOPMENT.md` as source of truth for implementation phases and detailed architecture.
 
-Current status:
-- Phase 0: IN PROGRESS (architecture/doc drift alignment)
-- Phase 1–4: DONE (with hardening tracks active in DEV-008/DEV-009)
-- Agent Capability Transport: DONE (DEV-012/013/014)
-- EPIC-3: IN PROGRESS (manifest/loader/actions/builder foundations delivered; rollout hardening active)
+Current status (v1.0):
+- Phase 0–5: DONE
+- Agent Capability Transport: DONE
+- EPIC-3 (Extension Platform): DONE
 
 Next up:
-- Phase 5: AI Actions (related, summarize, cleanup)
-- Phase 6: Migration + Polish (remove SQLite code, migrate old thoughts)
 - EPIC-5: AI Actions Everywhere
 - EPIC-6: Optional Remote/Agent Backends (later)
 
@@ -106,7 +103,8 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 1. `CLAUDE.md` is auto-loaded — contains architecture, contracts, and locked decisions.
 2. Check active tasks: `./thinkspc organizer.nodes.search --query "status active" --limit 10`
 3. Read additional docs only when the task requires it:
-   - `README.md` — for phase order or product direction questions
+   - `README.md` — for product overview and quick start
+   - `DEVELOPMENT.md` — for architecture contracts, phases, and internal dev docs
    - `docs/ADR-005-Agent-Capabilities.md` — when modifying the capability system
    - `docs/ADR-006-Agent-Workspace-Schema.md` — when modifying workspace schema fields
    - `agents/README.md` — for multi-agent handoff protocol

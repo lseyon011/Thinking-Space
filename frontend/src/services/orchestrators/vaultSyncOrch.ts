@@ -1,7 +1,7 @@
 // Vault sync orchestrator — scans vault .md files, parses YAML frontmatter,
 // and populates IndexedDB cache. Handles full and incremental syncs.
 
-import { getVaultFS } from '../lego_blocks/fsBlock'
+import { getPlatformName, getVaultFS } from '../lego_blocks/fsBlock'
 import type { VaultFS, VaultEntry } from '../lego_blocks/fsBlock'
 import {
   parseNote,
@@ -28,20 +28,36 @@ export interface SyncResult {
   durationMs: number
 }
 
+export interface VaultSyncOptions {
+  maxFileSizeBytes?: number
+}
+
+const IOS_MAX_SYNC_FILE_SIZE_BYTES = 2 * 1024 * 1024
+const DEFAULT_MAX_SYNC_FILE_SIZE_BYTES = 12 * 1024 * 1024
+
+function resolveMaxSyncFileSizeBytes(options?: VaultSyncOptions): number {
+  if (typeof options?.maxFileSizeBytes === 'number' && Number.isFinite(options.maxFileSizeBytes)) {
+    return Math.max(1, Math.floor(options.maxFileSizeBytes))
+  }
+  return getPlatformName() === 'ios'
+    ? IOS_MAX_SYNC_FILE_SIZE_BYTES
+    : DEFAULT_MAX_SYNC_FILE_SIZE_BYTES
+}
+
 // ── Public API ──
 
 /**
  * Full vault sync — clears IndexedDB and rebuilds from all .md files.
  * Use on first load or when cache is suspected corrupt.
  */
-export async function fullSync(fs?: VaultFS): Promise<SyncResult> {
+export async function fullSync(fs?: VaultFS, options?: VaultSyncOptions): Promise<SyncResult> {
   const vaultFs = fs ?? getVaultFS()
   const start = Date.now()
 
   await clearAll()
 
   const entries = await vaultFs.walkVault(['.md'])
-  const result = await syncEntries(vaultFs, entries)
+  const result = await syncEntries(vaultFs, entries, options)
 
   result.durationMs = Date.now() - start
   return result
@@ -54,6 +70,7 @@ export async function fullSync(fs?: VaultFS): Promise<SyncResult> {
 export async function incrementalSync(
   sinceTimestamp: number,
   fs?: VaultFS,
+  options?: VaultSyncOptions,
 ): Promise<SyncResult> {
   const vaultFs = fs ?? getVaultFS()
   const start = Date.now()
@@ -74,7 +91,7 @@ export async function incrementalSync(
     }
   }
 
-  const result = await syncEntries(vaultFs, updatedEntries)
+  const result = await syncEntries(vaultFs, updatedEntries, options)
   result.deletedNodes = deletedCount
   result.totalFiles = allEntries.length
   result.durationMs = Date.now() - start
@@ -89,10 +106,15 @@ export async function incrementalSync(
 export async function syncSingleFile(
   filePath: string,
   fs?: VaultFS,
+  options?: VaultSyncOptions,
 ): Promise<boolean> {
   const vaultFs = fs ?? getVaultFS()
+  const maxFileSizeBytes = resolveMaxSyncFileSizeBytes(options)
 
   try {
+    const stat = await vaultFs.stat(filePath)
+    if (stat.size > maxFileSizeBytes) return false
+
     const content = await vaultFs.read(filePath)
     if (!hasFrontmatter(content)) return false
 
@@ -137,16 +159,16 @@ export function setLastSyncTimestamp(ts?: number): void {
  * Smart sync — does incremental if we have a previous timestamp,
  * full sync otherwise.
  */
-export async function smartSync(fs?: VaultFS): Promise<SyncResult> {
+export async function smartSync(fs?: VaultFS, options?: VaultSyncOptions): Promise<SyncResult> {
   const lastSync = getLastSyncTimestamp()
   const nodeCount = await getNodeCount()
   const usedFullSync = lastSync === 0 || nodeCount === 0
 
   let result: SyncResult
   if (usedFullSync) {
-    result = await fullSync(fs)
+    result = await fullSync(fs, options)
   } else {
-    result = await incrementalSync(lastSync, fs)
+    result = await incrementalSync(lastSync, fs, options)
   }
 
   // Keep retry surface intact on partial failures.
@@ -167,7 +189,9 @@ export async function smartSync(fs?: VaultFS): Promise<SyncResult> {
 async function syncEntries(
   fs: VaultFS,
   entries: VaultEntry[],
+  options?: VaultSyncOptions,
 ): Promise<SyncResult> {
+  const maxFileSizeBytes = resolveMaxSyncFileSizeBytes(options)
   const result: SyncResult = {
     totalFiles: entries.length,
     parsedNodes: 0,
@@ -179,6 +203,11 @@ async function syncEntries(
 
   for (const entry of entries) {
     try {
+      if (entry.size > maxFileSizeBytes) {
+        result.skippedFiles++
+        continue
+      }
+
       const content = await fs.read(entry.path)
 
       if (!hasFrontmatter(content)) {
