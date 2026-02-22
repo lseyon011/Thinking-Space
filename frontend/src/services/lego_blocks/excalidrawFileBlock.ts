@@ -1,6 +1,7 @@
 import { decompressFromBase64LzString } from './lzStringBlock'
 import { normalizeExcalidrawSceneForInteropBlock } from './excalidrawSceneCompatBlock'
 import { restore, serializeAsJSON } from '@excalidraw/excalidraw'
+import { generateKeyBetween } from 'fractional-indexing'
 
 export interface ParsedExcalidrawScene {
   elements: unknown[]
@@ -28,6 +29,16 @@ function hasValidZoomShape(value: unknown): boolean {
   return isFiniteNumber(value.value)
 }
 
+function hasValidFractionalIndex(value: unknown): boolean {
+  if (typeof value !== 'string' || value.length === 0) return false
+  try {
+    generateKeyBetween(value, null)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function hasCanonicalElementShape(value: unknown): boolean {
   if (!isRecord(value)) return false
   if (typeof value.type !== 'string') return false
@@ -38,6 +49,8 @@ function hasCanonicalElementShape(value: unknown): boolean {
   if (!isFiniteNumber(value.height)) return false
   if (!isFiniteNumber(value.version)) return false
   if (!isFiniteNumber(value.versionNonce)) return false
+  // Reject scenes with invalid fractional indices (e.g. old z-prefixed keys)
+  if (value.index !== undefined && value.index !== null && !hasValidFractionalIndex(value.index)) return false
   return true
 }
 
@@ -49,6 +62,15 @@ function isLikelyCanonicalScene(scene: ParsedExcalidrawScene): boolean {
   if (!hasValidZoomShape(appState?.zoom)) return false
 
   const elements = scene.elements
+  for (let index = 0; index < elements.length; index += 1) {
+    const element = elements[index]
+    if (!isRecord(element)) continue
+    const candidateIndex = element.index
+    if (candidateIndex !== undefined && candidateIndex !== null && !hasValidFractionalIndex(candidateIndex)) {
+      return false
+    }
+  }
+
   const sampleSize = Math.min(elements.length, 12)
   for (let index = 0; index < sampleSize; index += 1) {
     if (!hasCanonicalElementShape(elements[index])) return false
@@ -163,9 +185,10 @@ function sceneToJson(scene: ParsedExcalidrawScene): string {
     // Fallback: repair malformed/corrupt scenes through restore.
   }
 
+  const safeElements = sanitizeElementIndices(scene.elements)
   const restored = restore(
     {
-      elements: scene.elements as any,
+      elements: safeElements as any,
       appState: safeAppState as any,
       files: safeFiles as any,
     },
@@ -241,6 +264,22 @@ function normalizeObsidianHighlighterElements(elements: unknown[]): unknown[] {
   return changed ? normalized : elements
 }
 
+/** Strip invalid fractional indices so Excalidraw's restore() regenerates them. */
+function sanitizeElementIndices(elements: unknown[]): unknown[] {
+  let changed = false
+  const sanitized = elements.map((el) => {
+    if (!isRecord(el)) return el
+    const idx = el.index
+    if (idx !== undefined && idx !== null && !hasValidFractionalIndex(idx)) {
+      changed = true
+      const { index: _removed, ...rest } = el
+      return rest
+    }
+    return el
+  })
+  return changed ? sanitized : elements
+}
+
 function normalizeScene(scene: ParsedExcalidrawScene): ParsedExcalidrawScene {
   const normalizedElements = normalizeObsidianHighlighterElements(scene.elements)
   if (isLikelyCanonicalScene({ ...scene, elements: normalizedElements })) {
@@ -251,10 +290,13 @@ function normalizeScene(scene: ParsedExcalidrawScene): ParsedExcalidrawScene {
     }
   }
 
+  // Remove invalid fractional indices before restore() so it regenerates valid ones.
+  const sanitizedElements = sanitizeElementIndices(normalizedElements)
+
   try {
     const restored = restore(
       {
-        elements: normalizedElements as any,
+        elements: sanitizedElements as any,
         appState: (scene.appState ?? {}) as any,
         files: (scene.files ?? {}) as any,
       },
@@ -274,7 +316,7 @@ function normalizeScene(scene: ParsedExcalidrawScene): ParsedExcalidrawScene {
   } catch {
     // Fallback keeps rendering path resilient for partially malformed scenes.
     return normalizeExcalidrawSceneForInteropBlock({
-      elements: normalizedElements,
+      elements: sanitizedElements,
       appState: scene.appState,
       files: scene.files,
     })

@@ -1,90 +1,144 @@
+import { useState } from 'react'
 import type { ExcalidrawHighlighterPresetBlock } from '@/services/orchestrators/excalidrawHighlighterOrch'
 import { cn } from '@/lib/utils'
+
+const STROKE_WIDTH_OPTIONS = [1, 2, 4, 8, 12] as const
 
 interface ExcalidrawPenPaletteBlockProps {
   presets: readonly ExcalidrawHighlighterPresetBlock[]
   activePresetId: string | null
   onSelectPreset: (presetId: string) => void
+  currentStrokeWidth?: number
+  onStrokeWidthChange?: (width: number) => void
 }
 
 export default function ExcalidrawPenPaletteBlock({
   presets,
   activePresetId,
   onSelectPreset,
+  currentStrokeWidth,
+  onStrokeWidthChange,
 }: ExcalidrawPenPaletteBlockProps) {
+  const [showWidthPicker, setShowWidthPicker] = useState(false)
+
   return (
     <div
-      className="pointer-events-none absolute z-30 flex max-h-[72vh] w-[12.5rem] -translate-y-1/2 flex-col gap-0.5 overflow-y-auto rounded-xl border border-border/70 bg-background/90 p-1.5 shadow-sm backdrop-blur"
+      className="pointer-events-none absolute z-30 flex -translate-y-1/2 flex-col items-center gap-1 rounded-xl border border-border/70 bg-background/90 p-1 shadow-sm backdrop-blur"
       style={{
         top: '50%',
-        right: 'calc(var(--ltm-safe-right, 0px) + 0.55rem)',
+        right: 'calc(var(--ltm-safe-right, 0px) + 0.4rem)',
       }}
     >
-      <span className="px-1 pb-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-        Pens
-      </span>
       {presets.map((preset, index) => {
         const isActive = activePresetId === preset.id
         const penNumber = index + 1
         const swatchColor = preset.backgroundColor !== 'transparent'
           ? preset.backgroundColor
           : preset.strokeColor
-        const isHighlighter = preset.strokeOptions.highlighter
-        const widthLabel = preset.strokeWidth > 0
-          ? preset.strokeWidth.toString()
-          : ''
+
         return (
           <button
             key={preset.id}
             type="button"
             onClick={() => onSelectPreset(preset.id)}
             className={cn(
-              'pointer-events-auto inline-flex items-center gap-1.5 rounded-md border px-1.5 py-1 text-[11px] transition-colors',
+              'pointer-events-auto relative flex h-7 w-7 items-center justify-center rounded-full transition-all',
               isActive
-                ? 'border-primary/70 bg-primary/15 text-foreground'
-                : 'border-border/70 bg-background text-muted-foreground hover:bg-muted',
+                ? 'ring-2 ring-primary ring-offset-1 ring-offset-background'
+                : 'hover:bg-muted/80',
             )}
-            title={`Pen ${penNumber}: ${preset.label}${isHighlighter ? ' (highlighter)' : ''}${preset.freedrawOnly ? ' · draw only' : ''}${widthLabel ? ` · width ${widthLabel}` : ''}`}
+            title={`Pen ${penNumber}: ${preset.label}`}
             aria-label={`Pen ${penNumber}: ${preset.label}`}
           >
-            <span className={cn(
-              'inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[9px] font-bold',
-              isActive
-                ? 'bg-primary/25 text-primary'
-                : 'bg-muted/80 text-muted-foreground',
-            )}>
-              {penNumber <= 9 ? penNumber : 0}
-            </span>
             <span
-              className="inline-block h-3 w-3 flex-shrink-0 rounded-sm border border-border/60"
-              style={{ backgroundColor: swatchColor }}
-            />
-            <span className="min-w-0 flex-1 truncate text-left">{preset.label}</span>
-            <span className="inline-flex flex-shrink-0 items-center gap-0.5">
-              {isHighlighter && (
-                <span className="rounded border border-yellow-500/50 bg-yellow-500/15 px-0.5 text-[8px] font-semibold uppercase text-yellow-600 dark:text-yellow-400">
-                  H
-                </span>
-              )}
-              {preset.freedrawOnly && !isHighlighter && (
-                <span className="rounded border border-border/50 px-0.5 text-[8px] uppercase text-muted-foreground">
-                  D
-                </span>
-              )}
-              {widthLabel && (
-                <span className="text-[9px] tabular-nums text-muted-foreground/70">
-                  {widthLabel}
-                </span>
-              )}
+              className="flex h-5 w-5 items-center justify-center rounded-full border border-border/50 text-[8px] font-bold text-white"
+              style={{
+                backgroundColor: swatchColor,
+                color: isLightColor(swatchColor) ? '#374151' : '#ffffff',
+              }}
+            >
+              {penNumber <= 9 ? penNumber : 0}
             </span>
           </button>
         )
       })}
-      {activePresetId === 'custom' && (
-        <span className="rounded-md border border-dashed border-border/60 bg-background px-1.5 py-1 text-center text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-          Custom settings
-        </span>
+
+      {/* Stroke width control */}
+      {onStrokeWidthChange && (
+        <>
+          <div className="mx-auto h-px w-4 bg-border/60" />
+          <button
+            type="button"
+            onClick={() => setShowWidthPicker(v => !v)}
+            className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full hover:bg-muted/80"
+            title={`Stroke width: ${currentStrokeWidth ?? '?'}`}
+            aria-label="Change stroke width"
+          >
+            <span
+              className="rounded-full bg-foreground"
+              style={{
+                width: `${Math.min(Math.max((currentStrokeWidth ?? 2) * 1.2, 3), 14)}px`,
+                height: `${Math.min(Math.max((currentStrokeWidth ?? 2) * 1.2, 3), 14)}px`,
+              }}
+            />
+          </button>
+
+          {showWidthPicker && (
+            <div className="pointer-events-auto flex flex-col items-center gap-0.5 rounded-lg border border-border/70 bg-background/95 p-1 shadow-sm backdrop-blur">
+              {STROKE_WIDTH_OPTIONS.map((w) => {
+                const isCurrentWidth = currentStrokeWidth !== undefined
+                  && Math.abs(currentStrokeWidth - w) < 0.5
+                return (
+                  <button
+                    key={w}
+                    type="button"
+                    onClick={() => {
+                      onStrokeWidthChange(w)
+                      setShowWidthPicker(false)
+                    }}
+                    className={cn(
+                      'flex h-6 w-6 items-center justify-center rounded-full transition-colors',
+                      isCurrentWidth
+                        ? 'bg-primary/15 ring-1 ring-primary/50'
+                        : 'hover:bg-muted/80',
+                    )}
+                    title={`Width ${w}`}
+                  >
+                    <span
+                      className="rounded-full bg-foreground"
+                      style={{
+                        width: `${Math.min(Math.max(w * 1.2, 3), 14)}px`,
+                        height: `${Math.min(Math.max(w * 1.2, 3), 14)}px`,
+                      }}
+                    />
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
+}
+
+/** Quick check if a CSS color is light (for text contrast). */
+function isLightColor(color: string): boolean {
+  if (color === 'transparent') return true
+  // Parse simple hex colors
+  const hex = color.replace('#', '')
+  if (hex.length === 6) {
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    return (r * 299 + g * 587 + b * 114) / 1000 > 150
+  }
+  if (hex.length === 3) {
+    const r = parseInt(hex[0] + hex[0], 16)
+    const g = parseInt(hex[1] + hex[1], 16)
+    const b = parseInt(hex[2] + hex[2], 16)
+    return (r * 299 + g * 587 + b * 114) / 1000 > 150
+  }
+  // Named colors / rgb — assume light for yellow-ish, dark for others
+  return color.includes('fff') || color.includes('yellow') || color.includes('db')
 }

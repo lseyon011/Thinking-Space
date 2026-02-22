@@ -1,3 +1,4 @@
+import { generateKeyBetween, generateNKeysBetween } from 'fractional-indexing'
 import type { ParsedExcalidrawScene } from './excalidrawFileBlock'
 
 type JsonRecord = Record<string, unknown>
@@ -87,8 +88,16 @@ function asNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
-function toInteropIndex(position: number): string {
-  return `z${Math.max(position, 0).toString(36).padStart(6, '0')}`
+function isValidFractionalIndex(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0) return false
+  try {
+    // fractional-indexing validates full order-key shape internally.
+    // If this throws, the key is not safe to pass through to Excalidraw.
+    generateKeyBetween(value, null)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function hashNumber(input: string): number {
@@ -131,6 +140,7 @@ export function normalizeExcalidrawAppStateForInteropBlock(
 export function normalizeExcalidrawElementForInteropBlock(
   element: unknown,
   position: number,
+  validIndex?: string,
 ): unknown {
   if (!isRecord(element)) return element
 
@@ -139,6 +149,13 @@ export function normalizeExcalidrawElementForInteropBlock(
   const id = typeof candidate.id === 'string' ? candidate.id : `element_${position}`
   const width = asNumber(candidate.width, 0)
   const height = asNumber(candidate.height, 0)
+
+  // Use provided validIndex, or keep existing index if it's a valid fractional index.
+  // Fall back to generating a fresh index from position.
+  const existingIndex = isValidFractionalIndex(candidate.index) ? candidate.index : null
+  const index = existingIndex
+    ?? validIndex
+    ?? generateNKeysBetween(null, null, position + 1)[position]
 
   const normalized: JsonRecord = {
     ...candidate,
@@ -158,7 +175,7 @@ export function normalizeExcalidrawElementForInteropBlock(
     opacity: asNumber(candidate.opacity, 100),
     groupIds: Array.isArray(candidate.groupIds) ? candidate.groupIds : [],
     frameId: candidate.frameId ?? null,
-    index: typeof candidate.index === 'string' ? candidate.index : toInteropIndex(position),
+    index,
     roundness: candidate.roundness ?? null,
     seed: asNumber(candidate.seed, hashNumber(`seed:${id}`)),
     version: asNumber(candidate.version, 1),
@@ -211,8 +228,16 @@ export function normalizeExcalidrawElementForInteropBlock(
 export function normalizeExcalidrawSceneForInteropBlock(
   scene: ParsedExcalidrawScene,
 ): ParsedExcalidrawScene {
+  const elements = scene.elements ?? []
+  // Pre-generate valid fractional indices for all elements.
+  // generateNKeysBetween(null, null, n) produces n evenly-spaced keys in valid order.
+  const validIndices = elements.length > 0
+    ? generateNKeysBetween(null, null, elements.length)
+    : []
   return {
-    elements: (scene.elements ?? []).map((element, index) => normalizeExcalidrawElementForInteropBlock(element, index)),
+    elements: elements.map((element, index) =>
+      normalizeExcalidrawElementForInteropBlock(element, index, validIndices[index]),
+    ),
     appState: normalizeExcalidrawAppStateForInteropBlock(scene.appState),
     files: scene.files ?? {},
   }

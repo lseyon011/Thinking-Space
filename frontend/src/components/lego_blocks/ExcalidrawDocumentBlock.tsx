@@ -140,6 +140,7 @@ export default function ExcalidrawDocumentBlock({
     EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH,
   )
   const [activeHighlighterPresetId, setActiveHighlighterPresetId] = useState<string | null>(null)
+  const [currentStrokeWidth, setCurrentStrokeWidth] = useState(2)
 
   // ---------------------------------------------------------------------------
   // Debug logging
@@ -340,6 +341,9 @@ export default function ExcalidrawDocumentBlock({
     }
     const nextPresetId = matchExcalidrawHighlighterPresetOrch(appState, highlighterPresets)
     setActiveHighlighterPresetId((prev) => (prev === nextPresetId ? prev : nextPresetId))
+    const width = typeof appState.currentItemStrokeWidth === 'number'
+      ? appState.currentItemStrokeWidth : 2
+    setCurrentStrokeWidth((prev) => (prev === width ? prev : width))
   }, [editable, highlighterPresets])
 
   const applyHighlighterPreset = useCallback((presetId: string) => {
@@ -351,7 +355,18 @@ export default function ExcalidrawDocumentBlock({
       buildExcalidrawHighlighterAppStatePatchOrch(preset, appState),
     )
     setActiveHighlighterPresetId(preset.id)
+    // Sync stroke width display from the applied preset or current state
+    const nextWidth = preset.strokeWidth > 0
+      ? preset.strokeWidth
+      : (typeof appState.currentItemStrokeWidth === 'number' ? appState.currentItemStrokeWidth : 2)
+    setCurrentStrokeWidth(nextWidth)
   }, [editable, excalidrawApi, highlighterPresets])
+
+  const handleStrokeWidthChange = useCallback((width: number) => {
+    if (!editable || !excalidrawApi) return
+    excalidrawApi.updateAppStateBlock({ currentItemStrokeWidth: width })
+    setCurrentStrokeWidth(width)
+  }, [editable, excalidrawApi])
 
   // ---------------------------------------------------------------------------
   // Scene change queuing (throttled)
@@ -908,6 +923,8 @@ export default function ExcalidrawDocumentBlock({
           presets={highlighterPresets}
           activePresetId={activeHighlighterPresetId}
           onSelectPreset={applyHighlighterPreset}
+          currentStrokeWidth={currentStrokeWidth}
+          onStrokeWidthChange={handleStrokeWidthChange}
         />
       )}
 
