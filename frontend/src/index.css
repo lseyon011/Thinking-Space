@@ -896,11 +896,8 @@
     padding-left: var(--safe-area-inset-left);
   }
 
-  /* iOS Excalidraw: disable browser touch gestures + promote canvas to GPU layer */
-  .ltm-app-shell[data-ltm-surface='capacitor-ios'] .excalidraw {
-    touch-action: none;
-  }
-
+  /* iOS Excalidraw: promote canvas to GPU layer and disable browser touch gestures on canvas only.
+     Do NOT apply touch-action:none to the .excalidraw wrapper — that blocks toolbar/menu taps. */
   .ltm-app-shell[data-ltm-surface='capacitor-ios'] .excalidraw canvas {
     touch-action: none;
     will-change: transform;
