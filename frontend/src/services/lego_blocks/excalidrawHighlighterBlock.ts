@@ -122,7 +122,7 @@ const OBSIDIAN_DEFAULT_CUSTOM_PENS_SEED: readonly ObsidianCustomPenSeed[] = [
     fillStyle: 'solid',
     strokeWidth: 2.6,
     roughness: 0,
-    opacity: 65,
+    opacity: 100,
     strokeOptions: makeStrokeOptions({
       highlighter: true,
       constantPressure: true,
@@ -226,7 +226,7 @@ const OBSIDIAN_DEFAULT_CUSTOM_PENS_SEED: readonly ObsidianCustomPenSeed[] = [
     fillStyle: 'hachure',
     strokeWidth: 0,
     roughness: 0,
-    opacity: 65,
+    opacity: 100,
     strokeOptions: makeStrokeOptions({
       highlighter: true,
       constantPressure: true,
@@ -252,7 +252,7 @@ const OBSIDIAN_DEFAULT_CUSTOM_PENS_SEED: readonly ObsidianCustomPenSeed[] = [
     fillStyle: 'hachure',
     strokeWidth: 0,
     roughness: 0,
-    opacity: 65,
+    opacity: 100,
     strokeOptions: makeStrokeOptions({
       highlighter: true,
       constantPressure: true,
@@ -278,7 +278,7 @@ const OBSIDIAN_DEFAULT_CUSTOM_PENS_SEED: readonly ObsidianCustomPenSeed[] = [
     fillStyle: 'solid',
     strokeWidth: 2,
     roughness: 0,
-    opacity: 65,
+    opacity: 100,
     strokeOptions: makeStrokeOptions({
       highlighter: true,
       constantPressure: true,
@@ -288,6 +288,59 @@ const OBSIDIAN_DEFAULT_CUSTOM_PENS_SEED: readonly ObsidianCustomPenSeed[] = [
       smoothing: 0.5,
       streamline: 0.5,
       easing: 'linear',
+      startTaper: 0,
+      startCap: true,
+      startEasing: 'linear',
+      endTaper: 0,
+      endCap: true,
+      endEasing: 'linear',
+    }),
+  },
+  // Slots 9-10: extra "default" pen slots matching Obsidian's 10-pen layout
+  {
+    penType: 'default',
+    freedrawOnly: false,
+    strokeColor: '#000000',
+    backgroundColor: 'transparent',
+    fillStyle: 'hachure',
+    strokeWidth: 0,
+    roughness: 0,
+    opacity: 100,
+    strokeOptions: makeStrokeOptions({
+      highlighter: false,
+      constantPressure: false,
+      hasOutline: false,
+      outlineWidth: 1,
+      thinning: 0.6,
+      smoothing: 0.5,
+      streamline: 0.5,
+      easing: 'easeOutSine',
+      startTaper: 0,
+      startCap: true,
+      startEasing: 'linear',
+      endTaper: 0,
+      endCap: true,
+      endEasing: 'linear',
+    }),
+  },
+  {
+    penType: 'default',
+    freedrawOnly: false,
+    strokeColor: '#000000',
+    backgroundColor: 'transparent',
+    fillStyle: 'hachure',
+    strokeWidth: 0,
+    roughness: 0,
+    opacity: 100,
+    strokeOptions: makeStrokeOptions({
+      highlighter: false,
+      constantPressure: false,
+      hasOutline: false,
+      outlineWidth: 1,
+      thinning: 0.6,
+      smoothing: 0.5,
+      streamline: 0.5,
+      easing: 'easeOutSine',
       startTaper: 0,
       startCap: true,
       startEasing: 'linear',
@@ -439,9 +492,11 @@ export function matchExcalidrawHighlighterPresetBlock(
     if (strokeColor !== presetStroke) continue
     if (backgroundColor !== presetBackground) continue
     if (fillStyle !== preset.fillStyle) continue
-    if (Number.isFinite(strokeWidth) && Math.abs(strokeWidth - preset.strokeWidth) > 0.22) continue
+    // strokeWidth 0 means "keep current" — skip width check for those presets
+    if (preset.strokeWidth > 0 && Number.isFinite(strokeWidth) && Math.abs(strokeWidth - preset.strokeWidth) > 0.22) continue
     if (Math.abs(roughness - preset.roughness) > 0.4) continue
     if (currentHighlighter !== preset.strokeOptions.highlighter) continue
+    // Note: opacity is intentionally NOT compared — Obsidian pens don't control opacity
     return preset.id
   }
 
@@ -454,7 +509,15 @@ export function buildExcalidrawHighlighterAppStatePatchBlock(
 ): Record<string, unknown> {
   const activeToolBase = getActiveToolBase(currentAppState)
 
-  return {
+  // Match Obsidian's setPen() behavior exactly:
+  // - currentStrokeOptions: always set
+  // - strokeWidth: only override when > 0 (0 means "keep current")
+  // - backgroundColor: only override when truthy (not empty/transparent)
+  // - strokeColor: only override when truthy
+  // - fillStyle: only override when not empty
+  // - roughness: only override when falsy (0 or null → set to 0; truthy → keep current)
+  // - opacity: NEVER changed by pen switching (left as-is)
+  const patch: Record<string, unknown> = {
     activeTool: {
       ...activeToolBase,
       type: 'freedraw',
@@ -462,13 +525,6 @@ export function buildExcalidrawHighlighterAppStatePatchBlock(
       locked: false,
       fromSelection: false,
     },
-    currentItemStrokeColor: preset.strokeColor,
-    currentItemBackgroundColor: preset.backgroundColor,
-    currentItemFillStyle: preset.fillStyle,
-    currentItemStrokeWidth: preset.strokeWidth,
-    currentItemOpacity: preset.opacity,
-    currentItemStrokeStyle: 'solid',
-    currentItemRoughness: preset.roughness,
     currentStrokeOptions: {
       ...preset.strokeOptions,
       options: {
@@ -478,6 +534,44 @@ export function buildExcalidrawHighlighterAppStatePatchBlock(
       },
     },
   }
+
+  // strokeWidth: only set when non-zero
+  if (preset.strokeWidth && preset.strokeWidth !== 0) {
+    patch.currentItemStrokeWidth = preset.strokeWidth
+  }
+
+  // backgroundColor: only set when truthy (not empty/transparent)
+  if (preset.backgroundColor && preset.backgroundColor !== 'transparent') {
+    patch.currentItemBackgroundColor = preset.backgroundColor
+  }
+
+  // strokeColor: only set when truthy
+  if (preset.strokeColor) {
+    patch.currentItemStrokeColor = preset.strokeColor
+  }
+
+  // fillStyle: only set when truthy
+  if (preset.fillStyle) {
+    patch.currentItemFillStyle = preset.fillStyle
+  }
+
+  // roughness: only set when falsy (0 or null means set to 0; truthy values like 3 are kept as-is)
+  if (!preset.roughness) {
+    patch.currentItemRoughness = 0
+  }
+
+  // Save current state for freedrawOnly pens so it can be restored when switching away
+  if (preset.freedrawOnly && currentAppState && !currentAppState.resetCustomPen) {
+    patch.resetCustomPen = {
+      currentItemStrokeWidth: currentAppState.currentItemStrokeWidth,
+      currentItemBackgroundColor: currentAppState.currentItemBackgroundColor,
+      currentItemStrokeColor: currentAppState.currentItemStrokeColor,
+      currentItemFillStyle: currentAppState.currentItemFillStyle,
+      currentItemRoughness: currentAppState.currentItemRoughness,
+    }
+  }
+
+  return patch
 }
 
 export function buildExcalidrawDisableHighlighterAppStatePatchBlock(
@@ -534,7 +628,7 @@ export function extractObsidianHighlighterPresetsFromPluginDataBlock(
       fillStyle: asFillStyle(item.fillStyle, isHighlighter ? 'solid' : 'hachure'),
       strokeWidth: Math.max(asNumber(item.strokeWidth, isHighlighter ? 2.6 : 0), 0),
       roughness: Math.max(asNumber(item.roughness, 0), 0),
-      opacity: Math.min(Math.max(Math.round(asNumber(item.opacity, isHighlighter ? 65 : 100)), 1), 100),
+      opacity: Math.min(Math.max(Math.round(asNumber(item.opacity, 100)), 1), 100),
       strokeOptions: parsedOptions,
     })
   }

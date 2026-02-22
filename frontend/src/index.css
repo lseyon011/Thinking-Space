@@ -159,6 +159,36 @@
   .prose.ltm-markdown-preserve-spaces :is(p, li, blockquote, td, th, a, strong, em, span) {
     white-space: break-spaces;
   }
+  .prose .ltm-markdown-blank-line {
+    height: 1lh;
+    margin: 0;
+  }
+  .ltm-markdown-rich-editor .cm-scroller {
+    overflow-x: hidden !important;
+  }
+  .ltm-markdown-rich-editor .cm-editor {
+    height: 100% !important;
+    min-height: 100% !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+  .ltm-markdown-rich-editor .ltm-markdown-rich-editor-surface > .cm-theme-light,
+  .ltm-markdown-rich-editor .ltm-markdown-rich-editor-surface > .cm-theme-dark {
+    display: flex;
+    min-height: 100%;
+    height: 100%;
+    flex: 1 1 auto;
+  }
+  .ltm-markdown-rich-editor .cm-content {
+    min-height: 100% !important;
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .ltm-markdown-rich-editor .cm-scroller::-webkit-scrollbar:horizontal {
+    height: 0 !important;
+  }
 
   .ltm-app-shell {
     @apply h-dvh min-h-dvh flex w-full max-w-full flex-col overflow-hidden bg-background;
@@ -864,6 +894,16 @@
 
   .safe-left {
     padding-left: var(--safe-area-inset-left);
+  }
+
+  /* iOS Excalidraw: disable browser touch gestures + promote canvas to GPU layer */
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'] .excalidraw {
+    touch-action: none;
+  }
+
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'] .excalidraw canvas {
+    touch-action: none;
+    will-change: transform;
   }
 
   .ltm-app-shell[data-ltm-surface='capacitor-ios'] .excalidraw .App-menu_top,

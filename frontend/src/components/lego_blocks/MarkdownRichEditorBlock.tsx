@@ -1,6 +1,7 @@
-import { useMemo, useRef } from 'react'
+import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
+import { redo, undo } from '@codemirror/commands'
 import {
   autocompletion,
   startCompletion,
@@ -9,7 +10,7 @@ import {
   type CompletionResult,
 } from '@codemirror/autocomplete'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
-import { Bold, Code, Heading1, Italic, Link2, List, ListOrdered, Quote } from 'lucide-react'
+import { Bold, Code, Heading1, Italic, Link2, List, ListOrdered, Quote, RotateCcw, RotateCw } from 'lucide-react'
 import {
   getWikilinkSuggestionsOrch,
   toObsidianWikilinkTargetOrch,
@@ -24,6 +25,12 @@ interface MarkdownRichEditorBlockProps {
   editorClassName?: string
   placeholder?: string
   compactMobile?: boolean
+}
+
+export interface MarkdownRichEditorBlockHandle {
+  undo: () => void
+  redo: () => void
+  focus: () => void
 }
 
 function wrapSelection(
@@ -91,7 +98,7 @@ function getWikilinkCompletionQuery(
   }
 }
 
-export default function MarkdownRichEditorBlock({
+const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, MarkdownRichEditorBlockProps>(function MarkdownRichEditorBlock({
   value,
   onChange,
   currentPath = '',
@@ -99,8 +106,30 @@ export default function MarkdownRichEditorBlock({
   editorClassName,
   placeholder = 'Write markdown...',
   compactMobile = false,
-}: MarkdownRichEditorBlockProps) {
+}, ref) {
   const editorViewRef = useRef<EditorView | null>(null)
+
+  const undoEditor = () => {
+    const view = editorViewRef.current
+    if (!view) return
+    undo(view)
+    view.focus()
+  }
+
+  const redoEditor = () => {
+    const view = editorViewRef.current
+    if (!view) return
+    redo(view)
+    view.focus()
+  }
+
+  useImperativeHandle(ref, () => ({
+    undo: undoEditor,
+    redo: redoEditor,
+    focus: () => {
+      editorViewRef.current?.focus()
+    },
+  }))
 
   const wikilinkCompletionSource = useMemo(() => {
     return async (context: CompletionContext): Promise<CompletionResult | null> => {
@@ -142,21 +171,37 @@ export default function MarkdownRichEditorBlock({
   const extensions = useMemo(() => {
     const uiTheme = EditorView.theme({
       '&': {
-        height: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        flex: '1 1 auto',
+        height: '100%',
+        minHeight: '100%',
         backgroundColor: 'transparent',
+        maxWidth: '100%',
+        overflow: 'hidden',
       },
       '.cm-scroller': {
-        overflow: 'auto',
+        height: '100%',
+        minHeight: '100%',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        backgroundColor: 'transparent',
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
         lineHeight: '1.6',
       },
+      '.cm-line': {
+        overflowWrap: 'anywhere',
+        wordBreak: 'break-word',
+      },
       '.cm-content': {
-        minHeight: compactMobile ? '14rem' : '24rem',
+        minHeight: '100%',
         padding: compactMobile ? '0.6rem 0.6rem 0.6rem 0.45rem' : '0.75rem 0.75rem 0.75rem 0.5rem',
+        whiteSpace: 'pre-wrap',
       },
       '.cm-gutters': {
         backgroundColor: 'transparent',
         border: 'none',
+        minHeight: '100%',
         marginRight: compactMobile ? '0.25rem' : '0.4rem',
         paddingLeft: compactMobile ? '0.1rem' : '0.25rem',
       },
@@ -216,7 +261,7 @@ export default function MarkdownRichEditorBlock({
   }
 
   return (
-    <div className={cn('flex min-h-0 flex-col bg-transparent', className)}>
+    <div className={cn('ltm-markdown-rich-editor flex min-h-0 flex-col bg-transparent', className)}>
       <div className="sticky top-0 z-30 flex flex-wrap items-center gap-1 border-b border-border/50 bg-background/95 p-2 backdrop-blur">
         <button
           type="button"
@@ -290,18 +335,35 @@ export default function MarkdownRichEditorBlock({
         >
           <ListOrdered className="h-4 w-4" />
         </button>
+        <button
+          type="button"
+          onClick={undoEditor}
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          title="Undo"
+        >
+          <RotateCcw className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={redoEditor}
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          title="Redo"
+        >
+          <RotateCw className="h-4 w-4" />
+        </button>
       </div>
 
-      <div className={cn('min-h-0 flex-1', editorClassName)}>
+      <div className={cn('ltm-markdown-rich-editor-surface flex min-h-0 flex-1 flex-col overflow-hidden', editorClassName)}>
         <CodeMirror
           value={value}
-          minHeight="24rem"
+          height="100%"
+          className="h-full bg-transparent"
           basicSetup={{
             lineNumbers: true,
             highlightActiveLine: false,
             highlightActiveLineGutter: false,
             foldGutter: true,
-            dropCursor: true,
+            dropCursor: false,
             allowMultipleSelections: true,
             indentOnInput: true,
             bracketMatching: true,
@@ -318,4 +380,6 @@ export default function MarkdownRichEditorBlock({
       </div>
     </div>
   )
-}
+})
+
+export default MarkdownRichEditorBlock

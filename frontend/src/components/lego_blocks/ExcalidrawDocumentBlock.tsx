@@ -99,6 +99,7 @@ const PARSED_SCENE_CACHE_MAX_ENTRIES = 4
 const MINIMAP_MAX_RECTS = 400
 const COMPACT_VIEW_MIN_ZOOM = 0.22
 const SCENE_CHANGE_EMIT_INTERVAL_MS = 320
+const SCENE_CHANGE_EMIT_INTERVAL_IOS_MS = 500
 const SCENE_CHANGE_EMIT_INTERVAL_LARGE_SCENE_MS = 640
 const SCENE_CHANGE_EMIT_INTERVAL_LARGE_SCENE_IOS_MS = 900
 const MINIMAP_UPDATE_INTERVAL_MS = 240
@@ -150,13 +151,6 @@ function readCurrentOpacityFromAppState(appState: Record<string, unknown>): numb
 
 function isObjectLike(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object'
-}
-
-function isFreedrawStrokeInProgress(appState: Record<string, unknown>): boolean {
-  if (readActiveToolType(appState) !== 'freedraw') return false
-  if (isObjectLike(appState.newElement)) return true
-  if (isObjectLike(appState.draggingElement)) return true
-  return false
 }
 
 function resolveViewportWorldSize(params: {
@@ -656,7 +650,7 @@ export default function ExcalidrawDocumentBlock({
     const now = nowMs()
     const intervalMs = isLargeScene
       ? (isIosSurface ? SCENE_CHANGE_EMIT_INTERVAL_LARGE_SCENE_IOS_MS : SCENE_CHANGE_EMIT_INTERVAL_LARGE_SCENE_MS)
-      : SCENE_CHANGE_EMIT_INTERVAL_MS
+      : (isIosSurface ? SCENE_CHANGE_EMIT_INTERVAL_IOS_MS : SCENE_CHANGE_EMIT_INTERVAL_MS)
     const elapsed = now - lastSceneChangeEmitAtRef.current
     const delay = Math.max(0, intervalMs - elapsed)
 
@@ -1235,14 +1229,22 @@ export default function ExcalidrawDocumentBlock({
             onChangeLogCountRef.current += 1
             const typedAppState = (appState as Record<string, unknown>) ?? {}
             const typedFiles = (files as Record<string, unknown>) ?? {}
-            const strokeInProgress = isIosSurface && isFreedrawStrokeInProgress(typedAppState)
+
+            // On iOS during active freedraw strokes: skip ALL work to eliminate lag.
+            // Work resumes when the stroke ends (newElement/draggingElement become null).
+            const isIosFreedraw = isIosSurface && readActiveToolType(typedAppState) === 'freedraw'
+            const iosStrokeActive = isIosFreedraw
+              && (isObjectLike(typedAppState.newElement) || isObjectLike(typedAppState.draggingElement))
+            if (iosStrokeActive) return
+
+            const strokeInProgress = false // only reached when stroke is NOT active on iOS
+
             if (onChangeLogCountRef.current <= 5 || onChangeLogCountRef.current % 100 === 0) {
               const zoom = (typedAppState.zoom as { value?: unknown } | undefined)?.value
               debugLog('on_change', {
                 count: onChangeLogCountRef.current,
                 elements: elements.length,
                 files: Object.keys(typedFiles).length,
-                strokeInProgress,
                 zoom: typeof zoom === 'number' ? zoom : null,
                 scrollX: typeof typedAppState.scrollX === 'number' ? typedAppState.scrollX : null,
                 scrollY: typeof typedAppState.scrollY === 'number' ? typedAppState.scrollY : null,
@@ -1289,49 +1291,75 @@ export default function ExcalidrawDocumentBlock({
 
       {editable && (
         <div
-          className="pointer-events-none absolute z-30 flex max-h-[68vh] w-[11rem] -translate-y-1/2 flex-col gap-1 overflow-y-auto rounded-xl border border-border/70 bg-background/90 p-1.5 shadow-sm backdrop-blur"
+          className="pointer-events-none absolute z-30 flex max-h-[72vh] w-[12.5rem] -translate-y-1/2 flex-col gap-0.5 overflow-y-auto rounded-xl border border-border/70 bg-background/90 p-1.5 shadow-sm backdrop-blur"
           style={{
             top: '50%',
             right: 'calc(var(--ltm-safe-right, 0px) + 0.55rem)',
           }}
         >
-          <span className="px-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-            Pen Palette
+          <span className="px-1 pb-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+            Pens
           </span>
-          {highlighterPresets.map((preset) => {
+          {highlighterPresets.map((preset, index) => {
             const isActive = activeHighlighterPresetId === preset.id
+            const penNumber = index + 1
+            const swatchColor = preset.backgroundColor !== 'transparent'
+              ? preset.backgroundColor
+              : preset.strokeColor
+            const isHighlighter = preset.strokeOptions.highlighter
+            const widthLabel = preset.strokeWidth > 0
+              ? preset.strokeWidth.toString()
+              : ''
             return (
               <button
                 key={preset.id}
                 type="button"
                 onClick={() => applyHighlighterPreset(preset.id)}
                 className={cn(
-                  'pointer-events-auto inline-flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-[11px] transition-colors',
+                  'pointer-events-auto inline-flex items-center gap-1.5 rounded-md border px-1.5 py-1 text-[11px] transition-colors',
                   isActive
                     ? 'border-primary/70 bg-primary/15 text-foreground'
                     : 'border-border/70 bg-background text-muted-foreground hover:bg-muted',
                 )}
-                title={`Use ${preset.label}`}
-                aria-label={`Use ${preset.label}`}
+                title={`Pen ${penNumber}: ${preset.label}${isHighlighter ? ' (highlighter)' : ''}${preset.freedrawOnly ? ' · draw only' : ''}${widthLabel ? ` · width ${widthLabel}` : ''}`}
+                aria-label={`Pen ${penNumber}: ${preset.label}`}
               >
-                <span className="inline-flex min-w-0 items-center gap-2">
-                  <span
-                    className="inline-block h-3 w-3 rounded-sm border border-border/60"
-                    style={{ backgroundColor: preset.backgroundColor === 'transparent' ? preset.strokeColor : preset.backgroundColor }}
-                  />
-                  <span className="truncate">{preset.label}</span>
+                <span className={cn(
+                  'inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[9px] font-bold',
+                  isActive
+                    ? 'bg-primary/25 text-primary'
+                    : 'bg-muted/80 text-muted-foreground',
+                )}>
+                  {penNumber <= 9 ? penNumber : 0}
                 </span>
-                {preset.strokeOptions.highlighter && (
-                  <span className="rounded border border-border/70 px-1 text-[9px] uppercase tracking-[0.08em]">
-                    H
-                  </span>
-                )}
+                <span
+                  className="inline-block h-3 w-3 flex-shrink-0 rounded-sm border border-border/60"
+                  style={{ backgroundColor: swatchColor }}
+                />
+                <span className="min-w-0 flex-1 truncate text-left">{preset.label}</span>
+                <span className="inline-flex flex-shrink-0 items-center gap-0.5">
+                  {isHighlighter && (
+                    <span className="rounded border border-yellow-500/50 bg-yellow-500/15 px-0.5 text-[8px] font-semibold uppercase text-yellow-600 dark:text-yellow-400">
+                      H
+                    </span>
+                  )}
+                  {preset.freedrawOnly && !isHighlighter && (
+                    <span className="rounded border border-border/50 px-0.5 text-[8px] uppercase text-muted-foreground">
+                      D
+                    </span>
+                  )}
+                  {widthLabel && (
+                    <span className="text-[9px] tabular-nums text-muted-foreground/70">
+                      {widthLabel}
+                    </span>
+                  )}
+                </span>
               </button>
             )
           })}
           {activeHighlighterPresetId === 'custom' && (
-            <span className="rounded-md border border-border/60 bg-background px-1.5 py-1 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-              Custom
+            <span className="rounded-md border border-dashed border-border/60 bg-background px-1.5 py-1 text-center text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+              Custom settings
             </span>
           )}
         </div>

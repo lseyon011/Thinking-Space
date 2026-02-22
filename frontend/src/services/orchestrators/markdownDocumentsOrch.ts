@@ -35,6 +35,14 @@ function buildRevisionPath(filePath: string): string {
   return `.think-space/revisions/${day}/${time}--${safePath}`
 }
 
+function isAlreadyExistsFsError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  const normalized = message.toLowerCase()
+  return normalized.includes('already exists')
+    || normalized.includes('cannot be overwritten')
+    || normalized.includes('eexist')
+}
+
 export class MarkdownDocumentConflictError extends Error {
   readonly code = 'MARKDOWN_DOCUMENT_CONFLICT'
   readonly currentMtime: number
@@ -126,7 +134,17 @@ export async function saveMarkdownDocument(params: {
       ? revisionPath.slice(0, revisionPath.lastIndexOf('/'))
       : ''
     if (revisionDir) {
-      await fs.mkdir(revisionDir)
+      const exists = await fs.exists(revisionDir).catch(() => false)
+      if (!exists) {
+        try {
+          await fs.mkdir(revisionDir)
+        } catch (error) {
+          const appeared = await fs.exists(revisionDir).catch(() => false)
+          if (!appeared && !isAlreadyExistsFsError(error)) {
+            throw error
+          }
+        }
+      }
     }
     await fs.write(revisionPath, currentContent)
   }

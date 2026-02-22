@@ -1,4 +1,5 @@
 import {
+  isValidElement,
   memo,
   useCallback,
   useEffect,
@@ -7,11 +8,12 @@ import {
   useState,
   type ComponentPropsWithoutRef,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import yaml from 'js-yaml'
-import { X, FileText, ExternalLink, Info, Pencil, Save, Sparkles, Loader2 } from 'lucide-react'
+import { X, FileText, ExternalLink, Info, Pencil, Save, Sparkles, Loader2, RotateCcw, RotateCw } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -32,7 +34,7 @@ import {
 import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/ExcalidrawDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/MarkdownMiniNavBlock'
-import MarkdownRichEditorBlock from '@/components/lego_blocks/MarkdownRichEditorBlock'
+import MarkdownRichEditorBlock, { type MarkdownRichEditorBlockHandle } from '@/components/lego_blocks/MarkdownRichEditorBlock'
 import { cn } from '@/lib/utils'
 import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/AiAssistRuntimeBlock'
 import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBlock'
@@ -47,6 +49,14 @@ import { generateStewardMetadataSuggestionForFileOrch, type StewardMetadataSugge
 
 export type MarkdownViewerMode = 'view' | 'edit'
 
+const MARKDOWN_BLANK_LINE_MARKER = 'LTM-BLANK-LINE-MARKER-V2'
+const LEGACY_MARKDOWN_BLANK_LINE_MARKERS = new Set([
+  'LTM-PRESERVE-BLANK-LINE-MARKER',
+  '__LTM_PRESERVE_BLANK_LINE__',
+  'LTM_PRESERVE_BLANK_LINE',
+  'LTM PRESERVE BLANK LINE',
+])
+
 interface MarkdownDocumentBlockProps {
   path: string
   initialMode?: MarkdownViewerMode
@@ -59,16 +69,92 @@ interface MarkdownDocumentBlockProps {
 }
 
 function stripFrontmatter(content: string): string {
-  return content.replace(/^---\n[\s\S]*?\n---\n?/, '')
+  return splitFrontmatter(content).body
 }
 
 function splitFrontmatter(content: string): { frontmatter: string; body: string } {
-  const match = content.match(/^(---\n[\s\S]*?\n---\n?)([\s\S]*)$/)
-  if (!match) return { frontmatter: '', body: content }
-  return {
-    frontmatter: match[1],
-    body: match[2],
+  const normalized = content.replace(/\r\n/g, '\n')
+  const lines = normalized.split('\n')
+  if (lines[0] !== '---') return { frontmatter: '', body: normalized }
+
+  let closingIndex = -1
+  for (let i = 1; i < lines.length; i += 1) {
+    if (lines[i] === '---') {
+      closingIndex = i
+      break
+    }
   }
+  if (closingIndex < 0) return { frontmatter: '', body: normalized }
+
+  const frontmatter = `${lines.slice(0, closingIndex + 1).join('\n')}\n`
+  const body = lines.slice(closingIndex + 1).join('\n')
+  return { frontmatter, body }
+}
+
+function isBlankLineMarkerText(text: string): boolean {
+  const trimmed = text.trim()
+  if (!trimmed) return false
+  if (trimmed === MARKDOWN_BLANK_LINE_MARKER) return true
+  if (LEGACY_MARKDOWN_BLANK_LINE_MARKERS.has(trimmed)) return true
+  const normalized = trimmed
+    .replace(/[_*\-`]+/g, '')
+    .replace(/\s+/g, '')
+    .toUpperCase()
+  return normalized === 'LTMPRESERVEBLANKLINE' || normalized === 'LTMBLANKLINEMARKERV2'
+}
+
+function extractTextFromNode(node: ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(extractTextFromNode).join('')
+  if (isValidElement(node)) return extractTextFromNode(node.props.children as ReactNode)
+  return ''
+}
+
+function preserveExtraBlankLinesInMarkdown(content: string): string {
+  const normalized = content
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => (isBlankLineMarkerText(line) ? '' : line))
+    .join('\n')
+  const lines = normalized.split('\n')
+  const output: string[] = []
+  let inFence = false
+
+  const isFenceLine = (line: string): boolean => {
+    const trimmed = line.trimStart()
+    return trimmed.startsWith('```') || trimmed.startsWith('~~~')
+  }
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    if (isFenceLine(line)) {
+      inFence = !inFence
+      output.push(line)
+      continue
+    }
+
+    if (!inFence && line === '') {
+      let runEnd = index
+      while (runEnd < lines.length && lines[runEnd] === '') runEnd += 1
+      const runLength = runEnd - index
+
+      if (runLength <= 2) {
+        for (let i = 0; i < runLength; i += 1) output.push('')
+      } else {
+        output.push('', '')
+        for (let i = 0; i < runLength - 2; i += 1) {
+          output.push(MARKDOWN_BLANK_LINE_MARKER, '')
+        }
+      }
+
+      index = runEnd - 1
+      continue
+    }
+
+    output.push(line)
+  }
+
+  return output.join('\n')
 }
 
 function formatBytes(bytes: number): string {
@@ -299,6 +385,7 @@ function MarkdownDocumentBlock({
   const isExcalidrawDoc = /\.(excalidraw|excalidraw\.md)$/i.test(path)
   const chromeContainerRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
+  const markdownEditorRef = useRef<MarkdownRichEditorBlockHandle | null>(null)
   const lastScrollTopRef = useRef(0)
   const chromeCollapsedRef = useRef(false)
   const excalidrawSceneRef = useRef<ParsedExcalidrawScene | null>(null)
@@ -600,8 +687,17 @@ function MarkdownDocumentBlock({
     setPurposeMessage('Rejected purpose proposal.')
   }, [purposeProposal])
   const markdownRemarkPlugins = useMemo(() => [remarkGfm, remarkObsidianWikilinksOrch], [])
+  const renderedViewMarkdown = useMemo(
+    () => (
+      editorSettings.preserveNewlinesInViewMode
+        ? preserveExtraBlankLinesInMarkdown(viewMarkdown)
+        : viewMarkdown
+    ),
+    [editorSettings.preserveNewlinesInViewMode, viewMarkdown],
+  )
 
   type MarkdownAnchorProps = ComponentPropsWithoutRef<'a'> & { node?: unknown }
+  type MarkdownParagraphProps = ComponentPropsWithoutRef<'p'> & { node?: unknown }
   const markdownComponents = useMemo(() => ({
     a: ({ href, children, ...props }: MarkdownAnchorProps) => {
       const isWikilink = isThinkingSpaceWikilinkHrefOrch(href)
@@ -663,6 +759,13 @@ function MarkdownDocumentBlock({
           {children}
         </a>
       )
+    },
+    p: ({ children, ...props }: MarkdownParagraphProps) => {
+      const text = extractTextFromNode(children).replace(/\u00a0/g, ' ').trim()
+      if (isBlankLineMarkerText(text)) {
+        return <div className="ltm-markdown-blank-line" aria-hidden="true" />
+      }
+      return <p {...props}>{children}</p>
     },
   }), [openLinkedPath, path])
 
@@ -1061,6 +1164,22 @@ function MarkdownDocumentBlock({
                 <>
                   <button
                     type="button"
+                    onClick={() => markdownEditorRef.current?.undo()}
+                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    title="Undo"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => markdownEditorRef.current?.redo()}
+                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    title="Redo"
+                  >
+                    <RotateCw className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setAutoSaveEnabled(v => !v)}
                     className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
                     title="Toggle auto save"
@@ -1086,6 +1205,37 @@ function MarkdownDocumentBlock({
                     type="button"
                     onClick={() => { void handleSave() }}
                     disabled={saving || baseMtime === null}
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </>
+              )}
+
+              {isEditing && isExcalidrawDoc && (
+                <>
+                  <span className="hidden px-1 text-xs text-muted-foreground md:inline">
+                    {hasChanges ? 'Unsaved changes' : 'No changes'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setExcalidrawImmersive(v => !v)}
+                    className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+                  >
+                    {excalidrawImmersive ? 'Exit Focus' : 'Focus Canvas'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelEditing}
+                    className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void handleSave() }}
+                    disabled={!hasChanges || saving || baseMtime === null}
                     className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Save className="h-3.5 w-3.5" />
@@ -1237,7 +1387,7 @@ function MarkdownDocumentBlock({
                   components={markdownComponents}
                   urlTransform={thinkingSpaceMarkdownUrlTransformBlock}
                 >
-                  {viewMarkdown}
+                  {renderedViewMarkdown}
                 </ReactMarkdown>
               </div>
             </div>
@@ -1245,15 +1395,8 @@ function MarkdownDocumentBlock({
 
         {!loading && !error && content !== null && isEditing && isExcalidrawDoc && (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              <span>Full Excalidraw tool surface is enabled in edit mode.</span>
-              <button
-                type="button"
-                onClick={() => setExcalidrawImmersive(true)}
-                className="rounded-md border border-border/70 px-2 py-1 text-xs text-foreground hover:bg-muted"
-              >
-                Focus Canvas
-              </button>
+            <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              Full Excalidraw tool surface is enabled in edit mode.
             </div>
             <ExcalidrawDocumentBlock
               content={excalidrawEditorContent}
@@ -1279,20 +1422,24 @@ function MarkdownDocumentBlock({
         )}
 
         {!loading && !error && content !== null && isEditing && isExcalidrawDoc && excalidrawImmersive && (
-          <div className={cn('fixed inset-0 z-[70] flex bg-background', isIosSurface ? 'flex-col-reverse' : 'flex-col')}>
+          <div className="fixed inset-0 z-[70] flex flex-col bg-background">
             <div
-              className={cn(
-                'flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 px-3 py-2',
-                isIosSurface ? 'border-t border-border/60' : 'border-b border-border/60',
-              )}
+              className="relative z-20 flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-background/95 px-3 py-2 backdrop-blur"
               style={isIosSurface
-                ? { paddingBottom: 'calc(var(--ltm-safe-bottom, 0px) + 0.5rem)' }
+                ? { paddingTop: 'calc(var(--ltm-safe-top, 0px) + 0.5rem)' }
                 : undefined}
             >
               <span className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Excalidraw Focus Mode
+                Excalidraw Focus Mode {hasChanges ? '· Unsaved changes' : '· Saved'}
               </span>
               <div className="flex flex-wrap items-center justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setExcalidrawImmersive(false)}
+                  className="rounded-md border border-border/70 px-2.5 py-1 text-xs text-foreground hover:bg-muted"
+                >
+                  Exit Focus
+                </button>
                 <button
                   type="button"
                   onClick={cancelEditing}
@@ -1302,18 +1449,11 @@ function MarkdownDocumentBlock({
                 </button>
                 <button
                   type="button"
-                  onClick={handleSave}
+                  onClick={() => { void handleSave() }}
                   disabled={!hasChanges || saving || baseMtime === null}
                   className="rounded-md bg-primary px-2.5 py-1 text-xs text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saving ? 'Saving...' : 'Save'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setExcalidrawImmersive(false)}
-                  className="rounded-md border border-border/70 px-2.5 py-1 text-xs text-foreground hover:bg-muted"
-                >
-                  Exit Focus
                 </button>
               </div>
             </div>
@@ -1476,6 +1616,7 @@ function MarkdownDocumentBlock({
 
             <div data-ltm-edge-swipe-ignore="true">
               <MarkdownRichEditorBlock
+                ref={markdownEditorRef}
                 value={displayDraft}
                 currentPath={path}
                 compactMobile={isIosPhone}
@@ -1523,33 +1664,6 @@ function MarkdownDocumentBlock({
           />
         )}
       </div>
-
-      {isEditing && !excalidrawImmersive && isExcalidrawDoc && (
-        <div className={cn(
-          'flex items-center justify-between gap-2 border-t border-border/50',
-          isIosPhone ? 'px-3 py-2.5' : 'px-5 py-3',
-        )}>
-          <div className="text-xs text-muted-foreground">
-            {hasChanges ? 'Unsaved changes' : 'No changes'}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={cancelEditing}
-              className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!hasChanges || saving || baseMtime === null}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Save className="h-4 w-4" />
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
