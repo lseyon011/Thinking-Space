@@ -32,7 +32,15 @@ function buildRevisionPath(filePath: string): string {
     .replace(/\\/g, '__')
     .replace(/ /g, '_')
 
-  return `.think-space/revisions/${day}/${time}--${safePath}`
+  // iOS/APFS has a 255-byte filename limit. The prefix (time--) is ~14 chars,
+  // so cap the safePath portion to keep the total filename under 200 chars.
+  // When truncated, append a short hash of the full path for uniqueness.
+  const MAX_SAFE_PATH_LEN = 180
+  const truncatedPath = safePath.length > MAX_SAFE_PATH_LEN
+    ? safePath.slice(0, MAX_SAFE_PATH_LEN) + '--' + hashContent(safePath).slice(0, 8)
+    : safePath
+
+  return `.think-space/revisions/${day}/${time}--${truncatedPath}`
 }
 
 function isAlreadyExistsFsError(error: unknown): boolean {
