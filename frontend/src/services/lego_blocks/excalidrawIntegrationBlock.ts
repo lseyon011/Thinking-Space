@@ -37,32 +37,6 @@ interface RawExcalidrawApi {
   ) => (() => void) | undefined
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
-function safeCloneRecord(value: unknown): Record<string, unknown> {
-  if (!isRecord(value)) return {}
-
-  let keys: string[] = []
-  try {
-    keys = Object.keys(value)
-  } catch {
-    return {}
-  }
-
-  const output: Record<string, unknown> = {}
-  for (const key of keys) {
-    try {
-      const next = value[key]
-      if (next !== undefined) output[key] = next
-    } catch {
-      // Ignore individual property read failures (e.g. throwing getters/proxies).
-    }
-  }
-  return output
-}
-
 function numberOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
@@ -171,10 +145,12 @@ export function cloneExcalidrawSceneChangeBlock(
   appState: Record<string, unknown>,
   files: Record<string, unknown>,
 ): ParsedExcalidrawScene {
-  const clonedElements = Array.isArray(elements) ? [...elements] : []
+  const sceneElements = Array.isArray(elements) ? elements as unknown[] : []
   return {
-    elements: clonedElements,
-    appState: safeCloneRecord(appState),
-    files: safeCloneRecord(files),
+    // Avoid expensive deep/shallow cloning on every Excalidraw onChange tick.
+    // Callers only need the latest scene snapshot reference for save serialization.
+    elements: sceneElements,
+    appState: appState ?? {},
+    files: files ?? {},
   }
 }

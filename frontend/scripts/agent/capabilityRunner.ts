@@ -189,7 +189,7 @@ export class NodeVaultFS implements VaultFS {
 
 const NUMBER_FIELDS = new Set(['limit', 'lineNumber'])
 const ARRAY_FIELDS = new Set(['tags', 'items', 'artifacts', 'relatedNodes', 'emotions', 'comments'])
-const BOOLEAN_FIELDS = new Set(['dryRun', 'dry-run', 'date_header'])
+const BOOLEAN_FIELDS = new Set(['dryRun', 'dry-run', 'date_header', 'text-stdin'])
 
 /** Capabilities where non-identity fields are wrapped in an `updates` sub-object. */
 const WRAPPED_CAPABILITIES: Record<string, string> = {
@@ -468,22 +468,101 @@ export function buildCLIInvokePayload(
 }
 
 const CAPABILITY_EXAMPLES: Record<string, string[]> = {
+  'organizer.nodes.list_roots': [
+    './thinkspc organizer.nodes.list_roots',
+    './thinkspc organizer.nodes.list_roots --typeFilter program',
+  ],
+  'organizer.nodes.list_children': [
+    './thinkspc organizer.nodes.list_children --parentKey task-backlog',
+  ],
+  'organizer.nodes.list_all': [
+    './thinkspc organizer.nodes.list_all',
+  ],
+  'organizer.nodes.search': [
+    './thinkspc organizer.nodes.search --query "status active" --limit 10',
+    './thinkspc organizer.nodes.search --query "taskStatus ready"',
+  ],
+  'organizer.node.get': [
+    './thinkspc organizer.node.get --uuid "abc-123"',
+  ],
+  'organizer.node.get_by_key': [
+    './thinkspc organizer.node.get_by_key --key "task-backlog"',
+  ],
+  'organizer.node.read_frontmatter': [
+    './thinkspc organizer.node.read_frontmatter --filePath "coding-projects/thinking-space/some-note.md"',
+  ],
   'organizer.node.create': [
     './thinkspc organizer.node.create --type task --title "My task" --parentKey task-backlog --projectRoot coding-projects/thinking-space --description "Short description" --extra-record_kind task',
   ],
+  'organizer.node.rename': [
+    './thinkspc organizer.node.rename --uuid "abc-123" --newTitle "Better title"',
+  ],
   'organizer.node.update': [
     './thinkspc organizer.node.update --uuid "abc-123" --status active --priority high',
-    './thinkspc organizer.node.update --uuid "abc-123" --comments "Reconfirmed acceptance criteria"',
-    './thinkspc comment.add --uuid "abc-123" --text "Append progress note" --addedBy codex-cli',
+    './thinkspc organizer.node.update --uuid "abc-123" --description "Updated description"',
+  ],
+  'organizer.node.move': [
+    './thinkspc organizer.node.move --uuid "abc-123" --newParentKey "epic-auth"',
+  ],
+  'organizer.node.delete': [
+    './thinkspc organizer.node.delete --uuid "abc-123"',
+    './thinkspc organizer.node.delete --uuid "abc-123" --dryRun',
   ],
   'task.claim': [
-    './thinkspc task.claim --uuid "abc-123" --owner codex-cli',
+    './thinkspc task.claim --uuid "abc-123" --owner claude-code',
+    './thinkspc task.claim --uuid "abc-123" --owner codex-cli --taskStatus in_progress',
   ],
   'task.update_status': [
     './thinkspc task.update_status --uuid "abc-123" --taskStatus done',
+    './thinkspc task.update_status --uuid "abc-123" --taskStatus blocked --note "Waiting on API key"',
+  ],
+  'run.log': [
+    './thinkspc run.log --title "Session log" --projectRoot coding-projects/thinking-space --agentName claude-code --result success',
+  ],
+  'handoff.create': [
+    './thinkspc handoff.create --title "Auth handoff" --projectRoot coding-projects/thinking-space --summary "Completed login flow" --fromAgent claude-code --toAgent human --parentKey handoffs-agent-operations',
   ],
   'comment.add': [
-    './thinkspc comment.add --uuid "abc-123" --text "Implemented parser hardening" --addedBy codex-cli',
+    './thinkspc comment.add --uuid "abc-123" --text "Implemented parser hardening" --addedBy claude-code',
+    'echo "Long comment" | ./thinkspc comment.add --uuid "abc-123" --addedBy claude-code --text-stdin',
+  ],
+  'thoughts.create': [
+    './thinkspc thoughts.create --folder_path "journal" --filename "reflection" --content "Today I learned..." --title "Daily reflection" --date_header --emotions "curious,focused"',
+  ],
+  'todos.create': [
+    './thinkspc todos.create --folderPath "todos" --date "2025-01-15" --items "Buy groceries,Fix bug,Review PR"',
+  ],
+  'todos.toggle': [
+    './thinkspc todos.toggle --filePath "todos/2025-01-15.md" --lineNumber 3',
+  ],
+  'tools.files.list_markdown': [
+    './thinkspc tools.files.list_markdown',
+    './thinkspc tools.files.list_markdown --limit 50',
+  ],
+  'tools.files.list_pdf': [
+    './thinkspc tools.files.list_pdf',
+  ],
+  'tools.folders.list': [
+    './thinkspc tools.folders.list',
+    './thinkspc tools.folders.list --limit 20',
+  ],
+  'tools.excalidraw.preview': [
+    './thinkspc tools.excalidraw.preview --inputPath "notes/diagram.md"',
+  ],
+  'tools.excalidraw.format': [
+    './thinkspc tools.excalidraw.format --inputPath "notes/diagram.md"',
+  ],
+  'tools.pdf.preview': [
+    './thinkspc tools.pdf.preview --inputPath "docs/paper.pdf"',
+  ],
+  'tools.pdf.convert': [
+    './thinkspc tools.pdf.convert --inputPath "docs/paper.pdf"',
+  ],
+  'tools.transcript.preview': [
+    './thinkspc tools.transcript.preview --inputText "Speaker 1: Hello..."',
+  ],
+  'tools.transcript.clean_save': [
+    './thinkspc tools.transcript.clean_save --input_text "Speaker 1: Hello..." --output_folder "transcripts" --output_name "meeting-notes"',
   ],
 }
 
@@ -511,17 +590,137 @@ export function renderRunnerHelp(): string {
     '  ./thinkspc <capability> --help',
     '',
     'Notes:',
-    '  - Output defaults: text on TTY, json otherwise.',
-    '  - Use --text for readable output and --json for machine parsing.',
+    '  - Output defaults to text. Use --json for machine-parseable output.',
     '  - --extra-* is for custom metadata only (extraFields).',
     '  - For first-class fields use first-class flags (e.g., --comments, --description).',
     '  - Use comment.add for append-only task notes.',
     '  - ./ltm remains a compatibility alias for ./thinkspc.',
     '  - Passing a thinking-organizer URL directly is treated like organizer.context.',
+    '  - For long/multi-line text, use --text-stdin and pipe via stdin:',
+    '      echo "my long text" | ./thinkspc comment.add --uuid <id> --addedBy agent --text-stdin',
+    '      ./thinkspc comment.add --uuid <id> --addedBy agent --text-stdin <<\'EOF\'',
+    '      Multi-line text with $pecial "chars" here.',
+    '      EOF',
     '',
     'Discover capabilities:',
     '  ./thinkspc list',
   ].join('\n')
+}
+
+const CAPABILITY_INPUT_FIELDS: Record<string, Array<{ flag: string; required: boolean; note?: string }>> = {
+  'organizer.nodes.list_roots': [{ flag: 'typeFilter', required: false, note: 'e.g. program, epic, task' }],
+  'organizer.nodes.list_children': [{ flag: 'parentKey', required: true }],
+  'organizer.nodes.list_all': [],
+  'organizer.nodes.search': [
+    { flag: 'query', required: true },
+    { flag: 'limit', required: false, note: 'default 10' },
+  ],
+  'organizer.node.get': [{ flag: 'uuid', required: true }],
+  'organizer.node.get_by_key': [{ flag: 'key', required: true }],
+  'organizer.node.read_frontmatter': [{ flag: 'filePath', required: true }],
+  'organizer.node.create': [
+    { flag: 'type', required: true, note: 'e.g. task, epic, idea' },
+    { flag: 'title', required: true },
+    { flag: 'parentKey', required: false },
+    { flag: 'projectRoot', required: false },
+    { flag: 'description', required: false },
+    { flag: 'tags', required: false, note: 'comma-separated' },
+    { flag: 'extra-record_kind', required: false, note: 'e.g. task, run, handoff' },
+  ],
+  'organizer.node.rename': [
+    { flag: 'uuid', required: true },
+    { flag: 'newTitle', required: true },
+  ],
+  'organizer.node.update': [
+    { flag: 'uuid', required: true },
+    { flag: 'status', required: false },
+    { flag: 'priority', required: false },
+    { flag: 'description', required: false },
+    { flag: 'tags', required: false, note: 'comma-separated' },
+  ],
+  'organizer.node.move': [
+    { flag: 'uuid', required: true },
+    { flag: 'newParentKey', required: true },
+  ],
+  'organizer.node.delete': [{ flag: 'uuid', required: true }],
+  'task.claim': [
+    { flag: 'uuid', required: true },
+    { flag: 'owner', required: true },
+    { flag: 'taskStatus', required: false, note: 'default in_progress' },
+    { flag: 'note', required: false },
+  ],
+  'task.update_status': [
+    { flag: 'uuid', required: true },
+    { flag: 'taskStatus', required: true, note: 'e.g. in_progress, done, blocked' },
+    { flag: 'note', required: false },
+  ],
+  'run.log': [
+    { flag: 'title', required: true },
+    { flag: 'projectRoot', required: true },
+    { flag: 'agentName', required: false },
+    { flag: 'result', required: false, note: 'e.g. success, failure' },
+    { flag: 'parentKey', required: false },
+  ],
+  'handoff.create': [
+    { flag: 'title', required: true },
+    { flag: 'projectRoot', required: true },
+    { flag: 'summary', required: true },
+    { flag: 'fromAgent', required: false },
+    { flag: 'toAgent', required: false },
+    { flag: 'parentKey', required: false },
+  ],
+  'comment.add': [
+    { flag: 'uuid', required: true },
+    { flag: 'text', required: true, note: 'or use --text-stdin to pipe from stdin' },
+    { flag: 'addedBy', required: false },
+  ],
+  'thoughts.create': [
+    { flag: 'folder_path', required: true },
+    { flag: 'filename', required: true },
+    { flag: 'content', required: true },
+    { flag: 'title', required: false },
+    { flag: 'date_header', required: false, note: 'boolean flag' },
+    { flag: 'emotions', required: false, note: 'comma-separated' },
+  ],
+  'todos.create': [
+    { flag: 'folderPath', required: true },
+    { flag: 'date', required: true, note: 'YYYY-MM-DD' },
+    { flag: 'items', required: true, note: 'comma-separated' },
+  ],
+  'todos.toggle': [
+    { flag: 'filePath', required: true },
+    { flag: 'lineNumber', required: true, note: 'positive integer' },
+  ],
+  'tools.files.list_markdown': [{ flag: 'limit', required: false }],
+  'tools.files.list_pdf': [{ flag: 'limit', required: false }],
+  'tools.folders.list': [{ flag: 'limit', required: false }],
+  'tools.excalidraw.preview': [{ flag: 'inputPath', required: true }],
+  'tools.excalidraw.format': [{ flag: 'inputPath', required: true }],
+  'tools.pdf.preview': [{ flag: 'inputPath', required: true }],
+  'tools.pdf.convert': [{ flag: 'inputPath', required: true }],
+  'tools.transcript.preview': [
+    { flag: 'inputText', required: true },
+    { flag: 'headingsText', required: false },
+  ],
+  'tools.transcript.clean_save': [
+    { flag: 'input_text', required: true },
+    { flag: 'output_folder', required: true },
+    { flag: 'output_name', required: true },
+    { flag: 'headings_text', required: false },
+    { flag: 'base_folder', required: false },
+  ],
+}
+
+function formatInputFields(capability: string): string {
+  const fields = CAPABILITY_INPUT_FIELDS[capability]
+  if (!fields || fields.length === 0) return '\nFlags: (none)\n'
+  const lines = ['', 'Flags:']
+  for (const field of fields) {
+    const req = field.required ? ' (required)' : ''
+    const note = field.note ? ` — ${field.note}` : ''
+    lines.push(`  --${field.flag}${req}${note}`)
+  }
+  return lines.join('\n')
 }
 
 export function renderCapabilityHelp(capability: string): string {
@@ -536,6 +735,7 @@ export function renderCapabilityHelp(capability: string): string {
     `Mode: ${definition.readOnly ? 'read-only' : 'write'}`,
     '',
     `Usage: ./thinkspc ${definition.name} --flag value ...`,
+    formatInputFields(definition.name),
     ...((formatExamples(definition.name)).split('\n')),
   ].join('\n').trim()
 }
@@ -558,27 +758,19 @@ export function resolveOutputFormat(
   options?: { envFormat?: string; isTTY?: boolean },
 ): { format: CliOutputFormat; args: string[] } {
   let explicit: CliOutputFormat | null = null
-  let index = 0
-  while (index < args.length) {
-    const arg = args[index]!
+  const passthrough: string[] = []
+  for (const arg of args) {
     if (arg === '--json') {
       explicit = 'json'
-      index += 1
-      continue
-    }
-    if (arg === '--text') {
+    } else if (arg === '--text') {
       explicit = 'text'
-      index += 1
-      continue
+    } else {
+      passthrough.push(arg)
     }
-    break
   }
 
-  const passthrough = args.slice(index)
-
   const envFormat = normalizeOutputFormat(options?.envFormat ?? process.env.LTM_OUTPUT_FORMAT)
-  const isTTY = options?.isTTY ?? Boolean(process.stdout.isTTY)
-  const format = explicit ?? envFormat ?? (isTTY ? 'text' : 'json')
+  const format = explicit ?? envFormat ?? 'text'
   return { format, args: passthrough }
 }
 
@@ -810,6 +1002,18 @@ async function main(): Promise<void> {
       return
     }
     const { payload, warnings } = buildCLIInvokePayload(command, cliArgs)
+
+    // --text-stdin: read the --text value from stdin to avoid shell quoting issues
+    const input = payload.request.input as Record<string, unknown>
+    if (input['text-stdin'] === true) {
+      delete input['text-stdin']
+      const stdinText = await readStdin()
+      if (!stdinText.trim()) {
+        throw new Error('--text-stdin was set but stdin was empty. Pipe text via stdin.')
+      }
+      input.text = stdinText.trim()
+    }
+
     writeCLIWarnings(warnings)
     writeOutput(await runCapabilityRunnerCommand('invoke', payload), outputFormat, 'invoke')
     return

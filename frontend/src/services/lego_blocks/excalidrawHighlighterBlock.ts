@@ -1,4 +1,4 @@
-interface ExcalidrawHighlighterStrokeOptionsBlock {
+interface ExcalidrawPenStrokeOptionsBlock {
   highlighter: boolean
   constantPressure: boolean
   hasOutline: boolean
@@ -24,83 +24,277 @@ interface ExcalidrawHighlighterStrokeOptionsBlock {
 export interface ExcalidrawHighlighterPresetBlock {
   id: string
   label: string
+  penType: string
+  freedrawOnly: boolean
   strokeColor: string
   backgroundColor: string
+  fillStyle: 'hachure' | 'solid' | 'cross-hatch' | 'zigzag' | 'dashed' | 'dots'
   strokeWidth: number
+  roughness: number
   opacity: number
-  strokeOptions: ExcalidrawHighlighterStrokeOptionsBlock
+  strokeOptions: ExcalidrawPenStrokeOptionsBlock
 }
 
-const BASE_HIGHLIGHTER_OPTIONS: ExcalidrawHighlighterStrokeOptionsBlock = {
-  highlighter: true,
-  constantPressure: true,
-  hasOutline: true,
-  outlineWidth: 4,
-  options: {
-    thinning: 1,
-    smoothing: 0.5,
-    streamline: 0.5,
-    easing: 'linear',
-    start: {
-      taper: 0,
-      cap: true,
-      easing: 'linear',
-    },
-    end: {
-      taper: 0,
-      cap: true,
-      easing: 'linear',
-    },
-  },
+interface ObsidianCustomPenSeed {
+  penType: string
+  freedrawOnly: boolean
+  strokeColor: string
+  backgroundColor: string
+  fillStyle: ExcalidrawHighlighterPresetBlock['fillStyle']
+  strokeWidth: number
+  roughness: number
+  opacity: number
+  strokeOptions: ExcalidrawPenStrokeOptionsBlock
 }
 
-const BASE_COMPAT_VISIBLE_HIGHLIGHTER_STROKES = new Set(['#fff', '#ffffff', 'white'])
+function makeStrokeOptions(input: {
+  highlighter: boolean
+  constantPressure: boolean
+  hasOutline: boolean
+  outlineWidth: number
+  thinning: number
+  smoothing: number
+  streamline: number
+  easing: string
+  startTaper: number | boolean
+  startCap: boolean
+  startEasing: string
+  endTaper: number | boolean
+  endCap: boolean
+  endEasing: string
+}): ExcalidrawPenStrokeOptionsBlock {
+  return {
+    highlighter: input.highlighter,
+    constantPressure: input.constantPressure,
+    hasOutline: input.hasOutline,
+    outlineWidth: input.outlineWidth,
+    options: {
+      thinning: input.thinning,
+      smoothing: input.smoothing,
+      streamline: input.streamline,
+      easing: input.easing,
+      start: {
+        taper: input.startTaper,
+        cap: input.startCap,
+        easing: input.startEasing,
+      },
+      end: {
+        taper: input.endTaper,
+        cap: input.endCap,
+        easing: input.endEasing,
+      },
+    },
+  }
+}
 
-export const EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK: readonly ExcalidrawHighlighterPresetBlock[] = [
+const OBSIDIAN_DEFAULT_CUSTOM_PENS_SEED: readonly ObsidianCustomPenSeed[] = [
   {
-    id: 'yellow',
-    label: 'Yellow',
-    strokeColor: '#fff9db',
+    penType: 'default',
+    freedrawOnly: false,
+    strokeColor: '#000000',
+    backgroundColor: 'transparent',
+    fillStyle: 'hachure',
+    strokeWidth: 0,
+    roughness: 0,
+    opacity: 100,
+    strokeOptions: makeStrokeOptions({
+      highlighter: false,
+      constantPressure: false,
+      hasOutline: false,
+      outlineWidth: 1,
+      thinning: 0.6,
+      smoothing: 0.5,
+      streamline: 0.5,
+      easing: 'easeOutSine',
+      startTaper: 0,
+      startCap: true,
+      startEasing: 'linear',
+      endTaper: 0,
+      endCap: true,
+      endEasing: 'linear',
+    }),
+  },
+  {
+    penType: 'default',
+    freedrawOnly: true,
+    strokeColor: '#ffffff',
     backgroundColor: '#fff9db',
+    fillStyle: 'solid',
     strokeWidth: 2.6,
-    opacity: 100,
-    strokeOptions: BASE_HIGHLIGHTER_OPTIONS,
+    roughness: 0,
+    opacity: 65,
+    strokeOptions: makeStrokeOptions({
+      highlighter: true,
+      constantPressure: true,
+      hasOutline: true,
+      outlineWidth: 4,
+      thinning: 1,
+      smoothing: 0.5,
+      streamline: 0.5,
+      easing: 'linear',
+      startTaper: 0,
+      startCap: true,
+      startEasing: 'linear',
+      endTaper: 0,
+      endCap: true,
+      endEasing: 'linear',
+    }),
   },
   {
-    id: 'green',
-    label: 'Green',
-    strokeColor: '#d3f9d8',
-    backgroundColor: '#d3f9d8',
-    strokeWidth: 2.6,
+    penType: 'finetip',
+    freedrawOnly: false,
+    strokeColor: '#000000',
+    backgroundColor: 'transparent',
+    fillStyle: 'hachure',
+    strokeWidth: 0.5,
+    roughness: 0,
     opacity: 100,
-    strokeOptions: BASE_HIGHLIGHTER_OPTIONS,
+    strokeOptions: makeStrokeOptions({
+      highlighter: false,
+      constantPressure: false,
+      hasOutline: false,
+      outlineWidth: 0,
+      thinning: -0.5,
+      smoothing: 0.4,
+      streamline: 0.4,
+      easing: 'linear',
+      startTaper: 5,
+      startCap: false,
+      startEasing: 'linear',
+      endTaper: 5,
+      endCap: false,
+      endEasing: 'linear',
+    }),
   },
   {
-    id: 'blue',
-    label: 'Blue',
-    strokeColor: '#d0ebff',
-    backgroundColor: '#d0ebff',
-    strokeWidth: 2.6,
+    penType: 'fountain',
+    freedrawOnly: false,
+    strokeColor: '#000000',
+    backgroundColor: 'transparent',
+    fillStyle: 'hachure',
+    strokeWidth: 2,
+    roughness: 0,
     opacity: 100,
-    strokeOptions: BASE_HIGHLIGHTER_OPTIONS,
+    strokeOptions: makeStrokeOptions({
+      highlighter: false,
+      constantPressure: false,
+      hasOutline: false,
+      outlineWidth: 1,
+      thinning: 0.6,
+      smoothing: 0.2,
+      streamline: 0.2,
+      easing: 'easeInOutSine',
+      startTaper: 150,
+      startCap: true,
+      startEasing: 'linear',
+      endTaper: 1,
+      endCap: true,
+      endEasing: 'linear',
+    }),
   },
   {
-    id: 'orange',
-    label: 'Orange',
-    strokeColor: '#ffe8cc',
-    backgroundColor: '#ffe8cc',
-    strokeWidth: 2.6,
+    penType: 'marker',
+    freedrawOnly: true,
+    strokeColor: '#B83E3E',
+    backgroundColor: '#FF7C7C',
+    fillStyle: 'dashed',
+    strokeWidth: 2,
+    roughness: 3,
     opacity: 100,
-    strokeOptions: BASE_HIGHLIGHTER_OPTIONS,
+    strokeOptions: makeStrokeOptions({
+      highlighter: false,
+      constantPressure: true,
+      hasOutline: true,
+      outlineWidth: 4,
+      thinning: 1,
+      smoothing: 0.5,
+      streamline: 0.5,
+      easing: 'linear',
+      startTaper: 0,
+      startCap: true,
+      startEasing: 'linear',
+      endTaper: 0,
+      endCap: true,
+      endEasing: 'linear',
+    }),
   },
   {
-    id: 'pink',
-    label: 'Pink',
+    penType: 'thick-thin',
+    freedrawOnly: true,
+    strokeColor: '#CECDCC',
+    backgroundColor: 'transparent',
+    fillStyle: 'hachure',
+    strokeWidth: 0,
+    roughness: 0,
+    opacity: 65,
+    strokeOptions: makeStrokeOptions({
+      highlighter: true,
+      constantPressure: true,
+      hasOutline: false,
+      outlineWidth: 1,
+      thinning: 1,
+      smoothing: 0.5,
+      streamline: 0.5,
+      easing: 'linear',
+      startTaper: 0,
+      startCap: true,
+      startEasing: 'linear',
+      endTaper: true,
+      endCap: true,
+      endEasing: 'linear',
+    }),
+  },
+  {
+    penType: 'thin-thick-thin',
+    freedrawOnly: true,
+    strokeColor: '#CECDCC',
+    backgroundColor: 'transparent',
+    fillStyle: 'hachure',
+    strokeWidth: 0,
+    roughness: 0,
+    opacity: 65,
+    strokeOptions: makeStrokeOptions({
+      highlighter: true,
+      constantPressure: true,
+      hasOutline: false,
+      outlineWidth: 1,
+      thinning: 1,
+      smoothing: 0.5,
+      streamline: 0.5,
+      easing: 'linear',
+      startTaper: true,
+      startCap: true,
+      startEasing: 'linear',
+      endTaper: true,
+      endCap: true,
+      endEasing: 'linear',
+    }),
+  },
+  {
+    penType: 'highlighter',
+    freedrawOnly: false,
     strokeColor: '#fff0f6',
     backgroundColor: '#fff0f6',
-    strokeWidth: 2.6,
-    opacity: 100,
-    strokeOptions: BASE_HIGHLIGHTER_OPTIONS,
+    fillStyle: 'solid',
+    strokeWidth: 2,
+    roughness: 0,
+    opacity: 65,
+    strokeOptions: makeStrokeOptions({
+      highlighter: true,
+      constantPressure: true,
+      hasOutline: true,
+      outlineWidth: 4,
+      thinning: 1,
+      smoothing: 0.5,
+      streamline: 0.5,
+      easing: 'linear',
+      startTaper: 0,
+      startCap: true,
+      startEasing: 'linear',
+      endTaper: 0,
+      endCap: true,
+      endEasing: 'linear',
+    }),
   },
 ]
 
@@ -130,44 +324,47 @@ function asTaper(value: unknown, fallback: number | boolean): number | boolean {
   return fallback
 }
 
+function asFillStyle(
+  value: unknown,
+  fallback: ExcalidrawHighlighterPresetBlock['fillStyle'],
+): ExcalidrawHighlighterPresetBlock['fillStyle'] {
+  if (value === 'hachure' || value === 'solid' || value === 'cross-hatch' || value === 'zigzag' || value === 'dashed' || value === 'dots') {
+    return value
+  }
+  return fallback
+}
+
 function makePresetId(rawLabel: string, index: number, seen: Map<string, number>): string {
   const slug = rawLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-  const base = slug || `highlighter-${index + 1}`
+  const base = slug || `custom-pen-${index + 1}`
   const count = seen.get(base) ?? 0
   seen.set(base, count + 1)
   return count === 0 ? base : `${base}-${count + 1}`
 }
 
 function toDisplayLabel(rawType: unknown, index: number): string {
-  if (typeof rawType !== 'string' || rawType.trim() === '') return `Highlighter ${index + 1}`
+  if (typeof rawType !== 'string' || rawType.trim() === '') return `Pen ${index + 1}`
   const normalized = rawType.replace(/[-_]+/g, ' ').trim().toLowerCase()
   return normalized.replace(/\b\w/g, c => c.toUpperCase())
 }
 
-function adaptStrokeColorForInterop(strokeColor: string, backgroundColor: string): string {
-  const normalized = strokeColor.trim().toLowerCase()
-  if (BASE_COMPAT_VISIBLE_HIGHLIGHTER_STROKES.has(normalized) && backgroundColor.trim() !== '') {
-    return backgroundColor
-  }
-  return strokeColor
-}
-
 function resolveStrokeOptionsFromObsidianPen(
   penOptions: Record<string, unknown>,
-): ExcalidrawHighlighterStrokeOptionsBlock {
+): ExcalidrawPenStrokeOptionsBlock {
   const options = isRecord(penOptions.options) ? penOptions.options : {}
   const start = isRecord(options.start) ? options.start : {}
   const end = isRecord(options.end) ? options.end : {}
+  const highlighter = asBoolean(penOptions.highlighter, false)
   return {
-    highlighter: true,
-    constantPressure: asBoolean(penOptions.constantPressure, true),
-    hasOutline: asBoolean(penOptions.hasOutline, true),
-    outlineWidth: asNumber(penOptions.outlineWidth, 4),
+    highlighter,
+    constantPressure: asBoolean(penOptions.constantPressure, highlighter),
+    hasOutline: asBoolean(penOptions.hasOutline, highlighter),
+    outlineWidth: asNumber(penOptions.outlineWidth, highlighter ? 4 : 1),
     options: {
-      thinning: asNumber(options.thinning, 1),
+      thinning: asNumber(options.thinning, highlighter ? 1 : 0.6),
       smoothing: asNumber(options.smoothing, 0.5),
       streamline: asNumber(options.streamline, 0.5),
-      easing: asString(options.easing, 'linear'),
+      easing: asString(options.easing, highlighter ? 'linear' : 'easeOutSine'),
       start: {
         taper: asTaper(start.taper, 0),
         cap: asBoolean(start.cap, true),
@@ -181,6 +378,30 @@ function resolveStrokeOptionsFromObsidianPen(
     },
   }
 }
+
+function buildPresetFromSeed(seed: ObsidianCustomPenSeed, index: number, seen: Map<string, number>): ExcalidrawHighlighterPresetBlock {
+  const label = toDisplayLabel(seed.penType, index)
+  return {
+    id: makePresetId(seed.penType, index, seen),
+    label,
+    penType: seed.penType,
+    freedrawOnly: seed.freedrawOnly,
+    strokeColor: seed.strokeColor,
+    backgroundColor: seed.backgroundColor,
+    fillStyle: seed.fillStyle,
+    strokeWidth: seed.strokeWidth,
+    roughness: seed.roughness,
+    opacity: seed.opacity,
+    strokeOptions: seed.strokeOptions,
+  }
+}
+
+function buildDefaultPresetSet(): readonly ExcalidrawHighlighterPresetBlock[] {
+  const seen = new Map<string, number>()
+  return OBSIDIAN_DEFAULT_CUSTOM_PENS_SEED.map((seed, index) => buildPresetFromSeed(seed, index, seen))
+}
+
+export const EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK: readonly ExcalidrawHighlighterPresetBlock[] = buildDefaultPresetSet()
 
 function getActiveToolBase(appState?: Record<string, unknown>): Record<string, unknown> {
   if (!appState || !isRecord(appState.activeTool)) return {}
@@ -202,17 +423,26 @@ export function matchExcalidrawHighlighterPresetBlock(
   appState: Record<string, unknown> | null | undefined,
   presets: readonly ExcalidrawHighlighterPresetBlock[] = EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK,
 ): string | null {
-  if (!appState || !isExcalidrawHighlighterEnabledBlock(appState)) return null
+  if (!appState) return null
 
   const strokeColor = normalizeColor(appState.currentItemStrokeColor)
   const backgroundColor = normalizeColor(appState.currentItemBackgroundColor)
+  const fillStyle = typeof appState.currentItemFillStyle === 'string' ? appState.currentItemFillStyle : 'solid'
+  const strokeWidth = asNumber(appState.currentItemStrokeWidth, Number.NaN)
+  const roughness = asNumber(appState.currentItemRoughness, 0)
+  const currentOptions = readCurrentStrokeOptions(appState)
+  const currentHighlighter = currentOptions.highlighter === true
 
   for (const preset of presets) {
     const presetStroke = normalizeColor(preset.strokeColor)
     const presetBackground = normalizeColor(preset.backgroundColor)
-    if (strokeColor === presetStroke || backgroundColor === presetBackground) {
-      return preset.id
-    }
+    if (strokeColor !== presetStroke) continue
+    if (backgroundColor !== presetBackground) continue
+    if (fillStyle !== preset.fillStyle) continue
+    if (Number.isFinite(strokeWidth) && Math.abs(strokeWidth - preset.strokeWidth) > 0.22) continue
+    if (Math.abs(roughness - preset.roughness) > 0.4) continue
+    if (currentHighlighter !== preset.strokeOptions.highlighter) continue
+    return preset.id
   }
 
   return 'custom'
@@ -234,11 +464,11 @@ export function buildExcalidrawHighlighterAppStatePatchBlock(
     },
     currentItemStrokeColor: preset.strokeColor,
     currentItemBackgroundColor: preset.backgroundColor,
-    currentItemFillStyle: 'solid',
+    currentItemFillStyle: preset.fillStyle,
     currentItemStrokeWidth: preset.strokeWidth,
     currentItemOpacity: preset.opacity,
     currentItemStrokeStyle: 'solid',
-    currentItemRoughness: 0,
+    currentItemRoughness: preset.roughness,
     currentStrokeOptions: {
       ...preset.strokeOptions,
       options: {
@@ -286,24 +516,26 @@ export function extractObsidianHighlighterPresetsFromPluginDataBlock(
     const item = pluginData.customPens[index]
     if (!isRecord(item)) continue
 
+    const penType = asString(item.type, `pen-${index + 1}`)
     const penOptions = isRecord(item.penOptions) ? item.penOptions : {}
-    const isHighlighter = penOptions.highlighter === true || item.type === 'highlighter'
-    if (!isHighlighter) continue
+    const parsedOptions = resolveStrokeOptionsFromObsidianPen(penOptions)
+    const isHighlighter = parsedOptions.highlighter
 
-    const backgroundColor = asString(item.backgroundColor, '#fff9db')
-    const rawStrokeColor = asString(item.strokeColor, backgroundColor)
-    const strokeColor = adaptStrokeColorForInterop(rawStrokeColor, backgroundColor)
     const label = toDisplayLabel(item.type, index)
-    const id = makePresetId(label, index, seenIds)
+    const id = makePresetId(penType, index, seenIds)
 
     presets.push({
       id,
       label,
-      strokeColor,
-      backgroundColor,
-      strokeWidth: Math.max(asNumber(item.strokeWidth, 2.6), 0.5),
-      opacity: Math.min(Math.max(Math.round(asNumber(item.opacity, 100)), 1), 100),
-      strokeOptions: resolveStrokeOptionsFromObsidianPen(penOptions),
+      penType,
+      freedrawOnly: asBoolean(item.freedrawOnly, false),
+      strokeColor: asString(item.strokeColor, isHighlighter ? '#ffffff' : '#000000'),
+      backgroundColor: asString(item.backgroundColor, isHighlighter ? '#fff9db' : 'transparent'),
+      fillStyle: asFillStyle(item.fillStyle, isHighlighter ? 'solid' : 'hachure'),
+      strokeWidth: Math.max(asNumber(item.strokeWidth, isHighlighter ? 2.6 : 0), 0),
+      roughness: Math.max(asNumber(item.roughness, 0), 0),
+      opacity: Math.min(Math.max(Math.round(asNumber(item.opacity, isHighlighter ? 65 : 100)), 1), 100),
+      strokeOptions: parsedOptions,
     })
   }
 

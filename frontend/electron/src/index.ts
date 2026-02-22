@@ -65,6 +65,30 @@ const appMenuBarMenuTemplate: (MenuItemConstructorOptions | MenuItem)[] = [
   },
   { role: 'editMenu' },
   { role: 'viewMenu' },
+  {
+    label: 'Tools',
+    submenu: [
+      {
+        label: 'Install CLI Tool',
+        click: async () => {
+          try {
+            const result = await installCliTool();
+            dialog.showMessageBox({
+              type: 'info',
+              title: 'CLI Installed',
+              message: `thinkspc CLI installed successfully.`,
+              detail: `Symlink created at ${result.targetPath}\n\nYou can now run 'thinkspc' from any terminal.\n\nSet your vault root in ~/.config/thinkspc/.env:\nTHINKSPC_VAULT_ROOT="/path/to/vault"`,
+            });
+          } catch (err) {
+            dialog.showErrorBox(
+              'CLI Install Failed',
+              err instanceof Error ? err.message : String(err),
+            );
+          }
+        },
+      },
+    ],
+  },
 ];
 
 // Get Config options from capacitor.config
@@ -123,6 +147,69 @@ app.on('activate', async function () {
 // -- New window IPC --
 ipcMain.handle('window:new', async (_event, route?: string) => {
   await myCapacitorApp.createWindow(route);
+});
+
+// =====================================================================
+// CLI Install
+// =====================================================================
+
+function getCliSourcePath(): string {
+  const resourcesPath = process.resourcesPath;
+  const cliWrapper = path.join(resourcesPath, 'cli', 'thinkspc-standalone.sh');
+  if (!fs.existsSync(cliWrapper)) {
+    throw new Error(
+      `CLI wrapper not found at ${cliWrapper}. The app may not have been built with CLI resources bundled.`,
+    );
+  }
+  return cliWrapper;
+}
+
+function getCliTargetPath(): string {
+  if (process.platform === 'win32') {
+    const appData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Local');
+    return path.join(appData, 'thinkspc', 'thinkspc.cmd');
+  }
+  return '/usr/local/bin/thinkspc';
+}
+
+async function installCliTool(): Promise<{ targetPath: string }> {
+  const sourcePath = getCliSourcePath();
+  const targetPath = getCliTargetPath();
+
+  if (process.platform === 'win32') {
+    // Windows: copy a .cmd wrapper that invokes the bundled script
+    const targetDir = path.dirname(targetPath);
+    await fsPromises.mkdir(targetDir, { recursive: true });
+    const cmdContent = `@echo off\r\nbash "${sourcePath}" %*\r\n`;
+    await fsPromises.writeFile(targetPath, cmdContent, 'utf-8');
+  } else {
+    // macOS/Linux: create a symlink
+    const targetDir = path.dirname(targetPath);
+    try {
+      await fsPromises.mkdir(targetDir, { recursive: true });
+    } catch {
+      // /usr/local/bin usually exists
+    }
+
+    // Remove existing symlink/file if present
+    try {
+      const stat = await fsPromises.lstat(targetPath);
+      if (stat.isSymbolicLink() || stat.isFile()) {
+        await fsPromises.unlink(targetPath);
+      }
+    } catch {
+      // File doesn't exist, that's fine
+    }
+
+    await fsPromises.symlink(sourcePath, targetPath);
+  }
+
+  return { targetPath };
+}
+
+// -- CLI install IPC --
+ipcMain.handle('cli:install', async () => {
+  return installCliTool();
 });
 
 // =====================================================================
@@ -219,7 +306,7 @@ async function runCapabilityRunnerViaViteNode(
   const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
     const proc = spawn(
       viteNodeExec,
-      [runnerScript, command],
+      [runnerScript, '--json', command],
       {
         cwd: frontendRoot,
         env: { ...process.env, LTM_CAPABILITY_RUNNER_CLI: '1' },

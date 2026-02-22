@@ -6,7 +6,6 @@ import {
 } from '@/services/orchestrators/excalidrawSceneOrch'
 import {
   buildExcalidrawInitialDataOrch,
-  cloneExcalidrawSceneChangeOrch,
   createExcalidrawCanvasApiOrch,
   type ExcalidrawCanvasApiOrch,
 } from '@/services/orchestrators/excalidrawIntegrationOrch'
@@ -19,7 +18,6 @@ import {
 } from '@/services/orchestrators/pencilBridgeOrch'
 import {
   EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH,
-  buildExcalidrawDisableHighlighterAppStatePatchOrch,
   buildExcalidrawHighlighterAppStatePatchOrch,
   isExcalidrawHighlighterEnabledOrch,
   loadExcalidrawHighlighterPresetsOrch,
@@ -100,6 +98,17 @@ const VIEW_ANALYSIS_TIMEOUT_MS = 180
 const PARSED_SCENE_CACHE_MAX_ENTRIES = 4
 const MINIMAP_MAX_RECTS = 400
 const COMPACT_VIEW_MIN_ZOOM = 0.22
+const SCENE_CHANGE_EMIT_INTERVAL_MS = 320
+const SCENE_CHANGE_EMIT_INTERVAL_LARGE_SCENE_MS = 640
+const SCENE_CHANGE_EMIT_INTERVAL_LARGE_SCENE_IOS_MS = 900
+const MINIMAP_UPDATE_INTERVAL_MS = 240
+const MINIMAP_UPDATE_INTERVAL_LARGE_SCENE_MS = 420
+const MINIMAP_UPDATE_INTERVAL_IOS_MS = 360
+const MINIMAP_UPDATE_INTERVAL_LARGE_SCENE_IOS_MS = 760
+const PENCIL_STYLE_UPDATE_INTERVAL_MS = 40
+const PENCIL_STROKE_WIDTH_DELTA_THRESHOLD = 0.14
+const PENCIL_OPACITY_DELTA_THRESHOLD = 2
+const ENABLE_NATIVE_PENCIL_PRESSURE_BRIDGE = false
 
 const EMPTY_SCENE_ANALYSIS: SceneAnalysis = {
   sceneBounds: null,
@@ -137,6 +146,17 @@ function readCurrentOpacityFromAppState(appState: Record<string, unknown>): numb
   const raw = appState.currentItemOpacity
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return 100
   return Math.min(100, Math.max(1, Math.round(raw)))
+}
+
+function isObjectLike(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object'
+}
+
+function isFreedrawStrokeInProgress(appState: Record<string, unknown>): boolean {
+  if (readActiveToolType(appState) !== 'freedraw') return false
+  if (isObjectLike(appState.newElement)) return true
+  if (isObjectLike(appState.draggingElement)) return true
+  return false
 }
 
 function resolveViewportWorldSize(params: {
@@ -401,6 +421,8 @@ export default function ExcalidrawDocumentBlock({
   const scrollFrameRef = useRef<number | null>(null)
   const pendingScrollRef = useRef({ scrollX: 0, scrollY: 0, zoom: 1 })
   const sceneChangeFrameRef = useRef<number | null>(null)
+  const sceneChangeTimeoutRef = useRef<number | null>(null)
+  const lastSceneChangeEmitAtRef = useRef(0)
   const hasAutoCenteredRef = useRef(false)
   const autoCenterRequestedRef = useRef(false)
   const autoCenterAttemptsRef = useRef(0)
@@ -412,6 +434,8 @@ export default function ExcalidrawDocumentBlock({
     files: Record<string, unknown>
   } | null>(null)
   const pencilPressureStateRef = useRef<PencilPressureStateOrch | null>(null)
+  const lastPencilStyleRef = useRef<{ currentItemStrokeWidth: number; currentItemOpacity: number } | null>(null)
+  const lastPencilStyleEmitAtRef = useRef(0)
   const pencilBridgeStopRef = useRef<(() => Promise<void>) | null>(null)
   const pencilAppStateFrameRef = useRef<number | null>(null)
   const pendingPencilAppStateRef = useRef<Record<string, unknown> | null>(null)
@@ -419,6 +443,8 @@ export default function ExcalidrawDocumentBlock({
   const [miniMapElements, setMiniMapElements] = useState<readonly unknown[] | null>(null)
   const pendingMiniMapElementsRef = useRef<readonly unknown[] | null>(null)
   const miniMapElementsFrameRef = useRef<number | null>(null)
+  const miniMapElementsTimeoutRef = useRef<number | null>(null)
+  const lastMiniMapEmitAtRef = useRef(0)
   const [highlighterPresets, setHighlighterPresets] = useState<readonly ExcalidrawHighlighterPresetBlock[]>(
     EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH,
   )
@@ -446,18 +472,31 @@ export default function ExcalidrawDocumentBlock({
     if (!parsedScene) return null
     return buildExcalidrawInitialDataOrch(parsedScene, editable)
   }, [editable, parsedScene])
+  const isLargeScene = (parsedScene?.elements.length ?? 0) >= LARGE_SCENE_ELEMENT_THRESHOLD
 
   const queueMiniMapElements = useCallback((elements: readonly unknown[]) => {
     pendingMiniMapElementsRef.current = elements
-    if (miniMapElementsFrameRef.current !== null) return
-    miniMapElementsFrameRef.current = window.requestAnimationFrame(() => {
-      miniMapElementsFrameRef.current = null
-      const next = pendingMiniMapElementsRef.current
-      pendingMiniMapElementsRef.current = null
-      if (!next) return
-      setMiniMapElements(prev => (prev === next ? prev : next))
-    })
-  }, [])
+    if (miniMapElementsFrameRef.current !== null || miniMapElementsTimeoutRef.current !== null) return
+
+    const now = nowMs()
+    const minInterval = isLargeScene
+      ? (isIosSurface ? MINIMAP_UPDATE_INTERVAL_LARGE_SCENE_IOS_MS : MINIMAP_UPDATE_INTERVAL_LARGE_SCENE_MS)
+      : (isIosSurface ? MINIMAP_UPDATE_INTERVAL_IOS_MS : MINIMAP_UPDATE_INTERVAL_MS)
+    const elapsed = now - lastMiniMapEmitAtRef.current
+    const delay = Math.max(0, minInterval - elapsed)
+
+    miniMapElementsTimeoutRef.current = window.setTimeout(() => {
+      miniMapElementsTimeoutRef.current = null
+      miniMapElementsFrameRef.current = window.requestAnimationFrame(() => {
+        miniMapElementsFrameRef.current = null
+        const next = pendingMiniMapElementsRef.current
+        pendingMiniMapElementsRef.current = null
+        if (!next) return
+        lastMiniMapEmitAtRef.current = nowMs()
+        setMiniMapElements(prev => (prev === next ? prev : next))
+      })
+    }, delay)
+  }, [isIosSurface, isLargeScene])
 
   const [deferredSceneAnalysis, setDeferredSceneAnalysis] = useState<SceneAnalysis>(EMPTY_SCENE_ANALYSIS)
   const sceneAnalysis = deferredSceneAnalysis
@@ -482,7 +521,6 @@ export default function ExcalidrawDocumentBlock({
   }, [editable, parsedScene])
 
   const sceneBounds = sceneAnalysis.sceneBounds
-  const isLargeScene = (parsedScene?.elements.length ?? 0) >= LARGE_SCENE_ELEMENT_THRESHOLD
   const elementsForMiniMap = useMemo<readonly unknown[]>(() => {
     if (editable) return miniMapElements ?? parsedScene?.elements ?? []
     return parsedScene?.elements ?? []
@@ -496,6 +534,10 @@ export default function ExcalidrawDocumentBlock({
       if (miniMapElementsFrameRef.current !== null) {
         window.cancelAnimationFrame(miniMapElementsFrameRef.current)
         miniMapElementsFrameRef.current = null
+      }
+      if (miniMapElementsTimeoutRef.current !== null) {
+        window.clearTimeout(miniMapElementsTimeoutRef.current)
+        miniMapElementsTimeoutRef.current = null
       }
       return
     }
@@ -601,15 +643,6 @@ export default function ExcalidrawDocumentBlock({
     setActiveHighlighterPresetId(preset.id)
   }, [editable, excalidrawApi, highlighterPresets])
 
-  const disableHighlighter = useCallback(() => {
-    if (!editable || !excalidrawApi) return
-    const appState = excalidrawApi.getAppStateBlock()
-    excalidrawApi.updateAppStateBlock(
-      buildExcalidrawDisableHighlighterAppStatePatchOrch(appState),
-    )
-    setActiveHighlighterPresetId(null)
-  }, [editable, excalidrawApi])
-
   const queueSceneChange = useCallback((params: {
     elements: readonly unknown[]
     appState: Record<string, unknown>
@@ -618,33 +651,44 @@ export default function ExcalidrawDocumentBlock({
     if (!onSceneChange) return
 
     queuedSceneRef.current = params
-    if (sceneChangeFrameRef.current !== null) return
+    if (sceneChangeTimeoutRef.current !== null || sceneChangeFrameRef.current !== null) return
 
-    sceneChangeFrameRef.current = window.requestAnimationFrame(() => {
-      sceneChangeFrameRef.current = null
-      const queued = queuedSceneRef.current
-      if (!queued) return
-      const flushStarted = nowMs()
-      try {
-        onSceneChange(cloneExcalidrawSceneChangeOrch(
-          queued.elements,
-          queued.appState,
-          queued.files,
-        ))
-      } catch (error) {
-        debugLog('scene_change_flush_error', {
-          message: error instanceof Error ? error.message : String(error),
+    const now = nowMs()
+    const intervalMs = isLargeScene
+      ? (isIosSurface ? SCENE_CHANGE_EMIT_INTERVAL_LARGE_SCENE_IOS_MS : SCENE_CHANGE_EMIT_INTERVAL_LARGE_SCENE_MS)
+      : SCENE_CHANGE_EMIT_INTERVAL_MS
+    const elapsed = now - lastSceneChangeEmitAtRef.current
+    const delay = Math.max(0, intervalMs - elapsed)
+
+    sceneChangeTimeoutRef.current = window.setTimeout(() => {
+      sceneChangeTimeoutRef.current = null
+      sceneChangeFrameRef.current = window.requestAnimationFrame(() => {
+        sceneChangeFrameRef.current = null
+        const queued = queuedSceneRef.current
+        if (!queued) return
+        const flushStarted = nowMs()
+        try {
+          onSceneChange({
+            elements: Array.isArray(queued.elements) ? queued.elements as unknown[] : [],
+            appState: queued.appState ?? {},
+            files: queued.files ?? {},
+          })
+        } catch (error) {
+          debugLog('scene_change_flush_error', {
+            message: error instanceof Error ? error.message : String(error),
+          })
+          return
+        }
+        pushGlobalExcalidrawPerfEvent({
+          name: 'scene_change_flush',
+          durationMs: nowMs() - flushStarted,
+          elementCount: queued.elements.length,
+          ts: new Date().toISOString(),
         })
-        return
-      }
-      pushGlobalExcalidrawPerfEvent({
-        name: 'scene_change_flush',
-        durationMs: nowMs() - flushStarted,
-        elementCount: queued.elements.length,
-        ts: new Date().toISOString(),
+        lastSceneChangeEmitAtRef.current = nowMs()
       })
-    })
-  }, [onSceneChange])
+    }, delay)
+  }, [debugLog, isIosSurface, isLargeScene, onSceneChange])
 
   const queuePencilAppStatePatch = useCallback((appState: Record<string, unknown>) => {
     if (!excalidrawApi) return
@@ -685,6 +729,7 @@ export default function ExcalidrawDocumentBlock({
   }, [debugLog, editable, excalidrawApi])
 
   const handlePencilMetrics = useCallback((event: NativePencilMetricsEventOrch) => {
+    if (!ENABLE_NATIVE_PENCIL_PRESSURE_BRIDGE) return
     if (!editable || !excalidrawApi) return
     const appState = excalidrawApi.getAppStateBlock()
     if (readActiveToolType(appState) !== 'freedraw') return
@@ -696,6 +741,23 @@ export default function ExcalidrawDocumentBlock({
     })
     pencilPressureStateRef.current = mapped.state
     if (!mapped.style) return
+    const previousStyle = lastPencilStyleRef.current
+    const now = nowMs()
+    if (previousStyle) {
+      const widthDelta = Math.abs(previousStyle.currentItemStrokeWidth - mapped.style.currentItemStrokeWidth)
+      const opacityDelta = Math.abs(previousStyle.currentItemOpacity - mapped.style.currentItemOpacity)
+      if (
+        widthDelta < PENCIL_STROKE_WIDTH_DELTA_THRESHOLD
+        && opacityDelta < PENCIL_OPACITY_DELTA_THRESHOLD
+      ) {
+        return
+      }
+      if ((now - lastPencilStyleEmitAtRef.current) < PENCIL_STYLE_UPDATE_INTERVAL_MS) {
+        return
+      }
+    }
+    lastPencilStyleRef.current = mapped.style
+    lastPencilStyleEmitAtRef.current = now
     queuePencilAppStatePatch({
       currentItemStrokeWidth: mapped.style.currentItemStrokeWidth,
       currentItemOpacity: mapped.style.currentItemOpacity,
@@ -726,6 +788,10 @@ export default function ExcalidrawDocumentBlock({
         window.cancelAnimationFrame(sceneChangeFrameRef.current)
         sceneChangeFrameRef.current = null
       }
+      if (sceneChangeTimeoutRef.current !== null) {
+        window.clearTimeout(sceneChangeTimeoutRef.current)
+        sceneChangeTimeoutRef.current = null
+      }
       if (autoCenterFrameRef.current !== null) {
         window.cancelAnimationFrame(autoCenterFrameRef.current)
         autoCenterFrameRef.current = null
@@ -737,6 +803,10 @@ export default function ExcalidrawDocumentBlock({
       if (miniMapElementsFrameRef.current !== null) {
         window.cancelAnimationFrame(miniMapElementsFrameRef.current)
         miniMapElementsFrameRef.current = null
+      }
+      if (miniMapElementsTimeoutRef.current !== null) {
+        window.clearTimeout(miniMapElementsTimeoutRef.current)
+        miniMapElementsTimeoutRef.current = null
       }
       const stopPencilBridge = pencilBridgeStopRef.current
       pencilBridgeStopRef.current = null
@@ -759,7 +829,19 @@ export default function ExcalidrawDocumentBlock({
     }
     onChangeLogCountRef.current = 0
     queuedSceneRef.current = null
+    lastSceneChangeEmitAtRef.current = 0
+    lastMiniMapEmitAtRef.current = 0
+    if (sceneChangeTimeoutRef.current !== null) {
+      window.clearTimeout(sceneChangeTimeoutRef.current)
+      sceneChangeTimeoutRef.current = null
+    }
+    if (miniMapElementsTimeoutRef.current !== null) {
+      window.clearTimeout(miniMapElementsTimeoutRef.current)
+      miniMapElementsTimeoutRef.current = null
+    }
     pencilPressureStateRef.current = null
+    lastPencilStyleRef.current = null
+    lastPencilStyleEmitAtRef.current = 0
     pendingPencilAppStateRef.current = null
     setActiveHighlighterPresetId(null)
     debugLog('scene_reset', { editable, contentLength: content.length })
@@ -777,21 +859,30 @@ export default function ExcalidrawDocumentBlock({
     void loadExcalidrawHighlighterPresetsOrch()
       .then((presets) => {
         if (cancelled) return
+        debugLog('highlighter_presets_loaded', {
+          source: 'vault_plugin_settings',
+          count: presets.length,
+        })
         setHighlighterPresets(
           presets.length > 0 ? presets : EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH,
         )
       })
       .catch(() => {
         if (cancelled) return
+        debugLog('highlighter_presets_fallback', {
+          source: 'builtin_defaults',
+          reason: 'vault_plugin_settings_unavailable',
+        })
         setHighlighterPresets(EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH)
       })
 
     return () => {
       cancelled = true
     }
-  }, [editable])
+  }, [debugLog, editable])
 
   useEffect(() => {
+    if (!ENABLE_NATIVE_PENCIL_PRESSURE_BRIDGE) return undefined
     if (!editable || !excalidrawApi) return undefined
     let cancelled = false
     void subscribeNativePencilBridgeOrch({
@@ -1144,12 +1235,14 @@ export default function ExcalidrawDocumentBlock({
             onChangeLogCountRef.current += 1
             const typedAppState = (appState as Record<string, unknown>) ?? {}
             const typedFiles = (files as Record<string, unknown>) ?? {}
+            const strokeInProgress = isIosSurface && isFreedrawStrokeInProgress(typedAppState)
             if (onChangeLogCountRef.current <= 5 || onChangeLogCountRef.current % 100 === 0) {
               const zoom = (typedAppState.zoom as { value?: unknown } | undefined)?.value
               debugLog('on_change', {
                 count: onChangeLogCountRef.current,
                 elements: elements.length,
                 files: Object.keys(typedFiles).length,
+                strokeInProgress,
                 zoom: typeof zoom === 'number' ? zoom : null,
                 scrollX: typeof typedAppState.scrollX === 'number' ? typedAppState.scrollX : null,
                 scrollY: typeof typedAppState.scrollY === 'number' ? typedAppState.scrollY : null,
@@ -1158,7 +1251,7 @@ export default function ExcalidrawDocumentBlock({
             if (editable && excalidrawApi && !hasAutoCenteredRef.current && autoCenterRequestedRef.current && elements.length > 0) {
               scheduleAutoCenter('on_change', elements.length)
             }
-            if (editable) {
+            if (editable && !strokeInProgress) {
               syncActiveHighlighterPresetFromAppState(typedAppState)
             }
             if (editable && miniMapBounds && !viewportSubscriptionActiveRef.current) {
@@ -1179,37 +1272,32 @@ export default function ExcalidrawDocumentBlock({
                 }
               }
             }
-            if (editable) {
+            if (editable && !strokeInProgress) {
               queueMiniMapElements(elements)
             }
-            queueSceneChange({
-              elements,
-              appState: typedAppState,
-              files: typedFiles,
-            })
+            if (!strokeInProgress) {
+              queueSceneChange({
+                elements,
+                appState: typedAppState,
+                files: typedFiles,
+              })
+            }
           }}
           UIOptions={uiOptions as any}
         />
       </Suspense>
 
       {editable && (
-        <div className="pointer-events-none absolute right-3 top-3 z-30 flex max-w-[min(36rem,calc(100%-1.5rem))] flex-wrap items-center justify-end gap-1 rounded-lg border border-border/70 bg-background/90 px-2 py-1 shadow-sm backdrop-blur">
-          <span className="hidden pr-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:inline">
-            Highlighter
+        <div
+          className="pointer-events-none absolute z-30 flex max-h-[68vh] w-[11rem] -translate-y-1/2 flex-col gap-1 overflow-y-auto rounded-xl border border-border/70 bg-background/90 p-1.5 shadow-sm backdrop-blur"
+          style={{
+            top: '50%',
+            right: 'calc(var(--ltm-safe-right, 0px) + 0.55rem)',
+          }}
+        >
+          <span className="px-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+            Pen Palette
           </span>
-          <button
-            type="button"
-            onClick={disableHighlighter}
-            className={cn(
-              'pointer-events-auto rounded-md border px-2 py-1 text-[10px] font-medium uppercase tracking-[0.08em] transition-colors',
-              activeHighlighterPresetId === null
-                ? 'border-primary/70 bg-primary/15 text-foreground'
-                : 'border-border/70 bg-background text-muted-foreground hover:bg-muted',
-            )}
-            title="Switch to standard ink"
-          >
-            Ink
-          </button>
           {highlighterPresets.map((preset) => {
             const isActive = activeHighlighterPresetId === preset.id
             return (
@@ -1218,19 +1306,26 @@ export default function ExcalidrawDocumentBlock({
                 type="button"
                 onClick={() => applyHighlighterPreset(preset.id)}
                 className={cn(
-                  'pointer-events-auto inline-flex items-center gap-1 rounded-md border px-1.5 py-1 text-[10px] transition-colors',
+                  'pointer-events-auto inline-flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-[11px] transition-colors',
                   isActive
                     ? 'border-primary/70 bg-primary/15 text-foreground'
                     : 'border-border/70 bg-background text-muted-foreground hover:bg-muted',
                 )}
-                title={`Highlighter: ${preset.label}`}
-                aria-label={`Use ${preset.label} highlighter`}
+                title={`Use ${preset.label}`}
+                aria-label={`Use ${preset.label}`}
               >
-                <span
-                  className="inline-block h-2.5 w-2.5 rounded-sm border border-border/50"
-                  style={{ backgroundColor: preset.backgroundColor }}
-                />
-                <span className="hidden sm:inline">{preset.label}</span>
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  <span
+                    className="inline-block h-3 w-3 rounded-sm border border-border/60"
+                    style={{ backgroundColor: preset.backgroundColor === 'transparent' ? preset.strokeColor : preset.backgroundColor }}
+                  />
+                  <span className="truncate">{preset.label}</span>
+                </span>
+                {preset.strokeOptions.highlighter && (
+                  <span className="rounded border border-border/70 px-1 text-[9px] uppercase tracking-[0.08em]">
+                    H
+                  </span>
+                )}
               </button>
             )
           })}
@@ -1242,7 +1337,7 @@ export default function ExcalidrawDocumentBlock({
         </div>
       )}
 
-      {editable && isLargeScene && (
+      {editable && isLargeScene && !isIosSurface && (
         <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-lg border border-border/70 bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur">
           Large scene mode: {parsedScene?.elements.length ?? 0} elements · parse {Math.round(parseDurationMsRef.current)}ms · analyze {Math.round(sceneAnalysis.durationMs)}ms
         </div>

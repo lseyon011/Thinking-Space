@@ -18,18 +18,15 @@ if [ -f "$REPO_ROOT/.env" ]; then
   set +a
 fi
 
-# Compatibility bridge:
-# - new name: THINKSPC_VAULT_ROOT
-# - legacy name: LTM_VAULT_ROOT
-if [ -z "${THINKSPC_VAULT_ROOT:-}" ] && [ -n "${LTM_VAULT_ROOT:-}" ]; then
-  THINKSPC_VAULT_ROOT="$LTM_VAULT_ROOT"
-fi
-if [ -z "${LTM_VAULT_ROOT:-}" ] && [ -n "${THINKSPC_VAULT_ROOT:-}" ]; then
-  LTM_VAULT_ROOT="$THINKSPC_VAULT_ROOT"
-fi
+# Compatibility bridge — three env var names, any one sets all:
+# - THINKSPC_VAULT_ROOT (canonical)
+# - LTM_VAULT_ROOT (legacy)
+# - THINK_SPACE_VAULT_ROOT (legacy alternate)
+: "${THINKSPC_VAULT_ROOT:=${LTM_VAULT_ROOT:-${THINK_SPACE_VAULT_ROOT:-}}}"
+: "${LTM_VAULT_ROOT:=${THINKSPC_VAULT_ROOT:-}}"
 
-export THINKSPC_VAULT_ROOT="${THINKSPC_VAULT_ROOT:-${LTM_VAULT_ROOT:-}}"
-export LTM_VAULT_ROOT="${LTM_VAULT_ROOT:-}"
+export THINKSPC_VAULT_ROOT
+export LTM_VAULT_ROOT
 export LTM_AGENT_CAPABILITIES_ENABLED=1
 export LTM_CAPABILITY_RUNNER_CLI=1
 

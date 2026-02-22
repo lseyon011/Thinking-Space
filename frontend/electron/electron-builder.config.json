@@ -10,6 +10,13 @@
     "capacitor.config.*",
     "app/**/*"
   ],
+  "extraResources": [
+    {
+      "from": "src/cli",
+      "to": "cli",
+      "filter": ["**/*"]
+    }
+  ],
   "publish": {
     "provider": "github"
   },
