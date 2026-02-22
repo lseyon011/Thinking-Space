@@ -74,7 +74,8 @@ export default function ThinkingSpaceOrch() {
   const edgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const explorerResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
-  const showInlineSidebar = layout.hasSidebar
+  const forceCompactForIosKeyboard = layout.surface === 'capacitor-ios' && layout.keyboardVisible
+  const showInlineSidebar = layout.hasSidebar && !forceCompactForIosKeyboard
   const showCollapsedInlineExplorer = showInlineSidebar && !explorerCollapsed
   const showExplorerTrigger = !showCollapsedInlineExplorer
   const isIosSurface = layout.surface === 'capacitor-ios'

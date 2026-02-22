@@ -30,13 +30,19 @@ function hasValidDistance(value: number): boolean {
   return Number.isFinite(value)
 }
 
-function isElementTarget(target: EventTarget | null): target is Element {
-  return typeof Element !== 'undefined' && target instanceof Element
+function resolveTargetElement(target: EventTarget | null): Element | null {
+  if (typeof Element === 'undefined') return null
+  if (target instanceof Element) return target
+  if (typeof Node !== 'undefined' && target instanceof Node) {
+    return target.parentElement
+  }
+  return null
 }
 
 export function shouldIgnoreEdgeSwipeFromTargetBlock(target: EventTarget | null): boolean {
-  if (!isElementTarget(target)) return false
-  return target.closest(EDGE_SWIPE_IGNORE_SELECTOR) !== null
+  const element = resolveTargetElement(target)
+  if (!element) return false
+  return element.closest(EDGE_SWIPE_IGNORE_SELECTOR) !== null
 }
 
 export function shouldStartEdgeSwipeOpenBlock(

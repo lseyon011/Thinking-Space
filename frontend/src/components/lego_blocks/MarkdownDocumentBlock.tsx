@@ -363,7 +363,7 @@ function MarkdownDocumentBlock({
   }, [excalidrawImmersive])
 
   useEffect(() => {
-    if (isExcalidrawDoc) return
+    if (isExcalidrawDoc || mode === 'edit' || isIosSurface || layout.keyboardVisible) return
     const chromeContainer = chromeContainerRef.current
     const scroller = contentScrollRef.current
     if (!chromeContainer || !scroller) return
@@ -432,7 +432,7 @@ function MarkdownDocumentBlock({
       scroller.removeEventListener('touchstart', onTouchStart)
       scroller.removeEventListener('touchmove', onTouchMove)
     }
-  }, [content, isExcalidrawDoc, mode, path])
+  }, [content, isExcalidrawDoc, isIosSurface, layout.keyboardVisible, mode, path])
 
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
@@ -1474,19 +1474,21 @@ function MarkdownDocumentBlock({
               </div>
             )}
 
-            <MarkdownRichEditorBlock
-              value={displayDraft}
-              currentPath={path}
-              compactMobile={isIosPhone}
-              onChange={(next) => {
-                setDraft(`${draftFrontmatter}${next}`)
-                if (assistSuggestion || assistError) clearAssistState()
-              }}
-              className={cn(
-                'min-h-[44vh] sm:min-h-[52vh] lg:min-h-[62vh]',
-                isIosPhone && 'min-h-0 h-full',
-              )}
-            />
+            <div data-ltm-edge-swipe-ignore="true">
+              <MarkdownRichEditorBlock
+                value={displayDraft}
+                currentPath={path}
+                compactMobile={isIosPhone}
+                onChange={(next) => {
+                  setDraft(`${draftFrontmatter}${next}`)
+                  if (assistSuggestion || assistError) clearAssistState()
+                }}
+                className={cn(
+                  'min-h-[44vh] sm:min-h-[52vh] lg:min-h-[62vh]',
+                  isIosPhone && 'min-h-0 h-full',
+                )}
+              />
+            </div>
 
             {autoSaving && !saving && (
               <div className="text-xs text-muted-foreground">Auto-saving…</div>

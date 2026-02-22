@@ -324,8 +324,9 @@ function App() {
   }, [allCommandItems, baseCommandItems, commandFileItems, commandQuery])
 
   const shell = useMemo(() => deriveAdaptiveShellStateOrch(layout), [layout])
-  const compactNav = shell.compactNav
-  const keyboardVisible = shell.keyboardVisibleCompact
+  const keyboardVisible = layout.keyboardVisible
+  const forceCompactNavForIosKeyboard = layout.surface === 'capacitor-ios' && keyboardVisible
+  const compactNav = shell.compactNav || forceCompactNavForIosKeyboard
   const showBottomNav = false
   const isCapacitorSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
   const showCapacitorTopChromeMenu = compactNav && !drawerOpen && isCapacitorSurface
