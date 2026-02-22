@@ -11,7 +11,7 @@ import {
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import yaml from 'js-yaml'
-import { X, FileText, ExternalLink, Info, Pencil, Save, Sparkles, Loader2 } from 'lucide-react'
+import { X, FileText, ExternalLink, Info, Pencil, Save, Sparkles, Loader2, SlidersHorizontal } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -39,6 +39,11 @@ import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBloc
 import AiAssistReviewBlock from '@/components/lego_blocks/AiAssistReviewBlock'
 import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/aiBlock'
 import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/markdownUrlTransformBlock'
+import {
+  readMarkdownEditorSettingsBlock,
+  writeMarkdownEditorSettingsBlock,
+  type MarkdownEditorSettingsBlock,
+} from '@/services/lego_blocks/markdownEditorSettingsBlock'
 import { generateStewardMetadataSuggestionForFileOrch, type StewardMetadataSuggestion } from '@/services/orchestrators/stewardMetadataOrch'
 
 export type MarkdownViewerMode = 'view' | 'edit'
@@ -92,6 +97,15 @@ interface MarkdownFrontmatterMetaState {
   yamlText: string
   entries: MarkdownFrontmatterMetaEntry[]
   parseError: string | null
+}
+
+interface PurposeProposalState {
+  suggestion: StewardMetadataSuggestion
+  generatedAt: string
+}
+
+interface MarkdownEditBaselineState {
+  content: string
 }
 
 function scheduleDeferredWork(callback: () => void): () => void {
@@ -256,10 +270,15 @@ function MarkdownDocumentBlock({
   const [relatedError, setRelatedError] = useState<string | null>(null)
 
   const [showMeta, setShowMeta] = useState(true)
+  const [showEditorSettings, setShowEditorSettings] = useState(false)
   const [showAiPanel, setShowAiPanel] = useState(false)
   const [purposeLoading, setPurposeLoading] = useState(false)
   const [purposeError, setPurposeError] = useState<string | null>(null)
   const [purposeMessage, setPurposeMessage] = useState<string | null>(null)
+  const [purposeProposal, setPurposeProposal] = useState<PurposeProposalState | null>(null)
+  const [editorSettings, setEditorSettings] = useState<MarkdownEditorSettingsBlock>(
+    () => readMarkdownEditorSettingsBlock(),
+  )
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true)
   const [meta, setMeta] = useState<MarkdownMeta | null>(null)
   const [viewMarkdown, setViewMarkdown] = useState('')
@@ -289,6 +308,8 @@ function MarkdownDocumentBlock({
   const [hasExcalidrawChanges, setHasExcalidrawChanges] = useState(false)
   const [excalidrawImmersive, setExcalidrawImmersive] = useState(false)
   const markdownSaveInFlightRef = useRef(false)
+  const markdownEditBaselineRef = useRef<MarkdownEditBaselineState | null>(null)
+  const markdownCancelRevertInFlightRef = useRef(false)
 
   const loadDocument = useCallback(async (seedDraft = false) => {
     setLoading(true)
@@ -302,8 +323,11 @@ function MarkdownDocumentBlock({
     setPurposeError(null)
     setPurposeMessage(null)
     setPurposeLoading(false)
+    setPurposeProposal(null)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(false)
+    markdownEditBaselineRef.current = null
+    markdownCancelRevertInFlightRef.current = false
     excalidrawSceneRef.current = null
     ignoreInitialExcalidrawChangeRef.current = true
     clearAssistState()
@@ -523,7 +547,7 @@ function MarkdownDocumentBlock({
   const generatePurposeForFile = useCallback(async () => {
     if (isExcalidrawDoc || !isEditing) return
     if (frontmatterMeta.parseError) {
-      setPurposeError('Fix YAML parse errors before applying steward purpose metadata.')
+      setPurposeError('Fix YAML parse errors before generating purpose metadata proposals.')
       setPurposeMessage(null)
       return
     }
@@ -533,28 +557,61 @@ function MarkdownDocumentBlock({
     setPurposeMessage(null)
     try {
       const suggestion = await generateStewardMetadataSuggestionForFileOrch(path)
-      applyStewardSuggestionToDraft(suggestion)
-      if (assistSuggestion || assistError) clearAssistState()
+      setPurposeProposal({
+        suggestion,
+        generatedAt: new Date().toISOString(),
+      })
       const source = suggestion.usedAi
         ? `AI (${suggestion.provider}${suggestion.model ? `/${suggestion.model}` : ''})`
         : 'heuristics'
-      setPurposeMessage(`Applied purpose metadata from ${source}.`)
+      setPurposeMessage(`Generated purpose proposal from ${source}. Review and accept or reject.`)
     } catch (err) {
       setPurposeError(err instanceof Error ? err.message : 'Failed to generate purpose metadata')
     } finally {
       setPurposeLoading(false)
     }
   }, [
-    applyStewardSuggestionToDraft,
-    assistError,
-    assistSuggestion,
-    clearAssistState,
     frontmatterMeta.parseError,
     isEditing,
     isExcalidrawDoc,
     path,
   ])
+  const acceptPurposeProposal = useCallback(() => {
+    if (!purposeProposal) return
+    if (frontmatterMeta.parseError) {
+      setPurposeError('Fix YAML parse errors before accepting this purpose proposal.')
+      return
+    }
+    applyStewardSuggestionToDraft(purposeProposal.suggestion)
+    if (assistSuggestion || assistError) clearAssistState()
+    setPurposeProposal(null)
+    setPurposeError(null)
+    setPurposeMessage('Applied purpose proposal to YAML metadata.')
+  }, [
+    applyStewardSuggestionToDraft,
+    assistError,
+    assistSuggestion,
+    clearAssistState,
+    frontmatterMeta.parseError,
+    purposeProposal,
+  ])
+  const rejectPurposeProposal = useCallback(() => {
+    if (!purposeProposal) return
+    setPurposeProposal(null)
+    setPurposeError(null)
+    setPurposeMessage('Rejected purpose proposal.')
+  }, [purposeProposal])
   const markdownRemarkPlugins = useMemo(() => [remarkGfm, remarkObsidianWikilinksOrch], [])
+  const setPreserveSpacesInViewMode = useCallback((enabled: boolean) => {
+    setEditorSettings((previous) => {
+      const next = {
+        ...previous,
+        preserveSpacesInViewMode: enabled,
+      }
+      writeMarkdownEditorSettingsBlock(next)
+      return next
+    })
+  }, [])
 
   type MarkdownAnchorProps = ComponentPropsWithoutRef<'a'> & { node?: unknown }
   const markdownComponents = useMemo(() => ({
@@ -738,10 +795,63 @@ function MarkdownDocumentBlock({
     setHasExcalidrawChanges(true)
   }, [])
 
+  const revertMarkdownToEditBaseline = useCallback(async () => {
+    if (markdownCancelRevertInFlightRef.current) return
+    const baseline = markdownEditBaselineRef.current
+    if (!baseline || isExcalidrawDoc) return
+
+    markdownCancelRevertInFlightRef.current = true
+    try {
+      let attempts = 0
+      while (markdownSaveInFlightRef.current && attempts < 800) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(() => resolve(), 25)
+        })
+        attempts += 1
+      }
+
+      const latestBaseline = markdownEditBaselineRef.current
+      if (!latestBaseline) return
+
+      const current = await readMarkdownDocument(path)
+      if (current.content === latestBaseline.content) {
+        setContent(current.content)
+        setBaseMtime(current.mtime)
+        setBaseHash(current.hash)
+        setSizeBytes(current.size)
+        setDraft('')
+        return
+      }
+
+      const result = await saveMarkdownDocument({
+        path,
+        content: latestBaseline.content,
+        baseMtime: current.mtime,
+        baseHash: current.hash,
+        baseContent: current.content,
+      })
+      setContent(latestBaseline.content)
+      setBaseMtime(result.mtime)
+      setBaseHash(result.hash)
+      setSizeBytes(result.size)
+      setDraft('')
+      setNavigationError(null)
+      setSaveError(null)
+      setConflict(null)
+    } catch (err) {
+      setNavigationError(err instanceof Error ? `Cancel restore failed: ${err.message}` : 'Cancel restore failed.')
+    } finally {
+      markdownCancelRevertInFlightRef.current = false
+    }
+  }, [isExcalidrawDoc, path])
+
   const startEditing = () => {
     if (loading || error) return
     setMode('edit')
     setDraft(isExcalidrawDoc ? '' : (content ?? ''))
+    markdownEditBaselineRef.current = isExcalidrawDoc
+      ? null
+      : { content: content ?? '' }
     setShowAiPanel(false)
     setSaveError(null)
     setNavigationError(null)
@@ -749,6 +859,7 @@ function MarkdownDocumentBlock({
     setPurposeError(null)
     setPurposeMessage(null)
     setPurposeLoading(false)
+    setPurposeProposal(null)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(isExcalidrawDoc)
     excalidrawSceneRef.current = null
@@ -766,10 +877,14 @@ function MarkdownDocumentBlock({
     setPurposeError(null)
     setPurposeMessage(null)
     setPurposeLoading(false)
+    setPurposeProposal(null)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(false)
     excalidrawSceneRef.current = null
     ignoreInitialExcalidrawChangeRef.current = true
+    if (!isExcalidrawDoc) {
+      void revertMarkdownToEditBaseline()
+    }
     // Keep cancel interaction instant on very large drafts; clear assist state off the click path.
     window.requestAnimationFrame(() => {
       clearAssistState()
@@ -790,26 +905,30 @@ function MarkdownDocumentBlock({
     ignoreInitialExcalidrawChangeRef.current = true
   }
 
-  const saveMarkdownDraft = useCallback(async (): Promise<boolean> => {
+  const saveMarkdownDraft = useCallback(async (reason: 'auto' | 'manual' = 'manual'): Promise<boolean> => {
     if (markdownSaveInFlightRef.current) return false
     if (isExcalidrawDoc || content === null || baseMtime === null) return false
     if (draft === content) return true
 
+    const draftToSave = draft
     markdownSaveInFlightRef.current = true
     setSaveError(null)
     setConflict(null)
     try {
       const result = await saveMarkdownDocument({
         path,
-        content: draft,
+        content: draftToSave,
         baseMtime,
         baseHash,
         baseContent: content,
       })
-      setContent(draft)
+      setContent(draftToSave)
       setBaseMtime(result.mtime)
       setBaseHash(result.hash)
       setSizeBytes(result.size)
+      if (reason === 'manual' && markdownEditBaselineRef.current) {
+        markdownEditBaselineRef.current = { content: draftToSave }
+      }
       onSaved?.(result)
       return true
     } catch (err) {
@@ -826,13 +945,14 @@ function MarkdownDocumentBlock({
   }, [baseHash, baseMtime, content, draft, isExcalidrawDoc, onSaved, path])
 
   const handleSave = async () => {
-    if (!hasChanges || baseMtime === null) return
+    if (baseMtime === null) return
     if (!isExcalidrawDoc) {
       setSaving(true)
-      await saveMarkdownDraft()
+      await saveMarkdownDraft('manual')
       setSaving(false)
       return
     }
+    if (!hasChanges) return
 
     setSaving(true)
     setSaveError(null)
@@ -886,7 +1006,7 @@ function MarkdownDocumentBlock({
 
     const timeoutId = window.setTimeout(() => {
       setAutoSaving(true)
-      void saveMarkdownDraft().finally(() => {
+      void saveMarkdownDraft('auto').finally(() => {
         setAutoSaving(false)
       })
     }, 900)
@@ -937,6 +1057,15 @@ function MarkdownDocumentBlock({
               >
                 <Info className="h-4 w-4" />
               </button>
+              {!isExcalidrawDoc && (
+                <button
+                  onClick={() => setShowEditorSettings(v => !v)}
+                  className={`rounded-lg p-1.5 transition-colors ${showEditorSettings ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                  title="Editor settings"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </button>
+              )}
 
               {!isEditing && (
                 <button
@@ -977,7 +1106,7 @@ function MarkdownDocumentBlock({
                   <button
                     type="button"
                     onClick={() => { void handleSave() }}
-                    disabled={!hasChanges || saving || baseMtime === null}
+                    disabled={saving || baseMtime === null}
                     className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Save className="h-3.5 w-3.5" />
@@ -1073,6 +1202,29 @@ function MarkdownDocumentBlock({
               )}
             </div>
           )}
+
+          {showEditorSettings && !isExcalidrawDoc && (
+            <div className={cn(
+              'space-y-2 border-b border-border/30 bg-muted/20 py-2.5 text-xs text-muted-foreground',
+              isIosPhone ? 'px-3' : 'px-5',
+            )}>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Editor Settings
+              </div>
+              <label className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-background px-2.5 py-2">
+                <span className="text-foreground">Preserve spaces in view mode</span>
+                <input
+                  type="checkbox"
+                  checked={editorSettings.preserveSpacesInViewMode}
+                  onChange={(event) => setPreserveSpacesInViewMode(event.target.checked)}
+                  className="h-4 w-4 accent-primary"
+                />
+              </label>
+              <p className="text-[11px] text-muted-foreground">
+                Keeps repeated and trailing spaces visible when reading markdown.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1115,7 +1267,13 @@ function MarkdownDocumentBlock({
                   Rendering full document...
                 </div>
               )}
-              <div className="prose" data-markdown-nav-root>
+              <div
+                className={cn(
+                  'prose',
+                  editorSettings.preserveSpacesInViewMode && 'ltm-markdown-preserve-spaces',
+                )}
+                data-markdown-nav-root
+              >
                 <ReactMarkdown
                   remarkPlugins={markdownRemarkPlugins}
                   components={markdownComponents}
@@ -1228,7 +1386,7 @@ function MarkdownDocumentBlock({
                     Purpose for This File
                   </button>
                   <span className="text-[11px] text-muted-foreground">
-                    Uses steward metadata generation to update YAML frontmatter in-place.
+                    Uses steward metadata generation to create a proposal for YAML frontmatter.
                   </span>
                 </div>
 
@@ -1241,6 +1399,56 @@ function MarkdownDocumentBlock({
                 {purposeError && (
                   <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                     {purposeError}
+                  </div>
+                )}
+
+                {purposeProposal && (
+                  <div className="space-y-2 rounded-lg border border-border/70 bg-background px-3 py-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Purpose Proposal
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {new Date(purposeProposal.generatedAt).toLocaleString()}
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-foreground">{purposeProposal.suggestion.summary}</p>
+
+                    {(purposeProposal.suggestion.tags?.length ?? 0) > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {purposeProposal.suggestion.tags.map((tag) => (
+                          <span key={tag} className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="text-[11px] text-muted-foreground">
+                      Suggested epic: {purposeProposal.suggestion.suggestedEpicKey || 'none'} | Suggested idea: {purposeProposal.suggestion.suggestedIdeaKey || 'none'}
+                    </div>
+
+                    <div className="text-[11px] text-muted-foreground">
+                      {purposeProposal.suggestion.rationale}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={acceptPurposeProposal}
+                        className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-95"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        onClick={rejectPurposeProposal}
+                        className="rounded-md border border-border/70 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted"
+                      >
+                        Reject
+                      </button>
+                    </div>
                   </div>
                 )}
 

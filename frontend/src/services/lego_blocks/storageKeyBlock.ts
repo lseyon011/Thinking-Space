@@ -19,6 +19,7 @@ export const STORAGE_KEYS = {
   stewardProposalQueue: 'ltm-steward-proposal-queue',
   aiTelemetryEvents: 'ltm-ai-telemetry-events',
   aiSettings: 'ltm-ai-settings',
+  markdownEditorSettings: 'ltm-markdown-editor-settings',
   aiManualCredentials: 'ltm-ai-manual-credentials',
   aiOauthCredentials: 'ltm-ai-oauth-credentials',
 } as const

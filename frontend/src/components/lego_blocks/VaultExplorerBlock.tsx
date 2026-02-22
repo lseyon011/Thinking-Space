@@ -64,7 +64,43 @@ interface VaultExplorerBlockProps {
   draggableFiles?: boolean
   draggableFolders?: boolean
   title?: string
+  persistenceKey?: string
   className?: string
+}
+
+interface PersistedExplorerState {
+  expandedPaths?: string[]
+  selectedFolderPath?: string | null
+  selectedFilePath?: string | null
+}
+
+const EXPLORER_PERSISTENCE_PREFIX = 'ltm.vaultExplorer.state.v1'
+
+function normalizePersistedExpandedPaths(value: unknown): string[] {
+  const list = Array.isArray(value)
+    ? value
+      .filter((item): item is string => typeof item === 'string')
+      .map(item => item.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+    : []
+  const unique = new Set<string>([''])
+  for (const path of list) {
+    if (!path) continue
+    unique.add(path)
+  }
+  return [...unique]
+}
+
+function readPersistedExplorerState(storageKey: string): PersistedExplorerState | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(storageKey)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as PersistedExplorerState
+    if (!parsed || typeof parsed !== 'object') return null
+    return parsed
+  } catch {
+    return null
+  }
 }
 
 function joinPath(parent: string, name: string): string {
@@ -124,12 +160,28 @@ export default function VaultExplorerBlock({
   draggableFiles = false,
   draggableFolders = false,
   title = 'Thinking Space Explorer',
+  persistenceKey = 'global',
   className,
 }: VaultExplorerBlockProps) {
+  const storageKey = `${EXPLORER_PERSISTENCE_PREFIX}:${persistenceKey}`
+  const initialPersistedState = useMemo(
+    () => readPersistedExplorerState(storageKey),
+    [storageKey],
+  )
   const [nodes, setNodes] = useState<Record<string, NodeState>>({})
-  const [expandedPaths, setExpandedPaths] = useState<string[]>([''])
-  const [selectedFolderPath, setSelectedFolderPath] = useState<string | null>(null)
-  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
+  const [expandedPaths, setExpandedPaths] = useState<string[]>(
+    () => normalizePersistedExpandedPaths(initialPersistedState?.expandedPaths),
+  )
+  const [selectedFolderPath, setSelectedFolderPath] = useState<string | null>(
+    () => (typeof initialPersistedState?.selectedFolderPath === 'string'
+      ? initialPersistedState.selectedFolderPath
+      : null),
+  )
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(
+    () => (typeof initialPersistedState?.selectedFilePath === 'string'
+      ? initialPersistedState.selectedFilePath
+      : null),
+  )
   const [query, setQuery] = useState('')
   const [dropOverPath, setDropOverPath] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
@@ -197,14 +249,47 @@ export default function VaultExplorerBlock({
   )
 
   useEffect(() => {
-    void loadPath('')
-  }, [loadPath])
+    const persisted = readPersistedExplorerState(storageKey)
+    setExpandedPaths(normalizePersistedExpandedPaths(persisted?.expandedPaths))
+    setSelectedFolderPath(
+      typeof persisted?.selectedFolderPath === 'string' ? persisted.selectedFolderPath : null,
+    )
+    setSelectedFilePath(
+      typeof persisted?.selectedFilePath === 'string' ? persisted.selectedFilePath : null,
+    )
+    setNodes({})
+    void loadPath('', true)
+  }, [loadPath, storageKey])
 
   useEffect(() => {
     if (!selectedPath) return
     setSelectedFilePath(selectedPath)
     setSelectedFolderPath(getParentPath(selectedPath))
   }, [selectedPath])
+
+  useEffect(() => {
+    for (const path of expandedPaths) {
+      if (!path) continue
+      const node = getNode(path)
+      if (!node.loaded && !node.loading) {
+        void loadPath(path)
+      }
+    }
+  }, [expandedPaths, getNode, loadPath])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const payload: PersistedExplorerState = {
+        expandedPaths: normalizePersistedExpandedPaths(expandedPaths),
+        selectedFolderPath,
+        selectedFilePath,
+      }
+      window.localStorage.setItem(storageKey, JSON.stringify(payload))
+    } catch {
+      // Ignore persistence failures; explorer should still work in-memory.
+    }
+  }, [expandedPaths, selectedFilePath, selectedFolderPath, storageKey])
 
   const normalizedQuery = query.trim().toLowerCase()
   const hasTitle = title.trim().length > 0

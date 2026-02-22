@@ -153,6 +153,9 @@
   .prose td {
     @apply border-b border-border/50 py-1.5 pr-3;
   }
+  .prose.ltm-markdown-preserve-spaces :is(p, li, blockquote, td, th, a, strong, em, span) {
+    white-space: break-spaces;
+  }
 
   .ltm-app-shell {
     @apply h-dvh min-h-dvh flex w-full max-w-full flex-col overflow-hidden bg-background;
@@ -212,7 +215,13 @@
   }
 
   .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] {
+    --ltm-shell-inset: clamp(0.08rem, 0.35vw, 0.24rem);
+    --ltm-shell-gap: clamp(0.3rem, 0.62vw, 0.52rem);
     --ltm-shell-main-panel-radius: clamp(1.05rem, 4.2vw, 1.48rem);
+  }
+
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-shell-content-stage {
+    border-radius: clamp(0.85rem, 2.8vw, 1.08rem);
   }
 
   .ltm-app-shell[data-ltm-surface='capacitor-android'][data-ltm-mode='phone'] {
@@ -852,6 +861,16 @@
 
   .safe-left {
     padding-left: var(--safe-area-inset-left);
+  }
+
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'] .excalidraw .App-menu_top,
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'] .excalidraw .layer-ui__wrapper__top-right {
+    top: calc(var(--ltm-safe-top, 0px) + 0.25rem) !important;
+  }
+
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'] .excalidraw .layer-ui__wrapper__footer-right,
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'] .excalidraw .scroll-back-to-content {
+    bottom: calc(var(--ltm-safe-bottom, 0px) + 0.55rem) !important;
   }
 
   .ltm-motion-fast {

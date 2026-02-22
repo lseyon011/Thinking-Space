@@ -23,6 +23,7 @@ interface MarkdownRichEditorBlockProps {
   className?: string
   editorClassName?: string
   placeholder?: string
+  compactMobile?: boolean
 }
 
 function wrapSelection(
@@ -97,6 +98,7 @@ export default function MarkdownRichEditorBlock({
   className,
   editorClassName,
   placeholder = 'Write markdown...',
+  compactMobile = false,
 }: MarkdownRichEditorBlockProps) {
   const editorViewRef = useRef<EditorView | null>(null)
 
@@ -149,20 +151,17 @@ export default function MarkdownRichEditorBlock({
         lineHeight: '1.6',
       },
       '.cm-content': {
-        minHeight: '24rem',
-        padding: '0.75rem 0.75rem 0.75rem 0.5rem',
+        minHeight: compactMobile ? '14rem' : '24rem',
+        padding: compactMobile ? '0.6rem 0.6rem 0.6rem 0.45rem' : '0.75rem 0.75rem 0.75rem 0.5rem',
       },
       '.cm-gutters': {
         backgroundColor: 'transparent',
         border: 'none',
-        marginRight: '0.4rem',
-        paddingLeft: '0.25rem',
+        marginRight: compactMobile ? '0.25rem' : '0.4rem',
+        paddingLeft: compactMobile ? '0.1rem' : '0.25rem',
       },
       '.cm-lineNumbers .cm-gutterElement': {
         padding: '0 0.35rem 0 0',
-      },
-      '.cm-activeLine, .cm-activeLineGutter': {
-        backgroundColor: 'hsl(var(--muted) / 0.35)',
       },
       '.cm-selectionBackground, ::selection': {
         backgroundColor: 'hsl(var(--primary) / 0.22)',
@@ -193,7 +192,7 @@ export default function MarkdownRichEditorBlock({
       }),
       keymap.of([]),
     ]
-  }, [placeholder, wikilinkCompletionSource])
+  }, [compactMobile, placeholder, wikilinkCompletionSource])
 
   const applyPatch = (patchFactory: (text: string, from: number, to: number) => { value: string; start: number; end: number }) => {
     const view = editorViewRef.current
@@ -299,7 +298,8 @@ export default function MarkdownRichEditorBlock({
           minHeight="24rem"
           basicSetup={{
             lineNumbers: true,
-            highlightActiveLine: true,
+            highlightActiveLine: false,
+            highlightActiveLineGutter: false,
             foldGutter: true,
             dropCursor: true,
             allowMultipleSelections: true,
