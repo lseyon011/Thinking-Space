@@ -40,7 +40,7 @@ export default function Settings({
             <div>
               <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Settings</h1>
               <p className="text-sm text-muted-foreground">
-                Manage theme, AI configuration, local cache reset, and vault switching.
+                Manage theme, markdown editor behavior, AI configuration, local cache reset, and vault switching.
               </p>
             </div>
           </div>

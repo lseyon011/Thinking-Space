@@ -59,6 +59,7 @@ import {
 } from './services/orchestrators/vaultUiPreferencesOrch'
 import {
   shouldCloseDrawerFromSwipeBlock,
+  shouldIgnoreEdgeSwipeFromTargetBlock,
   shouldOpenDrawerFromSwipeBlock,
   shouldStartEdgeSwipeOpenBlock,
 } from './services/lego_blocks/uiGestureBlock'
@@ -531,7 +532,7 @@ function App() {
   }, [compactNav])
 
   useEffect(() => {
-    if (!compactNav || drawerOpen) {
+    if (!compactNav || drawerOpen || keyboardVisible) {
       drawerEdgeSwipeStartRef.current = null
       return
     }
@@ -539,6 +540,10 @@ function App() {
     const handleTouchStart = (event: TouchEvent) => {
       const touch = event.touches[0]
       if (!touch) return
+      if (shouldIgnoreEdgeSwipeFromTargetBlock(event.target)) {
+        drawerEdgeSwipeStartRef.current = null
+        return
+      }
       if (!shouldStartEdgeSwipeOpenBlock(touch.clientX)) return
       drawerEdgeSwipeStartRef.current = { x: touch.clientX, y: touch.clientY }
     }
@@ -571,7 +576,7 @@ function App() {
       window.removeEventListener('touchend', clearGesture)
       window.removeEventListener('touchcancel', clearGesture)
     }
-  }, [compactNav, drawerOpen])
+  }, [compactNav, drawerOpen, keyboardVisible])
 
   useEffect(() => {
     if (keyboardVisible) {

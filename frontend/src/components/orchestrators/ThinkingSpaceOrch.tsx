@@ -24,6 +24,7 @@ import {
 import { STORAGE_KEYS, getStorageItem, setStorageItem } from '@/services/orchestrators/storageOrch'
 import {
   shouldCloseDrawerFromSwipeBlock,
+  shouldIgnoreEdgeSwipeFromTargetBlock,
   shouldOpenDrawerFromSwipeBlock,
   shouldStartEdgeSwipeOpenBlock,
 } from '@/services/lego_blocks/uiGestureBlock'
@@ -323,6 +324,12 @@ export default function ThinkingSpaceOrch() {
   }, [showInlineSidebar])
 
   useEffect(() => {
+    if (layout.keyboardVisible) {
+      setMobileExplorerOpen(false)
+    }
+  }, [layout.keyboardVisible])
+
+  useEffect(() => {
     setStorageItem(STORAGE_KEYS.thinkingSpaceExplorerCollapsed, explorerCollapsed ? '1' : '0')
   }, [explorerCollapsed])
 
@@ -345,7 +352,7 @@ export default function ThinkingSpaceOrch() {
   }, [stopExplorerResize])
 
   useEffect(() => {
-    if (showInlineSidebar || mobileExplorerOpen) {
+    if (showInlineSidebar || mobileExplorerOpen || layout.keyboardVisible) {
       edgeSwipeStartRef.current = null
       return
     }
@@ -353,6 +360,10 @@ export default function ThinkingSpaceOrch() {
     const handleTouchStart = (event: TouchEvent) => {
       const touch = event.touches[0]
       if (!touch) return
+      if (shouldIgnoreEdgeSwipeFromTargetBlock(event.target)) {
+        edgeSwipeStartRef.current = null
+        return
+      }
       if (!shouldStartEdgeSwipeOpenBlock(touch.clientX)) return
       edgeSwipeStartRef.current = { x: touch.clientX, y: touch.clientY }
     }
@@ -383,7 +394,7 @@ export default function ThinkingSpaceOrch() {
       window.removeEventListener('touchend', clearGesture)
       window.removeEventListener('touchcancel', clearGesture)
     }
-  }, [mobileExplorerOpen, showInlineSidebar])
+  }, [layout.keyboardVisible, mobileExplorerOpen, showInlineSidebar])
 
   const handleExplorerDrawerTouchStart = (event: React.TouchEvent<HTMLElement>) => {
     const touch = event.touches[0]

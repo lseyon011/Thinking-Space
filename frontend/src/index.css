@@ -153,6 +153,9 @@
   .prose td {
     @apply border-b border-border/50 py-1.5 pr-3;
   }
+  .prose.ltm-markdown-preserve-newlines :is(p, li, blockquote, td, th, a, strong, em, span) {
+    white-space: pre-wrap;
+  }
   .prose.ltm-markdown-preserve-spaces :is(p, li, blockquote, td, th, a, strong, em, span) {
     white-space: break-spaces;
   }

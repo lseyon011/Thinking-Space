@@ -2,10 +2,12 @@ import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from './storageK
 
 export interface MarkdownEditorSettingsBlock {
   preserveSpacesInViewMode: boolean
+  preserveNewlinesInViewMode: boolean
 }
 
 const DEFAULT_MARKDOWN_EDITOR_SETTINGS_BLOCK: MarkdownEditorSettingsBlock = {
   preserveSpacesInViewMode: true,
+  preserveNewlinesInViewMode: true,
 }
 
 function sanitizeMarkdownEditorSettingsBlock(
@@ -13,6 +15,7 @@ function sanitizeMarkdownEditorSettingsBlock(
 ): MarkdownEditorSettingsBlock {
   return {
     preserveSpacesInViewMode: value?.preserveSpacesInViewMode ?? true,
+    preserveNewlinesInViewMode: value?.preserveNewlinesInViewMode ?? true,
   }
 }
 

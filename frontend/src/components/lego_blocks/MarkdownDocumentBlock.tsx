@@ -11,7 +11,7 @@ import {
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import yaml from 'js-yaml'
-import { X, FileText, ExternalLink, Info, Pencil, Save, Sparkles, Loader2, SlidersHorizontal } from 'lucide-react'
+import { X, FileText, ExternalLink, Info, Pencil, Save, Sparkles, Loader2 } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -40,10 +40,9 @@ import AiAssistReviewBlock from '@/components/lego_blocks/AiAssistReviewBlock'
 import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/aiBlock'
 import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/markdownUrlTransformBlock'
 import {
-  readMarkdownEditorSettingsBlock,
-  writeMarkdownEditorSettingsBlock,
+  readMarkdownEditorSettingsOrch,
   type MarkdownEditorSettingsBlock,
-} from '@/services/lego_blocks/markdownEditorSettingsBlock'
+} from '@/services/orchestrators/markdownEditorSettingsOrch'
 import { generateStewardMetadataSuggestionForFileOrch, type StewardMetadataSuggestion } from '@/services/orchestrators/stewardMetadataOrch'
 
 export type MarkdownViewerMode = 'view' | 'edit'
@@ -270,14 +269,13 @@ function MarkdownDocumentBlock({
   const [relatedError, setRelatedError] = useState<string | null>(null)
 
   const [showMeta, setShowMeta] = useState(true)
-  const [showEditorSettings, setShowEditorSettings] = useState(false)
   const [showAiPanel, setShowAiPanel] = useState(false)
   const [purposeLoading, setPurposeLoading] = useState(false)
   const [purposeError, setPurposeError] = useState<string | null>(null)
   const [purposeMessage, setPurposeMessage] = useState<string | null>(null)
   const [purposeProposal, setPurposeProposal] = useState<PurposeProposalState | null>(null)
-  const [editorSettings, setEditorSettings] = useState<MarkdownEditorSettingsBlock>(
-    () => readMarkdownEditorSettingsBlock(),
+  const [editorSettings] = useState<MarkdownEditorSettingsBlock>(
+    () => readMarkdownEditorSettingsOrch(),
   )
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true)
   const [meta, setMeta] = useState<MarkdownMeta | null>(null)
@@ -602,16 +600,6 @@ function MarkdownDocumentBlock({
     setPurposeMessage('Rejected purpose proposal.')
   }, [purposeProposal])
   const markdownRemarkPlugins = useMemo(() => [remarkGfm, remarkObsidianWikilinksOrch], [])
-  const setPreserveSpacesInViewMode = useCallback((enabled: boolean) => {
-    setEditorSettings((previous) => {
-      const next = {
-        ...previous,
-        preserveSpacesInViewMode: enabled,
-      }
-      writeMarkdownEditorSettingsBlock(next)
-      return next
-    })
-  }, [])
 
   type MarkdownAnchorProps = ComponentPropsWithoutRef<'a'> & { node?: unknown }
   const markdownComponents = useMemo(() => ({
@@ -1057,15 +1045,6 @@ function MarkdownDocumentBlock({
               >
                 <Info className="h-4 w-4" />
               </button>
-              {!isExcalidrawDoc && (
-                <button
-                  onClick={() => setShowEditorSettings(v => !v)}
-                  className={`rounded-lg p-1.5 transition-colors ${showEditorSettings ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                  title="Editor settings"
-                >
-                  <SlidersHorizontal className="h-4 w-4" />
-                </button>
-              )}
 
               {!isEditing && (
                 <button
@@ -1203,28 +1182,6 @@ function MarkdownDocumentBlock({
             </div>
           )}
 
-          {showEditorSettings && !isExcalidrawDoc && (
-            <div className={cn(
-              'space-y-2 border-b border-border/30 bg-muted/20 py-2.5 text-xs text-muted-foreground',
-              isIosPhone ? 'px-3' : 'px-5',
-            )}>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                Editor Settings
-              </div>
-              <label className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-background px-2.5 py-2">
-                <span className="text-foreground">Preserve spaces in view mode</span>
-                <input
-                  type="checkbox"
-                  checked={editorSettings.preserveSpacesInViewMode}
-                  onChange={(event) => setPreserveSpacesInViewMode(event.target.checked)}
-                  className="h-4 w-4 accent-primary"
-                />
-              </label>
-              <p className="text-[11px] text-muted-foreground">
-                Keeps repeated and trailing spaces visible when reading markdown.
-              </p>
-            </div>
-          )}
         </div>
       </div>
 
@@ -1271,6 +1228,7 @@ function MarkdownDocumentBlock({
                 className={cn(
                   'prose',
                   editorSettings.preserveSpacesInViewMode && 'ltm-markdown-preserve-spaces',
+                  editorSettings.preserveNewlinesInViewMode && 'ltm-markdown-preserve-newlines',
                 )}
                 data-markdown-nav-root
               >

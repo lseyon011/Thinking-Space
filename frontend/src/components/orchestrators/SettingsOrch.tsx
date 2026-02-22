@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
+import { Switch } from '@/components/lego_blocks/ui/switch'
 import AiSettingsOrch from '@/components/orchestrators/AiSettingsOrch'
 import { UI_THEME_OPTIONS_BLOCK, useUIThemeBlock } from '@/components/lego_blocks/UIThemeBlock'
 import { clearAppCacheOrch, hardRefreshOrch } from '@/services/orchestrators/appCacheOrch'
+import {
+  readMarkdownEditorSettingsOrch,
+  writeMarkdownEditorSettingsOrch,
+  type MarkdownEditorSettingsBlock,
+} from '@/services/orchestrators/markdownEditorSettingsOrch'
 import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeOrch'
 import type { ExplorerIconStyleBlock } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import type { UIThemeId } from '@/services/orchestrators/uiThemeOrch'
@@ -32,6 +38,9 @@ export default function SettingsOrch({
 }: SettingsOrchProps) {
   const { themeId, setThemeId } = useUIThemeBlock()
   const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab)
+  const [markdownEditorSettings, setMarkdownEditorSettings] = useState<MarkdownEditorSettingsBlock>(
+    () => readMarkdownEditorSettingsOrch(),
+  )
   const [busyAction, setBusyAction] = useState<SettingsTabId | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -67,6 +76,11 @@ export default function SettingsOrch({
     setError(null)
     setMessage('Opening vault selector...')
     onRequestVaultSwitch()
+  }
+
+  const updateMarkdownEditorSettings = (nextSettings: MarkdownEditorSettingsBlock) => {
+    setMarkdownEditorSettings(nextSettings)
+    writeMarkdownEditorSettingsOrch(nextSettings)
   }
 
   return (
@@ -122,6 +136,40 @@ export default function SettingsOrch({
                 <option value="outline">Outline</option>
                 <option value="filled">Filled</option>
               </select>
+            </div>
+            <div className="space-y-2 border-t border-border/50 pt-4">
+              <h3 className="text-sm font-medium text-foreground">Markdown Editor</h3>
+              <p className="text-xs text-muted-foreground">
+                Configure how markdown is displayed in view mode.
+              </p>
+              <label className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
+                <div className="space-y-0.5">
+                  <div className="text-sm text-foreground">Preserve spaces in view mode</div>
+                  <div className="text-xs text-muted-foreground">Keeps repeated and trailing spaces visible.</div>
+                </div>
+                <Switch
+                  checked={markdownEditorSettings.preserveSpacesInViewMode}
+                  onCheckedChange={(checked) => updateMarkdownEditorSettings({
+                    ...markdownEditorSettings,
+                    preserveSpacesInViewMode: checked,
+                  })}
+                  aria-label="Preserve spaces in view mode"
+                />
+              </label>
+              <label className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
+                <div className="space-y-0.5">
+                  <div className="text-sm text-foreground">Preserve new lines in view mode</div>
+                  <div className="text-xs text-muted-foreground">Renders soft line breaks as visible line breaks.</div>
+                </div>
+                <Switch
+                  checked={markdownEditorSettings.preserveNewlinesInViewMode}
+                  onCheckedChange={(checked) => updateMarkdownEditorSettings({
+                    ...markdownEditorSettings,
+                    preserveNewlinesInViewMode: checked,
+                  })}
+                  aria-label="Preserve new lines in view mode"
+                />
+              </label>
             </div>
           </CardContent>
         </Card>
