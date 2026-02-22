@@ -402,6 +402,18 @@ export function parseExcalidrawSceneRaw(content: string): ParsedExcalidrawScene 
   return parseExcalidrawSceneInternal(content, false)
 }
 
+const OBSIDIAN_EXCALIDRAW_FRONTMATTER = '---\nexcalidraw-plugin: parsed\n---\n'
+
+function hasExcalidrawFrontmatter(content: string): boolean {
+  return /^---[\s\S]*?excalidraw-plugin\s*:.*?\n---/m.test(content)
+}
+
+/** Ensure code-fence formatted output has Obsidian-compatible frontmatter. */
+function ensureFrontmatter(output: string): string {
+  if (hasExcalidrawFrontmatter(output)) return output
+  return `${OBSIDIAN_EXCALIDRAW_FRONTMATTER}\n${output}`
+}
+
 export function serializeExcalidrawScene(
   originalContent: string,
   scene: ParsedExcalidrawScene,
@@ -409,6 +421,7 @@ export function serializeExcalidrawScene(
   const serialized = sceneToJson(scene)
   const raw = originalContent.trim()
 
+  // Pure JSON format (.excalidraw files) — no frontmatter needed.
   if (raw) {
     const direct = tryParseJson(raw)
     if (direct) {
@@ -420,15 +433,19 @@ export function serializeExcalidrawScene(
   for (const fence of fences) {
     const fenceType = fence.type
     if (fenceType === 'compressed-json') {
-      return `${originalContent.slice(0, fence.start)}\`\`\`json\n${serialized}\n\`\`\`${originalContent.slice(fence.end)}`
+      return ensureFrontmatter(
+        `${originalContent.slice(0, fence.start)}\`\`\`json\n${serialized}\n\`\`\`${originalContent.slice(fence.end)}`,
+      )
     }
 
     if (fenceType === '' || fenceType === 'json') {
       const parsed = tryParseJson(fence.body.trim())
       if (!parsed) continue
-      return `${originalContent.slice(0, fence.start)}\`\`\`json\n${serialized}\n\`\`\`${originalContent.slice(fence.end)}`
+      return ensureFrontmatter(
+        `${originalContent.slice(0, fence.start)}\`\`\`json\n${serialized}\n\`\`\`${originalContent.slice(fence.end)}`,
+      )
     }
   }
 
-  return `\`\`\`json\n${serialized}\n\`\`\`\n`
+  return ensureFrontmatter(`\`\`\`json\n${serialized}\n\`\`\`\n`)
 }

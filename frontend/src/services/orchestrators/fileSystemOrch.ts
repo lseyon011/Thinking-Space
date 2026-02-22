@@ -10,8 +10,17 @@ export interface FolderEntries {
 
 export type VaultPathKind = 'file' | 'folder' | 'missing'
 
-const DRAWING_TEMPLATE = `\`\`\`json
+const DRAWING_TEMPLATE = `---
+excalidraw-plugin: parsed
+---
+
+# Drawing
+
+\`\`\`json
 {
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://github.com/anthropics/thinking-space",
   "elements": [],
   "appState": {},
   "files": {}

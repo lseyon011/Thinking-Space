@@ -213,14 +213,9 @@ export default function ThinkingSpaceOrch() {
   }, [setInlinePathAndSyncUrl])
 
   const handleExplorerCreateDrawing = useCallback(async (parentPath: string): Promise<string | boolean> => {
-    const input = window.prompt('New drawing file name', 'New Drawing.excalidraw.md')
-    if (!input) return false
-    const clean = input.trim()
-    if (!clean) return false
-    const fileName = clean.toLowerCase().endsWith('.excalidraw.md')
-      ? clean
-      : `${clean.replace(/\.md$/i, '')}.excalidraw.md`
-    const outputPath = await createDrawingOrch(parentPath, fileName)
+    // Avoid window.prompt() — not supported in Capacitor WebView.
+    // Create with default name; user can rename inline like folders.
+    const outputPath = await createDrawingOrch(parentPath, 'New Drawing.excalidraw.md')
     setInlinePathAndSyncUrl(outputPath)
     return outputPath
   }, [setInlinePathAndSyncUrl])
