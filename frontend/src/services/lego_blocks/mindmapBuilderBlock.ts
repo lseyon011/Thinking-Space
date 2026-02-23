@@ -1204,7 +1204,8 @@ export function buildMindmapSceneFromMarkdownBlock(
 }
 
 export function serializeMindmapSceneToMarkdownBlock(scene: ParsedExcalidrawScene): string {
-  return `---\nexcalidraw-plugin: parsed\n---\n\n# Drawing\n\n\`\`\`json\n${JSON.stringify(scene, null, 2)}\n\`\`\`\n`
+  const json = JSON.stringify(scene, null, 2)
+  return `---\n\nexcalidraw-plugin: parsed\ntags: [excalidraw]\n\n---\n==⚠  Switch to EXCALIDRAW VIEW in the MORE OPTIONS menu of this document. ⚠==\n\n# Excalidraw Data\n\n## Text Elements\n\n%%\n## Drawing\n\`\`\`json\n${json}\n\`\`\`\n%%\n`
 }
 
 export function suggestMindmapOutputPathBlock(inputPath: string): string {

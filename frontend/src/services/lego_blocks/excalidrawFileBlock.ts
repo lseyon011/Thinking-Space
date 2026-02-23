@@ -432,5 +432,5 @@ export function serializeExcalidrawScene(
     }
   }
 
-  return `\`\`\`json\n${serialized}\n\`\`\`\n`
+  return `---\n\nexcalidraw-plugin: parsed\ntags: [excalidraw]\n\n---\n==⚠  Switch to EXCALIDRAW VIEW in the MORE OPTIONS menu of this document. ⚠==\n\n# Excalidraw Data\n\n## Text Elements\n\n%%\n## Drawing\n\`\`\`json\n${serialized}\n\`\`\`\n%%\n`
 }

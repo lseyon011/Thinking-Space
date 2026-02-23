@@ -11,11 +11,19 @@ export interface FolderEntries {
 export type VaultPathKind = 'file' | 'folder' | 'missing'
 
 const DRAWING_TEMPLATE = `---
+
 excalidraw-plugin: parsed
+tags: [excalidraw]
+
 ---
+==⚠  Switch to EXCALIDRAW VIEW in the MORE OPTIONS menu of this document. ⚠==
 
-# Drawing
+# Excalidraw Data
 
+## Text Elements
+
+%%
+## Drawing
 \`\`\`json
 {
   "type": "excalidraw",
@@ -26,6 +34,7 @@ excalidraw-plugin: parsed
   "files": {}
 }
 \`\`\`
+%%
 `
 
 function normalizeRelPath(path: string): string {
