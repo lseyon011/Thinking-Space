@@ -1622,6 +1622,7 @@ function MarkdownDocumentBlock({
                 value={displayDraft}
                 currentPath={path}
                 compactMobile={isIosPhone}
+                toolbarAlwaysVisible
                 onChange={(next) => {
                   setDraft(`${draftFrontmatter}${next}`)
                   if (assistSuggestion || assistError) clearAssistState()

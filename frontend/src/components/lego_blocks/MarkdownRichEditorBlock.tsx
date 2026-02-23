@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import { redo, undo } from '@codemirror/commands'
@@ -10,7 +10,7 @@ import {
   type CompletionResult,
 } from '@codemirror/autocomplete'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
-import { Bold, Code, Heading1, Italic, Link2, List, ListOrdered, Quote, RotateCcw, RotateCw } from 'lucide-react'
+import { Bold, Code, Heading1, Italic, Link2, List, ListOrdered, PenLine, Quote, RotateCcw, RotateCw } from 'lucide-react'
 import {
   getWikilinkSuggestionsOrch,
   toObsidianWikilinkTargetOrch,
@@ -25,6 +25,8 @@ interface MarkdownRichEditorBlockProps {
   editorClassName?: string
   placeholder?: string
   compactMobile?: boolean
+  /** When true the toolbar is always visible (legacy behavior). When false a toggle button is shown. Default: false. */
+  toolbarAlwaysVisible?: boolean
 }
 
 export interface MarkdownRichEditorBlockHandle {
@@ -98,6 +100,8 @@ function getWikilinkCompletionQuery(
   }
 }
 
+const TOOLBAR_BTN = 'rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground'
+
 const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, MarkdownRichEditorBlockProps>(function MarkdownRichEditorBlock({
   value,
   onChange,
@@ -106,8 +110,12 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   editorClassName,
   placeholder = 'Write markdown...',
   compactMobile = false,
+  toolbarAlwaysVisible = false,
 }, ref) {
   const editorViewRef = useRef<EditorView | null>(null)
+  const [toolbarOpen, setToolbarOpen] = useState(false)
+
+  const showToolbar = toolbarAlwaysVisible || toolbarOpen
 
   const undoEditor = () => {
     const view = editorViewRef.current
@@ -262,96 +270,61 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
 
   return (
     <div className={cn('ltm-markdown-rich-editor flex min-h-0 flex-col bg-transparent', className)}>
-      <div className="sticky top-0 z-30 flex flex-wrap items-center gap-1 border-b border-border/50 bg-background/95 p-2 backdrop-blur">
-        <button
-          type="button"
-          onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '# ', '', 'Heading'))}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="Heading"
-        >
-          <Heading1 className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '**', '**', 'bold text'))}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="Bold"
-        >
-          <Bold className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '*', '*', 'italic text'))}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="Italic"
-        >
-          <Italic className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '`', '`', 'code'))}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="Code"
-        >
-          <Code className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '[', '](https://)', 'link text'))}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="Link"
-        >
-          <Link2 className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => applyPatch(insertWikilink)}
-          className="rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="Wikilink"
-        >
-          [[ ]]
-        </button>
-        <button
-          type="button"
-          onClick={() => applyPatch((text, from, to) => prefixSelectionLines(text, from, to, (line) => `> ${line}`))}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="Quote"
-        >
-          <Quote className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => applyPatch((text, from, to) => prefixSelectionLines(text, from, to, (line) => `- ${line}`))}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="Bullet list"
-        >
-          <List className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => applyPatch((text, from, to) => prefixSelectionLines(text, from, to, (line, i) => `${i + 1}. ${line}`))}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="Numbered list"
-        >
-          <ListOrdered className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={undoEditor}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="Undo"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={redoEditor}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="Redo"
-        >
-          <RotateCw className="h-4 w-4" />
-        </button>
-      </div>
+      {/* Toolbar toggle button (only when not always visible) */}
+      {!toolbarAlwaysVisible && (
+        <div className="flex items-center justify-end px-2 pt-1.5">
+          <button
+            type="button"
+            onClick={() => setToolbarOpen(prev => !prev)}
+            className={cn(
+              'rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground',
+              toolbarOpen && 'bg-muted text-foreground',
+            )}
+            title={toolbarOpen ? 'Hide formatting' : 'Show formatting'}
+          >
+            <PenLine className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Formatting toolbar */}
+      {showToolbar && (
+        <div className="sticky top-0 z-30 flex flex-wrap items-center gap-1 border-b border-border/20 bg-background/95 p-2 backdrop-blur">
+          <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '# ', '', 'Heading'))} className={TOOLBAR_BTN} title="Heading">
+            <Heading1 className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '**', '**', 'bold text'))} className={TOOLBAR_BTN} title="Bold">
+            <Bold className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '*', '*', 'italic text'))} className={TOOLBAR_BTN} title="Italic">
+            <Italic className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '`', '`', 'code'))} className={TOOLBAR_BTN} title="Code">
+            <Code className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '[', '](https://)', 'link text'))} className={TOOLBAR_BTN} title="Link">
+            <Link2 className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => applyPatch(insertWikilink)} className="rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground" title="Wikilink">
+            [[ ]]
+          </button>
+          <button type="button" onClick={() => applyPatch((text, from, to) => prefixSelectionLines(text, from, to, (line) => `> ${line}`))} className={TOOLBAR_BTN} title="Quote">
+            <Quote className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => applyPatch((text, from, to) => prefixSelectionLines(text, from, to, (line) => `- ${line}`))} className={TOOLBAR_BTN} title="Bullet list">
+            <List className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => applyPatch((text, from, to) => prefixSelectionLines(text, from, to, (line, i) => `${i + 1}. ${line}`))} className={TOOLBAR_BTN} title="Numbered list">
+            <ListOrdered className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={undoEditor} className={TOOLBAR_BTN} title="Undo">
+            <RotateCcw className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={redoEditor} className={TOOLBAR_BTN} title="Redo">
+            <RotateCw className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       <div className={cn('ltm-markdown-rich-editor-surface flex min-h-0 flex-1 flex-col overflow-hidden', editorClassName)}>
         <CodeMirror

@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/lego_blocks/ui/select'
 import ExtensionSlotBlock from '@/components/lego_blocks/ExtensionSlotBlock'
+import MarkdownRichEditorBlock from '@/components/lego_blocks/MarkdownRichEditorBlock'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import type { NodeType, NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
 
@@ -392,13 +393,11 @@ export default function NodeDetailPanelBlock({
 
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground">Description</label>
-            <textarea
+            <MarkdownRichEditorBlock
               value={descriptionDraft}
-              onChange={e => setDescriptionDraft(e.target.value)}
-              rows={4}
-              className="w-full resize-y rounded-md border border-input bg-background px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              onChange={setDescriptionDraft}
               placeholder="Add description..."
-              disabled={busy}
+              className="min-h-[120px] rounded-md border border-input overflow-hidden"
             />
           </div>
 

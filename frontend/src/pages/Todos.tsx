@@ -10,6 +10,7 @@ import CascadingFolderPicker, {
 import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBlock'
 import AiAssistReviewBlock from '@/components/lego_blocks/AiAssistReviewBlock'
 import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/AiAssistRuntimeBlock'
+import MarkdownRichEditorBlock from '@/components/lego_blocks/MarkdownRichEditorBlock'
 import TodoCalendarOrch from '@/components/orchestrators/TodoCalendarOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
 import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
@@ -178,14 +179,14 @@ function CreateTab() {
               </div>
             )}
 
-            <textarea
+            <MarkdownRichEditorBlock
               value={tasksText}
-              onChange={(e) => {
-                setTasksText(e.target.value)
+              onChange={(next) => {
+                setTasksText(next)
                 if (assistSuggestion || assistError) clearAssistState()
               }}
               placeholder="One task per line..."
-              className="min-h-[300px] w-full rounded-lg border border-input bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-y"
+              className="min-h-[300px] rounded-lg border border-input overflow-hidden"
             />
           </div>
 
