@@ -65,6 +65,14 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
+  *, *::before, *::after {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button, a, [role="button"], [role="tab"], [role="switch"], input, select, textarea, label {
+    touch-action: manipulation;
+  }
+
   body {
     @apply bg-background text-foreground;
     margin: 0;
@@ -211,9 +219,9 @@
     --ltm-shell-divider-soft: hsl(var(--border) / 0.32);
     --ltm-shell-section-highlight: rgb(255 255 255 / 0.12);
     --ltm-anim-baseline: cubic-bezier(0.22, 1, 0.36, 1);
-    --ltm-anim-fast: 140ms;
-    --ltm-anim-moderate: 220ms;
-    --ltm-anim-slow: 360ms;
+    --ltm-anim-fast: 100ms;
+    --ltm-anim-moderate: 160ms;
+    --ltm-anim-slow: 260ms;
     --ltm-shell-motion-ease: var(--ltm-anim-baseline);
     --ltm-shell-motion-chrome-duration: var(--ltm-anim-moderate);
     --ltm-shell-motion-overlay-duration: var(--ltm-anim-fast);
@@ -275,11 +283,11 @@
 
   .ltm-app-shell[data-ltm-shell-motion='cupertino'] {
     --ltm-anim-baseline: cubic-bezier(0.32, 0.72, 0, 1);
-    --ltm-anim-fast: 160ms;
-    --ltm-anim-moderate: 320ms;
-    --ltm-anim-slow: 480ms;
+    --ltm-anim-fast: 120ms;
+    --ltm-anim-moderate: 200ms;
+    --ltm-anim-slow: 320ms;
     --ltm-shell-motion-ease: var(--ltm-anim-baseline);
-    --ltm-shell-motion-chrome-duration: var(--ltm-anim-slow);
+    --ltm-shell-motion-chrome-duration: var(--ltm-anim-moderate);
     --ltm-shell-motion-overlay-duration: var(--ltm-anim-fast);
     --ltm-shell-motion-drawer-duration: var(--ltm-anim-moderate);
     --ltm-shell-motion-modal-duration: var(--ltm-anim-moderate);
@@ -693,8 +701,7 @@
   }
 
   .ltm-shell-motion-capsule {
-    animation: ltm-shell-capsule-enter var(--ltm-shell-motion-capsule-duration, 140ms) var(--ltm-shell-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
-    animation-delay: 34ms;
+    animation: ltm-shell-capsule-enter var(--ltm-shell-motion-capsule-duration, 100ms) var(--ltm-shell-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
     animation-fill-mode: both;
     transform-origin: top center;
     will-change: transform, opacity;
@@ -721,13 +728,14 @@
   }
 
   .ltm-shell-tabs .ltm-tab-item {
+    touch-action: manipulation;
     transform: translateY(0) scale(1);
     transition:
-      opacity var(--ltm-anim-moderate, 220ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
-      background-color var(--ltm-anim-fast, 140ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
-      box-shadow var(--ltm-anim-fast, 140ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
-      border-color var(--ltm-anim-fast, 140ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
-      transform var(--ltm-shell-motion-tab-duration, 140ms) var(--ltm-shell-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+      opacity var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
+      background-color var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
+      box-shadow var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
+      border-color var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
+      transform var(--ltm-shell-motion-tab-duration, 100ms) var(--ltm-shell-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
   }
 
   .ltm-shell-tabs .ltm-tab-item:hover {
@@ -908,20 +916,26 @@
 
   .ltm-motion-fast {
     transition-property: color, background-color, border-color, opacity, transform, box-shadow;
-    transition-duration: var(--ltm-anim-fast, 140ms);
+    transition-duration: var(--ltm-anim-fast, 100ms);
     transition-timing-function: var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1));
   }
 
   .ltm-motion-normal {
     transition-property: color, background-color, border-color, opacity, transform, box-shadow;
-    transition-duration: var(--ltm-anim-moderate, 220ms);
+    transition-duration: var(--ltm-anim-moderate, 160ms);
     transition-timing-function: var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1));
   }
 
   .ltm-motion-slow {
     transition-property: color, background-color, border-color, opacity, transform, box-shadow;
-    transition-duration: var(--ltm-anim-slow, 320ms);
+    transition-duration: var(--ltm-anim-slow, 260ms);
     transition-timing-function: var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1));
+  }
+
+  .ltm-motion-fast:active,
+  .ltm-touch-row:active {
+    opacity: 0.7;
+    transition-duration: 40ms;
   }
 
   .ltm-animate-fade-in {
