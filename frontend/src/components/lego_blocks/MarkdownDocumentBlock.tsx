@@ -335,6 +335,7 @@ function MarkdownDocumentBlock({
 }: MarkdownDocumentBlockProps) {
   const { layout } = useUILayoutBlock()
   const isIosSurface = layout.surface === 'capacitor-ios'
+  const isElectronSurface = layout.surface === 'electron'
   const isIosPhone = isIosSurface && layout.mode === 'phone'
   const [mode, setMode] = useState<MarkdownViewerMode>(initialMode)
   const [content, setContent] = useState<string | null>(null)
@@ -1425,14 +1426,15 @@ function MarkdownDocumentBlock({
           <div className="fixed inset-0 z-[70] flex flex-col bg-background">
             <div
               className="relative z-20 flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-background/95 px-3 py-2 backdrop-blur"
-              style={isIosSurface
-                ? { paddingTop: 'calc(var(--ltm-safe-top, 0px) + 0.5rem)' }
-                : undefined}
+              style={{
+                paddingTop: isElectronSurface ? '2.25rem' : isIosSurface ? 'calc(var(--ltm-safe-top, 0px) + 0.5rem)' : '0.5rem',
+                ...isElectronSurface && { WebkitAppRegion: 'drag' } as React.CSSProperties,
+              }}
             >
               <span className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                 Excalidraw Focus Mode {hasChanges ? '· Unsaved changes' : '· Saved'}
               </span>
-              <div className="flex flex-wrap items-center justify-end gap-1.5">
+              <div className="flex flex-wrap items-center justify-end gap-1.5" style={isElectronSurface ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
                 <button
                   type="button"
                   onClick={() => setExcalidrawImmersive(false)}
