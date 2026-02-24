@@ -5,6 +5,11 @@ import {
   parseExcalidrawSceneOrch,
 } from '@/services/orchestrators/excalidrawSceneOrch'
 import {
+  isThinkingSpaceWikilinkHrefBlock,
+  parseThinkingSpaceWikilinkHrefBlock,
+} from '@/services/lego_blocks/obsidianWikilinkBlock'
+import { resolveWikilinkTargetOrch } from '@/services/orchestrators/obsidianLinkOrch'
+import {
   buildExcalidrawInitialDataOrch,
   createExcalidrawCanvasApiOrch,
   type ExcalidrawCanvasApiOrch,
@@ -84,6 +89,8 @@ interface ExcalidrawDocumentBlockProps {
   content: string
   editable?: boolean
   onSceneChange?: (scene: ParsedExcalidrawScene) => void
+  filePath?: string
+  onOpenPath?: (path: string) => void
   className?: string
 }
 
@@ -91,6 +98,8 @@ export default function ExcalidrawDocumentBlock({
   content,
   editable = false,
   onSceneChange,
+  filePath,
+  onOpenPath,
   className,
 }: ExcalidrawDocumentBlockProps) {
   const { layout } = useUILayoutBlock()
@@ -845,6 +854,48 @@ export default function ExcalidrawDocumentBlock({
   }, [containerSize.height, containerSize.width, editable, excalidrawApi, isCompactLayout])
 
   // ---------------------------------------------------------------------------
+  // Link click handler (wikilinks + external URLs)
+  // ---------------------------------------------------------------------------
+
+  const handleLinkOpen = useCallback((element: unknown, event: unknown) => {
+    const el = element as Record<string, unknown> | null
+    if (!el) return
+    const link = el.link
+    if (!link || typeof link !== 'string') return
+
+    // Prevent default navigation
+    const customEvent = event as { preventDefault?: () => void } | null
+    customEvent?.preventDefault?.()
+
+    debugLog('link_open', { link, elementId: el.id })
+
+    // External URLs
+    if (link.startsWith('http://') || link.startsWith('https://')) {
+      window.open(link, '_blank', 'noopener,noreferrer')
+      return
+    }
+
+    // Internal wikilinks
+    if (isThinkingSpaceWikilinkHrefBlock(link) && onOpenPath && filePath) {
+      const parsed = parseThinkingSpaceWikilinkHrefBlock(link)
+      if (!parsed) return
+
+      void resolveWikilinkTargetOrch({
+        currentPath: filePath,
+        target: parsed.target,
+      }).then((resolved) => {
+        if (resolved.path) {
+          onOpenPath(resolved.path)
+        } else {
+          debugLog('link_unresolved', { target: parsed.target })
+        }
+      }).catch(() => {
+        debugLog('link_resolve_error', { target: parsed.target })
+      })
+    }
+  }, [debugLog, filePath, onOpenPath])
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
@@ -866,6 +917,7 @@ export default function ExcalidrawDocumentBlock({
           viewModeEnabled={!editable}
           autoFocus={editable}
           handleKeyboardGlobally={editable}
+          onLinkOpen={handleLinkOpen}
           onChange={(elements: readonly unknown[], appState: unknown, files: unknown) => {
             onChangeLogCountRef.current += 1
             const typedAppState = (appState as Record<string, unknown>) ?? {}

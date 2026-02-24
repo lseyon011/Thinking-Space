@@ -1,5 +1,6 @@
 import { decompressFromBase64LzString } from './lzStringBlock'
 import { normalizeExcalidrawSceneForInteropBlock } from './excalidrawSceneCompatBlock'
+import { buildTextElementsSectionBlock } from './excalidrawWikilinkBlock'
 import { restore, serializeAsJSON } from '@excalidraw/excalidraw'
 import { generateKeyBetween } from 'fractional-indexing'
 
@@ -402,12 +403,32 @@ export function parseExcalidrawSceneRaw(content: string): ParsedExcalidrawScene 
   return parseExcalidrawSceneInternal(content, false)
 }
 
+/** Replace the `## Text Elements` section content in an existing markdown file. */
+function replaceTextElementsSection(content: string, newSection: string): string {
+  const marker = '## Text Elements\n'
+  const idx = content.indexOf(marker)
+  if (idx < 0) return content
+
+  const sectionStart = idx + marker.length
+  // Find the next `%%` or `##` boundary that ends the text elements section
+  const endMarkers = ['\n%%\n', '\n%%\r\n']
+  let sectionEnd = -1
+  for (const em of endMarkers) {
+    const pos = content.indexOf(em, sectionStart)
+    if (pos >= 0 && (sectionEnd < 0 || pos < sectionEnd)) sectionEnd = pos
+  }
+  if (sectionEnd < 0) return content
+
+  return `${content.slice(0, sectionStart)}${newSection}\n${content.slice(sectionEnd)}`
+}
+
 export function serializeExcalidrawScene(
   originalContent: string,
   scene: ParsedExcalidrawScene,
 ): string {
   const serialized = sceneToJson(scene)
   const raw = originalContent.trim()
+  const textElements = buildTextElementsSectionBlock(scene.elements)
 
   // Pure JSON format (.excalidraw files) — return bare JSON.
   if (raw) {
@@ -422,15 +443,19 @@ export function serializeExcalidrawScene(
   for (const fence of fences) {
     const fenceType = fence.type
     if (fenceType === 'compressed-json') {
-      return `${originalContent.slice(0, fence.start)}\`\`\`json\n${serialized}\n\`\`\`${originalContent.slice(fence.end)}`
+      let result = `${originalContent.slice(0, fence.start)}\`\`\`json\n${serialized}\n\`\`\`${originalContent.slice(fence.end)}`
+      result = replaceTextElementsSection(result, textElements)
+      return result
     }
 
     if (fenceType === '' || fenceType === 'json') {
       const parsed = tryParseJson(fence.body.trim())
       if (!parsed) continue
-      return `${originalContent.slice(0, fence.start)}\`\`\`json\n${serialized}\n\`\`\`${originalContent.slice(fence.end)}`
+      let result = `${originalContent.slice(0, fence.start)}\`\`\`json\n${serialized}\n\`\`\`${originalContent.slice(fence.end)}`
+      result = replaceTextElementsSection(result, textElements)
+      return result
     }
   }
 
-  return `---\n\nexcalidraw-plugin: parsed\ntags: [excalidraw]\n\n---\n==⚠  Switch to EXCALIDRAW VIEW in the MORE OPTIONS menu of this document. ⚠==\n\n# Excalidraw Data\n\n## Text Elements\n\n%%\n## Drawing\n\`\`\`json\n${serialized}\n\`\`\`\n%%\n`
+  return `---\n\nexcalidraw-plugin: parsed\ntags: [excalidraw]\n\n---\n==⚠  Switch to EXCALIDRAW VIEW in the MORE OPTIONS menu of this document. ⚠==\n\n# Excalidraw Data\n\n## Text Elements\n${textElements}\n%%\n## Drawing\n\`\`\`json\n${serialized}\n\`\`\`\n%%\n`
 }

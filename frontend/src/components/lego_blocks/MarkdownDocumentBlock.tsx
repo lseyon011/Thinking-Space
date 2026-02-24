@@ -1365,7 +1365,7 @@ function MarkdownDocumentBlock({
           )}
 
           {!loading && !error && content !== null && !isEditing && isExcalidrawDoc && (
-            <ExcalidrawDocumentBlock content={content} />
+            <ExcalidrawDocumentBlock content={content} filePath={path} onOpenPath={openLinkedPath} />
           )}
 
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && (
@@ -1403,6 +1403,8 @@ function MarkdownDocumentBlock({
               content={excalidrawEditorContent}
               editable
               onSceneChange={handleExcalidrawSceneChange}
+              filePath={path}
+              onOpenPath={openLinkedPath}
               className="h-[52vh] sm:h-[60vh] lg:h-[72vh]"
             />
             {saveError && (
@@ -1464,6 +1466,8 @@ function MarkdownDocumentBlock({
                 content={excalidrawEditorContent}
                 editable
                 onSceneChange={handleExcalidrawSceneChange}
+                filePath={path}
+                onOpenPath={openLinkedPath}
                 className="h-full"
               />
             </div>

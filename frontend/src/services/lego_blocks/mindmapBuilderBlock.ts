@@ -1,5 +1,7 @@
 import type { ParsedExcalidrawScene } from './excalidrawFileBlock'
 import { normalizeExcalidrawSceneForInteropBlock } from './excalidrawSceneCompatBlock'
+import { extractFirstWikilinkTargetBlock, buildTextElementsSectionBlock } from './excalidrawWikilinkBlock'
+import { buildThinkingSpaceWikilinkHrefBlock } from './obsidianWikilinkBlock'
 
 export type MindmapGrowthMode = 'radial' | 'right-facing' | 'left-facing' | 'right-left' | 'up-facing' | 'down-facing'
 export type MindmapFontScale = 'normal' | 'fibonacci'
@@ -1029,6 +1031,8 @@ function buildScene(nodes: MindmapNode[], options: MindmapBuildOptions): ParsedE
     const textAlign = resolveTextAlign(node, parent, options)
     const textPadding = textAlign === 'center' ? 12 : 16
     const nodeCustomData = buildNodeCustomData(node, options)
+    const wikilinkTarget = extractFirstWikilinkTargetBlock(node.text)
+    const linkUrl = wikilinkTarget ? buildThinkingSpaceWikilinkHrefBlock(wikilinkTarget) : null
 
     elements.push({
       id: rectId,
@@ -1052,6 +1056,7 @@ function buildScene(nodes: MindmapNode[], options: MindmapBuildOptions): ParsedE
       version: 1,
       versionNonce: hashNumber(`nonce:${rectId}`),
       customData: nodeCustomData,
+      link: linkUrl,
     })
 
     elements.push({
@@ -1083,6 +1088,7 @@ function buildScene(nodes: MindmapNode[], options: MindmapBuildOptions): ParsedE
       version: 1,
       versionNonce: hashNumber(`nonce:${textId}`),
       customData: nodeCustomData,
+      link: linkUrl,
     })
 
     nodeRenderRefs.set(node.id, { rectId, textId })
@@ -1205,7 +1211,8 @@ export function buildMindmapSceneFromMarkdownBlock(
 
 export function serializeMindmapSceneToMarkdownBlock(scene: ParsedExcalidrawScene): string {
   const json = JSON.stringify(scene, null, 2)
-  return `---\n\nexcalidraw-plugin: parsed\ntags: [excalidraw]\n\n---\n==⚠  Switch to EXCALIDRAW VIEW in the MORE OPTIONS menu of this document. ⚠==\n\n# Excalidraw Data\n\n## Text Elements\n\n%%\n## Drawing\n\`\`\`json\n${json}\n\`\`\`\n%%\n`
+  const textElements = buildTextElementsSectionBlock(scene.elements)
+  return `---\n\nexcalidraw-plugin: parsed\ntags: [excalidraw]\n\n---\n==⚠  Switch to EXCALIDRAW VIEW in the MORE OPTIONS menu of this document. ⚠==\n\n# Excalidraw Data\n\n## Text Elements\n${textElements}\n%%\n## Drawing\n\`\`\`json\n${json}\n\`\`\`\n%%\n`
 }
 
 export function suggestMindmapOutputPathBlock(inputPath: string): string {
