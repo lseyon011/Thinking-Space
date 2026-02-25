@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   BookOpen,
   Check,
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/ui/button'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import type { NodePriority, NodeStatus, NodeType } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodePriority, NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/yamlNoteBlock'
 import { cn } from '@/lib/utils'
 
 function iconForNodeType(type: NodeType) {
@@ -53,6 +53,7 @@ const STATUS_COLORS: Record<NodeStatus, string> = {
   completed: 'bg-blue-500/15 text-blue-700',
   archived: 'bg-zinc-500/15 text-zinc-500',
 }
+const NODE_STATUS_OPTIONS: NodeStatus[] = ['active', 'paused', 'completed', 'archived']
 
 const TASK_STATUS_COLORS = {
   ready: 'bg-indigo-500/15 text-indigo-700',
@@ -61,6 +62,8 @@ const TASK_STATUS_COLORS = {
   done: 'bg-blue-500/15 text-blue-700',
   cancelled: 'bg-zinc-500/15 text-zinc-500',
 } as const
+const TASK_STATUS_OPTIONS = ['ready', 'in_progress', 'blocked', 'done', 'cancelled'] as const
+type TaskStatusOption = (typeof TASK_STATUS_OPTIONS)[number]
 
 const PRIORITY_COLORS: Record<NonNullable<NodePriority>, string> = {
   low: 'bg-zinc-400',
@@ -99,7 +102,7 @@ function StatusBadge({ status }: { status: NodeStatus }) {
   )
 }
 
-function TaskStatusBadge({ taskStatus }: { taskStatus: keyof typeof TASK_STATUS_COLORS }) {
+function TaskStatusBadge({ taskStatus }: { taskStatus: TaskStatusOption }) {
   return (
     <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium', TASK_STATUS_COLORS[taskStatus])}>
       {taskStatus}
@@ -132,6 +135,9 @@ export interface BacklogListBlockProps {
   onSelectNode: (node: NodeRecord) => void
   onCreateChild?: (parent: NodeRecord | null, title: string, requestedType?: NodeType) => Promise<NodeRecord>
   onDropNodeToNode?: (sourceUuid: string, target: NodeRecord) => Promise<void>
+  onUpdateNodeStatus?: (node: NodeRecord, status: NodeStatus) => Promise<NodeRecord | void>
+  onUpdateTaskStatus?: (node: NodeRecord, taskStatus: TaskStatusOption) => Promise<NodeRecord | void>
+  onUpdateNodeNotes?: (node: NodeRecord, description: string, comments: YAMLCommentEntry[]) => Promise<NodeRecord | void>
 }
 
 function nodeTypeLabel(type: NodeType): string {
@@ -154,7 +160,7 @@ function allowedCreateTypes(parent: NodeRecord | null): NodeType[] {
   const all: NodeType[] = ['epic', 'idea_bucket', 'idea', 'thought_bucket', 'thought', 'task', 'run', 'handoff']
   const preferred: NodeType =
     parent.type === 'program' ? 'epic'
-      : parent.type === 'epic' ? 'idea_bucket'
+      : parent.type === 'epic' ? 'epic'
         : parent.type === 'idea_bucket' ? 'idea'
           : parent.type === 'idea' ? 'thought_bucket'
             : parent.type === 'thought_bucket' ? 'thought'
@@ -242,15 +248,22 @@ function normalizeTaskStatus(value: string | undefined): keyof typeof TASK_STATU
   return null
 }
 
-function taskStatusFromNodeStatus(status: NodeStatus): keyof typeof TASK_STATUS_COLORS {
+function taskStatusFromNodeStatus(status: NodeStatus): TaskStatusOption {
   if (status === 'completed') return 'done'
   if (status === 'archived') return 'cancelled'
   if (status === 'paused') return 'blocked'
   return 'in_progress'
 }
 
-function getTaskStatusBadge(node: NodeRecord): keyof typeof TASK_STATUS_COLORS {
+function getTaskStatusBadge(node: NodeRecord): TaskStatusOption {
   return normalizeTaskStatus(node.taskStatus) ?? taskStatusFromNodeStatus(node.status)
+}
+
+function notesSignature(description: string, comments: YAMLCommentEntry[]): string {
+  return JSON.stringify({
+    description: description.trim(),
+    comments,
+  })
 }
 
 export default function BacklogListBlock({
@@ -262,6 +275,9 @@ export default function BacklogListBlock({
   onSelectNode,
   onCreateChild,
   onDropNodeToNode,
+  onUpdateNodeStatus,
+  onUpdateTaskStatus,
+  onUpdateNodeNotes,
 }: BacklogListBlockProps) {
   const [childrenByNode, setChildrenByNode] = useState<Record<string, ChildState>>({})
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({})
@@ -272,6 +288,15 @@ export default function BacklogListBlock({
   const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null)
   const [groupingInfoOpenByNode, setGroupingInfoOpenByNode] = useState<Record<string, boolean>>({})
   const [copiedRowNodeId, setCopiedRowNodeId] = useState<string | null>(null)
+  const [statusBusyByNode, setStatusBusyByNode] = useState<Record<string, boolean>>({})
+  const [inlineNotesNode, setInlineNotesNode] = useState<NodeRecord | null>(null)
+  const [inlineNotesDescriptionDraft, setInlineNotesDescriptionDraft] = useState('')
+  const [inlineNotesCommentsDraft, setInlineNotesCommentsDraft] = useState<YAMLCommentEntry[]>([])
+  const [inlineNotesCommentDraft, setInlineNotesCommentDraft] = useState('')
+  const [inlineNotesSaving, setInlineNotesSaving] = useState(false)
+  const [inlineNotesBaselineSignature, setInlineNotesBaselineSignature] = useState<string | null>(null)
+  const inlineNotesSessionRef = useRef(0)
+  const inlineNotesAutoSaveSignatureRef = useRef<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
   const programFingerprint = programs.map(program => `${program.uuid}:${program.updatedAt}`).join('|')
 
@@ -426,6 +451,62 @@ export default function BacklogListBlock({
     setDragOverNodeId(prev => prev === nodeId ? null : prev)
   }, [])
 
+  const patchMovedNode = useCallback((sourceUuid: string, targetNode: NodeRecord) => {
+    let shouldExpandTarget = false
+
+    setChildrenByNode(prev => {
+      let changed = false
+      let movedNode: NodeRecord | null = null
+      const next: Record<string, ChildState> = {}
+
+      for (const [key, state] of Object.entries(prev)) {
+        const filteredNodes = state.nodes.filter(node => {
+          if (node.uuid !== sourceUuid) return true
+          movedNode = node
+          return false
+        })
+
+        if (filteredNodes.length !== state.nodes.length) {
+          changed = true
+          next[key] = { ...state, nodes: filteredNodes }
+        } else {
+          next[key] = state
+        }
+      }
+
+      if (movedNode) {
+        const targetState = next[targetNode.uuid]
+        if (targetState?.loaded) {
+          const alreadyPresent = targetState.nodes.some(node => node.uuid === sourceUuid)
+          if (!alreadyPresent) {
+            const movedSource = movedNode as NodeRecord
+            changed = true
+            shouldExpandTarget = true
+            next[targetNode.uuid] = {
+              ...targetState,
+              nodes: [
+                ...targetState.nodes,
+                {
+                  ...movedSource,
+                  parent: targetNode.key,
+                  parentUuid: targetNode.uuid,
+                  parentType: targetNode.type,
+                  updatedAt: new Date().toISOString(),
+                },
+              ].sort((a, b) => a.title.localeCompare(b.title)),
+            }
+          }
+        }
+      }
+
+      return changed ? next : prev
+    })
+
+    if (shouldExpandTarget) {
+      setExpandedNodes(prev => ({ ...prev, [targetNode.uuid]: true }))
+    }
+  }, [])
+
   const handleDrop = useCallback(async (target: NodeRecord, event: React.DragEvent) => {
     event.preventDefault()
     event.stopPropagation()
@@ -441,10 +522,11 @@ export default function BacklogListBlock({
     setLocalError(null)
     try {
       await onDropNodeToNode(sourceId, target)
+      patchMovedNode(sourceId, target)
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to move node')
     }
-  }, [draggingNodeId, onDropNodeToNode])
+  }, [draggingNodeId, onDropNodeToNode, patchMovedNode])
 
   useEffect(() => {
     if (!copiedRowNodeId) return
@@ -467,6 +549,220 @@ export default function BacklogListBlock({
     }
   }, [])
 
+  const patchCachedNode = useCallback((updatedNode: NodeRecord) => {
+    setChildrenByNode(prev => {
+      let changed = false
+      const next: Record<string, ChildState> = {}
+      for (const [key, state] of Object.entries(prev)) {
+        let stateChanged = false
+        const nextNodes = state.nodes.map(node => {
+          if (node.uuid !== updatedNode.uuid) return node
+          stateChanged = true
+          return updatedNode
+        })
+        if (stateChanged) {
+          changed = true
+          next[key] = { ...state, nodes: nextNodes }
+        } else {
+          next[key] = state
+        }
+      }
+      return changed ? next : prev
+    })
+    setInlineNotesNode(prev => (prev?.uuid === updatedNode.uuid ? updatedNode : prev))
+  }, [])
+
+  const handleInlineNodeStatusChange = useCallback(async (node: NodeRecord, nextStatus: NodeStatus) => {
+    if (readOnly || !onUpdateNodeStatus) return
+    if (node.status === nextStatus) return
+
+    setStatusBusyByNode(prev => ({ ...prev, [node.uuid]: true }))
+    setLocalError(null)
+    try {
+      const updated = await onUpdateNodeStatus(node, nextStatus)
+      patchCachedNode(updated ?? { ...node, status: nextStatus })
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to update status')
+    } finally {
+      setStatusBusyByNode(prev => ({ ...prev, [node.uuid]: false }))
+    }
+  }, [onUpdateNodeStatus, patchCachedNode, readOnly])
+
+  const handleInlineTaskStatusChange = useCallback(async (node: NodeRecord, nextTaskStatus: TaskStatusOption) => {
+    if (readOnly || !onUpdateTaskStatus) return
+    if (getTaskStatusBadge(node) === nextTaskStatus) return
+
+    setStatusBusyByNode(prev => ({ ...prev, [node.uuid]: true }))
+    setLocalError(null)
+    try {
+      const updated = await onUpdateTaskStatus(node, nextTaskStatus)
+      patchCachedNode(updated ?? { ...node, taskStatus: nextTaskStatus })
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to update task status')
+    } finally {
+      setStatusBusyByNode(prev => ({ ...prev, [node.uuid]: false }))
+    }
+  }, [onUpdateTaskStatus, patchCachedNode, readOnly])
+
+  const saveInlineNotesSnapshot = useCallback(async (
+    node: NodeRecord,
+    descriptionDraft: string,
+    commentsDraft: YAMLCommentEntry[],
+  ): Promise<NodeRecord> => {
+    if (!onUpdateNodeNotes) return node
+    const description = descriptionDraft.trim()
+    const comments = commentsDraft
+    const updated = await onUpdateNodeNotes(node, description, comments)
+    const nextNode = updated ?? { ...node, description, comments }
+    patchCachedNode(nextNode)
+    return nextNode
+  }, [onUpdateNodeNotes, patchCachedNode])
+
+  const closeInlineNotes = useCallback(() => {
+    inlineNotesSessionRef.current += 1
+    inlineNotesAutoSaveSignatureRef.current = null
+    setInlineNotesNode(null)
+    setInlineNotesDescriptionDraft('')
+    setInlineNotesCommentsDraft([])
+    setInlineNotesCommentDraft('')
+    setInlineNotesBaselineSignature(null)
+  }, [])
+
+  const openInlineNotes = useCallback((node: NodeRecord) => {
+    const initialDescription = (node.description ?? '').trim()
+    const initialComments = node.comments ?? []
+    inlineNotesSessionRef.current += 1
+    inlineNotesAutoSaveSignatureRef.current = null
+    setInlineNotesDescriptionDraft(initialDescription)
+    setInlineNotesCommentsDraft(initialComments)
+    setInlineNotesCommentDraft('')
+    setInlineNotesBaselineSignature(notesSignature(initialDescription, initialComments))
+    setInlineNotesNode(node)
+  }, [])
+
+  const toggleInlineNotes = useCallback(async (node: NodeRecord) => {
+    if (readOnly || !onUpdateNodeNotes || inlineNotesSaving) return
+    setLocalError(null)
+
+    const activeNode = inlineNotesNode
+    if (activeNode) {
+      const currentSignature = notesSignature(inlineNotesDescriptionDraft, inlineNotesCommentsDraft)
+      const activeDirty = currentSignature !== inlineNotesBaselineSignature
+      if (activeDirty) {
+        setInlineNotesSaving(true)
+        try {
+          const persisted = await saveInlineNotesSnapshot(activeNode, inlineNotesDescriptionDraft, inlineNotesCommentsDraft)
+          setInlineNotesBaselineSignature(notesSignature(persisted.description ?? '', persisted.comments ?? []))
+          setInlineNotesNode(persisted)
+        } catch (err) {
+          setLocalError(err instanceof Error ? err.message : 'Failed to update notes')
+          return
+        } finally {
+          setInlineNotesSaving(false)
+        }
+      }
+    }
+
+    if (inlineNotesNode?.uuid === node.uuid) {
+      closeInlineNotes()
+      return
+    }
+
+    openInlineNotes(node)
+  }, [
+    closeInlineNotes,
+    inlineNotesBaselineSignature,
+    inlineNotesCommentsDraft,
+    inlineNotesDescriptionDraft,
+    inlineNotesNode,
+    inlineNotesSaving,
+    onUpdateNodeNotes,
+    openInlineNotes,
+    readOnly,
+    saveInlineNotesSnapshot,
+  ])
+
+  const addInlineCommentDraft = useCallback(() => {
+    const next = inlineNotesCommentDraft.trim()
+    if (!next) return
+    setInlineNotesCommentsDraft(prev => [
+      ...prev,
+      {
+        text: next,
+        added_at: new Date().toISOString(),
+        added_by: 'unknown',
+      },
+    ])
+    setInlineNotesCommentDraft('')
+  }, [inlineNotesCommentDraft])
+
+  const removeInlineCommentDraft = useCallback((index: number) => {
+    setInlineNotesCommentsDraft(prev => prev.filter((_, idx) => idx !== index))
+  }, [])
+
+  const commitInlineNotes = useCallback(async (): Promise<void> => {
+    if (!inlineNotesNode || !onUpdateNodeNotes) return
+    if (inlineNotesSaving) return
+
+    const description = inlineNotesDescriptionDraft.trim()
+    const comments = inlineNotesCommentsDraft
+    const signature = notesSignature(description, comments)
+    if (signature === inlineNotesBaselineSignature) return
+
+    const activeSession = inlineNotesSessionRef.current
+    setInlineNotesSaving(true)
+    setLocalError(null)
+    try {
+      const nextNode = await saveInlineNotesSnapshot(inlineNotesNode, description, comments)
+      if (inlineNotesSessionRef.current !== activeSession) return
+      setInlineNotesNode(nextNode)
+      setInlineNotesBaselineSignature(notesSignature(nextNode.description ?? '', nextNode.comments ?? []))
+      inlineNotesAutoSaveSignatureRef.current = signature
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to update notes')
+    } finally {
+      setInlineNotesSaving(false)
+    }
+  }, [
+    inlineNotesBaselineSignature,
+    inlineNotesCommentsDraft,
+    inlineNotesDescriptionDraft,
+    inlineNotesNode,
+    inlineNotesSaving,
+    onUpdateNodeNotes,
+    saveInlineNotesSnapshot,
+  ])
+
+  const inlineNotesPayloadSignature = inlineNotesNode
+    ? notesSignature(inlineNotesDescriptionDraft, inlineNotesCommentsDraft)
+    : null
+  const inlineNotesDirty = inlineNotesNode
+    ? inlineNotesPayloadSignature !== inlineNotesBaselineSignature
+    : false
+
+  useEffect(() => {
+    if (!inlineNotesNode || !onUpdateNodeNotes || readOnly) return
+    if (inlineNotesSaving || !inlineNotesDirty) return
+    if (!inlineNotesPayloadSignature) return
+    if (inlineNotesAutoSaveSignatureRef.current === inlineNotesPayloadSignature) return
+
+    const timeoutId = window.setTimeout(() => {
+      inlineNotesAutoSaveSignatureRef.current = inlineNotesPayloadSignature
+      void commitInlineNotes()
+    }, 900)
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [
+    commitInlineNotes,
+    inlineNotesDirty,
+    inlineNotesNode,
+    inlineNotesPayloadSignature,
+    inlineNotesSaving,
+    onUpdateNodeNotes,
+    readOnly,
+  ])
+
   const renderTicketBadge = useCallback((node: NodeRecord) => {
     const ticket = node.ticket?.trim() ?? ''
     if (!ticket) return null
@@ -477,6 +773,91 @@ export default function BacklogListBlock({
       </span>
     )
   }, [])
+
+  const renderInlineNotesEditor = useCallback((node: NodeRecord, depthPadding: number) => {
+    if (readOnly || !onUpdateNodeNotes) return null
+    if (inlineNotesNode?.uuid !== node.uuid) return null
+
+    return (
+      <div
+        className="border-t border-border/60 bg-muted/25 px-3 py-2.5"
+        style={{ paddingLeft: `${depthPadding}px` }}
+        onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+      >
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium text-muted-foreground">Description</label>
+            <textarea
+              value={inlineNotesDescriptionDraft}
+              onChange={(event) => setInlineNotesDescriptionDraft(event.target.value)}
+              placeholder="Add description..."
+              className="min-h-[72px] w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-[11px] font-medium text-muted-foreground">Comments</div>
+            {inlineNotesCommentsDraft.length > 0 ? (
+              <div className="max-h-32 space-y-1 overflow-y-auto pr-1">
+                {inlineNotesCommentsDraft.map((comment, index) => (
+                  <div key={`${comment.text}-${comment.added_at ?? index}`} className="flex items-start justify-between gap-2 rounded-md border border-border/60 bg-background/70 px-2 py-1 text-xs">
+                    <div className="min-w-0 flex-1">
+                      <div className="break-words text-foreground">{comment.text}</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {comment.added_by ?? 'unknown'} · {comment.added_at ? new Date(comment.added_at).toLocaleString() : 'time unknown'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeInlineCommentDraft(index)}
+                      className="rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[11px] text-muted-foreground">No comments yet.</div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <input
+                value={inlineNotesCommentDraft}
+                onChange={(event) => setInlineNotesCommentDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    addInlineCommentDraft()
+                  }
+                }}
+                placeholder="Add a comment..."
+                className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={addInlineCommentDraft}>
+                Add
+              </Button>
+            </div>
+
+            <div className="text-[11px] text-muted-foreground">
+              {inlineNotesSaving ? 'Auto-saving...' : (inlineNotesDirty ? 'Unsaved changes' : 'Auto-save on')}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }, [
+    addInlineCommentDraft,
+    inlineNotesCommentDraft,
+    inlineNotesCommentsDraft,
+    inlineNotesDescriptionDraft,
+    inlineNotesDirty,
+    inlineNotesNode?.uuid,
+    inlineNotesSaving,
+    onUpdateNodeNotes,
+    readOnly,
+    removeInlineCommentDraft,
+  ])
 
   const renderInlineCreate = useCallback((parent: NodeRecord | null, draftKey: string, placeholder: string) => {
     if (readOnly) return null
@@ -596,6 +977,26 @@ export default function BacklogListBlock({
           >
             {copiedRowNodeId === node.uuid ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
           </button>
+          {!readOnly && onUpdateNodeNotes && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                void toggleInlineNotes(node)
+              }}
+              className={cn(
+                'rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                inlineNotesNode?.uuid === node.uuid
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+              title="Quick notes"
+              disabled={inlineNotesSaving}
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+            </button>
+          )}
           {canShowGroupingInfo && (
             <button
               type="button"
@@ -620,9 +1021,57 @@ export default function BacklogListBlock({
               {childCount}
             </span>
           )}
-          {isTaskNode(node)
-            ? <TaskStatusBadge taskStatus={getTaskStatusBadge(node)} />
-            : <StatusBadge status={node.status} />}
+          {isTaskNode(node) ? (
+            readOnly || !onUpdateTaskStatus ? (
+              <TaskStatusBadge taskStatus={getTaskStatusBadge(node)} />
+            ) : (
+              <div
+                className="flex items-center gap-1"
+                onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+              >
+                {statusBusyByNode[node.uuid] ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                ) : (
+                  <select
+                    value={getTaskStatusBadge(node)}
+                    onChange={(event) => { void handleInlineTaskStatusChange(node, event.target.value as TaskStatusOption) }}
+                    className="h-6 rounded-md border border-input bg-background px-1.5 text-[10px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    title="Change task status"
+                  >
+                    {TASK_STATUS_OPTIONS.map(option => (
+                      <option key={`${node.uuid}-task-${option}`} value={option}>
+                        {option.replace('_', ' ')}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )
+          ) : (
+            node.type === 'epic' || readOnly || !onUpdateNodeStatus ? (
+              <StatusBadge status={node.status} />
+            ) : (
+              <div
+                className="flex items-center gap-1"
+                onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+              >
+                {statusBusyByNode[node.uuid] ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                ) : (
+                  <select
+                    value={node.status}
+                    onChange={(event) => { void handleInlineNodeStatusChange(node, event.target.value as NodeStatus) }}
+                    className="h-6 rounded-md border border-input bg-background px-1.5 text-[10px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    title="Change status"
+                  >
+                    {NODE_STATUS_OPTIONS.map(option => (
+                      <option key={`${node.uuid}-status-${option}`} value={option}>{option}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )
+          )}
           <PriorityDot priority={node.priority} />
         </div>
         {canShowGroupingInfo && groupingInfoOpen && (
@@ -632,6 +1081,7 @@ export default function BacklogListBlock({
             Parent: <span className="text-foreground">{nodeDisplayTitle(parentNode!)}</span>
           </div>
         )}
+        {renderInlineNotesEditor(node, 36 + (depth * 16))}
 
         {isExpanded && (
           <div className="bg-muted/15">
@@ -663,7 +1113,7 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverNodeId, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, makeDragStart, onSelectNode, renderInlineCreate, renderTicketBadge, selectedNodeId, toggleNode])
+  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverNodeId, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, makeDragStart, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, readOnly, renderInlineCreate, renderInlineNotesEditor, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes, toggleNode])
 
   const renderProgramSection = useCallback((program: NodeRecord) => {
     void ensureProgramLoaded(program)
@@ -703,7 +1153,52 @@ export default function BacklogListBlock({
           >
             {copiedRowNodeId === program.uuid ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
           </button>
+          {!readOnly && onUpdateNodeNotes && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                void toggleInlineNotes(program)
+              }}
+              className={cn(
+                'rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                inlineNotesNode?.uuid === program.uuid
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+              title="Quick notes"
+              disabled={inlineNotesSaving}
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {readOnly || !onUpdateNodeStatus ? (
+            <StatusBadge status={program.status} />
+          ) : (
+            <div
+              className="flex items-center gap-1"
+              onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+            >
+              {statusBusyByNode[program.uuid] ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              ) : (
+                <select
+                  value={program.status}
+                  onChange={(event) => { void handleInlineNodeStatusChange(program, event.target.value as NodeStatus) }}
+                  className="h-6 rounded-md border border-input bg-background px-1.5 text-[10px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  title="Change status"
+                >
+                  {NODE_STATUS_OPTIONS.map(option => (
+                    <option key={`${program.uuid}-program-status-${option}`} value={option}>{option}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+          <PriorityDot priority={program.priority} />
         </div>
+        {renderInlineNotesEditor(program, 36)}
 
         <div className="bg-muted/15">
           {childState?.loading && (
@@ -727,7 +1222,7 @@ export default function BacklogListBlock({
         </div>
       </div>
     )
-  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, makeDragStart, onSelectNode, renderInlineCreate, renderNodeBranch, renderTicketBadge, selectedNodeId])
+  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, makeDragStart, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, readOnly, renderInlineCreate, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes])
 
   return (
     <div className="flex flex-col space-y-3">

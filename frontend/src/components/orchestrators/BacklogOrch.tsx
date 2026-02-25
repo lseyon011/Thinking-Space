@@ -90,7 +90,7 @@ function allowedChildTypes(parentType: NodeType | null): NodeType[] {
   const all: NodeType[] = ['epic', 'idea_bucket', 'idea', 'thought_bucket', 'thought', 'task', 'run', 'handoff']
   const preferred: NodeType =
     parentType === 'program' ? 'epic'
-      : parentType === 'epic' ? 'idea_bucket'
+      : parentType === 'epic' ? 'epic'
         : parentType === 'idea_bucket' ? 'idea'
           : parentType === 'idea' ? 'thought_bucket'
             : parentType === 'thought_bucket' ? 'thought'
@@ -101,6 +101,9 @@ function allowedChildTypes(parentType: NodeType | null): NodeType[] {
 function isTaskLikeNode(node: Pick<NodeRecord, 'type' | 'recordKind' | 'taskStatus'>): boolean {
   return node.type === 'task' || node.recordKind === 'task' || !!node.taskStatus
 }
+
+type BacklogNodeStatus = 'active' | 'paused' | 'completed' | 'archived'
+type BacklogTaskStatus = 'ready' | 'in_progress' | 'blocked' | 'done' | 'cancelled'
 
 export default function BacklogOrch() {
   const { openFile } = useMarkdownViewer()
@@ -505,52 +508,74 @@ export default function BacklogOrch() {
     }
   }, [refreshExecutionProgress, selectedNode])
 
-  const updateStatus = useCallback(async (status: string) => {
-    if (!selectedNode) return
+  const applyUpdatedNode = useCallback((updated: NodeRecord) => {
+    if (updated.type === 'program') {
+      setPrograms(prev => prev.map(p => p.uuid === updated.uuid ? updated : p).sort((a, b) => a.title.localeCompare(b.title)))
+    }
+    setSelectedNode(prev => (prev?.uuid === updated.uuid ? updated : prev))
+  }, [])
+
+  const updateNodeStatusFor = useCallback(async (node: NodeRecord, status: BacklogNodeStatus): Promise<NodeRecord> => {
     setWorking(true)
-    setCurrentOperation(`Updating status for ${selectedNode.title}`)
+    setCurrentOperation(`Updating status for ${node.title}`)
+    setError(null)
     try {
       const { node: updated } = await invokeCapabilityOrThrow({
         capability: 'organizer.node.update',
         input: {
-          uuid: selectedNode.uuid,
-          updates: { status: status as 'active' | 'paused' | 'completed' | 'archived' },
+          uuid: node.uuid,
+          updates: { status },
         },
         actor: BACKLOG_ACTOR,
       })
-      setSelectedNode(updated)
+      applyUpdatedNode(updated)
+      return updated
     } catch (err) {
       setError(errorMessage(err, 'Failed to update status'))
+      throw err
     } finally {
       setWorking(false)
       setCurrentOperation(null)
       void refreshExecutionProgress()
     }
-  }, [refreshExecutionProgress, selectedNode])
+  }, [applyUpdatedNode, refreshExecutionProgress])
 
-  const updateTaskStatus = useCallback(async (taskStatus: string) => {
+  const updateStatus = useCallback(async (status: string) => {
     if (!selectedNode) return
-    if (!isTaskLikeNode(selectedNode)) return
+    await updateNodeStatusFor(selectedNode, status as BacklogNodeStatus)
+  }, [selectedNode, updateNodeStatusFor])
+
+  const updateTaskStatusFor = useCallback(async (node: NodeRecord, taskStatus: BacklogTaskStatus): Promise<NodeRecord> => {
+    if (!isTaskLikeNode(node)) throw new Error('Task status can only be updated for task-like nodes.')
     setWorking(true)
-    setCurrentOperation(`Updating task state for ${selectedNode.title}`)
+    setCurrentOperation(`Updating task state for ${node.title}`)
+    setError(null)
     try {
       const { node: updated } = await invokeCapabilityOrThrow({
         capability: 'task.update_status',
         input: {
-          uuid: selectedNode.uuid,
+          uuid: node.uuid,
           taskStatus,
         },
         actor: BACKLOG_ACTOR,
       })
-      setSelectedNode(updated)
+      applyUpdatedNode(updated)
+      return updated
     } catch (err) {
       setError(errorMessage(err, 'Failed to update task state'))
+      throw err
     } finally {
       setWorking(false)
       setCurrentOperation(null)
       void refreshExecutionProgress()
     }
-  }, [refreshExecutionProgress, selectedNode])
+  }, [applyUpdatedNode, refreshExecutionProgress])
+
+  const updateTaskStatus = useCallback(async (taskStatus: string) => {
+    if (!selectedNode) return
+    if (!isTaskLikeNode(selectedNode)) return
+    await updateTaskStatusFor(selectedNode, taskStatus as BacklogTaskStatus)
+  }, [selectedNode, updateTaskStatusFor])
 
   const updatePriority = useCallback(async (priority: string) => {
     if (!selectedNode) return
@@ -575,16 +600,19 @@ export default function BacklogOrch() {
     }
   }, [refreshExecutionProgress, selectedNode])
 
-  const updateNodeNotes = useCallback(async (description: string, comments: YAMLCommentEntry[]) => {
-    if (!selectedNode) return
+  const updateNodeNotesFor = useCallback(async (
+    node: NodeRecord,
+    description: string,
+    comments: YAMLCommentEntry[],
+  ): Promise<NodeRecord> => {
     setWorking(true)
-    setCurrentOperation(`Updating notes for ${selectedNode.title}`)
+    setCurrentOperation(`Updating notes for ${node.title}`)
     setError(null)
     try {
       const { node: updated } = await invokeCapabilityOrThrow({
         capability: 'organizer.node.update',
         input: {
-          uuid: selectedNode.uuid,
+          uuid: node.uuid,
           updates: {
             description,
             comments,
@@ -592,16 +620,22 @@ export default function BacklogOrch() {
         },
         actor: BACKLOG_ACTOR,
       })
-      setSelectedNode(updated)
-      setMessage('Updated description/comments')
+      applyUpdatedNode(updated)
+      return updated
     } catch (err) {
       setError(errorMessage(err, 'Failed to update description/comments'))
+      throw err
     } finally {
       setWorking(false)
       setCurrentOperation(null)
       void refreshExecutionProgress()
     }
-  }, [refreshExecutionProgress, selectedNode])
+  }, [applyUpdatedNode, refreshExecutionProgress])
+
+  const updateNodeNotes = useCallback(async (description: string, comments: YAMLCommentEntry[]) => {
+    if (!selectedNode) return
+    await updateNodeNotesFor(selectedNode, description, comments)
+  }, [selectedNode, updateNodeNotesFor])
 
   const dropNodeToNode = useCallback(async (sourceUuid: string, targetNode: NodeRecord) => {
     setWorking(true)
@@ -616,6 +650,25 @@ export default function BacklogOrch() {
       })
       if (!sourceNode) throw new Error('Source node not found')
       if (sourceNode.uuid === targetNode.uuid) throw new Error('Cannot move a node onto itself.')
+      if (!allowedChildTypes(targetNode.type).includes(sourceNode.type)) {
+        throw new Error(`${defaultNodeKindLabel(sourceNode.type)} cannot be grouped under ${defaultNodeKindLabel(targetNode.type)}.`)
+      }
+
+      let cursor: NodeRecord | null = targetNode
+      const seenKeys = new Set<string>()
+      while (cursor && !seenKeys.has(cursor.key)) {
+        seenKeys.add(cursor.key)
+        if (cursor.key === sourceNode.key) {
+          throw new Error('Cannot move a node under its own descendant.')
+        }
+        if (!cursor.parent) break
+        cursor = (await invokeCapabilityOrThrow<'organizer.node.get_by_key'>({
+          capability: 'organizer.node.get_by_key',
+          input: { key: cursor.parent },
+          actor: BACKLOG_ACTOR,
+        })).node
+      }
+
       await invokeCapabilityOrThrow({
         capability: 'organizer.node.move',
         input: {
@@ -763,6 +816,9 @@ export default function BacklogOrch() {
           onSelectNode={(node) => setSelectedNode(node)}
           onCreateChild={createChildNode}
           onDropNodeToNode={dropNodeToNode}
+          onUpdateNodeStatus={updateNodeStatusFor}
+          onUpdateTaskStatus={updateTaskStatusFor}
+          onUpdateNodeNotes={updateNodeNotesFor}
         />
       )}
 
