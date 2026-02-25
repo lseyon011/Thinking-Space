@@ -394,6 +394,7 @@ function MarkdownDocumentBlock({
   const [hasExcalidrawChanges, setHasExcalidrawChanges] = useState(false)
   const [excalidrawImmersive, setExcalidrawImmersive] = useState(false)
   const markdownSaveInFlightRef = useRef(false)
+  const markdownSavePromiseRef = useRef<Promise<boolean> | null>(null)
   const markdownEditBaselineRef = useRef<MarkdownEditBaselineState | null>(null)
   const markdownCancelRevertInFlightRef = useRef(false)
 
@@ -997,43 +998,48 @@ function MarkdownDocumentBlock({
     ignoreInitialExcalidrawChangeRef.current = true
   }
 
-  const saveMarkdownDraft = useCallback(async (reason: 'auto' | 'manual' = 'manual'): Promise<boolean> => {
-    if (markdownSaveInFlightRef.current) return false
+  const saveMarkdownDraft = useCallback(async (_reason: 'auto' | 'manual' = 'manual'): Promise<boolean> => {
+    if (markdownSaveInFlightRef.current) return markdownSavePromiseRef.current ?? false
     if (isExcalidrawDoc || content === null || baseMtime === null) return false
     if (draft === content) return true
 
     const draftToSave = draft
-    markdownSaveInFlightRef.current = true
-    setSaveError(null)
-    setConflict(null)
-    try {
-      const result = await saveMarkdownDocument({
-        path,
-        content: draftToSave,
-        baseMtime,
-        baseHash,
-        baseContent: content,
-      })
-      setContent(draftToSave)
-      setBaseMtime(result.mtime)
-      setBaseHash(result.hash)
-      setSizeBytes(result.size)
-      if (reason === 'manual' && markdownEditBaselineRef.current) {
+    const savePromise = (async () => {
+      markdownSaveInFlightRef.current = true
+      setSaveError(null)
+      setConflict(null)
+      try {
+        const result = await saveMarkdownDocument({
+          path,
+          content: draftToSave,
+          baseMtime,
+          baseHash,
+          baseContent: content,
+        })
+        setContent(draftToSave)
+        setBaseMtime(result.mtime)
+        setBaseHash(result.hash)
+        setSizeBytes(result.size)
+        // Keep cancel baseline aligned with the latest persisted draft, including auto-saves.
         markdownEditBaselineRef.current = { content: draftToSave }
+        onSaved?.(result)
+        return true
+      } catch (err) {
+        if (err instanceof MarkdownDocumentConflictError) {
+          setConflict(err)
+          setSaveError(err.message)
+        } else {
+          setSaveError(err instanceof Error ? err.message : 'Failed to save file')
+        }
+        return false
+      } finally {
+        markdownSaveInFlightRef.current = false
+        markdownSavePromiseRef.current = null
       }
-      onSaved?.(result)
-      return true
-    } catch (err) {
-      if (err instanceof MarkdownDocumentConflictError) {
-        setConflict(err)
-        setSaveError(err.message)
-      } else {
-        setSaveError(err instanceof Error ? err.message : 'Failed to save file')
-      }
-      return false
-    } finally {
-      markdownSaveInFlightRef.current = false
-    }
+    })()
+
+    markdownSavePromiseRef.current = savePromise
+    return savePromise
   }, [baseHash, baseMtime, content, draft, isExcalidrawDoc, onSaved, path])
 
   const handleSave = async () => {

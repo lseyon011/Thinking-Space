@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BookOpen,
   Folder,
   FolderTree,
   Layers,
   Lightbulb,
+  Loader2,
   ListChecks,
   MessageSquare,
   Handshake,
@@ -116,6 +117,8 @@ export default function NodeDetailPanelBlock({
   const [descriptionDraft, setDescriptionDraft] = useState('')
   const [commentsDraft, setCommentsDraft] = useState<YAMLCommentEntry[]>([])
   const [newCommentDraft, setNewCommentDraft] = useState('')
+  const [notesAutoSaving, setNotesAutoSaving] = useState(false)
+  const notesAutoSaveSignatureRef = useRef<string | null>(null)
 
   useEffect(() => {
     setTitleDraft(node.title)
@@ -134,6 +137,8 @@ export default function NodeDetailPanelBlock({
     setDescriptionDraft(sourceDescription)
     setCommentsDraft(sourceComments)
     setNewCommentDraft('')
+    setNotesAutoSaving(false)
+    notesAutoSaveSignatureRef.current = null
   }, [node.uuid, sourceComments, sourceDescription])
 
   // Close on Escape
@@ -182,6 +187,10 @@ export default function NodeDetailPanelBlock({
     return false
   }, [commentsDraft, sourceComments])
   const notesDirty = descriptionDraft.trim() !== sourceDescription || commentsDirty
+  const notesPayloadSignature = useMemo(() => JSON.stringify({
+    description: descriptionDraft.trim(),
+    comments: commentsDraft,
+  }), [commentsDraft, descriptionDraft])
   const yamlFields = useMemo(() => {
     if (!frontmatter) return []
     return Object.entries(frontmatter)
@@ -257,12 +266,28 @@ export default function NodeDetailPanelBlock({
   const commitNotes = useCallback(async () => {
     if (!notesDirty) return
     setBusy(true)
+    setNotesAutoSaving(true)
     try {
       await onUpdateNotes(descriptionDraft.trim(), commentsDraft)
     } finally {
+      setNotesAutoSaving(false)
       setBusy(false)
     }
   }, [commentsDraft, descriptionDraft, notesDirty, onUpdateNotes])
+
+  useEffect(() => {
+    if (!notesDirty || busy || notesAutoSaving) return
+    if (notesAutoSaveSignatureRef.current === notesPayloadSignature) return
+
+    const timeoutId = window.setTimeout(() => {
+      notesAutoSaveSignatureRef.current = notesPayloadSignature
+      void commitNotes()
+    }, 900)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [busy, commitNotes, notesAutoSaving, notesDirty, notesPayloadSignature])
 
   return (
     <>
@@ -404,11 +429,22 @@ export default function NodeDetailPanelBlock({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-medium text-muted-foreground">Comments</label>
-              {notesDirty && (
-                <Button size="sm" variant="outline" onClick={() => { void commitNotes() }} disabled={busy}>
-                  Save Notes
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">
+                  {notesAutoSaving ? 'Auto-saving...' : (notesDirty ? 'Unsaved changes' : 'Auto-save on')}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    notesAutoSaveSignatureRef.current = notesPayloadSignature
+                    void commitNotes()
+                  }}
+                  disabled={busy || !notesDirty}
+                >
+                  {notesAutoSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save Notes'}
                 </Button>
-              )}
+              </div>
             </div>
             <div className="space-y-2">
               {commentsDraft.length > 0 ? (
