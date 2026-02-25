@@ -122,6 +122,7 @@ export interface YAMLFrontmatter {
   // Organizer metadata (optional)
   description?: string
   comments?: YAMLCommentEntry[]
+  epic_completed_at?: string
 
   // Agent orchestration metadata (optional)
   task_id?: string
@@ -348,6 +349,7 @@ function normalizeFrontmatter(raw: Record<string, unknown>): YAMLFrontmatter {
     ticket: raw.ticket != null ? String(raw.ticket) : undefined,
     description: raw.description != null ? String(raw.description) : undefined,
     comments: normalizeComments(raw.comments),
+    epic_completed_at: raw.epic_completed_at != null ? String(raw.epic_completed_at) : undefined,
     task_id: raw.task_id != null ? String(raw.task_id) : undefined,
     task_status: raw.task_status != null ? String(raw.task_status) : undefined,
     depends_on: normalizeStringArray(raw.depends_on),

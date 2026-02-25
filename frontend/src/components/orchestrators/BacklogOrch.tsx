@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Download, Loader2, Plus, X } from 'lucide-react'
+import { CalendarDays, Download, Loader2, Plus, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/BacklogListBlock'
 import ExecutionProgressBlock from '@/components/lego_blocks/ExecutionProgressBlock'
@@ -55,6 +55,37 @@ function formatSyncTime(timestampSeconds: number): string {
   const date = new Date(timestampSeconds * 1000)
   if (Number.isNaN(date.getTime())) return 'unknown'
   return date.toLocaleString()
+}
+
+function toDateInputValue(value: string | undefined): string {
+  if (!value) return ''
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
+  const parsed = new Date(trimmed)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toISOString().slice(0, 10)
+}
+
+function timelineSortTimestamp(node: Pick<NodeRecord, 'epicCompletedAt' | 'updatedAt' | 'createdAt'>): number {
+  const epicCompletedDate = toDateInputValue(node.epicCompletedAt)
+  if (epicCompletedDate) {
+    const completionTime = new Date(`${epicCompletedDate}T00:00:00Z`).getTime()
+    if (!Number.isNaN(completionTime)) return completionTime
+  }
+  const updatedTime = new Date(node.updatedAt).getTime()
+  if (!Number.isNaN(updatedTime)) return updatedTime
+  const createdTime = new Date(node.createdAt).getTime()
+  if (!Number.isNaN(createdTime)) return createdTime
+  return 0
+}
+
+function sortTimelineEpics(nodes: NodeRecord[]): NodeRecord[] {
+  return [...nodes].sort((a, b) => {
+    const byCompletion = timelineSortTimestamp(b) - timelineSortTimestamp(a)
+    if (byCompletion !== 0) return byCompletion
+    return a.title.localeCompare(b.title)
+  })
 }
 
 function normalizePath(value: string): string {
@@ -123,6 +154,10 @@ export default function BacklogOrch() {
   const [activeExecutionTasks, setActiveExecutionTasks] = useState<NodeRecord[]>([])
   const [activeExecutionTasksLoading, setActiveExecutionTasksLoading] = useState(false)
   const [activeExecutionTasksError, setActiveExecutionTasksError] = useState<string | null>(null)
+  const [completedEpicTimeline, setCompletedEpicTimeline] = useState<NodeRecord[]>([])
+  const [timelineLoading, setTimelineLoading] = useState(false)
+  const [timelineError, setTimelineError] = useState<string | null>(null)
+  const [timelineSavingByEpic, setTimelineSavingByEpic] = useState<Record<string, boolean>>({})
 
   const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>(
     () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
@@ -251,15 +286,45 @@ export default function BacklogOrch() {
     }
   }, [activeProjectRoot])
 
+  const refreshEpicTimeline = useCallback(async () => {
+    setTimelineLoading(true)
+    setTimelineError(null)
+    try {
+      const { nodes } = await invokeCapabilityOrThrow({
+        capability: 'organizer.nodes.list_all',
+        input: {},
+        actor: BACKLOG_ACTOR,
+      })
+      const epics = nodes
+        .filter(node => node.type === 'epic' && node.status === 'completed')
+        .filter(node => {
+          if (!activeProjectRoot) return true
+          return normalizePath(node.projectRoot ?? '') === activeProjectRoot
+        })
+      setCompletedEpicTimeline(sortTimelineEpics(epics))
+    } catch (err) {
+      setTimelineError(errorMessage(err, 'Failed to load epic timeline'))
+    } finally {
+      setTimelineLoading(false)
+    }
+  }, [activeProjectRoot])
+
   useEffect(() => {
     void refreshExecutionProgress()
   }, [refreshExecutionProgress])
 
   useEffect(() => {
-    const onFocus = () => { void loadPrograms(false) }
+    void refreshEpicTimeline()
+  }, [refreshEpicTimeline])
+
+  useEffect(() => {
+    const onFocus = () => {
+      void loadPrograms(false)
+      void refreshEpicTimeline()
+    }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [loadPrograms])
+  }, [loadPrograms, refreshEpicTimeline])
 
   const syncVaultNow = useCallback(async () => {
     setMessage(null)
@@ -271,8 +336,9 @@ export default function BacklogOrch() {
     } finally {
       setCurrentOperation(null)
       void refreshExecutionProgress()
+      void refreshEpicTimeline()
     }
-  }, [loadPrograms, refreshExecutionProgress])
+  }, [loadPrograms, refreshEpicTimeline, refreshExecutionProgress])
 
   useEffect(() => {
     if (!selectedNode) {
@@ -409,6 +475,10 @@ export default function BacklogOrch() {
     parent: NodeRecord | null,
     title: string,
     requestedType?: NodeType,
+    details?: {
+      description?: string
+      comment?: string
+    },
   ) => {
     const allowedTypes = allowedChildTypes(parent?.type ?? null)
     const nextType = requestedType && allowedTypes.includes(requestedType)
@@ -430,6 +500,8 @@ export default function BacklogOrch() {
           parentUuid: parent?.uuid,
           parentType: parent?.type,
           projectRoot: parent ? undefined : activeProjectRoot,
+          description: details?.description,
+          comments: details?.comment ? [details.comment] : undefined,
         },
         actor: BACKLOG_ACTOR,
       })
@@ -441,8 +513,9 @@ export default function BacklogOrch() {
     } finally {
       setCurrentOperation(null)
       void refreshExecutionProgress()
+      void refreshEpicTimeline()
     }
-  }, [activeProjectRoot, refreshExecutionProgress])
+  }, [activeProjectRoot, refreshEpicTimeline, refreshExecutionProgress])
 
   const deleteNodeRecursive = useCallback(async (node: NodeRecord, removedIds: Set<string>): Promise<void> => {
     const { nodes: children } = await invokeCapabilityOrThrow({
@@ -478,8 +551,9 @@ export default function BacklogOrch() {
       setWorking(false)
       setCurrentOperation(null)
       void refreshExecutionProgress()
+      void refreshEpicTimeline()
     }
-  }, [deleteNodeRecursive, loadPrograms, refreshExecutionProgress, selectedNode])
+  }, [deleteNodeRecursive, loadPrograms, refreshEpicTimeline, refreshExecutionProgress, selectedNode])
 
   const renameNode = useCallback(async (newTitle: string) => {
     if (!selectedNode) return
@@ -506,8 +580,9 @@ export default function BacklogOrch() {
       setWorking(false)
       setCurrentOperation(null)
       void refreshExecutionProgress()
+      void refreshEpicTimeline()
     }
-  }, [refreshExecutionProgress, selectedNode])
+  }, [refreshEpicTimeline, refreshExecutionProgress, selectedNode])
 
   const applyUpdatedNode = useCallback((updated: NodeRecord) => {
     if (updated.type === 'program') {
@@ -538,8 +613,50 @@ export default function BacklogOrch() {
       setWorking(false)
       setCurrentOperation(null)
       void refreshExecutionProgress()
+      void refreshEpicTimeline()
     }
-  }, [applyUpdatedNode, refreshExecutionProgress])
+  }, [applyUpdatedNode, refreshEpicTimeline, refreshExecutionProgress])
+
+  const updateEpicCompletionDateFor = useCallback(async (
+    node: NodeRecord,
+    completionDate: string | null,
+  ): Promise<NodeRecord> => {
+    if (node.type !== 'epic') throw new Error('Completion date is only available for epics.')
+
+    const normalizedDate = completionDate?.trim() ?? ''
+    setTimelineSavingByEpic(prev => ({ ...prev, [node.uuid]: true }))
+    setError(null)
+    try {
+      const { node: updated } = await invokeCapabilityOrThrow({
+        capability: 'organizer.node.update',
+        input: {
+          uuid: node.uuid,
+          updates: {
+            extraFields: {
+              epic_completed_at: normalizedDate || null,
+            },
+          },
+        },
+        actor: BACKLOG_ACTOR,
+      })
+      applyUpdatedNode(updated)
+      setCompletedEpicTimeline(prev => {
+        const withoutCurrent = prev.filter(item => item.uuid !== updated.uuid)
+        const inScope = !activeProjectRoot || normalizePath(updated.projectRoot ?? '') === activeProjectRoot
+        if (updated.type === 'epic' && updated.status === 'completed' && inScope) {
+          return sortTimelineEpics([...withoutCurrent, updated])
+        }
+        return withoutCurrent
+      })
+      return updated
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to update epic completion date'))
+      throw err
+    } finally {
+      setTimelineSavingByEpic(prev => ({ ...prev, [node.uuid]: false }))
+      void refreshEpicTimeline()
+    }
+  }, [activeProjectRoot, applyUpdatedNode, refreshEpicTimeline])
 
   const updateStatus = useCallback(async (status: string) => {
     if (!selectedNode) return
@@ -570,8 +687,9 @@ export default function BacklogOrch() {
       setWorking(false)
       setCurrentOperation(null)
       void refreshExecutionProgress()
+      void refreshEpicTimeline()
     }
-  }, [applyUpdatedNode, refreshExecutionProgress])
+  }, [applyUpdatedNode, refreshEpicTimeline, refreshExecutionProgress])
 
   const updateTaskStatus = useCallback(async (taskStatus: string) => {
     if (!selectedNode) return
@@ -688,8 +806,9 @@ export default function BacklogOrch() {
       setWorking(false)
       setCurrentOperation(null)
       void refreshExecutionProgress()
+      void refreshEpicTimeline()
     }
-  }, [loadPrograms, refreshExecutionProgress])
+  }, [loadPrograms, refreshEpicTimeline, refreshExecutionProgress])
 
   const exportToExcalidraw = useCallback(async () => {
     setWorking(true)
@@ -791,6 +910,65 @@ export default function BacklogOrch() {
         {(working || syncing) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
       </div>
 
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+            Epic Timeline
+          </CardTitle>
+          <CardDescription>
+            Completed epics sorted by completion date. Date is auto-set when an epic completes, and can be backfilled.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {timelineLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading timeline...
+            </div>
+          ) : timelineError ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {timelineError}
+            </div>
+          ) : completedEpicTimeline.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              No completed epics yet.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {completedEpicTimeline.map(epic => {
+                const completionDate = toDateInputValue(epic.epicCompletedAt)
+                const saving = !!timelineSavingByEpic[epic.uuid]
+                return (
+                  <div key={epic.uuid} className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/15 px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedNode(epic)}
+                      className="min-w-0 flex-1 truncate text-left text-sm font-medium text-foreground hover:underline"
+                    >
+                      {epic.ticket ? `${epic.ticket} - ` : ''}{epic.title}
+                    </button>
+                    <input
+                      key={`${epic.uuid}-${completionDate}`}
+                      type="date"
+                      defaultValue={completionDate}
+                      disabled={saving}
+                      className="h-8 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                      onBlur={(event) => {
+                        const nextValue = event.currentTarget.value.trim()
+                        if (nextValue === completionDate) return
+                        void updateEpicCompletionDateFor(epic, nextValue || null)
+                      }}
+                    />
+                    {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {loading ? (
         <div className="flex items-center gap-2 px-2 py-4 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -836,6 +1014,9 @@ export default function BacklogOrch() {
           onUpdateTaskStatus={updateTaskStatus}
           onUpdatePriority={updatePriority}
           onUpdateNotes={updateNodeNotes}
+          onUpdateEpicCompletedAt={async (completionDate) => {
+            await updateEpicCompletionDateFor(selectedNode, completionDate)
+          }}
           onOpenFile={() => openFile(selectedNode.filePath)}
           onDelete={() => deleteAnyNode(selectedNode)}
         />

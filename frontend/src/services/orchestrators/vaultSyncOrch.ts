@@ -261,6 +261,7 @@ function frontmatterToRecord(
         added_by: comment.added_by,
       }))
       : undefined,
+    epicCompletedAt: typeof fm.epic_completed_at === 'string' ? fm.epic_completed_at : undefined,
     taskId: typeof fm.task_id === 'string' ? fm.task_id : undefined,
     taskStatus: typeof fm.task_status === 'string' ? fm.task_status : undefined,
     dependsOn: Array.isArray(fm.depends_on) ? fm.depends_on.filter(Boolean) : undefined,
@@ -323,6 +324,7 @@ const KNOWN_FRONTMATTER_KEYS = new Set<string>([
   'ticket',
   'description',
   'comments',
+  'epic_completed_at',
   'task_id',
   'task_status',
   'depends_on',

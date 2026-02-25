@@ -61,6 +61,16 @@ function formatTimestamp(value: string | undefined): string {
   return date.toLocaleString()
 }
 
+function toDateInputValue(value: string | undefined): string {
+  if (!value) return ''
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
+  const parsed = new Date(trimmed)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toISOString().slice(0, 10)
+}
+
 const STATUS_OPTIONS: NodeStatus[] = ['active', 'paused', 'completed', 'archived']
 const PRIORITY_OPTIONS: NodePriority[] = ['low', 'medium', 'high', 'critical']
 const TASK_STATUS_OPTIONS = ['ready', 'in_progress', 'blocked', 'done', 'cancelled'] as const
@@ -96,6 +106,7 @@ export interface NodeDetailPanelBlockProps {
   onUpdateTaskStatus: (taskStatus: string) => Promise<void>
   onUpdatePriority: (priority: string) => Promise<void>
   onUpdateNotes: (description: string, comments: YAMLCommentEntry[]) => Promise<void>
+  onUpdateEpicCompletedAt?: (completionDate: string | null) => Promise<void>
   onOpenFile: () => void
   onDelete: () => Promise<void>
 }
@@ -109,6 +120,7 @@ export default function NodeDetailPanelBlock({
   onUpdateTaskStatus,
   onUpdatePriority,
   onUpdateNotes,
+  onUpdateEpicCompletedAt,
   onOpenFile,
   onDelete,
 }: NodeDetailPanelBlockProps) {
@@ -118,6 +130,8 @@ export default function NodeDetailPanelBlock({
   const [commentsDraft, setCommentsDraft] = useState<YAMLCommentEntry[]>([])
   const [newCommentDraft, setNewCommentDraft] = useState('')
   const [notesAutoSaving, setNotesAutoSaving] = useState(false)
+  const [epicCompletionDateDraft, setEpicCompletionDateDraft] = useState('')
+  const [epicCompletionSaving, setEpicCompletionSaving] = useState(false)
   const notesAutoSaveSignatureRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -132,14 +146,22 @@ export default function NodeDetailPanelBlock({
     () => (frontmatter?.comments ?? node.comments ?? []),
     [frontmatter?.comments, node.comments],
   )
+  const sourceEpicCompletionDate = useMemo(() => {
+    const fromFrontmatter = typeof frontmatter?.epic_completed_at === 'string'
+      ? frontmatter.epic_completed_at
+      : undefined
+    return toDateInputValue(fromFrontmatter ?? node.epicCompletedAt)
+  }, [frontmatter?.epic_completed_at, node.epicCompletedAt])
 
   useEffect(() => {
     setDescriptionDraft(sourceDescription)
     setCommentsDraft(sourceComments)
     setNewCommentDraft('')
     setNotesAutoSaving(false)
+    setEpicCompletionDateDraft(sourceEpicCompletionDate)
+    setEpicCompletionSaving(false)
     notesAutoSaveSignatureRef.current = null
-  }, [node.uuid, sourceComments, sourceDescription])
+  }, [node.uuid, sourceComments, sourceDescription, sourceEpicCompletionDate])
 
   // Close on Escape
   useEffect(() => {
@@ -275,6 +297,20 @@ export default function NodeDetailPanelBlock({
     }
   }, [commentsDraft, descriptionDraft, notesDirty, onUpdateNotes])
 
+  const commitEpicCompletionDate = useCallback(async () => {
+    if (node.type !== 'epic' || !onUpdateEpicCompletedAt) return
+    const normalizedDate = epicCompletionDateDraft.trim()
+    if (normalizedDate === sourceEpicCompletionDate) return
+    setBusy(true)
+    setEpicCompletionSaving(true)
+    try {
+      await onUpdateEpicCompletedAt(normalizedDate || null)
+    } finally {
+      setEpicCompletionSaving(false)
+      setBusy(false)
+    }
+  }, [epicCompletionDateDraft, node.type, onUpdateEpicCompletedAt, sourceEpicCompletionDate])
+
   useEffect(() => {
     if (!notesDirty || busy || notesAutoSaving) return
     if (notesAutoSaveSignatureRef.current === notesPayloadSignature) return
@@ -370,6 +406,23 @@ export default function NodeDetailPanelBlock({
                   Epic status is derived automatically from descendant task states.
                 </p>
               )}
+            </div>
+          )}
+
+          {node.type === 'epic' && onUpdateEpicCompletedAt && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Completion Date</label>
+              <input
+                type="date"
+                value={epicCompletionDateDraft}
+                onChange={event => setEpicCompletionDateDraft(event.target.value)}
+                onBlur={() => { void commitEpicCompletionDate() }}
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                disabled={busy}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {epicCompletionSaving ? 'Saving...' : 'Auto-set on completion. Editable for backfill.'}
+              </p>
             </div>
           )}
 

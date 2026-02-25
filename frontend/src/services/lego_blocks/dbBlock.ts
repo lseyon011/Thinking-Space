@@ -28,6 +28,7 @@ export interface NodeRecord {
   ticket?: string
   description?: string
   comments?: YAMLCommentEntry[]
+  epicCompletedAt?: string
   taskId?: string
   taskStatus?: string
   dependsOn?: string[]
@@ -214,6 +215,7 @@ export async function searchNodes(query: string, limit: number = 20): Promise<No
       node.aiSummary || '',
       node.taskId || '',
       node.taskStatus || '',
+      node.epicCompletedAt || '',
       ...(node.dependsOn || []),
       ...(node.blockedBy || []),
       ...(node.acceptanceCriteria || []),

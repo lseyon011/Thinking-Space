@@ -977,10 +977,39 @@ async function applyEpicStatusPolicyForAffectedNodes(params: {
     if (!epic || epic.type !== 'epic') continue
     const taskStatuses = collectDescendantTaskStatuses(epic.key, childrenByParent)
     const derivedStatus = deriveEpicStatusFromTaskStatuses(taskStatuses)
-    if (!derivedStatus || derivedStatus === epic.status) continue
-    const updated = await updateYamlNode(epic.uuid, { status: derivedStatus }, params.fs)
+    if (!derivedStatus) continue
+
+    const normalizedEpicCompletedAt = normalizeEpicCompletedDate(epic.epicCompletedAt)
+    const shouldUpdateStatus = derivedStatus !== epic.status
+    const shouldSetCompletionDate = (
+      derivedStatus === 'completed' &&
+      epic.status !== 'completed' &&
+      !normalizedEpicCompletedAt
+    )
+    if (!shouldUpdateStatus && !shouldSetCompletionDate) continue
+
+    const updated = await updateYamlNode(epic.uuid, {
+      status: shouldUpdateStatus ? derivedStatus : undefined,
+      extraFields: shouldSetCompletionDate
+        ? { epic_completed_at: currentDateStamp() }
+        : undefined,
+    }, params.fs)
     nodesByKey.set(updated.key, updated)
   }
+}
+
+function currentDateStamp(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function normalizeEpicCompletedDate(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
+  const parsed = new Date(trimmed)
+  if (Number.isNaN(parsed.getTime())) return undefined
+  return parsed.toISOString().slice(0, 10)
 }
 
 function collectDescendantTaskStatuses(

@@ -17,6 +17,12 @@ import {
   Plus,
 } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from '@/components/lego_blocks/ui/select'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import type { NodePriority, NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/yamlNoteBlock'
 import { cn } from '@/lib/utils'
@@ -70,6 +76,10 @@ const PRIORITY_COLORS: Record<NonNullable<NodePriority>, string> = {
   medium: 'bg-blue-400',
   high: 'bg-amber-400',
   critical: 'bg-red-500',
+}
+
+function taskStatusLabel(taskStatus: TaskStatusOption): string {
+  return taskStatus.replace(/_/g, ' ')
 }
 
 const EPIC_BORDER_PALETTE = [
@@ -134,7 +144,15 @@ export interface BacklogListBlockProps {
   selectedNodeId: string | null
   readOnly?: boolean
   onSelectNode: (node: NodeRecord) => void
-  onCreateChild?: (parent: NodeRecord | null, title: string, requestedType?: NodeType) => Promise<NodeRecord>
+  onCreateChild?: (
+    parent: NodeRecord | null,
+    title: string,
+    requestedType?: NodeType,
+    details?: {
+      description?: string
+      comment?: string
+    },
+  ) => Promise<NodeRecord>
   onDropNodeToNode?: (sourceUuid: string, target: NodeRecord) => Promise<void>
   onUpdateNodeStatus?: (node: NodeRecord, status: NodeStatus) => Promise<NodeRecord | void>
   onUpdateTaskStatus?: (node: NodeRecord, taskStatus: TaskStatusOption) => Promise<NodeRecord | void>
@@ -284,6 +302,8 @@ export default function BacklogListBlock({
   const [childrenByNode, setChildrenByNode] = useState<Record<string, ChildState>>({})
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({})
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, string>>({})
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({})
   const [draftTypeByKey, setDraftTypeByKey] = useState<Record<string, NodeType>>({ [ROOT_INPUT_KEY]: 'program' })
   const [busyCreate, setBusyCreate] = useState<Record<string, boolean>>({})
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
@@ -398,6 +418,8 @@ export default function BacklogListBlock({
     if (!onCreateChild) return
     const title = (drafts[draftKey] ?? '').trim()
     if (!title) return
+    const description = (descriptionDrafts[draftKey] ?? '').trim()
+    const comment = (commentDrafts[draftKey] ?? '').trim()
 
     const allowedTypes = allowedCreateTypes(parent)
     const selectedType = draftTypeByKey[draftKey]
@@ -408,8 +430,13 @@ export default function BacklogListBlock({
     setLocalError(null)
     setBusyCreate(prev => ({ ...prev, [draftKey]: true }))
     try {
-      const created = await onCreateChild(parent, title, requestedType)
+      const created = await onCreateChild(parent, title, requestedType, {
+        description: description || undefined,
+        comment: comment || undefined,
+      })
       setDrafts(prev => ({ ...prev, [draftKey]: '' }))
+      setDescriptionDrafts(prev => ({ ...prev, [draftKey]: '' }))
+      setCommentDrafts(prev => ({ ...prev, [draftKey]: '' }))
 
       if (parent) {
         setChildrenByNode(prev => {
@@ -429,7 +456,7 @@ export default function BacklogListBlock({
     } finally {
       setBusyCreate(prev => ({ ...prev, [draftKey]: false }))
     }
-  }, [draftTypeByKey, drafts, onCreateChild])
+  }, [commentDrafts, descriptionDrafts, draftTypeByKey, drafts, onCreateChild])
 
   const makeDragStart = useCallback((node: NodeRecord) => (event: React.DragEvent) => {
     setDraggingNodeId(node.uuid)
@@ -875,45 +902,69 @@ export default function BacklogListBlock({
     const selectedTypeLabel = nodeTypeLabel(selectedType)
 
     return (
-      <div className="flex items-center gap-2 border-t border-border/70 bg-background px-3 py-2">
-        <select
-          value={selectedType}
-          onChange={e => {
-            const nextType = e.target.value as NodeType
-            setDraftTypeByKey(prev => ({ ...prev, [draftKey]: nextType }))
-          }}
-          className="h-7 shrink-0 rounded-md border border-input bg-background px-2 text-[11px] text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-        >
-          {allowedTypes.map(type => (
-            <option key={`${draftKey}-${type}`} value={type}>
-              {nodeTypeLabel(type)}
-            </option>
-          ))}
-        </select>
-        <input
-          value={drafts[draftKey] ?? ''}
-          onChange={e => setDraft(draftKey, e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              void createUnder(parent, draftKey)
-            }
-          }}
-          placeholder={`${placeholder} (${selectedTypeLabel})`}
-          className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 px-2 text-xs"
-          disabled={busyCreate[draftKey]}
-          onClick={() => { void createUnder(parent, draftKey) }}
-        >
-          {busyCreate[draftKey] ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-        </Button>
+      <div className="space-y-2 border-t border-border/70 bg-background px-3 py-2">
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedType}
+            onChange={e => {
+              const nextType = e.target.value as NodeType
+              setDraftTypeByKey(prev => ({ ...prev, [draftKey]: nextType }))
+            }}
+            className="h-7 shrink-0 rounded-md border border-input bg-background px-2 text-[11px] text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            {allowedTypes.map(type => (
+              <option key={`${draftKey}-${type}`} value={type}>
+                {nodeTypeLabel(type)}
+              </option>
+            ))}
+          </select>
+          <input
+            value={drafts[draftKey] ?? ''}
+            onChange={e => setDraft(draftKey, e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void createUnder(parent, draftKey)
+              }
+            }}
+            placeholder={`${placeholder} (${selectedTypeLabel})`}
+            className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs"
+            disabled={busyCreate[draftKey]}
+            onClick={() => { void createUnder(parent, draftKey) }}
+          >
+            {busyCreate[draftKey] ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+          </Button>
+        </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          <textarea
+            value={descriptionDrafts[draftKey] ?? ''}
+            onChange={event => {
+              const next = event.target.value
+              setDescriptionDrafts(prev => ({ ...prev, [draftKey]: next }))
+            }}
+            rows={2}
+            placeholder="Description (optional)"
+            className="min-h-[64px] w-full resize-y rounded-md border border-input bg-background px-2 py-1.5 text-xs leading-snug focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <textarea
+            value={commentDrafts[draftKey] ?? ''}
+            onChange={event => {
+              const next = event.target.value
+              setCommentDrafts(prev => ({ ...prev, [draftKey]: next }))
+            }}
+            rows={2}
+            placeholder="Comment (optional)"
+            className="min-h-[64px] w-full resize-y rounded-md border border-input bg-background px-2 py-1.5 text-xs leading-snug focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
       </div>
     )
-  }, [busyCreate, createUnder, draftTypeByKey, drafts, readOnly, setDraft])
+  }, [busyCreate, commentDrafts, createUnder, descriptionDrafts, draftTypeByKey, drafts, readOnly, setDraft])
 
   const renderNodeBranch = useCallback((
     node: NodeRecord,
@@ -1041,18 +1092,27 @@ export default function BacklogListBlock({
                 {statusBusyByNode[node.uuid] ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                 ) : (
-                  <select
+                  <Select
                     value={getTaskStatusBadge(node)}
-                    onChange={(event) => { void handleInlineTaskStatusChange(node, event.target.value as TaskStatusOption) }}
-                    className="h-6 rounded-md border border-input bg-background px-1.5 text-[10px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    title="Change task status"
+                    onValueChange={(value) => { void handleInlineTaskStatusChange(node, value as TaskStatusOption) }}
                   >
-                    {TASK_STATUS_OPTIONS.map(option => (
-                      <option key={`${node.uuid}-task-${option}`} value={option}>
-                        {option.replace('_', ' ')}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger
+                      className={cn(
+                        'h-6 w-auto gap-1 rounded-full border border-transparent px-2 py-0 text-[10px] font-medium shadow-none focus:ring-0 focus:ring-offset-0',
+                        TASK_STATUS_COLORS[getTaskStatusBadge(node)],
+                      )}
+                      title="Change task status"
+                    >
+                      <span>{taskStatusLabel(getTaskStatusBadge(node))}</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TASK_STATUS_OPTIONS.map(option => (
+                        <SelectItem key={`${node.uuid}-task-${option}`} value={option}>
+                          {taskStatusLabel(option)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
             )
@@ -1067,16 +1127,27 @@ export default function BacklogListBlock({
                 {statusBusyByNode[node.uuid] ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                 ) : (
-                  <select
+                  <Select
                     value={node.status}
-                    onChange={(event) => { void handleInlineNodeStatusChange(node, event.target.value as NodeStatus) }}
-                    className="h-6 rounded-md border border-input bg-background px-1.5 text-[10px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    title="Change status"
+                    onValueChange={(value) => { void handleInlineNodeStatusChange(node, value as NodeStatus) }}
                   >
-                    {NODE_STATUS_OPTIONS.map(option => (
-                      <option key={`${node.uuid}-status-${option}`} value={option}>{option}</option>
-                    ))}
-                  </select>
+                    <SelectTrigger
+                      className={cn(
+                        'h-6 w-auto gap-1 rounded-full border border-transparent px-2 py-0 text-[10px] font-medium capitalize shadow-none focus:ring-0 focus:ring-offset-0',
+                        STATUS_COLORS[node.status],
+                      )}
+                      title="Change status"
+                    >
+                      <span>{node.status}</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {NODE_STATUS_OPTIONS.map(option => (
+                        <SelectItem key={`${node.uuid}-status-${option}`} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
             )
@@ -1192,16 +1263,27 @@ export default function BacklogListBlock({
               {statusBusyByNode[program.uuid] ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
               ) : (
-                <select
+                <Select
                   value={program.status}
-                  onChange={(event) => { void handleInlineNodeStatusChange(program, event.target.value as NodeStatus) }}
-                  className="h-6 rounded-md border border-input bg-background px-1.5 text-[10px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  title="Change status"
+                  onValueChange={(value) => { void handleInlineNodeStatusChange(program, value as NodeStatus) }}
                 >
-                  {NODE_STATUS_OPTIONS.map(option => (
-                    <option key={`${program.uuid}-program-status-${option}`} value={option}>{option}</option>
-                  ))}
-                </select>
+                  <SelectTrigger
+                    className={cn(
+                      'h-6 w-auto gap-1 rounded-full border border-transparent px-2 py-0 text-[10px] font-medium capitalize shadow-none focus:ring-0 focus:ring-offset-0',
+                      STATUS_COLORS[program.status],
+                    )}
+                    title="Change status"
+                  >
+                    <span>{program.status}</span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NODE_STATUS_OPTIONS.map(option => (
+                      <SelectItem key={`${program.uuid}-program-status-${option}`} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </div>
           )}
