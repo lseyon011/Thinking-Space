@@ -8,11 +8,17 @@ import {
   Loader2,
   ListChecks,
   MessageSquare,
+  Reply,
+  SlidersHorizontal,
+  ThumbsDown,
+  ThumbsUp,
   Handshake,
   Play,
   Trash2,
   X,
 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/lego_blocks/ui/button'
 import {
   Select,
@@ -69,6 +75,15 @@ function toDateInputValue(value: string | undefined): string {
   const parsed = new Date(trimmed)
   if (Number.isNaN(parsed.getTime())) return ''
   return parsed.toISOString().slice(0, 10)
+}
+
+function initialsForAuthor(value: string | undefined): string {
+  const normalized = (value ?? '').trim()
+  if (!normalized) return 'NA'
+  const tokens = normalized.split(/[\s._-]+/).filter(Boolean)
+  if (tokens.length === 0) return normalized.slice(0, 2).toUpperCase()
+  if (tokens.length === 1) return tokens[0].slice(0, 2).toUpperCase()
+  return `${tokens[0][0] ?? ''}${tokens[1][0] ?? ''}`.toUpperCase()
 }
 
 const STATUS_OPTIONS: NodeStatus[] = ['active', 'paused', 'completed', 'archived']
@@ -129,9 +144,12 @@ export default function NodeDetailPanelBlock({
   const [descriptionDraft, setDescriptionDraft] = useState('')
   const [commentsDraft, setCommentsDraft] = useState<YAMLCommentEntry[]>([])
   const [newCommentDraft, setNewCommentDraft] = useState('')
+  const [notesSaving, setNotesSaving] = useState(false)
   const [notesAutoSaving, setNotesAutoSaving] = useState(false)
   const [epicCompletionDateDraft, setEpicCompletionDateDraft] = useState('')
   const [epicCompletionSaving, setEpicCompletionSaving] = useState(false)
+  const [activityTab, setActivityTab] = useState<'all' | 'comments' | 'history' | 'worklog'>('comments')
+  const [descriptionEditMode, setDescriptionEditMode] = useState(false)
   const notesAutoSaveSignatureRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -139,11 +157,11 @@ export default function NodeDetailPanelBlock({
   }, [node.title])
 
   const sourceDescription = useMemo(
-    () => (frontmatter?.description ?? node.description ?? '').trim(),
+    () => (node.description ?? frontmatter?.description ?? '').trim(),
     [frontmatter?.description, node.description],
   )
   const sourceComments = useMemo(
-    () => (frontmatter?.comments ?? node.comments ?? []),
+    () => (node.comments ?? frontmatter?.comments ?? []),
     [frontmatter?.comments, node.comments],
   )
   const sourceEpicCompletionDate = useMemo(() => {
@@ -157,9 +175,12 @@ export default function NodeDetailPanelBlock({
     setDescriptionDraft(sourceDescription)
     setCommentsDraft(sourceComments)
     setNewCommentDraft('')
+    setNotesSaving(false)
     setNotesAutoSaving(false)
     setEpicCompletionDateDraft(sourceEpicCompletionDate)
     setEpicCompletionSaving(false)
+    setActivityTab('comments')
+    setDescriptionEditMode(false)
     notesAutoSaveSignatureRef.current = null
   }, [node.uuid, sourceComments, sourceDescription, sourceEpicCompletionDate])
 
@@ -213,6 +234,9 @@ export default function NodeDetailPanelBlock({
     description: descriptionDraft.trim(),
     comments: commentsDraft,
   }), [commentsDraft, descriptionDraft])
+  const orderedComments = useMemo(() => (
+    commentsDraft.map((comment, index) => ({ comment, index })).reverse()
+  ), [commentsDraft])
   const yamlFields = useMemo(() => {
     if (!frontmatter) return []
     return Object.entries(frontmatter)
@@ -285,17 +309,17 @@ export default function NodeDetailPanelBlock({
     setCommentsDraft(prev => prev.filter((_, idx) => idx !== index))
   }, [])
 
-  const commitNotes = useCallback(async () => {
-    if (!notesDirty) return
-    setBusy(true)
-    setNotesAutoSaving(true)
+  const commitNotes = useCallback(async (mode: 'auto' | 'manual' = 'manual') => {
+    if (!notesDirty || notesSaving) return
+    setNotesSaving(true)
+    setNotesAutoSaving(mode === 'auto')
     try {
       await onUpdateNotes(descriptionDraft.trim(), commentsDraft)
     } finally {
       setNotesAutoSaving(false)
-      setBusy(false)
+      setNotesSaving(false)
     }
-  }, [commentsDraft, descriptionDraft, notesDirty, onUpdateNotes])
+  }, [commentsDraft, descriptionDraft, notesDirty, notesSaving, onUpdateNotes])
 
   const commitEpicCompletionDate = useCallback(async () => {
     if (node.type !== 'epic' || !onUpdateEpicCompletedAt) return
@@ -312,18 +336,18 @@ export default function NodeDetailPanelBlock({
   }, [epicCompletionDateDraft, node.type, onUpdateEpicCompletedAt, sourceEpicCompletionDate])
 
   useEffect(() => {
-    if (!notesDirty || busy || notesAutoSaving) return
+    if (!notesDirty || busy || notesSaving) return
     if (notesAutoSaveSignatureRef.current === notesPayloadSignature) return
 
     const timeoutId = window.setTimeout(() => {
       notesAutoSaveSignatureRef.current = notesPayloadSignature
-      void commitNotes()
+      void commitNotes('auto')
     }, 900)
 
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [busy, commitNotes, notesAutoSaving, notesDirty, notesPayloadSignature])
+  }, [busy, commitNotes, notesDirty, notesPayloadSignature, notesSaving])
 
   return (
     <>
@@ -363,226 +387,305 @@ export default function NodeDetailPanelBlock({
             disabled={busy}
           />
 
-          {/* Status */}
-          {taskLikeNode ? (
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Task State</label>
-              <Select
-                value={currentTaskStatus}
-                onValueChange={val => { void onUpdateTaskStatus(val) }}
-              >
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TASK_STATUS_OPTIONS.map(s => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-muted-foreground">
-                Derived node status: <span className="font-medium text-foreground">{node.status}</span>
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Status</label>
-              <Select
-                value={node.status}
-                onValueChange={val => { if (statusEditable) void onUpdateStatus(val) }}
-                disabled={!statusEditable}
-              >
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUS_OPTIONS.map(s => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {!statusEditable && (
-                <p className="text-[11px] text-muted-foreground">
-                  Epic status is derived automatically from descendant task states.
-                </p>
-              )}
-            </div>
-          )}
-
-          {node.type === 'epic' && onUpdateEpicCompletedAt && (
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Completion Date</label>
-              <input
-                type="date"
-                value={epicCompletionDateDraft}
-                onChange={event => setEpicCompletionDateDraft(event.target.value)}
-                onBlur={() => { void commitEpicCompletionDate() }}
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                disabled={busy}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                {epicCompletionSaving ? 'Saving...' : 'Auto-set on completion. Editable for backfill.'}
-              </p>
-            </div>
-          )}
-
-          {/* Priority */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Priority</label>
-            <Select
-              value={node.priority ?? 'medium'}
-              onValueChange={val => { void onUpdatePriority(val) }}
+          <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                notesAutoSaveSignatureRef.current = notesPayloadSignature
+                void commitNotes('manual')
+              }}
+              disabled={notesSaving}
             >
-              <SelectTrigger className="h-9 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PRIORITY_OPTIONS.map(p => (
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              {notesSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
+            </Button>
+            <Button size="sm" variant="outline" onClick={onOpenFile}>
+              Open File
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-destructive hover:bg-destructive/10"
+              onClick={() => { void handleDelete() }}
+              disabled={busy}
+            >
+              <Trash2 className="mr-1 h-3.5 w-3.5" />
+              Delete
+            </Button>
+            <span className="text-[11px] text-muted-foreground">
+              {notesAutoSaving ? 'Auto-saving...' : (notesDirty ? 'Unsaved changes' : 'Auto-save on')}
+            </span>
           </div>
 
-          <ExtensionSlotBlock
-            slotId="thought-context-actions"
-            context={{
-              nodeUuid: node.uuid,
-              nodeKey: node.key,
-              nodeTitle: node.title,
-              nodeType: node.type,
-              filePath: node.filePath,
-              projectRoot: node.projectRoot ?? null,
-              parentKey: node.parent ?? null,
-            }}
-          />
-
-          {/* Tags */}
-          {node.tags && node.tags.length > 0 && (
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Tags</label>
-              <div className="flex flex-wrap gap-1.5">
-                {node.tags.map(tag => (
-                  <span key={tag} className="rounded-full bg-muted px-2 py-0.5 text-xs">{tag}</span>
-                ))}
+          <div className="grid gap-3 rounded-md border border-border/60 bg-muted/20 p-3 md:grid-cols-3">
+            {taskLikeNode ? (
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Task State</label>
+                <Select
+                  value={currentTaskStatus}
+                  onValueChange={val => { void onUpdateTaskStatus(val) }}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TASK_STATUS_OPTIONS.map(s => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</label>
+                <Select
+                  value={node.status}
+                  onValueChange={val => { if (statusEditable) void onUpdateStatus(val) }}
+                  disabled={!statusEditable}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUS_OPTIONS.map(s => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Description</label>
-            <MarkdownRichEditorBlock
-              value={descriptionDraft}
-              onChange={setDescriptionDraft}
-              placeholder="Add description..."
-              className="min-h-[120px] rounded-md border border-input overflow-hidden"
-            />
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Priority</label>
+              <Select
+                value={node.priority ?? 'medium'}
+                onValueChange={val => { void onUpdatePriority(val) }}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRIORITY_OPTIONS.map(p => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {node.type === 'epic' && onUpdateEpicCompletedAt ? (
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Completion Date</label>
+                <input
+                  type="date"
+                  value={epicCompletionDateDraft}
+                  onChange={event => setEpicCompletionDateDraft(event.target.value)}
+                  onBlur={() => { void commitEpicCompletionDate() }}
+                  className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                  disabled={busy}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  {epicCompletionSaving ? 'Saving...' : 'Auto-set on completion. Editable for backfill.'}
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-end">
+                <ExtensionSlotBlock
+                  slotId="thought-context-actions"
+                  context={{
+                    nodeUuid: node.uuid,
+                    nodeKey: node.key,
+                    nodeTitle: node.title,
+                    nodeType: node.type,
+                    filePath: node.filePath,
+                    projectRoot: node.projectRoot ?? null,
+                    parentKey: node.parent ?? null,
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-muted-foreground">Comments</label>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-muted-foreground">
-                  {notesAutoSaving ? 'Auto-saving...' : (notesDirty ? 'Unsaved changes' : 'Auto-save on')}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    notesAutoSaveSignatureRef.current = notesPayloadSignature
-                    void commitNotes()
-                  }}
-                  disabled={busy || !notesDirty}
+              <label className="text-sm font-semibold text-foreground">Description</label>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs"
+                onClick={() => setDescriptionEditMode(prev => !prev)}
+              >
+                {descriptionEditMode ? 'Done' : 'Edit'}
+              </Button>
+            </div>
+            {descriptionEditMode ? (
+              <MarkdownRichEditorBlock
+                value={descriptionDraft}
+                onChange={setDescriptionDraft}
+                placeholder="Add description..."
+                className="min-h-[120px] rounded-md border border-input overflow-hidden"
+              />
+            ) : (
+              <div className="prose prose-sm max-w-none rounded-md border border-border/60 bg-card p-3 leading-relaxed">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {descriptionDraft || '_No description yet._'}
+                </ReactMarkdown>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-semibold text-foreground">Subtasks</label>
+            <p className="text-sm text-muted-foreground">Add subtask</p>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-semibold text-foreground">Linked work items</label>
+            <p className="text-sm text-muted-foreground">Add linked work item</p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-semibold text-foreground">Activity</label>
+              <button
+                type="button"
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="inline-flex rounded-md border border-border/70 bg-muted/30 p-0.5 text-xs">
+              {[
+                { key: 'all', label: 'All' },
+                { key: 'comments', label: 'Comments' },
+                { key: 'history', label: 'History' },
+                { key: 'worklog', label: 'Work log' },
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={`rounded px-2 py-1 ${activityTab === tab.key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                  onClick={() => setActivityTab(tab.key as typeof activityTab)}
                 >
-                  {notesAutoSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save Notes'}
-                </Button>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="rounded-md border border-border/70 bg-card p-2.5">
+              <div className="flex items-start gap-2">
+                <div className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-semibold text-white">
+                  {initialsForAuthor('AP')}
+                </div>
+                <div className="flex-1 space-y-2">
+                  <textarea
+                    value={newCommentDraft}
+                    onChange={e => setNewCommentDraft(e.target.value)}
+                    placeholder="Add a comment..."
+                    className="min-h-[72px] w-full resize-y rounded-md border border-input bg-background px-2 py-1.5 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring"
+                    disabled={busy}
+                  />
+                  <div className="flex flex-wrap gap-1">
+                    {['Looks good!', 'Need help?', 'This is blocked...', 'Can you clarify...?', 'This is on track'].map(template => (
+                      <button
+                        key={template}
+                        type="button"
+                        className="rounded-md border border-border/70 bg-background px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+                        onClick={() => setNewCommentDraft(prev => (prev.trim() ? `${prev}\n\n${template}` : template))}
+                      >
+                        {template}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-muted-foreground">Pro tip: press M to comment</span>
+                    <Button size="sm" variant="outline" onClick={addComment} disabled={busy || !newCommentDraft.trim()}>
+                      Add Comment
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="space-y-2">
-              {commentsDraft.length > 0 ? (
-                <div className="space-y-1">
-                  {commentsDraft.map((comment, idx) => (
-                    <div key={`${comment.text}-${comment.added_at ?? idx}`} className="flex items-center gap-2 rounded-md border border-border/70 bg-muted/20 px-2 py-1.5 text-sm">
-                      <div className="flex-1">
-                        <p>{comment.text}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {comment.added_by ?? 'unknown'} • {formatTimestamp(comment.added_at)}
-                        </p>
+
+            {(activityTab === 'comments' || activityTab === 'all') ? (
+              orderedComments.length > 0 ? (
+                <div className="space-y-4">
+                  {orderedComments.map(({ comment, index }) => (
+                    <div key={`${comment.text}-${comment.added_at ?? index}`} className="space-y-1.5">
+                      <div className="flex items-start gap-2">
+                        <div className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[10px] font-semibold text-white">
+                          {initialsForAuthor(comment.added_by)}
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <p className="text-sm font-semibold text-foreground">{comment.added_by ?? 'Unknown'}</p>
+                          <p className="text-[11px] text-muted-foreground">{formatTimestamp(comment.added_at)}</p>
+                          <div className="prose prose-sm max-w-none leading-relaxed">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {comment.text}
+                            </ReactMarkdown>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button type="button" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+                              <ThumbsUp className="h-3.5 w-3.5" />
+                            </button>
+                            <button type="button" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+                              <ThumbsDown className="h-3.5 w-3.5" />
+                            </button>
+                            <button type="button" className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+                              <Reply className="h-3 w-3" />
+                              Reply
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              onClick={() => removeComment(index)}
+                              disabled={busy}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeComment(idx)}
-                        className="rounded p-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                        disabled={busy}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
                     </div>
                   ))}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No comments yet.</p>
+              )
+            ) : (
+              <p className="text-sm text-muted-foreground">No entries in this tab yet.</p>
+            )}
+          </div>
+
+          <details className="rounded-md border border-border/60 bg-muted/15 p-2.5">
+            <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Advanced metadata</summary>
+            <div className="mt-2 space-y-2">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">File Path</label>
+                <p className="break-all font-mono text-xs text-foreground/80">{node.filePath}</p>
+              </div>
+              {node.aiSummary && (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">AI Summary</label>
+                  <p className="text-sm text-muted-foreground">{node.aiSummary}</p>
+                </div>
               )}
-              <div className="flex items-center gap-2">
-                <input
-                  value={newCommentDraft}
-                  onChange={e => setNewCommentDraft(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      addComment()
-                    }
-                  }}
-                  placeholder="Add a comment..."
-                  className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  disabled={busy}
-                />
-                <Button size="sm" variant="outline" onClick={addComment} disabled={busy}>
-                  Add
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {/* AI Summary */}
-          {node.aiSummary && (
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">AI Summary</label>
-              <p className="text-sm text-muted-foreground">{node.aiSummary}</p>
-            </div>
-          )}
-
-          {/* File path */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">File Path</label>
-            <p className="break-all font-mono text-xs text-foreground/80">{node.filePath}</p>
-          </div>
-
-          {yamlFields.length > 0 && (
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">YAML Metadata</label>
-              <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3">
-                {yamlFields.map(([key, value]) => (
-                  <div key={key} className="space-y-1 rounded-md border border-border/50 bg-muted/30 p-2">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{key}</p>
-                    <div>{renderYamlValue(value)}</div>
+              {yamlFields.length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">YAML Metadata</label>
+                  <div className="space-y-2 rounded-lg border border-border/70 bg-card p-3">
+                    {yamlFields.map(([key, value]) => (
+                      <div key={key} className="space-y-1 rounded-md border border-border/50 bg-muted/20 p-2">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{key}</p>
+                        <div>{renderYamlValue(value)}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
-          )}
+          </details>
 
-          {/* Actions */}
-          <div className="flex items-center gap-2 border-t border-border pt-4">
-            <Button size="sm" variant="outline" onClick={onOpenFile}>
-              Open File
-            </Button>
-            <Button size="sm" variant="outline" className="text-destructive hover:bg-destructive/10" onClick={() => { void handleDelete() }} disabled={busy}>
-              <Trash2 className="mr-1 h-3.5 w-3.5" />
-              Delete
-            </Button>
-          </div>
         </div>
       </div>
     </>

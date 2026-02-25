@@ -17,6 +17,10 @@ import {
   NODE_TYPE_LEVEL,
 } from './yamlNoteBlock'
 import {
+  parseOrganizerBodySections,
+  upsertOrganizerBodySections,
+} from './organizerBodyBlock'
+import {
   getChildren,
   getNodeByKey,
   getNodeByUuid,
@@ -105,12 +109,15 @@ export async function createYamlNode(params: {
   if (description) {
     note.frontmatter.description = description
   }
-  if (comments.length > 0) {
-    note.frontmatter.comments = comments
+  if (description || comments.length > 0) {
+    note.body = upsertOrganizerBodySections(note.body, {
+      description,
+      comments,
+    })
+  } else if (!note.body.trim()) {
+    note.body = ''
   }
-  if (!note.body.trim()) {
-    note.body = buildInitialBody(description, comments)
-  }
+  delete note.frontmatter.comments
   applyExtraFrontmatterFields(note.frontmatter, params.extraFields)
 
   if (projectRoot) {
@@ -221,10 +228,37 @@ export async function updateYamlNode(
     if (normalizedDescription) note.frontmatter.description = normalizedDescription
     else delete note.frontmatter.description
   }
-  if (updates.comments !== undefined) {
-    const normalizedComments = normalizeCommentEntries(updates.comments)
-    note.frontmatter.comments = normalizedComments.length > 0 ? normalizedComments : undefined
+  const shouldSyncBodySections = (
+    updates.description !== undefined ||
+    updates.comments !== undefined ||
+    Array.isArray(note.frontmatter.comments)
+  )
+  if (shouldSyncBodySections) {
+    const parsedSections = parseOrganizerBodySections(note.body)
+    const fallbackYamlComments = normalizeCommentEntries(
+      Array.isArray(note.frontmatter.comments)
+        ? note.frontmatter.comments
+        : undefined,
+    )
+    const currentDescription = parsedSections.description
+      ?? (typeof note.frontmatter.description === 'string' ? note.frontmatter.description.trim() : undefined)
+    const currentComments = parsedSections.comments.length > 0
+      ? parsedSections.comments
+      : fallbackYamlComments
+
+    const nextDescription = updates.description !== undefined
+      ? (updates.description.trim() || undefined)
+      : currentDescription
+    const nextComments = updates.comments !== undefined
+      ? normalizeCommentEntries(updates.comments)
+      : currentComments
+
+    note.body = upsertOrganizerBodySections(note.body, {
+      description: nextDescription,
+      comments: nextComments,
+    })
   }
+  delete note.frontmatter.comments
   if (updates.extraFields !== undefined) {
     applyExtraFrontmatterFields(note.frontmatter, updates.extraFields)
   }
@@ -530,31 +564,6 @@ function normalizeProjectRoot(value: string | undefined): string | undefined {
   if (!value) return undefined
   const normalized = value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
   return normalized || undefined
-}
-
-function buildInitialBody(
-  description: string | undefined,
-  comments: YAMLCommentEntry[],
-): string {
-  const sections: string[] = []
-
-  if (description) {
-    sections.push('## Description')
-    sections.push('')
-    sections.push(description)
-    sections.push('')
-  }
-
-  if (comments.length > 0) {
-    sections.push('## Comments')
-    sections.push('')
-    for (const comment of comments) {
-      sections.push(`- ${comment.text}`)
-    }
-    sections.push('')
-  }
-
-  return sections.join('\n').trim()
 }
 
 function normalizeCommentEntries(comments: Array<string | YAMLCommentEntry> | undefined): YAMLCommentEntry[] {

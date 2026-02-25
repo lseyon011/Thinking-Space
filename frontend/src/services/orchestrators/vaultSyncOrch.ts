@@ -8,6 +8,7 @@ import {
   hasFrontmatter,
   type YAMLFrontmatter,
 } from '../lego_blocks/yamlNoteBlock'
+import { parseOrganizerBodySections } from '../lego_blocks/organizerBodyBlock'
 import {
   upsertNode,
   deleteNodeByPath,
@@ -241,6 +242,14 @@ function frontmatterToRecord(
   body: string,
 ): Omit<NodeRecord, 'id'> {
   const { metadata, metadataKeys, metadataText } = extractGenericMetadata(fm)
+  const bodySections = parseOrganizerBodySections(body)
+  const yamlComments = Array.isArray(fm.comments)
+    ? fm.comments.map(comment => ({
+      text: comment.text,
+      added_at: comment.added_at,
+      added_by: comment.added_by,
+    }))
+    : []
   return {
     uuid: fm.uuid,
     key: fm.key,
@@ -253,14 +262,9 @@ function frontmatterToRecord(
     filePath,
     projectRoot: fm.project_root,
     ticket: typeof fm.ticket === 'string' ? fm.ticket : undefined,
-    description: typeof fm.description === 'string' ? fm.description : undefined,
-    comments: Array.isArray(fm.comments)
-      ? fm.comments.map(comment => ({
-        text: comment.text,
-        added_at: comment.added_at,
-        added_by: comment.added_by,
-      }))
-      : undefined,
+    description: bodySections.description
+      ?? (typeof fm.description === 'string' ? fm.description : undefined),
+    comments: bodySections.comments.length > 0 ? bodySections.comments : (yamlComments.length > 0 ? yamlComments : undefined),
     epicCompletedAt: typeof fm.epic_completed_at === 'string' ? fm.epic_completed_at : undefined,
     taskId: typeof fm.task_id === 'string' ? fm.task_id : undefined,
     taskStatus: typeof fm.task_status === 'string' ? fm.task_status : undefined,
