@@ -30,8 +30,9 @@ class TranscriptOptions:
     heading_level: int = 2
 
 
-HEADING_LINE_RE = re.compile(r"^(\d{1,2}:)?\d{2}:\d{2}\s+.+$")
+HEADING_LINE_RE = re.compile(r"^(?:\d{1,2}:)?\d{1,2}:\d{2}\s+.+$")
 TIMESTAMP_LINE_RE = re.compile(r"^\(([^)]+)\):\s*(.*)$")
+TIMESTAMP_ONLY_LINE_RE = re.compile(r"^((?:\d{1,2}:)?\d{1,2}:\d{2})\s*$")
 INLINE_TIMESTAMP_RE = re.compile(r"^\s*(?:\(\s*[^)]+\s*\)|\d{1,2}:\d{2}:\d{2}|\d{1,2}:\d{2})\s*:?\\s*")
 TIMESTAMP_ANY_RE = re.compile(
     r"\(\s*\d+\s*h\s*\d+\s*m\s*\d+\s*s\s*\)"
@@ -112,6 +113,30 @@ def _extract_heading_lines(lines: list[str]) -> tuple[list[str], list[str]]:
     if heading_lines:
         heading_lines.reverse()
         content_lines = lines[: i + 1]
+        return content_lines, heading_lines
+
+    # Also support transcripts where heading rows are provided first,
+    # followed by timestamp-only transcript blocks.
+    j = 0
+    while j < len(lines) and not lines[j].strip():
+        j += 1
+
+    top_heading_lines: list[str] = []
+    while j < len(lines) and HEADING_LINE_RE.match(lines[j].strip()):
+        top_heading_lines.append(lines[j])
+        j += 1
+
+    if top_heading_lines:
+        while j < len(lines) and not lines[j].strip():
+            j += 1
+        remaining = lines[j:]
+        has_timestamp_blocks = any(
+            TIMESTAMP_LINE_RE.match(line.strip()) or TIMESTAMP_ONLY_LINE_RE.match(line.strip())
+            for line in remaining
+        )
+        if has_timestamp_blocks:
+            return remaining, top_heading_lines
+
     return content_lines, heading_lines
 
 
@@ -169,7 +194,8 @@ def clean_transcript(
         current_lines = []
 
     for line in content_lines:
-        match = TIMESTAMP_LINE_RE.match(line.strip())
+        stripped = line.strip()
+        match = TIMESTAMP_LINE_RE.match(stripped)
         if match:
             flush()
             ts_raw = match.group(1)
@@ -178,6 +204,13 @@ def clean_transcript(
             current_ts = ts_seconds if ts_seconds is not None else None
             if remainder:
                 current_lines.append(remainder)
+            continue
+
+        ts_only_match = TIMESTAMP_ONLY_LINE_RE.match(stripped)
+        if ts_only_match:
+            flush()
+            ts_seconds = _parse_time_to_seconds(ts_only_match.group(1))
+            current_ts = ts_seconds if ts_seconds is not None else None
             continue
 
         if current_ts is None:

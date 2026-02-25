@@ -5,8 +5,9 @@ export interface TranscriptOptions {
   heading_level: number
 }
 
-const HEADING_LINE_RE = /^(\d{1,2}:)?\d{2}:\d{2}\s+.+$/
+const HEADING_LINE_RE = /^(?:\d{1,2}:)?\d{1,2}:\d{2}\s+.+$/
 const TIMESTAMP_LINE_RE = /^\(([^)]+)\):\s*(.*)$/
+const TIMESTAMP_ONLY_LINE_RE = /^((?:\d{1,2}:)?\d{1,2}:\d{2})\s*$/
 const INLINE_TIMESTAMP_RE = /^\s*(?:\(\s*[^)]+\s*\)|\d{1,2}:\d{2}:\d{2}|\d{1,2}:\d{2})\s*:?\s*/
 const TIMESTAMP_ANY_RE =
   /\(\s*\d+\s*h\s*\d+\s*m\s*\d+\s*s\s*\)|\(\s*\d+\s*m\s*\d+\s*s\s*\)|\(\s*\d+\s*s\s*\)|\b\d{1,2}:\d{2}:\d{2}\b|\b\d{1,2}:\d{2}\b/g
@@ -70,6 +71,28 @@ function extractHeadingLines(lines: string[]): [string[], string[]] {
     headingLines.reverse()
     return [lines.slice(0, i + 1), headingLines]
   }
+
+  // Also support transcripts where a heading list is provided at the top,
+  // followed by timestamped transcript blocks.
+  let j = 0
+  while (j < lines.length && !lines[j].trim()) j++
+
+  const topHeadingLines: string[] = []
+  while (j < lines.length && HEADING_LINE_RE.test(lines[j].trim())) {
+    topHeadingLines.push(lines[j])
+    j++
+  }
+
+  if (topHeadingLines.length > 0) {
+    while (j < lines.length && !lines[j].trim()) j++
+    const remaining = lines.slice(j)
+    const hasTimestampBlocks = remaining.some(line => {
+      const trimmed = line.trim()
+      return TIMESTAMP_LINE_RE.test(trimmed) || TIMESTAMP_ONLY_LINE_RE.test(trimmed)
+    })
+    if (hasTimestampBlocks) return [remaining, topHeadingLines]
+  }
+
   return [contentLines, headingLines]
 }
 
@@ -133,7 +156,8 @@ export function cleanTranscript(
   }
 
   for (const line of contentLines) {
-    const match = line.trim().match(TIMESTAMP_LINE_RE)
+    const trimmed = line.trim()
+    const match = trimmed.match(TIMESTAMP_LINE_RE)
     if (match) {
       flush()
       const tsRaw = match[1]
@@ -141,6 +165,13 @@ export function cleanTranscript(
       const tsSeconds = parseTimeToSeconds(tsRaw)
       currentTs = tsSeconds
       if (remainder) currentLines.push(remainder)
+      continue
+    }
+
+    const tsOnlyMatch = trimmed.match(TIMESTAMP_ONLY_LINE_RE)
+    if (tsOnlyMatch) {
+      flush()
+      currentTs = parseTimeToSeconds(tsOnlyMatch[1])
       continue
     }
 
