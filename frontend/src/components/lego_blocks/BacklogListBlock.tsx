@@ -130,6 +130,7 @@ export interface BacklogListBlockProps {
   programs: NodeRecord[]
   loadEpics: (program: NodeRecord) => Promise<NodeRecord[]>
   loadChildren: (node: NodeRecord) => Promise<NodeRecord[]>
+  treeRevision?: number
   selectedNodeId: string | null
   readOnly?: boolean
   onSelectNode: (node: NodeRecord) => void
@@ -270,6 +271,7 @@ export default function BacklogListBlock({
   programs,
   loadEpics,
   loadChildren,
+  treeRevision = 0,
   selectedNodeId,
   readOnly = false,
   onSelectNode,
@@ -306,6 +308,10 @@ export default function BacklogListBlock({
     setChildrenByNode({})
     setExpandedNodes({})
   }, [programFingerprint])
+
+  useEffect(() => {
+    setChildrenByNode({})
+  }, [treeRevision])
 
   const ensureProgramLoaded = useCallback(async (program: NodeRecord) => {
     const existing = childrenByNode[program.uuid]
@@ -919,6 +925,9 @@ export default function BacklogListBlock({
     const Icon = iconForNodeType(node.type)
     const isExpanded = !!expandedNodes[node.uuid]
     const childState = childrenByNode[node.uuid]
+    if (isExpanded && !childState?.loading && !childState?.loaded) {
+      void ensureChildrenLoaded(node)
+    }
     const childCount = childState?.loaded ? childState.nodes.length : null
     const borderColorClass = depth === 0
       ? EPIC_BORDER_PALETTE[colorIndex % EPIC_BORDER_PALETTE.length]
@@ -1113,7 +1122,7 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverNodeId, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, makeDragStart, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, readOnly, renderInlineCreate, renderInlineNotesEditor, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes, toggleNode])
+  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, makeDragStart, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, readOnly, renderInlineCreate, renderInlineNotesEditor, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes, toggleNode])
 
   const renderProgramSection = useCallback((program: NodeRecord) => {
     void ensureProgramLoaded(program)

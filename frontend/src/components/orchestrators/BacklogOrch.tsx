@@ -114,6 +114,7 @@ export default function BacklogOrch() {
   const [selectedFrontmatter, setSelectedFrontmatter] = useState<YAMLFrontmatter | null>(null)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
+  const [treeRevision, setTreeRevision] = useState(0)
   const [syncing, setSyncing] = useState(false)
   const [lastSyncedAt, setLastSyncedAt] = useState<number>(() => getLastSyncTimestamp())
   const [message, setMessage] = useState<string | null>(null)
@@ -560,6 +561,7 @@ export default function BacklogOrch() {
         actor: BACKLOG_ACTOR,
       })
       applyUpdatedNode(updated)
+      setTreeRevision(prev => prev + 1)
       return updated
     } catch (err) {
       setError(errorMessage(err, 'Failed to update task state'))
@@ -678,6 +680,7 @@ export default function BacklogOrch() {
         actor: BACKLOG_ACTOR,
       })
       await loadPrograms()
+      setTreeRevision(prev => prev + 1)
       setMessage(`Moved ${sourceNode.title} under ${targetNode.title}`)
     } catch (err) {
       setError(errorMessage(err, 'Failed to move node'))
@@ -812,6 +815,7 @@ export default function BacklogOrch() {
             })
             return nodes
           }}
+          treeRevision={treeRevision}
           selectedNodeId={selectedNode?.uuid ?? null}
           onSelectNode={(node) => setSelectedNode(node)}
           onCreateChild={createChildNode}
