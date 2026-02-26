@@ -57,6 +57,7 @@ export interface NodeRecord {
   status: NodeStatus
   priority?: NodePriority
   progress?: number
+  sortOrder?: number
   createdAt: string        // ISO string
   updatedAt: string        // ISO string
   aiSummary?: string
@@ -116,7 +117,8 @@ export async function upsertNode(
  */
 export async function getChildren(parentKey: string): Promise<NodeRecord[]> {
   const db = getDb()
-  return db.nodes.where('parent').equals(parentKey).sortBy('title')
+  const children = await db.nodes.where('parent').equals(parentKey).toArray()
+  return children.sort(compareNodeDisplayOrder)
 }
 
 /**
@@ -149,7 +151,8 @@ export async function getNodeByPath(filePath: string): Promise<NodeRecord | unde
 export async function getRootNodes(): Promise<NodeRecord[]> {
   const db = getDb()
   // Nodes without a parent field — filter manually since Dexie can't index undefined
-  return (await db.nodes.toArray()).filter(n => !n.parent)
+  const roots = (await db.nodes.toArray()).filter(n => !n.parent)
+  return roots.sort(compareNodeDisplayOrder)
 }
 
 /**
@@ -327,6 +330,19 @@ function normalizeRecordForStorage(record: Omit<NodeRecord, 'id'>): Omit<NodeRec
     metadataKeys: (record.metadataKeys ?? extractMetadataKeys(metadata)).filter(Boolean),
     metadataText: record.metadataText ?? buildMetadataSearchText(metadata),
   }
+}
+
+function compareNodeDisplayOrder(a: NodeRecord, b: NodeRecord): number {
+  const aOrder = typeof a.sortOrder === 'number' && Number.isFinite(a.sortOrder)
+    ? a.sortOrder
+    : Number.POSITIVE_INFINITY
+  const bOrder = typeof b.sortOrder === 'number' && Number.isFinite(b.sortOrder)
+    ? b.sortOrder
+    : Number.POSITIVE_INFINITY
+  if (aOrder !== bOrder) return aOrder - bOrder
+  const byTitle = a.title.localeCompare(b.title)
+  if (byTitle !== 0) return byTitle
+  return a.key.localeCompare(b.key)
 }
 
 function extractMetadataKeys(metadata: Record<string, unknown> | undefined): string[] {

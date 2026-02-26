@@ -407,10 +407,16 @@ async function executeCapability<Name extends CapabilityName>(
       const existing = await getYamlNode(payload.uuid)
       if (!existing) throw new Error(`Node not found: ${payload.uuid}`)
       const normalizedUpdates = normalizeNodeUpdatesForStatusPolicy(existing, payload.updates)
+      const manualEpicStatusOverrideKey = (
+        existing.type === 'epic' && normalizedUpdates.status !== undefined
+      )
+        ? existing.key
+        : undefined
       const node = await updateYamlNode(payload.uuid, normalizedUpdates, fs)
       await applyEpicStatusPolicyForAffectedNodes({
         changedNodes: [node],
         changedParentKeys: [existing.parent, node.parent],
+        skipEpicKeys: manualEpicStatusOverrideKey ? [manualEpicStatusOverrideKey] : undefined,
         fs,
       })
       return { node } as CapabilityOutputMap[Name]
@@ -899,12 +905,22 @@ function normalizeNodeUpdatesForStatusPolicy(
     extraFields: updates.extraFields ? { ...updates.extraFields } : undefined,
   }
 
+  const extraFields = normalized.extraFields ? { ...normalized.extraFields } : {}
   if (existing.type === 'epic' && normalized.status !== undefined) {
-    // Epic status is derived from descendant task states; ignore manual edits.
-    delete normalized.status
+    if (normalized.status === 'completed') {
+      const explicitEpicCompletedAt = normalizeEpicCompletedDate(
+        typeof extraFields.epic_completed_at === 'string'
+          ? extraFields.epic_completed_at
+          : undefined,
+      )
+      if (!explicitEpicCompletedAt && !normalizeEpicCompletedDate(existing.epicCompletedAt)) {
+        extraFields.epic_completed_at = currentDateStamp()
+      }
+    } else {
+      extraFields.epic_completed_at = null
+    }
   }
 
-  const extraFields = normalized.extraFields ? { ...normalized.extraFields } : {}
   const nextRecordKind = typeof extraFields.record_kind === 'string'
     ? extraFields.record_kind.trim()
     : existing.recordKind
@@ -934,6 +950,7 @@ function normalizeNodeUpdatesForStatusPolicy(
 async function applyEpicStatusPolicyForAffectedNodes(params: {
   changedNodes: NodeRecord[]
   changedParentKeys?: Array<string | null | undefined>
+  skipEpicKeys?: string[]
   fs?: VaultFS
 }): Promise<void> {
   const allNodes = await listAllYamlNodes()
@@ -972,7 +989,14 @@ async function applyEpicStatusPolicyForAffectedNodes(params: {
 
   if (candidateEpicKeys.size === 0) return
 
+  const skipEpicKeys = new Set(
+    (params.skipEpicKeys ?? [])
+      .map(key => key.trim())
+      .filter(Boolean),
+  )
+
   for (const epicKey of candidateEpicKeys) {
+    if (skipEpicKeys.has(epicKey)) continue
     const epic = nodesByKey.get(epicKey)
     if (!epic || epic.type !== 'epic') continue
     const taskStatuses = collectDescendantTaskStatuses(epic.key, childrenByParent)

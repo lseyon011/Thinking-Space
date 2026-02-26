@@ -123,6 +123,7 @@ export interface YAMLFrontmatter {
   description?: string
   comments?: YAMLCommentEntry[]
   epic_completed_at?: string
+  sort_order?: number
 
   // Agent orchestration metadata (optional)
   task_id?: string
@@ -350,6 +351,7 @@ function normalizeFrontmatter(raw: Record<string, unknown>): YAMLFrontmatter {
     description: raw.description != null ? String(raw.description) : undefined,
     comments: normalizeComments(raw.comments),
     epic_completed_at: raw.epic_completed_at != null ? String(raw.epic_completed_at) : undefined,
+    sort_order: normalizeSortOrder(raw.sort_order),
     task_id: raw.task_id != null ? String(raw.task_id) : undefined,
     task_status: raw.task_status != null ? String(raw.task_status) : undefined,
     depends_on: normalizeStringArray(raw.depends_on),
@@ -430,6 +432,15 @@ function normalizeStringArray(raw: unknown): string[] | undefined {
     .map(value => String(value).trim())
     .filter(Boolean)
   return values.length > 0 ? values : undefined
+}
+
+function normalizeSortOrder(raw: unknown): number | undefined {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+  if (typeof raw === 'string') {
+    const parsed = Number(raw.trim())
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return undefined
 }
 
 function normalizeStateHistory(raw: unknown): YAMLStateHistoryEntry[] | undefined {

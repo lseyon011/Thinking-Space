@@ -88,6 +88,22 @@ function sortTimelineEpics(nodes: NodeRecord[]): NodeRecord[] {
   })
 }
 
+function displaySortOrder(node: Pick<NodeRecord, 'sortOrder'>): number {
+  return typeof node.sortOrder === 'number' && Number.isFinite(node.sortOrder)
+    ? node.sortOrder
+    : Number.POSITIVE_INFINITY
+}
+
+function sortBacklogNodes(nodes: NodeRecord[]): NodeRecord[] {
+  return [...nodes].sort((a, b) => {
+    const byOrder = displaySortOrder(a) - displaySortOrder(b)
+    if (byOrder !== 0) return byOrder
+    const byTitle = a.title.localeCompare(b.title)
+    if (byTitle !== 0) return byTitle
+    return a.key.localeCompare(b.key)
+  })
+}
+
 function normalizePath(value: string): string {
   return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
 }
@@ -106,6 +122,13 @@ function normalizeStoredSegments(value: unknown): string[] {
       .filter(Boolean)
   }
   return []
+}
+
+function readStoredProjectRoot(): string {
+  const saved = normalizeStoredSegments(
+    getJsonStorageItem<unknown>(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, []),
+  )
+  return normalizePath(saved.join('/'))
 }
 
 function humanizeKey(value: string): string {
@@ -165,12 +188,11 @@ export default function BacklogOrch() {
     () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
   )
   const [initialProjectLoadResolved, setInitialProjectLoadResolved] = useState(false)
-  const [activeProjectRoot, setActiveProjectRoot] = useState<string>(() => {
-    const saved = normalizeStoredSegments(
-      getJsonStorageItem<unknown>(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, []),
-    )
-    return normalizePath(saved.join('/'))
-  })
+  const [initialStoredProjectRoot] = useState(() => readStoredProjectRoot())
+  const activeProjectRoot = useMemo(
+    () => normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? ''),
+    [searchParams],
+  )
 
   const [projectModalOpen, setProjectModalOpen] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
@@ -200,7 +222,7 @@ export default function BacklogOrch() {
         input: { typeFilter: 'program' },
         actor: BACKLOG_ACTOR,
       })
-      setPrograms(roots.sort((a, b) => a.title.localeCompare(b.title)))
+      setPrograms(sortBacklogNodes(roots))
       return true
     } catch (err) {
       setError(errorMessage(err, 'Failed to load programs'))
@@ -220,14 +242,23 @@ export default function BacklogOrch() {
     return () => { cancelled = true }
   }, [loadPrograms])
 
+  const selectProject = useCallback((root: string) => {
+    const normalized = normalizePath(root)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (normalized) next.set(PROJECT_ROOT_QUERY_PARAM, normalized)
+      else next.delete(PROJECT_ROOT_QUERY_PARAM)
+      return next
+    }, { replace: true })
+    setJsonStorageItem(
+      STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot,
+      normalized ? normalized.split('/') : [],
+    )
+  }, [setSearchParams])
+
   useEffect(() => {
     if (urlHydrated) return
     const selectedNodeUuid = searchParams.get(SELECTED_NODE_QUERY_PARAM)?.trim() ?? ''
-    const urlRoot = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
-    if (urlRoot && urlRoot !== activeProjectRoot) {
-      setActiveProjectRoot(urlRoot)
-      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, urlRoot.split('/'))
-    }
     let cancelled = false
     void (async () => {
       if (selectedNodeUuid) {
@@ -248,7 +279,7 @@ export default function BacklogOrch() {
       if (!cancelled) setUrlHydrated(true)
     })()
     return () => { cancelled = true }
-  }, [activeProjectRoot, searchParams, urlHydrated])
+  }, [searchParams, urlHydrated])
 
   useEffect(() => {
     if (!urlHydrated) return
@@ -263,13 +294,10 @@ export default function BacklogOrch() {
 
   useEffect(() => {
     if (!urlHydrated) return
-    const currentProjectRoot = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
-    if (currentProjectRoot === activeProjectRoot) return
-    const next = new URLSearchParams(searchParams)
-    if (activeProjectRoot) next.set(PROJECT_ROOT_QUERY_PARAM, activeProjectRoot)
-    else next.delete(PROJECT_ROOT_QUERY_PARAM)
-    setSearchParams(next, { replace: true })
-  }, [activeProjectRoot, searchParams, setSearchParams, urlHydrated])
+    if (activeProjectRoot) return
+    if (!initialStoredProjectRoot) return
+    selectProject(initialStoredProjectRoot)
+  }, [activeProjectRoot, initialStoredProjectRoot, selectProject, urlHydrated])
 
   const refreshExecutionProgress = useCallback(async () => {
     setActiveExecutionTasksLoading(true)
@@ -398,21 +426,17 @@ export default function BacklogOrch() {
     const exists = availableProjects.some(project => project.root === activeProjectRoot)
     if (exists) return
 
-    const fallback = availableProjects[0].root
-    setActiveProjectRoot(fallback)
-    setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, fallback.split('/'))
-  }, [activeProjectRoot, availableProjects, initialProjectLoadResolved])
+    const fallbackFromStored = availableProjects.find(
+      project => project.root === initialStoredProjectRoot,
+    )?.root
+    const fallback = fallbackFromStored ?? availableProjects[0].root
+    selectProject(fallback)
+  }, [activeProjectRoot, availableProjects, initialProjectLoadResolved, initialStoredProjectRoot, selectProject])
 
   const visiblePrograms = useMemo(() => {
     if (!activeProjectRoot) return programs
     return programs.filter(program => normalizePath(program.projectRoot ?? '') === activeProjectRoot)
   }, [activeProjectRoot, programs])
-
-  const selectProject = useCallback((root: string) => {
-    const normalized = normalizePath(root)
-    setActiveProjectRoot(normalized)
-    setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot, normalized.split('/'))
-  }, [])
 
   const handleDestinationChange = useCallback((change: CascadingFolderPickerChange) => {
     setDestinationSegments(change.baseSegments)
@@ -508,7 +532,7 @@ export default function BacklogOrch() {
         actor: BACKLOG_ACTOR,
       })
       if (!parent) {
-        setPrograms(prev => [...prev, created].sort((a, b) => a.title.localeCompare(b.title)))
+        setPrograms(prev => sortBacklogNodes([...prev, created]))
       }
       setMessage(`Created ${defaultNodeKindLabel(created.type)}: ${created.title}`)
       return created
@@ -572,7 +596,7 @@ export default function BacklogOrch() {
         actor: BACKLOG_ACTOR,
       })
       if (updated.type === 'program') {
-        setPrograms(prev => prev.map(p => p.uuid === updated.uuid ? updated : p).sort((a, b) => a.title.localeCompare(b.title)))
+        setPrograms(prev => sortBacklogNodes(prev.map(p => p.uuid === updated.uuid ? updated : p)))
       }
       setSelectedNode(updated)
       setMessage(`Renamed to: ${updated.title}`)
@@ -588,7 +612,7 @@ export default function BacklogOrch() {
 
   const applyUpdatedNode = useCallback((updated: NodeRecord) => {
     if (updated.type === 'program') {
-      setPrograms(prev => prev.map(p => p.uuid === updated.uuid ? updated : p).sort((a, b) => a.title.localeCompare(b.title)))
+      setPrograms(prev => sortBacklogNodes(prev.map(p => p.uuid === updated.uuid ? updated : p)))
     }
     setSelectedNode(prev => (prev?.uuid === updated.uuid ? updated : prev))
   }, [])
@@ -812,6 +836,54 @@ export default function BacklogOrch() {
     }
   }, [loadPrograms, refreshEpicTimeline, refreshExecutionProgress])
 
+  const reorderSiblingRows = useCallback(async (params: {
+    parentKey: string | null
+    orderedNodes: NodeRecord[]
+  }): Promise<NodeRecord[]> => {
+    setWorking(true)
+    setCurrentOperation('Reordering rows')
+    setError(null)
+
+    const updatedById = new Map<string, NodeRecord>()
+
+    try {
+      for (let index = 0; index < params.orderedNodes.length; index += 1) {
+        const node = params.orderedNodes[index]
+        const nextSortOrder = index + 1
+        if (node.sortOrder === nextSortOrder) continue
+
+        const { node: updated } = await invokeCapabilityOrThrow({
+          capability: 'organizer.node.update',
+          input: {
+            uuid: node.uuid,
+            updates: {
+              extraFields: {
+                sort_order: nextSortOrder,
+              },
+            },
+          },
+          actor: BACKLOG_ACTOR,
+        })
+        updatedById.set(updated.uuid, updated)
+      }
+
+      if (updatedById.size > 0) {
+        setPrograms(prev => sortBacklogNodes(
+          prev.map(node => updatedById.get(node.uuid) ?? node),
+        ))
+        setSelectedNode(prev => (prev ? (updatedById.get(prev.uuid) ?? prev) : prev))
+      }
+
+      return params.orderedNodes.map(node => updatedById.get(node.uuid) ?? node)
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to reorder rows'))
+      throw err
+    } finally {
+      setWorking(false)
+      setCurrentOperation(null)
+    }
+  }, [])
+
   const exportToExcalidraw = useCallback(async () => {
     setWorking(true)
     setCurrentOperation('Exporting hierarchy to Excalidraw')
@@ -1025,6 +1097,7 @@ export default function BacklogOrch() {
             onSelectNode={(node) => setSelectedNode(node)}
             onCreateChild={createChildNode}
             onDropNodeToNode={dropNodeToNode}
+            onReorderSiblings={reorderSiblingRows}
             onUpdateNodeStatus={updateNodeStatusFor}
             onUpdateTaskStatus={updateTaskStatusFor}
             onUpdateNodeNotes={updateNodeNotesFor}

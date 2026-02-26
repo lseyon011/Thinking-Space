@@ -151,6 +151,7 @@ export default function NodeDetailPanelBlock({
   const [activityTab, setActivityTab] = useState<'all' | 'comments' | 'history' | 'worklog'>('comments')
   const [descriptionEditMode, setDescriptionEditMode] = useState(false)
   const notesAutoSaveSignatureRef = useRef<string | null>(null)
+  const lastNodeUuidRef = useRef<string | null>(null)
 
   useEffect(() => {
     setTitleDraft(node.title)
@@ -172,6 +173,8 @@ export default function NodeDetailPanelBlock({
   }, [frontmatter?.epic_completed_at, node.epicCompletedAt])
 
   useEffect(() => {
+    const nodeChanged = lastNodeUuidRef.current !== node.uuid
+    lastNodeUuidRef.current = node.uuid
     setDescriptionDraft(sourceDescription)
     setCommentsDraft(sourceComments)
     setNewCommentDraft('')
@@ -180,7 +183,7 @@ export default function NodeDetailPanelBlock({
     setEpicCompletionDateDraft(sourceEpicCompletionDate)
     setEpicCompletionSaving(false)
     setActivityTab('comments')
-    setDescriptionEditMode(false)
+    if (nodeChanged) setDescriptionEditMode(false)
     notesAutoSaveSignatureRef.current = null
   }, [node.uuid, sourceComments, sourceDescription, sourceEpicCompletionDate])
 
@@ -216,7 +219,7 @@ export default function NodeDetailPanelBlock({
 
   const Icon = iconForNodeType(node.type)
   const taskLikeNode = node.type === 'task' || node.recordKind === 'task' || !!node.taskStatus
-  const statusEditable = node.type !== 'epic' && !taskLikeNode
+  const statusEditable = !taskLikeNode
   const currentTaskStatus = useMemo(() => (
     normalizeTaskStatus(node.taskStatus) ?? taskStatusFromNodeStatus(node.status)
   ), [node.status, node.taskStatus])
@@ -484,7 +487,7 @@ export default function NodeDetailPanelBlock({
                   disabled={busy}
                 />
                 <p className="text-[10px] text-muted-foreground">
-                  {epicCompletionSaving ? 'Saving...' : 'Auto-set on completion. Editable for backfill.'}
+                  {epicCompletionSaving ? 'Saving...' : 'Auto-set on completion. Cleared when marked incomplete.'}
                 </p>
               </div>
             ) : (

@@ -104,6 +104,8 @@ const EPIC_ICON_COLOR_BY_BORDER: Record<string, string> = {
   'border-l-lime-500': 'text-lime-600',
 }
 
+const NEW_ROW_HIGHLIGHT_MS = 2200
+
 function StatusBadge({ status }: { status: NodeStatus }) {
   return (
     <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium', STATUS_COLORS[status])}>
@@ -135,6 +137,7 @@ interface ChildState {
 }
 
 const ROOT_INPUT_KEY = '__root__'
+type DropEdge = 'before' | 'after'
 
 export interface BacklogListBlockProps {
   programs: NodeRecord[]
@@ -154,6 +157,7 @@ export interface BacklogListBlockProps {
     },
   ) => Promise<NodeRecord>
   onDropNodeToNode?: (sourceUuid: string, target: NodeRecord) => Promise<void>
+  onReorderSiblings?: (params: { parentKey: string | null; orderedNodes: NodeRecord[] }) => Promise<NodeRecord[] | void>
   onUpdateNodeStatus?: (node: NodeRecord, status: NodeStatus) => Promise<NodeRecord | void>
   onUpdateTaskStatus?: (node: NodeRecord, taskStatus: TaskStatusOption) => Promise<NodeRecord | void>
   onUpdateNodeNotes?: (node: NodeRecord, description: string, comments: YAMLCommentEntry[]) => Promise<NodeRecord | void>
@@ -285,6 +289,41 @@ function notesSignature(description: string, comments: YAMLCommentEntry[]): stri
   })
 }
 
+function displaySortOrder(node: Pick<NodeRecord, 'sortOrder'>): number {
+  return typeof node.sortOrder === 'number' && Number.isFinite(node.sortOrder)
+    ? node.sortOrder
+    : Number.POSITIVE_INFINITY
+}
+
+function compareNodeDisplayOrder(a: NodeRecord, b: NodeRecord): number {
+  const byOrder = displaySortOrder(a) - displaySortOrder(b)
+  if (byOrder !== 0) return byOrder
+  const byTitle = a.title.localeCompare(b.title)
+  if (byTitle !== 0) return byTitle
+  return a.key.localeCompare(b.key)
+}
+
+function sortNodesForDisplay(nodes: NodeRecord[]): NodeRecord[] {
+  return [...nodes].sort(compareNodeDisplayOrder)
+}
+
+function reorderNodesWithEdge(
+  nodes: NodeRecord[],
+  sourceId: string,
+  targetId: string,
+  edge: DropEdge,
+): NodeRecord[] | null {
+  const sourceNode = nodes.find(node => node.uuid === sourceId)
+  if (!sourceNode) return null
+  const withoutSource = nodes.filter(node => node.uuid !== sourceId)
+  const targetIndex = withoutSource.findIndex(node => node.uuid === targetId)
+  if (targetIndex < 0) return null
+
+  const insertAt = edge === 'after' ? targetIndex + 1 : targetIndex
+  withoutSource.splice(insertAt, 0, sourceNode)
+  return withoutSource
+}
+
 export default function BacklogListBlock({
   programs,
   loadEpics,
@@ -295,6 +334,7 @@ export default function BacklogListBlock({
   onSelectNode,
   onCreateChild,
   onDropNodeToNode,
+  onReorderSiblings,
   onUpdateNodeStatus,
   onUpdateTaskStatus,
   onUpdateNodeNotes,
@@ -308,9 +348,11 @@ export default function BacklogListBlock({
   const [busyCreate, setBusyCreate] = useState<Record<string, boolean>>({})
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
   const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null)
+  const [dragOverEdge, setDragOverEdge] = useState<DropEdge | null>(null)
   const [groupingInfoOpenByNode, setGroupingInfoOpenByNode] = useState<Record<string, boolean>>({})
   const [copiedRowNodeId, setCopiedRowNodeId] = useState<string | null>(null)
   const [statusBusyByNode, setStatusBusyByNode] = useState<Record<string, boolean>>({})
+  const [newlyCreatedNodeIds, setNewlyCreatedNodeIds] = useState<Record<string, boolean>>({})
   const [inlineNotesNode, setInlineNotesNode] = useState<NodeRecord | null>(null)
   const [inlineNotesDescriptionDraft, setInlineNotesDescriptionDraft] = useState('')
   const [inlineNotesCommentsDraft, setInlineNotesCommentsDraft] = useState<YAMLCommentEntry[]>([])
@@ -319,6 +361,7 @@ export default function BacklogListBlock({
   const [inlineNotesBaselineSignature, setInlineNotesBaselineSignature] = useState<string | null>(null)
   const inlineNotesSessionRef = useRef(0)
   const inlineNotesAutoSaveSignatureRef = useRef<string | null>(null)
+  const newRowHighlightTimeoutByNodeRef = useRef<Record<string, number>>({})
   const [localError, setLocalError] = useState<string | null>(null)
   const programFingerprint = programs.map(program => `${program.uuid}:${program.updatedAt}`).join('|')
 
@@ -332,6 +375,32 @@ export default function BacklogListBlock({
   useEffect(() => {
     setChildrenByNode({})
   }, [treeRevision])
+
+  useEffect(() => () => {
+    for (const timeoutId of Object.values(newRowHighlightTimeoutByNodeRef.current)) {
+      window.clearTimeout(timeoutId)
+    }
+    newRowHighlightTimeoutByNodeRef.current = {}
+  }, [])
+
+  const highlightNewlyCreatedRow = useCallback((nodeUuid: string) => {
+    const normalizedNodeUuid = nodeUuid.trim()
+    if (!normalizedNodeUuid) return
+
+    const previousTimeoutId = newRowHighlightTimeoutByNodeRef.current[normalizedNodeUuid]
+    if (previousTimeoutId) window.clearTimeout(previousTimeoutId)
+
+    setNewlyCreatedNodeIds(prev => ({ ...prev, [normalizedNodeUuid]: true }))
+    newRowHighlightTimeoutByNodeRef.current[normalizedNodeUuid] = window.setTimeout(() => {
+      setNewlyCreatedNodeIds(prev => {
+        if (!prev[normalizedNodeUuid]) return prev
+        const next = { ...prev }
+        delete next[normalizedNodeUuid]
+        return next
+      })
+      delete newRowHighlightTimeoutByNodeRef.current[normalizedNodeUuid]
+    }, NEW_ROW_HIGHLIGHT_MS)
+  }, [])
 
   const ensureProgramLoaded = useCallback(async (program: NodeRecord) => {
     const existing = childrenByNode[program.uuid]
@@ -349,7 +418,7 @@ export default function BacklogListBlock({
         [program.uuid]: {
           loading: false,
           loaded: true,
-          nodes: epics.sort((a, b) => a.title.localeCompare(b.title)),
+          nodes: sortNodesForDisplay(epics),
           error: null,
         },
       }))
@@ -382,7 +451,7 @@ export default function BacklogListBlock({
         [node.uuid]: {
           loading: false,
           loaded: true,
-          nodes: children.sort((a, b) => a.title.localeCompare(b.title)),
+          nodes: sortNodesForDisplay(children),
           error: null,
         },
       }))
@@ -446,17 +515,18 @@ export default function BacklogListBlock({
             ...prev,
             [parent.uuid]: {
               ...existing,
-              nodes: [...existing.nodes, created].sort((a, b) => a.title.localeCompare(b.title)),
+              nodes: sortNodesForDisplay([...existing.nodes, created]),
             },
           }
         })
       }
+      highlightNewlyCreatedRow(created.uuid)
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to create node')
     } finally {
       setBusyCreate(prev => ({ ...prev, [draftKey]: false }))
     }
-  }, [commentDrafts, descriptionDrafts, draftTypeByKey, drafts, onCreateChild])
+  }, [commentDrafts, descriptionDrafts, draftTypeByKey, drafts, highlightNewlyCreatedRow, onCreateChild])
 
   const makeDragStart = useCallback((node: NodeRecord) => (event: React.DragEvent) => {
     setDraggingNodeId(node.uuid)
@@ -469,6 +539,7 @@ export default function BacklogListBlock({
   const handleDragEnd = useCallback(() => {
     setDraggingNodeId(null)
     setDragOverNodeId(null)
+    setDragOverEdge(null)
   }, [])
 
   const handleDragOver = useCallback((node: NodeRecord, event: React.DragEvent) => {
@@ -476,13 +547,19 @@ export default function BacklogListBlock({
     event.stopPropagation()
     if (draggingNodeId || hasNodeDragType(event)) {
       event.dataTransfer.dropEffect = 'move'
+      const rowRect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+      const pointerOffsetY = event.clientY - rowRect.top
+      const edge: DropEdge = pointerOffsetY < rowRect.height / 2 ? 'before' : 'after'
       setDragOverNodeId(node.uuid)
+      setDragOverEdge(edge)
     }
   }, [draggingNodeId])
 
   const handleDragLeave = useCallback((nodeId: string) => {
-    setDragOverNodeId(prev => prev === nodeId ? null : prev)
-  }, [])
+    if (dragOverNodeId !== nodeId) return
+    setDragOverNodeId(null)
+    setDragOverEdge(null)
+  }, [dragOverNodeId])
 
   const patchMovedNode = useCallback((sourceUuid: string, targetNode: NodeRecord) => {
     let shouldExpandTarget = false
@@ -517,7 +594,7 @@ export default function BacklogListBlock({
             shouldExpandTarget = true
             next[targetNode.uuid] = {
               ...targetState,
-              nodes: [
+              nodes: sortNodesForDisplay([
                 ...targetState.nodes,
                 {
                   ...movedSource,
@@ -526,7 +603,7 @@ export default function BacklogListBlock({
                   parentType: targetNode.type,
                   updatedAt: new Date().toISOString(),
                 },
-              ].sort((a, b) => a.title.localeCompare(b.title)),
+              ]),
             }
           }
         }
@@ -540,18 +617,93 @@ export default function BacklogListBlock({
     }
   }, [])
 
+  const findSiblingContext = useCallback((nodeId: string): {
+    parentUuid: string | null
+    parentKey: string | null
+    nodes: NodeRecord[]
+  } | null => {
+    if (programs.some(program => program.uuid === nodeId)) {
+      return { parentUuid: null, parentKey: null, nodes: programs }
+    }
+
+    for (const [parentUuid, state] of Object.entries(childrenByNode)) {
+      if (!state.loaded) continue
+      if (state.nodes.some(node => node.uuid === nodeId)) {
+        const parentNode = programs.find(program => program.uuid === parentUuid)
+          ?? Object.values(childrenByNode)
+            .flatMap(entry => entry.nodes)
+            .find(node => node.uuid === parentUuid)
+        return {
+          parentUuid,
+          parentKey: parentNode?.key ?? null,
+          nodes: state.nodes,
+        }
+      }
+    }
+    return null
+  }, [childrenByNode, programs])
+
+  const patchSiblingOrderForParent = useCallback((parentUuid: string | null, orderedNodes: NodeRecord[]) => {
+    if (!parentUuid) return
+    setChildrenByNode(prev => {
+      const state = prev[parentUuid]
+      if (!state?.loaded) return prev
+      return {
+        ...prev,
+        [parentUuid]: {
+          ...state,
+          nodes: orderedNodes,
+        },
+      }
+    })
+  }, [])
+
   const handleDrop = useCallback(async (target: NodeRecord, event: React.DragEvent) => {
     event.preventDefault()
     event.stopPropagation()
     setDragOverNodeId(null)
+    const edge = dragOverEdge ?? 'after'
+    setDragOverEdge(null)
 
     const sourceId = readDroppedNodeId(event) ?? draggingNodeId
-    if (!sourceId || !onDropNodeToNode) return
+    if (!sourceId) return
     if (sourceId === target.uuid) {
       setLocalError('Cannot drop a node onto itself.')
       return
     }
 
+    const sourceContext = findSiblingContext(sourceId)
+    const targetContext = findSiblingContext(target.uuid)
+
+    if (
+      sourceContext &&
+      targetContext &&
+      sourceContext.parentUuid === targetContext.parentUuid &&
+      onReorderSiblings
+    ) {
+      const reordered = reorderNodesWithEdge(targetContext.nodes, sourceId, target.uuid, edge)
+      if (!reordered) return
+
+      const beforeOrder = targetContext.nodes.map(node => node.uuid).join('|')
+      const nextOrder = reordered.map(node => node.uuid).join('|')
+      if (beforeOrder === nextOrder) return
+
+      setLocalError(null)
+      try {
+        const persisted = await onReorderSiblings({
+          parentKey: targetContext.parentKey,
+          orderedNodes: reordered,
+        })
+        const persistedById = new Map((persisted ?? []).map(node => [node.uuid, node]))
+        const nextNodes = reordered.map(node => persistedById.get(node.uuid) ?? node)
+        patchSiblingOrderForParent(targetContext.parentUuid, nextNodes)
+      } catch (err) {
+        setLocalError(err instanceof Error ? err.message : 'Failed to reorder nodes')
+      }
+      return
+    }
+
+    if (!onDropNodeToNode) return
     setLocalError(null)
     try {
       await onDropNodeToNode(sourceId, target)
@@ -559,7 +711,15 @@ export default function BacklogListBlock({
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to move node')
     }
-  }, [draggingNodeId, onDropNodeToNode, patchMovedNode])
+  }, [
+    dragOverEdge,
+    draggingNodeId,
+    findSiblingContext,
+    onDropNodeToNode,
+    onReorderSiblings,
+    patchMovedNode,
+    patchSiblingOrderForParent,
+  ])
 
   useEffect(() => {
     if (!copiedRowNodeId) return
@@ -990,6 +1150,7 @@ export default function BacklogListBlock({
     const effectiveEpicContext = node.type === 'epic' ? node : epicContext
     const canShowGroupingInfo = isTaskNode(node) && !!effectiveEpicContext && !!parentNode
     const groupingInfoOpen = !!groupingInfoOpenByNode[node.uuid]
+    const newlyCreated = !!newlyCreatedNodeIds[node.uuid]
 
     return (
       <div key={node.uuid} className="border-b border-border/70 last:border-b-0">
@@ -1006,6 +1167,9 @@ export default function BacklogListBlock({
             borderColorClass,
             selectedNodeId === node.uuid && 'bg-accent/40',
             dragOverNodeId === node.uuid && 'ring-2 ring-primary/40 bg-primary/5',
+            dragOverNodeId === node.uuid && dragOverEdge === 'before' && 'shadow-[inset_0_2px_0_rgba(59,130,246,0.7)]',
+            dragOverNodeId === node.uuid && dragOverEdge === 'after' && 'shadow-[inset_0_-2px_0_rgba(59,130,246,0.7)]',
+            newlyCreated && 'bg-emerald-100/80 ring-2 ring-emerald-400/70',
           )}
           style={{ paddingLeft: `${12 + (depth * 16)}px` }}
         >
@@ -1117,7 +1281,7 @@ export default function BacklogListBlock({
               </div>
             )
           ) : (
-            node.type === 'epic' || readOnly || !onUpdateNodeStatus ? (
+            readOnly || !onUpdateNodeStatus ? (
               <StatusBadge status={node.status} />
             ) : (
               <div
@@ -1193,12 +1357,13 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, makeDragStart, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, readOnly, renderInlineCreate, renderInlineNotesEditor, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes, toggleNode])
+  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, readOnly, renderInlineCreate, renderInlineNotesEditor, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes, toggleNode])
 
   const renderProgramSection = useCallback((program: NodeRecord) => {
     void ensureProgramLoaded(program)
     const childState = childrenByNode[program.uuid]
     const programIconColorClass = iconColorForNodeType(program.type)
+    const newlyCreated = !!newlyCreatedNodeIds[program.uuid]
 
     return (
       <div key={program.uuid} className="overflow-hidden rounded-xl border border-border/70 bg-muted/25">
@@ -1213,6 +1378,9 @@ export default function BacklogListBlock({
             'flex cursor-pointer items-center gap-2 border-b border-border/70 bg-card px-3 py-2 transition-colors hover:bg-zinc-50',
             selectedNodeId === program.uuid && 'bg-accent/40',
             dragOverNodeId === program.uuid && 'ring-2 ring-primary/40 bg-primary/5',
+            dragOverNodeId === program.uuid && dragOverEdge === 'before' && 'shadow-[inset_0_2px_0_rgba(59,130,246,0.7)]',
+            dragOverNodeId === program.uuid && dragOverEdge === 'after' && 'shadow-[inset_0_-2px_0_rgba(59,130,246,0.7)]',
+            newlyCreated && 'bg-emerald-100/80 ring-2 ring-emerald-400/70',
           )}
           onClick={() => onSelectNode(program)}
         >
@@ -1313,7 +1481,7 @@ export default function BacklogListBlock({
         </div>
       </div>
     )
-  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, makeDragStart, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, readOnly, renderInlineCreate, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes])
+  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, readOnly, renderInlineCreate, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes])
 
   return (
     <div className="flex flex-col space-y-3">
