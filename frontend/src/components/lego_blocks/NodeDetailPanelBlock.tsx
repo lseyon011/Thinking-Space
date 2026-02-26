@@ -134,6 +134,7 @@ export interface NodeDetailPanelBlockProps {
   onUpdatePriority: (priority: string) => Promise<void>
   onUpdateTags: (tags: string[]) => Promise<void>
   presetTags?: string[]
+  projectTagColors?: Record<string, string>
   onUpdateNotes: (description: string, comments: YAMLCommentEntry[]) => Promise<void>
   onUpdateEpicCompletedAt?: (completionDate: string | null) => Promise<void>
   onOpenFile: () => void
@@ -150,6 +151,7 @@ export default function NodeDetailPanelBlock({
   onUpdatePriority,
   onUpdateTags,
   presetTags = [],
+  projectTagColors = {},
   onUpdateNotes,
   onUpdateEpicCompletedAt,
   onOpenFile,
@@ -605,6 +607,7 @@ export default function NodeDetailPanelBlock({
             <TagListEditorBlock
               heading="User Tags"
               tags={sourceUserTags}
+              tagColors={projectTagColors}
               emptyMessage="No user tags yet."
               draftValue={userTagDraft}
               onDraftValueChange={setUserTagDraft}
@@ -620,6 +623,7 @@ export default function NodeDetailPanelBlock({
               heading="Project Tags"
               description="Project-scoped presets"
               tags={sourcePresetTags}
+              tagColors={projectTagColors}
               selectedTags={sourceAllTags}
               emptyMessage="No preset tags yet for this project."
               onToggleTag={(tag) => { void togglePresetTagOnNode(tag) }}

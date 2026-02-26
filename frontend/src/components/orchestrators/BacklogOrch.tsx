@@ -35,9 +35,11 @@ import {
   setJsonStorageItem,
 } from '@/services/orchestrators/storageOrch'
 import {
+  normalizeHexColorBlock,
   normalizeTagBlock,
   normalizeTagListBlock,
   splitTagInputBlock,
+  tagLookupKeyBlock,
 } from '@/services/lego_blocks/tagBlock'
 
 interface ProjectEntry {
@@ -45,6 +47,7 @@ interface ProjectEntry {
   root: string
 }
 type ProjectPresetTagsByRoot = Record<string, string[]>
+type ProjectTagColorsByRoot = Record<string, Record<string, string>>
 
 const BACKLOG_ACTOR: CapabilityActor = {
   kind: 'human',
@@ -200,6 +203,9 @@ export default function BacklogOrch() {
   const [projectPresetTagsByRoot, setProjectPresetTagsByRoot] = useState<ProjectPresetTagsByRoot>(
     () => getJsonStorageItem<ProjectPresetTagsByRoot>(STORAGE_KEYS.thinkingOrganizerProjectPresetTags, {}),
   )
+  const [projectTagColorsByRoot, setProjectTagColorsByRoot] = useState<ProjectTagColorsByRoot>(
+    () => getJsonStorageItem<ProjectTagColorsByRoot>(STORAGE_KEYS.thinkingOrganizerProjectTagColors, {}),
+  )
   const [initialProjectLoadResolved, setInitialProjectLoadResolved] = useState(false)
   const [initialStoredProjectRoot] = useState(() => readStoredProjectRoot())
   const activeProjectRoot = useMemo(
@@ -271,6 +277,24 @@ export default function BacklogOrch() {
     )
   }, [setSearchParams])
 
+  const updateProjectTagColor = useCallback((projectRoot: string, tag: string, color: string | null) => {
+    const normalizedRoot = normalizePath(projectRoot)
+    if (!normalizedRoot) return
+    const tagKey = tagLookupKeyBlock(tag)
+    if (!tagKey) return
+    const normalizedColor = normalizeHexColorBlock(color)
+    setProjectTagColorsByRoot((prev) => {
+      const next: ProjectTagColorsByRoot = { ...prev }
+      const existing = { ...(next[normalizedRoot] ?? {}) }
+      if (normalizedColor) existing[tagKey] = normalizedColor
+      else delete existing[tagKey]
+      if (Object.keys(existing).length > 0) next[normalizedRoot] = existing
+      else delete next[normalizedRoot]
+      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectTagColors, next)
+      return next
+    })
+  }, [])
+
   const updateProjectPresetTags = useCallback((projectRoot: string, tags: string[]) => {
     const normalizedRoot = normalizePath(projectRoot)
     if (!normalizedRoot) return
@@ -280,6 +304,19 @@ export default function BacklogOrch() {
       if (normalizedTags.length > 0) next[normalizedRoot] = normalizedTags
       else delete next[normalizedRoot]
       setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectPresetTags, next)
+      return next
+    })
+    setProjectTagColorsByRoot((prev) => {
+      const existing = prev[normalizedRoot]
+      if (!existing) return prev
+      const allowedTagKeys = new Set(normalizedTags.map(tagLookupKeyBlock))
+      const pruned = Object.fromEntries(
+        Object.entries(existing).filter(([tagKey]) => allowedTagKeys.has(tagKey)),
+      )
+      const next: ProjectTagColorsByRoot = { ...prev }
+      if (Object.keys(pruned).length > 0) next[normalizedRoot] = pruned
+      else delete next[normalizedRoot]
+      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectTagColors, next)
       return next
     })
   }, [])
@@ -293,6 +330,15 @@ export default function BacklogOrch() {
     if (!activeProjectRoot) return []
     return normalizeTagListBlock(projectPresetTagsByRoot[activeProjectRoot] ?? [])
   }, [activeProjectRoot, projectPresetTagsByRoot])
+  const selectedProjectTagColors = useMemo(() => {
+    const projectRoot = normalizePath(selectedNode?.projectRoot ?? activeProjectRoot)
+    if (!projectRoot) return {}
+    return projectTagColorsByRoot[projectRoot] ?? {}
+  }, [activeProjectRoot, projectTagColorsByRoot, selectedNode?.projectRoot])
+  const activeProjectTagColors = useMemo(() => {
+    if (!activeProjectRoot) return {}
+    return projectTagColorsByRoot[activeProjectRoot] ?? {}
+  }, [activeProjectRoot, projectTagColorsByRoot])
 
   const addActiveProjectPresetTags = useCallback(() => {
     if (!activeProjectRoot) return
@@ -311,6 +357,11 @@ export default function BacklogOrch() {
     )
     updateProjectPresetTags(activeProjectRoot, next)
   }, [activeProjectPresetTags, activeProjectRoot, updateProjectPresetTags])
+
+  const setActiveProjectTagColor = useCallback((tag: string, color: string | null) => {
+    if (!activeProjectRoot) return
+    updateProjectTagColor(activeProjectRoot, tag, color)
+  }, [activeProjectRoot, updateProjectTagColor])
 
   useEffect(() => {
     if (urlHydrated) return
@@ -1043,6 +1094,7 @@ export default function BacklogOrch() {
             <TagListEditorBlock
               heading="Project Tags"
               tags={activeProjectPresetTags}
+              tagColors={activeProjectTagColors}
               emptyMessage="No project tags yet."
               draftValue={projectPresetTagDraft}
               onDraftValueChange={setProjectPresetTagDraft}
@@ -1050,6 +1102,7 @@ export default function BacklogOrch() {
               addPlaceholder="Add project tags (comma separated)"
               addDisabled={splitTagInputBlock(projectPresetTagDraft).length === 0}
               onRemoveTag={removeActiveProjectPresetTag}
+              onChangeTagColor={setActiveProjectTagColor}
               chipTone="sky"
             />
           )}
@@ -1214,6 +1267,7 @@ export default function BacklogOrch() {
             onDropNodeToNode={dropNodeToNode}
             onReorderSiblings={reorderSiblingRows}
             projectPresetTagsByRoot={projectPresetTagsByRoot}
+            projectTagColorsByRoot={projectTagColorsByRoot}
             onUpdateNodeStatus={updateNodeStatusFor}
             onUpdateTaskStatus={updateTaskStatusFor}
             onUpdateNodeNotes={updateNodeNotesFor}
@@ -1232,6 +1286,7 @@ export default function BacklogOrch() {
           onUpdatePriority={updatePriority}
           onUpdateTags={updateNodeTags}
           presetTags={selectedProjectPresetTags}
+          projectTagColors={selectedProjectTagColors}
           onUpdateNotes={updateNodeNotes}
           onUpdateEpicCompletedAt={async (completionDate) => {
             await updateEpicCompletionDateFor(selectedNode, completionDate)

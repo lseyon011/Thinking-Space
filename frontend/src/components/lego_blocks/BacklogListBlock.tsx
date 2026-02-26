@@ -28,7 +28,13 @@ import {
   NodeStatusSelectBlock,
 } from '@/components/lego_blocks/NodeStatusBlock'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import { normalizeTagBlock, normalizeTagListBlock } from '@/services/lego_blocks/tagBlock'
+import {
+  normalizeTagBlock,
+  normalizeTagListBlock,
+  tagColorClassBlock,
+  tagColorStyleBlock,
+  tagLookupKeyBlock,
+} from '@/services/lego_blocks/tagBlock'
 import type { NodePriority, NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/yamlNoteBlock'
 import { cn } from '@/lib/utils'
 
@@ -177,6 +183,7 @@ export interface BacklogListBlockProps {
   onDropNodeToNode?: (sourceUuid: string, target: NodeRecord) => Promise<void>
   onReorderSiblings?: (params: { parentKey: string | null; orderedNodes: NodeRecord[] }) => Promise<NodeRecord[] | void>
   projectPresetTagsByRoot?: Record<string, string[]>
+  projectTagColorsByRoot?: Record<string, Record<string, string>>
   onUpdateNodeStatus?: (node: NodeRecord, status: NodeStatus) => Promise<NodeRecord | void>
   onUpdateTaskStatus?: (node: NodeRecord, taskStatus: TaskStatusOption) => Promise<NodeRecord | void>
   onUpdateNodeNotes?: (node: NodeRecord, description: string, comments: YAMLCommentEntry[]) => Promise<NodeRecord | void>
@@ -356,6 +363,7 @@ export default function BacklogListBlock({
   onDropNodeToNode,
   onReorderSiblings,
   projectPresetTagsByRoot = {},
+  projectTagColorsByRoot = {},
   onUpdateNodeStatus,
   onUpdateTaskStatus,
   onUpdateNodeNotes,
@@ -385,6 +393,14 @@ export default function BacklogListBlock({
   const newRowHighlightTimeoutByNodeRef = useRef<Record<string, number>>({})
   const [localError, setLocalError] = useState<string | null>(null)
   const programFingerprint = programs.map(program => `${program.uuid}:${program.updatedAt}`).join('|')
+
+  const lookupTagColor = useCallback((node: NodeRecord, tag: string): string | undefined => {
+    const projectRoot = normalizePath(node.projectRoot ?? '')
+    if (!projectRoot) return undefined
+    const colorsByTag = projectTagColorsByRoot[projectRoot]
+    if (!colorsByTag) return undefined
+    return colorsByTag[tagLookupKeyBlock(tag)]
+  }, [projectTagColorsByRoot])
 
   useEffect(() => {
     // Child lists are locally cached; clear them when upstream program data refreshes
@@ -1007,7 +1023,11 @@ export default function BacklogListBlock({
                 {inlineTags.map(tag => (
                   <span
                     key={`${node.uuid}-inline-tag-${tag}`}
-                    className="rounded-full border border-sky-200/80 bg-sky-100/70 px-1.5 py-0.5 text-[10px] leading-none text-sky-800"
+                    className={cn(
+                      'rounded-full border px-1.5 py-0.5 text-[10px] leading-none',
+                      tagColorClassBlock(tag, 'solid'),
+                    )}
+                    style={tagColorStyleBlock(tag, 'solid', lookupTagColor(node, tag))}
                   >
                     {tag}
                   </span>
@@ -1087,6 +1107,7 @@ export default function BacklogListBlock({
     inlineNotesDirty,
     inlineNotesNode?.uuid,
     inlineNotesSaving,
+    lookupTagColor,
     onUpdateNodeNotes,
     readOnly,
     removeInlineCommentDraft,
@@ -1245,7 +1266,11 @@ export default function BacklogListBlock({
               {rowPresetTags.visible.map(tag => (
                 <span
                   key={`${node.uuid}-preset-row-tag-${tag}`}
-                  className="truncate rounded-full border border-sky-200/80 bg-sky-100/70 px-1.5 py-0.5 text-[10px] leading-none text-sky-800"
+                  className={cn(
+                    'truncate rounded-full border px-1.5 py-0.5 text-[10px] leading-none',
+                    tagColorClassBlock(tag, 'solid'),
+                  )}
+                  style={tagColorStyleBlock(tag, 'solid', lookupTagColor(node, tag))}
                 >
                   {tag}
                 </span>
@@ -1408,7 +1433,7 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineNotesEditor, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes, toggleNode])
+  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineNotesEditor, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes, toggleNode])
 
   const renderProgramSection = useCallback((program: NodeRecord, programIndex: number) => {
     void ensureProgramLoaded(program)
@@ -1456,7 +1481,11 @@ export default function BacklogListBlock({
               {rowPresetTags.visible.map(tag => (
                 <span
                   key={`${program.uuid}-preset-row-tag-${tag}`}
-                  className="truncate rounded-full border border-sky-200/80 bg-sky-100/70 px-1.5 py-0.5 text-[10px] leading-none text-sky-800"
+                  className={cn(
+                    'truncate rounded-full border px-1.5 py-0.5 text-[10px] leading-none',
+                    tagColorClassBlock(tag, 'solid'),
+                  )}
+                  style={tagColorStyleBlock(tag, 'solid', lookupTagColor(program, tag))}
                 >
                   {tag}
                 </span>
@@ -1543,7 +1572,7 @@ export default function BacklogListBlock({
         </div>
       </div>
     )
-  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes])
+  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes])
 
   return (
     <div className="flex flex-col space-y-3">

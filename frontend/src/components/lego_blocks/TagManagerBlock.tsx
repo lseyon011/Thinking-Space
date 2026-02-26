@@ -1,41 +1,14 @@
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, X } from 'lucide-react'
+import ColorPickerBlock from '@/components/lego_blocks/ColorPickerBlock'
 import { Button } from '@/components/lego_blocks/ui/button'
-import { hasTagBlock } from '@/services/lego_blocks/tagBlock'
+import {
+  hasTagBlock,
+  tagColorClassBlock,
+  tagColorStyleBlock,
+  tagLookupKeyBlock,
+} from '@/services/lego_blocks/tagBlock'
 import { cn } from '@/lib/utils'
-
-const PRESET_TAG_COLOR_CLASSES = [
-  {
-    selected: 'border-emerald-300 bg-emerald-100/80 text-emerald-800',
-    unselected: 'border-emerald-200/80 text-emerald-700/70 hover:bg-emerald-50/60',
-  },
-  {
-    selected: 'border-sky-300 bg-sky-100/80 text-sky-800',
-    unselected: 'border-sky-200/80 text-sky-700/70 hover:bg-sky-50/60',
-  },
-  {
-    selected: 'border-amber-300 bg-amber-100/80 text-amber-800',
-    unselected: 'border-amber-200/80 text-amber-700/70 hover:bg-amber-50/60',
-  },
-  {
-    selected: 'border-fuchsia-300 bg-fuchsia-100/80 text-fuchsia-800',
-    unselected: 'border-fuchsia-200/80 text-fuchsia-700/70 hover:bg-fuchsia-50/60',
-  },
-  {
-    selected: 'border-violet-300 bg-violet-100/80 text-violet-800',
-    unselected: 'border-violet-200/80 text-violet-700/70 hover:bg-violet-50/60',
-  },
-] as const
-
-function presetTagPaletteBlock(tag: string): (typeof PRESET_TAG_COLOR_CLASSES)[number] {
-  let hash = 0
-  for (let index = 0; index < tag.length; index += 1) {
-    hash = ((hash << 5) - hash) + tag.charCodeAt(index)
-    hash |= 0
-  }
-  const paletteIndex = Math.abs(hash) % PRESET_TAG_COLOR_CLASSES.length
-  return PRESET_TAG_COLOR_CLASSES[paletteIndex]
-}
 
 export interface TagDisclosureButtonBlockProps {
   label: string
@@ -86,6 +59,8 @@ export interface TagListEditorBlockProps {
   disabled?: boolean
   busy?: boolean
   onRemoveTag?: (tag: string) => void
+  tagColors?: Record<string, string>
+  onChangeTagColor?: (tag: string, color: string | null) => void
   chipTone?: 'muted' | 'sky'
   className?: string
 }
@@ -104,12 +79,12 @@ export function TagListEditorBlock({
   disabled = false,
   busy = false,
   onRemoveTag,
+  tagColors,
+  onChangeTagColor,
   chipTone = 'muted',
   className,
 }: TagListEditorBlockProps) {
-  const chipClassName = chipTone === 'sky'
-    ? 'border-sky-200/80 bg-sky-100/70 text-sky-800'
-    : 'border-border/70 bg-muted/25 text-foreground/90'
+  const chipVariant = chipTone === 'sky' ? 'solid' : 'subtle'
 
   return (
     <div className={cn('space-y-2', className)}>
@@ -120,9 +95,22 @@ export function TagListEditorBlock({
           {tags.map(tag => (
             <span
               key={`tag-chip-${tag}`}
-              className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]', chipClassName)}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]',
+                tagColorClassBlock(tag, chipVariant),
+              )}
+              style={tagColorStyleBlock(tag, chipVariant, tagColors?.[tagLookupKeyBlock(tag)])}
             >
               <span>{tag}</span>
+              {onChangeTagColor && (
+                <ColorPickerBlock
+                  value={tagColors?.[tagLookupKeyBlock(tag)]}
+                  onChange={(nextColor) => onChangeTagColor(tag, nextColor)}
+                  onReset={() => onChangeTagColor(tag, null)}
+                  disabled={disabled || busy}
+                  title={`Pick color for ${tag}`}
+                />
+              )}
               {onRemoveTag && (
                 <button
                   type="button"
@@ -175,6 +163,7 @@ export interface TagPresetSelectorBlockProps {
   selectedTags: string[]
   emptyMessage: string
   onToggleTag: (tag: string) => void
+  tagColors?: Record<string, string>
   disabled?: boolean
   busy?: boolean
   className?: string
@@ -187,6 +176,7 @@ export function TagPresetSelectorBlock({
   selectedTags,
   emptyMessage,
   onToggleTag,
+  tagColors,
   disabled = false,
   busy = false,
   className,
@@ -204,13 +194,13 @@ export function TagPresetSelectorBlock({
         <div className="flex flex-wrap gap-1.5">
           {tags.map(tag => {
             const selected = hasTagBlock(selectedTags, tag)
-            const palette = presetTagPaletteBlock(tag)
-            const toneClass = selected ? palette.selected : palette.unselected
+            const toneClass = tagColorClassBlock(tag, selected ? 'selected' : 'unselected')
             return (
               <button
                 key={`preset-tag-chip-${tag}`}
                 type="button"
                 className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] transition-colors', toneClass)}
+                style={tagColorStyleBlock(tag, selected ? 'selected' : 'unselected', tagColors?.[tagLookupKeyBlock(tag)])}
                 onClick={() => onToggleTag(tag)}
                 disabled={disabled || busy}
                 title={selected ? `Remove ${tag}` : `Add ${tag}`}
