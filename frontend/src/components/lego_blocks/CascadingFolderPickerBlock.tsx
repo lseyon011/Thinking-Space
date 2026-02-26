@@ -396,7 +396,7 @@ export default function CascadingFolderPicker({
                   value={level.selected || ''}
                   onValueChange={(value) => { void handleSelect(index, value) }}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="h-10 w-full rounded-full px-3">
                     <SelectValue placeholder={index === 0 ? 'Select folder...' : 'Select subfolder...'} />
                   </SelectTrigger>
                   <SelectContent>
@@ -437,12 +437,12 @@ export default function CascadingFolderPicker({
               }
             }}
             placeholder="new-folder or nested/a/b"
-            className="h-9 flex-1 rounded-lg border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            className="h-9 flex-1 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
           />
           <button
             type="button"
             onClick={handleAppendCustomSegments}
-            className="h-9 rounded-lg border border-input px-3 text-xs text-foreground hover:bg-muted"
+            className="inline-flex h-9 items-center rounded-full border border-input bg-background px-4 text-xs font-medium text-foreground transition-colors hover:bg-muted"
           >
             Add
           </button>
@@ -482,7 +482,7 @@ export default function CascadingFolderPicker({
                 key={index}
                 type="button"
                 onClick={() => { void applyRecent(segments) }}
-                className="text-left rounded-lg border border-border/60 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors break-words"
+                className="text-left rounded-full border border-border/60 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors break-words"
               >
                 {normalizeSegments(segments).join(' / ')}
               </button>

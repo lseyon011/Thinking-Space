@@ -176,6 +176,7 @@ function CreateTab() {
   const [message, setMessage] = useState<string | null>(null)
   const [savedPath, setSavedPath] = useState<string | null>(null)
   const [editorPath, setEditorPath] = useState<string | null>(null)
+  const [showAiAssist, setShowAiAssist] = useState(false)
   const {
     aiSelectionLoading,
     selectedProvider,
@@ -236,6 +237,12 @@ function CreateTab() {
     if (filenameTouched) return
     setFilename(filenameFromTitle(title))
   }, [filenameTouched, title, useCustomTitle])
+
+  useEffect(() => {
+    if (assistRunningAction || assistSuggestion || assistError) {
+      setShowAiAssist(true)
+    }
+  }, [assistError, assistRunningAction, assistSuggestion])
 
   const handleFolderChange = (change: CascadingFolderPickerChange) => {
     setFolderBaseSegments(change.baseSegments)
@@ -388,7 +395,7 @@ function CreateTab() {
   const mostUsedDestinations = useMemo(() => topUsedDestinations(usageCounts, 5), [usageCounts])
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[clamp(240px,27vw,340px)_minmax(0,1fr)]">
+    <div className="grid gap-6 xl:grid-cols-[minmax(280px,30vw)_minmax(0,1fr)] 2xl:grid-cols-[minmax(320px,32vw)_minmax(0,1fr)]">
       <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
         <Card>
           <CardHeader className="pb-3">
@@ -413,10 +420,17 @@ function CreateTab() {
               <label className="text-xs text-muted-foreground">Shortcuts</label>
               <div className="flex flex-wrap gap-2">
                 {allShortcuts.map((shortcut) => (
-                  <div key={shortcut.id} className="inline-flex items-center rounded-lg border border-border/60 bg-muted/30">
+                  <div
+                    key={shortcut.id}
+                    className={`inline-flex items-center rounded-full border px-1 py-1 ${
+                      activeShortcutId === shortcut.id
+                        ? 'border-primary/80 bg-primary text-primary-foreground'
+                        : 'border-border/60 bg-muted/20 text-muted-foreground'
+                    }`}
+                  >
                     <button
                       type="button"
-                      className={`px-2.5 py-1.5 text-xs transition-colors ${activeShortcutId === shortcut.id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                      className="rounded-full px-2.5 py-1 text-xs font-medium transition-colors hover:opacity-90"
                       onClick={() => handleShortcutSelect(shortcut.id)}
                     >
                       {shortcut.label}
@@ -424,7 +438,11 @@ function CreateTab() {
                     {!shortcut.builtIn && (
                       <button
                         type="button"
-                        className="rounded-r-lg px-1.5 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className={`rounded-full p-1 transition-colors ${
+                          activeShortcutId === shortcut.id
+                            ? 'text-primary-foreground/90 hover:bg-primary-foreground/20'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        }`}
                         onClick={() => handleDeleteCustomShortcut(shortcut.id)}
                         title={`Remove shortcut ${shortcut.label}`}
                       >
@@ -439,7 +457,7 @@ function CreateTab() {
                   value={customShortcutLabel}
                   onChange={(event) => setCustomShortcutLabel(event.target.value)}
                   placeholder="Shortcut name"
-                  className="h-8 rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="h-9 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                 />
                 <div className="flex gap-2">
                   <input
@@ -452,11 +470,15 @@ function CreateTab() {
                       }
                     }}
                     placeholder="Path suffix (example: clients/acme/notes)"
-                    className="h-8 flex-1 rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="h-9 flex-1 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                   />
-                  <Button type="button" variant="outline" className="h-8 px-2.5 text-xs" onClick={handleAddCustomShortcut}>
+                  <button
+                    type="button"
+                    className="inline-flex h-9 items-center rounded-full border border-border/70 bg-background px-4 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                    onClick={handleAddCustomShortcut}
+                  >
                     Add
-                  </Button>
+                  </button>
                 </div>
               </div>
             </div>
@@ -575,7 +597,7 @@ function CreateTab() {
                 setSavedPath(output_path)
                 setMessage(`Saved ${output_path}.`)
               }}
-              className="h-[calc(100dvh-18rem)] min-h-[520px] rounded-b-xl"
+              className="h-[72dvh] min-h-[520px] max-h-[84dvh] rounded-b-xl"
             />
           </CardContent>
         </Card>
@@ -616,15 +638,28 @@ function CreateTab() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs text-muted-foreground">Content</label>
-              <AiAssistControlsBlock
-                selectedProvider={selectedProvider}
-                selectedModel={selectedModel}
-                runningAction={assistRunningAction}
-                loading={aiSelectionLoading}
-                disabled={saving}
-                onRun={(action) => { void runAssistAction(action, content) }}
-              />
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs text-muted-foreground">Content</label>
+                <button
+                  type="button"
+                  onClick={() => setShowAiAssist(prev => !prev)}
+                  className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showAiAssist ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                >
+                  AI
+                </button>
+              </div>
+
+              {showAiAssist && (
+                <AiAssistControlsBlock
+                  selectedProvider={selectedProvider}
+                  selectedModel={selectedModel}
+                  runningAction={assistRunningAction}
+                  loading={aiSelectionLoading}
+                  disabled={saving}
+                  onRun={(action) => { void runAssistAction(action, content) }}
+                  helperText="Suggestions apply inline. Auto-save remains in the editor view."
+                />
+              )}
 
               {assistSuggestion && (
                 <AiAssistReviewBlock
@@ -651,7 +686,8 @@ function CreateTab() {
                   if (assistSuggestion || assistError) clearAssistState()
                 }}
                 placeholder="What's on your mind?"
-                className="min-h-[400px] rounded-lg border border-input overflow-hidden"
+                toolbarAlwaysVisible
+                className="min-h-[clamp(520px,64dvh,860px)] rounded-lg border border-input overflow-hidden"
               />
             </div>
 
