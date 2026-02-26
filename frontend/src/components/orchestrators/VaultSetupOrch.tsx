@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { FolderOpen, Check, Globe, Server } from 'lucide-react'
-import { Button } from '@/components/lego_blocks/ui/button'
+import { Button } from '@/components/lego_blocks/units/ui/button'
 import { selectAndSetVaultRoot } from '@/services/orchestrators/runtimeOrch'
 import {
   isElectron,

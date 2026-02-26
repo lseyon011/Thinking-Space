@@ -3,7 +3,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-} from '@/components/lego_blocks/ui/select'
+} from '@/components/lego_blocks/units/ui/select'
 import { cn } from '@/lib/utils'
 import { NODE_STATUSES, type NodeStatus } from '@/services/lego_blocks/yamlNoteBlock'
 

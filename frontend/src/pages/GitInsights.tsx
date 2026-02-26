@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Activity, GitCommit, Users, Waves, Flame, Calendar } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/lego_blocks/ui/card'
-import { Button } from '@/components/lego_blocks/ui/button'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/lego_blocks/units/ui/card'
+import { Button } from '@/components/lego_blocks/units/ui/button'
 import FileActivityOrch from '@/components/orchestrators/FileActivityOrch'
-import MetricBlock from '@/components/lego_blocks/MetricBlock'
+import MetricBlock from '@/components/lego_blocks/units/MetricBlock'
 import { getGitInsights } from '@/services/orchestrators/gitInsightsOrch'
 import type { GitInsightsData, HeatmapDay } from '@/services/lego_blocks/typesBlock'
 

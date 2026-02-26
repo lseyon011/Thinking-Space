@@ -19,21 +19,21 @@ import {
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Button } from '@/components/lego_blocks/ui/button'
+import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/lego_blocks/ui/select'
-import ExtensionSlotBlock from '@/components/lego_blocks/ExtensionSlotBlock'
-import MarkdownRichEditorBlock from '@/components/lego_blocks/MarkdownRichEditorBlock'
-import { NodeStatusSelectBlock } from '@/components/lego_blocks/NodeStatusBlock'
+} from '@/components/lego_blocks/units/ui/select'
+import ExtensionSlotBlock from '@/components/lego_blocks/integrations/ExtensionSlotBlock'
+import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
+import { NodeStatusSelectBlock } from '@/components/lego_blocks/units/NodeStatusBlock'
 import {
   TagListEditorBlock,
   TagPresetSelectorBlock,
-} from '@/components/lego_blocks/TagManagerBlock'
+} from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import type { NodeType, NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
 import {

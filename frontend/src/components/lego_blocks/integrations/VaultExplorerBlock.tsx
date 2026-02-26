@@ -8,8 +8,8 @@ import {
   Loader2,
   RefreshCcw,
 } from 'lucide-react'
-import UniversalSearchBlock from '@/components/lego_blocks/UniversalSearchBlock'
-import { Button } from '@/components/lego_blocks/ui/button'
+import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
+import { Button } from '@/components/lego_blocks/units/ui/button'
 import { cn } from '@/lib/utils'
 
 interface FolderEntries {

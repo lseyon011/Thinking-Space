@@ -1,7 +1,7 @@
 import { Activity, Loader2, RefreshCw } from 'lucide-react'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import { Button } from '@/components/lego_blocks/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
+import { Button } from '@/components/lego_blocks/units/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 
 interface ExecutionProgressBlockProps {
   busy: boolean

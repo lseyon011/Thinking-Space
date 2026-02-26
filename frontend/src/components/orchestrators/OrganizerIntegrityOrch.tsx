@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, ShieldCheck, Wrench } from 'lucide-react'
-import { Button } from '@/components/lego_blocks/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
+import { Button } from '@/components/lego_blocks/units/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import {
   applyOrganizerStatusPolicy,
   runOrganizerIntegrityCheck,

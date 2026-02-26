@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3 } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
-import MonthCalendar, { type DayData } from '@/components/lego_blocks/MonthCalendarBlock'
-import MetricBlock from '@/components/lego_blocks/MetricBlock'
-import ClickablePath from '@/components/lego_blocks/ClickablePathBlock'
-import { Button } from '@/components/lego_blocks/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import MonthCalendar, { type DayData } from '@/components/lego_blocks/integrations/MonthCalendarBlock'
+import MetricBlock from '@/components/lego_blocks/units/MetricBlock'
+import ClickablePath from '@/components/lego_blocks/units/ClickablePathBlock'
+import { Button } from '@/components/lego_blocks/units/ui/button'
 
 export interface IdeaThoughtActivityItem {
   thought_id: string

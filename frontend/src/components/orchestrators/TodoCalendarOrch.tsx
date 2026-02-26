@@ -1,4 +1,4 @@
-import SectionChecklistBlock from '@/components/lego_blocks/SectionChecklistBlock'
+import SectionChecklistBlock from '@/components/lego_blocks/integrations/SectionChecklistBlock'
 import { getTodosMonth, getTodosSectionMonth } from '@/services/orchestrators/todosOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
 import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'

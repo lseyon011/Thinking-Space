@@ -29,12 +29,15 @@ Internal development documentation for Thinking Space. For an overview of the pr
 
 ## Frontend Architecture Contract
 
-- Reusable primitives live in `frontend/src/components/lego_blocks/*`.
+- Small reusable UI primitives live in `frontend/src/components/lego_blocks/units/*`.
+- Composite reusable UI blocks live in `frontend/src/components/lego_blocks/integrations/*`.
+- Reusable component-layer hooks live in `frontend/src/components/lego_blocks/hooks/*`.
 - Orchestration containers live in `frontend/src/components/orchestrators/*`.
 - Naming rules are mandatory:
-  - Reusable primitives use `*Block` suffix.
+  - Reusable component blocks use `*Block` suffix.
+  - Hooks use `use*` prefix.
   - Orchestrators use `*Orch` suffix.
-- Shared UI primitives live in `frontend/src/components/lego_blocks/ui/*`.
+- Shared UI primitives live in `frontend/src/components/lego_blocks/units/ui/*`.
 - New feature work should extend/reuse existing lego blocks first, then compose in orchestrators.
 - Enforced by: `AGENTS.md`, `CLAUDE.md`, and `agents/TEMPLATES/ORCHESTRATOR_TEMPLATE.md`.
 

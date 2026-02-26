@@ -16,17 +16,17 @@ import {
   TASK_STATUS_OPTIONS,
   type DropEdge,
   type TaskStatusOption,
-} from '@/components/lego_blocks/BacklogListHelpersBlock'
+} from '@/components/lego_blocks/units/BacklogListHelpersBlock'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-} from '@/components/lego_blocks/ui/select'
+} from '@/components/lego_blocks/units/ui/select'
 import {
   NodeStatusBadgeBlock,
   NodeStatusSelectBlock,
-} from '@/components/lego_blocks/NodeStatusBlock'
+} from '@/components/lego_blocks/units/NodeStatusBlock'
 import { cn } from '@/lib/utils'
 import { tagColorClassBlock, tagColorStyleBlock } from '@/services/lego_blocks/tagBlock'
 

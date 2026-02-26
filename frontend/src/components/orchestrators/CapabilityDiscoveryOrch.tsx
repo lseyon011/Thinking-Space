@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
-import { Button } from '@/components/lego_blocks/ui/button'
-import { Switch } from '@/components/lego_blocks/ui/switch'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import { Button } from '@/components/lego_blocks/units/ui/button'
+import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import {
   getCapabilityFeatureFlags,
   setCapabilityFeatureFlag,

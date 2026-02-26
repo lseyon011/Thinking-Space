@@ -1,4 +1,4 @@
-import { Button } from '@/components/lego_blocks/ui/button'
+import { Button } from '@/components/lego_blocks/units/ui/button'
 import { cn } from '@/lib/utils'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import { normalizeTagListBlock, tagColorClassBlock, tagColorStyleBlock } from '@/services/lego_blocks/tagBlock'

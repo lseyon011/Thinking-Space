@@ -1,5 +1,5 @@
-import { Button } from '@/components/lego_blocks/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
+import { Button } from '@/components/lego_blocks/units/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import type { AiTelemetryEvent } from '@/services/orchestrators/aiTelemetryOrch'
 
 interface AiTelemetryPanelBlockProps {

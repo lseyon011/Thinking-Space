@@ -6,7 +6,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/lego_blocks/ui/select'
+} from '@/components/lego_blocks/units/ui/select'
 import {
   getVaultPathKind,
   type VaultPathKind,

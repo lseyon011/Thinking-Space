@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
-import ClickablePath from '@/components/lego_blocks/ClickablePathBlock'
-import MetricBlock from '@/components/lego_blocks/MetricBlock'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import ClickablePath from '@/components/lego_blocks/units/ClickablePathBlock'
+import MetricBlock from '@/components/lego_blocks/units/MetricBlock'
 import { getDayActivity } from '@/services/orchestrators/fileActivityOrch'
 import type { DayDetail } from '@/services/lego_blocks/typesBlock'
 

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FileText, Info } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
-import MonthCalendar, { type DayData } from '@/components/lego_blocks/MonthCalendarBlock'
-import SectionBreakdown, { type TagSelectorItem } from '@/components/lego_blocks/SectionBreakdownBlock'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import MonthCalendar, { type DayData } from '@/components/lego_blocks/integrations/MonthCalendarBlock'
+import SectionBreakdown, { type TagSelectorItem } from '@/components/lego_blocks/integrations/SectionBreakdownBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
-import { useFileStats } from '@/components/lego_blocks/useFileStatsBlock'
-import MetricBlock from '@/components/lego_blocks/MetricBlock'
+import { useFileStats } from '@/components/lego_blocks/hooks/shared/useFileStatsBlock'
+import MetricBlock from '@/components/lego_blocks/units/MetricBlock'
 
 interface ChecklistItem {
   text: string

@@ -1,4 +1,4 @@
-import ClickablePath from '@/components/lego_blocks/ClickablePathBlock'
+import ClickablePath from '@/components/lego_blocks/units/ClickablePathBlock'
 import type { DayFile } from '@/services/lego_blocks/typesBlock'
 
 export interface FileTreeNode {

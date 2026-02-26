@@ -87,12 +87,15 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - Caution: keep orchestrators thin. If an orchestrator starts accumulating reusable domain logic, parsing, or complex transformation code, extract that into lego blocks (components/services/hooks) immediately.
 
 ## Frontend Placement and Naming Rules (Enforced)
-- `frontend/src/components/lego_blocks/*` stores reusable primitives only.
+- `frontend/src/components/lego_blocks/units/*` stores smallest reusable UI blocks (pure/singular building blocks).
+- `frontend/src/components/lego_blocks/integrations/*` stores composite blocks that compose multiple units and feature-level UI glue.
+- `frontend/src/components/lego_blocks/hooks/*` stores reusable component-layer hooks (behavior lego, no rendering).
 - `frontend/src/components/orchestrators/*` stores page/feature orchestration containers only.
 - File suffixes are mandatory:
-  - Reusable primitives end with `Block` (example: `SectionChecklistBlock.tsx`).
+  - Reusable component primitives and integrations end with `Block` (example: `SectionChecklistBlock.tsx`).
+  - Hooks start with `use` (example: `useBacklogInlineNotesBlock.ts`).
   - Orchestration containers end with `Orch` (example: `TodoCalendarOrch.tsx`).
-- Shared UI primitives stay under `frontend/src/components/lego_blocks/ui/*` and are treated as lego blocks.
+- Shared UI primitives stay under `frontend/src/components/lego_blocks/units/ui/*` and are treated as lego blocks.
 - Pages should compose orchestrators/blocks, not duplicate orchestration logic.
 - New frontend component files that violate this structure should not be added unless `AGENTS.md` is updated first with rationale.
 
@@ -106,7 +109,7 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - Direct imports from `services/lego_blocks` in UI are only allowed for shared type-only usage.
 
 ## Architecture Review Checklist (Required for frontend changes)
-1. Did I place reusable logic in `lego_blocks` and flow wiring in `orchestrators`?
+1. Did I place reusable logic in `lego_blocks/{units,integrations,hooks}` and flow wiring in `orchestrators`?
 2. Did I keep naming consistent with `*Block` and `*Orch`?
 3. Did I avoid page-local one-off variants of existing shared components?
 4. Did I update docs (`AGENTS.md`, `CLAUDE.md`, `DEVELOPMENT.md`) if architecture knowledge changed?

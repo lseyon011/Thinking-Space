@@ -1,4 +1,4 @@
-import SectionChecklistBlock from '@/components/lego_blocks/SectionChecklistBlock'
+import SectionChecklistBlock from '@/components/lego_blocks/integrations/SectionChecklistBlock'
 import { getThoughtsMonth, getThoughtsSectionMonth } from '@/services/orchestrators/thoughtsOrch'
 
 export default function ThoughtsCalendarOrch() {

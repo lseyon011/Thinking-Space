@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Card, CardHeader, CardTitle, CardDescription } from '@/components/lego_blocks/ui/card'
+import { Card, CardHeader, CardTitle, CardDescription } from '@/components/lego_blocks/units/ui/card'
 import { ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 

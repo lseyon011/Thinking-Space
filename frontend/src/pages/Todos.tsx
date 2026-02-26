@@ -1,16 +1,16 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, CheckSquare, Loader2, CheckCircle2, LayoutList, Eye } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
-import { Button } from '@/components/lego_blocks/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import { Button } from '@/components/lego_blocks/units/ui/button'
 import CascadingFolderPicker, {
   addRecent,
   type CascadingFolderPickerChange,
-} from '@/components/lego_blocks/CascadingFolderPickerBlock'
-import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBlock'
-import AiAssistReviewBlock from '@/components/lego_blocks/AiAssistReviewBlock'
-import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/AiAssistRuntimeBlock'
-import MarkdownRichEditorBlock from '@/components/lego_blocks/MarkdownRichEditorBlock'
+} from '@/components/lego_blocks/integrations/CascadingFolderPickerBlock'
+import AiAssistControlsBlock from '@/components/lego_blocks/integrations/AiAssistControlsBlock'
+import AiAssistReviewBlock from '@/components/lego_blocks/integrations/AiAssistReviewBlock'
+import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/integrations/AiAssistRuntimeBlock'
+import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import TodoCalendarOrch from '@/components/orchestrators/TodoCalendarOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
 import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'

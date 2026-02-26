@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useUILayoutBlock } from '@/components/lego_blocks/UILayoutBlock'
+import { useUILayoutBlock } from '@/components/lego_blocks/integrations/UILayoutBlock'
 import type { ParsedExcalidrawScene } from '@/services/orchestrators/excalidrawSceneOrch'
 import {
   parseExcalidrawSceneOrch,
@@ -62,8 +62,8 @@ import {
   resolveViewportWorldSize,
   scheduleDeferredWork,
 } from '@/services/lego_blocks/excalidrawViewportBlock'
-import ExcalidrawPenPaletteBlock from '@/components/lego_blocks/ExcalidrawPenPaletteBlock'
-import ExcalidrawMiniMapBlock, { type MiniMapRect } from '@/components/lego_blocks/ExcalidrawMiniMapBlock'
+import ExcalidrawPenPaletteBlock from '@/components/lego_blocks/integrations/ExcalidrawPenPaletteBlock'
+import ExcalidrawMiniMapBlock, { type MiniMapRect } from '@/components/lego_blocks/integrations/ExcalidrawMiniMapBlock'
 import { cn } from '@/lib/utils'
 
 declare global {

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { BookOpen, ChevronRight, File, FileText, Folder, FolderOpen, FolderTree, Handshake, Layers, Lightbulb, ListChecks, Loader2, MessageSquare, Pencil, Play, Plus, Trash2, Unlink } from 'lucide-react'
-import { Button } from '@/components/lego_blocks/ui/button'
+import { Button } from '@/components/lego_blocks/units/ui/button'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import type { NodeType } from '@/services/lego_blocks/yamlNoteBlock'
 import { cn } from '@/lib/utils'

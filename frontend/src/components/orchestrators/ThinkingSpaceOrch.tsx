@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PanelLeft, PanelLeftClose, Sparkles, FileText } from 'lucide-react'
-import VaultExplorerBlock from '@/components/lego_blocks/VaultExplorerBlock'
-import MarkdownDocumentBlock, { type MarkdownViewerMode } from '@/components/lego_blocks/MarkdownDocumentBlock'
-import ExtensionSlotBlock from '@/components/lego_blocks/ExtensionSlotBlock'
-import { useUILayoutBlock } from '@/components/lego_blocks/UILayoutBlock'
-import { Button } from '@/components/lego_blocks/ui/button'
+import VaultExplorerBlock from '@/components/lego_blocks/integrations/VaultExplorerBlock'
+import MarkdownDocumentBlock, { type MarkdownViewerMode } from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
+import ExtensionSlotBlock from '@/components/lego_blocks/integrations/ExtensionSlotBlock'
+import { useUILayoutBlock } from '@/components/lego_blocks/integrations/UILayoutBlock'
+import { Button } from '@/components/lego_blocks/units/ui/button'
 import { cn } from '@/lib/utils'
 import {
   createDrawingOrch,

@@ -68,12 +68,15 @@ Next up:
 Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 
 ## Frontend Architecture Contract (Enforced)
-- Reusable primitives must live in `frontend/src/components/lego_blocks/*`.
+- Small reusable UI primitives must live in `frontend/src/components/lego_blocks/units/*`.
+- Composite UI lego blocks that compose units must live in `frontend/src/components/lego_blocks/integrations/*`.
+- Component-layer hooks must live in `frontend/src/components/lego_blocks/hooks/*`.
 - Page/feature orchestration must live in `frontend/src/components/orchestrators/*`.
 - Naming is mandatory:
-  - Reusable primitive files use `*Block` suffix.
+  - Reusable component files use `*Block` suffix.
+  - Hook files start with `use`.
   - Orchestrator files use `*Orch` suffix.
-- Shared UI primitives stay in `frontend/src/components/lego_blocks/ui/*`.
+- Shared UI primitives stay in `frontend/src/components/lego_blocks/units/ui/*`.
 - Do not add one-off feature components in `pages/` when a lego block or orchestrator extension is the correct pattern.
 - If an exception is unavoidable, document it in both `CLAUDE.md` and `AGENTS.md` in the same change.
 - Caution: keep UI orchestrators thin. Extract reusable logic and heavy transformations into lego blocks/hooks/services before orchestrator complexity grows.

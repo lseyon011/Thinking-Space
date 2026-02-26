@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Button } from '@/components/lego_blocks/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
-import { Switch } from '@/components/lego_blocks/ui/switch'
+import { Button } from '@/components/lego_blocks/units/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import AiSettingsOrch from '@/components/orchestrators/AiSettingsOrch'
-import { UI_THEME_OPTIONS_BLOCK, useUIThemeBlock } from '@/components/lego_blocks/UIThemeBlock'
+import { UI_THEME_OPTIONS_BLOCK, useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
 import { clearAppCacheOrch, hardRefreshOrch } from '@/services/orchestrators/appCacheOrch'
 import {
   readMarkdownEditorSettingsOrch,

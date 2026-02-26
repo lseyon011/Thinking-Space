@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CalendarDays, Download, Loader2, Plus, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
-import BacklogListBlock from '@/components/lego_blocks/BacklogListBlock'
-import ExecutionProgressBlock from '@/components/lego_blocks/ExecutionProgressBlock'
-import NodeDetailPanelBlock from '@/components/lego_blocks/NodeDetailPanelBlock'
+import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
+import ExecutionProgressBlock from '@/components/lego_blocks/units/ExecutionProgressBlock'
+import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import {
   TagDisclosureButtonBlock,
   TagListEditorBlock,
-} from '@/components/lego_blocks/TagManagerBlock'
+} from '@/components/lego_blocks/integrations/TagManagerBlock'
 import CascadingFolderPicker, {
   addRecent,
   type CascadingFolderPickerChange,
-} from '@/components/lego_blocks/CascadingFolderPickerBlock'
-import { Button } from '@/components/lego_blocks/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
+} from '@/components/lego_blocks/integrations/CascadingFolderPickerBlock'
+import { Button } from '@/components/lego_blocks/units/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import type { NodeStatus, NodeType, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
 import {
@@ -22,7 +22,7 @@ import {
   hierarchyToExcalidrawMdOrch,
 } from '@/services/orchestrators/backlogProjectOrch'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
-import { defaultNodeKindLabel } from '@/components/lego_blocks/HierarchyTreeBlock'
+import { defaultNodeKindLabel } from '@/components/lego_blocks/integrations/HierarchyTreeBlock'
 import {
   invokeCapabilityOrThrow,
 } from '@/services/orchestrators/capabilityRouterOrch'

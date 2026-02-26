@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Check, Loader2, Pencil, Sparkles, X } from 'lucide-react'
-import { Button } from '@/components/lego_blocks/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
+import { Button } from '@/components/lego_blocks/units/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import {
   parseStewardTagDraftOrch,
   type StewardProposal,

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
-import { Button } from '@/components/lego_blocks/ui/button'
+import { Button } from '@/components/lego_blocks/units/ui/button'
 import { ArrowRight } from 'lucide-react'
-import Starfield from '@/components/lego_blocks/StarfieldBlock'
+import Starfield from '@/components/lego_blocks/units/StarfieldBlock'
 import TodayFileActivityOrch from '@/components/orchestrators/TodayFileActivityOrch'
 
 export default function Home() {

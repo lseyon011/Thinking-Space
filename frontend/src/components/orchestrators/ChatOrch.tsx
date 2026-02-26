@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { Loader2, Send, AlertCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Button } from '@/components/lego_blocks/ui/button'
-import { Card, CardContent } from '@/components/lego_blocks/ui/card'
+import { Button } from '@/components/lego_blocks/units/ui/button'
+import { Card, CardContent } from '@/components/lego_blocks/units/ui/card'
 import {
   type AiProvider,
   type AiProviderStatus,

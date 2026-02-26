@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { CheckCircle2, Loader2, Sparkles } from 'lucide-react'
-import { Button } from '@/components/lego_blocks/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
+import { Button } from '@/components/lego_blocks/units/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import {
   generateExtensionArtifactsOrch,
   saveGeneratedExtensionArtifactsOrch,

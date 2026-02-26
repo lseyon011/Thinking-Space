@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import UniversalSearchBlock from '@/components/lego_blocks/UniversalSearchBlock'
+import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 
 interface SearchDropdownProps {
   items: string[]

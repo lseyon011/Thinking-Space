@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, X } from 'lucide-react'
-import ColorPickerBlock from '@/components/lego_blocks/ColorPickerBlock'
-import { Button } from '@/components/lego_blocks/ui/button'
+import ColorPickerBlock from '@/components/lego_blocks/units/ColorPickerBlock'
+import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
   hasTagBlock,
   tagColorClassBlock,

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Loader2, Save, Workflow } from 'lucide-react'
-import { Button } from '@/components/lego_blocks/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
-import { Switch } from '@/components/lego_blocks/ui/switch'
-import SearchDropdown from '@/components/lego_blocks/SearchDropdownBlock'
-import ExcalidrawDocumentBlock from '@/components/lego_blocks/ExcalidrawDocumentBlock'
+import { Button } from '@/components/lego_blocks/units/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import { Switch } from '@/components/lego_blocks/units/ui/switch'
+import SearchDropdown from '@/components/lego_blocks/integrations/SearchDropdownBlock'
+import ExcalidrawDocumentBlock from '@/components/lego_blocks/integrations/ExcalidrawDocumentBlock'
 import {
   buildMindmapPreviewOrch,
   getDefaultMindmapBuildOptionsOrch,

@@ -24,7 +24,7 @@ import {
   type ParsedExcalidrawScene,
 } from '@/services/orchestrators/excalidrawSceneOrch'
 import type { ExcalidrawCanvasApiOrch } from '@/services/orchestrators/excalidrawIntegrationOrch'
-import { useUILayoutBlock } from '@/components/lego_blocks/UILayoutBlock'
+import { useUILayoutBlock } from '@/components/lego_blocks/integrations/UILayoutBlock'
 import {
   buildObsidianOpenUrlOrch,
   isThinkingSpaceWikilinkHrefOrch,
@@ -33,15 +33,15 @@ import {
   resolveWikilinkTargetOrch,
 } from '@/services/orchestrators/obsidianLinkOrch'
 import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
-import ExcalidrawDocumentBlock from '@/components/lego_blocks/ExcalidrawDocumentBlock'
-import MarkdownMiniNavBlock from '@/components/lego_blocks/MarkdownMiniNavBlock'
-import MarkdownRichEditorBlock, { type MarkdownRichEditorBlockHandle } from '@/components/lego_blocks/MarkdownRichEditorBlock'
-import InfoPanelToggleButtonBlock from '@/components/lego_blocks/InfoPanelToggleButtonBlock'
-import AiPanelToggleButtonBlock from '@/components/lego_blocks/AiPanelToggleButtonBlock'
+import ExcalidrawDocumentBlock from '@/components/lego_blocks/integrations/ExcalidrawDocumentBlock'
+import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/MarkdownMiniNavBlock'
+import MarkdownRichEditorBlock, { type MarkdownRichEditorBlockHandle } from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
+import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
+import AiPanelToggleButtonBlock from '@/components/lego_blocks/units/AiPanelToggleButtonBlock'
 import { cn } from '@/lib/utils'
-import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/AiAssistRuntimeBlock'
-import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBlock'
-import AiAssistReviewBlock from '@/components/lego_blocks/AiAssistReviewBlock'
+import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/integrations/AiAssistRuntimeBlock'
+import AiAssistControlsBlock from '@/components/lego_blocks/integrations/AiAssistControlsBlock'
+import AiAssistReviewBlock from '@/components/lego_blocks/integrations/AiAssistReviewBlock'
 import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/aiBlock'
 import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/markdownUrlTransformBlock'
 import {

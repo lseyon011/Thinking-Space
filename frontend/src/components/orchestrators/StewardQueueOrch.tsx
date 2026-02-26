@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
-import VaultExplorerBlock from '@/components/lego_blocks/VaultExplorerBlock'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import VaultExplorerBlock from '@/components/lego_blocks/integrations/VaultExplorerBlock'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
 import type { AiTelemetryEvent } from '@/services/orchestrators/aiTelemetryOrch'
 import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
 import { getOrganizerNodeByPathOrch } from '@/services/orchestrators/organizerNodeLookupOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
-import StewardProposalQueueBlock from '@/components/lego_blocks/StewardProposalQueueBlock'
+import StewardProposalQueueBlock from '@/components/lego_blocks/integrations/StewardProposalQueueBlock'
 import {
   applyStewardMetadataToFileOrch,
   generateStewardMetadataSuggestionForFileOrch,

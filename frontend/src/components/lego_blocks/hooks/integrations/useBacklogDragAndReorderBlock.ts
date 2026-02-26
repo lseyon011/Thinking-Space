@@ -8,7 +8,7 @@ import {
   sortNodesForDisplay,
   type ChildStateBlock,
   type DropEdge,
-} from '@/components/lego_blocks/BacklogListHelpersBlock'
+} from '@/components/lego_blocks/units/BacklogListHelpersBlock'
 
 interface UseBacklogDragAndReorderBlockParams {
   allowProgramLayoutEditing: boolean

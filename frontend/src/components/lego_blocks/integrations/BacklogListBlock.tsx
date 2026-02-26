@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
-import { BacklogNodeRowBlock } from '@/components/lego_blocks/BacklogNodeRowBlock'
-import { BacklogProgramRowBlock } from '@/components/lego_blocks/BacklogProgramRowBlock'
-import { Button } from '@/components/lego_blocks/ui/button'
-import { BacklogInlineCreateBlock } from '@/components/lego_blocks/BacklogInlineCreateBlock'
-import { BacklogInlineNotesEditorBlock } from '@/components/lego_blocks/BacklogInlineNotesEditorBlock'
-import { ProgramGroupHeaderBlock } from '@/components/lego_blocks/ProgramGroupHeaderBlock'
+import { BacklogNodeRowBlock } from '@/components/lego_blocks/units/BacklogNodeRowBlock'
+import { BacklogProgramRowBlock } from '@/components/lego_blocks/units/BacklogProgramRowBlock'
+import { Button } from '@/components/lego_blocks/units/ui/button'
+import { BacklogInlineCreateBlock } from '@/components/lego_blocks/integrations/BacklogInlineCreateBlock'
+import { BacklogInlineNotesEditorBlock } from '@/components/lego_blocks/integrations/BacklogInlineNotesEditorBlock'
+import { ProgramGroupHeaderBlock } from '@/components/lego_blocks/integrations/ProgramGroupHeaderBlock'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import { tagLookupKeyBlock } from '@/services/lego_blocks/tagBlock'
 import type { NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/yamlNoteBlock'
@@ -26,9 +26,9 @@ import {
   selectedPresetTagsForNode,
   sortNodesForDisplay,
   type TaskStatusOption,
-} from '@/components/lego_blocks/BacklogListHelpersBlock'
-import { useBacklogDragAndReorderBlock } from '@/components/lego_blocks/useBacklogDragAndReorderBlock'
-import { useBacklogInlineNotesBlock } from '@/components/lego_blocks/useBacklogInlineNotesBlock'
+} from '@/components/lego_blocks/units/BacklogListHelpersBlock'
+import { useBacklogDragAndReorderBlock } from '@/components/lego_blocks/hooks/integrations/useBacklogDragAndReorderBlock'
+import { useBacklogInlineNotesBlock } from '@/components/lego_blocks/hooks/integrations/useBacklogInlineNotesBlock'
 
 interface ProgramGroupEntryBlock {
   id: string

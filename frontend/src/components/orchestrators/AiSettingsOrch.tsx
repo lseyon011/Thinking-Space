@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
-import { Button } from '@/components/lego_blocks/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
-import AiTelemetryPanelBlock from '@/components/lego_blocks/AiTelemetryPanelBlock'
+import { Button } from '@/components/lego_blocks/units/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import AiTelemetryPanelBlock from '@/components/lego_blocks/integrations/AiTelemetryPanelBlock'
 import { listProvidersOrch, type AiProvider, type AiProviderStatus } from '@/services/orchestrators/chatOrch'
 import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeOrch'
 import {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Loader2, PlugZap } from 'lucide-react'
-import { Button } from '@/components/lego_blocks/ui/button'
+import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
   invokeExtensionSlotActionOrch,
   refreshExtensionUiOrch,
