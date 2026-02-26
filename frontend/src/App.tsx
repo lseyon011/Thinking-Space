@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, 
 import {
   Bot,
   CheckSquare2,
+  ChevronDown,
   Compass,
   FolderKanban,
   FileText,
@@ -11,6 +12,7 @@ import {
   MessageSquare,
   PanelLeft,
   PanelLeftClose,
+  PenLine,
   PlusSquare,
   Search,
   Settings as SettingsIcon,
@@ -110,6 +112,15 @@ const TOOL_NAV_ITEMS: NavItem[] = [
   { to: '/transcript-cleaner', label: 'Transcript Cleaner', icon: Sparkles },
 ]
 
+function ExcalidrawPlusIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <span className={`relative inline-flex items-center justify-center ${className}`}>
+      <PenLine className="h-full w-full" />
+      <span className="absolute -right-1 -top-1 text-[9px] font-bold leading-none">++</span>
+    </span>
+  )
+}
+
 function isNavItemActive(pathname: string, item: NavItem): boolean {
   if (pathname === item.to) return true
   return (item.activePaths ?? []).includes(pathname)
@@ -205,6 +216,9 @@ function App() {
   const [commandQuery, setCommandQuery] = useState('')
   const [commandFileItems, setCommandFileItems] = useState<CommandItem[]>([])
   const [commandFilesLastLoadedAt, setCommandFilesLastLoadedAt] = useState(0)
+  const [excalidrawNavExpanded, setExcalidrawNavExpanded] = useState(() => (
+    getStorageItem(STORAGE_KEYS.appShellExcalidrawExpanded) === '1'
+  ))
   const [explorerIconStyle, setExplorerIconStyle] = useState<ExplorerIconStyleBlock>('outline')
   const commandInputRef = useRef<HTMLInputElement | null>(null)
   const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
@@ -347,6 +361,10 @@ function App() {
     compactDrawerBaseOffset,
   )
   const compactDrawerTriggerLeft = Math.max(16, leftInset + 16)
+  const excalidrawGroupActive = useMemo(
+    () => TOOL_NAV_ITEMS.some(item => isNavItemActive(location.pathname, item)),
+    [location.pathname],
+  )
   const shellSafeAreaVars = useMemo<CSSProperties>(() => ({
     '--ltm-safe-top': `${topInset}px`,
     '--ltm-safe-right': `${rightInset}px`,
@@ -588,6 +606,16 @@ function App() {
   useEffect(() => {
     setStorageItem(STORAGE_KEYS.appShellSidebarCollapsed, sidebarCollapsed ? '1' : '0')
   }, [sidebarCollapsed])
+
+  useEffect(() => {
+    setStorageItem(STORAGE_KEYS.appShellExcalidrawExpanded, excalidrawNavExpanded ? '1' : '0')
+  }, [excalidrawNavExpanded])
+
+  useEffect(() => {
+    if (excalidrawGroupActive && !excalidrawNavExpanded) {
+      setExcalidrawNavExpanded(true)
+    }
+  }, [excalidrawGroupActive, excalidrawNavExpanded])
 
   useEffect(() => {
     if (!commandPaletteOpen) return
@@ -876,25 +904,49 @@ function App() {
                         Excalidraw++
                       </div>
                     )}
-                    {TOOL_NAV_ITEMS.map((item) => {
-                      const Icon = item.icon
-                      const active = isNavItemActive(location.pathname, item)
-                      return (
-                        <Link
-                          key={item.to}
-                          to={item.to}
-                          title={sidebarCollapsed ? item.label : undefined}
-                          className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
-                            sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                          } ${
-                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                    {sidebarCollapsed ? (
+                      <Link
+                        to={TOOL_NAV_ITEMS[0].to}
+                        title="Excalidraw++"
+                        className={`ltm-motion-fast ltm-touch-row flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-colors ${
+                          excalidrawGroupActive ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        <ExcalidrawPlusIcon className="h-4 w-4" />
+                      </Link>
+                    ) : (
+                      <div className="space-y-1">
+                        <button
+                          type="button"
+                          onClick={() => setExcalidrawNavExpanded(prev => !prev)}
+                          className={`ltm-motion-fast ltm-touch-row flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                            excalidrawGroupActive ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                           }`}
                         >
-                          <Icon className="h-4 w-4" />
-                          {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
-                        </Link>
-                      )
-                    })}
+                          <ExcalidrawPlusIcon className="h-4 w-4" />
+                          <span className="flex-1 truncate text-left">Excalidraw++</span>
+                          <ChevronDown className={`h-4 w-4 transition-transform ${excalidrawNavExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                        {excalidrawNavExpanded && (
+                          <div className="ml-5 space-y-1">
+                            {TOOL_NAV_ITEMS.map((item) => {
+                              const active = isNavItemActive(location.pathname, item)
+                              return (
+                                <Link
+                                  key={item.to}
+                                  to={item.to}
+                                  className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
+                                    active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                                  }`}
+                                >
+                                  <span className="truncate">{item.label}</span>
+                                </Link>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1084,22 +1136,36 @@ function App() {
                   <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Excalidraw++
                   </div>
-                  {TOOL_NAV_ITEMS.map((item) => {
-                    const active = isNavItemActive(location.pathname, item)
-                    return (
-                      <Link
-                        key={item.to}
-                        to={item.to}
-                        onClick={() => setDrawerOpen(false)}
-                        className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                        }`}
-                      >
-                        <Sparkles className="h-4 w-4" />
-                        <span className="truncate">{item.label}</span>
-                      </Link>
-                    )
-                  })}
+                  <button
+                    type="button"
+                    onClick={() => setExcalidrawNavExpanded(prev => !prev)}
+                    className={`ltm-motion-fast ltm-touch-row flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                      excalidrawGroupActive ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                    }`}
+                  >
+                    <ExcalidrawPlusIcon className="h-4 w-4" />
+                    <span className="flex-1 truncate text-left">Excalidraw++</span>
+                    <ChevronDown className={`h-4 w-4 transition-transform ${excalidrawNavExpanded ? 'rotate-180' : ''}`} />
+                  </button>
+                  {excalidrawNavExpanded && (
+                    <div className="ml-5 space-y-1">
+                      {TOOL_NAV_ITEMS.map((item) => {
+                        const active = isNavItemActive(location.pathname, item)
+                        return (
+                          <Link
+                            key={item.to}
+                            to={item.to}
+                            onClick={() => setDrawerOpen(false)}
+                            className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
+                              active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                            }`}
+                          >
+                            <span className="truncate">{item.label}</span>
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 
