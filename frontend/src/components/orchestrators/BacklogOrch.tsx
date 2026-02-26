@@ -35,6 +35,7 @@ interface ProjectEntry {
   name: string
   root: string
 }
+type ProjectPresetTagsByRoot = Record<string, string[]>
 
 const BACKLOG_ACTOR: CapabilityActor = {
   kind: 'human',
@@ -106,6 +107,24 @@ function sortBacklogNodes(nodes: NodeRecord[]): NodeRecord[] {
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+}
+
+function normalizeTag(value: string): string {
+  return value.trim().replace(/\s+/g, ' ')
+}
+
+function normalizeTagList(tags: string[]): string[] {
+  const seen = new Set<string>()
+  const normalized: string[] = []
+  for (const tag of tags) {
+    const next = normalizeTag(tag)
+    if (!next) continue
+    const dedupeKey = next.toLowerCase()
+    if (seen.has(dedupeKey)) continue
+    seen.add(dedupeKey)
+    normalized.push(next)
+  }
+  return normalized
 }
 
 function normalizeStoredSegments(value: unknown): string[] {
@@ -187,6 +206,9 @@ export default function BacklogOrch() {
   const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>(
     () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
   )
+  const [projectPresetTagsByRoot, setProjectPresetTagsByRoot] = useState<ProjectPresetTagsByRoot>(
+    () => getJsonStorageItem<ProjectPresetTagsByRoot>(STORAGE_KEYS.thinkingOrganizerProjectPresetTags, {}),
+  )
   const [initialProjectLoadResolved, setInitialProjectLoadResolved] = useState(false)
   const [initialStoredProjectRoot] = useState(() => readStoredProjectRoot())
   const activeProjectRoot = useMemo(
@@ -255,6 +277,25 @@ export default function BacklogOrch() {
       normalized ? normalized.split('/') : [],
     )
   }, [setSearchParams])
+
+  const updateProjectPresetTags = useCallback((projectRoot: string, tags: string[]) => {
+    const normalizedRoot = normalizePath(projectRoot)
+    if (!normalizedRoot) return
+    const normalizedTags = normalizeTagList(tags)
+    setProjectPresetTagsByRoot((prev) => {
+      const next: ProjectPresetTagsByRoot = { ...prev }
+      if (normalizedTags.length > 0) next[normalizedRoot] = normalizedTags
+      else delete next[normalizedRoot]
+      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectPresetTags, next)
+      return next
+    })
+  }, [])
+
+  const selectedProjectPresetTags = useMemo(() => {
+    const projectRoot = normalizePath(selectedNode?.projectRoot ?? activeProjectRoot)
+    if (!projectRoot) return []
+    return normalizeTagList(projectPresetTagsByRoot[projectRoot] ?? [])
+  }, [activeProjectRoot, projectPresetTagsByRoot, selectedNode?.projectRoot])
 
   useEffect(() => {
     if (urlHydrated) return
@@ -746,6 +787,37 @@ export default function BacklogOrch() {
     }
   }, [refreshExecutionProgress, selectedNode])
 
+  const updateNodeTagsFor = useCallback(async (node: NodeRecord, tags: string[]): Promise<NodeRecord> => {
+    setWorking(true)
+    setCurrentOperation(`Updating tags for ${node.title}`)
+    setError(null)
+    try {
+      const { node: updated } = await invokeCapabilityOrThrow({
+        capability: 'organizer.node.update',
+        input: {
+          uuid: node.uuid,
+          updates: {
+            tags: normalizeTagList(tags),
+          },
+        },
+        actor: BACKLOG_ACTOR,
+      })
+      applyUpdatedNode(updated)
+      return updated
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to update tags'))
+      throw err
+    } finally {
+      setWorking(false)
+      setCurrentOperation(null)
+    }
+  }, [applyUpdatedNode])
+
+  const updateNodeTags = useCallback(async (tags: string[]) => {
+    if (!selectedNode) return
+    await updateNodeTagsFor(selectedNode, tags)
+  }, [selectedNode, updateNodeTagsFor])
+
   const updateNodeNotesFor = useCallback(async (
     node: NodeRecord,
     description: string,
@@ -1114,6 +1186,13 @@ export default function BacklogOrch() {
           onUpdateStatus={updateStatus}
           onUpdateTaskStatus={updateTaskStatus}
           onUpdatePriority={updatePriority}
+          onUpdateTags={updateNodeTags}
+          presetTags={selectedProjectPresetTags}
+          onUpdateProjectPresetTags={(tags) => {
+            const projectRoot = normalizePath(selectedNode.projectRoot ?? activeProjectRoot)
+            if (!projectRoot) return
+            updateProjectPresetTags(projectRoot, tags)
+          }}
           onUpdateNotes={updateNodeNotes}
           onUpdateEpicCompletedAt={async (completionDate) => {
             await updateEpicCompletionDateFor(selectedNode, completionDate)

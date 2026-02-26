@@ -89,6 +89,79 @@ function initialsForAuthor(value: string | undefined): string {
 const STATUS_OPTIONS: NodeStatus[] = ['active', 'paused', 'completed', 'archived']
 const PRIORITY_OPTIONS: NodePriority[] = ['low', 'medium', 'high', 'critical']
 const TASK_STATUS_OPTIONS = ['ready', 'in_progress', 'blocked', 'done', 'cancelled'] as const
+const PRESET_TAG_COLOR_CLASSES = [
+  {
+    selected: 'border-emerald-300 bg-emerald-100/80 text-emerald-800',
+    unselected: 'border-emerald-200/80 text-emerald-700/70 hover:bg-emerald-50/60',
+  },
+  {
+    selected: 'border-sky-300 bg-sky-100/80 text-sky-800',
+    unselected: 'border-sky-200/80 text-sky-700/70 hover:bg-sky-50/60',
+  },
+  {
+    selected: 'border-amber-300 bg-amber-100/80 text-amber-800',
+    unselected: 'border-amber-200/80 text-amber-700/70 hover:bg-amber-50/60',
+  },
+  {
+    selected: 'border-fuchsia-300 bg-fuchsia-100/80 text-fuchsia-800',
+    unselected: 'border-fuchsia-200/80 text-fuchsia-700/70 hover:bg-fuchsia-50/60',
+  },
+  {
+    selected: 'border-violet-300 bg-violet-100/80 text-violet-800',
+    unselected: 'border-violet-200/80 text-violet-700/70 hover:bg-violet-50/60',
+  },
+] as const
+
+function normalizeTag(value: string): string {
+  return value.trim().replace(/\s+/g, ' ')
+}
+
+function normalizeTags(tags: string[]): string[] {
+  const seen = new Set<string>()
+  const normalized: string[] = []
+  for (const tag of tags) {
+    const next = normalizeTag(tag)
+    if (!next) continue
+    const dedupeKey = next.toLowerCase()
+    if (seen.has(dedupeKey)) continue
+    seen.add(dedupeKey)
+    normalized.push(next)
+  }
+  return normalized
+}
+
+function splitTagInput(value: string): string[] {
+  return normalizeTags(
+    value
+      .split(/[,\n]/)
+      .map(segment => segment.trim())
+      .filter(Boolean),
+  )
+}
+
+function hasTag(tags: string[], tag: string): boolean {
+  const lookup = normalizeTag(tag).toLowerCase()
+  if (!lookup) return false
+  return tags.some(item => normalizeTag(item).toLowerCase() === lookup)
+}
+
+function presetTagPalette(tag: string): (typeof PRESET_TAG_COLOR_CLASSES)[number] {
+  let hash = 0
+  for (let index = 0; index < tag.length; index += 1) {
+    hash = ((hash << 5) - hash) + tag.charCodeAt(index)
+    hash |= 0
+  }
+  const paletteIndex = Math.abs(hash) % PRESET_TAG_COLOR_CLASSES.length
+  return PRESET_TAG_COLOR_CLASSES[paletteIndex]
+}
+
+function tagsEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  for (let index = 0; index < a.length; index += 1) {
+    if (normalizeTag(a[index]).toLowerCase() !== normalizeTag(b[index]).toLowerCase()) return false
+  }
+  return true
+}
 
 function normalizeTaskStatus(value: string | undefined): (typeof TASK_STATUS_OPTIONS)[number] | null {
   if (!value) return null
@@ -120,6 +193,9 @@ export interface NodeDetailPanelBlockProps {
   onUpdateStatus: (status: string) => Promise<void>
   onUpdateTaskStatus: (taskStatus: string) => Promise<void>
   onUpdatePriority: (priority: string) => Promise<void>
+  onUpdateTags: (tags: string[]) => Promise<void>
+  presetTags?: string[]
+  onUpdateProjectPresetTags?: (tags: string[]) => Promise<void> | void
   onUpdateNotes: (description: string, comments: YAMLCommentEntry[]) => Promise<void>
   onUpdateEpicCompletedAt?: (completionDate: string | null) => Promise<void>
   onOpenFile: () => void
@@ -134,6 +210,9 @@ export default function NodeDetailPanelBlock({
   onUpdateStatus,
   onUpdateTaskStatus,
   onUpdatePriority,
+  onUpdateTags,
+  presetTags = [],
+  onUpdateProjectPresetTags,
   onUpdateNotes,
   onUpdateEpicCompletedAt,
   onOpenFile,
@@ -148,6 +227,10 @@ export default function NodeDetailPanelBlock({
   const [notesAutoSaving, setNotesAutoSaving] = useState(false)
   const [epicCompletionDateDraft, setEpicCompletionDateDraft] = useState('')
   const [epicCompletionSaving, setEpicCompletionSaving] = useState(false)
+  const [userTagDraft, setUserTagDraft] = useState('')
+  const [presetTagDraft, setPresetTagDraft] = useState('')
+  const [tagsSaving, setTagsSaving] = useState(false)
+  const [presetTagsSaving, setPresetTagsSaving] = useState(false)
   const [activityTab, setActivityTab] = useState<'all' | 'comments' | 'history' | 'worklog'>('comments')
   const [descriptionEditMode, setDescriptionEditMode] = useState(false)
   const notesAutoSaveSignatureRef = useRef<string | null>(null)
@@ -171,6 +254,14 @@ export default function NodeDetailPanelBlock({
       : undefined
     return toDateInputValue(fromFrontmatter ?? node.epicCompletedAt)
   }, [frontmatter?.epic_completed_at, node.epicCompletedAt])
+  const sourceAllTags = useMemo(
+    () => normalizeTags(frontmatter?.tags ?? node.tags ?? []),
+    [frontmatter?.tags, node.tags],
+  )
+  const sourcePresetTags = useMemo(() => normalizeTags(presetTags), [presetTags])
+  const sourceUserTags = useMemo(() => (
+    sourceAllTags.filter(tag => !hasTag(sourcePresetTags, tag))
+  ), [sourceAllTags, sourcePresetTags])
 
   useEffect(() => {
     const nodeChanged = lastNodeUuidRef.current !== node.uuid
@@ -186,6 +277,13 @@ export default function NodeDetailPanelBlock({
     if (nodeChanged) setDescriptionEditMode(false)
     notesAutoSaveSignatureRef.current = null
   }, [node.uuid, sourceComments, sourceDescription, sourceEpicCompletionDate])
+
+  useEffect(() => {
+    setUserTagDraft('')
+    setPresetTagDraft('')
+    setTagsSaving(false)
+    setPresetTagsSaving(false)
+  }, [node.uuid])
 
   // Close on Escape
   useEffect(() => {
@@ -246,6 +344,7 @@ export default function NodeDetailPanelBlock({
       .filter(([key, value]) => (
         key !== 'description' &&
         key !== 'comments' &&
+        key !== 'tags' &&
         value !== undefined &&
         value !== null &&
         value !== ''
@@ -337,6 +436,70 @@ export default function NodeDetailPanelBlock({
       setBusy(false)
     }
   }, [epicCompletionDateDraft, node.type, onUpdateEpicCompletedAt, sourceEpicCompletionDate])
+
+  const commitTags = useCallback(async (nextTags: string[]) => {
+    const normalizedNextTags = normalizeTags(nextTags)
+    if (tagsEqual(normalizedNextTags, sourceAllTags)) return
+    setBusy(true)
+    setTagsSaving(true)
+    try {
+      await onUpdateTags(normalizedNextTags)
+    } finally {
+      setTagsSaving(false)
+      setBusy(false)
+    }
+  }, [onUpdateTags, sourceAllTags])
+
+  const addUserTags = useCallback(async () => {
+    const additions = splitTagInput(userTagDraft)
+    if (additions.length === 0) return
+    const next = normalizeTags([...sourceAllTags, ...additions])
+    await commitTags(next)
+    setUserTagDraft('')
+  }, [commitTags, sourceAllTags, userTagDraft])
+
+  const removeUserTag = useCallback(async (tag: string) => {
+    const target = normalizeTag(tag).toLowerCase()
+    if (!target) return
+    const next = sourceAllTags.filter(item => normalizeTag(item).toLowerCase() !== target)
+    await commitTags(next)
+  }, [commitTags, sourceAllTags])
+
+  const togglePresetTagOnNode = useCallback(async (tag: string) => {
+    const normalizedTag = normalizeTag(tag)
+    if (!normalizedTag) return
+    const next = hasTag(sourceAllTags, normalizedTag)
+      ? sourceAllTags.filter(item => normalizeTag(item).toLowerCase() !== normalizedTag.toLowerCase())
+      : normalizeTags([...sourceAllTags, normalizedTag])
+    await commitTags(next)
+  }, [commitTags, sourceAllTags])
+
+  const commitPresetTagCatalog = useCallback(async (nextPresetTags: string[]) => {
+    if (!onUpdateProjectPresetTags) return
+    const normalizedNextPresetTags = normalizeTags(nextPresetTags)
+    if (tagsEqual(normalizedNextPresetTags, sourcePresetTags)) return
+    setPresetTagsSaving(true)
+    try {
+      await Promise.resolve(onUpdateProjectPresetTags(normalizedNextPresetTags))
+    } finally {
+      setPresetTagsSaving(false)
+    }
+  }, [onUpdateProjectPresetTags, sourcePresetTags])
+
+  const addPresetTags = useCallback(async () => {
+    const additions = splitTagInput(presetTagDraft)
+    if (additions.length === 0) return
+    const next = normalizeTags([...sourcePresetTags, ...additions])
+    await commitPresetTagCatalog(next)
+    setPresetTagDraft('')
+  }, [commitPresetTagCatalog, presetTagDraft, sourcePresetTags])
+
+  const removePresetTag = useCallback(async (tag: string) => {
+    const target = normalizeTag(tag).toLowerCase()
+    if (!target) return
+    const next = sourcePresetTags.filter(item => normalizeTag(item).toLowerCase() !== target)
+    await commitPresetTagCatalog(next)
+  }, [commitPresetTagCatalog, sourcePresetTags])
 
   useEffect(() => {
     if (!notesDirty || busy || notesSaving) return
@@ -534,6 +697,131 @@ export default function NodeDetailPanelBlock({
                 </ReactMarkdown>
               </div>
             )}
+          </div>
+
+          <div className="space-y-3 rounded-md border border-border/60 bg-card p-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-semibold text-foreground">Tags</label>
+              <span className="text-[11px] text-muted-foreground">Shown in detail panel only</span>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">User Tags</p>
+              {sourceUserTags.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {sourceUserTags.map(tag => (
+                    <span
+                      key={`user-tag-${tag}`}
+                      className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-muted/25 px-2 py-0.5 text-[11px] text-foreground/90"
+                    >
+                      <span>{tag}</span>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground"
+                        onClick={() => { void removeUserTag(tag) }}
+                        disabled={busy || tagsSaving}
+                        aria-label={`Remove tag ${tag}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No user tags yet.</p>
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  value={userTagDraft}
+                  onChange={event => setUserTagDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return
+                    event.preventDefault()
+                    void addUserTags()
+                  }}
+                  placeholder="Add user tags (comma separated)"
+                  className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                  disabled={busy || tagsSaving}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-2 text-xs"
+                  onClick={() => { void addUserTags() }}
+                  disabled={busy || tagsSaving || splitTagInput(userTagDraft).length === 0}
+                >
+                  {tagsSaving ? 'Saving...' : 'Add'}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Project Tags</p>
+                <p className="text-[10px] text-muted-foreground">Project-scoped presets</p>
+              </div>
+              {sourcePresetTags.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {sourcePresetTags.map(tag => {
+                    const selected = hasTag(sourceAllTags, tag)
+                    const palette = presetTagPalette(tag)
+                    const presetClass = selected ? palette.selected : palette.unselected
+                    return (
+                      <span
+                        key={`preset-tag-${tag}`}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors ${presetClass}`}
+                      >
+                        <button
+                          type="button"
+                          className="leading-none"
+                          onClick={() => { void togglePresetTagOnNode(tag) }}
+                          disabled={busy || tagsSaving}
+                          title={selected ? `Remove ${tag}` : `Add ${tag}`}
+                        >
+                          {tag}
+                        </button>
+                        {onUpdateProjectPresetTags && (
+                          <button
+                            type="button"
+                            className="text-[10px] opacity-70 hover:opacity-100"
+                            onClick={() => { void removePresetTag(tag) }}
+                            disabled={presetTagsSaving}
+                            aria-label={`Remove preset tag ${tag}`}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No preset tags yet for this project.</p>
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  value={presetTagDraft}
+                  onChange={event => setPresetTagDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return
+                    event.preventDefault()
+                    void addPresetTags()
+                  }}
+                  placeholder="Add preset tags (comma separated)"
+                  className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                  disabled={presetTagsSaving || !onUpdateProjectPresetTags}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-2 text-xs"
+                  onClick={() => { void addPresetTags() }}
+                  disabled={presetTagsSaving || !onUpdateProjectPresetTags || splitTagInput(presetTagDraft).length === 0}
+                >
+                  {presetTagsSaving ? 'Saving...' : 'Add'}
+                </Button>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-1">
