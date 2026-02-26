@@ -75,7 +75,7 @@ export default function AiSettingsOrch() {
   const scopeLabels: Record<AiSettingsScope, string> = {
     chat: 'Chat tab',
     markdown_editor: 'Markdown editor',
-    new_thought: 'New Thought tab',
+    new_thought: 'New Note tab',
     todos: 'Todos tab',
     steward_metadata: 'Steward metadata',
   }
@@ -83,7 +83,7 @@ export default function AiSettingsOrch() {
   const scopeDescriptions: Record<AiSettingsScope, string> = {
     chat: 'Conversation replies in Chat route.',
     markdown_editor: 'Inline AI assist inside markdown editor.',
-    new_thought: 'AI assist for New Thought content drafting.',
+    new_thought: 'AI assist for New Note content drafting.',
     todos: 'AI assist for todo text cleanup and clarity.',
     steward_metadata: 'Steward metadata proposal generation.',
   }

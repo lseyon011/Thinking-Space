@@ -59,10 +59,11 @@ export async function createThought(params: {
   const outputPath = `${params.folder_path}/${params.filename}`
 
   const bodyParts: string[] = []
+  const customTitle = params.title?.trim() || ''
   const emotions = (params.emotions || []).filter(e => e && e.trim())
 
-  if (params.title) {
-    bodyParts.push(`# ${params.title}`)
+  if (customTitle) {
+    bodyParts.push(`# ${customTitle}`)
     bodyParts.push('')
   }
 
@@ -76,7 +77,7 @@ export async function createThought(params: {
 
   bodyParts.push(params.content)
 
-  const noteTitle = (params.title?.trim() || deriveTitleFromFilename(params.filename))
+  const noteTitle = customTitle || deriveTitleFromFilename(params.filename)
   const note = createNote({
     type: 'thought',
     title: noteTitle,
@@ -99,7 +100,7 @@ export async function createThought(params: {
 function deriveTitleFromFilename(filename: string): string {
   const basename = filename.replace(/\.md$/i, '')
   const normalized = basename.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
-  return normalized || 'Untitled Thought'
+  return normalized || 'Untitled Note'
 }
 
 function emotionToTag(emotion: string): string {

@@ -20,7 +20,7 @@ export interface NavItem {
 
 export const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/thinking-space', label: 'Thinking Space', icon: Compass },
-  { to: '/new-thought', label: 'New Thought', icon: PlusSquare },
+  { to: '/new-thought', label: 'New Note', icon: PlusSquare },
   { to: '/todos', label: 'Todos', icon: CheckSquare2 },
   { to: '/git-insights', label: 'Insights', icon: GitBranch },
   { to: '/chat', label: 'Chat', icon: MessageSquare },

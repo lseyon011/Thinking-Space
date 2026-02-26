@@ -36,7 +36,7 @@ export default function Home() {
           <div className="mt-4 grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap sm:justify-center sm:gap-3">
             <Button asChild className="h-10 w-full justify-between px-3 text-sm sm:h-11 sm:w-auto sm:px-5 sm:text-base">
               <Link to="/new-thought">
-                New Thought
+                New Note
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
