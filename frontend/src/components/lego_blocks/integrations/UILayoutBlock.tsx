@@ -1,14 +1,14 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { getUILayoutStateOrch, subscribeUILayoutOrch, type UILayoutState } from '@/services/orchestrators/uiLayoutOrch'
 
-interface UILayoutContextValue {
+export interface UILayoutContextValue {
   layout: UILayoutState
   refreshLayout: () => void
 }
 
 const defaultLayoutState = getUILayoutStateOrch()
 
-const UILayoutContext = createContext<UILayoutContextValue>({
+export const UILayoutContext = createContext<UILayoutContextValue>({
   layout: defaultLayoutState,
   refreshLayout: () => {},
 })
@@ -36,8 +36,3 @@ export function UILayoutProviderBlock({ children }: { children: ReactNode }) {
     </UILayoutContext.Provider>
   )
 }
-
-export function useUILayoutBlock(): UILayoutContextValue {
-  return useContext(UILayoutContext)
-}
-

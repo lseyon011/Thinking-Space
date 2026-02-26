@@ -24,7 +24,7 @@ import {
   type ParsedExcalidrawScene,
 } from '@/services/orchestrators/excalidrawSceneOrch'
 import type { ExcalidrawCanvasApiOrch } from '@/services/orchestrators/excalidrawIntegrationOrch'
-import { useUILayoutBlock } from '@/components/lego_blocks/integrations/UILayoutBlock'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import {
   buildObsidianOpenUrlOrch,
   isThinkingSpaceWikilinkHrefOrch,
@@ -39,7 +39,7 @@ import MarkdownRichEditorBlock, { type MarkdownRichEditorBlockHandle } from '@/c
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
 import AiPanelToggleButtonBlock from '@/components/lego_blocks/units/AiPanelToggleButtonBlock'
 import { cn } from '@/lib/utils'
-import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/integrations/AiAssistRuntimeBlock'
+import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/hooks/integrations/useAiAssistRuntimeBlock'
 import AiAssistControlsBlock from '@/components/lego_blocks/integrations/AiAssistControlsBlock'
 import AiAssistReviewBlock from '@/components/lego_blocks/integrations/AiAssistReviewBlock'
 import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/integrations/aiBlock'
