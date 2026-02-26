@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, Check, Copy, FolderTree, Info, Loader2 } from 'luci
 import type { ReactNode } from 'react'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
-import { formatRowOrdinal, nodeDisplayTitle, nodeTitleWithoutTicket, PriorityDot, type DropEdge } from '@/components/lego_blocks/units/BacklogListHelpersBlock'
+import { formatRowOrdinal, nodeDisplayTitle, nodeTitleWithoutTicket, PriorityDot, type DropEdge } from '@/components/lego_blocks/units/BacklogListDomainBlock'
 import {
   NodeStatusBadgeBlock,
   NodeStatusSelectBlock,

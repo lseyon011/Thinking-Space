@@ -1,7 +1,7 @@
 import { Loader2, Plus } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import type { NodeType } from '@/services/lego_blocks/units/yamlNoteBlock'
-import { nodeTypeLabel } from '@/components/lego_blocks/units/BacklogListHelpersBlock'
+import { nodeTypeLabel } from '@/components/lego_blocks/units/BacklogListDomainBlock'
 
 interface BacklogInlineCreateBlockProps {
   allowedTypes: NodeType[]

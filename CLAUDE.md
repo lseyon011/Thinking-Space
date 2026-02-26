@@ -72,6 +72,9 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - Composite UI lego blocks that compose units must live in `frontend/src/components/lego_blocks/integrations/*`.
 - Component-layer hooks must live in `frontend/src/components/lego_blocks/hooks/*`.
 - Page/feature orchestration must live in `frontend/src/components/orchestrators/*`.
+- Do not create `*HelperBlock` or `*HelpersBlock` component files. Prefer concrete domain block names.
+- If logic has only one consumer, keep it local.
+- If logic is reusable, extract to a domain-specific `*Block`/`use*Block` (for example `BacklogListDomainBlock`, `MarkdownDocumentContentBlock`) instead of helper-style naming.
 - Naming is mandatory:
   - Reusable component files use `*Block` suffix.
   - Hook files start with `use`.

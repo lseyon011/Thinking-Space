@@ -91,6 +91,9 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - `frontend/src/components/lego_blocks/integrations/*` stores composite blocks that compose multiple units and feature-level UI glue.
 - `frontend/src/components/lego_blocks/hooks/*` stores reusable component-layer hooks (behavior lego, no rendering).
 - `frontend/src/components/orchestrators/*` stores page/feature orchestration containers only.
+- Do not create `*HelperBlock` or `*HelpersBlock` files. These are treated as grab-bag anti-patterns.
+- If logic has a single consumer, keep it local to that block/orchestrator.
+- If logic is reusable, extract it into a domain-specific `*Block`/`use*Block` with a concrete name (for example `BacklogListDomainBlock`, `MarkdownDocumentContentBlock`) rather than generic helper naming.
 - File suffixes are mandatory:
   - Reusable component primitives and integrations end with `Block` (example: `SectionChecklistBlock.tsx`).
   - Hooks start with `use` (example: `useBacklogInlineNotesBlock.ts`).

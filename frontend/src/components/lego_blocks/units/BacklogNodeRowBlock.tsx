@@ -16,7 +16,7 @@ import {
   TASK_STATUS_OPTIONS,
   type DropEdge,
   type TaskStatusOption,
-} from '@/components/lego_blocks/units/BacklogListHelpersBlock'
+} from '@/components/lego_blocks/units/BacklogListDomainBlock'
 import {
   Select,
   SelectContent,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import type { YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
-import { notesSignature } from '@/components/lego_blocks/units/BacklogListHelpersBlock'
+import { notesSignature } from '@/components/lego_blocks/units/BacklogListDomainBlock'
 
 interface UseBacklogInlineNotesBlockParams {
   readOnly: boolean

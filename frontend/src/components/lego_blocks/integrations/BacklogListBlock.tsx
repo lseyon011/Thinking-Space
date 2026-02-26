@@ -26,7 +26,7 @@ import {
   selectedPresetTagsForNode,
   sortNodesForDisplay,
   type TaskStatusOption,
-} from '@/components/lego_blocks/units/BacklogListHelpersBlock'
+} from '@/components/lego_blocks/units/BacklogListDomainBlock'
 import { useBacklogDragAndReorderBlock } from '@/components/lego_blocks/hooks/integrations/useBacklogDragAndReorderBlock'
 import { useBacklogInlineNotesBlock } from '@/components/lego_blocks/hooks/integrations/useBacklogInlineNotesBlock'
 

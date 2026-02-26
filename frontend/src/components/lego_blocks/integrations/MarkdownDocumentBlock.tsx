@@ -61,7 +61,7 @@ import {
   type MarkdownMeta,
   yamlTextToFrontmatterBlock,
   yieldToNextFrame,
-} from '@/components/lego_blocks/units/MarkdownDocumentHelpersBlock'
+} from '@/components/lego_blocks/units/MarkdownDocumentContentBlock'
 
 export type MarkdownViewerMode = 'view' | 'edit'
 
