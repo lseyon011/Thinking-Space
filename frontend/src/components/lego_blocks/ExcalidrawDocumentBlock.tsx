@@ -94,6 +94,9 @@ interface ExcalidrawDocumentBlockProps {
   className?: string
 }
 
+const IOS_MINIMAP_POINTER_UPDATE_INTERVAL_MS = 120
+const IOS_MINIMAP_POINTER_SETTLE_DELAY_MS = 220
+
 export default function ExcalidrawDocumentBlock({
   content,
   editable = false,
@@ -119,6 +122,9 @@ export default function ExcalidrawDocumentBlock({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [containerSize, setContainerSize] = useState({ width: 1, height: 1 })
   const scrollFrameRef = useRef<number | null>(null)
+  const scrollThrottleTimeoutRef = useRef<number | null>(null)
+  const scrollSettledTimeoutRef = useRef<number | null>(null)
+  const lastScrollStateEmitAtRef = useRef(0)
   const pendingScrollRef = useRef({ scrollX: 0, scrollY: 0, zoom: 1 })
   const sceneChangeFrameRef = useRef<number | null>(null)
   const sceneChangeTimeoutRef = useRef<number | null>(null)
@@ -178,12 +184,15 @@ export default function ExcalidrawDocumentBlock({
     return buildExcalidrawInitialDataOrch(parsedScene, editable)
   }, [editable, parsedScene])
   const isLargeScene = (parsedScene?.elements.length ?? 0) >= LARGE_SCENE_ELEMENT_THRESHOLD
+  const useLightweightMiniMapMode = isIosSurface
+  const disableAutoCenterForRuntime = useLightweightMiniMapMode
 
   // ---------------------------------------------------------------------------
   // MiniMap element queuing (throttled)
   // ---------------------------------------------------------------------------
 
   const queueMiniMapElements = useCallback((elements: readonly unknown[]) => {
+    if (useLightweightMiniMapMode) return
     pendingMiniMapElementsRef.current = elements
     if (miniMapElementsFrameRef.current !== null || miniMapElementsTimeoutRef.current !== null) return
 
@@ -205,7 +214,7 @@ export default function ExcalidrawDocumentBlock({
         setMiniMapElements(prev => (prev === next ? prev : next))
       })
     }, delay)
-  }, [isIosSurface, isLargeScene])
+  }, [isIosSurface, isLargeScene, useLightweightMiniMapMode])
 
   // ---------------------------------------------------------------------------
   // Deferred scene analysis
@@ -215,6 +224,10 @@ export default function ExcalidrawDocumentBlock({
   const sceneAnalysis = deferredSceneAnalysis
 
   useEffect(() => {
+    if (useLightweightMiniMapMode) {
+      setDeferredSceneAnalysis(EMPTY_SCENE_ANALYSIS)
+      return
+    }
     if (!parsedScene || parsedScene.elements.length === 0) {
       setDeferredSceneAnalysis(EMPTY_SCENE_ANALYSIS)
       return
@@ -226,7 +239,7 @@ export default function ExcalidrawDocumentBlock({
       setDeferredSceneAnalysis(analyzeScene(parsedScene))
     })
     return () => { cancelled = true; cancelDeferred() }
-  }, [editable, parsedScene])
+  }, [editable, parsedScene, useLightweightMiniMapMode])
 
   const sceneBounds = sceneAnalysis.sceneBounds
 
@@ -235,13 +248,14 @@ export default function ExcalidrawDocumentBlock({
   // ---------------------------------------------------------------------------
 
   const elementsForMiniMap = useMemo<readonly unknown[]>(() => {
+    if (useLightweightMiniMapMode) return parsedScene?.elements ?? []
     if (editable) return miniMapElements ?? parsedScene?.elements ?? []
     return parsedScene?.elements ?? []
-  }, [editable, miniMapElements, parsedScene?.elements])
+  }, [editable, miniMapElements, parsedScene?.elements, useLightweightMiniMapMode])
   const miniMapBounds = useMemo(() => computeMiniMapBounds(elementsForMiniMap), [elementsForMiniMap])
 
   useEffect(() => {
-    if (!editable) {
+    if (!editable || useLightweightMiniMapMode) {
       setMiniMapElements(null)
       pendingMiniMapElementsRef.current = null
       if (miniMapElementsFrameRef.current !== null) {
@@ -255,7 +269,7 @@ export default function ExcalidrawDocumentBlock({
       return
     }
     setMiniMapElements(parsedScene?.elements ?? null)
-  }, [editable, parsedScene])
+  }, [editable, parsedScene, useLightweightMiniMapMode])
 
   // ---------------------------------------------------------------------------
   // Performance event logging
@@ -519,12 +533,16 @@ export default function ExcalidrawDocumentBlock({
       if (pencilAppStateFrameRef.current !== null) window.cancelAnimationFrame(pencilAppStateFrameRef.current)
       if (miniMapElementsFrameRef.current !== null) window.cancelAnimationFrame(miniMapElementsFrameRef.current)
       if (miniMapElementsTimeoutRef.current !== null) window.clearTimeout(miniMapElementsTimeoutRef.current)
+      if (scrollThrottleTimeoutRef.current !== null) window.clearTimeout(scrollThrottleTimeoutRef.current)
+      if (scrollSettledTimeoutRef.current !== null) window.clearTimeout(scrollSettledTimeoutRef.current)
       sceneChangeFrameRef.current = null
       sceneChangeTimeoutRef.current = null
       autoCenterFrameRef.current = null
       pencilAppStateFrameRef.current = null
       miniMapElementsFrameRef.current = null
       miniMapElementsTimeoutRef.current = null
+      scrollThrottleTimeoutRef.current = null
+      scrollSettledTimeoutRef.current = null
       const stopPencilBridge = pencilBridgeStopRef.current
       pencilBridgeStopRef.current = null
       if (stopPencilBridge) void stopPencilBridge()
@@ -550,6 +568,7 @@ export default function ExcalidrawDocumentBlock({
     queuedSceneRef.current = null
     lastSceneChangeEmitAtRef.current = 0
     lastMiniMapEmitAtRef.current = 0
+    lastScrollStateEmitAtRef.current = 0
     if (sceneChangeTimeoutRef.current !== null) {
       window.clearTimeout(sceneChangeTimeoutRef.current)
       sceneChangeTimeoutRef.current = null
@@ -557,6 +576,14 @@ export default function ExcalidrawDocumentBlock({
     if (miniMapElementsTimeoutRef.current !== null) {
       window.clearTimeout(miniMapElementsTimeoutRef.current)
       miniMapElementsTimeoutRef.current = null
+    }
+    if (scrollThrottleTimeoutRef.current !== null) {
+      window.clearTimeout(scrollThrottleTimeoutRef.current)
+      scrollThrottleTimeoutRef.current = null
+    }
+    if (scrollSettledTimeoutRef.current !== null) {
+      window.clearTimeout(scrollSettledTimeoutRef.current)
+      scrollSettledTimeoutRef.current = null
     }
     pencilPressureStateRef.current = null
     lastPencilStyleRef.current = null
@@ -624,6 +651,7 @@ export default function ExcalidrawDocumentBlock({
   // ---------------------------------------------------------------------------
 
   const tryAutoCenter = useCallback((source: string, hintedElementCount?: number) => {
+    if (disableAutoCenterForRuntime) return false
     if (!editable || !excalidrawApi || hasAutoCenteredRef.current) return false
     if (!autoCenterRequestedRef.current) return false
     if (!parsedScene || parsedScene.elements.length === 0) return false
@@ -699,9 +727,10 @@ export default function ExcalidrawDocumentBlock({
       })
       return false
     }
-  }, [containerSize.height, containerSize.width, debugLog, editable, excalidrawApi, parsedScene, sceneBounds])
+  }, [containerSize.height, containerSize.width, debugLog, disableAutoCenterForRuntime, editable, excalidrawApi, parsedScene, sceneBounds])
 
   const scheduleAutoCenter = useCallback((source: string, hintedElementCount?: number) => {
+    if (disableAutoCenterForRuntime) return
     if (!editable || !excalidrawApi || hasAutoCenteredRef.current) return
     if (!autoCenterRequestedRef.current) return
     if (autoCenterFrameRef.current !== null) return
@@ -709,7 +738,7 @@ export default function ExcalidrawDocumentBlock({
       autoCenterFrameRef.current = null
       tryAutoCenter(source, hintedElementCount)
     })
-  }, [editable, excalidrawApi, tryAutoCenter])
+  }, [disableAutoCenterForRuntime, editable, excalidrawApi, tryAutoCenter])
 
   // ---------------------------------------------------------------------------
   // API ready + viewport tracking
@@ -734,36 +763,43 @@ export default function ExcalidrawDocumentBlock({
     })
 
     if (editable) {
-      queueMiniMapElements(excalidrawApi.getSceneElementsBlock())
-      if (sceneBounds) {
-        const zoom = Number.isFinite(viewport.zoom) ? viewport.zoom : 0
-        const zoomValid = zoom >= 0.02 && zoom <= 4
-        const viewportWorldW = containerSize.width / Math.max(zoom, 0.001)
-        const viewportWorldH = containerSize.height / Math.max(zoom, 0.001)
-        const left = -viewport.scrollX
-        const top = -viewport.scrollY
-        const right = left + viewportWorldW
-        const bottom = top + viewportWorldH
-        const intersectsScene = right >= sceneBounds.minX && left <= sceneBounds.maxX && bottom >= sceneBounds.minY && top <= sceneBounds.maxY
-        const viewportBounds = { left, top, right, bottom, viewportWorldW, viewportWorldH }
-        const visibleCenterCount = countDrawableCentersInViewport(viewportBounds)
-        const visibleAnchorCenterCount = countDrawableCentersInViewport(viewportBounds, { anchorsOnly: true })
-        const visibleCenterThreshold = parsedScene && parsedScene.elements.length >= 1000 ? 10 : 1
-        const sparseViewport = visibleCenterCount < visibleCenterThreshold
-        const hasAnchorElements = sceneBounds.anchorCount > 0
-        const missingAnchors = hasAnchorElements && visibleAnchorCenterCount === 0
-        const shouldAutoCenter = !zoomValid || !intersectsScene || sparseViewport || missingAnchors
-        autoCenterRequestedRef.current = shouldAutoCenter
-        if (!shouldAutoCenter) hasAutoCenteredRef.current = true
-        debugLog('viewport_validation', {
-          zoom, zoomValid, intersectsScene, visibleCenterCount, visibleAnchorCenterCount,
-          visibleCenterThreshold, sparseViewport, hasAnchorElements, missingAnchors,
-          shouldAutoCenter, viewport: viewportBounds,
-        })
-        if (shouldAutoCenter) scheduleAutoCenter('api_ready')
-      } else if (parsedScene && parsedScene.elements.length > 0) {
-        autoCenterRequestedRef.current = true
-        scheduleAutoCenter('api_ready_pending_analysis')
+      if (!useLightweightMiniMapMode) {
+        queueMiniMapElements(excalidrawApi.getSceneElementsBlock())
+      }
+      if (!disableAutoCenterForRuntime) {
+        if (sceneBounds) {
+          const zoom = Number.isFinite(viewport.zoom) ? viewport.zoom : 0
+          const zoomValid = zoom >= 0.02 && zoom <= 4
+          const viewportWorldW = containerSize.width / Math.max(zoom, 0.001)
+          const viewportWorldH = containerSize.height / Math.max(zoom, 0.001)
+          const left = -viewport.scrollX
+          const top = -viewport.scrollY
+          const right = left + viewportWorldW
+          const bottom = top + viewportWorldH
+          const intersectsScene = right >= sceneBounds.minX && left <= sceneBounds.maxX && bottom >= sceneBounds.minY && top <= sceneBounds.maxY
+          const viewportBounds = { left, top, right, bottom, viewportWorldW, viewportWorldH }
+          const visibleCenterCount = countDrawableCentersInViewport(viewportBounds)
+          const visibleAnchorCenterCount = countDrawableCentersInViewport(viewportBounds, { anchorsOnly: true })
+          const visibleCenterThreshold = parsedScene && parsedScene.elements.length >= 1000 ? 10 : 1
+          const sparseViewport = visibleCenterCount < visibleCenterThreshold
+          const hasAnchorElements = sceneBounds.anchorCount > 0
+          const missingAnchors = hasAnchorElements && visibleAnchorCenterCount === 0
+          const shouldAutoCenter = !zoomValid || !intersectsScene || sparseViewport || missingAnchors
+          autoCenterRequestedRef.current = shouldAutoCenter
+          if (!shouldAutoCenter) hasAutoCenteredRef.current = true
+          debugLog('viewport_validation', {
+            zoom, zoomValid, intersectsScene, visibleCenterCount, visibleAnchorCenterCount,
+            visibleCenterThreshold, sparseViewport, hasAnchorElements, missingAnchors,
+            shouldAutoCenter, viewport: viewportBounds,
+          })
+          if (shouldAutoCenter) scheduleAutoCenter('api_ready')
+        } else if (parsedScene && parsedScene.elements.length > 0) {
+          autoCenterRequestedRef.current = true
+          scheduleAutoCenter('api_ready_pending_analysis')
+        }
+      } else {
+        autoCenterRequestedRef.current = false
+        hasAutoCenteredRef.current = true
       }
     } else if (!hasAutoCenteredRef.current) {
       const elements = excalidrawApi.getSceneElementsBlock()
@@ -780,6 +816,31 @@ export default function ExcalidrawDocumentBlock({
     const unsubscribe = trackViewport
       ? excalidrawApi.onViewportChangeBlock((nextViewport) => {
         pendingScrollRef.current = nextViewport
+        if (useLightweightMiniMapMode) {
+          const now = nowMs()
+          const elapsed = now - lastScrollStateEmitAtRef.current
+          if (scrollThrottleTimeoutRef.current === null) {
+            const delay = Math.max(0, IOS_MINIMAP_POINTER_UPDATE_INTERVAL_MS - elapsed)
+            scrollThrottleTimeoutRef.current = window.setTimeout(() => {
+              scrollThrottleTimeoutRef.current = null
+              lastScrollStateEmitAtRef.current = nowMs()
+              setScrollState(pendingScrollRef.current)
+            }, delay)
+          }
+          if (scrollSettledTimeoutRef.current !== null) {
+            window.clearTimeout(scrollSettledTimeoutRef.current)
+          }
+          scrollSettledTimeoutRef.current = window.setTimeout(() => {
+            scrollSettledTimeoutRef.current = null
+            if (scrollThrottleTimeoutRef.current !== null) {
+              window.clearTimeout(scrollThrottleTimeoutRef.current)
+              scrollThrottleTimeoutRef.current = null
+            }
+            lastScrollStateEmitAtRef.current = nowMs()
+            setScrollState(pendingScrollRef.current)
+          }, IOS_MINIMAP_POINTER_SETTLE_DELAY_MS)
+          return
+        }
         if (scrollFrameRef.current !== null) return
         scrollFrameRef.current = window.requestAnimationFrame(() => {
           scrollFrameRef.current = null
@@ -796,11 +857,19 @@ export default function ExcalidrawDocumentBlock({
         window.cancelAnimationFrame(scrollFrameRef.current)
         scrollFrameRef.current = null
       }
+      if (scrollThrottleTimeoutRef.current !== null) {
+        window.clearTimeout(scrollThrottleTimeoutRef.current)
+        scrollThrottleTimeoutRef.current = null
+      }
+      if (scrollSettledTimeoutRef.current !== null) {
+        window.clearTimeout(scrollSettledTimeoutRef.current)
+        scrollSettledTimeoutRef.current = null
+      }
     }
   }, [
     containerSize.height, containerSize.width, countDrawableCentersInViewport,
     debugLog, editable, excalidrawApi, miniMapBounds, parsedScene,
-    queueMiniMapElements, sceneBounds, scheduleAutoCenter, syncActiveHighlighterPresetFromAppState,
+    disableAutoCenterForRuntime, queueMiniMapElements, sceneBounds, scheduleAutoCenter, syncActiveHighlighterPresetFromAppState, useLightweightMiniMapMode,
   ])
 
   // ---------------------------------------------------------------------------
@@ -817,7 +886,7 @@ export default function ExcalidrawDocumentBlock({
         return next
       })
       debugLog('container_resize', next)
-      if (editable && excalidrawApi && !hasAutoCenteredRef.current && autoCenterRequestedRef.current) {
+      if (!disableAutoCenterForRuntime && editable && excalidrawApi && !hasAutoCenteredRef.current && autoCenterRequestedRef.current) {
         scheduleAutoCenter('resize')
       }
     }
@@ -825,7 +894,7 @@ export default function ExcalidrawDocumentBlock({
     const ro = new ResizeObserver(update)
     ro.observe(container)
     return () => ro.disconnect()
-  }, [debugLog, editable, excalidrawApi, scheduleAutoCenter])
+  }, [debugLog, disableAutoCenterForRuntime, editable, excalidrawApi, scheduleAutoCenter])
 
   // ---------------------------------------------------------------------------
   // Compact view zoom fitting
@@ -939,7 +1008,7 @@ export default function ExcalidrawDocumentBlock({
                 scrollY: typeof typedAppState.scrollY === 'number' ? typedAppState.scrollY : null,
               })
             }
-            if (editable && excalidrawApi && !hasAutoCenteredRef.current && autoCenterRequestedRef.current && elements.length > 0) {
+            if (!disableAutoCenterForRuntime && editable && excalidrawApi && !hasAutoCenteredRef.current && autoCenterRequestedRef.current && elements.length > 0) {
               scheduleAutoCenter('on_change', elements.length)
             }
             if (editable) {
@@ -953,7 +1022,30 @@ export default function ExcalidrawDocumentBlock({
                 ? typedAppState.scrollY : null
               if (zoom !== null && scrollX !== null && scrollY !== null) {
                 pendingScrollRef.current = { scrollX, scrollY, zoom }
-                if (scrollFrameRef.current === null) {
+                if (useLightweightMiniMapMode) {
+                  const now = nowMs()
+                  const elapsed = now - lastScrollStateEmitAtRef.current
+                  if (scrollThrottleTimeoutRef.current === null) {
+                    const delay = Math.max(0, IOS_MINIMAP_POINTER_UPDATE_INTERVAL_MS - elapsed)
+                    scrollThrottleTimeoutRef.current = window.setTimeout(() => {
+                      scrollThrottleTimeoutRef.current = null
+                      lastScrollStateEmitAtRef.current = nowMs()
+                      setScrollState(pendingScrollRef.current)
+                    }, delay)
+                  }
+                  if (scrollSettledTimeoutRef.current !== null) {
+                    window.clearTimeout(scrollSettledTimeoutRef.current)
+                  }
+                  scrollSettledTimeoutRef.current = window.setTimeout(() => {
+                    scrollSettledTimeoutRef.current = null
+                    if (scrollThrottleTimeoutRef.current !== null) {
+                      window.clearTimeout(scrollThrottleTimeoutRef.current)
+                      scrollThrottleTimeoutRef.current = null
+                    }
+                    lastScrollStateEmitAtRef.current = nowMs()
+                    setScrollState(pendingScrollRef.current)
+                  }, IOS_MINIMAP_POINTER_SETTLE_DELAY_MS)
+                } else if (scrollFrameRef.current === null) {
                   scrollFrameRef.current = window.requestAnimationFrame(() => {
                     scrollFrameRef.current = null
                     setScrollState(pendingScrollRef.current)

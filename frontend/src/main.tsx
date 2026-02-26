@@ -14,17 +14,22 @@ const isLocalApp = isElectron() || isCapacitorNative()
 const Router = isLocalApp ? HashRouter : BrowserRouter
 const webBasename = '/thinking-space'
 const routerProps = isLocalApp ? {} : { basename: webBasename }
+const disableStrictModeForCapacitorDebug = import.meta.env.DEV && isCapacitorNative()
+
+const appTree = (
+  <Router {...routerProps}>
+    <UIThemeProviderBlock>
+      <UILayoutProviderBlock>
+        <MarkdownViewerProvider>
+          <App />
+        </MarkdownViewerProvider>
+      </UILayoutProviderBlock>
+    </UIThemeProviderBlock>
+  </Router>
+)
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <Router {...routerProps}>
-      <UIThemeProviderBlock>
-        <UILayoutProviderBlock>
-          <MarkdownViewerProvider>
-            <App />
-          </MarkdownViewerProvider>
-        </UILayoutProviderBlock>
-      </UIThemeProviderBlock>
-    </Router>
-  </React.StrictMode>,
+  disableStrictModeForCapacitorDebug
+    ? appTree
+    : <React.StrictMode>{appTree}</React.StrictMode>,
 )

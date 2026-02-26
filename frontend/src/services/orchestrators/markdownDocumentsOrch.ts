@@ -15,6 +15,71 @@ function hashContent(content: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
+interface MarkdownReadCacheEntry {
+  path: string
+  content: string
+  mtime: number
+  size: number
+  hash: string
+  cachedAt: number
+}
+
+const MARKDOWN_READ_CACHE_TTL_MS = 4_000
+const MARKDOWN_READ_CACHE_MAX_ENTRIES = 8
+const markdownReadCacheByPath = new Map<string, MarkdownReadCacheEntry>()
+const markdownReadInFlightByPath = new Map<string, Promise<MarkdownReadCacheEntry>>()
+
+function readCacheEntry(path: string): MarkdownReadCacheEntry | null {
+  const entry = markdownReadCacheByPath.get(path)
+  if (!entry) return null
+  if ((Date.now() - entry.cachedAt) > MARKDOWN_READ_CACHE_TTL_MS) {
+    markdownReadCacheByPath.delete(path)
+    return null
+  }
+  return entry
+}
+
+function writeCacheEntry(path: string, entry: Omit<MarkdownReadCacheEntry, 'cachedAt'>): MarkdownReadCacheEntry {
+  const next: MarkdownReadCacheEntry = { ...entry, cachedAt: Date.now() }
+  markdownReadCacheByPath.set(path, next)
+  while (markdownReadCacheByPath.size > MARKDOWN_READ_CACHE_MAX_ENTRIES) {
+    const oldestKey = markdownReadCacheByPath.keys().next().value
+    if (typeof oldestKey !== 'string') break
+    markdownReadCacheByPath.delete(oldestKey)
+  }
+  return next
+}
+
+async function readMarkdownDocumentShared(path: string): Promise<MarkdownReadCacheEntry> {
+  const existing = markdownReadInFlightByPath.get(path)
+  if (existing) return existing
+
+  const request = (async (): Promise<MarkdownReadCacheEntry> => {
+    const fs = getVaultFS()
+    const stat = await fs.stat(path)
+    const cached = readCacheEntry(path)
+    if (cached && cached.mtime === stat.mtime && cached.size === stat.size) {
+      return cached
+    }
+
+    const content = await fs.read(path)
+    return writeCacheEntry(path, {
+      path,
+      content,
+      mtime: stat.mtime,
+      size: stat.size,
+      hash: hashContent(content),
+    })
+  })()
+
+  markdownReadInFlightByPath.set(path, request)
+  return request.finally(() => {
+    if (markdownReadInFlightByPath.get(path) === request) {
+      markdownReadInFlightByPath.delete(path)
+    }
+  })
+}
+
 function buildRevisionPath(filePath: string): string {
   const now = new Date()
   const y = now.getFullYear()
@@ -93,15 +158,14 @@ export async function readMarkdownDocument(
   size: number
   hash: string | null
 }> {
-  const fs = getVaultFS()
-  const [content, stat] = await Promise.all([fs.read(path), fs.stat(path)])
+  const cached = await readMarkdownDocumentShared(path)
   const includeHash = options?.includeHash ?? true
   return {
     path,
-    content,
-    mtime: stat.mtime,
-    size: stat.size,
-    hash: includeHash ? hashContent(content) : null,
+    content: cached.content,
+    mtime: cached.mtime,
+    size: cached.size,
+    hash: includeHash ? cached.hash : null,
   }
 }
 
@@ -114,22 +178,20 @@ export async function saveMarkdownDocument(params: {
 }): Promise<{ output_path: string; revision_path: string | null; mtime: number; size: number; hash: string }> {
   const fs = getVaultFS()
 
-  const [currentContent, currentStat] = await Promise.all([
-    fs.read(params.path),
-    fs.stat(params.path),
-  ])
-  const mtimeChanged = currentStat.mtime !== params.baseMtime
+  const current = await readMarkdownDocumentShared(params.path)
+  const currentContent = current.content
+  const mtimeChanged = current.mtime !== params.baseMtime
   const hashProvided = typeof params.baseHash === 'string' && params.baseHash.length > 0
   const contentProvided = typeof params.baseContent === 'string'
-  const hashChanged = hashProvided ? hashContent(currentContent) !== params.baseHash : false
+  const hashChanged = hashProvided ? current.hash !== params.baseHash : false
   const contentChanged = contentProvided ? currentContent !== params.baseContent : false
 
   if (mtimeChanged || hashChanged || (!hashProvided && contentProvided && contentChanged)) {
     throw new MarkdownDocumentConflictError(
       'This file changed since you opened it. Reload latest content before saving.',
       {
-        currentMtime: currentStat.mtime,
-        currentHash: hashContent(currentContent),
+        currentMtime: current.mtime,
+        currentHash: current.hash,
         currentContent,
       },
     )
@@ -159,11 +221,19 @@ export async function saveMarkdownDocument(params: {
 
   await fs.write(params.path, params.content)
   const savedStat = await fs.stat(params.path)
+  const savedHash = hashContent(params.content)
+  writeCacheEntry(params.path, {
+    path: params.path,
+    content: params.content,
+    mtime: savedStat.mtime,
+    size: savedStat.size,
+    hash: savedHash,
+  })
   return {
     output_path: params.path,
     revision_path: revisionPath,
     mtime: savedStat.mtime,
     size: savedStat.size,
-    hash: hashContent(params.content),
+    hash: savedHash,
   }
 }
