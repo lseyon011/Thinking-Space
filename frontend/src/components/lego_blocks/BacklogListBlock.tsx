@@ -409,12 +409,14 @@ export default function BacklogListBlock({
   const [inlineNotesCommentDraft, setInlineNotesCommentDraft] = useState('')
   const [inlineNotesSaving, setInlineNotesSaving] = useState(false)
   const [inlineNotesBaselineSignature, setInlineNotesBaselineSignature] = useState<string | null>(null)
+  const [programLayoutEditMode, setProgramLayoutEditMode] = useState(false)
   const [programGroupDraft, setProgramGroupDraft] = useState('')
   const inlineNotesSessionRef = useRef(0)
   const inlineNotesAutoSaveSignatureRef = useRef<string | null>(null)
   const newRowHighlightTimeoutByNodeRef = useRef<Record<string, number>>({})
   const [localError, setLocalError] = useState<string | null>(null)
   const programFingerprint = programs.map(program => `${program.uuid}:${program.updatedAt}`).join('|')
+  const allowProgramLayoutEditing = !readOnly && programLayoutEditMode
 
   const lookupTagColor = useCallback((node: NodeRecord, tag: string): string | undefined => {
     const projectRoot = normalizePath(node.projectRoot ?? '')
@@ -464,6 +466,18 @@ export default function BacklogListBlock({
   useEffect(() => {
     setChildrenByNode({})
   }, [treeRevision])
+
+  useEffect(() => {
+    if (!readOnly) return
+    setProgramLayoutEditMode(false)
+  }, [readOnly])
+
+  useEffect(() => {
+    if (allowProgramLayoutEditing) return
+    setDraggingNodeId(null)
+    setDragOverNodeId(null)
+    setDragOverEdge(null)
+  }, [allowProgramLayoutEditing])
 
   useEffect(() => () => {
     for (const timeoutId of Object.values(newRowHighlightTimeoutByNodeRef.current)) {
@@ -618,12 +632,16 @@ export default function BacklogListBlock({
   }, [commentDrafts, descriptionDrafts, draftTypeByKey, drafts, highlightNewlyCreatedRow, onCreateChild])
 
   const makeDragStart = useCallback((node: NodeRecord) => (event: React.DragEvent) => {
+    if (!allowProgramLayoutEditing) {
+      event.preventDefault()
+      return
+    }
     setDraggingNodeId(node.uuid)
     event.dataTransfer.setData('application/x-ltm-node-id', node.uuid)
     event.dataTransfer.setData('text/ltm-node-id', node.uuid)
     event.dataTransfer.setData('text/plain', `ltm-node:${node.uuid}`)
     event.dataTransfer.effectAllowed = 'move'
-  }, [])
+  }, [allowProgramLayoutEditing])
 
   const handleDragEnd = useCallback(() => {
     setDraggingNodeId(null)
@@ -632,6 +650,7 @@ export default function BacklogListBlock({
   }, [])
 
   const handleDragOver = useCallback((node: NodeRecord, event: React.DragEvent) => {
+    if (!allowProgramLayoutEditing) return
     event.preventDefault()
     event.stopPropagation()
     if (draggingNodeId || hasNodeDragType(event)) {
@@ -642,7 +661,7 @@ export default function BacklogListBlock({
       setDragOverNodeId(node.uuid)
       setDragOverEdge(edge)
     }
-  }, [draggingNodeId])
+  }, [allowProgramLayoutEditing, draggingNodeId])
 
   const handleDragLeave = useCallback((nodeId: string) => {
     if (dragOverNodeId !== nodeId) return
@@ -748,6 +767,7 @@ export default function BacklogListBlock({
   }, [])
 
   const handleDrop = useCallback(async (target: NodeRecord, event: React.DragEvent) => {
+    if (!allowProgramLayoutEditing) return
     event.preventDefault()
     event.stopPropagation()
     setDragOverNodeId(null)
@@ -801,6 +821,7 @@ export default function BacklogListBlock({
       setLocalError(err instanceof Error ? err.message : 'Failed to move node')
     }
   }, [
+    allowProgramLayoutEditing,
     dragOverEdge,
     draggingNodeId,
     findSiblingContext,
@@ -819,6 +840,7 @@ export default function BacklogListBlock({
   }, [onCreateProgramGroup, programGroupDraft])
 
   const moveProgramByOffset = useCallback(async (program: NodeRecord, offset: -1 | 1) => {
+    if (!allowProgramLayoutEditing) return
     if (!onReorderSiblings) return
     const currentIndex = programs.findIndex(entry => entry.uuid === program.uuid)
     if (currentIndex < 0) return
@@ -838,7 +860,7 @@ export default function BacklogListBlock({
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to reorder programs')
     }
-  }, [onReorderSiblings, programs])
+  }, [allowProgramLayoutEditing, onReorderSiblings, programs])
 
   useEffect(() => {
     if (!copiedRowNodeId) return
@@ -1301,7 +1323,7 @@ export default function BacklogListBlock({
     return (
       <div key={node.uuid} className="border-b border-border/70 last:border-b-0">
         <div
-          draggable
+          draggable={allowProgramLayoutEditing}
           onDragStart={makeDragStart(node)}
           onDragEnd={handleDragEnd}
           onDragOver={e => handleDragOver(node, e)}
@@ -1515,7 +1537,7 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineNotesEditor, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes, toggleNode])
+  }, [allowProgramLayoutEditing, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineNotesEditor, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes, toggleNode])
 
   const renderProgramSection = useCallback((program: NodeRecord, programIndex: number) => {
     void ensureProgramLoaded(program)
@@ -1530,7 +1552,7 @@ export default function BacklogListBlock({
     return (
       <div key={program.uuid} className="overflow-hidden rounded-xl border border-border/70 bg-muted/25">
         <div
-          draggable
+          draggable={allowProgramLayoutEditing}
           onDragStart={makeDragStart(program)}
           onDragEnd={handleDragEnd}
           onDragOver={e => handleDragOver(program, e)}
@@ -1552,7 +1574,7 @@ export default function BacklogListBlock({
           >
             {formatRowOrdinal(programIndex)}
           </sup>
-          {!readOnly && onReorderSiblings && (
+          {allowProgramLayoutEditing && onReorderSiblings && (
             <div
               className="mr-0.5 flex items-center gap-0.5"
               onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
@@ -1624,7 +1646,7 @@ export default function BacklogListBlock({
                 )}
               </div>
             )}
-          {!readOnly && onAssignProgramToGroup && programGroups.length > 0 && (
+          {allowProgramLayoutEditing && onAssignProgramToGroup && programGroups.length > 0 && (
             <div
               className="hidden items-center md:flex"
               onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
@@ -1703,13 +1725,31 @@ export default function BacklogListBlock({
         </div>
       </div>
     )
-  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, resolvedProgramGroupIdByProgram, selectedNodeId, statusBusyByNode, toggleInlineNotes])
+  }, [allowProgramLayoutEditing, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, resolvedProgramGroupIdByProgram, selectedNodeId, statusBusyByNode, toggleInlineNotes])
 
   return (
     <div className="flex flex-col space-y-3">
+      {!readOnly && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={allowProgramLayoutEditing ? 'default' : 'outline'}
+            onClick={() => setProgramLayoutEditMode(prev => !prev)}
+          >
+            {allowProgramLayoutEditing ? 'Done Organizing Programs' : 'Edit Program Layout'}
+          </Button>
+          {allowProgramLayoutEditing && (
+            <p className="text-xs text-muted-foreground">
+              Layout editing is on. Use drag/drop or arrow controls to reorder, assign groups from the right-side dropdown on each program row, and remove groups with the X button on each group header.
+            </p>
+          )}
+        </div>
+      )}
+
       {!readOnly && renderInlineCreate(null, ROOT_INPUT_KEY, 'Add program...')}
 
-      {!readOnly && onCreateProgramGroup && (
+      {allowProgramLayoutEditing && onCreateProgramGroup && (
         <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5">
           <input
             value={programGroupDraft}
@@ -1749,17 +1789,29 @@ export default function BacklogListBlock({
                 <div className="flex items-center gap-2 px-1">
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/25 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors',
+                      allowProgramLayoutEditing
+                        ? 'border border-border/60 bg-muted/25 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground'
+                        : 'bg-zinc-800/90 text-sm font-semibold text-white hover:bg-zinc-700',
+                    )}
                     onClick={() => onToggleProgramGroupCollapsed?.(group.id)}
                     title={group.collapsed ? 'Expand group' : 'Collapse group'}
                   >
                     <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', group.collapsed ? '' : 'rotate-90')} />
                     <span>{group.name}</span>
-                    <span className="rounded-full border border-border/70 px-1 py-0 text-[10px] leading-none text-muted-foreground">
+                    <span
+                      className={cn(
+                        'rounded-full px-1.5 py-0 text-[10px] leading-none',
+                        allowProgramLayoutEditing
+                          ? 'border border-border/70 text-muted-foreground'
+                          : 'bg-white/20 text-white',
+                      )}
+                    >
                       {groupedPrograms.length}
                     </span>
                   </button>
-                  {!readOnly && onDeleteProgramGroup && (
+                  {allowProgramLayoutEditing && onDeleteProgramGroup && (
                     <button
                       type="button"
                       className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
