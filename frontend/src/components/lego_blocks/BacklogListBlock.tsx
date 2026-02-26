@@ -1,74 +1,34 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  ArrowDown,
-  ArrowUp,
-  Check,
-  ChevronRight,
-  Copy,
-  FolderTree,
-  Info,
-  Layers,
-  Loader2,
-} from 'lucide-react'
+import { Loader2 } from 'lucide-react'
+import { BacklogNodeRowBlock } from '@/components/lego_blocks/BacklogNodeRowBlock'
+import { BacklogProgramRowBlock } from '@/components/lego_blocks/BacklogProgramRowBlock'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { BacklogInlineCreateBlock } from '@/components/lego_blocks/BacklogInlineCreateBlock'
 import { BacklogInlineNotesEditorBlock } from '@/components/lego_blocks/BacklogInlineNotesEditorBlock'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from '@/components/lego_blocks/ui/select'
-import {
-  NodeStatusBadgeBlock,
-  NodeStatusSelectBlock,
-} from '@/components/lego_blocks/NodeStatusBlock'
 import { ProgramGroupHeaderBlock } from '@/components/lego_blocks/ProgramGroupHeaderBlock'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import {
-  tagColorClassBlock,
-  tagColorStyleBlock,
-  tagLookupKeyBlock,
-} from '@/services/lego_blocks/tagBlock'
+import { tagLookupKeyBlock } from '@/services/lego_blocks/tagBlock'
 import type { NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/yamlNoteBlock'
 import {
   allowedCreateTypes,
+  type ChildStateBlock,
   compactTagList,
   copyTextToClipboard,
   EPIC_BORDER_PALETTE,
   EPIC_ICON_COLOR_BY_BORDER,
-  formatRowOrdinal,
   getTaskStatusBadge,
-  hasNodeDragType,
   iconColorForNodeType,
-  iconForNodeType,
   isTaskNode,
   NEW_ROW_HIGHLIGHT_MS,
   normalizePath,
   nodeDisplayTitle,
-  nodeTitleWithoutTicket,
-  notesSignature,
-  PriorityDot,
-  readDroppedNodeId,
-  reorderNodesWithEdge,
   ROOT_INPUT_KEY,
   selectedPresetTagsForNode,
   sortNodesForDisplay,
-  TaskStatusBadge,
-  taskStatusLabel,
-  TASK_STATUS_COLORS,
-  TASK_STATUS_OPTIONS,
-  type DropEdge,
   type TaskStatusOption,
 } from '@/components/lego_blocks/BacklogListHelpersBlock'
-import { cn } from '@/lib/utils'
-
-interface ChildState {
-  loading: boolean
-  loaded: boolean
-  nodes: NodeRecord[]
-  error: string | null
-}
+import { useBacklogDragAndReorderBlock } from '@/components/lego_blocks/useBacklogDragAndReorderBlock'
+import { useBacklogInlineNotesBlock } from '@/components/lego_blocks/useBacklogInlineNotesBlock'
 
 interface ProgramGroupEntryBlock {
   id: string
@@ -132,30 +92,19 @@ export default function BacklogListBlock({
   onUpdateTaskStatus,
   onUpdateNodeNotes,
 }: BacklogListBlockProps) {
-  const [childrenByNode, setChildrenByNode] = useState<Record<string, ChildState>>({})
+  const [childrenByNode, setChildrenByNode] = useState<Record<string, ChildStateBlock>>({})
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({})
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, string>>({})
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({})
   const [draftTypeByKey, setDraftTypeByKey] = useState<Record<string, NodeType>>({ [ROOT_INPUT_KEY]: 'program' })
   const [busyCreate, setBusyCreate] = useState<Record<string, boolean>>({})
-  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
-  const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null)
-  const [dragOverEdge, setDragOverEdge] = useState<DropEdge | null>(null)
   const [groupingInfoOpenByNode, setGroupingInfoOpenByNode] = useState<Record<string, boolean>>({})
   const [copiedRowNodeId, setCopiedRowNodeId] = useState<string | null>(null)
   const [statusBusyByNode, setStatusBusyByNode] = useState<Record<string, boolean>>({})
   const [newlyCreatedNodeIds, setNewlyCreatedNodeIds] = useState<Record<string, boolean>>({})
-  const [inlineNotesNode, setInlineNotesNode] = useState<NodeRecord | null>(null)
-  const [inlineNotesDescriptionDraft, setInlineNotesDescriptionDraft] = useState('')
-  const [inlineNotesCommentsDraft, setInlineNotesCommentsDraft] = useState<YAMLCommentEntry[]>([])
-  const [inlineNotesCommentDraft, setInlineNotesCommentDraft] = useState('')
-  const [inlineNotesSaving, setInlineNotesSaving] = useState(false)
-  const [inlineNotesBaselineSignature, setInlineNotesBaselineSignature] = useState<string | null>(null)
   const [programLayoutEditMode, setProgramLayoutEditMode] = useState(false)
   const [programGroupDraft, setProgramGroupDraft] = useState('')
-  const inlineNotesSessionRef = useRef(0)
-  const inlineNotesAutoSaveSignatureRef = useRef<string | null>(null)
   const newRowHighlightTimeoutByNodeRef = useRef<Record<string, number>>({})
   const [localError, setLocalError] = useState<string | null>(null)
   const programFingerprint = programs.map(program => `${program.uuid}:${program.updatedAt}`).join('|')
@@ -214,13 +163,6 @@ export default function BacklogListBlock({
     if (!readOnly) return
     setProgramLayoutEditMode(false)
   }, [readOnly])
-
-  useEffect(() => {
-    if (allowProgramLayoutEditing) return
-    setDraggingNodeId(null)
-    setDragOverNodeId(null)
-    setDragOverEdge(null)
-  }, [allowProgramLayoutEditing])
 
   useEffect(() => () => {
     for (const timeoutId of Object.values(newRowHighlightTimeoutByNodeRef.current)) {
@@ -374,205 +316,25 @@ export default function BacklogListBlock({
     }
   }, [commentDrafts, descriptionDrafts, draftTypeByKey, drafts, highlightNewlyCreatedRow, onCreateChild])
 
-  const makeDragStart = useCallback((node: NodeRecord) => (event: React.DragEvent) => {
-    if (!allowProgramLayoutEditing) {
-      event.preventDefault()
-      return
-    }
-    setDraggingNodeId(node.uuid)
-    event.dataTransfer.setData('application/x-ltm-node-id', node.uuid)
-    event.dataTransfer.setData('text/ltm-node-id', node.uuid)
-    event.dataTransfer.setData('text/plain', `ltm-node:${node.uuid}`)
-    event.dataTransfer.effectAllowed = 'move'
-  }, [allowProgramLayoutEditing])
-
-  const handleDragEnd = useCallback(() => {
-    setDraggingNodeId(null)
-    setDragOverNodeId(null)
-    setDragOverEdge(null)
-  }, [])
-
-  const handleDragOver = useCallback((node: NodeRecord, event: React.DragEvent) => {
-    if (!allowProgramLayoutEditing) return
-    event.preventDefault()
-    event.stopPropagation()
-    if (draggingNodeId || hasNodeDragType(event)) {
-      event.dataTransfer.dropEffect = 'move'
-      const rowRect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-      const pointerOffsetY = event.clientY - rowRect.top
-      const edge: DropEdge = pointerOffsetY < rowRect.height / 2 ? 'before' : 'after'
-      setDragOverNodeId(node.uuid)
-      setDragOverEdge(edge)
-    }
-  }, [allowProgramLayoutEditing, draggingNodeId])
-
-  const handleDragLeave = useCallback((nodeId: string) => {
-    if (dragOverNodeId !== nodeId) return
-    setDragOverNodeId(null)
-    setDragOverEdge(null)
-  }, [dragOverNodeId])
-
-  const patchMovedNode = useCallback((sourceUuid: string, targetNode: NodeRecord) => {
-    let shouldExpandTarget = false
-
-    setChildrenByNode(prev => {
-      let changed = false
-      let movedNode: NodeRecord | null = null
-      const next: Record<string, ChildState> = {}
-
-      for (const [key, state] of Object.entries(prev)) {
-        const filteredNodes = state.nodes.filter(node => {
-          if (node.uuid !== sourceUuid) return true
-          movedNode = node
-          return false
-        })
-
-        if (filteredNodes.length !== state.nodes.length) {
-          changed = true
-          next[key] = { ...state, nodes: filteredNodes }
-        } else {
-          next[key] = state
-        }
-      }
-
-      if (movedNode) {
-        const targetState = next[targetNode.uuid]
-        if (targetState?.loaded) {
-          const alreadyPresent = targetState.nodes.some(node => node.uuid === sourceUuid)
-          if (!alreadyPresent) {
-            const movedSource = movedNode as NodeRecord
-            changed = true
-            shouldExpandTarget = true
-            next[targetNode.uuid] = {
-              ...targetState,
-              nodes: sortNodesForDisplay([
-                ...targetState.nodes,
-                {
-                  ...movedSource,
-                  parent: targetNode.key,
-                  parentUuid: targetNode.uuid,
-                  parentType: targetNode.type,
-                  updatedAt: new Date().toISOString(),
-                },
-              ]),
-            }
-          }
-        }
-      }
-
-      return changed ? next : prev
-    })
-
-    if (shouldExpandTarget) {
-      setExpandedNodes(prev => ({ ...prev, [targetNode.uuid]: true }))
-    }
-  }, [])
-
-  const findSiblingContext = useCallback((nodeId: string): {
-    parentUuid: string | null
-    parentKey: string | null
-    nodes: NodeRecord[]
-  } | null => {
-    if (programs.some(program => program.uuid === nodeId)) {
-      return { parentUuid: null, parentKey: null, nodes: programs }
-    }
-
-    for (const [parentUuid, state] of Object.entries(childrenByNode)) {
-      if (!state.loaded) continue
-      if (state.nodes.some(node => node.uuid === nodeId)) {
-        const parentNode = programs.find(program => program.uuid === parentUuid)
-          ?? Object.values(childrenByNode)
-            .flatMap(entry => entry.nodes)
-            .find(node => node.uuid === parentUuid)
-        return {
-          parentUuid,
-          parentKey: parentNode?.key ?? null,
-          nodes: state.nodes,
-        }
-      }
-    }
-    return null
-  }, [childrenByNode, programs])
-
-  const patchSiblingOrderForParent = useCallback((parentUuid: string | null, orderedNodes: NodeRecord[]) => {
-    if (!parentUuid) return
-    setChildrenByNode(prev => {
-      const state = prev[parentUuid]
-      if (!state?.loaded) return prev
-      return {
-        ...prev,
-        [parentUuid]: {
-          ...state,
-          nodes: orderedNodes,
-        },
-      }
-    })
-  }, [])
-
-  const handleDrop = useCallback(async (target: NodeRecord, event: React.DragEvent) => {
-    if (!allowProgramLayoutEditing) return
-    event.preventDefault()
-    event.stopPropagation()
-    setDragOverNodeId(null)
-    const edge = dragOverEdge ?? 'after'
-    setDragOverEdge(null)
-
-    const sourceId = readDroppedNodeId(event) ?? draggingNodeId
-    if (!sourceId) return
-    if (sourceId === target.uuid) {
-      setLocalError('Cannot drop a node onto itself.')
-      return
-    }
-
-    const sourceContext = findSiblingContext(sourceId)
-    const targetContext = findSiblingContext(target.uuid)
-
-    if (
-      sourceContext &&
-      targetContext &&
-      sourceContext.parentUuid === targetContext.parentUuid &&
-      onReorderSiblings
-    ) {
-      const reordered = reorderNodesWithEdge(targetContext.nodes, sourceId, target.uuid, edge)
-      if (!reordered) return
-
-      const beforeOrder = targetContext.nodes.map(node => node.uuid).join('|')
-      const nextOrder = reordered.map(node => node.uuid).join('|')
-      if (beforeOrder === nextOrder) return
-
-      setLocalError(null)
-      try {
-        const persisted = await onReorderSiblings({
-          parentKey: targetContext.parentKey,
-          orderedNodes: reordered,
-        })
-        const persistedById = new Map((persisted ?? []).map(node => [node.uuid, node]))
-        const nextNodes = reordered.map(node => persistedById.get(node.uuid) ?? node)
-        patchSiblingOrderForParent(targetContext.parentUuid, nextNodes)
-      } catch (err) {
-        setLocalError(err instanceof Error ? err.message : 'Failed to reorder nodes')
-      }
-      return
-    }
-
-    if (!onDropNodeToNode) return
-    setLocalError(null)
-    try {
-      await onDropNodeToNode(sourceId, target)
-      patchMovedNode(sourceId, target)
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Failed to move node')
-    }
-  }, [
-    allowProgramLayoutEditing,
+  const {
+    dragOverNodeId,
     dragOverEdge,
-    draggingNodeId,
-    findSiblingContext,
+    makeDragStart,
+    handleDragEnd,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    moveProgramByOffset,
+  } = useBacklogDragAndReorderBlock({
+    allowProgramLayoutEditing,
+    programs,
+    childrenByNode,
+    setChildrenByNode,
+    setExpandedNodes,
     onDropNodeToNode,
     onReorderSiblings,
-    patchMovedNode,
-    patchSiblingOrderForParent,
-  ])
+    setLocalError,
+  })
 
   const createProgramGroupFromDraft = useCallback(() => {
     if (!onCreateProgramGroup) return
@@ -581,29 +343,6 @@ export default function BacklogListBlock({
     onCreateProgramGroup(nextName)
     setProgramGroupDraft('')
   }, [onCreateProgramGroup, programGroupDraft])
-
-  const moveProgramByOffset = useCallback(async (program: NodeRecord, offset: -1 | 1) => {
-    if (!allowProgramLayoutEditing) return
-    if (!onReorderSiblings) return
-    const currentIndex = programs.findIndex(entry => entry.uuid === program.uuid)
-    if (currentIndex < 0) return
-    const nextIndex = currentIndex + offset
-    if (nextIndex < 0 || nextIndex >= programs.length) return
-
-    const reordered = [...programs]
-    const [moved] = reordered.splice(currentIndex, 1)
-    reordered.splice(nextIndex, 0, moved)
-
-    setLocalError(null)
-    try {
-      await onReorderSiblings({
-        parentKey: null,
-        orderedNodes: reordered,
-      })
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Failed to reorder programs')
-    }
-  }, [allowProgramLayoutEditing, onReorderSiblings, programs])
 
   useEffect(() => {
     if (!copiedRowNodeId) return
@@ -629,7 +368,7 @@ export default function BacklogListBlock({
   const patchCachedNode = useCallback((updatedNode: NodeRecord) => {
     setChildrenByNode(prev => {
       let changed = false
-      const next: Record<string, ChildState> = {}
+      const next: Record<string, ChildStateBlock> = {}
       for (const [key, state] of Object.entries(prev)) {
         let stateChanged = false
         const nextNodes = state.nodes.map(node => {
@@ -646,7 +385,6 @@ export default function BacklogListBlock({
       }
       return changed ? next : prev
     })
-    setInlineNotesNode(prev => (prev?.uuid === updatedNode.uuid ? updatedNode : prev))
   }, [])
 
   const handleInlineNodeStatusChange = useCallback(async (node: NodeRecord, nextStatus: NodeStatus) => {
@@ -681,164 +419,24 @@ export default function BacklogListBlock({
     }
   }, [onUpdateTaskStatus, patchCachedNode, readOnly])
 
-  const saveInlineNotesSnapshot = useCallback(async (
-    node: NodeRecord,
-    descriptionDraft: string,
-    commentsDraft: YAMLCommentEntry[],
-  ): Promise<NodeRecord> => {
-    if (!onUpdateNodeNotes) return node
-    const description = descriptionDraft.trim()
-    const comments = commentsDraft
-    const updated = await onUpdateNodeNotes(node, description, comments)
-    const nextNode = updated ?? { ...node, description, comments }
-    patchCachedNode(nextNode)
-    return nextNode
-  }, [onUpdateNodeNotes, patchCachedNode])
-
-  const closeInlineNotes = useCallback(() => {
-    inlineNotesSessionRef.current += 1
-    inlineNotesAutoSaveSignatureRef.current = null
-    setInlineNotesNode(null)
-    setInlineNotesDescriptionDraft('')
-    setInlineNotesCommentsDraft([])
-    setInlineNotesCommentDraft('')
-    setInlineNotesBaselineSignature(null)
-  }, [])
-
-  const openInlineNotes = useCallback((node: NodeRecord) => {
-    const initialDescription = (node.description ?? '').trim()
-    const initialComments = node.comments ?? []
-    inlineNotesSessionRef.current += 1
-    inlineNotesAutoSaveSignatureRef.current = null
-    setInlineNotesDescriptionDraft(initialDescription)
-    setInlineNotesCommentsDraft(initialComments)
-    setInlineNotesCommentDraft('')
-    setInlineNotesBaselineSignature(notesSignature(initialDescription, initialComments))
-    setInlineNotesNode(node)
-  }, [])
-
-  const toggleInlineNotes = useCallback(async (node: NodeRecord) => {
-    if (readOnly || !onUpdateNodeNotes || inlineNotesSaving) return
-    setLocalError(null)
-
-    const activeNode = inlineNotesNode
-    if (activeNode) {
-      const currentSignature = notesSignature(inlineNotesDescriptionDraft, inlineNotesCommentsDraft)
-      const activeDirty = currentSignature !== inlineNotesBaselineSignature
-      if (activeDirty) {
-        setInlineNotesSaving(true)
-        try {
-          const persisted = await saveInlineNotesSnapshot(activeNode, inlineNotesDescriptionDraft, inlineNotesCommentsDraft)
-          setInlineNotesBaselineSignature(notesSignature(persisted.description ?? '', persisted.comments ?? []))
-          setInlineNotesNode(persisted)
-        } catch (err) {
-          setLocalError(err instanceof Error ? err.message : 'Failed to update notes')
-          return
-        } finally {
-          setInlineNotesSaving(false)
-        }
-      }
-    }
-
-    if (inlineNotesNode?.uuid === node.uuid) {
-      closeInlineNotes()
-      return
-    }
-
-    openInlineNotes(node)
-  }, [
-    closeInlineNotes,
-    inlineNotesBaselineSignature,
-    inlineNotesCommentsDraft,
-    inlineNotesDescriptionDraft,
+  const {
     inlineNotesNode,
-    inlineNotesSaving,
-    onUpdateNodeNotes,
-    openInlineNotes,
-    readOnly,
-    saveInlineNotesSnapshot,
-  ])
-
-  const addInlineCommentDraft = useCallback(() => {
-    const next = inlineNotesCommentDraft.trim()
-    if (!next) return
-    setInlineNotesCommentsDraft(prev => [
-      ...prev,
-      {
-        text: next,
-        added_at: new Date().toISOString(),
-        added_by: 'unknown',
-      },
-    ])
-    setInlineNotesCommentDraft('')
-  }, [inlineNotesCommentDraft])
-
-  const removeInlineCommentDraft = useCallback((index: number) => {
-    setInlineNotesCommentsDraft(prev => prev.filter((_, idx) => idx !== index))
-  }, [])
-
-  const commitInlineNotes = useCallback(async (): Promise<void> => {
-    if (!inlineNotesNode || !onUpdateNodeNotes) return
-    if (inlineNotesSaving) return
-
-    const description = inlineNotesDescriptionDraft.trim()
-    const comments = inlineNotesCommentsDraft
-    const signature = notesSignature(description, comments)
-    if (signature === inlineNotesBaselineSignature) return
-
-    const activeSession = inlineNotesSessionRef.current
-    setInlineNotesSaving(true)
-    setLocalError(null)
-    try {
-      const nextNode = await saveInlineNotesSnapshot(inlineNotesNode, description, comments)
-      if (inlineNotesSessionRef.current !== activeSession) return
-      setInlineNotesNode(nextNode)
-      setInlineNotesBaselineSignature(notesSignature(nextNode.description ?? '', nextNode.comments ?? []))
-      inlineNotesAutoSaveSignatureRef.current = signature
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Failed to update notes')
-    } finally {
-      setInlineNotesSaving(false)
-    }
-  }, [
-    inlineNotesBaselineSignature,
-    inlineNotesCommentsDraft,
     inlineNotesDescriptionDraft,
-    inlineNotesNode,
+    inlineNotesCommentsDraft,
+    inlineNotesCommentDraft,
     inlineNotesSaving,
-    onUpdateNodeNotes,
-    saveInlineNotesSnapshot,
-  ])
-
-  const inlineNotesPayloadSignature = inlineNotesNode
-    ? notesSignature(inlineNotesDescriptionDraft, inlineNotesCommentsDraft)
-    : null
-  const inlineNotesDirty = inlineNotesNode
-    ? inlineNotesPayloadSignature !== inlineNotesBaselineSignature
-    : false
-
-  useEffect(() => {
-    if (!inlineNotesNode || !onUpdateNodeNotes || readOnly) return
-    if (inlineNotesSaving || !inlineNotesDirty) return
-    if (!inlineNotesPayloadSignature) return
-    if (inlineNotesAutoSaveSignatureRef.current === inlineNotesPayloadSignature) return
-
-    const timeoutId = window.setTimeout(() => {
-      inlineNotesAutoSaveSignatureRef.current = inlineNotesPayloadSignature
-      void commitInlineNotes()
-    }, 900)
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [
-    commitInlineNotes,
     inlineNotesDirty,
-    inlineNotesNode,
-    inlineNotesPayloadSignature,
-    inlineNotesSaving,
-    onUpdateNodeNotes,
+    setInlineNotesDescriptionDraft,
+    setInlineNotesCommentDraft,
+    toggleInlineNotes,
+    addInlineCommentDraft,
+    removeInlineCommentDraft,
+  } = useBacklogInlineNotesBlock({
     readOnly,
-  ])
+    onUpdateNodeNotes,
+    patchCachedNode,
+    setLocalError,
+  })
 
   const renderTicketBadge = useCallback((node: NodeRecord) => {
     const ticket = node.ticket?.trim() ?? ''
@@ -922,7 +520,6 @@ export default function BacklogListBlock({
     parentNode: NodeRecord | null,
     epicContext: NodeRecord | null,
   ) => {
-    const Icon = iconForNodeType(node.type)
     const isExpanded = !!expandedNodes[node.uuid]
     const childState = childrenByNode[node.uuid]
     if (isExpanded && !childState?.loading && !childState?.loaded) {
@@ -946,182 +543,45 @@ export default function BacklogListBlock({
 
     return (
       <div key={node.uuid} className="border-b border-border/70 last:border-b-0">
-        <div
-          draggable={allowProgramLayoutEditing}
+        <BacklogNodeRowBlock
+          node={node}
+          depth={depth}
+          siblingIndex={siblingIndex}
+          isExpanded={isExpanded}
+          childCount={childCount}
+          borderColorClass={borderColorClass}
+          iconColorClass={iconColorClass}
+          selected={selectedNodeId === node.uuid}
+          dragOver={dragOverNodeId === node.uuid}
+          dragOverEdge={dragOverNodeId === node.uuid ? dragOverEdge : null}
+          newlyCreated={newlyCreated}
+          allowProgramLayoutEditing={allowProgramLayoutEditing}
+          readOnly={readOnly}
+          rowPresetTags={rowPresetTags}
+          copied={copiedRowNodeId === node.uuid}
+          canShowGroupingInfo={canShowGroupingInfo}
+          groupingInfoOpen={groupingInfoOpen}
+          detailsOpen={inlineNotesNode?.uuid === node.uuid}
+          inlineNotesSaving={inlineNotesSaving}
+          statusBusy={!!statusBusyByNode[node.uuid]}
+          canEditTaskStatus={!!onUpdateTaskStatus}
+          canEditNodeStatus={!!onUpdateNodeStatus}
+          canToggleDetails={!!onUpdateNodeNotes}
+          ticketBadge={renderTicketBadge(node)}
+          lookupTagColor={lookupTagColor}
+          onToggleNode={() => toggleNode(node)}
+          onSelectNode={() => onSelectNode(node)}
           onDragStart={makeDragStart(node)}
           onDragEnd={handleDragEnd}
-          onDragOver={e => handleDragOver(node, e)}
+          onDragOver={event => handleDragOver(node, event)}
           onDragLeave={() => handleDragLeave(node.uuid)}
-          onDrop={e => { void handleDrop(node, e) }}
-          className={cn(
-            'flex cursor-pointer items-center gap-2 border-l-[3px] px-3 py-2 transition-colors',
-            'bg-card hover:bg-zinc-50',
-            borderColorClass,
-            selectedNodeId === node.uuid && 'bg-accent/40',
-            dragOverNodeId === node.uuid && 'ring-2 ring-primary/40 bg-primary/5',
-            dragOverNodeId === node.uuid && dragOverEdge === 'before' && 'shadow-[inset_0_2px_0_rgba(59,130,246,0.7)]',
-            dragOverNodeId === node.uuid && dragOverEdge === 'after' && 'shadow-[inset_0_-2px_0_rgba(59,130,246,0.7)]',
-            newlyCreated && 'bg-emerald-100/80 ring-2 ring-emerald-400/70',
-          )}
-          style={{ paddingLeft: `${12 + (depth * 16)}px` }}
-        >
-          <sup
-            aria-hidden="true"
-            className="-ml-1.5 mr-0.5 mt-0.5 self-start font-mono text-[8px] leading-none tabular-nums text-muted-foreground/45"
-          >
-            {formatRowOrdinal(siblingIndex)}
-          </sup>
-          <button
-            type="button"
-            onClick={() => toggleNode(node)}
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-muted-foreground outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0 hover:bg-transparent active:bg-transparent hover:text-foreground"
-          >
-            <ChevronRight className={cn('h-4 w-4 transition-transform', isExpanded && 'rotate-90')} />
-          </button>
-          <Icon className={cn('h-4 w-4 shrink-0', iconColorClass)} />
-          <button
-            type="button"
-            onClick={() => onSelectNode(node)}
-            className="group min-w-0 flex flex-1 items-center gap-2 text-left text-sm font-medium"
-          >
-            {renderTicketBadge(node)}
-            <span className="min-w-0 flex-1 truncate">
-              {nodeTitleWithoutTicket(node) || nodeDisplayTitle(node) || 'Untitled'}
-            </span>
-          </button>
-          {rowPresetTags.visible.length > 0 && (
-            <div className="hidden max-w-[35%] items-center gap-1 overflow-hidden lg:flex">
-              {rowPresetTags.visible.map(tag => (
-                <span
-                  key={`${node.uuid}-preset-row-tag-${tag}`}
-                  className={cn(
-                    'truncate rounded-full border px-1.5 py-0.5 text-[10px] leading-none',
-                    tagColorClassBlock(tag, 'solid'),
-                  )}
-                  style={tagColorStyleBlock(tag, 'solid', lookupTagColor(node, tag))}
-                >
-                  {tag}
-                </span>
-              ))}
-              {rowPresetTags.hiddenCount > 0 && (
-                <span className="rounded-full border border-border/70 bg-muted/20 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
-                  +{rowPresetTags.hiddenCount}
-                </span>
-              )}
-            </div>
-          )}
-          {isTaskNode(node) ? (
-            readOnly || !onUpdateTaskStatus ? (
-              <TaskStatusBadge taskStatus={getTaskStatusBadge(node)} />
-            ) : (
-              <div
-                className="flex items-center gap-1"
-                onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
-              >
-                {statusBusyByNode[node.uuid] ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                ) : (
-                  <Select
-                    value={getTaskStatusBadge(node)}
-                    onValueChange={(value) => { void handleInlineTaskStatusChange(node, value as TaskStatusOption) }}
-                  >
-                    <SelectTrigger
-                      className={cn(
-                        'h-6 w-auto gap-1 rounded-full border border-transparent px-2 py-0 text-[10px] font-medium shadow-none focus:ring-0 focus:ring-offset-0',
-                        TASK_STATUS_COLORS[getTaskStatusBadge(node)],
-                      )}
-                      title="Change task status"
-                    >
-                      <span>{taskStatusLabel(getTaskStatusBadge(node))}</span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TASK_STATUS_OPTIONS.map(option => (
-                        <SelectItem key={`${node.uuid}-task-${option}`} value={option}>
-                          {taskStatusLabel(option)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-            )
-          ) : (
-            readOnly || !onUpdateNodeStatus ? (
-              <NodeStatusBadgeBlock status={node.status} />
-            ) : (
-              <div
-                className="flex items-center gap-1"
-                onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
-              >
-                {statusBusyByNode[node.uuid] ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                ) : (
-                  <NodeStatusSelectBlock
-                    status={node.status}
-                    onChange={(value) => { void handleInlineNodeStatusChange(node, value) }}
-                    variant="pill"
-                    title="Change status"
-                  />
-                )}
-              </div>
-            )
-          )}
-          {!readOnly && onUpdateNodeNotes && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                void toggleInlineNotes(node)
-              }}
-              className={cn(
-                'rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-                inlineNotesNode?.uuid === node.uuid
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-              )}
-              title="Details"
-              disabled={inlineNotesSaving}
-            >
-              <Info className="h-3.5 w-3.5" />
-            </button>
-          )}
-          <button
-            type="button"
-            draggable={false}
-            onClick={event => { void copyRowLabelForNode(node, event) }}
-            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            title={copiedRowNodeId === node.uuid ? 'Copied' : 'Copy row label'}
-            aria-label={copiedRowNodeId === node.uuid ? `Copied row label ${nodeDisplayTitle(node)}` : `Copy row label ${nodeDisplayTitle(node)}`}
-          >
-            {copiedRowNodeId === node.uuid ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          </button>
-          {canShowGroupingInfo && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                setGroupingInfoOpenByNode(prev => ({ ...prev, [node.uuid]: !prev[node.uuid] }))
-              }}
-              className={cn(
-                'rounded-md p-1 transition-colors',
-                groupingInfoOpen
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-              )}
-              title="Why this task is grouped here"
-            >
-              <Layers className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {childCount !== null && (
-            <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-              {childCount}
-            </span>
-          )}
-          <PriorityDot priority={node.priority} />
-        </div>
+          onDrop={event => { void handleDrop(node, event) }}
+          onToggleInlineNotes={() => { void toggleInlineNotes(node) }}
+          onCopyRowLabel={event => { void copyRowLabelForNode(node, event) }}
+          onToggleGroupingInfo={() => setGroupingInfoOpenByNode(prev => ({ ...prev, [node.uuid]: !prev[node.uuid] }))}
+          onTaskStatusChange={(nextStatus) => { void handleInlineTaskStatusChange(node, nextStatus) }}
+          onNodeStatusChange={(nextStatus) => { void handleInlineNodeStatusChange(node, nextStatus) }}
+        />
         {canShowGroupingInfo && groupingInfoOpen && (
           <div className="border-t border-border/60 bg-muted/25 px-3 py-1.5 text-[11px] text-muted-foreground" style={{ paddingLeft: `${36 + (depth * 16)}px` }}>
             Grouped under epic: <span className="text-foreground">{nodeDisplayTitle(effectiveEpicContext!)}</span>
@@ -1166,7 +626,6 @@ export default function BacklogListBlock({
   const renderProgramSection = useCallback((program: NodeRecord, programIndex: number) => {
     void ensureProgramLoaded(program)
     const childState = childrenByNode[program.uuid]
-    const programIconColorClass = iconColorForNodeType(program.type)
     const newlyCreated = !!newlyCreatedNodeIds[program.uuid]
     const assignedGroupId = resolvedProgramGroupIdByProgram[program.uuid] ?? '__ungrouped__'
     const rowPresetTags = compactTagList(
@@ -1175,156 +634,41 @@ export default function BacklogListBlock({
 
     return (
       <div key={program.uuid} className="overflow-hidden rounded-xl border border-border/70 bg-muted/25">
-        <div
-          draggable={allowProgramLayoutEditing}
+        <BacklogProgramRowBlock
+          program={program}
+          programIndex={programIndex}
+          programCount={programs.length}
+          selected={selectedNodeId === program.uuid}
+          dragOver={dragOverNodeId === program.uuid}
+          dragOverEdge={dragOverNodeId === program.uuid ? dragOverEdge : null}
+          newlyCreated={newlyCreated}
+          allowProgramLayoutEditing={allowProgramLayoutEditing && !!onReorderSiblings}
+          readOnly={readOnly}
+          rowPresetTags={rowPresetTags}
+          copied={copiedRowNodeId === program.uuid}
+          detailsOpen={inlineNotesNode?.uuid === program.uuid}
+          inlineNotesSaving={inlineNotesSaving}
+          statusBusy={!!statusBusyByNode[program.uuid]}
+          canEditNodeStatus={!!onUpdateNodeStatus}
+          canToggleDetails={!!onUpdateNodeNotes}
+          canAssignToGroup={allowProgramLayoutEditing && !!onAssignProgramToGroup && programGroups.length > 0}
+          assignedGroupId={assignedGroupId}
+          programGroups={programGroups}
+          ticketBadge={renderTicketBadge(program)}
+          lookupTagColor={lookupTagColor}
+          onSelectProgram={() => onSelectNode(program)}
           onDragStart={makeDragStart(program)}
           onDragEnd={handleDragEnd}
-          onDragOver={e => handleDragOver(program, e)}
+          onDragOver={event => handleDragOver(program, event)}
           onDragLeave={() => handleDragLeave(program.uuid)}
-          onDrop={e => { void handleDrop(program, e) }}
-          className={cn(
-            'flex cursor-pointer items-center gap-2 border-b border-border/70 bg-card px-3 py-2 transition-colors hover:bg-zinc-50',
-            selectedNodeId === program.uuid && 'bg-accent/40',
-            dragOverNodeId === program.uuid && 'ring-2 ring-primary/40 bg-primary/5',
-            dragOverNodeId === program.uuid && dragOverEdge === 'before' && 'shadow-[inset_0_2px_0_rgba(59,130,246,0.7)]',
-            dragOverNodeId === program.uuid && dragOverEdge === 'after' && 'shadow-[inset_0_-2px_0_rgba(59,130,246,0.7)]',
-            newlyCreated && 'bg-emerald-100/80 ring-2 ring-emerald-400/70',
-          )}
-          onClick={() => onSelectNode(program)}
-        >
-          <sup
-            aria-hidden="true"
-            className="-ml-1.5 mr-0.5 mt-0.5 self-start font-mono text-[8px] leading-none tabular-nums text-muted-foreground/45"
-          >
-            {formatRowOrdinal(programIndex)}
-          </sup>
-          {allowProgramLayoutEditing && onReorderSiblings && (
-            <div
-              className="mr-0.5 flex items-center gap-0.5"
-              onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
-            >
-              <button
-                type="button"
-                className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                title="Move up"
-                onClick={() => { void moveProgramByOffset(program, -1) }}
-                disabled={programIndex <= 0}
-              >
-                <ArrowUp className="h-3 w-3" />
-              </button>
-              <button
-                type="button"
-                className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                title="Move down"
-                onClick={() => { void moveProgramByOffset(program, 1) }}
-                disabled={programIndex >= (programs.length - 1)}
-              >
-                <ArrowDown className="h-3 w-3" />
-              </button>
-            </div>
-          )}
-          <FolderTree className={cn('h-4 w-4 shrink-0', programIconColorClass)} />
-          <div className="min-w-0 flex flex-1 items-center gap-2">
-            {renderTicketBadge(program)}
-            <span className="min-w-0 flex-1 truncate text-sm font-bold">
-              {nodeTitleWithoutTicket(program) || nodeDisplayTitle(program) || 'Untitled'}
-            </span>
-          </div>
-          {rowPresetTags.visible.length > 0 && (
-            <div className="hidden max-w-[35%] items-center gap-1 overflow-hidden lg:flex">
-              {rowPresetTags.visible.map(tag => (
-                <span
-                  key={`${program.uuid}-preset-row-tag-${tag}`}
-                  className={cn(
-                    'truncate rounded-full border px-1.5 py-0.5 text-[10px] leading-none',
-                    tagColorClassBlock(tag, 'solid'),
-                  )}
-                  style={tagColorStyleBlock(tag, 'solid', lookupTagColor(program, tag))}
-                >
-                  {tag}
-                </span>
-              ))}
-              {rowPresetTags.hiddenCount > 0 && (
-                <span className="rounded-full border border-border/70 bg-muted/20 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
-                  +{rowPresetTags.hiddenCount}
-                </span>
-              )}
-            </div>
-          )}
-          {readOnly || !onUpdateNodeStatus ? (
-            <NodeStatusBadgeBlock status={program.status} />
-          ) : (
-            <div
-              className="flex items-center gap-1"
-              onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
-            >
-              {statusBusyByNode[program.uuid] ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-              ) : (
-                <NodeStatusSelectBlock
-                  status={program.status}
-                  onChange={(value) => { void handleInlineNodeStatusChange(program, value) }}
-                  variant="pill"
-                  title="Change status"
-                />
-                )}
-              </div>
-            )}
-          {allowProgramLayoutEditing && onAssignProgramToGroup && programGroups.length > 0 && (
-            <div
-              className="hidden items-center md:flex"
-              onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
-            >
-              <select
-                value={assignedGroupId}
-                onChange={(event) => {
-                  const nextValue = event.target.value
-                  onAssignProgramToGroup(program, nextValue === '__ungrouped__' ? null : nextValue)
-                }}
-                className="h-6 max-w-[140px] rounded-md border border-input bg-background px-1.5 text-[10px] text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                title="Assign group"
-              >
-                <option value="__ungrouped__">Ungrouped</option>
-                {programGroups.map(group => (
-                  <option key={`${program.uuid}-group-opt-${group.id}`} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          {!readOnly && onUpdateNodeNotes && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                void toggleInlineNotes(program)
-              }}
-              className={cn(
-                'rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-                inlineNotesNode?.uuid === program.uuid
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-              )}
-              title="Details"
-              disabled={inlineNotesSaving}
-            >
-              <Info className="h-3.5 w-3.5" />
-            </button>
-          )}
-          <button
-            type="button"
-            draggable={false}
-            onClick={event => { void copyRowLabelForNode(program, event) }}
-            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            title={copiedRowNodeId === program.uuid ? 'Copied' : 'Copy row label'}
-            aria-label={copiedRowNodeId === program.uuid ? `Copied row label ${nodeDisplayTitle(program)}` : `Copy row label ${nodeDisplayTitle(program)}`}
-          >
-            {copiedRowNodeId === program.uuid ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          </button>
-          <PriorityDot priority={program.priority} />
-        </div>
+          onDrop={event => { void handleDrop(program, event) }}
+          onMoveProgramUp={() => { void moveProgramByOffset(program, -1) }}
+          onMoveProgramDown={() => { void moveProgramByOffset(program, 1) }}
+          onAssignProgramToGroup={(groupId) => onAssignProgramToGroup?.(program, groupId)}
+          onToggleInlineNotes={() => { void toggleInlineNotes(program) }}
+          onCopyRowLabel={event => { void copyRowLabelForNode(program, event) }}
+          onNodeStatusChange={(nextStatus) => { void handleInlineNodeStatusChange(program, nextStatus) }}
+        />
         {renderInlineNotesEditor(program, 36)}
 
         <div className="bg-muted/15">

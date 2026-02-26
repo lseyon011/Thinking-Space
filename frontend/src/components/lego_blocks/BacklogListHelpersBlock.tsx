@@ -82,6 +82,13 @@ export const ROOT_INPUT_KEY = '__root__'
 
 export type DropEdge = 'before' | 'after'
 
+export interface ChildStateBlock {
+  loading: boolean
+  loaded: boolean
+  nodes: NodeRecord[]
+  error: string | null
+}
+
 export function formatRowOrdinal(index: number): string {
   if (!Number.isFinite(index) || index < 0) return '0'
   return String(index + 1)
