@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ArrowDown,
+  ArrowUp,
   BookOpen,
   Check,
   ChevronRight,
@@ -15,6 +17,7 @@ import {
   Handshake,
   Play,
   Plus,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/ui/button'
 import {
@@ -160,6 +163,12 @@ interface ChildState {
   error: string | null
 }
 
+interface ProgramGroupEntryBlock {
+  id: string
+  name: string
+  collapsed?: boolean
+}
+
 const ROOT_INPUT_KEY = '__root__'
 type DropEdge = 'before' | 'after'
 
@@ -184,6 +193,12 @@ export interface BacklogListBlockProps {
   onReorderSiblings?: (params: { parentKey: string | null; orderedNodes: NodeRecord[] }) => Promise<NodeRecord[] | void>
   projectPresetTagsByRoot?: Record<string, string[]>
   projectTagColorsByRoot?: Record<string, Record<string, string>>
+  programGroups?: ProgramGroupEntryBlock[]
+  programGroupIdByProgram?: Record<string, string>
+  onCreateProgramGroup?: (name: string) => void
+  onDeleteProgramGroup?: (groupId: string) => void
+  onToggleProgramGroupCollapsed?: (groupId: string) => void
+  onAssignProgramToGroup?: (program: NodeRecord, groupId: string | null) => void
   onUpdateNodeStatus?: (node: NodeRecord, status: NodeStatus) => Promise<NodeRecord | void>
   onUpdateTaskStatus?: (node: NodeRecord, taskStatus: TaskStatusOption) => Promise<NodeRecord | void>
   onUpdateNodeNotes?: (node: NodeRecord, description: string, comments: YAMLCommentEntry[]) => Promise<NodeRecord | void>
@@ -364,6 +379,12 @@ export default function BacklogListBlock({
   onReorderSiblings,
   projectPresetTagsByRoot = {},
   projectTagColorsByRoot = {},
+  programGroups = [],
+  programGroupIdByProgram = {},
+  onCreateProgramGroup,
+  onDeleteProgramGroup,
+  onToggleProgramGroupCollapsed,
+  onAssignProgramToGroup,
   onUpdateNodeStatus,
   onUpdateTaskStatus,
   onUpdateNodeNotes,
@@ -388,6 +409,7 @@ export default function BacklogListBlock({
   const [inlineNotesCommentDraft, setInlineNotesCommentDraft] = useState('')
   const [inlineNotesSaving, setInlineNotesSaving] = useState(false)
   const [inlineNotesBaselineSignature, setInlineNotesBaselineSignature] = useState<string | null>(null)
+  const [programGroupDraft, setProgramGroupDraft] = useState('')
   const inlineNotesSessionRef = useRef(0)
   const inlineNotesAutoSaveSignatureRef = useRef<string | null>(null)
   const newRowHighlightTimeoutByNodeRef = useRef<Record<string, number>>({})
@@ -401,6 +423,36 @@ export default function BacklogListBlock({
     if (!colorsByTag) return undefined
     return colorsByTag[tagLookupKeyBlock(tag)]
   }, [projectTagColorsByRoot])
+
+  const validProgramGroupIds = useMemo(
+    () => new Set(programGroups.map(group => group.id)),
+    [programGroups],
+  )
+  const resolvedProgramGroupIdByProgram = useMemo(() => {
+    const resolved: Record<string, string> = {}
+    for (const [programId, groupId] of Object.entries(programGroupIdByProgram)) {
+      if (!validProgramGroupIds.has(groupId)) continue
+      resolved[programId] = groupId
+    }
+    return resolved
+  }, [programGroupIdByProgram, validProgramGroupIds])
+  const programIndexById = useMemo(() => new Map(programs.map((program, index) => [program.uuid, index])), [programs])
+  const groupedProgramsByGroupId = useMemo(() => {
+    const grouped = new Map<string, NodeRecord[]>(programGroups.map(group => [group.id, []]))
+    const ungrouped: NodeRecord[] = []
+
+    for (const program of programs) {
+      const groupId = resolvedProgramGroupIdByProgram[program.uuid]
+      const target = groupId ? grouped.get(groupId) : null
+      if (target) target.push(program)
+      else ungrouped.push(program)
+    }
+
+    return {
+      grouped,
+      ungrouped,
+    }
+  }, [programGroups, programs, resolvedProgramGroupIdByProgram])
 
   useEffect(() => {
     // Child lists are locally cached; clear them when upstream program data refreshes
@@ -757,6 +809,36 @@ export default function BacklogListBlock({
     patchMovedNode,
     patchSiblingOrderForParent,
   ])
+
+  const createProgramGroupFromDraft = useCallback(() => {
+    if (!onCreateProgramGroup) return
+    const nextName = programGroupDraft.trim()
+    if (!nextName) return
+    onCreateProgramGroup(nextName)
+    setProgramGroupDraft('')
+  }, [onCreateProgramGroup, programGroupDraft])
+
+  const moveProgramByOffset = useCallback(async (program: NodeRecord, offset: -1 | 1) => {
+    if (!onReorderSiblings) return
+    const currentIndex = programs.findIndex(entry => entry.uuid === program.uuid)
+    if (currentIndex < 0) return
+    const nextIndex = currentIndex + offset
+    if (nextIndex < 0 || nextIndex >= programs.length) return
+
+    const reordered = [...programs]
+    const [moved] = reordered.splice(currentIndex, 1)
+    reordered.splice(nextIndex, 0, moved)
+
+    setLocalError(null)
+    try {
+      await onReorderSiblings({
+        parentKey: null,
+        orderedNodes: reordered,
+      })
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to reorder programs')
+    }
+  }, [onReorderSiblings, programs])
 
   useEffect(() => {
     if (!copiedRowNodeId) return
@@ -1440,6 +1522,7 @@ export default function BacklogListBlock({
     const childState = childrenByNode[program.uuid]
     const programIconColorClass = iconColorForNodeType(program.type)
     const newlyCreated = !!newlyCreatedNodeIds[program.uuid]
+    const assignedGroupId = resolvedProgramGroupIdByProgram[program.uuid] ?? '__ungrouped__'
     const rowPresetTags = compactTagList(
       selectedPresetTagsForNode(program, projectPresetTagsByRoot),
     )
@@ -1469,6 +1552,31 @@ export default function BacklogListBlock({
           >
             {formatRowOrdinal(programIndex)}
           </sup>
+          {!readOnly && onReorderSiblings && (
+            <div
+              className="mr-0.5 flex items-center gap-0.5"
+              onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+            >
+              <button
+                type="button"
+                className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                title="Move up"
+                onClick={() => { void moveProgramByOffset(program, -1) }}
+                disabled={programIndex <= 0}
+              >
+                <ArrowUp className="h-3 w-3" />
+              </button>
+              <button
+                type="button"
+                className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                title="Move down"
+                onClick={() => { void moveProgramByOffset(program, 1) }}
+                disabled={programIndex >= (programs.length - 1)}
+              >
+                <ArrowDown className="h-3 w-3" />
+              </button>
+            </div>
+          )}
           <FolderTree className={cn('h-4 w-4 shrink-0', programIconColorClass)} />
           <div className="min-w-0 flex flex-1 items-center gap-2">
             {renderTicketBadge(program)}
@@ -1516,6 +1624,29 @@ export default function BacklogListBlock({
                 )}
               </div>
             )}
+          {!readOnly && onAssignProgramToGroup && programGroups.length > 0 && (
+            <div
+              className="hidden items-center md:flex"
+              onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+            >
+              <select
+                value={assignedGroupId}
+                onChange={(event) => {
+                  const nextValue = event.target.value
+                  onAssignProgramToGroup(program, nextValue === '__ungrouped__' ? null : nextValue)
+                }}
+                className="h-6 max-w-[140px] rounded-md border border-input bg-background px-1.5 text-[10px] text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                title="Assign group"
+              >
+                <option value="__ungrouped__">Ungrouped</option>
+                {programGroups.map(group => (
+                  <option key={`${program.uuid}-group-opt-${group.id}`} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {!readOnly && onUpdateNodeNotes && (
             <button
               type="button"
@@ -1572,11 +1703,36 @@ export default function BacklogListBlock({
         </div>
       </div>
     )
-  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes])
+  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, resolvedProgramGroupIdByProgram, selectedNodeId, statusBusyByNode, toggleInlineNotes])
 
   return (
     <div className="flex flex-col space-y-3">
       {!readOnly && renderInlineCreate(null, ROOT_INPUT_KEY, 'Add program...')}
+
+      {!readOnly && onCreateProgramGroup && (
+        <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5">
+          <input
+            value={programGroupDraft}
+            onChange={event => setProgramGroupDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return
+              event.preventDefault()
+              createProgramGroupFromDraft()
+            }}
+            placeholder="Add program group (e.g. 2025)"
+            className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs"
+            onClick={createProgramGroupFromDraft}
+            disabled={!programGroupDraft.trim()}
+          >
+            Add Group
+          </Button>
+        </div>
+      )}
 
       {programs.length === 0 && (
         <div className="px-3 py-4 text-sm text-muted-foreground">
@@ -1584,7 +1740,61 @@ export default function BacklogListBlock({
         </div>
       )}
 
-      {programs.map((program, idx) => renderProgramSection(program, idx))}
+      {programGroups.length > 0 && (
+        <div className="space-y-3">
+          {programGroups.map((group) => {
+            const groupedPrograms = groupedProgramsByGroupId.grouped.get(group.id) ?? []
+            return (
+              <div key={`program-group-${group.id}`} className="space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/25 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    onClick={() => onToggleProgramGroupCollapsed?.(group.id)}
+                    title={group.collapsed ? 'Expand group' : 'Collapse group'}
+                  >
+                    <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', group.collapsed ? '' : 'rotate-90')} />
+                    <span>{group.name}</span>
+                    <span className="rounded-full border border-border/70 px-1 py-0 text-[10px] leading-none text-muted-foreground">
+                      {groupedPrograms.length}
+                    </span>
+                  </button>
+                  {!readOnly && onDeleteProgramGroup && (
+                    <button
+                      type="button"
+                      className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      onClick={() => onDeleteProgramGroup(group.id)}
+                      title={`Delete group ${group.name}`}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                {!group.collapsed && (
+                  groupedPrograms.length > 0 ? (
+                    <div className="space-y-2">
+                      {groupedPrograms.map(program => renderProgramSection(program, programIndexById.get(program.uuid) ?? 0))}
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-dashed border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+                      No programs assigned to this group.
+                    </div>
+                  )
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {groupedProgramsByGroupId.ungrouped.length > 0 && (
+        <div className="space-y-2">
+          {programGroups.length > 0 && (
+            <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Ungrouped Programs</p>
+          )}
+          {groupedProgramsByGroupId.ungrouped.map(program => renderProgramSection(program, programIndexById.get(program.uuid) ?? 0))}
+        </div>
+      )}
 
       {localError && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">

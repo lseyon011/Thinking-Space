@@ -48,6 +48,13 @@ interface ProjectEntry {
 }
 type ProjectPresetTagsByRoot = Record<string, string[]>
 type ProjectTagColorsByRoot = Record<string, Record<string, string>>
+interface ProgramGroupEntry {
+  id: string
+  name: string
+  programIds: string[]
+  collapsed?: boolean
+}
+type ProjectProgramGroupsByRoot = Record<string, ProgramGroupEntry[]>
 
 const BACKLOG_ACTOR: CapabilityActor = {
   kind: 'human',
@@ -119,6 +126,54 @@ function sortBacklogNodes(nodes: NodeRecord[]): NodeRecord[] {
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+}
+
+function makeProgramGroupId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `program-group-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function dedupeProgramIds(ids: string[]): string[] {
+  const seen = new Set<string>()
+  const deduped: string[] = []
+  for (const id of ids) {
+    const normalized = id.trim()
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    deduped.push(normalized)
+  }
+  return deduped
+}
+
+function normalizeProgramGroups(groups: ProgramGroupEntry[]): ProgramGroupEntry[] {
+  const seenGroupIds = new Set<string>()
+  const assignedPrograms = new Set<string>()
+  const normalized: ProgramGroupEntry[] = []
+
+  for (const group of groups) {
+    const id = group.id?.trim()
+    const name = group.name?.trim()
+    if (!id || seenGroupIds.has(id)) continue
+    seenGroupIds.add(id)
+
+    const nextProgramIds: string[] = []
+    for (const programId of dedupeProgramIds(group.programIds ?? [])) {
+      if (assignedPrograms.has(programId)) continue
+      assignedPrograms.add(programId)
+      nextProgramIds.push(programId)
+    }
+
+    normalized.push({
+      id,
+      name: name || 'Group',
+      programIds: nextProgramIds,
+      collapsed: !!group.collapsed,
+    })
+  }
+
+  return normalized
 }
 
 function normalizeStoredSegments(value: unknown): string[] {
@@ -205,6 +260,9 @@ export default function BacklogOrch() {
   )
   const [projectTagColorsByRoot, setProjectTagColorsByRoot] = useState<ProjectTagColorsByRoot>(
     () => getJsonStorageItem<ProjectTagColorsByRoot>(STORAGE_KEYS.thinkingOrganizerProjectTagColors, {}),
+  )
+  const [projectProgramGroupsByRoot, setProjectProgramGroupsByRoot] = useState<ProjectProgramGroupsByRoot>(
+    () => getJsonStorageItem<ProjectProgramGroupsByRoot>(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, {}),
   )
   const [initialProjectLoadResolved, setInitialProjectLoadResolved] = useState(false)
   const [initialStoredProjectRoot] = useState(() => readStoredProjectRoot())
@@ -362,6 +420,94 @@ export default function BacklogOrch() {
     if (!activeProjectRoot) return
     updateProjectTagColor(activeProjectRoot, tag, color)
   }, [activeProjectRoot, updateProjectTagColor])
+
+  const updateProjectProgramGroups = useCallback((
+    projectRoot: string,
+    updater: (groups: ProgramGroupEntry[]) => ProgramGroupEntry[],
+  ) => {
+    const normalizedRoot = normalizePath(projectRoot)
+    if (!normalizedRoot) return
+    setProjectProgramGroupsByRoot((prev) => {
+      const current = normalizeProgramGroups(prev[normalizedRoot] ?? [])
+      const nextGroups = normalizeProgramGroups(updater(current))
+      const next: ProjectProgramGroupsByRoot = { ...prev }
+      if (nextGroups.length > 0) next[normalizedRoot] = nextGroups
+      else delete next[normalizedRoot]
+      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, next)
+      return next
+    })
+  }, [])
+
+  const activeProjectProgramGroups = useMemo(() => {
+    if (!activeProjectRoot) return []
+    return normalizeProgramGroups(projectProgramGroupsByRoot[activeProjectRoot] ?? [])
+  }, [activeProjectRoot, projectProgramGroupsByRoot])
+
+  const activeProjectProgramGroupIdByProgram = useMemo(() => {
+    const byProgram: Record<string, string> = {}
+    for (const group of activeProjectProgramGroups) {
+      for (const programId of group.programIds) {
+        byProgram[programId] = group.id
+      }
+    }
+    return byProgram
+  }, [activeProjectProgramGroups])
+
+  const createActiveProjectProgramGroup = useCallback((name: string) => {
+    if (!activeProjectRoot) return
+    const trimmed = name.trim()
+    if (!trimmed) return
+    updateProjectProgramGroups(activeProjectRoot, (groups) => [
+      ...groups,
+      {
+        id: makeProgramGroupId(),
+        name: trimmed,
+        programIds: [],
+        collapsed: false,
+      },
+    ])
+  }, [activeProjectRoot, updateProjectProgramGroups])
+
+  const deleteActiveProjectProgramGroup = useCallback((groupId: string) => {
+    if (!activeProjectRoot) return
+    const normalizedGroupId = groupId.trim()
+    if (!normalizedGroupId) return
+    updateProjectProgramGroups(activeProjectRoot, groups =>
+      groups.filter(group => group.id !== normalizedGroupId),
+    )
+  }, [activeProjectRoot, updateProjectProgramGroups])
+
+  const toggleActiveProjectProgramGroupCollapsed = useCallback((groupId: string) => {
+    if (!activeProjectRoot) return
+    const normalizedGroupId = groupId.trim()
+    if (!normalizedGroupId) return
+    updateProjectProgramGroups(activeProjectRoot, groups =>
+      groups.map(group => (
+        group.id === normalizedGroupId
+          ? { ...group, collapsed: !group.collapsed }
+          : group
+      )),
+    )
+  }, [activeProjectRoot, updateProjectProgramGroups])
+
+  const assignProgramToActiveProjectGroup = useCallback((programUuid: string, nextGroupId: string | null) => {
+    if (!activeProjectRoot) return
+    const normalizedProgramUuid = programUuid.trim()
+    if (!normalizedProgramUuid) return
+    const normalizedGroupId = nextGroupId?.trim() || null
+    updateProjectProgramGroups(activeProjectRoot, (groups) => {
+      const stripped = groups.map(group => ({
+        ...group,
+        programIds: group.programIds.filter(existing => existing !== normalizedProgramUuid),
+      }))
+      if (!normalizedGroupId) return stripped
+      return stripped.map(group => (
+        group.id === normalizedGroupId
+          ? { ...group, programIds: dedupeProgramIds([...group.programIds, normalizedProgramUuid]) }
+          : group
+      ))
+    })
+  }, [activeProjectRoot, updateProjectProgramGroups])
 
   useEffect(() => {
     if (urlHydrated) return
@@ -1268,6 +1414,14 @@ export default function BacklogOrch() {
             onReorderSiblings={reorderSiblingRows}
             projectPresetTagsByRoot={projectPresetTagsByRoot}
             projectTagColorsByRoot={projectTagColorsByRoot}
+            programGroups={activeProjectProgramGroups}
+            programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
+            onCreateProgramGroup={createActiveProjectProgramGroup}
+            onDeleteProgramGroup={deleteActiveProjectProgramGroup}
+            onToggleProgramGroupCollapsed={toggleActiveProjectProgramGroupCollapsed}
+            onAssignProgramToGroup={(program, groupId) => {
+              assignProgramToActiveProjectGroup(program.uuid, groupId)
+            }}
             onUpdateNodeStatus={updateNodeStatusFor}
             onUpdateTaskStatus={updateTaskStatusFor}
             onUpdateNodeNotes={updateNodeNotesFor}

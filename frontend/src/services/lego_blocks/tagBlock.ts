@@ -98,19 +98,64 @@ function rgbaBlock(rgb: RGB, alpha: number): string {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${clamped})`
 }
 
-function relativeLuminanceBlock(rgb: RGB): number {
-  const linear = (channel: number) => {
-    const value = channel / 255
-    if (value <= 0.03928) return value / 12.92
-    return ((value + 0.055) / 1.055) ** 2.4
+type HSL = { h: number; s: number; l: number }
+
+function rgbToHslBlock(rgb: RGB): HSL {
+  const r = rgb.r / 255
+  const g = rgb.g / 255
+  const b = rgb.b / 255
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const delta = max - min
+
+  let h = 0
+  if (delta !== 0) {
+    if (max === r) h = ((g - b) / delta) % 6
+    else if (max === g) h = ((b - r) / delta) + 2
+    else h = ((r - g) / delta) + 4
+    h *= 60
+    if (h < 0) h += 360
   }
-  return (0.2126 * linear(rgb.r)) + (0.7152 * linear(rgb.g)) + (0.0722 * linear(rgb.b))
+
+  const l = (max + min) / 2
+  const s = delta === 0 ? 0 : delta / (1 - Math.abs((2 * l) - 1))
+  return { h, s: s * 100, l: l * 100 }
 }
 
-function textColorBlock(rgb: RGB, alpha: number): string {
-  const luminance = relativeLuminanceBlock(rgb)
-  const base = luminance > 0.48 ? { r: 15, g: 23, b: 42 } : { r: 248, g: 250, b: 252 }
-  return rgbaBlock(base, alpha)
+function hslToRgbBlock(hsl: HSL): RGB {
+  const h = ((hsl.h % 360) + 360) % 360
+  const s = Math.max(0, Math.min(100, hsl.s)) / 100
+  const l = Math.max(0, Math.min(100, hsl.l)) / 100
+  const chroma = (1 - Math.abs((2 * l) - 1)) * s
+  const x = chroma * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = l - (chroma / 2)
+
+  let rPrime = 0
+  let gPrime = 0
+  let bPrime = 0
+
+  if (h < 60) [rPrime, gPrime, bPrime] = [chroma, x, 0]
+  else if (h < 120) [rPrime, gPrime, bPrime] = [x, chroma, 0]
+  else if (h < 180) [rPrime, gPrime, bPrime] = [0, chroma, x]
+  else if (h < 240) [rPrime, gPrime, bPrime] = [0, x, chroma]
+  else if (h < 300) [rPrime, gPrime, bPrime] = [x, 0, chroma]
+  else [rPrime, gPrime, bPrime] = [chroma, 0, x]
+
+  return {
+    r: Math.round((rPrime + m) * 255),
+    g: Math.round((gPrime + m) * 255),
+    b: Math.round((bPrime + m) * 255),
+  }
+}
+
+function darkerTextColorBlock(rgb: RGB, alpha: number): string {
+  const hsl = rgbToHslBlock(rgb)
+  const darker = hslToRgbBlock({
+    h: hsl.h,
+    s: Math.min(100, hsl.s * 1.08),
+    l: Math.max(12, Math.min(32, hsl.l * 0.38)),
+  })
+  return rgbaBlock(darker, alpha)
 }
 
 export function tagColorClassBlock(tag: string, variant: TagColorVariantBlock = 'solid'): string {
@@ -129,7 +174,7 @@ export function tagColorStyleBlock(
   return {
     backgroundColor: rgbaBlock(rgb, tone.bgAlpha),
     borderColor: rgbaBlock(rgb, tone.borderAlpha),
-    color: textColorBlock(rgb, tone.textAlpha),
+    color: darkerTextColorBlock(rgb, tone.textAlpha),
   }
 }
 
