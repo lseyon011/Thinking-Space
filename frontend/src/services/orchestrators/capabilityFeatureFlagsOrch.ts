@@ -2,7 +2,7 @@ import {
   getCapabilityFeatureFlags,
   setCapabilityFeatureFlag,
   type CapabilityFeatureFlags,
-} from '../lego_blocks/capabilityFeatureFlagsBlock'
+} from '@/services/lego_blocks/integrations/capabilityFeatureFlagsBlock'
 
 export type { CapabilityFeatureFlags }
 

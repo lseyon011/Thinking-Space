@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   deriveUILayoutStateBlock,
   type UILayoutDeriveInput,
-} from '@/services/lego_blocks/uiLayoutBlock'
-import { deriveAdaptiveShellStateBlock } from '@/services/lego_blocks/uiNavigationBlock'
+} from '@/services/lego_blocks/units/uiLayoutBlock'
+import { deriveAdaptiveShellStateBlock } from '@/services/lego_blocks/integrations/uiNavigationBlock'
 
 interface Scenario {
   name: string

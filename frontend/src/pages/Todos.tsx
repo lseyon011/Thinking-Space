@@ -13,7 +13,7 @@ import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/integrations/A
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import TodoCalendarOrch from '@/components/orchestrators/TodoCalendarOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
-import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
+import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 
 type Tab = 'create' | 'view'
 

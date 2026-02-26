@@ -1,5 +1,5 @@
-import type { FileStat } from '../lego_blocks/typesBlock'
-import { getVaultFS, type VaultEntry } from '../lego_blocks/fsBlock'
+import type { FileStat } from '@/services/lego_blocks/units/typesBlock'
+import { getVaultFS, type VaultEntry } from '@/services/lego_blocks/integrations/fsBlock'
 import { getStoredVaultRoot } from './storageOrch'
 import { isElectron } from './runtimeOrch'
 

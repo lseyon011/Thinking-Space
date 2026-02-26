@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '@/services/lego_blocks/fsBlock'
+import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '@/services/lego_blocks/integrations/fsBlock'
 
 class FakeVaultFS implements VaultFS {
   private readonly files = new Map<string, string>()
@@ -165,7 +165,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  const { deleteDb } = await import('@/services/lego_blocks/dbBlock')
+  const { deleteDb } = await import('@/services/lego_blocks/integrations/dbBlock')
   await deleteDb()
   const storage = (globalThis as typeof globalThis & { localStorage?: { removeItem?: (key: string) => void } }).localStorage
   storage?.removeItem?.('ltm-vault-root')
@@ -216,7 +216,7 @@ describe('capabilityRouterOrch', () => {
 
   it('invokes capability via Electron adapter IPC payload', async () => {
     installWindowAndStorageShims()
-    const { setStoredVaultRoot } = await import('@/services/lego_blocks/storageKeyBlock')
+    const { setStoredVaultRoot } = await import('@/services/lego_blocks/units/storageKeyBlock')
     setStoredVaultRoot('/tmp/electron-test-vault')
 
     const expected = {
@@ -737,7 +737,7 @@ describe('capabilityRouterOrch', () => {
   it('reports and fixes status policy integrity violations', async () => {
     const fs = new FakeVaultFS()
     const integrity = await import('@/services/orchestrators/organizerIntegrityOrch')
-    const hierarchy = await import('@/services/lego_blocks/yamlHierarchyBlock')
+    const hierarchy = await import('@/services/lego_blocks/integrations/yamlHierarchyBlock')
 
     const { node: program } = await capabilityOrch!.invokeCapabilityOrThrow({
       capability: 'organizer.node.create',

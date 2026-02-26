@@ -6,7 +6,7 @@ import {
   setJsonStorageItem,
   setStorageItem,
   type StorageKey,
-} from '../lego_blocks/storageKeyBlock'
+} from '@/services/lego_blocks/units/storageKeyBlock'
 
 export {
   STORAGE_KEYS,

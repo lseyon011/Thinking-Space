@@ -53,7 +53,7 @@ import {
   setStorageItem,
 } from './services/orchestrators/storageOrch'
 import { getCapabilityFeatureFlags } from './services/orchestrators/capabilityFeatureFlagsOrch'
-import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from './services/lego_blocks/fsBlock'
+import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from '@/services/lego_blocks/integrations/fsBlock'
 import { getUIShellThemeProfileOrch } from './services/orchestrators/uiThemeOrch'
 import {
   readVaultUiPreferencesOrch,
@@ -65,7 +65,7 @@ import {
   shouldIgnoreEdgeSwipeFromTargetBlock,
   shouldOpenDrawerFromSwipeBlock,
   shouldStartEdgeSwipeOpenBlock,
-} from './services/lego_blocks/uiGestureBlock'
+} from '@/services/lego_blocks/units/uiGestureBlock'
 
 type NavIcon = ComponentType<{ className?: string }>
 

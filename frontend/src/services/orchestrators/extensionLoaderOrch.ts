@@ -6,9 +6,9 @@ import {
   upsertExtensionRegistryRecordBlock,
   type ExtensionRegistryReason,
   type ExtensionRuntimeRecord,
-} from '../lego_blocks/extensionRegistryBlock'
-import { getVaultFS, isCapacitorNative, isElectron, type VaultFS } from '../lego_blocks/fsBlock'
-import { parseExtensionActionsFromManifestBlock } from '../lego_blocks/extensionActionBlock'
+} from '@/services/lego_blocks/integrations/extensionRegistryBlock'
+import { getVaultFS, isCapacitorNative, isElectron, type VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { parseExtensionActionsFromManifestBlock } from '@/services/lego_blocks/integrations/extensionActionBlock'
 import {
   resolveExtensionManifestCompatibilityOrch,
   validateExtensionManifestOrch,

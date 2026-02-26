@@ -1,5 +1,5 @@
 import { Activity, Loader2, RefreshCw } from 'lucide-react'
-import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 

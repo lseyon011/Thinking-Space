@@ -1,6 +1,6 @@
-import { getAllNodes } from '../lego_blocks/dbBlock'
-import { findSimilarNodesBlock, type SimilarityEngine, type SimilarityMatch, type SimilarityQuery } from '../lego_blocks/similarityBlock'
-import type { NodeType } from '../lego_blocks/yamlNoteBlock'
+import { getAllNodes } from '@/services/lego_blocks/integrations/dbBlock'
+import { findSimilarNodesBlock, type SimilarityEngine, type SimilarityMatch, type SimilarityQuery } from '@/services/lego_blocks/integrations/similarityBlock'
+import type { NodeType } from '@/services/lego_blocks/units/yamlNoteBlock'
 
 export type { SimilarityEngine, SimilarityMatch, SimilarityQuery }
 

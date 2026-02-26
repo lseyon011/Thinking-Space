@@ -7,7 +7,7 @@ import {
   generateKey,
   stringifyNote,
   type NodeType,
-} from '../../src/services/lego_blocks/yamlNoteBlock'
+} from '../../src/services/lego_blocks/units/yamlNoteBlock'
 
 interface CreatedNode {
   type: NodeType

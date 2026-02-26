@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { AiProvider } from '@/services/orchestrators/chatOrch'
 import { runAiAssistOrch, type AiAssistAction, type RunAiAssistResult } from '@/services/orchestrators/aiAssistOrch'
 import { resolveAiSelectionOrch } from '@/services/orchestrators/aiSettingsOrch'
-import type { AiSettingsScope } from '@/services/lego_blocks/aiSettingsBlock'
+import type { AiSettingsScope } from '@/services/lego_blocks/integrations/aiSettingsBlock'
 
 export interface AiAssistRuntimeBlockState {
   aiSelectionLoading: boolean

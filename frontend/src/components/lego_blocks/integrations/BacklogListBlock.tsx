@@ -6,9 +6,9 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import { BacklogInlineCreateBlock } from '@/components/lego_blocks/integrations/BacklogInlineCreateBlock'
 import { BacklogInlineNotesEditorBlock } from '@/components/lego_blocks/integrations/BacklogInlineNotesEditorBlock'
 import { ProgramGroupHeaderBlock } from '@/components/lego_blocks/integrations/ProgramGroupHeaderBlock'
-import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import { tagLookupKeyBlock } from '@/services/lego_blocks/tagBlock'
-import type { NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import { tagLookupKeyBlock } from '@/services/lego_blocks/units/tagBlock'
+import type { NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
 import {
   allowedCreateTypes,
   type ChildStateBlock,

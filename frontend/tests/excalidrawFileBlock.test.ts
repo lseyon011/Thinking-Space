@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseExcalidrawScene, serializeExcalidrawScene } from '../src/services/lego_blocks/excalidrawFileBlock'
+import { parseExcalidrawScene, serializeExcalidrawScene } from '../src/services/lego_blocks/integrations/excalidrawFileBlock'
 
 describe('excalidrawFileBlock serialize', () => {
   it('replaces compressed-json fences with editable json scene content', () => {

@@ -1,4 +1,4 @@
-import { buildObsidianOpenUrl } from '../lego_blocks/obsidianLinkBlock'
+import { buildObsidianOpenUrl } from '@/services/lego_blocks/integrations/obsidianLinkBlock'
 import {
   buildWikilinkSuggestionsBlock,
   buildObsidianWikilinkBlock,
@@ -11,7 +11,7 @@ import {
   toObsidianWikilinkTargetBlock,
   type ResolveWikilinkPathBlockResult,
   type WikilinkSuggestionBlock,
-} from '../lego_blocks/obsidianWikilinkBlock'
+} from '@/services/lego_blocks/integrations/obsidianWikilinkBlock'
 import { listMarkdownEntries } from './fileSystemOrch'
 
 export function buildObsidianOpenUrlOrch(path: string): string {

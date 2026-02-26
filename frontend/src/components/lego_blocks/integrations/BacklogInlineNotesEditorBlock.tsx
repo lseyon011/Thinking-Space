@@ -1,8 +1,8 @@
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { cn } from '@/lib/utils'
-import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import { normalizeTagListBlock, tagColorClassBlock, tagColorStyleBlock } from '@/services/lego_blocks/tagBlock'
-import type { YAMLCommentEntry } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import { normalizeTagListBlock, tagColorClassBlock, tagColorStyleBlock } from '@/services/lego_blocks/units/tagBlock'
+import type { YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
 
 interface BacklogInlineNotesEditorBlockProps {
   node: NodeRecord

@@ -7,7 +7,7 @@ import {
   isExcalidrawHighlighterEnabledBlock,
   matchExcalidrawHighlighterPresetBlock,
   parseObsidianHighlighterPresetsJsonBlock,
-} from '../src/services/lego_blocks/excalidrawHighlighterBlock'
+} from '../src/services/lego_blocks/units/excalidrawHighlighterBlock'
 
 describe('excalidrawHighlighterBlock', () => {
   it('defines Obsidian-style highlighter presets for quick pen switching', () => {

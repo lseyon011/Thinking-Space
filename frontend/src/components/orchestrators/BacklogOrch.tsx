@@ -14,8 +14,8 @@ import CascadingFolderPicker, {
 } from '@/components/lego_blocks/integrations/CascadingFolderPickerBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
-import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import type { NodeStatus, NodeType, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import type { NodeStatus, NodeType, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
 import {
   THINKING_ORGANIZER_DIR,
   getVaultFsOrch,
@@ -28,7 +28,7 @@ import {
 } from '@/services/orchestrators/capabilityRouterOrch'
 import { listInProgressExecutionTasksOrch } from '@/services/orchestrators/executionProgressOrch'
 import { getLastSyncTimestamp, smartSync } from '@/services/orchestrators/vaultSyncOrch'
-import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
+import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 import {
   STORAGE_KEYS,
   getJsonStorageItem,
@@ -40,7 +40,7 @@ import {
   normalizeTagListBlock,
   splitTagInputBlock,
   tagLookupKeyBlock,
-} from '@/services/lego_blocks/tagBlock'
+} from '@/services/lego_blocks/units/tagBlock'
 
 interface ProjectEntry {
   name: string

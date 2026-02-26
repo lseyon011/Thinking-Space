@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '../src/services/lego_blocks/fsBlock'
+import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '../src/services/lego_blocks/integrations/fsBlock'
 import {
   EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH,
   loadExcalidrawHighlighterPresetsOrch,

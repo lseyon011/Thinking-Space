@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ChatResponse } from '@/services/lego_blocks/aiChatBlock'
-import { sendChatBlock } from '@/services/lego_blocks/aiChatBlock'
+import type { ChatResponse } from '@/services/lego_blocks/integrations/aiChatBlock'
+import { sendChatBlock } from '@/services/lego_blocks/integrations/aiChatBlock'
 
-vi.mock('@/services/lego_blocks/aiChatBlock', () => ({
+vi.mock('@/services/lego_blocks/integrations/aiChatBlock', () => ({
   sendChatBlock: vi.fn(),
 }))
 
@@ -20,14 +20,14 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  const { deleteDb } = await import('@/services/lego_blocks/dbBlock')
+  const { deleteDb } = await import('@/services/lego_blocks/integrations/dbBlock')
   await deleteDb()
 })
 
 describe('aiBlock.findRelated', () => {
   it('returns lexical thought matches from cache', async () => {
-    const { upsertNode } = await import('@/services/lego_blocks/dbBlock')
-    const { findRelated } = await import('@/services/lego_blocks/aiBlock')
+    const { upsertNode } = await import('@/services/lego_blocks/integrations/dbBlock')
+    const { findRelated } = await import('@/services/lego_blocks/integrations/aiBlock')
     const now = nowIso()
     await upsertNode({
       uuid: 'thought-1',
@@ -70,7 +70,7 @@ describe('aiBlock.findRelated', () => {
 
 describe('aiBlock text actions', () => {
   it('summarize sends summarize prompt and strips markdown fence response', async () => {
-    const { summarize } = await import('@/services/lego_blocks/aiBlock')
+    const { summarize } = await import('@/services/lego_blocks/integrations/aiBlock')
     sendChatBlockMock.mockResolvedValue({
       role: 'assistant',
       content: '```markdown\n- concise summary\n```',
@@ -92,7 +92,7 @@ describe('aiBlock text actions', () => {
   })
 
   it('cleanup sends cleanup prompt and returns cleaned text', async () => {
-    const { cleanup } = await import('@/services/lego_blocks/aiBlock')
+    const { cleanup } = await import('@/services/lego_blocks/integrations/aiBlock')
     sendChatBlockMock.mockResolvedValue({
       role: 'assistant',
       content: 'Cleaned markdown output.',

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getExtensionManifestCompatibilityBlock,
   parseExtensionManifestBlock,
-} from '@/services/lego_blocks/extensionManifestBlock'
+} from '@/services/lego_blocks/units/extensionManifestBlock'
 
 function buildValidManifestRaw(): Record<string, unknown> {
   return {

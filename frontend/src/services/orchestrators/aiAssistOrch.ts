@@ -1,5 +1,5 @@
-import type { AiProvider } from '../lego_blocks/aiProviderBlock'
-import type { AiSettingsScope } from '../lego_blocks/aiSettingsBlock'
+import type { AiProvider } from '@/services/lego_blocks/integrations/aiProviderBlock'
+import type { AiSettingsScope } from '@/services/lego_blocks/integrations/aiSettingsBlock'
 import { resolveAiSelectionOrch } from './aiSettingsOrch'
 import { sendChatWithTelemetryOrch } from './chatOrch'
 import type { AiTelemetryEvent } from './aiTelemetryOrch'

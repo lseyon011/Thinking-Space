@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   extractFirstWikilinkTargetBlock,
   buildTextElementsSectionBlock,
-} from '../src/services/lego_blocks/excalidrawWikilinkBlock'
+} from '../src/services/lego_blocks/units/excalidrawWikilinkBlock'
 
 describe('excalidrawWikilinkBlock', () => {
   describe('extractFirstWikilinkTargetBlock', () => {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '@/services/lego_blocks/fsBlock'
-import { setCapabilityFeatureFlags } from '@/services/lego_blocks/capabilityFeatureFlagsBlock'
+import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '@/services/lego_blocks/integrations/fsBlock'
+import { setCapabilityFeatureFlags } from '@/services/lego_blocks/integrations/capabilityFeatureFlagsBlock'
 import { clearExtensionRegistryOrch } from '@/services/orchestrators/extensionLoaderOrch'
 import {
   buildExtensionActionKeyOrch,

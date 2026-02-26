@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getUIShellThemeProfileBlock,
   normalizeUIThemeIdBlock,
-} from '@/services/lego_blocks/uiThemeBlock'
+} from '@/services/lego_blocks/units/uiThemeBlock'
 
 describe('uiThemeBlock', () => {
   it('maps classic to baseline shell profiles', () => {

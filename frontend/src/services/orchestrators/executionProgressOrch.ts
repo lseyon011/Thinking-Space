@@ -1,6 +1,6 @@
-import type { CapabilityActor } from '../lego_blocks/capabilityRegistryBlock'
-import type { NodeRecord } from '../lego_blocks/dbBlock'
-import { normalizeTaskStatus } from '../lego_blocks/statusPolicyBlock'
+import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import { normalizeTaskStatus } from '@/services/lego_blocks/integrations/statusPolicyBlock'
 import { invokeCapabilityOrThrow } from './capabilityRouterOrch'
 
 interface ListInProgressExecutionTasksInput {

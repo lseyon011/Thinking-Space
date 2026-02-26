@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import { findSimilarNodesBlock } from '@/services/lego_blocks/similarityBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import { findSimilarNodesBlock } from '@/services/lego_blocks/integrations/similarityBlock'
 import { findSimilarGroupedMatchesOrch } from '@/services/orchestrators/similarityOrch'
 
 const getAllNodesMock = vi.fn<[], Promise<NodeRecord[]>>()
 
-vi.mock('@/services/lego_blocks/dbBlock', async () => {
-  const actual = await vi.importActual<typeof import('@/services/lego_blocks/dbBlock')>('@/services/lego_blocks/dbBlock')
+vi.mock('@/services/lego_blocks/integrations/dbBlock', async () => {
+  const actual = await vi.importActual<typeof import('@/services/lego_blocks/integrations/dbBlock')>('@/services/lego_blocks/integrations/dbBlock')
   return {
     ...actual,
     getAllNodes: () => getAllNodesMock(),

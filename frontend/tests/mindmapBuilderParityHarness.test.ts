@@ -4,11 +4,11 @@ import { describe, expect, it } from 'vitest'
 import {
   buildMindmapSceneFromMarkdownBlock,
   DEFAULT_MINDMAP_BUILD_OPTIONS,
-} from '../src/services/lego_blocks/mindmapBuilderBlock'
+} from '../src/services/lego_blocks/integrations/mindmapBuilderBlock'
 import {
   parseExcalidrawScene,
   type ParsedExcalidrawScene,
-} from '../src/services/lego_blocks/excalidrawFileBlock'
+} from '../src/services/lego_blocks/integrations/excalidrawFileBlock'
 import {
   canonicalizeScene,
   diffScenesParityFocused,

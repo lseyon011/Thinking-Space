@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAiAssistDiffBlock } from '@/services/lego_blocks/aiAssistDiffBlock'
+import { buildAiAssistDiffBlock } from '@/services/lego_blocks/units/aiAssistDiffBlock'
 
 describe('aiAssistDiffBlock', () => {
   it('returns no rows for identical text', () => {

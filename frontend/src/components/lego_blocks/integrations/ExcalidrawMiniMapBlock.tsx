@@ -1,6 +1,6 @@
-import type { MiniMapBounds } from '@/services/lego_blocks/excalidrawSceneAnalysisBlock'
-import type { ExcalidrawCanvasApiBlock } from '@/services/lego_blocks/excalidrawIntegrationBlock'
-import { resolveViewportWorldSize } from '@/services/lego_blocks/excalidrawViewportBlock'
+import type { MiniMapBounds } from '@/services/lego_blocks/integrations/excalidrawSceneAnalysisBlock'
+import type { ExcalidrawCanvasApiBlock } from '@/services/lego_blocks/integrations/excalidrawIntegrationBlock'
+import { resolveViewportWorldSize } from '@/services/lego_blocks/integrations/excalidrawViewportBlock'
 
 interface MiniMapRect {
   x: number

@@ -1,13 +1,13 @@
-import type { VaultFS } from '../lego_blocks/fsBlock'
+import type { VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   isRuntimeExtensionActionBlock,
   isSupportedExtensionActionTargetBlock,
   resolveExtensionActionInputBlock,
   type ExtensionActionTarget,
   type ExtensionDeclarativeAction,
-} from '../lego_blocks/extensionActionBlock'
-import { getCapabilityFeatureFlags } from '../lego_blocks/capabilityFeatureFlagsBlock'
-import type { CapabilityInputMap, CapabilityName } from '../lego_blocks/capabilityRegistryBlock'
+} from '@/services/lego_blocks/integrations/extensionActionBlock'
+import { getCapabilityFeatureFlags } from '@/services/lego_blocks/integrations/capabilityFeatureFlagsBlock'
+import type { CapabilityInputMap, CapabilityName } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 import { invokeExtensionCapabilityOrch, type ExtensionCapabilityInvokeResult } from './extensionCapabilityOrch'
 import { discoverExtensionsOrch, listRegisteredExtensionsOrch } from './extensionLoaderOrch'
 import { invokeExtensionRuntimeActionOrch, type ExtensionRuntimeInvokeResult } from './extensionRuntimeOrch'

@@ -9,16 +9,16 @@ describe('aiChatBlock native routing', () => {
     const fetchMock = vi.fn()
     ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 
-    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/fsBlock', () => ({
       isElectron: () => false,
       isCapacitorNative: () => true,
     }))
-    vi.doMock('@/services/lego_blocks/aiCredentialStoreBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/aiCredentialStoreBlock', () => ({
       getManualClaudeApiKeyBlock: () => 'claude-key',
       getManualOpenAiApiKeyBlock: () => null,
       getManualAzureCredentialsBlock: () => null,
     }))
-    vi.doMock('@/services/lego_blocks/aiProviderBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/aiProviderBlock', () => ({
       defaultProviderModelBlock: () => 'claude-sonnet-4-5-20250929',
       getClaudeCredentialsBlock: async () => null,
       getCodexCredentialsBlock: async () => null,
@@ -35,7 +35,7 @@ describe('aiChatBlock native routing', () => {
       },
     }))
 
-    const { sendChatBlock } = await import('@/services/lego_blocks/aiChatBlock')
+    const { sendChatBlock } = await import('@/services/lego_blocks/integrations/aiChatBlock')
     const response = await sendChatBlock('claude', [{ role: 'user', content: 'hello' }])
 
     expect(response.provider).toBe('claude')
@@ -47,16 +47,16 @@ describe('aiChatBlock native routing', () => {
     const fetchMock = vi.fn()
     ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 
-    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/fsBlock', () => ({
       isElectron: () => false,
       isCapacitorNative: () => true,
     }))
-    vi.doMock('@/services/lego_blocks/aiCredentialStoreBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/aiCredentialStoreBlock', () => ({
       getManualClaudeApiKeyBlock: () => null,
       getManualOpenAiApiKeyBlock: () => 'openai-key',
       getManualAzureCredentialsBlock: () => null,
     }))
-    vi.doMock('@/services/lego_blocks/aiProviderBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/aiProviderBlock', () => ({
       defaultProviderModelBlock: () => 'gpt-5.3-codex',
       getClaudeCredentialsBlock: async () => null,
       getCodexCredentialsBlock: async () => null,
@@ -76,7 +76,7 @@ describe('aiChatBlock native routing', () => {
       },
     }))
 
-    const { sendChatBlock } = await import('@/services/lego_blocks/aiChatBlock')
+    const { sendChatBlock } = await import('@/services/lego_blocks/integrations/aiChatBlock')
     const response = await sendChatBlock('openai-codex', [{ role: 'user', content: 'hello' }])
 
     expect(response.provider).toBe('openai-codex')
@@ -95,16 +95,16 @@ describe('aiChatBlock native routing', () => {
     })
     ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 
-    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/fsBlock', () => ({
       isElectron: () => false,
       isCapacitorNative: () => true,
     }))
-    vi.doMock('@/services/lego_blocks/aiCredentialStoreBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/aiCredentialStoreBlock', () => ({
       getManualClaudeApiKeyBlock: () => null,
       getManualOpenAiApiKeyBlock: () => null,
       getManualAzureCredentialsBlock: () => null,
     }))
-    vi.doMock('@/services/lego_blocks/aiOauthCredentialStoreBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/aiOauthCredentialStoreBlock', () => ({
       getNativeClaudeOauthCredentialsBlock: () => null,
       getNativeCodexOauthCredentialsBlock: () => ({
         accessToken: 'codex-access',
@@ -113,14 +113,14 @@ describe('aiChatBlock native routing', () => {
         accountId: 'acct-123',
       }),
     }))
-    vi.doMock('@/services/lego_blocks/aiProviderBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/aiProviderBlock', () => ({
       defaultProviderModelBlock: () => 'gpt-5.3-codex',
       getClaudeCredentialsBlock: async () => null,
       getCodexCredentialsBlock: async () => null,
       getAzureCredentialsBlock: async () => null,
     }))
 
-    const { sendChatBlock } = await import('@/services/lego_blocks/aiChatBlock')
+    const { sendChatBlock } = await import('@/services/lego_blocks/integrations/aiChatBlock')
     const response = await sendChatBlock('openai-codex', [{ role: 'user', content: 'hello' }])
 
     expect(response.provider).toBe('openai-codex')
@@ -140,16 +140,16 @@ describe('aiChatBlock native routing', () => {
     })
     ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 
-    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/fsBlock', () => ({
       isElectron: () => true,
       isCapacitorNative: () => false,
     }))
-    vi.doMock('@/services/lego_blocks/aiCredentialStoreBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/aiCredentialStoreBlock', () => ({
       getManualClaudeApiKeyBlock: () => null,
       getManualOpenAiApiKeyBlock: () => null,
       getManualAzureCredentialsBlock: () => null,
     }))
-    vi.doMock('@/services/lego_blocks/aiOauthCredentialStoreBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/aiOauthCredentialStoreBlock', () => ({
       getNativeClaudeOauthCredentialsBlock: () => null,
       getNativeCodexOauthCredentialsBlock: () => ({
         accessToken: 'codex-access',
@@ -158,14 +158,14 @@ describe('aiChatBlock native routing', () => {
         accountId: 'acct-electron',
       }),
     }))
-    vi.doMock('@/services/lego_blocks/aiProviderBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/aiProviderBlock', () => ({
       defaultProviderModelBlock: () => 'gpt-5.3-codex',
       getClaudeCredentialsBlock: async () => null,
       getCodexCredentialsBlock: async () => null,
       getAzureCredentialsBlock: async () => null,
     }))
 
-    const { sendChatBlock } = await import('@/services/lego_blocks/aiChatBlock')
+    const { sendChatBlock } = await import('@/services/lego_blocks/integrations/aiChatBlock')
     const response = await sendChatBlock('openai-codex', [{ role: 'user', content: 'hello' }])
 
     expect(response.provider).toBe('openai-codex')

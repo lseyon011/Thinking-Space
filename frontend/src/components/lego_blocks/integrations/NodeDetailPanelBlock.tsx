@@ -34,15 +34,15 @@ import {
   TagListEditorBlock,
   TagPresetSelectorBlock,
 } from '@/components/lego_blocks/integrations/TagManagerBlock'
-import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import type { NodeType, NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import type { NodeType, NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
 import {
   hasTagBlock,
   normalizeTagBlock,
   normalizeTagListBlock,
   splitTagInputBlock,
   tagsEqualBlock,
-} from '@/services/lego_blocks/tagBlock'
+} from '@/services/lego_blocks/units/tagBlock'
 
 function iconForNodeType(type: NodeType) {
   if (type === 'program') return FolderTree

@@ -1,4 +1,4 @@
-import { getVaultFS } from '../lego_blocks/fsBlock'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   DEFAULT_VAULT_UI_PREFERENCES_BLOCK,
   normalizeExplorerIconStyleBlock,
@@ -6,7 +6,7 @@ import {
   serializeVaultUiPreferencesBlock,
   type ExplorerIconStyleBlock,
   type VaultUiPreferencesBlock,
-} from '../lego_blocks/vaultUiPreferencesBlock'
+} from '@/services/lego_blocks/units/vaultUiPreferencesBlock'
 
 const THINK_SPACE_DIR_ORCH = '.think-space'
 const UI_PREFERENCES_DIR_ORCH = `${THINK_SPACE_DIR_ORCH}/preferences`

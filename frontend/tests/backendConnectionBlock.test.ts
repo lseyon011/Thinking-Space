@@ -14,7 +14,7 @@ describe('backendConnectionBlock', () => {
       })
     ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 
-    const { probeBackendConnectionBlock } = await import('@/services/lego_blocks/backendConnectionBlock')
+    const { probeBackendConnectionBlock } = await import('@/services/lego_blocks/units/backendConnectionBlock')
     const result = await probeBackendConnectionBlock(true)
 
     expect(result.connected).toBe(true)
@@ -33,7 +33,7 @@ describe('backendConnectionBlock', () => {
     })
     ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 
-    const { probeBackendConnectionBlock } = await import('@/services/lego_blocks/backendConnectionBlock')
+    const { probeBackendConnectionBlock } = await import('@/services/lego_blocks/units/backendConnectionBlock')
     const result = await probeBackendConnectionBlock(true)
 
     expect(result.connected).toBe(false)
@@ -55,7 +55,7 @@ describe('backendConnectionBlock', () => {
       })
     ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 
-    const { probeBackendConnectionBlock } = await import('@/services/lego_blocks/backendConnectionBlock')
+    const { probeBackendConnectionBlock } = await import('@/services/lego_blocks/units/backendConnectionBlock')
     const result = await probeBackendConnectionBlock(true)
 
     expect(result.connected).toBe(true)
@@ -78,7 +78,7 @@ describe('backendConnectionBlock', () => {
       })
     ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 
-    const { probeBackendConnectionBlock } = await import('@/services/lego_blocks/backendConnectionBlock')
+    const { probeBackendConnectionBlock } = await import('@/services/lego_blocks/units/backendConnectionBlock')
     const result = await probeBackendConnectionBlock(true)
 
     expect(result.connected).toBe(false)
@@ -102,7 +102,7 @@ describe('backendConnectionBlock', () => {
       })
     ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 
-    const { probeBackendConnectionBlock } = await import('@/services/lego_blocks/backendConnectionBlock')
+    const { probeBackendConnectionBlock } = await import('@/services/lego_blocks/units/backendConnectionBlock')
     const result = await probeBackendConnectionBlock(true)
 
     expect(result.connected).toBe(false)

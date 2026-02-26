@@ -43,10 +43,11 @@ Internal development documentation for Thinking Space. For an overview of the pr
 
 ## Service Architecture Contract
 
-- Reusable service primitives live in `frontend/src/services/lego_blocks/*`.
+- Reusable service primitives live in `frontend/src/services/lego_blocks/units/*`.
+- Composite reusable service lego blocks live in `frontend/src/services/lego_blocks/integrations/*`.
 - Workflow service composition lives in `frontend/src/services/orchestrators/*`.
 - Naming rules are mandatory:
-  - Reusable service primitives use `*Block` suffix.
+  - Reusable service primitives and integrations use `*Block` suffix.
   - Service orchestrators use `*Orch` suffix.
 - UI code should consume service orchestration modules by default.
 
@@ -110,7 +111,7 @@ Folders are convenience groupings only. The app never enforces or relies on fold
 ## Agent Capability Transport
 
 Organizer operations are exposed through one capability contract in frontend TypeScript:
-- Registry: `frontend/src/services/lego_blocks/capabilityRegistryBlock.ts`
+- Registry: `frontend/src/services/lego_blocks/integrations/capabilityRegistryBlock.ts`
 - Router: `frontend/src/services/orchestrators/capabilityRouterOrch.ts`
 - Contract ADR: `docs/ADR-005-Agent-Capabilities.md`
 - Agent workspace schema ADR: `docs/ADR-006-Agent-Workspace-Schema.md`

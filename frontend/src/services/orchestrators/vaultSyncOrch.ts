@@ -1,14 +1,14 @@
 // Vault sync orchestrator — scans vault .md files, parses YAML frontmatter,
 // and populates IndexedDB cache. Handles full and incremental syncs.
 
-import { getPlatformName, getVaultFS } from '../lego_blocks/fsBlock'
-import type { VaultFS, VaultEntry } from '../lego_blocks/fsBlock'
+import { getPlatformName, getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import type { VaultFS, VaultEntry } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   parseNote,
   hasFrontmatter,
   type YAMLFrontmatter,
-} from '../lego_blocks/yamlNoteBlock'
-import { parseOrganizerBodySections } from '../lego_blocks/organizerBodyBlock'
+} from '@/services/lego_blocks/units/yamlNoteBlock'
+import { parseOrganizerBodySections } from '@/services/lego_blocks/integrations/organizerBodyBlock'
 import {
   upsertNode,
   deleteNodeByPath,
@@ -16,7 +16,7 @@ import {
   clearAll,
   getNodeCount,
   type NodeRecord,
-} from '../lego_blocks/dbBlock'
+} from '@/services/lego_blocks/integrations/dbBlock'
 
 // ── Types ──
 

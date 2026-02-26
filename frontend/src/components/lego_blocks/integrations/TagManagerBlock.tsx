@@ -7,7 +7,7 @@ import {
   tagColorClassBlock,
   tagColorStyleBlock,
   tagLookupKeyBlock,
-} from '@/services/lego_blocks/tagBlock'
+} from '@/services/lego_blocks/units/tagBlock'
 import { cn } from '@/lib/utils'
 
 export interface TagDisclosureButtonBlockProps {

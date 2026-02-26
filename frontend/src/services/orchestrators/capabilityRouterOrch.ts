@@ -6,21 +6,21 @@ import {
   type CapabilityInputMap,
   type CapabilityName,
   type CapabilityOutputMap,
-} from '../lego_blocks/capabilityRegistryBlock'
-import type { NodeRecord } from '../lego_blocks/dbBlock'
-import { ALLOWED_RECORD_KINDS, NODE_TYPES, type NodeType, type YAMLCommentEntry } from '../lego_blocks/yamlNoteBlock'
+} from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import { ALLOWED_RECORD_KINDS, NODE_TYPES, type NodeType, type YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
 import {
   deriveEpicStatusFromTaskStatuses,
   isTaskLikeNode,
   nodeStatusFromTaskStatus,
   normalizeTaskStatus,
   taskStatusFromNodeStatus,
-} from '../lego_blocks/statusPolicyBlock'
+} from '@/services/lego_blocks/integrations/statusPolicyBlock'
 import {
   createCapabilityInputHash,
   writeCapabilityAuditEntry,
-} from '../lego_blocks/capabilityAuditLogBlock'
-import { getCapabilityPolicy, validateCapabilityPolicy } from '../lego_blocks/capabilityPolicyBlock'
+} from '@/services/lego_blocks/integrations/capabilityAuditLogBlock'
+import { getCapabilityPolicy, validateCapabilityPolicy } from '@/services/lego_blocks/integrations/capabilityPolicyBlock'
 import {
   createYamlNode,
   deleteYamlNode,
@@ -34,16 +34,16 @@ import {
   renameYamlNode,
   searchYamlNodes,
   updateYamlNode,
-} from '../lego_blocks/yamlHierarchyBlock'
-import { getVaultFS, type VaultFS } from '../lego_blocks/fsBlock'
-import { getStoredVaultRoot } from '../lego_blocks/storageKeyBlock'
+} from '@/services/lego_blocks/integrations/yamlHierarchyBlock'
+import { getVaultFS, type VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { createThought } from './thoughtsOrch'
 import { createTodos, toggleTodo } from './todosOrch'
 import { listFiles, listFolders, listPdfFiles } from './fileSystemOrch'
 import { formatAndSave, previewFormat } from './formatExcalidrawOrch'
 import { convertPdf, previewPdf } from './pdfToMarkdownOrch'
 import { cleanAndSave, previewTranscript } from './transcriptCleanerOrch'
-import { getCapabilityFeatureFlags } from '../lego_blocks/capabilityFeatureFlagsBlock'
+import { getCapabilityFeatureFlags } from '@/services/lego_blocks/integrations/capabilityFeatureFlagsBlock'
 
 export interface CapabilityInvokeRequest<Name extends CapabilityName = CapabilityName> {
   capability: Name

@@ -6,7 +6,7 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import FileActivityOrch from '@/components/orchestrators/FileActivityOrch'
 import MetricBlock from '@/components/lego_blocks/units/MetricBlock'
 import { getGitInsights } from '@/services/orchestrators/gitInsightsOrch'
-import type { GitInsightsData, HeatmapDay } from '@/services/lego_blocks/typesBlock'
+import type { GitInsightsData, HeatmapDay } from '@/services/lego_blocks/units/typesBlock'
 
 type Tab = 'git' | 'file'
 

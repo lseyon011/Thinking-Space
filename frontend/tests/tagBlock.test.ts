@@ -4,7 +4,7 @@ import {
   tagColorClassBlock,
   tagColorStyleBlock,
   tagPaletteBlock,
-} from '@/services/lego_blocks/tagBlock'
+} from '@/services/lego_blocks/units/tagBlock'
 
 describe('tagBlock color helpers', () => {
   it('returns stable palette classes for the same tag', () => {

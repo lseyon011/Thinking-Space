@@ -3,7 +3,7 @@ import {
   parseExtensionActionsBlock,
   parseExtensionActionsFromManifestBlock,
   resolveExtensionActionInputBlock,
-} from '@/services/lego_blocks/extensionActionBlock'
+} from '@/services/lego_blocks/integrations/extensionActionBlock'
 
 describe('extensionActionBlock', () => {
   it('parses declarative actions with normalized fields', () => {

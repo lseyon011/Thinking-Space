@@ -10,7 +10,7 @@ import {
   NODE_TYPE_LEVEL,
   type YAMLNote,
   type YAMLFrontmatter,
-} from '@/services/lego_blocks/yamlNoteBlock'
+} from '@/services/lego_blocks/units/yamlNoteBlock'
 
 // ── parseNote ──
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '@/services/lego_blocks/fsBlock'
-import { generateKey, parseNote } from '@/services/lego_blocks/yamlNoteBlock'
+import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '@/services/lego_blocks/integrations/fsBlock'
+import { generateKey, parseNote } from '@/services/lego_blocks/units/yamlNoteBlock'
 
 class FakeVaultFS implements VaultFS {
   private readonly files = new Map<string, string>()
@@ -162,14 +162,14 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  const { deleteDb } = await import('@/services/lego_blocks/dbBlock')
+  const { deleteDb } = await import('@/services/lego_blocks/integrations/dbBlock')
   await deleteDb()
 })
 
 describe('yamlHierarchyBlock project storage', () => {
   it('stores a program under the selected project thinking-organizer folder', async () => {
     const fs = new FakeVaultFS()
-    const { createYamlNode } = await import('@/services/lego_blocks/yamlHierarchyBlock')
+    const { createYamlNode } = await import('@/services/lego_blocks/integrations/yamlHierarchyBlock')
 
     const program = await createYamlNode({
       type: 'program',
@@ -189,7 +189,7 @@ describe('yamlHierarchyBlock project storage', () => {
 
   it('inherits project_root for child nodes and stores them in the same project organizer folder', async () => {
     const fs = new FakeVaultFS()
-    const { createYamlNode } = await import('@/services/lego_blocks/yamlHierarchyBlock')
+    const { createYamlNode } = await import('@/services/lego_blocks/integrations/yamlHierarchyBlock')
 
     const program = await createYamlNode({
       type: 'program',
@@ -219,7 +219,7 @@ describe('yamlHierarchyBlock project storage', () => {
 
   it('writes description and comments into frontmatter and markdown body when creating a node', async () => {
     const fs = new FakeVaultFS()
-    const { createYamlNode } = await import('@/services/lego_blocks/yamlHierarchyBlock')
+    const { createYamlNode } = await import('@/services/lego_blocks/integrations/yamlHierarchyBlock')
 
     const thought = await createYamlNode({
       type: 'thought',
@@ -244,7 +244,7 @@ describe('yamlHierarchyBlock project storage', () => {
 
   it('updates description and comments after create', async () => {
     const fs = new FakeVaultFS()
-    const { createYamlNode, updateYamlNode } = await import('@/services/lego_blocks/yamlHierarchyBlock')
+    const { createYamlNode, updateYamlNode } = await import('@/services/lego_blocks/integrations/yamlHierarchyBlock')
 
     const idea = await createYamlNode({
       type: 'idea',

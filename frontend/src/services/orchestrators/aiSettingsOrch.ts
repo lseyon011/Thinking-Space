@@ -11,15 +11,15 @@ import {
   setSelectedAiProviderBlock,
   type AiSettingsScope,
   type AiSettings,
-} from '../lego_blocks/aiSettingsBlock'
+} from '@/services/lego_blocks/integrations/aiSettingsBlock'
 import {
   AI_PROVIDER_ORDER,
   listProviderModelsBlock,
   listProvidersBlock,
   type AiProvider,
   type AiProviderStatus,
-} from '../lego_blocks/aiProviderBlock'
-import { aiDebugBlock, aiDebugWarnBlock } from '../lego_blocks/aiDebugBlock'
+} from '@/services/lego_blocks/integrations/aiProviderBlock'
+import { aiDebugBlock, aiDebugWarnBlock } from '@/services/lego_blocks/units/aiDebugBlock'
 
 export interface ResolveAiSelectionInput {
   provider?: AiProvider | null

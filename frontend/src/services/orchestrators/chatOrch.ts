@@ -3,13 +3,13 @@ import {
   type ChatMessage,
   type ChatResponse,
   type ChatSendOptions,
-} from '../lego_blocks/aiChatBlock'
+} from '@/services/lego_blocks/integrations/aiChatBlock'
 import {
   listProvidersBlock,
   type AiProvider,
   type AiProviderStatus,
   type ListProvidersBlockOptions,
-} from '../lego_blocks/aiProviderBlock'
+} from '@/services/lego_blocks/integrations/aiProviderBlock'
 import { recordAiTelemetryOrch, type AiTelemetryEvent, type RecordAiTelemetryInput } from './aiTelemetryOrch'
 
 export type {

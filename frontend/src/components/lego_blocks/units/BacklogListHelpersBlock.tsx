@@ -1,9 +1,9 @@
 import { BookOpen, Folder, FolderTree, Handshake, Layers, Lightbulb, ListChecks, MessageSquare, Play } from 'lucide-react'
 import type { ComponentType, DragEvent } from 'react'
 import { cn } from '@/lib/utils'
-import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import { normalizeTagBlock } from '@/services/lego_blocks/tagBlock'
-import type { NodePriority, NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import { normalizeTagBlock } from '@/services/lego_blocks/units/tagBlock'
+import type { NodePriority, NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
 
 export function iconForNodeType(type: NodeType): ComponentType<{ className?: string }> {
   if (type === 'program') return FolderTree

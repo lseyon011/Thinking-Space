@@ -100,13 +100,14 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - New frontend component files that violate this structure should not be added unless `AGENTS.md` is updated first with rationale.
 
 ## Service Placement and Naming Rules (Enforced)
-- `frontend/src/services/lego_blocks/*` stores low-level reusable service primitives (runtime adapters, scanners, transforms, shared types).
+- `frontend/src/services/lego_blocks/units/*` stores smallest reusable service primitives (runtime adapters, scanners, transforms, shared types).
+- `frontend/src/services/lego_blocks/integrations/*` stores composite service lego blocks that compose multiple units.
 - `frontend/src/services/orchestrators/*` stores workflow service composition entrypoints used by UI orchestrators/pages.
 - Service file naming is mandatory:
-  - Primitive service files end with `Block` (example: `fsBlock.ts`, `yamlNoteBlock.ts`).
+  - Primitive and integration service files end with `Block` (example: `fsBlock.ts`, `yamlNoteBlock.ts`).
   - Workflow service files end with `Orch` (example: `thoughtsOrch.ts`, `vaultSyncOrch.ts`).
 - UI code should import service workflows from `services/orchestrators` by default.
-- Direct imports from `services/lego_blocks` in UI are only allowed for shared type-only usage.
+- Direct imports from `services/lego_blocks/{units,integrations}` in UI are only allowed for shared type-only usage.
 
 ## Architecture Review Checklist (Required for frontend changes)
 1. Did I place reusable logic in `lego_blocks/{units,integrations,hooks}` and flow wiring in `orchestrators`?

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanTranscript } from '@/services/lego_blocks/transcriptCleanerBlock'
+import { cleanTranscript } from '@/services/lego_blocks/units/transcriptCleanerBlock'
 
 describe('transcriptCleanerBlock', () => {
   it('parses top heading rows with standalone timestamp transcript blocks', () => {

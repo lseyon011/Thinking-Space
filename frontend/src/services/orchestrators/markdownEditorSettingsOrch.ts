@@ -3,7 +3,7 @@ import {
   readMarkdownEditorSettingsBlock,
   writeMarkdownEditorSettingsBlock,
   type MarkdownEditorSettingsBlock,
-} from '@/services/lego_blocks/markdownEditorSettingsBlock'
+} from '@/services/lego_blocks/integrations/markdownEditorSettingsBlock'
 
 export type { MarkdownEditorSettingsBlock }
 

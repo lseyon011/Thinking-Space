@@ -1,11 +1,11 @@
-import type { TodoMonthData, TodoSectionMonthData } from '../lego_blocks/typesBlock'
-import { getVaultFS } from '../lego_blocks/fsBlock'
+import type { TodoMonthData, TodoSectionMonthData } from '@/services/lego_blocks/units/typesBlock'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   getTodosMonth as scanTodosMonth,
   getTodosSectionMonth as scanTodosSectionMonth,
   toggleTodo as scanToggleTodo,
   createTodo as scanCreateTodo,
-} from '../lego_blocks/todoScannerBlock'
+} from '@/services/lego_blocks/integrations/todoScannerBlock'
 import { syncSingleFile } from './vaultSyncOrch'
 
 export async function getTodosMonth(year: number, month: number): Promise<TodoMonthData> {

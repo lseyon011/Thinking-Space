@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { ArrowRight, Loader2, FolderTree, Handshake, Layers, Lightbulb, ListChecks, Play } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/lego_blocks/units/ui/button'
-import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import type { NodeType } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import type { NodeType } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { defaultNodeKindLabel } from '@/components/lego_blocks/integrations/HierarchyTreeBlock'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
-import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
+import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 import {
   STORAGE_KEYS,
   getStorageItem,

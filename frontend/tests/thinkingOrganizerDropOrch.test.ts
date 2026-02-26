@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '@/services/lego_blocks/fsBlock'
-import { createNote, parseNote, stringifyNote } from '@/services/lego_blocks/yamlNoteBlock'
+import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '@/services/lego_blocks/integrations/fsBlock'
+import { createNote, parseNote, stringifyNote } from '@/services/lego_blocks/units/yamlNoteBlock'
 
 class FakeVaultFS implements VaultFS {
   private readonly files = new Map<string, string>()
@@ -169,7 +169,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  const { deleteDb } = await import('@/services/lego_blocks/dbBlock')
+  const { deleteDb } = await import('@/services/lego_blocks/integrations/dbBlock')
   await deleteDb()
 })
 
@@ -196,7 +196,7 @@ describe('thinkingOrganizerDropOrch', () => {
     fs.seedFile('inbox/weekly-reflection.md', '# Weekly Reflection\n\nKey updates this week.')
 
     const { fullSync } = await import('@/services/orchestrators/vaultSyncOrch')
-    const { getNodeByKey, getNodeByPath } = await import('@/services/lego_blocks/dbBlock')
+    const { getNodeByKey, getNodeByPath } = await import('@/services/lego_blocks/integrations/dbBlock')
     const { dropPathToYamlNodeOrch } = await import('@/services/orchestrators/thinkingOrganizerDropOrch')
 
     await fullSync(fs)
@@ -233,7 +233,7 @@ describe('thinkingOrganizerDropOrch', () => {
     fs.seedFile('inbox/notes/sub/c.md', '# C\n\nCharlie')
 
     const { fullSync } = await import('@/services/orchestrators/vaultSyncOrch')
-    const { getNodeByKey, getNodeByPath } = await import('@/services/lego_blocks/dbBlock')
+    const { getNodeByKey, getNodeByPath } = await import('@/services/lego_blocks/integrations/dbBlock')
     const { dropPathToYamlNodeOrch } = await import('@/services/orchestrators/thinkingOrganizerDropOrch')
 
     await fullSync(fs)
@@ -279,7 +279,7 @@ describe('thinkingOrganizerDropOrch', () => {
     fs.seedFile('thoughts/thought-dnd-notes.md', stringifyNote(thought))
 
     const { fullSync } = await import('@/services/orchestrators/vaultSyncOrch')
-    const { getNodeByKey } = await import('@/services/lego_blocks/dbBlock')
+    const { getNodeByKey } = await import('@/services/lego_blocks/integrations/dbBlock')
     const { dropPathToYamlNodeOrch } = await import('@/services/orchestrators/thinkingOrganizerDropOrch')
 
     await fullSync(fs)

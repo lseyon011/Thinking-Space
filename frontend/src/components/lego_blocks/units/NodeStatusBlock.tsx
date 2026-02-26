@@ -5,7 +5,7 @@ import {
   SelectTrigger,
 } from '@/components/lego_blocks/units/ui/select'
 import { cn } from '@/lib/utils'
-import { NODE_STATUSES, type NodeStatus } from '@/services/lego_blocks/yamlNoteBlock'
+import { NODE_STATUSES, type NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
 
 export const NODE_STATUS_OPTIONS_BLOCK: NodeStatus[] = [...NODE_STATUSES]
 

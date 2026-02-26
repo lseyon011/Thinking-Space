@@ -9,7 +9,7 @@ import {
 import {
   type CapabilityActor,
   type CapabilityName,
-} from '@/services/lego_blocks/capabilityRegistryBlock'
+} from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 import {
   invokeCapabilityViaElectronAdapterOrch,
   invokeCapabilityOrch,

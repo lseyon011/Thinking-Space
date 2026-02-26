@@ -5,7 +5,7 @@ import {
   isElectron,
   selectAndSetVaultRoot,
   setVaultRoot,
-} from '../lego_blocks/fsBlock'
+} from '@/services/lego_blocks/integrations/fsBlock'
 
 export {
   getVaultFS,

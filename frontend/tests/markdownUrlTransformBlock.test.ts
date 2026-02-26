@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/markdownUrlTransformBlock'
+import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/integrations/markdownUrlTransformBlock'
 
 describe('markdownUrlTransformBlock', () => {
   it('preserves thinking-space wikilink hrefs', () => {

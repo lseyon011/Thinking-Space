@@ -1,6 +1,6 @@
 import { RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { normalizeHexColorBlock } from '@/services/lego_blocks/tagBlock'
+import { normalizeHexColorBlock } from '@/services/lego_blocks/units/tagBlock'
 
 export interface ColorPickerBlockProps {
   value?: string | null

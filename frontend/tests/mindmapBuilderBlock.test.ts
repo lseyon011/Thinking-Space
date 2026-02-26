@@ -3,7 +3,7 @@ import {
   buildMindmapSceneFromMarkdownBlock,
   DEFAULT_MINDMAP_BUILD_OPTIONS,
   suggestMindmapOutputPathBlock,
-} from '../src/services/lego_blocks/mindmapBuilderBlock'
+} from '../src/services/lego_blocks/integrations/mindmapBuilderBlock'
 
 function extractTextElements(scene: { elements: unknown[] }): string[] {
   return scene.elements

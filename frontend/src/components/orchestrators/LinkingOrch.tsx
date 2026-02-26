@@ -3,12 +3,12 @@ import { Loader2 } from 'lucide-react'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import VaultExplorerBlock from '@/components/lego_blocks/integrations/VaultExplorerBlock'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
-import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import { dropPathToYamlNodeOrch } from '@/services/orchestrators/thinkingOrganizerDropOrch'
 import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
-import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
+import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 
 const LINKING_ACTOR: CapabilityActor = {
   kind: 'human',

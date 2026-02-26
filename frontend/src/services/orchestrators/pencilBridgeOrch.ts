@@ -1,5 +1,5 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core'
-import { isCapacitorNative } from '../lego_blocks/fsBlock'
+import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   PENCIL_DOUBLE_TAP_EVENT_BLOCK,
   PENCIL_METRICS_EVENT_BLOCK,
@@ -13,7 +13,7 @@ import {
   type PencilPressureMappingConfigBlock,
   type PencilPressureMappingResultBlock,
   type PencilPressureStateBlock,
-} from '../lego_blocks/pencilBridgeBlock'
+} from '@/services/lego_blocks/units/pencilBridgeBlock'
 
 interface PencilEventsPluginDef {
   start(): Promise<{ monitoring: boolean }>

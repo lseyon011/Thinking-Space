@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import {
   buildStewardProposalsForNodeOrch,
   clearResolvedStewardProposalsOrch,

@@ -1,11 +1,11 @@
-import type { ThoughtMonthData, ThoughtSectionMonthData } from '../lego_blocks/typesBlock'
-import { getVaultFS } from '../lego_blocks/fsBlock'
-import { getNodeByKey } from '../lego_blocks/dbBlock'
+import type { ThoughtMonthData, ThoughtSectionMonthData } from '@/services/lego_blocks/units/typesBlock'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { getNodeByKey } from '@/services/lego_blocks/integrations/dbBlock'
 import {
   getThoughtsMonth as scanThoughtsMonth,
   getThoughtsSectionMonth as scanThoughtsSectionMonth,
-} from '../lego_blocks/thoughtsScannerBlock'
-import { createNote, generateKey, stringifyNote } from '../lego_blocks/yamlNoteBlock'
+} from '@/services/lego_blocks/integrations/thoughtsScannerBlock'
+import { createNote, generateKey, stringifyNote } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { syncSingleFile } from './vaultSyncOrch'
 import {
   MarkdownDocumentConflictError,

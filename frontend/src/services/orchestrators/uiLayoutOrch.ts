@@ -1,10 +1,10 @@
-import { getPlatformName, isCapacitorNative, isElectron } from '../lego_blocks/fsBlock'
+import { getPlatformName, isCapacitorNative, isElectron } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   deriveUILayoutStateBlock,
   normalizeSafeAreaInsetsBlock,
   type UILayoutState,
   type UISafeAreaInsets,
-} from '../lego_blocks/uiLayoutBlock'
+} from '@/services/lego_blocks/units/uiLayoutBlock'
 
 type UILayoutListener = (state: UILayoutState) => void
 type UILayoutEventCallback = () => void
@@ -218,4 +218,4 @@ export type {
   UILayoutSurface,
   UILayoutState,
   UISafeAreaInsets,
-} from '../lego_blocks/uiLayoutBlock'
+} from '@/services/lego_blocks/units/uiLayoutBlock'

@@ -6,8 +6,8 @@ import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import { ArrowLeft, FileType, Check, Loader2 } from 'lucide-react'
 import SearchDropdown from '@/components/lego_blocks/integrations/SearchDropdownBlock'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
-import type { ConvertOptions, PdfPreviewData, PdfConvertResult } from '@/services/lego_blocks/typesBlock'
-import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
+import type { ConvertOptions, PdfPreviewData, PdfConvertResult } from '@/services/lego_blocks/units/typesBlock'
+import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 
 const PDF_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.tools.pdf' }
 

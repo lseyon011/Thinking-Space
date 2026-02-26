@@ -3,7 +3,7 @@ import {
   parseExcalidrawSceneRaw,
   serializeExcalidrawScene,
   type ParsedExcalidrawScene,
-} from '../lego_blocks/excalidrawFileBlock'
+} from '@/services/lego_blocks/integrations/excalidrawFileBlock'
 
 export type { ParsedExcalidrawScene }
 

@@ -6,9 +6,9 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { inspect } from 'node:util'
 
-import { EXCLUDED_DIRS } from '../../src/services/lego_blocks/vaultConstantsBlock'
-import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '../../src/services/lego_blocks/fsBlock'
-import { STORAGE_KEYS } from '../../src/services/lego_blocks/storageKeyBlock'
+import { EXCLUDED_DIRS } from '../../src/services/lego_blocks/units/vaultConstantsBlock'
+import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '../../src/services/lego_blocks/integrations/fsBlock'
+import { STORAGE_KEYS } from '../../src/services/lego_blocks/units/storageKeyBlock'
 import {
   invokeCapabilityOrch,
   listCapabilitiesOrch,

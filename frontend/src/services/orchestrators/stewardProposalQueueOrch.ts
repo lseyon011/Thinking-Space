@@ -1,5 +1,5 @@
-import type { NodeRecord } from '../lego_blocks/dbBlock'
-import type { NodeType, YAMLFrontmatter } from '../lego_blocks/yamlNoteBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import type { NodeType, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from './storageOrch'
 
 export type StewardProposalAction = 'update_description' | 'update_tags' | 'update_file_yaml_metadata'

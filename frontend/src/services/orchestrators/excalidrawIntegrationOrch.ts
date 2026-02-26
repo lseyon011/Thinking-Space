@@ -4,8 +4,8 @@ import {
   createExcalidrawCanvasApiBlock,
   type ExcalidrawCanvasApiBlock,
   type ExcalidrawViewportStateBlock,
-} from '../lego_blocks/excalidrawIntegrationBlock'
-import type { ParsedExcalidrawScene } from '../lego_blocks/excalidrawFileBlock'
+} from '@/services/lego_blocks/integrations/excalidrawIntegrationBlock'
+import type { ParsedExcalidrawScene } from '@/services/lego_blocks/integrations/excalidrawFileBlock'
 
 export type ExcalidrawCanvasApiOrch = ExcalidrawCanvasApiBlock
 export type ExcalidrawViewportStateOrch = ExcalidrawViewportStateBlock

@@ -27,7 +27,7 @@ import {
   shouldIgnoreEdgeSwipeFromTargetBlock,
   shouldOpenDrawerFromSwipeBlock,
   shouldStartEdgeSwipeOpenBlock,
-} from '@/services/lego_blocks/uiGestureBlock'
+} from '@/services/lego_blocks/units/uiGestureBlock'
 
 const FILE_QUERY_PARAM = 'file'
 const MAX_MOUNTED_INLINE_DOCS = 8

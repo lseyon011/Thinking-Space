@@ -6,7 +6,7 @@ import {
   getNativeCodexOauthCredentialsBlock,
   importNativeAiOauthTransferCodeBlock,
   readNativeAiOauthCredentialsBlock,
-} from '@/services/lego_blocks/aiOauthCredentialStoreBlock'
+} from '@/services/lego_blocks/integrations/aiOauthCredentialStoreBlock'
 
 function installLocalStorageMock(): void {
   const store = new Map<string, string>()

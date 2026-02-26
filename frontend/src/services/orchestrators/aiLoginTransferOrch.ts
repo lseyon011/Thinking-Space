@@ -4,11 +4,11 @@ import {
   importNativeAiOauthTransferCodeBlock,
   readNativeAiOauthCredentialsBlock,
   type NativeAiOauthCredentials,
-} from '../lego_blocks/aiOauthCredentialStoreBlock'
+} from '@/services/lego_blocks/integrations/aiOauthCredentialStoreBlock'
 import {
   getClaudeCredentialsBlock,
   getCodexCredentialsBlock,
-} from '../lego_blocks/aiProviderBlock'
+} from '@/services/lego_blocks/integrations/aiProviderBlock'
 import { isElectron } from './runtimeOrch'
 
 export interface ImportedAiLoginState {

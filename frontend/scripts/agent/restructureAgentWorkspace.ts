@@ -5,7 +5,7 @@ import {
   stringifyNote,
   type NodeType,
   type YAMLNote,
-} from '../../src/services/lego_blocks/yamlNoteBlock'
+} from '../../src/services/lego_blocks/units/yamlNoteBlock'
 
 type FolderName =
   | 'programs'

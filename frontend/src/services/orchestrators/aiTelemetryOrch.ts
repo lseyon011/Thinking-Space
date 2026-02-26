@@ -4,7 +4,7 @@ import {
   listAiTelemetryEventsBlock,
   type AiTelemetryEvent,
   type RecordAiTelemetryInput,
-} from '../lego_blocks/aiTelemetryBlock'
+} from '@/services/lego_blocks/integrations/aiTelemetryBlock'
 
 export type { AiTelemetryEvent, RecordAiTelemetryInput }
 

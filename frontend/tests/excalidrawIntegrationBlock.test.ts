@@ -3,7 +3,7 @@ import {
   buildExcalidrawInitialDataBlock,
   cloneExcalidrawSceneChangeBlock,
   createExcalidrawCanvasApiBlock,
-} from '../src/services/lego_blocks/excalidrawIntegrationBlock'
+} from '../src/services/lego_blocks/integrations/excalidrawIntegrationBlock'
 
 describe('excalidrawIntegrationBlock', () => {
   it('returns null for incompatible vendor api objects', () => {

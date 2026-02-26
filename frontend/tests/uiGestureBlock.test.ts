@@ -4,7 +4,7 @@ import {
   shouldCloseDrawerFromSwipeBlock,
   shouldOpenDrawerFromSwipeBlock,
   shouldStartEdgeSwipeOpenBlock,
-} from '@/services/lego_blocks/uiGestureBlock'
+} from '@/services/lego_blocks/units/uiGestureBlock'
 
 describe('uiGestureBlock', () => {
   it('starts edge swipe only near the left edge', () => {

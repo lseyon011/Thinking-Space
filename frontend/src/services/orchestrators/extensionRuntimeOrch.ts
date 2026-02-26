@@ -1,5 +1,5 @@
-import { getStoredVaultRoot } from '../lego_blocks/storageKeyBlock'
-import type { CapabilityActor } from '../lego_blocks/capabilityRegistryBlock'
+import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
+import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 
 export interface ExtensionRuntimeInvokeInput {
   extensionId: string

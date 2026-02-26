@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode, type Ref } from 'react'
 import { Search } from 'lucide-react'
-import { rankFuzzyItemsBlock } from '@/services/lego_blocks/fuzzySearchBlock'
+import { rankFuzzyItemsBlock } from '@/services/lego_blocks/units/fuzzySearchBlock'
 import { cn } from '@/lib/utils'
 
 type ItemState = {

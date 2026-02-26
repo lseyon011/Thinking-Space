@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { VaultFS, ListedFiles, VaultEntry, VaultStat } from '@/services/lego_blocks/fsBlock'
+import type { VaultFS, ListedFiles, VaultEntry, VaultStat } from '@/services/lego_blocks/integrations/fsBlock'
 
 class FakeVaultFS implements VaultFS {
   private readonly files = new Map<string, string>()
@@ -58,7 +58,7 @@ class FakeVaultFS implements VaultFS {
 
 const fakeFs = new FakeVaultFS()
 
-vi.mock('@/services/lego_blocks/fsBlock', () => {
+vi.mock('@/services/lego_blocks/integrations/fsBlock', () => {
   return {
     getVaultFS: () => fakeFs,
   }

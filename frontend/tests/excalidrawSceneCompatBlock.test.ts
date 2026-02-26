@@ -3,7 +3,7 @@ import {
   normalizeExcalidrawAppStateForInteropBlock,
   normalizeExcalidrawElementForInteropBlock,
   normalizeExcalidrawSceneForInteropBlock,
-} from '../src/services/lego_blocks/excalidrawSceneCompatBlock'
+} from '../src/services/lego_blocks/integrations/excalidrawSceneCompatBlock'
 
 describe('excalidrawSceneCompatBlock', () => {
   it('fills canonical appState defaults while preserving explicit values', () => {

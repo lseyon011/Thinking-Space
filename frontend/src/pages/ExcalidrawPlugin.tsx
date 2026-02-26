@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, Download, Loader2, RefreshCw, Wrench } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
-import type { ExcalidrawPluginStatus } from '@/services/lego_blocks/typesBlock'
+import type { ExcalidrawPluginStatus } from '@/services/lego_blocks/units/typesBlock'
 import {
   getExcalidrawPluginStatus,
   installOrUpdateExcalidrawPlugin,

@@ -28,7 +28,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  const { deleteDb } = await import('@/services/lego_blocks/dbBlock')
+  const { deleteDb } = await import('@/services/lego_blocks/integrations/dbBlock')
   await deleteDb()
 })
 
@@ -36,7 +36,7 @@ describe('capability parity across frontend router and runner adapter', () => {
   it('keeps fixture responses equivalent', async () => {
     const fixtures = await loadFixtures()
     const fixtureVaultRoot = path.resolve(fileURLToPath(new URL('../../test-fixtures/vault', import.meta.url)))
-    const { deleteDb } = await import('@/services/lego_blocks/dbBlock')
+    const { deleteDb } = await import('@/services/lego_blocks/integrations/dbBlock')
 
     for (const fixture of fixtures) {
       const routerVaultRoot = await cloneFixtureVault(fixtureVaultRoot)

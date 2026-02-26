@@ -9,9 +9,9 @@ import {
   pickAndInitBrowserVaultFS,
   setVaultFSInstance,
   setVaultRoot,
-} from '@/services/lego_blocks/fsBlock'
-import { getStoredVaultRoot } from '@/services/lego_blocks/storageKeyBlock'
-import { probeBackendConnectionBlock } from '@/services/lego_blocks/backendConnectionBlock'
+} from '@/services/lego_blocks/integrations/fsBlock'
+import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
+import { probeBackendConnectionBlock } from '@/services/lego_blocks/units/backendConnectionBlock'
 import { registerPlugin } from '@capacitor/core'
 
 // Native folder picker plugin (defined in AppDelegate.swift)

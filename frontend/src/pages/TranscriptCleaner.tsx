@@ -5,8 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import SearchDropdown from '@/components/lego_blocks/integrations/SearchDropdownBlock'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
-import type { CleanResult } from '@/services/lego_blocks/typesBlock'
-import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
+import type { CleanResult } from '@/services/lego_blocks/units/typesBlock'
+import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 
 const TRANSCRIPT_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.tools.transcript' }
 

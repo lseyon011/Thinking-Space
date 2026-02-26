@@ -6,7 +6,7 @@ import {
   setManualAzureCredentialsBlock,
   setManualClaudeCredentialsBlock,
   setManualOpenAiCredentialsBlock,
-} from '../lego_blocks/aiCredentialStoreBlock'
+} from '@/services/lego_blocks/integrations/aiCredentialStoreBlock'
 
 export interface NativeAiLoginState {
   claudeApiKey: string

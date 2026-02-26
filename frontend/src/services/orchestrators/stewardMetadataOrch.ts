@@ -1,4 +1,4 @@
-import { createNote, parseNote, stringifyNote } from '../lego_blocks/yamlNoteBlock'
+import { createNote, parseNote, stringifyNote } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { getVaultFS } from './runtimeOrch'
 import { syncSingleFile } from './vaultSyncOrch'
 import { sendChatWithTelemetryOrch, type AiProvider } from './chatOrch'

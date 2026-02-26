@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getFileStats } from '@/services/orchestrators/fileSystemOrch'
-import type { FileStat } from '@/services/lego_blocks/typesBlock'
+import type { FileStat } from '@/services/lego_blocks/units/typesBlock'
 
 export type { FileStat }
 

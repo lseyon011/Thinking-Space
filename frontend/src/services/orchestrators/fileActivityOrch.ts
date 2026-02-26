@@ -1,10 +1,10 @@
-import type { DayDetail, MonthData, SectionMonthData } from '../lego_blocks/typesBlock'
-import { getVaultFS } from '../lego_blocks/fsBlock'
+import type { DayDetail, MonthData, SectionMonthData } from '@/services/lego_blocks/units/typesBlock'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   getMonthActivity as scanMonthActivity,
   getDayActivity as scanDayActivity,
   getSectionMonthActivity as scanSectionMonthActivity,
-} from '../lego_blocks/fileActivityBlock'
+} from '@/services/lego_blocks/integrations/fileActivityBlock'
 
 export async function getMonthActivity(year: number, month: number): Promise<MonthData> {
   const fs = getVaultFS()

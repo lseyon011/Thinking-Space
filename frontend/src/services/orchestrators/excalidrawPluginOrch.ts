@@ -1,9 +1,9 @@
 import {
   getExcalidrawPluginStatusBlock,
   installLatestExcalidrawPluginBlock,
-} from '../lego_blocks/excalidrawPluginBlock'
-import type { ExcalidrawPluginStatus } from '../lego_blocks/typesBlock'
-import { getStoredVaultRoot } from '../lego_blocks/storageKeyBlock'
+} from '@/services/lego_blocks/integrations/excalidrawPluginBlock'
+import type { ExcalidrawPluginStatus } from '@/services/lego_blocks/units/typesBlock'
+import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 
 function getConfiguredVaultRoot(): string {
   const vaultRoot = getStoredVaultRoot()

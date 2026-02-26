@@ -1,8 +1,8 @@
-import { getVaultFS } from '../lego_blocks/fsBlock'
-import { hierarchyToExcalidrawMd } from '../lego_blocks/hierarchyExcalidrawBlock'
-import { THINKING_ORGANIZER_DIR } from '../lego_blocks/projectStorageBlock'
-import { generateKey } from '../lego_blocks/yamlNoteBlock'
-import type { NodeRecord } from '../lego_blocks/dbBlock'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { hierarchyToExcalidrawMd } from '@/services/lego_blocks/integrations/hierarchyExcalidrawBlock'
+import { THINKING_ORGANIZER_DIR } from '@/services/lego_blocks/integrations/projectStorageBlock'
+import { generateKey } from '@/services/lego_blocks/units/yamlNoteBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 
 export { THINKING_ORGANIZER_DIR }
 

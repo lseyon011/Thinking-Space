@@ -1,18 +1,18 @@
 import {
   createCapabilityInputHash,
   writeCapabilityAuditEntry,
-} from '../lego_blocks/capabilityAuditLogBlock'
-import { type VaultFS, getVaultFS } from '../lego_blocks/fsBlock'
+} from '@/services/lego_blocks/integrations/capabilityAuditLogBlock'
+import { type VaultFS, getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   checkExtensionCapabilityPermissionBlock,
   type ExtensionPermissionDecisionCode,
-} from '../lego_blocks/extensionPermissionBlock'
+} from '@/services/lego_blocks/integrations/extensionPermissionBlock'
 import {
   invokeCapabilityOrch,
   type CapabilityInvokeRequest,
   type CapabilityInvokeResponse,
 } from './capabilityRouterOrch'
-import type { CapabilityActor, CapabilityInputMap, CapabilityName } from '../lego_blocks/capabilityRegistryBlock'
+import type { CapabilityActor, CapabilityInputMap, CapabilityName } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 
 export interface ExtensionCapabilityInvokeInput<Name extends CapabilityName> {
   extensionId: string

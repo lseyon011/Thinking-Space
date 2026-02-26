@@ -3,7 +3,7 @@ import {
   deriveLayoutModeFromWidthBlock,
   deriveUILayoutStateBlock,
   normalizeSafeAreaInsetsBlock,
-} from '@/services/lego_blocks/uiLayoutBlock'
+} from '@/services/lego_blocks/units/uiLayoutBlock'
 
 describe('uiLayoutBlock', () => {
   it('derives desktop mode for wide viewports', () => {

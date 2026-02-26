@@ -1,12 +1,12 @@
-import { getVaultFS } from '../lego_blocks/fsBlock'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   buildMindmapSceneFromMarkdownBlock,
   DEFAULT_MINDMAP_BUILD_OPTIONS,
   serializeMindmapSceneToMarkdownBlock,
   suggestMindmapOutputPathBlock,
   type MindmapBuildOptions,
-} from '../lego_blocks/mindmapBuilderBlock'
-import type { ParsedExcalidrawScene } from '../lego_blocks/excalidrawFileBlock'
+} from '@/services/lego_blocks/integrations/mindmapBuilderBlock'
+import type { ParsedExcalidrawScene } from '@/services/lego_blocks/integrations/excalidrawFileBlock'
 
 export type { MindmapBuildOptions }
 

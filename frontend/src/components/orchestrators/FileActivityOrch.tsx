@@ -5,7 +5,7 @@ import SectionBreakdown, { sectionsToTagItems } from '@/components/lego_blocks/i
 import { buildFileTree, FileTreeView } from '@/components/lego_blocks/integrations/FileTreeBlock'
 import MetricBlock from '@/components/lego_blocks/units/MetricBlock'
 import { getMonthActivity, getDayActivity, getSectionMonthActivity } from '@/services/orchestrators/fileActivityOrch'
-import type { DayDetail, MonthData, SectionMonthData } from '@/services/lego_blocks/typesBlock'
+import type { DayDetail, MonthData, SectionMonthData } from '@/services/lego_blocks/units/typesBlock'
 
 // ---------------------------------------------------------------------------
 // Utilities

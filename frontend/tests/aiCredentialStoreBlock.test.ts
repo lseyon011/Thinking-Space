@@ -8,7 +8,7 @@ import {
   setManualAzureCredentialsBlock,
   setManualClaudeCredentialsBlock,
   setManualOpenAiCredentialsBlock,
-} from '@/services/lego_blocks/aiCredentialStoreBlock'
+} from '@/services/lego_blocks/integrations/aiCredentialStoreBlock'
 
 function installLocalStorageMock(): void {
   const store = new Map<string, string>()

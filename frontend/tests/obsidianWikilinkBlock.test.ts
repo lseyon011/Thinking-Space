@@ -8,7 +8,7 @@ import {
   resolveWikilinkPathBlock,
   splitTextByWikilinksBlock,
   toObsidianWikilinkTargetBlock,
-} from '@/services/lego_blocks/obsidianWikilinkBlock'
+} from '@/services/lego_blocks/integrations/obsidianWikilinkBlock'
 
 describe('obsidianWikilinkBlock', () => {
   it('parses wikilink tokens with alias and embed markers', () => {

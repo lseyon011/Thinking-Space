@@ -1,4 +1,4 @@
-import type { ConvertOptions, PdfPreviewData, PdfConvertResult } from '../lego_blocks/typesBlock'
+import type { ConvertOptions, PdfPreviewData, PdfConvertResult } from '@/services/lego_blocks/units/typesBlock'
 
 function toolsApiUrl(path: string): string {
   const base = (globalThis as { __LTM_API_BASE__?: string }).__LTM_API_BASE__

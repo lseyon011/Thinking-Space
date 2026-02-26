@@ -6,8 +6,8 @@ import {
   parseObsidianHighlighterPresetsJsonBlock,
   matchExcalidrawHighlighterPresetBlock,
   type ExcalidrawHighlighterPresetBlock,
-} from '../lego_blocks/excalidrawHighlighterBlock'
-import { getVaultFS, type VaultFS } from '../lego_blocks/fsBlock'
+} from '@/services/lego_blocks/units/excalidrawHighlighterBlock'
+import { getVaultFS, type VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 
 export type { ExcalidrawHighlighterPresetBlock }
 

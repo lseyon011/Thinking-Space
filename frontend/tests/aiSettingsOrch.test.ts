@@ -13,9 +13,9 @@ import {
 
 const listProvidersBlockMock = vi.fn()
 
-vi.mock('@/services/lego_blocks/aiProviderBlock', async () => {
-  const actual = await vi.importActual<typeof import('@/services/lego_blocks/aiProviderBlock')>(
-    '@/services/lego_blocks/aiProviderBlock',
+vi.mock('@/services/lego_blocks/integrations/aiProviderBlock', async () => {
+  const actual = await vi.importActual<typeof import('@/services/lego_blocks/integrations/aiProviderBlock')>(
+    '@/services/lego_blocks/integrations/aiProviderBlock',
   )
   return {
     ...actual,

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_bloc
 import ClickablePath from '@/components/lego_blocks/units/ClickablePathBlock'
 import MetricBlock from '@/components/lego_blocks/units/MetricBlock'
 import { getDayActivity } from '@/services/orchestrators/fileActivityOrch'
-import type { DayDetail } from '@/services/lego_blocks/typesBlock'
+import type { DayDetail } from '@/services/lego_blocks/units/typesBlock'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`

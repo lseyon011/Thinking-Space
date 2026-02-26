@@ -7,7 +7,7 @@ import {
 import {
   isThinkingSpaceWikilinkHrefBlock,
   parseThinkingSpaceWikilinkHrefBlock,
-} from '@/services/lego_blocks/obsidianWikilinkBlock'
+} from '@/services/lego_blocks/integrations/obsidianWikilinkBlock'
 import { resolveWikilinkTargetOrch } from '@/services/orchestrators/obsidianLinkOrch'
 import {
   buildExcalidrawInitialDataOrch,
@@ -39,7 +39,7 @@ import {
   parseSceneWithCache,
   pushGlobalExcalidrawPerfEvent,
   readSceneElementRect,
-} from '@/services/lego_blocks/excalidrawSceneAnalysisBlock'
+} from '@/services/lego_blocks/integrations/excalidrawSceneAnalysisBlock'
 import {
   COMPACT_VIEW_MIN_ZOOM,
   ENABLE_NATIVE_PENCIL_PRESSURE_BRIDGE,
@@ -61,7 +61,7 @@ import {
   readZoomFromAppState,
   resolveViewportWorldSize,
   scheduleDeferredWork,
-} from '@/services/lego_blocks/excalidrawViewportBlock'
+} from '@/services/lego_blocks/integrations/excalidrawViewportBlock'
 import ExcalidrawPenPaletteBlock from '@/components/lego_blocks/integrations/ExcalidrawPenPaletteBlock'
 import ExcalidrawMiniMapBlock, { type MiniMapRect } from '@/components/lego_blocks/integrations/ExcalidrawMiniMapBlock'
 import { cn } from '@/lib/utils'

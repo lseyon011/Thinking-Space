@@ -1,7 +1,7 @@
-import type { GitInsightsData } from '../lego_blocks/typesBlock'
+import type { GitInsightsData } from '@/services/lego_blocks/units/typesBlock'
 import { isElectron } from './runtimeOrch'
-import { getGitInsightsLocal } from '../lego_blocks/gitInsightsBlock'
-import { getStoredVaultRoot } from '../lego_blocks/storageKeyBlock'
+import { getGitInsightsLocal } from '@/services/lego_blocks/units/gitInsightsBlock'
+import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 
 export async function getGitInsights(days: number): Promise<GitInsightsData> {
   // On Electron desktop, run git commands locally

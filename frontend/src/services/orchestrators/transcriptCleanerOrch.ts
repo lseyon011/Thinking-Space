@@ -1,6 +1,6 @@
-import { cleanTranscript } from '../lego_blocks/transcriptCleanerBlock'
-import { getVaultFS } from '../lego_blocks/fsBlock'
-import type { CleanResult, TranscriptOptions } from '../lego_blocks/typesBlock'
+import { cleanTranscript } from '@/services/lego_blocks/units/transcriptCleanerBlock'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import type { CleanResult, TranscriptOptions } from '@/services/lego_blocks/units/typesBlock'
 
 /** Preview runs locally — pure text transform, no backend needed. */
 export function previewTranscript(

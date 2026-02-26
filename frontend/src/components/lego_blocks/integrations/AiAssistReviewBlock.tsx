@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { RunAiAssistResult } from '@/services/orchestrators/aiAssistOrch'
-import { buildAiAssistDiffBlock } from '@/services/lego_blocks/aiAssistDiffBlock'
+import { buildAiAssistDiffBlock } from '@/services/lego_blocks/units/aiAssistDiffBlock'
 
 interface AiAssistReviewBlockProps {
   suggestion: RunAiAssistResult

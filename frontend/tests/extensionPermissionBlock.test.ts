@@ -3,7 +3,7 @@ import {
   checkExtensionCapabilityPermissionBlock,
   getRequiredPermissionsForCapabilityBlock,
   normalizeExtensionPermissionsBlock,
-} from '@/services/lego_blocks/extensionPermissionBlock'
+} from '@/services/lego_blocks/integrations/extensionPermissionBlock'
 
 describe('extensionPermissionBlock', () => {
   it('normalizes extension permission scopes deterministically', () => {

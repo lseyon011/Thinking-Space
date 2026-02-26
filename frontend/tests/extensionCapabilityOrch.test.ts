@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '@/services/lego_blocks/fsBlock'
+import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '@/services/lego_blocks/integrations/fsBlock'
 import { invokeExtensionCapabilityOrch } from '@/services/orchestrators/extensionCapabilityOrch'
 
 class FakeVaultFS implements VaultFS {

@@ -5,7 +5,7 @@ import {
   normalizeNativePencilDoubleTapEventBlock,
   normalizeNativePencilMetricsEventBlock,
   shouldEnableNativePencilBridgeBlock,
-} from '../src/services/lego_blocks/pencilBridgeBlock'
+} from '../src/services/lego_blocks/units/pencilBridgeBlock'
 
 describe('pencilBridgeBlock', () => {
   it('normalizes native metrics payloads with clamped pressure', () => {

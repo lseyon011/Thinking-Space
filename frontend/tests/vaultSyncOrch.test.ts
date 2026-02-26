@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { VaultFS, ListedFiles, VaultStat, VaultEntry } from '@/services/lego_blocks/fsBlock'
+import type { VaultFS, ListedFiles, VaultStat, VaultEntry } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   createNote,
   stringifyNote,
   type YAMLNote,
-} from '@/services/lego_blocks/yamlNoteBlock'
+} from '@/services/lego_blocks/units/yamlNoteBlock'
 
 function createMemoryLocalStorage(): Storage {
   const store = new Map<string, string>()
@@ -140,7 +140,7 @@ beforeEach(async () => {
 afterEach(async () => {
   // Clean up database between tests
   try {
-    const { deleteDb } = await import('@/services/lego_blocks/dbBlock')
+    const { deleteDb } = await import('@/services/lego_blocks/integrations/dbBlock')
     await deleteDb()
   } catch {
     // ignore cleanup errors
@@ -188,7 +188,7 @@ describe('vaultSyncOrch', () => {
     if (!fakeIdb) return // skip if fake-indexeddb not available
 
     const { fullSync } = await import('@/services/orchestrators/vaultSyncOrch')
-    const { getNodeCount, getAllNodes } = await import('@/services/lego_blocks/dbBlock')
+    const { getNodeCount, getAllNodes } = await import('@/services/lego_blocks/integrations/dbBlock')
 
     const fs = createSeededVault()
     const result = await fullSync(fs)
@@ -209,7 +209,7 @@ describe('vaultSyncOrch', () => {
     if (!fakeIdb) return
 
     const { syncSingleFile } = await import('@/services/orchestrators/vaultSyncOrch')
-    const { getNodeByKey, getNodeCount } = await import('@/services/lego_blocks/dbBlock')
+    const { getNodeByKey, getNodeCount } = await import('@/services/lego_blocks/integrations/dbBlock')
 
     const fs = new FakeVaultFS()
     const note = createNote({ type: 'idea', title: 'New Idea' })
@@ -257,7 +257,7 @@ describe('vaultSyncOrch', () => {
     if (!fakeIdb) return
 
     const { fullSync, incrementalSync } = await import('@/services/orchestrators/vaultSyncOrch')
-    const { getNodeCount } = await import('@/services/lego_blocks/dbBlock')
+    const { getNodeCount } = await import('@/services/lego_blocks/integrations/dbBlock')
 
     const fs = createSeededVault()
 
@@ -301,7 +301,7 @@ describe('vaultSyncOrch', () => {
     if (!fakeIdb) return
 
     const { fullSync } = await import('@/services/orchestrators/vaultSyncOrch')
-    const { getAllNodes } = await import('@/services/lego_blocks/dbBlock')
+    const { getAllNodes } = await import('@/services/lego_blocks/integrations/dbBlock')
 
     const fs = createSeededVault()
     await fullSync(fs)
@@ -316,7 +316,7 @@ describe('vaultSyncOrch', () => {
     if (!fakeIdb) return
 
     const { fullSync } = await import('@/services/orchestrators/vaultSyncOrch')
-    const { getNodeCount } = await import('@/services/lego_blocks/dbBlock')
+    const { getNodeCount } = await import('@/services/lego_blocks/integrations/dbBlock')
 
     const fs = new FakeVaultFS()
     const note = createNote({ type: 'thought', title: 'Oversized Thought' })
@@ -334,7 +334,7 @@ describe('vaultSyncOrch', () => {
     if (!fakeIdb) return
 
     const { fullSync } = await import('@/services/orchestrators/vaultSyncOrch')
-    const { getAllNodes } = await import('@/services/lego_blocks/dbBlock')
+    const { getAllNodes } = await import('@/services/lego_blocks/integrations/dbBlock')
 
     const fs = createSeededVault()
     await fullSync(fs)
@@ -424,7 +424,7 @@ describe('dbBlock search', () => {
     if (!fakeIdb) return
 
     const { fullSync } = await import('@/services/orchestrators/vaultSyncOrch')
-    const { searchNodes } = await import('@/services/lego_blocks/dbBlock')
+    const { searchNodes } = await import('@/services/lego_blocks/integrations/dbBlock')
 
     const fs = createSeededVault()
     await fullSync(fs)
@@ -438,7 +438,7 @@ describe('dbBlock search', () => {
     if (!fakeIdb) return
 
     const { fullSync } = await import('@/services/orchestrators/vaultSyncOrch')
-    const { searchNodes } = await import('@/services/lego_blocks/dbBlock')
+    const { searchNodes } = await import('@/services/lego_blocks/integrations/dbBlock')
 
     const fs = createSeededVault()
     await fullSync(fs)
@@ -456,7 +456,7 @@ describe('dbBlock search', () => {
       getNodesByTaskStatus,
       getNodesByMetadataKey,
       searchNodes,
-    } = await import('@/services/lego_blocks/dbBlock')
+    } = await import('@/services/lego_blocks/integrations/dbBlock')
 
     const fs = new FakeVaultFS()
     const note = createNote({ type: 'thought', title: 'Task Record' })

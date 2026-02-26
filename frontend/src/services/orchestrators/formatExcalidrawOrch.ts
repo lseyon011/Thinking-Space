@@ -1,6 +1,6 @@
-import { formatMarkdown } from '../lego_blocks/formatExcalidrawBlock'
-import { getVaultFS } from '../lego_blocks/fsBlock'
-import type { FormatOptions, FormatPreviewData, FormatResult } from '../lego_blocks/typesBlock'
+import { formatMarkdown } from '@/services/lego_blocks/units/formatExcalidrawBlock'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import type { FormatOptions, FormatPreviewData, FormatResult } from '@/services/lego_blocks/units/typesBlock'
 
 /** Preview reads the file via VaultFS, formats locally. */
 export async function previewFormat(

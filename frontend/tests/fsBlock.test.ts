@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeCapacitorStoredVaultRoot } from '@/services/lego_blocks/fsBlock'
+import { normalizeCapacitorStoredVaultRoot } from '@/services/lego_blocks/integrations/fsBlock'
 
 describe('fsBlock capacitor vault root normalization', () => {
   it('uses absolute picker path when stored root has cap-picker marker', () => {

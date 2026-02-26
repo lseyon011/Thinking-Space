@@ -1,4 +1,4 @@
-import { getVaultFS } from '../lego_blocks/fsBlock'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 
 function hashContent(content: string): string {
   // FNV-1a 32-bit hash is fast and stable enough for local conflict detection.

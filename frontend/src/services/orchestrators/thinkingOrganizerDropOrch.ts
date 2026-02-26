@@ -1,5 +1,5 @@
-import { getVaultFS, type VaultFS } from '../lego_blocks/fsBlock'
-import { getNodeByKey, getNodeByPath, type NodeRecord } from '../lego_blocks/dbBlock'
+import { getVaultFS, type VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { getNodeByKey, getNodeByPath, type NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import {
   createNote,
   generateKey,
@@ -9,8 +9,8 @@ import {
   type NodeStatus,
   type NodeType,
   type YAMLNote,
-} from '../lego_blocks/yamlNoteBlock'
-import { moveYamlNode } from '../lego_blocks/yamlHierarchyBlock'
+} from '@/services/lego_blocks/units/yamlNoteBlock'
+import { moveYamlNode } from '@/services/lego_blocks/integrations/yamlHierarchyBlock'
 import { syncSingleFile } from './vaultSyncOrch'
 
 type PathKind = 'file' | 'folder' | 'missing'

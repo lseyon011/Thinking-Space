@@ -1,7 +1,7 @@
 import { Check, ChevronRight, Copy, Info, Layers, Loader2 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import type { NodeStatus } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
 import {
   formatRowOrdinal,
   getTaskStatusBadge,
@@ -28,7 +28,7 @@ import {
   NodeStatusSelectBlock,
 } from '@/components/lego_blocks/units/NodeStatusBlock'
 import { cn } from '@/lib/utils'
-import { tagColorClassBlock, tagColorStyleBlock } from '@/services/lego_blocks/tagBlock'
+import { tagColorClassBlock, tagColorStyleBlock } from '@/services/lego_blocks/units/tagBlock'
 
 interface BacklogNodeRowBlockProps {
   node: NodeRecord

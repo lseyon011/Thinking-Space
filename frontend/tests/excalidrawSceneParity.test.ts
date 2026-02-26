@@ -3,7 +3,7 @@ import {
   diffScenesParityFocused,
   diffScenesStrict,
 } from './helpers/excalidrawSceneParity'
-import type { ParsedExcalidrawScene } from '../src/services/lego_blocks/excalidrawFileBlock'
+import type { ParsedExcalidrawScene } from '../src/services/lego_blocks/integrations/excalidrawFileBlock'
 
 function buildBaseScene(): ParsedExcalidrawScene {
   return {

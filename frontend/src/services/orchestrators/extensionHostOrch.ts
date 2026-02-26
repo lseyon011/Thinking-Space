@@ -5,7 +5,7 @@ import {
   type ExtensionManifestCompatibilityResult,
   type ExtensionManifestRuntimeTarget,
   type ExtensionManifestValidationResult,
-} from '../lego_blocks/extensionManifestBlock'
+} from '@/services/lego_blocks/units/extensionManifestBlock'
 
 export const SUPPORTED_EXTENSION_API_VERSIONS_ORCH = ['1']
 

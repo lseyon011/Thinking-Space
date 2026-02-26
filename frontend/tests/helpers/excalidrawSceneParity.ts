@@ -1,5 +1,5 @@
-import type { ParsedExcalidrawScene } from '../../src/services/lego_blocks/excalidrawFileBlock'
-import { normalizeExcalidrawSceneForInteropBlock } from '../../src/services/lego_blocks/excalidrawSceneCompatBlock'
+import type { ParsedExcalidrawScene } from '../../src/services/lego_blocks/integrations/excalidrawFileBlock'
+import { normalizeExcalidrawSceneForInteropBlock } from '../../src/services/lego_blocks/integrations/excalidrawSceneCompatBlock'
 
 const MAX_DIFF_MESSAGES = 30
 

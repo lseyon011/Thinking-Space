@@ -42,8 +42,8 @@ import { cn } from '@/lib/utils'
 import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/integrations/AiAssistRuntimeBlock'
 import AiAssistControlsBlock from '@/components/lego_blocks/integrations/AiAssistControlsBlock'
 import AiAssistReviewBlock from '@/components/lego_blocks/integrations/AiAssistReviewBlock'
-import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/aiBlock'
-import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/markdownUrlTransformBlock'
+import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/integrations/aiBlock'
+import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/integrations/markdownUrlTransformBlock'
 import {
   readMarkdownEditorSettingsOrch,
   type MarkdownEditorSettingsBlock,

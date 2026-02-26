@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { ListedFiles, VaultFS, VaultStat, VaultEntry } from '@/services/lego_blocks/fsBlock'
-import { parseNote } from '@/services/lego_blocks/yamlNoteBlock'
-import { createTodo, getTodosMonth } from '@/services/lego_blocks/todoScannerBlock'
+import type { ListedFiles, VaultFS, VaultStat, VaultEntry } from '@/services/lego_blocks/integrations/fsBlock'
+import { parseNote } from '@/services/lego_blocks/units/yamlNoteBlock'
+import { createTodo, getTodosMonth } from '@/services/lego_blocks/integrations/todoScannerBlock'
 
 class FakeVaultFS implements VaultFS {
   constructor(

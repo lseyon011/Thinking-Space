@@ -1,14 +1,14 @@
 import { ArrowDown, ArrowUp, Check, Copy, FolderTree, Info, Loader2 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import type { NodeStatus } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { formatRowOrdinal, nodeDisplayTitle, nodeTitleWithoutTicket, PriorityDot, type DropEdge } from '@/components/lego_blocks/units/BacklogListHelpersBlock'
 import {
   NodeStatusBadgeBlock,
   NodeStatusSelectBlock,
 } from '@/components/lego_blocks/units/NodeStatusBlock'
 import { cn } from '@/lib/utils'
-import { tagColorClassBlock, tagColorStyleBlock } from '@/services/lego_blocks/tagBlock'
+import { tagColorClassBlock, tagColorStyleBlock } from '@/services/lego_blocks/units/tagBlock'
 
 interface ProgramGroupEntryBlock {
   id: string

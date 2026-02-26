@@ -82,22 +82,23 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - Caution: keep UI orchestrators thin. Extract reusable logic and heavy transformations into lego blocks/hooks/services before orchestrator complexity grows.
 
 ## Service Architecture Contract (Enforced)
-- Low-level reusable service primitives must live in `frontend/src/services/lego_blocks/*`.
+- Low-level reusable service primitives must live in `frontend/src/services/lego_blocks/units/*`.
+- Composite reusable service lego blocks must live in `frontend/src/services/lego_blocks/integrations/*`.
 - Workflow service composition must live in `frontend/src/services/orchestrators/*`.
 - Naming is mandatory:
-  - Service primitive files use `*Block` suffix.
+  - Service primitive and integration files use `*Block` suffix.
   - Service workflow files use `*Orch` suffix.
 - UI code should consume service orchestrators by default, not low-level service primitives.
 - Caution: keep service orchestrators thin. Move shared algorithms, scanners, adapters, and transformation logic into service lego blocks.
 
 ## Key Service Blocks
-- `frontend/src/services/lego_blocks/yamlNoteBlock.ts` — YAML frontmatter parse/stringify/validate/key generation
-- `frontend/src/services/lego_blocks/dbBlock.ts` — Dexie.js IndexedDB cache layer
+- `frontend/src/services/lego_blocks/units/yamlNoteBlock.ts` — YAML frontmatter parse/stringify/validate/key generation
+- `frontend/src/services/lego_blocks/integrations/dbBlock.ts` — Dexie.js IndexedDB cache layer
 - `frontend/src/services/orchestrators/vaultSyncOrch.ts` — vault scan to IndexedDB sync
-- `frontend/src/services/lego_blocks/capabilityRegistryBlock.ts` — capability registry with typed I/O contracts
+- `frontend/src/services/lego_blocks/integrations/capabilityRegistryBlock.ts` — capability registry with typed I/O contracts
 - `frontend/src/services/orchestrators/capabilityRouterOrch.ts` — capability router with policy/audit/dry-run
-- `frontend/src/services/lego_blocks/extensionManifestBlock.ts` — extension manifest validation + semver compatibility helpers
-- `frontend/src/services/lego_blocks/extensionActionBlock.ts` — declarative action schema + context template resolution
+- `frontend/src/services/lego_blocks/units/extensionManifestBlock.ts` — extension manifest validation + semver compatibility helpers
+- `frontend/src/services/lego_blocks/integrations/extensionActionBlock.ts` — declarative action schema + context template resolution
 - `frontend/src/services/orchestrators/extensionLoaderOrch.ts` — extension discovery/reload/activation lifecycle
 - `frontend/src/services/orchestrators/extensionUiOrch.ts` — UI slot resolve + action invocation orchestration
 - `frontend/src/services/orchestrators/extensionBuilderOrch.ts` — generate/preview/save/activate extension builder workflow

@@ -1,14 +1,14 @@
-import { getVaultFS, type VaultFS } from '../lego_blocks/fsBlock'
-import { parseExtensionManifestBlock } from '../lego_blocks/extensionManifestBlock'
-import { parseExtensionActionsBlock, type ExtensionDeclarativeAction } from '../lego_blocks/extensionActionBlock'
-import { getRequiredPermissionsForCapabilityBlock } from '../lego_blocks/extensionPermissionBlock'
-import { getCapabilityFeatureFlags } from '../lego_blocks/capabilityFeatureFlagsBlock'
+import { getVaultFS, type VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { parseExtensionManifestBlock } from '@/services/lego_blocks/units/extensionManifestBlock'
+import { parseExtensionActionsBlock, type ExtensionDeclarativeAction } from '@/services/lego_blocks/integrations/extensionActionBlock'
+import { getRequiredPermissionsForCapabilityBlock } from '@/services/lego_blocks/integrations/extensionPermissionBlock'
+import { getCapabilityFeatureFlags } from '@/services/lego_blocks/integrations/capabilityFeatureFlagsBlock'
 import {
   buildExtensionBuilderPromptBlock,
   buildFallbackExtensionBuilderDraftBlock,
   parseExtensionBuilderDraftFromAiBlock,
   type ExtensionBuilderDraft,
-} from '../lego_blocks/extensionPromptTemplateBlock'
+} from '@/services/lego_blocks/integrations/extensionPromptTemplateBlock'
 import { resolveAiSelectionOrch } from './aiSettingsOrch'
 import { sendChatWithTelemetryOrch, type AiTelemetryEvent } from './chatOrch'
 import {

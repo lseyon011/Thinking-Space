@@ -1,7 +1,7 @@
 import {
   deriveAdaptiveShellStateBlock,
   type UIShellLayoutState,
-} from '../lego_blocks/uiNavigationBlock'
+} from '@/services/lego_blocks/integrations/uiNavigationBlock'
 import type { UILayoutState } from './uiLayoutOrch'
 
 export function deriveAdaptiveShellStateOrch(layout: UILayoutState): UIShellLayoutState {

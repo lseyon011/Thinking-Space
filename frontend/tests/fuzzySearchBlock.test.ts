@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fuzzyMatchScoreBlock, rankFuzzyItemsBlock } from '@/services/lego_blocks/fuzzySearchBlock'
+import { fuzzyMatchScoreBlock, rankFuzzyItemsBlock } from '@/services/lego_blocks/units/fuzzySearchBlock'
 
 describe('fuzzySearchBlock', () => {
   it('scores matching candidates above non-matches', () => {

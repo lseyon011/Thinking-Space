@@ -19,8 +19,8 @@ import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/Markdow
 import ThoughtsCalendarOrch from '@/components/orchestrators/ThoughtsCalendarOrch'
 import { deleteVaultPathOrch } from '@/services/orchestrators/fileSystemOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
-import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/aiBlock'
-import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
+import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/integrations/aiBlock'
+import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 
 const DESTINATION_RECENTS_KEY = 'ltm-new-note-destination-recents'
 const CUSTOM_SHORTCUTS_KEY = 'ltm-new-note-custom-shortcuts'

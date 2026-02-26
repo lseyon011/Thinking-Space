@@ -27,17 +27,17 @@ describe('aiProviderBlock', () => {
   })
 
   it('uses manual credentials for Capacitor-native provider availability', async () => {
-    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/fsBlock', () => ({
       isElectron: () => false,
       isCapacitorNative: () => true,
     }))
 
-    const credentials = await import('@/services/lego_blocks/aiCredentialStoreBlock')
+    const credentials = await import('@/services/lego_blocks/integrations/aiCredentialStoreBlock')
     credentials.setManualClaudeCredentialsBlock('claude-key')
     credentials.setManualOpenAiCredentialsBlock('openai-key')
     credentials.setManualAzureCredentialsBlock({ apiKey: 'azure-key' })
 
-    const { listProvidersBlock } = await import('@/services/lego_blocks/aiProviderBlock')
+    const { listProvidersBlock } = await import('@/services/lego_blocks/integrations/aiProviderBlock')
     const providers = await listProvidersBlock()
     const byProvider = new Map(providers.map((item) => [item.provider, item.available]))
 
@@ -48,12 +48,12 @@ describe('aiProviderBlock', () => {
   })
 
   it('uses imported OAuth credentials for Capacitor-native provider availability', async () => {
-    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/fsBlock', () => ({
       isElectron: () => false,
       isCapacitorNative: () => true,
     }))
 
-    const oauth = await import('@/services/lego_blocks/aiOauthCredentialStoreBlock')
+    const oauth = await import('@/services/lego_blocks/integrations/aiOauthCredentialStoreBlock')
     oauth.writeNativeAiOauthCredentialsBlock({
       claude: {
         accessToken: 'claude-access',
@@ -67,7 +67,7 @@ describe('aiProviderBlock', () => {
       },
     })
 
-    const { listProvidersBlock } = await import('@/services/lego_blocks/aiProviderBlock')
+    const { listProvidersBlock } = await import('@/services/lego_blocks/integrations/aiProviderBlock')
     const providers = await listProvidersBlock()
     const byProvider = new Map(providers.map((item) => [item.provider, item.available]))
 
@@ -77,7 +77,7 @@ describe('aiProviderBlock', () => {
   })
 
   it('uses backend provider listing in web mode', async () => {
-    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/fsBlock', () => ({
       isElectron: () => false,
       isCapacitorNative: () => false,
     }))
@@ -91,7 +91,7 @@ describe('aiProviderBlock', () => {
     })
     ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 
-    const { listProvidersBlock } = await import('@/services/lego_blocks/aiProviderBlock')
+    const { listProvidersBlock } = await import('@/services/lego_blocks/integrations/aiProviderBlock')
     const providers = await listProvidersBlock()
     const byProvider = new Map(providers.map((item) => [item.provider, item.available]))
 
@@ -101,15 +101,15 @@ describe('aiProviderBlock', () => {
   })
 
   it('falls back to local credential availability when backend provider listing fails', async () => {
-    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/fsBlock', () => ({
       isElectron: () => false,
       isCapacitorNative: () => false,
     }))
 
-    const credentials = await import('@/services/lego_blocks/aiCredentialStoreBlock')
+    const credentials = await import('@/services/lego_blocks/integrations/aiCredentialStoreBlock')
     credentials.setManualClaudeCredentialsBlock('claude-key')
 
-    const oauth = await import('@/services/lego_blocks/aiOauthCredentialStoreBlock')
+    const oauth = await import('@/services/lego_blocks/integrations/aiOauthCredentialStoreBlock')
     oauth.writeNativeAiOauthCredentialsBlock({
       openaiCodex: {
         accessToken: 'codex-access',
@@ -122,7 +122,7 @@ describe('aiProviderBlock', () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error('network down'))
     ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 
-    const { listProvidersBlock } = await import('@/services/lego_blocks/aiProviderBlock')
+    const { listProvidersBlock } = await import('@/services/lego_blocks/integrations/aiProviderBlock')
     const providers = await listProvidersBlock()
     const byProvider = new Map(providers.map((item) => [item.provider, item.available]))
 
@@ -133,7 +133,7 @@ describe('aiProviderBlock', () => {
   })
 
   it('reuses last known backend provider statuses when the next backend probe fails', async () => {
-    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/fsBlock', () => ({
       isElectron: () => false,
       isCapacitorNative: () => false,
     }))
@@ -150,7 +150,7 @@ describe('aiProviderBlock', () => {
       .mockRejectedValue(new Error('network down'))
     ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 
-    const { listProvidersBlock } = await import('@/services/lego_blocks/aiProviderBlock')
+    const { listProvidersBlock } = await import('@/services/lego_blocks/integrations/aiProviderBlock')
     const first = await listProvidersBlock()
     const second = await listProvidersBlock()
 
@@ -162,7 +162,7 @@ describe('aiProviderBlock', () => {
   })
 
   it('supports forced backend hard refresh that bypasses cached provider statuses', async () => {
-    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/fsBlock', () => ({
       isElectron: () => false,
       isCapacitorNative: () => false,
     }))
@@ -183,7 +183,7 @@ describe('aiProviderBlock', () => {
       })
     ;(globalThis as typeof globalThis & { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 
-    const { listProvidersBlock } = await import('@/services/lego_blocks/aiProviderBlock')
+    const { listProvidersBlock } = await import('@/services/lego_blocks/integrations/aiProviderBlock')
     const first = await listProvidersBlock()
     const refreshed = await listProvidersBlock({ forceBackendRefresh: true })
 
@@ -197,7 +197,7 @@ describe('aiProviderBlock', () => {
   })
 
   it('uses Electron credential reads for availability without requiring token refresh', async () => {
-    vi.doMock('@/services/lego_blocks/fsBlock', () => ({
+    vi.doMock('@/services/lego_blocks/integrations/fsBlock', () => ({
       isElectron: () => true,
       isCapacitorNative: () => false,
     }))
@@ -236,7 +236,7 @@ describe('aiProviderBlock', () => {
       },
     })
 
-    const { listProvidersBlock } = await import('@/services/lego_blocks/aiProviderBlock')
+    const { listProvidersBlock } = await import('@/services/lego_blocks/integrations/aiProviderBlock')
     const providers = await listProvidersBlock()
     const byProvider = new Map(providers.map((item) => [item.provider, item.available]))
 

@@ -4,11 +4,11 @@ import { sendChatWithTelemetryOrch } from '@/services/orchestrators/chatOrch'
 
 const sendChatBlockMock = vi.fn()
 
-vi.mock('@/services/lego_blocks/aiChatBlock', () => ({
+vi.mock('@/services/lego_blocks/integrations/aiChatBlock', () => ({
   sendChatBlock: (...args: unknown[]) => sendChatBlockMock(...args),
 }))
 
-vi.mock('@/services/lego_blocks/aiProviderBlock', () => ({
+vi.mock('@/services/lego_blocks/integrations/aiProviderBlock', () => ({
   listProvidersBlock: vi.fn(),
 }))
 

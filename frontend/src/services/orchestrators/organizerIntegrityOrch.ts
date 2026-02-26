@@ -1,13 +1,13 @@
-import type { NodeRecord } from '../lego_blocks/dbBlock'
-import { getVaultFS, type VaultFS } from '../lego_blocks/fsBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import { getVaultFS, type VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   deriveEpicStatusFromTaskStatuses,
   isTaskLikeNode,
   nodeStatusFromTaskStatus,
   normalizeTaskStatus,
   taskStatusFromNodeStatus,
-} from '../lego_blocks/statusPolicyBlock'
-import { listAllYamlNodes, updateYamlNode } from '../lego_blocks/yamlHierarchyBlock'
+} from '@/services/lego_blocks/integrations/statusPolicyBlock'
+import { listAllYamlNodes, updateYamlNode } from '@/services/lego_blocks/integrations/yamlHierarchyBlock'
 
 export type OrganizerIntegrityIssueKind =
   | 'missing_parent'

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { DragEvent, Dispatch, SetStateAction } from 'react'
-import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import {
   hasNodeDragType,
   readDroppedNodeId,

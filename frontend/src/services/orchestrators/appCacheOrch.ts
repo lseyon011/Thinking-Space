@@ -1,4 +1,4 @@
-import { deleteDb } from '../lego_blocks/dbBlock'
+import { deleteDb } from '@/services/lego_blocks/integrations/dbBlock'
 import { STORAGE_KEYS, getStoredVaultRoot } from './storageOrch'
 
 const LAST_SYNC_STORAGE_KEY_ORCH = 'thinkingspace:lastSyncTimestamp'
