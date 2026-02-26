@@ -1,21 +1,19 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/lego_blocks/ui/card'
 import { Switch } from '@/components/lego_blocks/ui/switch'
-import { ArrowLeft, FileType, Check, Loader2, Search } from 'lucide-react'
+import { ArrowLeft, FileType, Check, Loader2 } from 'lucide-react'
+import SearchDropdown from '@/components/lego_blocks/SearchDropdownBlock'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
 import type { ConvertOptions, PdfPreviewData, PdfConvertResult } from '@/services/lego_blocks/typesBlock'
 import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
-import { rankFuzzyItemsBlock } from '@/services/lego_blocks/fuzzySearchBlock'
 
 const PDF_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.tools.pdf' }
 
 export default function PdfToMarkdown() {
   const [files, setFiles] = useState<string[]>([])
   const [selectedFile, setSelectedFile] = useState<string>('')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [showDropdown, setShowDropdown] = useState(false)
   const [options, setOptions] = useState<ConvertOptions>({
     preserve_layout: true,
     page_breaks: true,
@@ -25,21 +23,6 @@ export default function PdfToMarkdown() {
   const [converting, setConverting] = useState(false)
   const [result, setResult] = useState<PdfConvertResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  // Filter files based on search query
-  const filteredFiles = useMemo(() => {
-    if (!searchQuery.trim()) return files.slice(0, 50)
-    const ranked = rankFuzzyItemsBlock({
-      items: files,
-      query: searchQuery,
-      limit: 50,
-      getCandidates: (filePath) => {
-        const baseName = filePath.split('/').pop() ?? filePath
-        return [baseName, filePath]
-      },
-    })
-    return ranked.map(entry => entry.item)
-  }, [files, searchQuery])
 
   // Load file list on mount
   useEffect(() => {
@@ -100,8 +83,6 @@ export default function PdfToMarkdown() {
 
   const handleSelectFile = (file: string) => {
     setSelectedFile(file)
-    setSearchQuery(file)
-    setShowDropdown(false)
   }
 
   return (
@@ -141,51 +122,17 @@ export default function PdfToMarkdown() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="relative">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value)
-                      setShowDropdown(true)
-                    }}
-                    onFocus={() => setShowDropdown(true)}
-                    placeholder="Search PDF files..."
-                    className="w-full h-10 pl-10 pr-4 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  />
-                </div>
-
-                {showDropdown && filteredFiles.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 max-h-64 overflow-auto rounded-lg border bg-background shadow-lg">
-                    {filteredFiles.map(file => (
-                      <button
-                        key={file}
-                        onClick={() => handleSelectFile(file)}
-                        className={`w-full px-3 py-2 text-left text-sm hover:bg-accent transition-colors ${
-                          file === selectedFile ? 'bg-accent' : ''
-                        }`}
-                      >
-                        {file}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {showDropdown && filteredFiles.length === 0 && searchQuery && (
-                  <div className="absolute z-50 w-full mt-1 p-3 rounded-lg border bg-background shadow-lg text-sm text-muted-foreground">
-                    No PDF files found
-                  </div>
-                )}
-
-                {showDropdown && (
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowDropdown(false)}
-                  />
-                )}
-              </div>
+              <SearchDropdown
+                items={files}
+                selected={selectedFile}
+                onSelect={handleSelectFile}
+                placeholder="Search PDF files..."
+                emptyMessage="No PDF files found"
+                getSearchCandidates={(filePath) => {
+                  const baseName = filePath.split('/').pop() ?? filePath
+                  return [baseName, filePath]
+                }}
+              />
 
               {selectedFile && (
                 <div className="mt-3 text-sm text-muted-foreground">

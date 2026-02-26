@@ -37,6 +37,7 @@ import ExtensionBuilder from './pages/ExtensionBuilder'
 import Settings from './pages/Settings'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import AppTabsBlock, { type AppWorkspaceTabBlockModel } from './components/lego_blocks/AppTabsBlock'
+import UniversalSearchBlock from './components/lego_blocks/UniversalSearchBlock'
 import { useUILayoutBlock } from './components/lego_blocks/UILayoutBlock'
 import { useUIThemeBlock } from './components/lego_blocks/UIThemeBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
@@ -65,7 +66,6 @@ import {
   shouldOpenDrawerFromSwipeBlock,
   shouldStartEdgeSwipeOpenBlock,
 } from './services/lego_blocks/uiGestureBlock'
-import { rankFuzzyItemsBlock } from './services/lego_blocks/fuzzySearchBlock'
 
 type NavIcon = ComponentType<{ className?: string }>
 
@@ -316,26 +316,6 @@ function App() {
     })),
     [routeLabelByPath, workspaceTabs],
   )
-
-  const filteredCommandItems = useMemo(() => {
-    const query = commandQuery.trim()
-    if (!query) {
-      return [...baseCommandItems, ...commandFileItems.slice(0, 24)]
-    }
-    const ranked = rankFuzzyItemsBlock({
-      items: allCommandItems,
-      query,
-      limit: 80,
-      getCandidates: (item) => [
-        item.label,
-        item.description ?? '',
-        item.to,
-        item.group,
-        item.keywords ?? '',
-      ],
-    })
-    return ranked.map(entry => entry.item)
-  }, [allCommandItems, baseCommandItems, commandFileItems, commandQuery])
 
   const shell = useMemo(() => deriveAdaptiveShellStateOrch(layout), [layout])
   const keyboardVisible = layout.keyboardVisible
@@ -1209,31 +1189,45 @@ function App() {
             style={{ paddingTop: `${commandPaletteTopPadding}px`, paddingBottom: `${commandPaletteBottomPadding}px` }}
           >
             <div className="ltm-cmd-card ltm-shell-command-card ltm-shell-command-surface ltm-shell-motion-modal max-h-full w-full max-w-2xl overflow-hidden rounded-2xl">
-              <div className="ltm-shell-segment-header p-3">
-                <div className="ltm-shell-field-surface flex items-center gap-2 rounded-lg px-2.5">
-                  <Search className="h-4 w-4 text-muted-foreground" />
-                  <input
-                    ref={commandInputRef}
-                    value={commandQuery}
-                    onChange={(event) => setCommandQuery(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && filteredCommandItems.length > 0) {
-                        event.preventDefault()
-                        runCommandItem(filteredCommandItems[0])
-                      }
-                    }}
-                    placeholder="Jump to a page or file..."
-                    className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                  />
-                </div>
-              </div>
-              <div className="max-h-[min(58vh,520px)] overflow-y-auto p-2">
-                {filteredCommandItems.length === 0 ? (
-                  <div className="rounded-lg px-3 py-4 text-sm text-muted-foreground">
-                    No matches. Try another keyword.
-                  </div>
-                ) : (
-                  filteredCommandItems.map(item => {
+              <div className="p-3">
+                <UniversalSearchBlock
+                  items={allCommandItems}
+                  query={commandQuery}
+                  onQueryChange={setCommandQuery}
+                  onSelect={runCommandItem}
+                  getItemKey={item => `${item.group}:${item.to}`}
+                  getItemLabel={item => item.label}
+                  getItemDescription={item => item.description}
+                  getItemSearchCandidates={(item) => [
+                    item.label,
+                    item.description ?? '',
+                    item.to,
+                    item.group,
+                    item.keywords ?? '',
+                  ]}
+                  placeholder="Jump to a page or file..."
+                  limit={80}
+                  open
+                  dismissOnOutsideClick={false}
+                  closeOnSelect={false}
+                  onEscapeKeyDown={closeCommandPalette}
+                  inputRef={commandInputRef}
+                  inputWrapperClassName="ltm-shell-field-surface flex items-center gap-2 rounded-lg px-2.5"
+                  inputClassName="h-10 border-0 bg-transparent text-sm placeholder:text-muted-foreground focus:ring-0 focus:ring-offset-0"
+                  dropdownClassName="static z-auto mt-2 max-h-[min(58vh,520px)] overflow-y-auto border-0 bg-transparent shadow-none"
+                  listClassName="space-y-0 p-2"
+                  emptyClassName="rounded-lg px-3 py-4 text-sm text-muted-foreground"
+                  emptyMessage="No matches. Try another keyword."
+                  itemClassName={(item) => {
+                    const active = isNavItemActive(location.pathname, {
+                      to: item.to,
+                      label: item.label,
+                      icon: Sparkles,
+                      activePaths: item.activePaths,
+                    })
+                    return active ? '!bg-foreground !text-background' : 'hover:bg-muted'
+                  }}
+                  renderItem={(item) => {
                     const active = isNavItemActive(location.pathname, {
                       to: item.to,
                       label: item.label,
@@ -1241,14 +1235,7 @@ function App() {
                       activePaths: item.activePaths,
                     })
                     return (
-                      <button
-                        key={`${item.group}:${item.to}`}
-                        type="button"
-                        onClick={() => runCommandItem(item)}
-                        className={`ltm-motion-fast ltm-touch-row flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                          active ? 'bg-foreground text-background' : 'hover:bg-muted'
-                        }`}
-                      >
+                      <div className="ltm-motion-fast ltm-touch-row flex w-full items-center justify-between rounded-lg px-0 py-0 text-left text-sm transition-colors">
                         <div className="min-w-0">
                           <div className="truncate">{item.label}</div>
                           {item.description && (
@@ -1261,10 +1248,10 @@ function App() {
                           {item.group === 'Files' ? <FileText className="h-3 w-3" /> : null}
                           <span>{item.group}</span>
                         </div>
-                      </button>
+                      </div>
                     )
-                  })
-                )}
+                  }}
+                />
               </div>
               <div className="ltm-shell-segment-footer px-3 py-2 text-[11px] text-muted-foreground">
                 Enter to open first result · Esc to close · Cmd/Ctrl+K to reopen

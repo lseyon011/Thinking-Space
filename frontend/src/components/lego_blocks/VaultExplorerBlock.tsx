@@ -7,8 +7,8 @@ import {
   FolderOpen,
   Loader2,
   RefreshCcw,
-  Search,
 } from 'lucide-react'
+import UniversalSearchBlock from '@/components/lego_blocks/UniversalSearchBlock'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -879,15 +879,19 @@ export default function VaultExplorerBlock({
           </div>
         )}
 
-        <label className="relative block">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Filter files..."
-            className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-2 text-xs text-foreground outline-none ring-0 transition-colors placeholder:text-muted-foreground focus:border-ring"
-          />
-        </label>
+        <UniversalSearchBlock
+          items={[]}
+          query={query}
+          onQueryChange={setQuery}
+          onSelect={() => {}}
+          getItemKey={(value) => value}
+          getItemLabel={(value) => value}
+          placeholder="Filter files..."
+          showDropdown={false}
+          dismissOnOutsideClick={false}
+          closeOnSelect={false}
+          inputClassName="h-8 rounded-md border border-input bg-background pl-8 pr-2 text-xs text-foreground outline-none ring-0 transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-0 focus:ring-offset-0"
+        />
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-1.5 py-2">{content}</div>
