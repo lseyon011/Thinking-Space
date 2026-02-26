@@ -1,7 +1,7 @@
 import type { CapacitorElectronConfig } from '@capacitor-community/electron';
 import { getCapacitorElectronConfig, setupElectronDeepLinking } from '@capacitor-community/electron';
 import type { MenuItemConstructorOptions } from 'electron';
-import { app, dialog, ipcMain, MenuItem, shell } from 'electron';
+import { app, dialog, ipcMain, Menu, MenuItem, shell } from 'electron';
 import electronIsDev from 'electron-is-dev';
 import unhandled from 'electron-unhandled';
 import { autoUpdater } from 'electron-updater';
@@ -56,8 +56,8 @@ const appMenuBarMenuTemplate: (MenuItemConstructorOptions | MenuItem)[] = [
     submenu: [
       {
         label: 'New Window',
-        accelerator: 'CmdOrCtrl+Shift+N',
-        click: () => { myCapacitorApp.createWindow(); },
+        accelerator: 'CmdOrCtrl+N',
+        click: () => { void myCapacitorApp.createWindow(); },
       },
       { type: 'separator' },
       { role: 'close' },
@@ -98,6 +98,21 @@ const capacitorFileConfig: CapacitorElectronConfig = getCapacitorElectronConfig(
 // const myCapacitorApp = new ElectronCapacitorApp(capacitorFileConfig);
 const myCapacitorApp = new ElectronCapacitorApp(capacitorFileConfig, trayMenuTemplate, appMenuBarMenuTemplate);
 
+function configureAppIconMenu(): void {
+  if (process.platform !== 'darwin') return;
+  app.dock?.setMenu(
+    Menu.buildFromTemplate([
+      {
+        label: 'New Window',
+        accelerator: 'CmdOrCtrl+N',
+        click: () => { void myCapacitorApp.createWindow(); },
+      },
+      { type: 'separator' },
+      { role: 'quit' },
+    ]),
+  );
+}
+
 // If deeplinking is enabled then we will set it up here.
 if (capacitorFileConfig.electron?.deepLinkingEnabled) {
   setupElectronDeepLinking(myCapacitorApp, {
@@ -118,6 +133,7 @@ if (electronIsDev) {
   setupContentSecurityPolicy(myCapacitorApp.getCustomURLScheme());
   // Initialize our app, build windows, and load content.
   await myCapacitorApp.init();
+  configureAppIconMenu();
   // Check for updates if we are in a packaged app (skip in dev or if no valid publish config).
   if (!electronIsDev) {
     autoUpdater.checkForUpdatesAndNotify().catch(() => {
