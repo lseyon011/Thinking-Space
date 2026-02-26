@@ -48,7 +48,7 @@ export function isTaskLikeNode(
 export function nodeStatusFromTaskStatus(taskStatus: string | undefined): NodeStatus {
   const normalized = normalizeTaskStatus(taskStatus)
   if (!normalized) return 'active'
-  if (TERMINAL_ARCHIVED.has(normalized)) return 'archived'
+  if (TERMINAL_ARCHIVED.has(normalized)) return 'cancelled'
   if (TERMINAL_DONE.has(normalized)) return 'completed'
   if (normalized === 'blocked') return 'paused'
   return 'active'
@@ -56,7 +56,8 @@ export function nodeStatusFromTaskStatus(taskStatus: string | undefined): NodeSt
 
 export function taskStatusFromNodeStatus(status: NodeStatus): string {
   if (status === 'completed') return 'done'
-  if (status === 'archived') return 'cancelled'
+  if (status === 'archived' || status === 'cancelled') return 'cancelled'
+  if (status === 'incomplete') return 'ready'
   if (status === 'paused') return 'blocked'
   return 'in_progress'
 }
@@ -72,7 +73,7 @@ export function deriveEpicStatusFromTaskStatuses(taskStatuses: Array<string | un
   if (hasNonTerminal) return 'active'
 
   const allArchived = normalized.every(status => TERMINAL_ARCHIVED.has(status))
-  if (allArchived) return 'archived'
+  if (allArchived) return 'cancelled'
 
   return 'completed'
 }

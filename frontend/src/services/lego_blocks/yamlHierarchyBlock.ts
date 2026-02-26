@@ -12,6 +12,7 @@ import {
   stringifyNote,
   suggestFilename,
   type YAMLCommentEntry,
+  type NodeStatus,
   type NodeType,
   type YAMLFrontmatter,
   NODE_TYPE_LEVEL,
@@ -199,7 +200,7 @@ export async function updateYamlNode(
     type?: NodeType
     title?: string
     tags?: string[]
-    status?: 'active' | 'paused' | 'completed' | 'archived'
+    status?: NodeStatus
     priority?: 'low' | 'medium' | 'high' | 'critical'
     description?: string
     comments?: Array<string | YAMLCommentEntry>

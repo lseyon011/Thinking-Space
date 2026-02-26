@@ -23,6 +23,10 @@ import {
   SelectItem,
   SelectTrigger,
 } from '@/components/lego_blocks/ui/select'
+import {
+  NodeStatusBadgeBlock,
+  NodeStatusSelectBlock,
+} from '@/components/lego_blocks/NodeStatusBlock'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import { normalizeTagBlock, normalizeTagListBlock } from '@/services/lego_blocks/tagBlock'
 import type { NodePriority, NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/yamlNoteBlock'
@@ -53,14 +57,6 @@ function iconColorForNodeType(type: NodeType): string {
   if (type === 'handoff') return 'text-fuchsia-700'
   return 'text-muted-foreground'
 }
-
-const STATUS_COLORS: Record<NodeStatus, string> = {
-  active: 'bg-emerald-500/15 text-emerald-700',
-  paused: 'bg-amber-500/15 text-amber-700',
-  completed: 'bg-blue-500/15 text-blue-700',
-  archived: 'bg-zinc-500/15 text-zinc-500',
-}
-const NODE_STATUS_OPTIONS: NodeStatus[] = ['active', 'paused', 'completed', 'archived']
 
 const TASK_STATUS_COLORS = {
   ready: 'bg-indigo-500/15 text-indigo-700',
@@ -134,14 +130,6 @@ function compactTagList(tags: string[], limit = 3): { visible: string[]; hiddenC
     visible: tags.slice(0, limit),
     hiddenCount: tags.length - limit,
   }
-}
-
-function StatusBadge({ status }: { status: NodeStatus }) {
-  return (
-    <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium', STATUS_COLORS[status])}>
-      {status}
-    </span>
-  )
 }
 
 function TaskStatusBadge({ taskStatus }: { taskStatus: TaskStatusOption }) {
@@ -304,7 +292,8 @@ function normalizeTaskStatus(value: string | undefined): keyof typeof TASK_STATU
 
 function taskStatusFromNodeStatus(status: NodeStatus): TaskStatusOption {
   if (status === 'completed') return 'done'
-  if (status === 'archived') return 'cancelled'
+  if (status === 'archived' || status === 'cancelled') return 'cancelled'
+  if (status === 'incomplete') return 'ready'
   if (status === 'paused') return 'blocked'
   return 'in_progress'
 }
@@ -1305,7 +1294,7 @@ export default function BacklogListBlock({
             )
           ) : (
             readOnly || !onUpdateNodeStatus ? (
-              <StatusBadge status={node.status} />
+              <NodeStatusBadgeBlock status={node.status} />
             ) : (
               <div
                 className="flex items-center gap-1"
@@ -1314,27 +1303,12 @@ export default function BacklogListBlock({
                 {statusBusyByNode[node.uuid] ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                 ) : (
-                  <Select
-                    value={node.status}
-                    onValueChange={(value) => { void handleInlineNodeStatusChange(node, value as NodeStatus) }}
-                  >
-                    <SelectTrigger
-                      className={cn(
-                        'h-6 w-auto gap-1 rounded-full border border-transparent px-2 py-0 text-[10px] font-medium capitalize shadow-none focus:ring-0 focus:ring-offset-0',
-                        STATUS_COLORS[node.status],
-                      )}
-                      title="Change status"
-                    >
-                      <span>{node.status}</span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {NODE_STATUS_OPTIONS.map(option => (
-                        <SelectItem key={`${node.uuid}-status-${option}`} value={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <NodeStatusSelectBlock
+                    status={node.status}
+                    onChange={(value) => { void handleInlineNodeStatusChange(node, value) }}
+                    variant="pill"
+                    title="Change status"
+                  />
                 )}
               </div>
             )
@@ -1495,7 +1469,7 @@ export default function BacklogListBlock({
             </div>
           )}
           {readOnly || !onUpdateNodeStatus ? (
-            <StatusBadge status={program.status} />
+            <NodeStatusBadgeBlock status={program.status} />
           ) : (
             <div
               className="flex items-center gap-1"
@@ -1504,27 +1478,12 @@ export default function BacklogListBlock({
               {statusBusyByNode[program.uuid] ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
               ) : (
-                <Select
-                  value={program.status}
-                  onValueChange={(value) => { void handleInlineNodeStatusChange(program, value as NodeStatus) }}
-                >
-                  <SelectTrigger
-                    className={cn(
-                      'h-6 w-auto gap-1 rounded-full border border-transparent px-2 py-0 text-[10px] font-medium capitalize shadow-none focus:ring-0 focus:ring-offset-0',
-                      STATUS_COLORS[program.status],
-                    )}
-                    title="Change status"
-                  >
-                    <span>{program.status}</span>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {NODE_STATUS_OPTIONS.map(option => (
-                      <SelectItem key={`${program.uuid}-program-status-${option}`} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <NodeStatusSelectBlock
+                  status={program.status}
+                  onChange={(value) => { void handleInlineNodeStatusChange(program, value) }}
+                  variant="pill"
+                  title="Change status"
+                />
                 )}
               </div>
             )}

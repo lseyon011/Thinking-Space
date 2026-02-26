@@ -44,7 +44,9 @@ const VALID_NODE_TYPES: ReadonlySet<NodeType> = new Set([
 const VALID_NODE_STATUS: ReadonlySet<NodeStatus> = new Set([
   'active',
   'paused',
+  'incomplete',
   'completed',
+  'cancelled',
   'archived',
 ])
 

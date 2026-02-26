@@ -15,7 +15,7 @@ import CascadingFolderPicker, {
 import { Button } from '@/components/lego_blocks/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
-import type { NodeType, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodeStatus, NodeType, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/yamlNoteBlock'
 import {
   THINKING_ORGANIZER_DIR,
   getVaultFsOrch,
@@ -166,7 +166,7 @@ function isTaskLikeNode(node: Pick<NodeRecord, 'type' | 'recordKind' | 'taskStat
   return node.type === 'task' || node.recordKind === 'task' || !!node.taskStatus
 }
 
-type BacklogNodeStatus = 'active' | 'paused' | 'completed' | 'archived'
+type BacklogNodeStatus = NodeStatus
 type BacklogTaskStatus = 'ready' | 'in_progress' | 'blocked' | 'done' | 'cancelled'
 type BacklogSubTab = 'hierarchy' | 'timeline'
 

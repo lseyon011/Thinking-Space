@@ -29,6 +29,7 @@ import {
 } from '@/components/lego_blocks/ui/select'
 import ExtensionSlotBlock from '@/components/lego_blocks/ExtensionSlotBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/MarkdownRichEditorBlock'
+import { NodeStatusSelectBlock } from '@/components/lego_blocks/NodeStatusBlock'
 import {
   TagListEditorBlock,
   TagPresetSelectorBlock,
@@ -97,7 +98,6 @@ function initialsForAuthor(value: string | undefined): string {
   return `${tokens[0][0] ?? ''}${tokens[1][0] ?? ''}`.toUpperCase()
 }
 
-const STATUS_OPTIONS: NodeStatus[] = ['active', 'paused', 'completed', 'archived']
 const PRIORITY_OPTIONS: NodePriority[] = ['low', 'medium', 'high', 'critical']
 const TASK_STATUS_OPTIONS = ['ready', 'in_progress', 'blocked', 'done', 'cancelled'] as const
 
@@ -118,7 +118,8 @@ function normalizeTaskStatus(value: string | undefined): (typeof TASK_STATUS_OPT
 
 function taskStatusFromNodeStatus(status: NodeStatus): (typeof TASK_STATUS_OPTIONS)[number] {
   if (status === 'completed') return 'done'
-  if (status === 'archived') return 'cancelled'
+  if (status === 'archived' || status === 'cancelled') return 'cancelled'
+  if (status === 'incomplete') return 'ready'
   if (status === 'paused') return 'blocked'
   return 'in_progress'
 }
@@ -509,20 +510,11 @@ export default function NodeDetailPanelBlock({
             ) : (
               <div className="space-y-1">
                 <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</label>
-                <Select
-                  value={node.status}
-                  onValueChange={val => { if (statusEditable) void onUpdateStatus(val) }}
+                <NodeStatusSelectBlock
+                  status={node.status}
+                  onChange={val => { if (statusEditable) void onUpdateStatus(val) }}
                   disabled={!statusEditable}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map(s => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               </div>
             )}
 

@@ -20,7 +20,16 @@ export const NODE_TYPES = [
 
 export type NodeType = (typeof NODE_TYPES)[number]
 
-export type NodeStatus = 'active' | 'paused' | 'completed' | 'archived'
+export const NODE_STATUSES = [
+  'active',
+  'paused',
+  'incomplete',
+  'completed',
+  'cancelled',
+  'archived',
+] as const
+
+export type NodeStatus = (typeof NODE_STATUSES)[number]
 
 export type NodePriority = 'low' | 'medium' | 'high' | 'critical'
 
@@ -306,6 +315,9 @@ export function validate(frontmatter: YAMLFrontmatter): string[] {
   if (!frontmatter.created_at) errors.push('Missing created_at')
   if (!frontmatter.updated_at) errors.push('Missing updated_at')
   if (!frontmatter.status) errors.push('Missing status')
+  if (!NODE_STATUSES.includes(frontmatter.status)) {
+    errors.push(`Invalid status: ${frontmatter.status}`)
+  }
 
   return errors
 }
@@ -331,7 +343,7 @@ function normalizeFrontmatter(raw: Record<string, unknown>): YAMLFrontmatter {
     title: String(raw.title || ''),
     type,
     level: typeof raw.level === 'number' ? raw.level : NODE_TYPE_LEVEL[type] ?? 5,
-    status: (raw.status as NodeStatus) || 'active',
+    status: normalizeNodeStatus(raw.status),
     created_at: String(raw.created_at || new Date().toISOString()),
     updated_at: String(raw.updated_at || new Date().toISOString()),
     parent: raw.parent != null ? String(raw.parent) : undefined,
@@ -382,6 +394,14 @@ function normalizeNodeType(raw: unknown): NodeType {
   if (!normalized) return 'thought'
   if (NODE_TYPES.includes(normalized)) return normalized
   return 'thought'
+}
+
+function normalizeNodeStatus(raw: unknown): NodeStatus {
+  if (typeof raw !== 'string') return 'active'
+  const normalized = raw.trim().toLowerCase() as NodeStatus
+  if (!normalized) return 'active'
+  if (NODE_STATUSES.includes(normalized)) return normalized
+  return 'active'
 }
 
 function normalizeOptionalNodeType(raw: unknown): NodeType | undefined {
