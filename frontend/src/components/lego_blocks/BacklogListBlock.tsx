@@ -24,6 +24,7 @@ import {
   SelectTrigger,
 } from '@/components/lego_blocks/ui/select'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
+import { normalizeTagBlock, normalizeTagListBlock } from '@/services/lego_blocks/tagBlock'
 import type { NodePriority, NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/yamlNoteBlock'
 import { cn } from '@/lib/utils'
 
@@ -111,6 +112,30 @@ function formatRowOrdinal(index: number): string {
   return String(index + 1)
 }
 
+function normalizePath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+}
+
+function selectedPresetTagsForNode(
+  node: NodeRecord,
+  projectPresetTagsByRoot: Record<string, string[]>,
+): string[] {
+  const projectRoot = normalizePath(node.projectRoot ?? '')
+  if (!projectRoot) return []
+  const presetTags = projectPresetTagsByRoot[projectRoot] ?? []
+  if (presetTags.length === 0 || node.tags.length === 0) return []
+  const presetLookup = new Set(presetTags.map(tag => normalizeTagBlock(tag).toLowerCase()).filter(Boolean))
+  return node.tags.filter(tag => presetLookup.has(normalizeTagBlock(tag).toLowerCase()))
+}
+
+function compactTagList(tags: string[], limit = 3): { visible: string[]; hiddenCount: number } {
+  if (tags.length <= limit) return { visible: tags, hiddenCount: 0 }
+  return {
+    visible: tags.slice(0, limit),
+    hiddenCount: tags.length - limit,
+  }
+}
+
 function StatusBadge({ status }: { status: NodeStatus }) {
   return (
     <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium', STATUS_COLORS[status])}>
@@ -163,6 +188,7 @@ export interface BacklogListBlockProps {
   ) => Promise<NodeRecord>
   onDropNodeToNode?: (sourceUuid: string, target: NodeRecord) => Promise<void>
   onReorderSiblings?: (params: { parentKey: string | null; orderedNodes: NodeRecord[] }) => Promise<NodeRecord[] | void>
+  projectPresetTagsByRoot?: Record<string, string[]>
   onUpdateNodeStatus?: (node: NodeRecord, status: NodeStatus) => Promise<NodeRecord | void>
   onUpdateTaskStatus?: (node: NodeRecord, taskStatus: TaskStatusOption) => Promise<NodeRecord | void>
   onUpdateNodeNotes?: (node: NodeRecord, description: string, comments: YAMLCommentEntry[]) => Promise<NodeRecord | void>
@@ -340,6 +366,7 @@ export default function BacklogListBlock({
   onCreateChild,
   onDropNodeToNode,
   onReorderSiblings,
+  projectPresetTagsByRoot = {},
   onUpdateNodeStatus,
   onUpdateTaskStatus,
   onUpdateNodeNotes,
@@ -975,6 +1002,7 @@ export default function BacklogListBlock({
   const renderInlineNotesEditor = useCallback((node: NodeRecord, depthPadding: number) => {
     if (readOnly || !onUpdateNodeNotes) return null
     if (inlineNotesNode?.uuid !== node.uuid) return null
+    const inlineTags = normalizeTagListBlock(node.tags ?? [])
 
     return (
       <div
@@ -983,6 +1011,24 @@ export default function BacklogListBlock({
         onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
       >
         <div className="space-y-2">
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium text-muted-foreground">Tags</label>
+            {inlineTags.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {inlineTags.map(tag => (
+                  <span
+                    key={`${node.uuid}-inline-tag-${tag}`}
+                    className="rounded-full border border-sky-200/80 bg-sky-100/70 px-1.5 py-0.5 text-[10px] leading-none text-sky-800"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[11px] text-muted-foreground">No tags yet.</div>
+            )}
+          </div>
+
           <div className="space-y-1">
             <label className="text-[11px] font-medium text-muted-foreground">Description</label>
             <textarea
@@ -1156,6 +1202,9 @@ export default function BacklogListBlock({
     const canShowGroupingInfo = isTaskNode(node) && !!effectiveEpicContext && !!parentNode
     const groupingInfoOpen = !!groupingInfoOpenByNode[node.uuid]
     const newlyCreated = !!newlyCreatedNodeIds[node.uuid]
+    const rowPresetTags = compactTagList(
+      selectedPresetTagsForNode(node, projectPresetTagsByRoot),
+    )
 
     return (
       <div key={node.uuid} className="border-b border-border/70 last:border-b-0">
@@ -1178,6 +1227,12 @@ export default function BacklogListBlock({
           )}
           style={{ paddingLeft: `${12 + (depth * 16)}px` }}
         >
+          <sup
+            aria-hidden="true"
+            className="-ml-1.5 mr-0.5 mt-0.5 self-start font-mono text-[8px] leading-none tabular-nums text-muted-foreground/45"
+          >
+            {formatRowOrdinal(siblingIndex)}
+          </sup>
           <button
             type="button"
             onClick={() => toggleNode(node)}
@@ -1185,9 +1240,6 @@ export default function BacklogListBlock({
           >
             <ChevronRight className={cn('h-4 w-4 transition-transform', isExpanded && 'rotate-90')} />
           </button>
-          <span className="w-4 shrink-0 select-none text-right font-mono text-[10px] tabular-nums text-muted-foreground/60">
-            {formatRowOrdinal(siblingIndex)}
-          </span>
           <Icon className={cn('h-4 w-4 shrink-0', iconColorClass)} />
           <button
             type="button"
@@ -1199,59 +1251,22 @@ export default function BacklogListBlock({
               {nodeTitleWithoutTicket(node) || nodeDisplayTitle(node) || 'Untitled'}
             </span>
           </button>
-          <button
-            type="button"
-            draggable={false}
-            onClick={event => { void copyRowLabelForNode(node, event) }}
-            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            title={copiedRowNodeId === node.uuid ? 'Copied' : 'Copy row label'}
-            aria-label={copiedRowNodeId === node.uuid ? `Copied row label ${nodeDisplayTitle(node)}` : `Copy row label ${nodeDisplayTitle(node)}`}
-          >
-            {copiedRowNodeId === node.uuid ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          </button>
-          {!readOnly && onUpdateNodeNotes && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                void toggleInlineNotes(node)
-              }}
-              className={cn(
-                'rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-                inlineNotesNode?.uuid === node.uuid
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          {rowPresetTags.visible.length > 0 && (
+            <div className="hidden max-w-[35%] items-center gap-1 overflow-hidden lg:flex">
+              {rowPresetTags.visible.map(tag => (
+                <span
+                  key={`${node.uuid}-preset-row-tag-${tag}`}
+                  className="truncate rounded-full border border-sky-200/80 bg-sky-100/70 px-1.5 py-0.5 text-[10px] leading-none text-sky-800"
+                >
+                  {tag}
+                </span>
+              ))}
+              {rowPresetTags.hiddenCount > 0 && (
+                <span className="rounded-full border border-border/70 bg-muted/20 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+                  +{rowPresetTags.hiddenCount}
+                </span>
               )}
-              title="Quick notes"
-              disabled={inlineNotesSaving}
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {canShowGroupingInfo && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                setGroupingInfoOpenByNode(prev => ({ ...prev, [node.uuid]: !prev[node.uuid] }))
-              }}
-              className={cn(
-                'rounded-md p-1 transition-colors',
-                groupingInfoOpen
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-              )}
-              title="Why this task is grouped here"
-            >
-              <Info className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {childCount !== null && (
-            <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-              {childCount}
-            </span>
+            </div>
           )}
           {isTaskNode(node) ? (
             readOnly || !onUpdateTaskStatus ? (
@@ -1324,6 +1339,60 @@ export default function BacklogListBlock({
               </div>
             )
           )}
+          {!readOnly && onUpdateNodeNotes && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                void toggleInlineNotes(node)
+              }}
+              className={cn(
+                'rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                inlineNotesNode?.uuid === node.uuid
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+              title="Details"
+              disabled={inlineNotesSaving}
+            >
+              <Info className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            draggable={false}
+            onClick={event => { void copyRowLabelForNode(node, event) }}
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title={copiedRowNodeId === node.uuid ? 'Copied' : 'Copy row label'}
+            aria-label={copiedRowNodeId === node.uuid ? `Copied row label ${nodeDisplayTitle(node)}` : `Copy row label ${nodeDisplayTitle(node)}`}
+          >
+            {copiedRowNodeId === node.uuid ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
+          {canShowGroupingInfo && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setGroupingInfoOpenByNode(prev => ({ ...prev, [node.uuid]: !prev[node.uuid] }))
+              }}
+              className={cn(
+                'rounded-md p-1 transition-colors',
+                groupingInfoOpen
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+              title="Why this task is grouped here"
+            >
+              <Layers className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {childCount !== null && (
+            <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {childCount}
+            </span>
+          )}
           <PriorityDot priority={node.priority} />
         </div>
         {canShowGroupingInfo && groupingInfoOpen && (
@@ -1365,13 +1434,16 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, readOnly, renderInlineCreate, renderInlineNotesEditor, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes, toggleNode])
+  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineNotesEditor, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes, toggleNode])
 
   const renderProgramSection = useCallback((program: NodeRecord, programIndex: number) => {
     void ensureProgramLoaded(program)
     const childState = childrenByNode[program.uuid]
     const programIconColorClass = iconColorForNodeType(program.type)
     const newlyCreated = !!newlyCreatedNodeIds[program.uuid]
+    const rowPresetTags = compactTagList(
+      selectedPresetTagsForNode(program, projectPresetTagsByRoot),
+    )
 
     return (
       <div key={program.uuid} className="overflow-hidden rounded-xl border border-border/70 bg-muted/25">
@@ -1392,9 +1464,12 @@ export default function BacklogListBlock({
           )}
           onClick={() => onSelectNode(program)}
         >
-          <span className="w-4 shrink-0 select-none text-right font-mono text-[10px] tabular-nums text-muted-foreground/60">
+          <sup
+            aria-hidden="true"
+            className="-ml-1.5 mr-0.5 mt-0.5 self-start font-mono text-[8px] leading-none tabular-nums text-muted-foreground/45"
+          >
             {formatRowOrdinal(programIndex)}
-          </span>
+          </sup>
           <FolderTree className={cn('h-4 w-4 shrink-0', programIconColorClass)} />
           <div className="min-w-0 flex flex-1 items-center gap-2">
             {renderTicketBadge(program)}
@@ -1402,35 +1477,22 @@ export default function BacklogListBlock({
               {nodeTitleWithoutTicket(program) || nodeDisplayTitle(program) || 'Untitled'}
             </span>
           </div>
-          <button
-            type="button"
-            draggable={false}
-            onClick={event => { void copyRowLabelForNode(program, event) }}
-            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            title={copiedRowNodeId === program.uuid ? 'Copied' : 'Copy row label'}
-            aria-label={copiedRowNodeId === program.uuid ? `Copied row label ${nodeDisplayTitle(program)}` : `Copy row label ${nodeDisplayTitle(program)}`}
-          >
-            {copiedRowNodeId === program.uuid ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          </button>
-          {!readOnly && onUpdateNodeNotes && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                void toggleInlineNotes(program)
-              }}
-              className={cn(
-                'rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-                inlineNotesNode?.uuid === program.uuid
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          {rowPresetTags.visible.length > 0 && (
+            <div className="hidden max-w-[35%] items-center gap-1 overflow-hidden lg:flex">
+              {rowPresetTags.visible.map(tag => (
+                <span
+                  key={`${program.uuid}-preset-row-tag-${tag}`}
+                  className="truncate rounded-full border border-sky-200/80 bg-sky-100/70 px-1.5 py-0.5 text-[10px] leading-none text-sky-800"
+                >
+                  {tag}
+                </span>
+              ))}
+              {rowPresetTags.hiddenCount > 0 && (
+                <span className="rounded-full border border-border/70 bg-muted/20 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+                  +{rowPresetTags.hiddenCount}
+                </span>
               )}
-              title="Quick notes"
-              disabled={inlineNotesSaving}
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-            </button>
+            </div>
           )}
           {readOnly || !onUpdateNodeStatus ? (
             <StatusBadge status={program.status} />
@@ -1463,9 +1525,39 @@ export default function BacklogListBlock({
                     ))}
                   </SelectContent>
                 </Select>
+                )}
+              </div>
+            )}
+          {!readOnly && onUpdateNodeNotes && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                void toggleInlineNotes(program)
+              }}
+              className={cn(
+                'rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                inlineNotesNode?.uuid === program.uuid
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
               )}
-            </div>
+              title="Details"
+              disabled={inlineNotesSaving}
+            >
+              <Info className="h-3.5 w-3.5" />
+            </button>
           )}
+          <button
+            type="button"
+            draggable={false}
+            onClick={event => { void copyRowLabelForNode(program, event) }}
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title={copiedRowNodeId === program.uuid ? 'Copied' : 'Copy row label'}
+            aria-label={copiedRowNodeId === program.uuid ? `Copied row label ${nodeDisplayTitle(program)}` : `Copy row label ${nodeDisplayTitle(program)}`}
+          >
+            {copiedRowNodeId === program.uuid ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
           <PriorityDot priority={program.priority} />
         </div>
         {renderInlineNotesEditor(program, 36)}
@@ -1492,7 +1584,7 @@ export default function BacklogListBlock({
         </div>
       </div>
     )
-  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, readOnly, renderInlineCreate, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes])
+  }, [childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes])
 
   return (
     <div className="flex flex-col space-y-3">

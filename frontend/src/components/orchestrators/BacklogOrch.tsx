@@ -4,6 +4,10 @@ import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/BacklogListBlock'
 import ExecutionProgressBlock from '@/components/lego_blocks/ExecutionProgressBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/NodeDetailPanelBlock'
+import {
+  TagDisclosureButtonBlock,
+  TagListEditorBlock,
+} from '@/components/lego_blocks/TagManagerBlock'
 import CascadingFolderPicker, {
   addRecent,
   type CascadingFolderPickerChange,
@@ -30,6 +34,11 @@ import {
   getJsonStorageItem,
   setJsonStorageItem,
 } from '@/services/orchestrators/storageOrch'
+import {
+  normalizeTagBlock,
+  normalizeTagListBlock,
+  splitTagInputBlock,
+} from '@/services/lego_blocks/tagBlock'
 
 interface ProjectEntry {
   name: string
@@ -107,24 +116,6 @@ function sortBacklogNodes(nodes: NodeRecord[]): NodeRecord[] {
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
-}
-
-function normalizeTag(value: string): string {
-  return value.trim().replace(/\s+/g, ' ')
-}
-
-function normalizeTagList(tags: string[]): string[] {
-  const seen = new Set<string>()
-  const normalized: string[] = []
-  for (const tag of tags) {
-    const next = normalizeTag(tag)
-    if (!next) continue
-    const dedupeKey = next.toLowerCase()
-    if (seen.has(dedupeKey)) continue
-    seen.add(dedupeKey)
-    normalized.push(next)
-  }
-  return normalized
 }
 
 function normalizeStoredSegments(value: unknown): string[] {
@@ -218,6 +209,8 @@ export default function BacklogOrch() {
 
   const [projectModalOpen, setProjectModalOpen] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
+  const [projectPresetTagDraft, setProjectPresetTagDraft] = useState('')
+  const [projectTagsExpanded, setProjectTagsExpanded] = useState(false)
   const [destinationSegments, setDestinationSegments] = useState<string[]>(
     () => normalizeStoredSegments(
       getJsonStorageItem<unknown>(STORAGE_KEYS.thinkingOrganizerProjectCreateDestination, []),
@@ -281,7 +274,7 @@ export default function BacklogOrch() {
   const updateProjectPresetTags = useCallback((projectRoot: string, tags: string[]) => {
     const normalizedRoot = normalizePath(projectRoot)
     if (!normalizedRoot) return
-    const normalizedTags = normalizeTagList(tags)
+    const normalizedTags = normalizeTagListBlock(tags)
     setProjectPresetTagsByRoot((prev) => {
       const next: ProjectPresetTagsByRoot = { ...prev }
       if (normalizedTags.length > 0) next[normalizedRoot] = normalizedTags
@@ -294,8 +287,30 @@ export default function BacklogOrch() {
   const selectedProjectPresetTags = useMemo(() => {
     const projectRoot = normalizePath(selectedNode?.projectRoot ?? activeProjectRoot)
     if (!projectRoot) return []
-    return normalizeTagList(projectPresetTagsByRoot[projectRoot] ?? [])
+    return normalizeTagListBlock(projectPresetTagsByRoot[projectRoot] ?? [])
   }, [activeProjectRoot, projectPresetTagsByRoot, selectedNode?.projectRoot])
+  const activeProjectPresetTags = useMemo(() => {
+    if (!activeProjectRoot) return []
+    return normalizeTagListBlock(projectPresetTagsByRoot[activeProjectRoot] ?? [])
+  }, [activeProjectRoot, projectPresetTagsByRoot])
+
+  const addActiveProjectPresetTags = useCallback(() => {
+    if (!activeProjectRoot) return
+    const additions = splitTagInputBlock(projectPresetTagDraft)
+    if (additions.length === 0) return
+    updateProjectPresetTags(activeProjectRoot, [...activeProjectPresetTags, ...additions])
+    setProjectPresetTagDraft('')
+  }, [activeProjectPresetTags, activeProjectRoot, projectPresetTagDraft, updateProjectPresetTags])
+
+  const removeActiveProjectPresetTag = useCallback((tag: string) => {
+    if (!activeProjectRoot) return
+    const normalizedTarget = normalizeTagBlock(tag).toLowerCase()
+    if (!normalizedTarget) return
+    const next = activeProjectPresetTags.filter(
+      existing => normalizeTagBlock(existing).toLowerCase() !== normalizedTarget,
+    )
+    updateProjectPresetTags(activeProjectRoot, next)
+  }, [activeProjectPresetTags, activeProjectRoot, updateProjectPresetTags])
 
   useEffect(() => {
     if (urlHydrated) return
@@ -797,7 +812,7 @@ export default function BacklogOrch() {
         input: {
           uuid: node.uuid,
           updates: {
-            tags: normalizeTagList(tags),
+            tags: normalizeTagListBlock(tags),
           },
         },
         actor: BACKLOG_ACTOR,
@@ -1013,6 +1028,34 @@ export default function BacklogOrch() {
         )}
       </div>
 
+      {activeProjectRoot && (
+        <div className="space-y-2 rounded-md border border-border/70 bg-card p-3">
+          <div className="flex items-center justify-between gap-2">
+            <TagDisclosureButtonBlock
+              label="Project Tags"
+              expanded={projectTagsExpanded}
+              onToggle={() => setProjectTagsExpanded(prev => !prev)}
+              count={activeProjectPresetTags.length}
+            />
+            <p className="text-[11px] text-muted-foreground">Project-scoped preset tags</p>
+          </div>
+          {projectTagsExpanded && (
+            <TagListEditorBlock
+              heading="Project Tags"
+              tags={activeProjectPresetTags}
+              emptyMessage="No project tags yet."
+              draftValue={projectPresetTagDraft}
+              onDraftValueChange={setProjectPresetTagDraft}
+              onAddTag={addActiveProjectPresetTags}
+              addPlaceholder="Add project tags (comma separated)"
+              addDisabled={splitTagInputBlock(projectPresetTagDraft).length === 0}
+              onRemoveTag={removeActiveProjectPresetTag}
+              chipTone="sky"
+            />
+          )}
+        </div>
+      )}
+
       {(message || error) && (
         <div className="space-y-2">
           {message && (
@@ -1170,6 +1213,7 @@ export default function BacklogOrch() {
             onCreateChild={createChildNode}
             onDropNodeToNode={dropNodeToNode}
             onReorderSiblings={reorderSiblingRows}
+            projectPresetTagsByRoot={projectPresetTagsByRoot}
             onUpdateNodeStatus={updateNodeStatusFor}
             onUpdateTaskStatus={updateTaskStatusFor}
             onUpdateNodeNotes={updateNodeNotesFor}
@@ -1188,11 +1232,6 @@ export default function BacklogOrch() {
           onUpdatePriority={updatePriority}
           onUpdateTags={updateNodeTags}
           presetTags={selectedProjectPresetTags}
-          onUpdateProjectPresetTags={(tags) => {
-            const projectRoot = normalizePath(selectedNode.projectRoot ?? activeProjectRoot)
-            if (!projectRoot) return
-            updateProjectPresetTags(projectRoot, tags)
-          }}
           onUpdateNotes={updateNodeNotes}
           onUpdateEpicCompletedAt={async (completionDate) => {
             await updateEpicCompletionDateFor(selectedNode, completionDate)
