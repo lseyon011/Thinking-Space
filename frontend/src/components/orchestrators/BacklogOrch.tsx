@@ -135,6 +135,7 @@ function isTaskLikeNode(node: Pick<NodeRecord, 'type' | 'recordKind' | 'taskStat
 
 type BacklogNodeStatus = 'active' | 'paused' | 'completed' | 'archived'
 type BacklogTaskStatus = 'ready' | 'in_progress' | 'blocked' | 'done' | 'cancelled'
+type BacklogSubTab = 'hierarchy' | 'timeline'
 
 export default function BacklogOrch() {
   const { openFile } = useMarkdownViewer()
@@ -154,6 +155,7 @@ export default function BacklogOrch() {
   const [activeExecutionTasks, setActiveExecutionTasks] = useState<NodeRecord[]>([])
   const [activeExecutionTasksLoading, setActiveExecutionTasksLoading] = useState(false)
   const [activeExecutionTasksError, setActiveExecutionTasksError] = useState<string | null>(null)
+  const [activeBacklogSubTab, setActiveBacklogSubTab] = useState<BacklogSubTab>('hierarchy')
   const [completedEpicTimeline, setCompletedEpicTimeline] = useState<NodeRecord[]>([])
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [timelineError, setTimelineError] = useState<string | null>(null)
@@ -910,98 +912,124 @@ export default function BacklogOrch() {
         {(working || syncing) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
       </div>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            Epic Timeline
-          </CardTitle>
-          <CardDescription>
-            Completed epics sorted by completion date. Date is auto-set when an epic completes, and can be backfilled.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {timelineLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading timeline...
-            </div>
-          ) : timelineError ? (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {timelineError}
-            </div>
-          ) : completedEpicTimeline.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              No completed epics yet.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {completedEpicTimeline.map(epic => {
-                const completionDate = toDateInputValue(epic.epicCompletedAt)
-                const saving = !!timelineSavingByEpic[epic.uuid]
-                return (
-                  <div key={epic.uuid} className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/15 px-3 py-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedNode(epic)}
-                      className="min-w-0 flex-1 truncate text-left text-sm font-medium text-foreground hover:underline"
-                    >
-                      {epic.ticket ? `${epic.ticket} - ` : ''}{epic.title}
-                    </button>
-                    <input
-                      key={`${epic.uuid}-${completionDate}`}
-                      type="date"
-                      defaultValue={completionDate}
-                      disabled={saving}
-                      className="h-8 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                      onBlur={(event) => {
-                        const nextValue = event.currentTarget.value.trim()
-                        if (nextValue === completionDate) return
-                        void updateEpicCompletionDateFor(epic, nextValue || null)
-                      }}
-                    />
-                    {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <div className="inline-flex rounded-md border border-border/70 bg-muted/30 p-0.5 text-xs" role="tablist" aria-label="Backlog views">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeBacklogSubTab === 'hierarchy'}
+          className={`rounded px-2.5 py-1.5 ${activeBacklogSubTab === 'hierarchy' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setActiveBacklogSubTab('hierarchy')}
+        >
+          Hierarchy
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeBacklogSubTab === 'timeline'}
+          className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 ${activeBacklogSubTab === 'timeline' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setActiveBacklogSubTab('timeline')}
+        >
+          <CalendarDays className="h-3.5 w-3.5" />
+          Epic Timeline
+        </button>
+      </div>
 
-      {loading ? (
-        <div className="flex items-center gap-2 px-2 py-4 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading hierarchy...
-        </div>
-      ) : (
-        <BacklogListBlock
-          programs={visiblePrograms}
-          loadEpics={async program => {
-            const { nodes } = await invokeCapabilityOrThrow({
-              capability: 'organizer.nodes.list_children',
-              input: { parentKey: program.key },
-              actor: BACKLOG_ACTOR,
-            })
-            return nodes
-          }}
-          loadChildren={async node => {
-            const { nodes } = await invokeCapabilityOrThrow({
-              capability: 'organizer.nodes.list_children',
-              input: { parentKey: node.key },
-              actor: BACKLOG_ACTOR,
-            })
-            return nodes
-          }}
-          treeRevision={treeRevision}
-          selectedNodeId={selectedNode?.uuid ?? null}
-          onSelectNode={(node) => setSelectedNode(node)}
-          onCreateChild={createChildNode}
-          onDropNodeToNode={dropNodeToNode}
-          onUpdateNodeStatus={updateNodeStatusFor}
-          onUpdateTaskStatus={updateTaskStatusFor}
-          onUpdateNodeNotes={updateNodeNotesFor}
-        />
+      {activeBacklogSubTab === 'timeline' && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+              Epic Timeline
+            </CardTitle>
+            <CardDescription>
+              Completed epics sorted by completion date. Date is auto-set when an epic completes, and can be backfilled.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {timelineLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading timeline...
+              </div>
+            ) : timelineError ? (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {timelineError}
+              </div>
+            ) : completedEpicTimeline.length === 0 ? (
+              <div className="text-sm text-muted-foreground">
+                No completed epics yet.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {completedEpicTimeline.map(epic => {
+                  const completionDate = toDateInputValue(epic.epicCompletedAt)
+                  const saving = !!timelineSavingByEpic[epic.uuid]
+                  return (
+                    <div key={epic.uuid} className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/15 px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedNode(epic)}
+                        className="min-w-0 flex-1 truncate text-left text-sm font-medium text-foreground hover:underline"
+                      >
+                        {epic.ticket ? `${epic.ticket} - ` : ''}{epic.title}
+                      </button>
+                      <input
+                        key={`${epic.uuid}-${completionDate}`}
+                        type="date"
+                        defaultValue={completionDate}
+                        disabled={saving}
+                        className="h-8 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                        onBlur={(event) => {
+                          const nextValue = event.currentTarget.value.trim()
+                          if (nextValue === completionDate) return
+                          void updateEpicCompletionDateFor(epic, nextValue || null)
+                        }}
+                      />
+                      {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeBacklogSubTab === 'hierarchy' && (
+        loading ? (
+          <div className="flex items-center gap-2 px-2 py-4 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading hierarchy...
+          </div>
+        ) : (
+          <BacklogListBlock
+            programs={visiblePrograms}
+            loadEpics={async program => {
+              const { nodes } = await invokeCapabilityOrThrow({
+                capability: 'organizer.nodes.list_children',
+                input: { parentKey: program.key },
+                actor: BACKLOG_ACTOR,
+              })
+              return nodes
+            }}
+            loadChildren={async node => {
+              const { nodes } = await invokeCapabilityOrThrow({
+                capability: 'organizer.nodes.list_children',
+                input: { parentKey: node.key },
+                actor: BACKLOG_ACTOR,
+              })
+              return nodes
+            }}
+            treeRevision={treeRevision}
+            selectedNodeId={selectedNode?.uuid ?? null}
+            onSelectNode={(node) => setSelectedNode(node)}
+            onCreateChild={createChildNode}
+            onDropNodeToNode={dropNodeToNode}
+            onUpdateNodeStatus={updateNodeStatusFor}
+            onUpdateTaskStatus={updateTaskStatusFor}
+            onUpdateNodeNotes={updateNodeNotesFor}
+          />
+        )
       )}
 
       {selectedNode && (
