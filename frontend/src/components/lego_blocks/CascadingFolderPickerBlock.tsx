@@ -396,7 +396,7 @@ export default function CascadingFolderPicker({
                   value={level.selected || ''}
                   onValueChange={(value) => { void handleSelect(index, value) }}
                 >
-                  <SelectTrigger className="h-10 w-full rounded-full px-3">
+                  <SelectTrigger className="w-full rounded-full">
                     <SelectValue placeholder={index === 0 ? 'Select folder...' : 'Select subfolder...'} />
                   </SelectTrigger>
                   <SelectContent>

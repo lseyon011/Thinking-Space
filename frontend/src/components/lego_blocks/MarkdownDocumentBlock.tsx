@@ -13,7 +13,7 @@ import {
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import yaml from 'js-yaml'
-import { X, FileText, ExternalLink, Info, Pencil, Save, Sparkles, Loader2, RotateCcw, RotateCw } from 'lucide-react'
+import { X, FileText, ExternalLink, Pencil, Save, Sparkles, Loader2, RotateCcw, RotateCw } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -35,6 +35,8 @@ import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/ExcalidrawDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/MarkdownMiniNavBlock'
 import MarkdownRichEditorBlock, { type MarkdownRichEditorBlockHandle } from '@/components/lego_blocks/MarkdownRichEditorBlock'
+import InfoPanelToggleButtonBlock from '@/components/lego_blocks/InfoPanelToggleButtonBlock'
+import AiPanelToggleButtonBlock from '@/components/lego_blocks/AiPanelToggleButtonBlock'
 import { cn } from '@/lib/utils'
 import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/AiAssistRuntimeBlock'
 import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBlock'
@@ -1148,13 +1150,7 @@ function MarkdownDocumentBlock({
             </div>
 
             <div className="flex shrink-0 items-center gap-1">
-              <button
-                onClick={() => setShowMeta(v => !v)}
-                className={`rounded-lg p-1.5 transition-colors ${showMeta ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                title="Metadata & YAML"
-              >
-                <Info className="h-4 w-4" />
-              </button>
+              <InfoPanelToggleButtonBlock active={showMeta} onToggle={() => setShowMeta(v => !v)} />
 
               {!isEditing && (
                 <button
@@ -1193,14 +1189,7 @@ function MarkdownDocumentBlock({
                   >
                     {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowAiPanel(v => !v)}
-                    className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showAiPanel ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                    title="Toggle AI panel"
-                  >
-                    AI
-                  </button>
+                  <AiPanelToggleButtonBlock active={showAiPanel} onToggle={() => setShowAiPanel(v => !v)} />
                   <button
                     type="button"
                     onClick={cancelEditing}

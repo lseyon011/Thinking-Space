@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, PenLine, Loader2, CheckCircle2, LayoutList, Eye, Pencil, Trash2, X } from 'lucide-react'
+import { ArrowLeft, PenLine, Loader2, CheckCircle2, LayoutList, Eye, Pencil, Trash2, X, Sparkles } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/ui/card'
 import { Button } from '@/components/lego_blocks/ui/button'
 import { Switch } from '@/components/lego_blocks/ui/switch'
@@ -12,11 +12,14 @@ import EmotionTagger from '@/components/lego_blocks/EmotionTaggerBlock'
 import AiAssistControlsBlock from '@/components/lego_blocks/AiAssistControlsBlock'
 import AiAssistReviewBlock from '@/components/lego_blocks/AiAssistReviewBlock'
 import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/AiAssistRuntimeBlock'
+import InfoPanelToggleButtonBlock from '@/components/lego_blocks/InfoPanelToggleButtonBlock'
+import AiPanelToggleButtonBlock from '@/components/lego_blocks/AiPanelToggleButtonBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/MarkdownRichEditorBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/MarkdownDocumentBlock'
 import ThoughtsCalendarOrch from '@/components/orchestrators/ThoughtsCalendarOrch'
 import { deleteVaultPathOrch } from '@/services/orchestrators/fileSystemOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
+import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/aiBlock'
 import type { CapabilityActor } from '@/services/lego_blocks/capabilityRegistryBlock'
 
 const DESTINATION_RECENTS_KEY = 'ltm-new-note-destination-recents'
@@ -153,6 +156,19 @@ function ensureMarkdownFilename(value: string): string {
   return /\.md$/i.test(trimmed) ? trimmed : `${trimmed}.md`
 }
 
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB']
+  let value = bytes / 1024
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+  return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`
+}
+
 function CreateTab() {
   const [pickerDefaultPath, setPickerDefaultPath] = useState<string[]>(DEFAULT_BASE_PATH)
   const [pickerVersion, setPickerVersion] = useState(0)
@@ -176,7 +192,11 @@ function CreateTab() {
   const [message, setMessage] = useState<string | null>(null)
   const [savedPath, setSavedPath] = useState<string | null>(null)
   const [editorPath, setEditorPath] = useState<string | null>(null)
+  const [showMetaPanel, setShowMetaPanel] = useState(false)
   const [showAiAssist, setShowAiAssist] = useState(false)
+  const [relatedThoughts, setRelatedThoughts] = useState<SimilarityMatch[]>([])
+  const [relatedLoading, setRelatedLoading] = useState(false)
+  const [relatedError, setRelatedError] = useState<string | null>(null)
   const {
     aiSelectionLoading,
     selectedProvider,
@@ -352,6 +372,81 @@ function CreateTab() {
   const targetPath = destinationPath.trim() && filename.trim()
     ? `${destinationPath.replace(/\/$/, '')}/${normalizedFilename}`
     : null
+  const contentMeta = useMemo(() => {
+    const normalized = content.replace(/\r\n/g, '\n')
+    const trimmed = normalized.trim()
+    return {
+      lines: trimmed ? normalized.split('\n').length : 0,
+      words: trimmed ? trimmed.split(/\s+/).filter(Boolean).length : 0,
+      headings: (normalized.match(/^#{1,6}\s/gm) || []).length,
+      size: formatBytes(new TextEncoder().encode(normalized).length),
+    }
+  }, [content])
+  const titleForPreview = useMemo(() => {
+    if (useCustomTitle && title.trim()) return title.trim()
+    return normalizedFilename.replace(/\.md$/i, '').replace(/[-_]+/g, ' ').trim() || 'untitled'
+  }, [normalizedFilename, title, useCustomTitle])
+  const frontmatterPreview = useMemo(() => {
+    const lines = [
+      `title: ${JSON.stringify(titleForPreview)}`,
+      'type: thought',
+      'status: active',
+    ]
+    if (emotions.length > 0) {
+      lines.push('emotions:')
+      for (const emotion of emotions) lines.push(`  - ${JSON.stringify(emotion)}`)
+    }
+    lines.push('created_at: <generated on save>')
+    lines.push('updated_at: <generated on save>')
+    return lines.join('\n')
+  }, [emotions, titleForPreview])
+
+  useEffect(() => {
+    if (!showAiAssist || saving) {
+      setRelatedThoughts([])
+      setRelatedError(null)
+      setRelatedLoading(false)
+      return
+    }
+
+    const source = content.trim()
+    if (source.length < 24) {
+      setRelatedThoughts([])
+      setRelatedError(null)
+      setRelatedLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setRelatedLoading(true)
+    setRelatedError(null)
+
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const matches = await findRelated({
+            text: source,
+            sourceFilePath: targetPath ?? undefined,
+            preferredTypes: ['thought'],
+            limit: 6,
+          })
+          if (cancelled) return
+          setRelatedThoughts(matches)
+        } catch (err) {
+          if (cancelled) return
+          setRelatedError(err instanceof Error ? err.message : 'Failed to load related thoughts')
+          setRelatedThoughts([])
+        } finally {
+          if (!cancelled) setRelatedLoading(false)
+        }
+      })()
+    }, 320)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+    }
+  }, [content, saving, showAiAssist, targetPath])
 
   const handleEditExisting = () => {
     if (!targetPath) return
@@ -395,7 +490,7 @@ function CreateTab() {
   const mostUsedDestinations = useMemo(() => topUsedDestinations(usageCounts, 5), [usageCounts])
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(280px,30vw)_minmax(0,1fr)] 2xl:grid-cols-[minmax(320px,32vw)_minmax(0,1fr)]">
+    <div className="grid gap-6 lg:grid-cols-[clamp(240px,27vw,340px)_minmax(0,1fr)]">
       <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
         <Card>
           <CardHeader className="pb-3">
@@ -457,7 +552,7 @@ function CreateTab() {
                   value={customShortcutLabel}
                   onChange={(event) => setCustomShortcutLabel(event.target.value)}
                   placeholder="Shortcut name"
-                  className="h-9 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="h-8 rounded-full border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                 />
                 <div className="flex gap-2">
                   <input
@@ -470,11 +565,11 @@ function CreateTab() {
                       }
                     }}
                     placeholder="Path suffix (example: clients/acme/notes)"
-                    className="h-9 flex-1 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="h-8 flex-1 rounded-full border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                   <button
                     type="button"
-                    className="inline-flex h-9 items-center rounded-full border border-border/70 bg-background px-4 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                    className="inline-flex h-8 items-center rounded-full border border-border/70 bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
                     onClick={handleAddCustomShortcut}
                   >
                     Add
@@ -597,7 +692,7 @@ function CreateTab() {
                 setSavedPath(output_path)
                 setMessage(`Saved ${output_path}.`)
               }}
-              className="h-[72dvh] min-h-[520px] max-h-[84dvh] rounded-b-xl"
+              className="h-[calc(100dvh-18rem)] min-h-[520px] rounded-b-xl"
             />
           </CardContent>
         </Card>
@@ -640,25 +735,96 @@ function CreateTab() {
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <label className="text-xs text-muted-foreground">Content</label>
-                <button
-                  type="button"
-                  onClick={() => setShowAiAssist(prev => !prev)}
-                  className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${showAiAssist ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                >
-                  AI
-                </button>
+                <div className="flex items-center gap-1">
+                  <InfoPanelToggleButtonBlock active={showMetaPanel} onToggle={() => setShowMetaPanel(v => !v)} />
+                  <AiPanelToggleButtonBlock active={showAiAssist} onToggle={() => setShowAiAssist(v => !v)} />
+                </div>
               </div>
 
+              {showMetaPanel && (
+                <div className="space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span><strong className="text-foreground/70">{contentMeta.lines}</strong> lines</span>
+                    <span><strong className="text-foreground/70">{contentMeta.words}</strong> words</span>
+                    <span><strong className="text-foreground/70">{contentMeta.headings}</strong> headings</span>
+                    <span>{contentMeta.size}</span>
+                  </div>
+                  <div className="space-y-1.5 border-t border-border/30 pt-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      YAML Metadata
+                    </div>
+                    <textarea
+                      value={frontmatterPreview}
+                      readOnly
+                      spellCheck={false}
+                      className="min-h-[8rem] w-full rounded-md border border-border/60 bg-background px-2.5 py-2 font-mono text-xs text-foreground outline-none"
+                      aria-label="YAML metadata preview"
+                    />
+                    <div className="text-[11px] text-muted-foreground">
+                      Preview only. Final metadata is generated on save.
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {showAiAssist && (
-                <AiAssistControlsBlock
-                  selectedProvider={selectedProvider}
-                  selectedModel={selectedModel}
-                  runningAction={assistRunningAction}
-                  loading={aiSelectionLoading}
-                  disabled={saving}
-                  onRun={(action) => { void runAssistAction(action, content) }}
-                  helperText="Suggestions apply inline. Auto-save remains in the editor view."
-                />
+                <div className="space-y-2">
+                  <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2.5 py-1 text-xs font-medium text-foreground">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Purpose for This File
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        Uses steward metadata generation to create a proposal for YAML frontmatter.
+                      </span>
+                    </div>
+                  </div>
+
+                  <AiAssistControlsBlock
+                    selectedProvider={selectedProvider}
+                    selectedModel={selectedModel}
+                    runningAction={assistRunningAction}
+                    loading={aiSelectionLoading}
+                    disabled={saving}
+                    onRun={(action) => { void runAssistAction(action, content) }}
+                    helperText="Suggestions apply inline. Auto-save is enabled by default; use Save for immediate commit. Configure provider/model in AI Settings."
+                  />
+
+                  <div className="space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Related Thoughts
+                    </div>
+                    {relatedLoading && (
+                      <div className="text-xs text-muted-foreground">Finding related notes...</div>
+                    )}
+                    {relatedError && (
+                      <div className="text-xs text-destructive">{relatedError}</div>
+                    )}
+                    {!relatedLoading && !relatedError && relatedThoughts.length === 0 && (
+                      <div className="text-xs text-muted-foreground">
+                        Keep typing to see lexical matches from your thought cache.
+                      </div>
+                    )}
+                    {relatedThoughts.map(match => (
+                      <button
+                        key={match.node.uuid}
+                        type="button"
+                        className="w-full rounded-md border border-border/70 bg-background px-2.5 py-2 text-left transition-colors hover:bg-muted/40"
+                        onClick={() => {
+                          setEditorPath(match.node.filePath)
+                          setMessage(`Opened ${match.node.filePath} in editor.`)
+                        }}
+                      >
+                        <div className="truncate text-xs font-medium text-foreground">{match.node.title}</div>
+                        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{match.node.filePath}</div>
+                        <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                          Score {Math.round(match.normalizedScore * 100)}% · {match.reasons.join(', ') || 'lexical'}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
 
               {assistSuggestion && (
@@ -687,7 +853,7 @@ function CreateTab() {
                 }}
                 placeholder="What's on your mind?"
                 toolbarAlwaysVisible
-                className="min-h-[clamp(520px,64dvh,860px)] rounded-lg border border-input overflow-hidden"
+                className="min-h-[400px] rounded-lg border border-input overflow-hidden"
               />
             </div>
 
