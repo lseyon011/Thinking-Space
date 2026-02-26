@@ -275,6 +275,28 @@ describe('vaultSyncOrch', () => {
     expect(await getNodeCount()).toBe(2)
   })
 
+  it('incrementalSync handles mixed timestamp units without rescanning unchanged files', async () => {
+    if (!fakeIdb) return
+
+    const { incrementalSync } = await import('@/services/orchestrators/vaultSyncOrch')
+
+    const fs = new FakeVaultFS()
+    const sinceSeconds = 1_700_000_000
+
+    const unchanged = createNote({ type: 'idea', title: 'Unchanged Idea' })
+    const updated = createNote({ type: 'idea', title: 'Updated Idea' })
+    fs.seedFile('ideas/unchanged.md', stringifyNote(unchanged), (sinceSeconds - 20) * 1000)
+    fs.seedFile('ideas/updated.md', stringifyNote(updated), (sinceSeconds + 20) * 1000)
+
+    // If unchanged file is incorrectly treated as updated due to unit mismatch, this test fails.
+    fs.failRead('ideas/unchanged.md')
+
+    const result = await incrementalSync(sinceSeconds, fs)
+    expect(result.errors).toHaveLength(0)
+    expect(result.parsedNodes).toBe(1)
+    expect(result.totalFiles).toBe(2)
+  })
+
   it('fullSync stores body excerpt', async () => {
     if (!fakeIdb) return
 
@@ -387,6 +409,13 @@ describe('vaultSyncOrch', () => {
     } finally {
       nowSpy.mockRestore()
     }
+  })
+
+  it('getLastSyncTimestamp normalizes millisecond values to seconds', async () => {
+    const { getLastSyncTimestamp } = await import('@/services/orchestrators/vaultSyncOrch')
+
+    localStorage.setItem('thinkingspace:lastSyncTimestamp', '1700000123000')
+    expect(getLastSyncTimestamp()).toBe(1700000123)
   })
 })
 

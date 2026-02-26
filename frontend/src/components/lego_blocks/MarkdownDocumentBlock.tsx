@@ -23,6 +23,7 @@ import {
   serializeExcalidrawSceneOrch,
   type ParsedExcalidrawScene,
 } from '@/services/orchestrators/excalidrawSceneOrch'
+import type { ExcalidrawCanvasApiOrch } from '@/services/orchestrators/excalidrawIntegrationOrch'
 import { useUILayoutBlock } from '@/components/lego_blocks/UILayoutBlock'
 import {
   buildObsidianOpenUrlOrch,
@@ -392,6 +393,7 @@ function MarkdownDocumentBlock({
   const lastScrollTopRef = useRef(0)
   const chromeCollapsedRef = useRef(false)
   const excalidrawSceneRef = useRef<ParsedExcalidrawScene | null>(null)
+  const excalidrawApiRef = useRef<ExcalidrawCanvasApiOrch | null>(null)
   const ignoreInitialExcalidrawChangeRef = useRef(true)
   const [hasExcalidrawChanges, setHasExcalidrawChanges] = useState(false)
   const [excalidrawImmersive, setExcalidrawImmersive] = useState(false)
@@ -418,6 +420,7 @@ function MarkdownDocumentBlock({
     markdownEditBaselineRef.current = null
     markdownCancelRevertInFlightRef.current = false
     excalidrawSceneRef.current = null
+    excalidrawApiRef.current = null
     ignoreInitialExcalidrawChangeRef.current = true
     clearAssistState()
     try {
@@ -880,7 +883,9 @@ function MarkdownDocumentBlock({
   }, [content, displayDraft, error, isEditing, isExcalidrawDoc, loading, path, showAiPanel])
 
   const handleExcalidrawSceneChange = useCallback((scene: ParsedExcalidrawScene) => {
-    excalidrawSceneRef.current = scene
+    if (!isIosSurface) {
+      excalidrawSceneRef.current = scene
+    }
 
     if (ignoreInitialExcalidrawChangeRef.current) {
       ignoreInitialExcalidrawChangeRef.current = false
@@ -888,6 +893,10 @@ function MarkdownDocumentBlock({
     }
 
     setHasExcalidrawChanges(true)
+  }, [isIosSurface])
+
+  const handleExcalidrawApiChange = useCallback((api: ExcalidrawCanvasApiOrch | null) => {
+    excalidrawApiRef.current = api
   }, [])
 
   const revertMarkdownToEditBaseline = useCallback(async () => {
@@ -1059,9 +1068,19 @@ function MarkdownDocumentBlock({
     setConflict(null)
 
     try {
-      if (content === null || !excalidrawSceneRef.current) return
+      if (content === null) return
+      const sceneForSave = excalidrawSceneRef.current ?? (() => {
+        const api = excalidrawApiRef.current
+        if (!api) return null
+        return {
+          elements: api.getSceneElementsBlock() as unknown[],
+          appState: api.getAppStateBlock(),
+          files: api.getFilesBlock(),
+        } satisfies ParsedExcalidrawScene
+      })()
+      if (!sceneForSave) return
       await yieldToNextFrame()
-      const contentToSave = serializeExcalidrawSceneOrch(content, excalidrawSceneRef.current)
+      const contentToSave = serializeExcalidrawSceneOrch(content, sceneForSave)
       if (contentToSave === content) {
         setHasExcalidrawChanges(false)
         return
@@ -1398,6 +1417,7 @@ function MarkdownDocumentBlock({
               content={excalidrawEditorContent}
               editable
               onSceneChange={handleExcalidrawSceneChange}
+              onApiChange={handleExcalidrawApiChange}
               filePath={path}
               onOpenPath={openLinkedPath}
               className="h-[52vh] sm:h-[60vh] lg:h-[72vh]"
@@ -1461,6 +1481,7 @@ function MarkdownDocumentBlock({
                 content={excalidrawEditorContent}
                 editable
                 onSceneChange={handleExcalidrawSceneChange}
+                onApiChange={handleExcalidrawApiChange}
                 filePath={path}
                 onOpenPath={openLinkedPath}
                 className="h-full"

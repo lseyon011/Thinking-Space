@@ -35,6 +35,7 @@ export interface VaultSyncOptions {
 
 const IOS_MAX_SYNC_FILE_SIZE_BYTES = 2 * 1024 * 1024
 const DEFAULT_MAX_SYNC_FILE_SIZE_BYTES = 12 * 1024 * 1024
+const MAX_REASONABLE_EPOCH_SECONDS = 10_000_000_000
 
 function resolveMaxSyncFileSizeBytes(options?: VaultSyncOptions): number {
   if (typeof options?.maxFileSizeBytes === 'number' && Number.isFinite(options.maxFileSizeBytes)) {
@@ -43,6 +44,12 @@ function resolveMaxSyncFileSizeBytes(options?: VaultSyncOptions): number {
   return getPlatformName() === 'ios'
     ? IOS_MAX_SYNC_FILE_SIZE_BYTES
     : DEFAULT_MAX_SYNC_FILE_SIZE_BYTES
+}
+
+function normalizeEpochSeconds(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0
+  // Some adapters can return epoch in milliseconds. Normalize to seconds for sync comparisons.
+  return value > MAX_REASONABLE_EPOCH_SECONDS ? (value / 1000) : value
 }
 
 // ── Public API ──
@@ -79,7 +86,8 @@ export async function incrementalSync(
   const allEntries = await vaultFs.walkVault(['.md'])
 
   // Find files modified since last sync
-  const updatedEntries = allEntries.filter(e => e.mtime > sinceTimestamp)
+  const sinceSeconds = normalizeEpochSeconds(sinceTimestamp)
+  const updatedEntries = allEntries.filter(e => normalizeEpochSeconds(e.mtime) > sinceSeconds)
 
   // Detect deleted files
   const currentPaths = new Set(allEntries.map(e => e.path))
@@ -136,7 +144,7 @@ export async function syncSingleFile(
 export function getLastSyncTimestamp(): number {
   try {
     const stored = localStorage.getItem('thinkingspace:lastSyncTimestamp')
-    return stored ? Number(stored) : 0
+    return stored ? normalizeEpochSeconds(Number(stored)) : 0
   } catch {
     return 0
   }
@@ -149,7 +157,7 @@ export function setLastSyncTimestamp(ts?: number): void {
   try {
     localStorage.setItem(
       'thinkingspace:lastSyncTimestamp',
-      String(ts ?? Math.floor(Date.now() / 1000)),
+      String(normalizeEpochSeconds(ts ?? Math.floor(Date.now() / 1000))),
     )
   } catch {
     // localStorage may not be available in some contexts

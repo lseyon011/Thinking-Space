@@ -89,6 +89,7 @@ interface ExcalidrawDocumentBlockProps {
   content: string
   editable?: boolean
   onSceneChange?: (scene: ParsedExcalidrawScene) => void
+  onApiChange?: (api: ExcalidrawCanvasApiOrch | null) => void
   filePath?: string
   onOpenPath?: (path: string) => void
   className?: string
@@ -96,11 +97,16 @@ interface ExcalidrawDocumentBlockProps {
 
 const IOS_MINIMAP_POINTER_UPDATE_INTERVAL_MS = 120
 const IOS_MINIMAP_POINTER_SETTLE_DELAY_MS = 220
+const IOS_MINIMAP_ZOOM_DELTA_EPSILON = 0.0005
+const IOS_MINIMAP_SCROLL_DELTA_EPSILON = 0.1
+const IOS_SCENE_CHANGE_SETTLE_DELAY_MS = 1200
+const IOS_SCENE_CHANGE_SETTLE_DELAY_LARGE_SCENE_MS = 1800
 
 export default function ExcalidrawDocumentBlock({
   content,
   editable = false,
   onSceneChange,
+  onApiChange,
   filePath,
   onOpenPath,
   className,
@@ -126,6 +132,8 @@ export default function ExcalidrawDocumentBlock({
   const scrollSettledTimeoutRef = useRef<number | null>(null)
   const lastScrollStateEmitAtRef = useRef(0)
   const pendingScrollRef = useRef({ scrollX: 0, scrollY: 0, zoom: 1 })
+  const lastViewportZoomSeenRef = useRef<number | null>(null)
+  const lastSceneChangeZoomSeenRef = useRef<number | null>(null)
   const sceneChangeFrameRef = useRef<number | null>(null)
   const sceneChangeTimeoutRef = useRef<number | null>(null)
   const lastSceneChangeEmitAtRef = useRef(0)
@@ -139,6 +147,13 @@ export default function ExcalidrawDocumentBlock({
     appState: Record<string, unknown>
     files: Record<string, unknown>
   } | null>(null)
+  const lastQueuedSceneRefsRef = useRef<{
+    elementsRef: readonly unknown[] | null
+    filesRef: Record<string, unknown> | null
+  }>({
+    elementsRef: null,
+    filesRef: null,
+  })
   const pencilPressureStateRef = useRef<PencilPressureStateOrch | null>(null)
   const lastPencilStyleRef = useRef<{ currentItemStrokeWidth: number; currentItemOpacity: number } | null>(null)
   const lastPencilStyleEmitAtRef = useRef(0)
@@ -215,6 +230,72 @@ export default function ExcalidrawDocumentBlock({
       })
     }, delay)
   }, [isIosSurface, isLargeScene, useLightweightMiniMapMode])
+
+  const shouldIgnoreIosMiniMapZoomEvent = useCallback((nextZoom: number): boolean => {
+    if (!useLightweightMiniMapMode || !Number.isFinite(nextZoom)) return false
+    const previousZoom = lastViewportZoomSeenRef.current
+    lastViewportZoomSeenRef.current = nextZoom
+    if (previousZoom === null) return false
+    return Math.abs(nextZoom - previousZoom) > IOS_MINIMAP_ZOOM_DELTA_EPSILON
+  }, [useLightweightMiniMapMode])
+
+  const shouldSkipIosSceneChangeForZoom = useCallback((nextZoom: number | null): boolean => {
+    if (!isIosSurface || nextZoom === null || !Number.isFinite(nextZoom)) return false
+    const previousZoom = lastSceneChangeZoomSeenRef.current
+    lastSceneChangeZoomSeenRef.current = nextZoom
+    if (previousZoom === null) return false
+    return Math.abs(nextZoom - previousZoom) > IOS_MINIMAP_ZOOM_DELTA_EPSILON
+  }, [isIosSurface])
+
+  const setMiniMapPendingScroll = useCallback((scrollX: number, scrollY: number, zoom: number): boolean => {
+    const previous = pendingScrollRef.current
+    const isIosMiniMap = useLightweightMiniMapMode
+    const next = isIosMiniMap
+      ? { scrollX, scrollY, zoom: previous.zoom }
+      : { scrollX, scrollY, zoom }
+    if (
+      Math.abs(next.scrollX - previous.scrollX) <= IOS_MINIMAP_SCROLL_DELTA_EPSILON
+      && Math.abs(next.scrollY - previous.scrollY) <= IOS_MINIMAP_SCROLL_DELTA_EPSILON
+      && Math.abs(next.zoom - previous.zoom) <= IOS_MINIMAP_ZOOM_DELTA_EPSILON
+    ) {
+      return false
+    }
+    pendingScrollRef.current = next
+    return true
+  }, [useLightweightMiniMapMode])
+
+  const scheduleMiniMapPointerStateFlush = useCallback(() => {
+    if (useLightweightMiniMapMode) {
+      const now = nowMs()
+      const elapsed = now - lastScrollStateEmitAtRef.current
+      if (scrollThrottleTimeoutRef.current === null) {
+        const delay = Math.max(0, IOS_MINIMAP_POINTER_UPDATE_INTERVAL_MS - elapsed)
+        scrollThrottleTimeoutRef.current = window.setTimeout(() => {
+          scrollThrottleTimeoutRef.current = null
+          lastScrollStateEmitAtRef.current = nowMs()
+          setScrollState(pendingScrollRef.current)
+        }, delay)
+      }
+      if (scrollSettledTimeoutRef.current !== null) {
+        window.clearTimeout(scrollSettledTimeoutRef.current)
+      }
+      scrollSettledTimeoutRef.current = window.setTimeout(() => {
+        scrollSettledTimeoutRef.current = null
+        if (scrollThrottleTimeoutRef.current !== null) {
+          window.clearTimeout(scrollThrottleTimeoutRef.current)
+          scrollThrottleTimeoutRef.current = null
+        }
+        lastScrollStateEmitAtRef.current = nowMs()
+        setScrollState(pendingScrollRef.current)
+      }, IOS_MINIMAP_POINTER_SETTLE_DELAY_MS)
+      return
+    }
+    if (scrollFrameRef.current !== null) return
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null
+      setScrollState(pendingScrollRef.current)
+    })
+  }, [useLightweightMiniMapMode])
 
   // ---------------------------------------------------------------------------
   // Deferred scene analysis
@@ -401,6 +482,51 @@ export default function ExcalidrawDocumentBlock({
     files: Record<string, unknown>
   }) => {
     if (!onSceneChange) return
+    if (isIosSurface) {
+      if (sceneChangeTimeoutRef.current !== null) {
+        window.clearTimeout(sceneChangeTimeoutRef.current)
+      }
+      const settleDelay = isLargeScene
+        ? IOS_SCENE_CHANGE_SETTLE_DELAY_LARGE_SCENE_MS
+        : IOS_SCENE_CHANGE_SETTLE_DELAY_MS
+      sceneChangeTimeoutRef.current = window.setTimeout(() => {
+        sceneChangeTimeoutRef.current = null
+        if (sceneChangeFrameRef.current !== null) {
+          window.cancelAnimationFrame(sceneChangeFrameRef.current)
+        }
+        sceneChangeFrameRef.current = window.requestAnimationFrame(() => {
+          sceneChangeFrameRef.current = null
+          const flushStarted = nowMs()
+          try {
+            onSceneChange({
+              elements: [],
+              appState: {},
+              files: {},
+            })
+          } catch (error) {
+            debugLog('scene_change_flush_error', {
+              message: error instanceof Error ? error.message : String(error),
+            })
+            return
+          }
+          pushGlobalExcalidrawPerfEvent({
+            name: 'scene_change_flush',
+            durationMs: nowMs() - flushStarted,
+            elementCount: 0,
+            ts: new Date().toISOString(),
+            meta: { mode: 'ios_settle' },
+          })
+          lastSceneChangeEmitAtRef.current = nowMs()
+        })
+      }, settleDelay)
+      return
+    }
+    if (
+      lastQueuedSceneRefsRef.current.elementsRef === params.elements
+      && lastQueuedSceneRefsRef.current.filesRef === params.files
+    ) {
+      return
+    }
     queuedSceneRef.current = params
     if (sceneChangeTimeoutRef.current !== null || sceneChangeFrameRef.current !== null) return
 
@@ -424,6 +550,10 @@ export default function ExcalidrawDocumentBlock({
             appState: queued.appState ?? {},
             files: queued.files ?? {},
           })
+          lastQueuedSceneRefsRef.current = {
+            elementsRef: queued.elements,
+            filesRef: queued.files,
+          }
         } catch (error) {
           debugLog('scene_change_flush_error', {
             message: error instanceof Error ? error.message : String(error),
@@ -440,6 +570,14 @@ export default function ExcalidrawDocumentBlock({
       })
     }, delay)
   }, [debugLog, isIosSurface, isLargeScene, onSceneChange])
+
+  useEffect(() => {
+    if (!onApiChange) return
+    onApiChange(excalidrawApi)
+    return () => {
+      onApiChange(null)
+    }
+  }, [excalidrawApi, onApiChange])
 
   // ---------------------------------------------------------------------------
   // Pencil pressure bridge
@@ -566,9 +704,12 @@ export default function ExcalidrawDocumentBlock({
     }
     onChangeLogCountRef.current = 0
     queuedSceneRef.current = null
+    lastQueuedSceneRefsRef.current = { elementsRef: null, filesRef: null }
     lastSceneChangeEmitAtRef.current = 0
     lastMiniMapEmitAtRef.current = 0
     lastScrollStateEmitAtRef.current = 0
+    lastViewportZoomSeenRef.current = null
+    lastSceneChangeZoomSeenRef.current = null
     if (sceneChangeTimeoutRef.current !== null) {
       window.clearTimeout(sceneChangeTimeoutRef.current)
       sceneChangeTimeoutRef.current = null
@@ -755,6 +896,8 @@ export default function ExcalidrawDocumentBlock({
     if (trackViewport) {
       setScrollState({ scrollX: viewport.scrollX, scrollY: viewport.scrollY, zoom: viewport.zoom })
       pendingScrollRef.current = { scrollX: viewport.scrollX, scrollY: viewport.scrollY, zoom: viewport.zoom }
+      lastViewportZoomSeenRef.current = viewport.zoom
+      lastSceneChangeZoomSeenRef.current = viewport.zoom
     }
     debugLog('api_ready', {
       appScrollX: viewport.scrollX, appScrollY: viewport.scrollY, appZoom: viewport.zoom,
@@ -815,37 +958,10 @@ export default function ExcalidrawDocumentBlock({
 
     const unsubscribe = trackViewport
       ? excalidrawApi.onViewportChangeBlock((nextViewport) => {
-        pendingScrollRef.current = nextViewport
-        if (useLightweightMiniMapMode) {
-          const now = nowMs()
-          const elapsed = now - lastScrollStateEmitAtRef.current
-          if (scrollThrottleTimeoutRef.current === null) {
-            const delay = Math.max(0, IOS_MINIMAP_POINTER_UPDATE_INTERVAL_MS - elapsed)
-            scrollThrottleTimeoutRef.current = window.setTimeout(() => {
-              scrollThrottleTimeoutRef.current = null
-              lastScrollStateEmitAtRef.current = nowMs()
-              setScrollState(pendingScrollRef.current)
-            }, delay)
-          }
-          if (scrollSettledTimeoutRef.current !== null) {
-            window.clearTimeout(scrollSettledTimeoutRef.current)
-          }
-          scrollSettledTimeoutRef.current = window.setTimeout(() => {
-            scrollSettledTimeoutRef.current = null
-            if (scrollThrottleTimeoutRef.current !== null) {
-              window.clearTimeout(scrollThrottleTimeoutRef.current)
-              scrollThrottleTimeoutRef.current = null
-            }
-            lastScrollStateEmitAtRef.current = nowMs()
-            setScrollState(pendingScrollRef.current)
-          }, IOS_MINIMAP_POINTER_SETTLE_DELAY_MS)
-          return
-        }
-        if (scrollFrameRef.current !== null) return
-        scrollFrameRef.current = window.requestAnimationFrame(() => {
-          scrollFrameRef.current = null
-          setScrollState(pendingScrollRef.current)
-        })
+        if (shouldIgnoreIosMiniMapZoomEvent(nextViewport.zoom)) return
+        const didChange = setMiniMapPendingScroll(nextViewport.scrollX, nextViewport.scrollY, nextViewport.zoom)
+        if (!didChange) return
+        scheduleMiniMapPointerStateFlush()
       })
       : null
     viewportSubscriptionActiveRef.current = unsubscribe !== null
@@ -869,7 +985,9 @@ export default function ExcalidrawDocumentBlock({
   }, [
     containerSize.height, containerSize.width, countDrawableCentersInViewport,
     debugLog, editable, excalidrawApi, miniMapBounds, parsedScene,
-    disableAutoCenterForRuntime, queueMiniMapElements, sceneBounds, scheduleAutoCenter, syncActiveHighlighterPresetFromAppState, useLightweightMiniMapMode,
+    disableAutoCenterForRuntime, queueMiniMapElements, sceneBounds, scheduleAutoCenter,
+    scheduleMiniMapPointerStateFlush, setMiniMapPendingScroll, shouldIgnoreIosMiniMapZoomEvent,
+    syncActiveHighlighterPresetFromAppState, useLightweightMiniMapMode,
   ])
 
   // ---------------------------------------------------------------------------
@@ -1021,42 +1139,21 @@ export default function ExcalidrawDocumentBlock({
               const scrollY = typeof typedAppState.scrollY === 'number' && Number.isFinite(typedAppState.scrollY)
                 ? typedAppState.scrollY : null
               if (zoom !== null && scrollX !== null && scrollY !== null) {
-                pendingScrollRef.current = { scrollX, scrollY, zoom }
-                if (useLightweightMiniMapMode) {
-                  const now = nowMs()
-                  const elapsed = now - lastScrollStateEmitAtRef.current
-                  if (scrollThrottleTimeoutRef.current === null) {
-                    const delay = Math.max(0, IOS_MINIMAP_POINTER_UPDATE_INTERVAL_MS - elapsed)
-                    scrollThrottleTimeoutRef.current = window.setTimeout(() => {
-                      scrollThrottleTimeoutRef.current = null
-                      lastScrollStateEmitAtRef.current = nowMs()
-                      setScrollState(pendingScrollRef.current)
-                    }, delay)
+                if (!shouldIgnoreIosMiniMapZoomEvent(zoom)) {
+                  const didChange = setMiniMapPendingScroll(scrollX, scrollY, zoom)
+                  if (didChange) {
+                    scheduleMiniMapPointerStateFlush()
                   }
-                  if (scrollSettledTimeoutRef.current !== null) {
-                    window.clearTimeout(scrollSettledTimeoutRef.current)
-                  }
-                  scrollSettledTimeoutRef.current = window.setTimeout(() => {
-                    scrollSettledTimeoutRef.current = null
-                    if (scrollThrottleTimeoutRef.current !== null) {
-                      window.clearTimeout(scrollThrottleTimeoutRef.current)
-                      scrollThrottleTimeoutRef.current = null
-                    }
-                    lastScrollStateEmitAtRef.current = nowMs()
-                    setScrollState(pendingScrollRef.current)
-                  }, IOS_MINIMAP_POINTER_SETTLE_DELAY_MS)
-                } else if (scrollFrameRef.current === null) {
-                  scrollFrameRef.current = window.requestAnimationFrame(() => {
-                    scrollFrameRef.current = null
-                    setScrollState(pendingScrollRef.current)
-                  })
                 }
               }
             }
             if (editable) {
               queueMiniMapElements(elements)
             }
-            queueSceneChange({ elements, appState: typedAppState, files: typedFiles })
+            const shouldSkipSceneChange = shouldSkipIosSceneChangeForZoom(readZoomFromAppState(typedAppState))
+            if (!shouldSkipSceneChange) {
+              queueSceneChange({ elements, appState: typedAppState, files: typedFiles })
+            }
           }}
           UIOptions={uiOptions as any}
         />

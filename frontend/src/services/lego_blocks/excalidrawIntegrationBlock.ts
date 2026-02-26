@@ -10,6 +10,7 @@ export interface ExcalidrawCanvasApiBlock {
   getSceneElementsBlock(): readonly unknown[]
   getSceneElementsIncludingDeletedBlock(): readonly unknown[]
   getAppStateBlock(): Record<string, unknown>
+  getFilesBlock(): Record<string, unknown>
   getViewportStateBlock(): ExcalidrawViewportStateBlock
   updateAppStateBlock(next: Record<string, unknown>): void
   updateViewportBlock(next: Partial<ExcalidrawViewportStateBlock>): void
@@ -21,6 +22,7 @@ interface RawExcalidrawApi {
   getSceneElements?: () => readonly unknown[]
   getSceneElementsIncludingDeleted?: () => readonly unknown[]
   getAppState?: () => Record<string, unknown>
+  getFiles?: () => Record<string, unknown>
   updateScene?: (scene: { appState?: Record<string, unknown> }) => void
   scrollToContent?: (
     elements: readonly unknown[],
@@ -76,6 +78,7 @@ export function createExcalidrawCanvasApiBlock(rawApi: unknown): ExcalidrawCanva
     getSceneElementsBlock: () => rawApi.getSceneElements?.() ?? [],
     getSceneElementsIncludingDeletedBlock: () => rawApi.getSceneElementsIncludingDeleted?.() ?? [],
     getAppStateBlock: () => ({ ...(rawApi.getAppState?.() ?? {}) }),
+    getFilesBlock: () => ({ ...(rawApi.getFiles?.() ?? {}) }),
     getViewportStateBlock: () => readViewportState(rawApi),
     updateAppStateBlock: (next) => {
       const patch = Object.entries(next).reduce<Record<string, unknown>>((acc, [key, value]) => {
