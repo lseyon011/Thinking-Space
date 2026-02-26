@@ -10,6 +10,17 @@ import {
 } from 'lucide-react'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
+import {
+  EXPLORER_PERSISTENCE_PREFIX,
+  getLeafName,
+  getParentPath,
+  hasNodeDragType,
+  joinPath,
+  normalizePersistedExpandedPaths,
+  type PersistedExplorerState,
+  readDroppedNodeId,
+  readPersistedExplorerState,
+} from '@/components/lego_blocks/units/VaultExplorerUtilsBlock'
 import { cn } from '@/lib/utils'
 
 interface FolderEntries {
@@ -68,76 +79,10 @@ interface VaultExplorerBlockProps {
   className?: string
 }
 
-interface PersistedExplorerState {
-  expandedPaths?: string[]
-  selectedFolderPath?: string | null
-  selectedFilePath?: string | null
-}
-
-const EXPLORER_PERSISTENCE_PREFIX = 'ltm.vaultExplorer.state.v1'
-
-function normalizePersistedExpandedPaths(value: unknown): string[] {
-  const list = Array.isArray(value)
-    ? value
-      .filter((item): item is string => typeof item === 'string')
-      .map(item => item.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
-    : []
-  const unique = new Set<string>([''])
-  for (const path of list) {
-    if (!path) continue
-    unique.add(path)
-  }
-  return [...unique]
-}
-
-function readPersistedExplorerState(storageKey: string): PersistedExplorerState | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const raw = window.localStorage.getItem(storageKey)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as PersistedExplorerState
-    if (!parsed || typeof parsed !== 'object') return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-function joinPath(parent: string, name: string): string {
-  return parent ? `${parent}/${name}` : name
-}
-
 function getFileIcon(name: string) {
   const lower = name.toLowerCase()
   if (lower.endsWith('.md')) return FileText
   return File
-}
-
-function getParentPath(path: string): string {
-  const idx = path.lastIndexOf('/')
-  if (idx < 0) return ''
-  return path.slice(0, idx)
-}
-
-function getLeafName(path: string): string {
-  const idx = path.lastIndexOf('/')
-  if (idx < 0) return path
-  return path.slice(idx + 1)
-}
-
-function hasNodeDragType(event: React.DragEvent): boolean {
-  const types = Array.from(event.dataTransfer.types)
-  return types.includes('application/x-ltm-node-id') || types.includes('text/ltm-node-id')
-}
-
-function readDroppedNodeId(event: React.DragEvent): string | null {
-  const explicit = event.dataTransfer.getData('application/x-ltm-node-id').trim()
-  if (explicit) return explicit
-  const textFallback = event.dataTransfer.getData('text/ltm-node-id').trim()
-  if (textFallback) return textFallback
-  const plain = event.dataTransfer.getData('text/plain').trim()
-  if (plain.startsWith('ltm-node:')) return plain.slice('ltm-node:'.length).trim() || null
-  return null
 }
 
 export default function VaultExplorerBlock({
