@@ -2,24 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDown,
   ArrowUp,
-  BookOpen,
   Check,
   ChevronRight,
   Copy,
-  Folder,
   FolderTree,
   Info,
   Layers,
-  Lightbulb,
-  ListChecks,
   Loader2,
-  MessageSquare,
-  Handshake,
-  Play,
-  Plus,
-  X,
 } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/ui/button'
+import { BacklogInlineCreateBlock } from '@/components/lego_blocks/BacklogInlineCreateBlock'
+import { BacklogInlineNotesEditorBlock } from '@/components/lego_blocks/BacklogInlineNotesEditorBlock'
 import {
   Select,
   SelectContent,
@@ -30,131 +23,45 @@ import {
   NodeStatusBadgeBlock,
   NodeStatusSelectBlock,
 } from '@/components/lego_blocks/NodeStatusBlock'
+import { ProgramGroupHeaderBlock } from '@/components/lego_blocks/ProgramGroupHeaderBlock'
 import type { NodeRecord } from '@/services/lego_blocks/dbBlock'
 import {
-  normalizeTagBlock,
-  normalizeTagListBlock,
   tagColorClassBlock,
   tagColorStyleBlock,
   tagLookupKeyBlock,
 } from '@/services/lego_blocks/tagBlock'
-import type { NodePriority, NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/yamlNoteBlock'
+import type { NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/yamlNoteBlock'
+import {
+  allowedCreateTypes,
+  compactTagList,
+  copyTextToClipboard,
+  EPIC_BORDER_PALETTE,
+  EPIC_ICON_COLOR_BY_BORDER,
+  formatRowOrdinal,
+  getTaskStatusBadge,
+  hasNodeDragType,
+  iconColorForNodeType,
+  iconForNodeType,
+  isTaskNode,
+  NEW_ROW_HIGHLIGHT_MS,
+  normalizePath,
+  nodeDisplayTitle,
+  nodeTitleWithoutTicket,
+  notesSignature,
+  PriorityDot,
+  readDroppedNodeId,
+  reorderNodesWithEdge,
+  ROOT_INPUT_KEY,
+  selectedPresetTagsForNode,
+  sortNodesForDisplay,
+  TaskStatusBadge,
+  taskStatusLabel,
+  TASK_STATUS_COLORS,
+  TASK_STATUS_OPTIONS,
+  type DropEdge,
+  type TaskStatusOption,
+} from '@/components/lego_blocks/BacklogListHelpersBlock'
 import { cn } from '@/lib/utils'
-
-function iconForNodeType(type: NodeType) {
-  if (type === 'program') return FolderTree
-  if (type === 'epic') return Layers
-  if (type === 'idea_bucket') return BookOpen
-  if (type === 'idea') return Lightbulb
-  if (type === 'thought_bucket') return Folder
-  if (type === 'thought') return MessageSquare
-  if (type === 'task') return ListChecks
-  if (type === 'run') return Play
-  if (type === 'handoff') return Handshake
-  return Lightbulb
-}
-
-function iconColorForNodeType(type: NodeType): string {
-  if (type === 'program') return 'text-sky-600'
-  if (type === 'epic') return 'text-violet-600'
-  if (type === 'idea_bucket') return 'text-indigo-600'
-  if (type === 'idea') return 'text-amber-600'
-  if (type === 'thought_bucket') return 'text-emerald-600'
-  if (type === 'thought') return 'text-cyan-600'
-  if (type === 'task') return 'text-rose-600'
-  if (type === 'run') return 'text-blue-700'
-  if (type === 'handoff') return 'text-fuchsia-700'
-  return 'text-muted-foreground'
-}
-
-const TASK_STATUS_COLORS = {
-  ready: 'bg-indigo-500/15 text-indigo-700',
-  in_progress: 'bg-emerald-500/15 text-emerald-700',
-  blocked: 'bg-amber-500/15 text-amber-700',
-  done: 'bg-blue-500/15 text-blue-700',
-  cancelled: 'bg-zinc-500/15 text-zinc-500',
-} as const
-const TASK_STATUS_OPTIONS = ['ready', 'in_progress', 'blocked', 'done', 'cancelled'] as const
-type TaskStatusOption = (typeof TASK_STATUS_OPTIONS)[number]
-
-const PRIORITY_COLORS: Record<NonNullable<NodePriority>, string> = {
-  low: 'bg-zinc-400',
-  medium: 'bg-blue-400',
-  high: 'bg-amber-400',
-  critical: 'bg-red-500',
-}
-
-function taskStatusLabel(taskStatus: TaskStatusOption): string {
-  return taskStatus.replace(/_/g, ' ')
-}
-
-const EPIC_BORDER_PALETTE = [
-  'border-l-blue-500',
-  'border-l-violet-500',
-  'border-l-emerald-500',
-  'border-l-amber-500',
-  'border-l-rose-500',
-  'border-l-cyan-500',
-  'border-l-fuchsia-500',
-  'border-l-lime-500',
-]
-
-const EPIC_ICON_COLOR_BY_BORDER: Record<string, string> = {
-  'border-l-blue-500': 'text-blue-600',
-  'border-l-violet-500': 'text-violet-600',
-  'border-l-emerald-500': 'text-emerald-600',
-  'border-l-amber-500': 'text-amber-600',
-  'border-l-rose-500': 'text-rose-600',
-  'border-l-cyan-500': 'text-cyan-600',
-  'border-l-fuchsia-500': 'text-fuchsia-600',
-  'border-l-lime-500': 'text-lime-600',
-}
-
-const NEW_ROW_HIGHLIGHT_MS = 2200
-
-function formatRowOrdinal(index: number): string {
-  if (!Number.isFinite(index) || index < 0) return '0'
-  return String(index + 1)
-}
-
-function normalizePath(value: string): string {
-  return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
-}
-
-function selectedPresetTagsForNode(
-  node: NodeRecord,
-  projectPresetTagsByRoot: Record<string, string[]>,
-): string[] {
-  const projectRoot = normalizePath(node.projectRoot ?? '')
-  if (!projectRoot) return []
-  const presetTags = projectPresetTagsByRoot[projectRoot] ?? []
-  if (presetTags.length === 0 || node.tags.length === 0) return []
-  const presetLookup = new Set(presetTags.map(tag => normalizeTagBlock(tag).toLowerCase()).filter(Boolean))
-  return node.tags.filter(tag => presetLookup.has(normalizeTagBlock(tag).toLowerCase()))
-}
-
-function compactTagList(tags: string[], limit = 3): { visible: string[]; hiddenCount: number } {
-  if (tags.length <= limit) return { visible: tags, hiddenCount: 0 }
-  return {
-    visible: tags.slice(0, limit),
-    hiddenCount: tags.length - limit,
-  }
-}
-
-function TaskStatusBadge({ taskStatus }: { taskStatus: TaskStatusOption }) {
-  return (
-    <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium', TASK_STATUS_COLORS[taskStatus])}>
-      {taskStatus}
-    </span>
-  )
-}
-
-function PriorityDot({ priority }: { priority?: NodePriority }) {
-  if (!priority) return null
-  return (
-    <span className={cn('inline-block h-2 w-2 shrink-0 rounded-full', PRIORITY_COLORS[priority])} title={priority} />
-  )
-}
 
 interface ChildState {
   loading: boolean
@@ -168,9 +75,6 @@ interface ProgramGroupEntryBlock {
   name: string
   collapsed?: boolean
 }
-
-const ROOT_INPUT_KEY = '__root__'
-type DropEdge = 'before' | 'after'
 
 export interface BacklogListBlockProps {
   programs: NodeRecord[]
@@ -204,167 +108,6 @@ export interface BacklogListBlockProps {
   onUpdateNodeNotes?: (node: NodeRecord, description: string, comments: YAMLCommentEntry[]) => Promise<NodeRecord | void>
 }
 
-function nodeTypeLabel(type: NodeType): string {
-  const labels: Record<NodeType, string> = {
-    program: 'Program',
-    epic: 'Epic',
-    idea_bucket: 'Idea Bucket',
-    idea: 'Idea',
-    thought_bucket: 'Thought Bucket',
-    thought: 'Thought',
-    task: 'Task',
-    run: 'Run',
-    handoff: 'Handoff',
-  }
-  return labels[type]
-}
-
-function allowedCreateTypes(parent: NodeRecord | null): NodeType[] {
-  if (!parent) return ['program']
-  const all: NodeType[] = ['epic', 'idea_bucket', 'idea', 'thought_bucket', 'thought', 'task', 'run', 'handoff']
-  const preferred: NodeType =
-    parent.type === 'program' ? 'epic'
-      : parent.type === 'epic' ? 'epic'
-        : parent.type === 'idea_bucket' ? 'idea'
-          : parent.type === 'idea' ? 'thought_bucket'
-            : parent.type === 'thought_bucket' ? 'thought'
-              : 'thought'
-  return [preferred, ...all.filter(type => type !== preferred)]
-}
-
-function hasNodeDragType(event: React.DragEvent): boolean {
-  const types = Array.from(event.dataTransfer.types)
-  return types.includes('application/x-ltm-node-id') || types.includes('text/ltm-node-id')
-}
-
-function readDroppedNodeId(event: React.DragEvent): string | null {
-  const explicit = event.dataTransfer.getData('application/x-ltm-node-id').trim()
-  if (explicit) return explicit
-  const textFallback = event.dataTransfer.getData('text/ltm-node-id').trim()
-  if (textFallback) return textFallback
-  const plain = event.dataTransfer.getData('text/plain').trim()
-  if (plain.startsWith('ltm-node:')) return plain.slice('ltm-node:'.length).trim() || null
-  return null
-}
-
-function nodeDisplayTitle(node: NodeRecord): string {
-  const title = node.title?.trim() ?? ''
-  const ticket = node.ticket?.trim() ?? ''
-  if (!ticket) return title
-  if (!title) return ticket
-  if (title.startsWith(ticket)) return title
-  return `${ticket} - ${title}`
-}
-
-function nodeTitleWithoutTicket(node: NodeRecord): string {
-  const title = node.title?.trim() ?? ''
-  const ticket = node.ticket?.trim() ?? ''
-  if (!ticket) return title
-  if (!title) return ''
-  if (title === ticket) return ''
-  if (title.startsWith(`${ticket} - `)) return title.slice(ticket.length + 3).trim()
-  if (title.startsWith(`${ticket} `)) return title.slice(ticket.length + 1).trim()
-  return title
-}
-
-async function copyTextToClipboard(text: string): Promise<void> {
-  const normalized = text.trim()
-  if (!normalized) return
-
-  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(normalized)
-    return
-  }
-
-  if (typeof document === 'undefined') {
-    throw new Error('Clipboard API is unavailable in this runtime.')
-  }
-
-  const textarea = document.createElement('textarea')
-  textarea.value = normalized
-  textarea.setAttribute('readonly', '')
-  textarea.style.position = 'fixed'
-  textarea.style.left = '-9999px'
-  document.body.appendChild(textarea)
-  textarea.focus()
-  textarea.select()
-  const copied = document.execCommand('copy')
-  document.body.removeChild(textarea)
-  if (!copied) {
-    throw new Error('Failed to copy text to clipboard.')
-  }
-}
-
-function isTaskNode(node: NodeRecord): boolean {
-  return node.type === 'task' || node.recordKind === 'task' || !!node.taskStatus
-}
-
-function normalizeTaskStatus(value: string | undefined): keyof typeof TASK_STATUS_COLORS | null {
-  if (!value) return null
-  const canonical = value.trim().toLowerCase().replace(/\s+/g, '_')
-  if (!canonical) return null
-  if (canonical === 'inprogress' || canonical === 'doing' || canonical === 'underway') return 'in_progress'
-  if (canonical === 'open' || canonical === 'todo' || canonical === 'to_do' || canonical === 'pending' || canonical === 'backlog') return 'ready'
-  if (canonical === 'stuck' || canonical === 'waiting' || canonical === 'on_hold' || canonical === 'paused') return 'blocked'
-  if (canonical === 'complete' || canonical === 'completed' || canonical === 'closed' || canonical === 'resolved' || canonical === 'shipped') return 'done'
-  if (canonical === 'archived' || canonical === 'canceled' || canonical === 'dropped') return 'cancelled'
-  if (canonical in TASK_STATUS_COLORS) return canonical as keyof typeof TASK_STATUS_COLORS
-  return null
-}
-
-function taskStatusFromNodeStatus(status: NodeStatus): TaskStatusOption {
-  if (status === 'completed') return 'done'
-  if (status === 'archived' || status === 'cancelled') return 'cancelled'
-  if (status === 'incomplete') return 'ready'
-  if (status === 'paused') return 'blocked'
-  return 'in_progress'
-}
-
-function getTaskStatusBadge(node: NodeRecord): TaskStatusOption {
-  return normalizeTaskStatus(node.taskStatus) ?? taskStatusFromNodeStatus(node.status)
-}
-
-function notesSignature(description: string, comments: YAMLCommentEntry[]): string {
-  return JSON.stringify({
-    description: description.trim(),
-    comments,
-  })
-}
-
-function displaySortOrder(node: Pick<NodeRecord, 'sortOrder'>): number {
-  return typeof node.sortOrder === 'number' && Number.isFinite(node.sortOrder)
-    ? node.sortOrder
-    : Number.POSITIVE_INFINITY
-}
-
-function compareNodeDisplayOrder(a: NodeRecord, b: NodeRecord): number {
-  const byOrder = displaySortOrder(a) - displaySortOrder(b)
-  if (byOrder !== 0) return byOrder
-  const byTitle = a.title.localeCompare(b.title)
-  if (byTitle !== 0) return byTitle
-  return a.key.localeCompare(b.key)
-}
-
-function sortNodesForDisplay(nodes: NodeRecord[]): NodeRecord[] {
-  return [...nodes].sort(compareNodeDisplayOrder)
-}
-
-function reorderNodesWithEdge(
-  nodes: NodeRecord[],
-  sourceId: string,
-  targetId: string,
-  edge: DropEdge,
-): NodeRecord[] | null {
-  const sourceNode = nodes.find(node => node.uuid === sourceId)
-  if (!sourceNode) return null
-  const withoutSource = nodes.filter(node => node.uuid !== sourceId)
-  const targetIndex = withoutSource.findIndex(node => node.uuid === targetId)
-  if (targetIndex < 0) return null
-
-  const insertAt = edge === 'after' ? targetIndex + 1 : targetIndex
-  withoutSource.splice(insertAt, 0, sourceNode)
-  return withoutSource
-}
 
 export default function BacklogListBlock({
   programs,
@@ -1108,102 +851,25 @@ export default function BacklogListBlock({
     )
   }, [])
 
-  const renderInlineNotesEditor = useCallback((node: NodeRecord, depthPadding: number) => {
-    if (readOnly || !onUpdateNodeNotes) return null
-    if (inlineNotesNode?.uuid !== node.uuid) return null
-    const inlineTags = normalizeTagListBlock(node.tags ?? [])
-
-    return (
-      <div
-        className="border-t border-border/60 bg-muted/25 px-3 py-2.5"
-        style={{ paddingLeft: `${depthPadding}px` }}
-        onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
-      >
-        <div className="space-y-2">
-          <div className="space-y-1">
-            <label className="text-[11px] font-medium text-muted-foreground">Tags</label>
-            {inlineTags.length > 0 ? (
-              <div className="flex flex-wrap gap-1">
-                {inlineTags.map(tag => (
-                  <span
-                    key={`${node.uuid}-inline-tag-${tag}`}
-                    className={cn(
-                      'rounded-full border px-1.5 py-0.5 text-[10px] leading-none',
-                      tagColorClassBlock(tag, 'solid'),
-                    )}
-                    style={tagColorStyleBlock(tag, 'solid', lookupTagColor(node, tag))}
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <div className="text-[11px] text-muted-foreground">No tags yet.</div>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[11px] font-medium text-muted-foreground">Description</label>
-            <textarea
-              value={inlineNotesDescriptionDraft}
-              onChange={(event) => setInlineNotesDescriptionDraft(event.target.value)}
-              placeholder="Add description..."
-              className="min-h-[72px] w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-[11px] font-medium text-muted-foreground">Comments</div>
-            {inlineNotesCommentsDraft.length > 0 ? (
-              <div className="max-h-32 space-y-1 overflow-y-auto pr-1">
-                {inlineNotesCommentsDraft.map((comment, index) => (
-                  <div key={`${comment.text}-${comment.added_at ?? index}`} className="flex items-start justify-between gap-2 rounded-md border border-border/60 bg-background/70 px-2 py-1 text-xs">
-                    <div className="min-w-0 flex-1">
-                      <div className="break-words text-foreground">{comment.text}</div>
-                      <div className="text-[10px] text-muted-foreground">
-                        {comment.added_by ?? 'unknown'} · {comment.added_at ? new Date(comment.added_at).toLocaleString() : 'time unknown'}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeInlineCommentDraft(index)}
-                      className="rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                    >
-                      remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-[11px] text-muted-foreground">No comments yet.</div>
-            )}
-
-            <div className="flex items-center gap-2">
-              <input
-                value={inlineNotesCommentDraft}
-                onChange={(event) => setInlineNotesCommentDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    addInlineCommentDraft()
-                  }
-                }}
-                placeholder="Add a comment..."
-                className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={addInlineCommentDraft}>
-                Add
-              </Button>
-            </div>
-
-            <div className="text-[11px] text-muted-foreground">
-              {inlineNotesSaving ? 'Auto-saving...' : (inlineNotesDirty ? 'Unsaved changes' : 'Auto-save on')}
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }, [
+  const renderInlineNotesEditor = useCallback((node: NodeRecord, depthPadding: number) => (
+    <BacklogInlineNotesEditorBlock
+      node={node}
+      depthPadding={depthPadding}
+      isOpen={inlineNotesNode?.uuid === node.uuid}
+      readOnly={readOnly}
+      canEditNotes={!!onUpdateNodeNotes}
+      descriptionDraft={inlineNotesDescriptionDraft}
+      commentsDraft={inlineNotesCommentsDraft}
+      commentDraft={inlineNotesCommentDraft}
+      saving={inlineNotesSaving}
+      dirty={inlineNotesDirty}
+      lookupTagColor={lookupTagColor}
+      onDescriptionDraftChange={setInlineNotesDescriptionDraft}
+      onCommentDraftChange={setInlineNotesCommentDraft}
+      onAddComment={addInlineCommentDraft}
+      onRemoveComment={removeInlineCommentDraft}
+    />
+  ), [
     addInlineCommentDraft,
     inlineNotesCommentDraft,
     inlineNotesCommentsDraft,
@@ -1224,70 +890,28 @@ export default function BacklogListBlock({
     const selectedType = draftTypeByKey[draftKey] && allowedTypes.includes(draftTypeByKey[draftKey])
       ? draftTypeByKey[draftKey]
       : allowedTypes[0]
-    const selectedTypeLabel = nodeTypeLabel(selectedType)
 
     return (
-      <div className="space-y-2 border-t border-border/70 bg-background px-3 py-2">
-        <div className="flex items-center gap-2">
-          <select
-            value={selectedType}
-            onChange={e => {
-              const nextType = e.target.value as NodeType
-              setDraftTypeByKey(prev => ({ ...prev, [draftKey]: nextType }))
-            }}
-            className="h-7 shrink-0 rounded-md border border-input bg-background px-2 text-[11px] text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            {allowedTypes.map(type => (
-              <option key={`${draftKey}-${type}`} value={type}>
-                {nodeTypeLabel(type)}
-              </option>
-            ))}
-          </select>
-          <input
-            value={drafts[draftKey] ?? ''}
-            onChange={e => setDraft(draftKey, e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                void createUnder(parent, draftKey)
-              }
-            }}
-            placeholder={`${placeholder} (${selectedTypeLabel})`}
-            className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 px-2 text-xs"
-            disabled={busyCreate[draftKey]}
-            onClick={() => { void createUnder(parent, draftKey) }}
-          >
-            {busyCreate[draftKey] ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-          </Button>
-        </div>
-        <div className="grid gap-2 md:grid-cols-2">
-          <textarea
-            value={descriptionDrafts[draftKey] ?? ''}
-            onChange={event => {
-              const next = event.target.value
-              setDescriptionDrafts(prev => ({ ...prev, [draftKey]: next }))
-            }}
-            rows={2}
-            placeholder="Description (optional)"
-            className="min-h-[64px] w-full resize-y rounded-md border border-input bg-background px-2 py-1.5 text-xs leading-snug focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          <textarea
-            value={commentDrafts[draftKey] ?? ''}
-            onChange={event => {
-              const next = event.target.value
-              setCommentDrafts(prev => ({ ...prev, [draftKey]: next }))
-            }}
-            rows={2}
-            placeholder="Comment (optional)"
-            className="min-h-[64px] w-full resize-y rounded-md border border-input bg-background px-2 py-1.5 text-xs leading-snug focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-        </div>
-      </div>
+      <BacklogInlineCreateBlock
+        allowedTypes={allowedTypes}
+        selectedType={selectedType}
+        titleDraft={drafts[draftKey] ?? ''}
+        descriptionDraft={descriptionDrafts[draftKey] ?? ''}
+        commentDraft={commentDrafts[draftKey] ?? ''}
+        busy={!!busyCreate[draftKey]}
+        placeholder={placeholder}
+        onTypeChange={(nextType) => {
+          setDraftTypeByKey(prev => ({ ...prev, [draftKey]: nextType }))
+        }}
+        onTitleChange={(nextTitle) => setDraft(draftKey, nextTitle)}
+        onDescriptionChange={(nextDescription) => {
+          setDescriptionDrafts(prev => ({ ...prev, [draftKey]: nextDescription }))
+        }}
+        onCommentChange={(nextComment) => {
+          setCommentDrafts(prev => ({ ...prev, [draftKey]: nextComment }))
+        }}
+        onSubmit={() => { void createUnder(parent, draftKey) }}
+      />
     )
   }, [busyCreate, commentDrafts, createUnder, descriptionDrafts, draftTypeByKey, drafts, readOnly, setDraft])
 
@@ -1786,42 +1410,14 @@ export default function BacklogListBlock({
             const groupedPrograms = groupedProgramsByGroupId.grouped.get(group.id) ?? []
             return (
               <div key={`program-group-${group.id}`} className="space-y-2">
-                <div className="flex items-center gap-2 px-1">
-                  <button
-                    type="button"
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors',
-                      allowProgramLayoutEditing
-                        ? 'border border-border/60 bg-muted/25 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground'
-                        : 'bg-zinc-800/90 text-sm font-semibold text-white hover:bg-zinc-700',
-                    )}
-                    onClick={() => onToggleProgramGroupCollapsed?.(group.id)}
-                    title={group.collapsed ? 'Expand group' : 'Collapse group'}
-                  >
-                    <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', group.collapsed ? '' : 'rotate-90')} />
-                    <span>{group.name}</span>
-                    <span
-                      className={cn(
-                        'rounded-full px-1.5 py-0 text-[10px] leading-none',
-                        allowProgramLayoutEditing
-                          ? 'border border-border/70 text-muted-foreground'
-                          : 'bg-white/20 text-white',
-                      )}
-                    >
-                      {groupedPrograms.length}
-                    </span>
-                  </button>
-                  {allowProgramLayoutEditing && onDeleteProgramGroup && (
-                    <button
-                      type="button"
-                      className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      onClick={() => onDeleteProgramGroup(group.id)}
-                      title={`Delete group ${group.name}`}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
+                <ProgramGroupHeaderBlock
+                  name={group.name}
+                  collapsed={group.collapsed}
+                  count={groupedPrograms.length}
+                  allowEdit={allowProgramLayoutEditing}
+                  onToggle={() => onToggleProgramGroupCollapsed?.(group.id)}
+                  onDelete={allowProgramLayoutEditing && onDeleteProgramGroup ? () => onDeleteProgramGroup(group.id) : undefined}
+                />
                 {!group.collapsed && (
                   groupedPrograms.length > 0 ? (
                     <div className="space-y-2">
