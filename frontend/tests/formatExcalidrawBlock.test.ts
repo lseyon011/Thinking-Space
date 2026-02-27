@@ -87,4 +87,48 @@ describe('formatExcalidrawBlock', () => {
     expect(output).toContain('## Chapter 2: How the Grid Got Its Wires')
     expect(output).toContain('### Chapter 2 Part 1')
   })
+
+  it('maps numeric-space contents entries to chapter headings and splits long chapters', () => {
+    const longChapterBody = Array.from({ length: 2200 }, (_, index) => `grain${index + 1}`).join(' ')
+    const input = [
+      '## Contents',
+      '1 Homo Faber',
+      '2 Built upon Sand',
+      '',
+      '### Introduction',
+      'Context before chapters.',
+      '',
+      '## Homo Faber',
+      longChapterBody,
+      '',
+      '## Built upon Sand',
+      'Short second chapter.',
+    ].join('\n')
+
+    const output = formatMarkdown(input, DEFAULT_OPTIONS)
+
+    expect(output).toContain('## Chapter 1: Homo Faber')
+    expect(output).toContain('### Chapter 1 Part 1')
+    expect(output).toContain('### Chapter 1 Part 2')
+    expect(output).toContain('## Chapter 2: Built upon Sand')
+    expect(output).toContain('### Chapter 2 Part 1')
+  })
+
+  it('failsafe splits any oversized heading block into parts', () => {
+    const longSectionBody = Array.from({ length: 4300 }, (_, index) => `line${index + 1}`).join(' ')
+    const input = [
+      '# Notes from Session',
+      longSectionBody,
+      '',
+      '## Follow-up',
+      'Small section.',
+    ].join('\n')
+
+    const output = formatMarkdown(input, DEFAULT_OPTIONS)
+
+    expect(output).toContain('## Notes from Session Part 1')
+    expect(output).toContain('## Notes from Session Part 2')
+    expect(output).toContain('## Notes from Session Part 3')
+    expect(output).toContain('## Follow-up')
+  })
 })

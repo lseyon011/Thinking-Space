@@ -72,6 +72,19 @@ function parseIndexChapterEntry(line: string): { chapterNum: string; chapterTitl
     if (chapterTitle) return { chapterNum: m[1], chapterTitle }
   }
 
+  m = withoutMarker.match(/^(\d{1,3})\s+(.+)$/)
+  if (m) {
+    const chapterTitle = cleanChapterTitle(m[2] ?? '')
+    if (
+      chapterTitle
+      && /^[A-Z]/.test(chapterTitle)
+      && countWords(chapterTitle) <= 12
+      && !/[.!?]["'\u201d]?\s*$/.test(chapterTitle)
+    ) {
+      return { chapterNum: m[1], chapterTitle }
+    }
+  }
+
   return null
 }
 
@@ -89,7 +102,7 @@ function collectIndexChapterHints(lines: string[]): Map<string, string> {
     if (!stripped) continue
 
     if (hasContentsHeading) {
-      if (/^```/.test(stripped)) break
+      if (/^```/.test(stripped)) continue
       const headingLevelMatch = stripped.match(/^(#{1,6})\s+/)
       if (headingLevelMatch && headingLevelMatch[1].length === 1) break
     }
@@ -531,6 +544,61 @@ function splitChapterSections(lines: string[], maxWordsPerPart: number): string[
   return out
 }
 
+function splitOversizedHeadingBlocks(lines: string[], maxWordsPerPart: number): string[] {
+  const out: string[] = []
+  let i = 0
+
+  while (i < lines.length) {
+    const headingLine = lines[i]
+    const headingMatch = headingLine.trim().match(MARKDOWN_HEADING_RE)
+    if (!headingMatch) {
+      out.push(headingLine)
+      i += 1
+      continue
+    }
+
+    const levelMatch = headingLine.trim().match(/^(#{1,6})\s+/)
+    const headingLevel = levelMatch ? levelMatch[1].length : 1
+    const partHeadingLevel = Math.min(headingLevel + 1, 6)
+    const headingText = headingMatch[1].trim()
+    const partBaseTitle = headingText.replace(/\s+Part\s+\d+\s*$/i, '').trim() || headingText
+
+    i += 1
+    const body: string[] = []
+    while (i < lines.length && !lines[i].trim().match(MARKDOWN_HEADING_RE)) {
+      body.push(lines[i])
+      i += 1
+    }
+
+    const bodyWordCount = body.reduce((sum, line) => {
+      const stripped = line.trim()
+      if (!stripped || stripped === '---') return sum
+      const normalized = stripped.startsWith('\u2022 ') ? stripped.slice(2).trim() : stripped
+      return sum + countWords(normalized)
+    }, 0)
+
+    out.push(headingLine)
+
+    if (bodyWordCount <= maxWordsPerPart) {
+      out.push(...body)
+      continue
+    }
+
+    const chunks = splitChapterBodyIntoChunks(body, maxWordsPerPart)
+    const safeChunks = chunks.length > 0 ? chunks : [[]]
+    const partPrefix = '#'.repeat(partHeadingLevel)
+
+    for (let partIndex = 0; partIndex < safeChunks.length; partIndex += 1) {
+      out.push(`${partPrefix} ${partBaseTitle} Part ${partIndex + 1}`)
+      const chunkLines = safeChunks[partIndex]
+      if (chunkLines.length > 0) out.push(...chunkLines)
+      if (partIndex < safeChunks.length - 1) out.push('')
+    }
+  }
+
+  return out
+}
+
 export function formatMarkdown(text: string, options: FormatOptions): string {
   let lines = text.split('\n')
 
@@ -549,6 +617,7 @@ export function formatMarkdown(text: string, options: FormatOptions): string {
   lines = demoteDeepHeadings(lines)
   lines = bulletizeParagraphs(lines, options.split_long_paragraphs, options.join_lines)
   lines = splitChapterSections(lines, CHAPTER_PART_WORD_LIMIT)
+  lines = splitOversizedHeadingBlocks(lines, CHAPTER_PART_WORD_LIMIT)
 
   let result = lines.join('\n')
   result = cleanExcessNewlines(result)
