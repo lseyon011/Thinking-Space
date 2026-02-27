@@ -227,6 +227,27 @@ describe('vaultSyncOrch', () => {
     expect(cached!.type).toBe('idea')
   })
 
+  it('syncSingleFile maps project_preset_tags from YAML into cache records', async () => {
+    if (!fakeIdb) return
+
+    const { syncSingleFile } = await import('@/services/orchestrators/vaultSyncOrch')
+    const { getNodeByKey } = await import('@/services/lego_blocks/integrations/dbBlock')
+
+    const fs = new FakeVaultFS()
+    const note = createNote({ type: 'thought', title: 'Project Tag Mapping' })
+    note.frontmatter.tags = ['general']
+    note.frontmatter.project_preset_tags = ['release', 'backend']
+    fs.seedFile('thoughts/thought-project-tag-mapping.md', stringifyNote(note))
+
+    const success = await syncSingleFile('thoughts/thought-project-tag-mapping.md', fs)
+    expect(success).toBe(true)
+
+    const cached = await getNodeByKey(note.frontmatter.key)
+    expect(cached).toBeDefined()
+    expect(cached!.tags).toEqual(['general'])
+    expect(cached!.projectPresetTags).toEqual(['release', 'backend'])
+  })
+
   it('syncSingleFile returns false for plain markdown', async () => {
     if (!fakeIdb) return
 

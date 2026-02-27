@@ -104,6 +104,7 @@ export interface YAMLFrontmatter {
 
   // Discovery & status
   tags?: string[]
+  project_preset_tags?: string[]
   categories?: string[]
   progress?: number
   status: NodeStatus
@@ -350,6 +351,7 @@ function normalizeFrontmatter(raw: Record<string, unknown>): YAMLFrontmatter {
     parent_uuid: raw.parent_uuid != null ? String(raw.parent_uuid) : undefined,
     parent_type: normalizeOptionalNodeType(raw.parent_type),
     tags: Array.isArray(raw.tags) ? raw.tags.map(String) : undefined,
+    project_preset_tags: Array.isArray(raw.project_preset_tags) ? raw.project_preset_tags.map(String) : undefined,
     categories: Array.isArray(raw.categories) ? raw.categories.map(String) : undefined,
     progress: typeof raw.progress === 'number' ? raw.progress : undefined,
     priority: raw.priority as NodePriority | undefined,

@@ -54,6 +54,7 @@ export interface NodeRecord {
   metadataKeys?: string[]
   metadataText?: string
   tags: string[]
+  projectPresetTags?: string[]
   status: NodeStatus
   priority?: NodePriority
   progress?: number
@@ -214,6 +215,7 @@ export async function searchNodes(query: string, limit: number = 20): Promise<No
       node.title,
       node.key,
       ...(node.tags || []),
+      ...(node.projectPresetTags || []),
       node.bodyExcerpt || '',
       node.aiSummary || '',
       node.taskId || '',
@@ -329,6 +331,8 @@ function normalizeRecordForStorage(record: Omit<NodeRecord, 'id'>): Omit<NodeRec
     metadata,
     metadataKeys: (record.metadataKeys ?? extractMetadataKeys(metadata)).filter(Boolean),
     metadataText: record.metadataText ?? buildMetadataSearchText(metadata),
+    tags: (record.tags ?? []).filter(Boolean),
+    projectPresetTags: record.projectPresetTags?.filter(Boolean),
   }
 }
 

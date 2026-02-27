@@ -75,6 +75,9 @@ parent_type: "program"
 tags:
   - "ai"
   - "pkm"
+project_preset_tags:
+  - "release"
+  - "backend"
 progress: 0.5
 priority: "high"
 created_at: "2026-01-01T00:00:00Z"
@@ -89,6 +92,7 @@ Body.
     expect(result.frontmatter.parent_uuid).toBe('parent-uuid-123')
     expect(result.frontmatter.parent_type).toBe('program')
     expect(result.frontmatter.tags).toEqual(['ai', 'pkm'])
+    expect(result.frontmatter.project_preset_tags).toEqual(['release', 'backend'])
     expect(result.frontmatter.progress).toBe(0.5)
     expect(result.frontmatter.priority).toBe('high')
     expect(result.frontmatter.ai_summary).toBe('An AI summary')

@@ -37,7 +37,6 @@ import {
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import type { NodeType, NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
 import {
-  hasTagBlock,
   normalizeTagBlock,
   normalizeTagListBlock,
   splitTagInputBlock,
@@ -133,6 +132,7 @@ export interface NodeDetailPanelBlockProps {
   onUpdateTaskStatus: (taskStatus: string) => Promise<void>
   onUpdatePriority: (priority: string) => Promise<void>
   onUpdateTags: (tags: string[]) => Promise<void>
+  onUpdateProjectPresetTags: (tags: string[]) => Promise<void>
   presetTags?: string[]
   projectTagColors?: Record<string, string>
   onUpdateNotes: (description: string, comments: YAMLCommentEntry[]) => Promise<void>
@@ -150,6 +150,7 @@ export default function NodeDetailPanelBlock({
   onUpdateTaskStatus,
   onUpdatePriority,
   onUpdateTags,
+  onUpdateProjectPresetTags,
   presetTags = [],
   projectTagColors = {},
   onUpdateNotes,
@@ -196,9 +197,17 @@ export default function NodeDetailPanelBlock({
     [frontmatter?.tags, node.tags],
   )
   const sourcePresetTags = useMemo(() => normalizeTagListBlock(presetTags), [presetTags])
-  const sourceUserTags = useMemo(() => (
-    sourceAllTags.filter(tag => !hasTagBlock(sourcePresetTags, tag))
-  ), [sourceAllTags, sourcePresetTags])
+  const sourceProjectPresetTags = useMemo(() => {
+    const explicit = normalizeTagListBlock(frontmatter?.project_preset_tags ?? node.projectPresetTags ?? [])
+    if (explicit.length > 0) return explicit
+    // Backward-compat fallback for older notes where project selections were merged into tags.
+    const presetLookup = new Set(sourcePresetTags.map(tag => normalizeTagBlock(tag).toLowerCase()).filter(Boolean))
+    return sourceAllTags.filter(tag => presetLookup.has(normalizeTagBlock(tag).toLowerCase()))
+  }, [frontmatter?.project_preset_tags, node.projectPresetTags, sourceAllTags, sourcePresetTags])
+  const sourceUserTags = useMemo(() => {
+    const projectPresetLookup = new Set(sourceProjectPresetTags.map(tag => normalizeTagBlock(tag).toLowerCase()).filter(Boolean))
+    return sourceAllTags.filter(tag => !projectPresetLookup.has(normalizeTagBlock(tag).toLowerCase()))
+  }, [sourceAllTags, sourceProjectPresetTags])
 
   useEffect(() => {
     const nodeChanged = lastNodeUuidRef.current !== node.uuid
@@ -280,6 +289,7 @@ export default function NodeDetailPanelBlock({
         key !== 'description' &&
         key !== 'comments' &&
         key !== 'tags' &&
+        key !== 'project_preset_tags' &&
         value !== undefined &&
         value !== null &&
         value !== ''
@@ -372,9 +382,9 @@ export default function NodeDetailPanelBlock({
     }
   }, [epicCompletionDateDraft, node.type, onUpdateEpicCompletedAt, sourceEpicCompletionDate])
 
-  const commitTags = useCallback(async (nextTags: string[]) => {
+  const commitUserTags = useCallback(async (nextTags: string[]) => {
     const normalizedNextTags = normalizeTagListBlock(nextTags)
-    if (tagsEqualBlock(normalizedNextTags, sourceAllTags)) return
+    if (tagsEqualBlock(normalizedNextTags, sourceUserTags)) return
     setBusy(true)
     setTagsSaving(true)
     try {
@@ -383,31 +393,45 @@ export default function NodeDetailPanelBlock({
       setTagsSaving(false)
       setBusy(false)
     }
-  }, [onUpdateTags, sourceAllTags])
+  }, [onUpdateTags, sourceUserTags])
+
+  const commitProjectPresetTags = useCallback(async (nextTags: string[]) => {
+    const normalizedNextTags = normalizeTagListBlock(nextTags)
+    if (tagsEqualBlock(normalizedNextTags, sourceProjectPresetTags)) return
+    setBusy(true)
+    setTagsSaving(true)
+    try {
+      await onUpdateProjectPresetTags(normalizedNextTags)
+    } finally {
+      setTagsSaving(false)
+      setBusy(false)
+    }
+  }, [onUpdateProjectPresetTags, sourceProjectPresetTags])
 
   const addUserTags = useCallback(async () => {
     const additions = splitTagInputBlock(userTagDraft)
     if (additions.length === 0) return
-    const next = normalizeTagListBlock([...sourceAllTags, ...additions])
-    await commitTags(next)
+    const next = normalizeTagListBlock([...sourceUserTags, ...additions])
+    await commitUserTags(next)
     setUserTagDraft('')
-  }, [commitTags, sourceAllTags, userTagDraft])
+  }, [commitUserTags, sourceUserTags, userTagDraft])
 
   const removeUserTag = useCallback(async (tag: string) => {
     const target = normalizeTagBlock(tag).toLowerCase()
     if (!target) return
-    const next = sourceAllTags.filter(item => normalizeTagBlock(item).toLowerCase() !== target)
-    await commitTags(next)
-  }, [commitTags, sourceAllTags])
+    const next = sourceUserTags.filter(item => normalizeTagBlock(item).toLowerCase() !== target)
+    await commitUserTags(next)
+  }, [commitUserTags, sourceUserTags])
 
   const togglePresetTagOnNode = useCallback(async (tag: string) => {
     const normalizedTag = normalizeTagBlock(tag)
     if (!normalizedTag) return
-    const next = hasTagBlock(sourceAllTags, normalizedTag)
-      ? sourceAllTags.filter(item => normalizeTagBlock(item).toLowerCase() !== normalizedTag.toLowerCase())
-      : normalizeTagListBlock([...sourceAllTags, normalizedTag])
-    await commitTags(next)
-  }, [commitTags, sourceAllTags])
+    const target = normalizedTag.toLowerCase()
+    const next = sourceProjectPresetTags.some(item => normalizeTagBlock(item).toLowerCase() === target)
+      ? sourceProjectPresetTags.filter(item => normalizeTagBlock(item).toLowerCase() !== target)
+      : normalizeTagListBlock([...sourceProjectPresetTags, normalizedTag])
+    await commitProjectPresetTags(next)
+  }, [commitProjectPresetTags, sourceProjectPresetTags])
 
   useEffect(() => {
     if (!notesDirty || busy || notesSaving) return
@@ -624,7 +648,7 @@ export default function NodeDetailPanelBlock({
               description="Project-scoped presets"
               tags={sourcePresetTags}
               tagColors={projectTagColors}
-              selectedTags={sourceAllTags}
+              selectedTags={sourceProjectPresetTags}
               emptyMessage="No preset tags yet for this project."
               onToggleTag={(tag) => { void togglePresetTagOnNode(tag) }}
               disabled={busy || tagsSaving}

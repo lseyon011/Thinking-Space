@@ -200,6 +200,7 @@ export async function updateYamlNode(
     type?: NodeType
     title?: string
     tags?: string[]
+    projectPresetTags?: string[]
     status?: NodeStatus
     priority?: 'low' | 'medium' | 'high' | 'critical'
     description?: string
@@ -222,6 +223,7 @@ export async function updateYamlNode(
   }
   if (updates.title !== undefined) note.frontmatter.title = updates.title
   if (updates.tags !== undefined) note.frontmatter.tags = updates.tags
+  if (updates.projectPresetTags !== undefined) note.frontmatter.project_preset_tags = updates.projectPresetTags
   if (updates.status !== undefined) note.frontmatter.status = updates.status
   if (updates.priority !== undefined) note.frontmatter.priority = updates.priority
   if (updates.description !== undefined) {
@@ -617,6 +619,7 @@ function applyExtraFrontmatterFields(
     'parent_uuid',
     'parent_type',
     'tags',
+    'project_preset_tags',
     'status',
     'priority',
     'project_root',

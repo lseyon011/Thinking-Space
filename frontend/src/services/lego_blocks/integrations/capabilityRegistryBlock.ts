@@ -97,6 +97,7 @@ export interface CapabilityInputMap {
       type?: NodeType
       title?: string
       tags?: string[]
+      projectPresetTags?: string[]
       status?: NodeStatus
       priority?: NodePriority
       description?: string

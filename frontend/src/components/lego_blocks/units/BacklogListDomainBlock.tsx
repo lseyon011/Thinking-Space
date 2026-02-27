@@ -2,7 +2,7 @@ import { BookOpen, Folder, FolderTree, Handshake, Layers, Lightbulb, ListChecks,
 import type { ComponentType, DragEvent } from 'react'
 import { cn } from '@/lib/utils'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
-import { normalizeTagBlock } from '@/services/lego_blocks/units/tagBlock'
+import { normalizeTagBlock, normalizeTagListBlock } from '@/services/lego_blocks/units/tagBlock'
 import type { NodePriority, NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
 
 export function iconForNodeType(type: NodeType): ComponentType<{ className?: string }> {
@@ -105,9 +105,14 @@ export function selectedPresetTagsForNode(
   const projectRoot = normalizePath(node.projectRoot ?? '')
   if (!projectRoot) return []
   const presetTags = projectPresetTagsByRoot[projectRoot] ?? []
-  if (presetTags.length === 0 || node.tags.length === 0) return []
+  if (presetTags.length === 0) return []
   const presetLookup = new Set(presetTags.map(tag => normalizeTagBlock(tag).toLowerCase()).filter(Boolean))
-  return node.tags.filter(tag => presetLookup.has(normalizeTagBlock(tag).toLowerCase()))
+  const assignedProjectPresetTags = normalizeTagListBlock(node.projectPresetTags ?? [])
+  if (assignedProjectPresetTags.length > 0) {
+    return assignedProjectPresetTags.filter(tag => presetLookup.has(normalizeTagBlock(tag).toLowerCase()))
+  }
+  // Backward-compat fallback for older notes where project selections were merged into `tags`.
+  return (node.tags ?? []).filter(tag => presetLookup.has(normalizeTagBlock(tag).toLowerCase()))
 }
 
 export function compactTagList(tags: string[], limit = 3): { visible: string[]; hiddenCount: number } {

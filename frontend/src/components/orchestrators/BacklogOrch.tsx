@@ -1296,6 +1296,37 @@ export default function BacklogOrch() {
     await updateNodeTagsFor(selectedNode, tags)
   }, [selectedNode, updateNodeTagsFor])
 
+  const updateNodeProjectPresetTagsFor = useCallback(async (node: NodeRecord, tags: string[]): Promise<NodeRecord> => {
+    setWorking(true)
+    setCurrentOperation(`Updating project tags for ${node.title}`)
+    setError(null)
+    try {
+      const { node: updated } = await invokeCapabilityOrThrow({
+        capability: 'organizer.node.update',
+        input: {
+          uuid: node.uuid,
+          updates: {
+            projectPresetTags: normalizeTagListBlock(tags),
+          },
+        },
+        actor: BACKLOG_ACTOR,
+      })
+      applyUpdatedNode(updated)
+      return updated
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to update project tags'))
+      throw err
+    } finally {
+      setWorking(false)
+      setCurrentOperation(null)
+    }
+  }, [applyUpdatedNode])
+
+  const updateNodeProjectPresetTags = useCallback(async (tags: string[]) => {
+    if (!selectedNode) return
+    await updateNodeProjectPresetTagsFor(selectedNode, tags)
+  }, [selectedNode, updateNodeProjectPresetTagsFor])
+
   const updateNodeNotesFor = useCallback(async (
     node: NodeRecord,
     description: string,
@@ -1705,6 +1736,7 @@ export default function BacklogOrch() {
           onUpdateTaskStatus={updateTaskStatus}
           onUpdatePriority={updatePriority}
           onUpdateTags={updateNodeTags}
+          onUpdateProjectPresetTags={updateNodeProjectPresetTags}
           presetTags={selectedProjectPresetTags}
           projectTagColors={selectedProjectTagColors}
           onUpdateNotes={updateNodeNotes}
