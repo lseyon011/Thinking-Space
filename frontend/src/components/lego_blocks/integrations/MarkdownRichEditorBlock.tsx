@@ -1,20 +1,20 @@
-import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import { redo, undo } from '@codemirror/commands'
-import {
-  autocompletion,
-  startCompletion,
-  type Completion,
-  type CompletionContext,
-  type CompletionResult,
-} from '@codemirror/autocomplete'
+import { type EditorState } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
 import { Bold, Code, Heading1, Italic, Link2, List, ListOrdered, PenLine, Quote, RotateCcw, RotateCw } from 'lucide-react'
 import {
   getWikilinkSuggestionsOrch,
   toObsidianWikilinkTargetOrch,
 } from '@/services/orchestrators/obsidianLinkOrch'
+import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
+import { UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
+import {
+  deriveWikilinkLabelBlock,
+  type WikilinkSuggestionBlock,
+} from '@/services/lego_blocks/integrations/obsidianWikilinkBlock'
 import { cn } from '@/lib/utils'
 
 interface MarkdownRichEditorBlockProps {
@@ -27,6 +27,8 @@ interface MarkdownRichEditorBlockProps {
   compactMobile?: boolean
   /** When true the toolbar is always visible (legacy behavior). When false a toggle button is shown. Default: false. */
   toolbarAlwaysVisible?: boolean
+  /** When false, hide formatting toolbar controls entirely (useful for non-markdown text editing). Default: true. */
+  enableFormattingToolbar?: boolean
 }
 
 export interface MarkdownRichEditorBlockHandle {
@@ -83,19 +85,25 @@ function insertWikilink(
   }
 }
 
-function getWikilinkCompletionQuery(
-  context: CompletionContext,
+function getWikilinkCompletionQueryFromState(
+  state: EditorState,
 ): { from: number; to: number; query: string } | null {
-  const match = context.matchBefore(/\[\[[^[\]\n]*$/)
+  const selection = state.selection.main
+  if (!selection.empty) return null
+
+  const cursor = selection.from
+  const line = state.doc.lineAt(cursor)
+  const beforeCursor = state.sliceDoc(line.from, cursor)
+  const match = beforeCursor.match(/\[\[[^[\]\n]*$/)
   if (!match) return null
 
-  const raw = match.text.slice(2)
+  const raw = match[0].slice(2)
   if (raw.includes('|')) return null
 
   const leadingWhitespace = raw.length - raw.trimStart().length
   return {
-    from: match.from + 2 + leadingWhitespace,
-    to: context.pos,
+    from: cursor - raw.length + leadingWhitespace,
+    to: cursor,
     query: raw.trim(),
   }
 }
@@ -111,11 +119,16 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   placeholder = 'Write markdown...',
   compactMobile = false,
   toolbarAlwaysVisible = false,
+  enableFormattingToolbar = true,
 }, ref) {
   const editorViewRef = useRef<EditorView | null>(null)
   const [toolbarOpen, setToolbarOpen] = useState(false)
+  const [wikilinkPickerOpen, setWikilinkPickerOpen] = useState(false)
+  const [wikilinkQuery, setWikilinkQuery] = useState('')
+  const [wikilinkSuggestions, setWikilinkSuggestions] = useState<WikilinkSuggestionBlock[]>([])
+  const [wikilinkLoading, setWikilinkLoading] = useState(false)
 
-  const showToolbar = toolbarAlwaysVisible || toolbarOpen
+  const showToolbar = enableFormattingToolbar && (toolbarAlwaysVisible || toolbarOpen)
 
   const undoEditor = () => {
     const view = editorViewRef.current
@@ -139,42 +152,70 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     },
   }))
 
-  const wikilinkCompletionSource = useMemo(() => {
-    return async (context: CompletionContext): Promise<CompletionResult | null> => {
-      const query = getWikilinkCompletionQuery(context)
-      if (!query) return null
+  const applyWikilinkSuggestion = useCallback((suggestion: WikilinkSuggestionBlock) => {
+    const view = editorViewRef.current
+    if (!view) return
 
-      const suggestions = await getWikilinkSuggestionsOrch({
-        currentPath,
-        query: query.query,
-        limit: 30,
-      })
-      if (suggestions.length === 0) return null
+    const query = getWikilinkCompletionQueryFromState(view.state)
+    if (!query) return
 
-      const options: Completion[] = suggestions.map((suggestion) => ({
-        label: suggestion.target,
-        detail: suggestion.path,
-        type: 'text',
-        boost: suggestion.score,
-        apply: (view, _completion, from, to) => {
-          const hasClosingBrackets = view.state.sliceDoc(to, to + 2) === ']]'
-          const insertValue = hasClosingBrackets ? suggestion.target : `${suggestion.target}]]`
-          view.dispatch({
-            changes: { from, to, insert: insertValue },
-            selection: { anchor: from + suggestion.target.length },
-          })
-        },
-      }))
+    const target = toObsidianWikilinkTargetOrch(suggestion.target) || suggestion.target
+    const hasClosingBrackets = view.state.sliceDoc(query.to, query.to + 2) === ']]'
+    const insertValue = hasClosingBrackets ? target : `${target}]]`
 
-      return {
-        from: query.from,
-        to: query.to,
-        options,
-        validFor: /^[^[\]\n|]*$/,
-        filter: false,
-      }
+    view.dispatch({
+      changes: { from: query.from, to: query.to, insert: insertValue },
+      selection: { anchor: query.from + target.length },
+    })
+    view.focus()
+    setWikilinkPickerOpen(false)
+  }, [])
+
+  const applyWikilinkQuery = useCallback((nextQuery: string) => {
+    const view = editorViewRef.current
+    if (!view) return
+
+    const query = getWikilinkCompletionQueryFromState(view.state)
+    if (!query) return
+
+    view.dispatch({
+      changes: { from: query.from, to: query.to, insert: nextQuery },
+      selection: { anchor: query.from + nextQuery.length },
+    })
+    view.focus()
+  }, [])
+
+  useEffect(() => {
+    if (!wikilinkPickerOpen) {
+      setWikilinkSuggestions([])
+      setWikilinkLoading(false)
+      return
     }
-  }, [currentPath])
+
+    let canceled = false
+    setWikilinkLoading(true)
+    void getWikilinkSuggestionsOrch({
+      currentPath,
+      query: wikilinkQuery,
+      limit: UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK.limit ?? 80,
+    })
+      .then((nextSuggestions) => {
+        if (canceled) return
+        setWikilinkSuggestions(nextSuggestions)
+      })
+      .catch(() => {
+        if (canceled) return
+        setWikilinkSuggestions([])
+      })
+      .finally(() => {
+        if (canceled) return
+        setWikilinkLoading(false)
+      })
+
+    return () => {
+      canceled = true
+    }
+  }, [currentPath, wikilinkPickerOpen, wikilinkQuery])
 
   const extensions = useMemo(() => {
     const uiTheme = EditorView.theme({
@@ -229,23 +270,20 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       EditorView.lineWrapping,
       cmPlaceholder(placeholder),
       uiTheme,
-      autocompletion({
-        override: [wikilinkCompletionSource],
-        activateOnTyping: true,
-        closeOnBlur: true,
-      }),
       EditorView.updateListener.of((update) => {
-        if (!update.docChanged) return
-        const selection = update.state.selection.main
-        if (!selection.empty) return
-        const before = update.state.sliceDoc(Math.max(0, selection.from - 2), selection.from)
-        if (before === '[[') {
-          startCompletion(update.view)
+        const query = getWikilinkCompletionQueryFromState(update.state)
+        if (!query) {
+          setWikilinkPickerOpen(false)
+          setWikilinkQuery('')
+          return
         }
+
+        setWikilinkQuery(query.query)
+        setWikilinkPickerOpen(true)
       }),
       keymap.of([]),
     ]
-  }, [compactMobile, placeholder, wikilinkCompletionSource])
+  }, [compactMobile, placeholder])
 
   const applyPatch = (patchFactory: (text: string, from: number, to: number) => { value: string; start: number; end: number }) => {
     const view = editorViewRef.current
@@ -269,9 +307,9 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   }
 
   return (
-    <div className={cn('ltm-markdown-rich-editor flex min-h-0 flex-col bg-transparent', className)}>
+    <div className={cn('ltm-markdown-rich-editor relative flex min-h-0 flex-col bg-transparent', className)}>
       {/* Toolbar toggle button (only when not always visible) */}
-      {!toolbarAlwaysVisible && (
+      {enableFormattingToolbar && !toolbarAlwaysVisible && (
         <div className="flex items-center justify-end px-2 pt-1.5">
           <button
             type="button"
@@ -351,6 +389,37 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           onChange={(next) => onChange(next)}
         />
       </div>
+
+      {wikilinkPickerOpen && (
+        <div className="pointer-events-none absolute inset-x-3 top-2 z-40">
+          <div className="pointer-events-auto ml-auto w-full max-w-xl rounded-lg border border-border/60 bg-background/95 p-2 shadow-2xl backdrop-blur">
+            <UniversalSearchBlock<WikilinkSuggestionBlock>
+              {...UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK}
+              items={wikilinkSuggestions}
+              query={wikilinkQuery}
+              onQueryChange={applyWikilinkQuery}
+              onSelect={applyWikilinkSuggestion}
+              getItemKey={(item) => `${item.path}::${item.target}`}
+              getItemLabel={(item) => deriveWikilinkLabelBlock(item.target, null)}
+              getItemDescription={(item) => item.path}
+              getItemSearchCandidates={(item) => [item.target, item.path, deriveWikilinkLabelBlock(item.target, null)]}
+              selectedItemKey={null}
+              open={wikilinkPickerOpen}
+              onOpenChange={(open) => {
+                setWikilinkPickerOpen(open)
+                if (!open) editorViewRef.current?.focus()
+              }}
+              onEscapeKeyDown={() => editorViewRef.current?.focus()}
+              placeholder="Link a note..."
+              emptyMessage={
+                wikilinkLoading
+                  ? 'Searching notes...'
+                  : (UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK.emptyMessage ?? 'No matches found.')
+              }
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 })

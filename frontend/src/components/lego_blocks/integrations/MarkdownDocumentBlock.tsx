@@ -1072,13 +1072,15 @@ function MarkdownDocumentBlock({
 
                   {isEditing ? (
                     <div className="space-y-1.5">
-                      <textarea
+                      <MarkdownRichEditorBlock
                         value={frontmatterMeta.yamlText}
-                        onChange={(event) => setDraftFrontmatterYaml(event.target.value)}
-                        spellCheck={false}
-                        className="min-h-[8rem] w-full rounded-md border border-border/60 bg-background px-2.5 py-2 font-mono text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        placeholder="title: My note&#10;type: thought&#10;parent: project-root"
-                        aria-label="YAML frontmatter editor"
+                        onChange={setDraftFrontmatterYaml}
+                        currentPath={path}
+                        enableFormattingToolbar={false}
+                        className="h-44 w-full"
+                        editorClassName="rounded-md border border-border/60 bg-background"
+                        placeholder={'title: My note\ntype: thought\nparent: project-root'}
+                        compactMobile={isIosPhone}
                       />
                       {frontmatterMeta.parseError ? (
                         <div className="text-[11px] text-destructive">
