@@ -147,7 +147,11 @@ Actor and permission rules:
 3. If writing to external vault paths (for example iCloud paths outside repo sandbox), request escalated filesystem permission first; do not bypass by changing actor kind.
 
 Capability runner invocation pattern (use `./thinkspc` wrapper from repo root):
-- Output format: `./thinkspc` defaults to readable text in interactive terminals; use `--json` when you need machine-parseable output.
+- Output defaults: wrapper runs in token-efficient mode (`text` + `brief`). Use `--full` for detailed text output or `--json` for machine parsing.
+- Global output flags (`--json`, `--text`, `--brief`, `--full`) must be placed before the command.
+- Shortcut commands are supported: `search`, `claim`, `comment`, `done`, `wip`, `ready`, `blocked`, `context`.
+- CLI parsing supports both `--flag value` and `--flag=value`.
+- Long text can be loaded from files with `--<flag>-file` (for example `--text-file ./note.md`).
 - Legacy alias: `./ltm` still works and forwards to `./thinkspc`.
 - Browser URLs (for example `http://localhost:5173/.../thinking-organizer?...`) are human navigation links, not agent task targets. For agents, translate them with `./thinkspc organizer.context --url "<link>"` and then run `./thinkspc` capability commands.
 
@@ -163,6 +167,7 @@ Required fields for node creation (easy to forget, causes bugs):
 ./thinkspc list
 ./thinkspc organizer.nodes.list_roots --typeFilter program
 ./thinkspc organizer.nodes.search --query "my task" --limit 5
+./thinkspc search --query "my task" --limit 5
 ./thinkspc organizer.context --url "http://localhost:5173/thinking-space/thinking-organizer?tab=backlog&projectRoot=operations%2Fsfw"
 
 # Create node (all required fields shown)
@@ -175,10 +180,12 @@ Required fields for node creation (easy to forget, causes bugs):
 # Other write operations
 ./thinkspc task.claim --uuid "abc-123" --owner claude-code
 ./thinkspc task.update_status --uuid "abc-123" --taskStatus done
+./thinkspc done --uuid "abc-123"
 ./thinkspc handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space \
   --summary "Notes" --fromAgent claude-code --toAgent human \
   --parentKey handoffs-agent-operations
 ./thinkspc comment.add --uuid "abc-123" --text "Done" --addedBy claude-code
+./thinkspc comment --uuid "abc-123" --text-file ./status-update.md
 
 # Raw JSON escape hatch (reads stdin)
 ./thinkspc invoke < payload.json

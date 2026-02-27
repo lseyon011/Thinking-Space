@@ -136,7 +136,11 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 ## Capability Runner Pattern
 Use the `./thinkspc` wrapper from the repo root. It auto-loads `.env` (for `THINKSPC_VAULT_ROOT` or legacy `LTM_VAULT_ROOT`), sets runner flags, and defaults to `actor: {kind: "agent", id: "claude-code"}`.
 Legacy alias: `./ltm` forwards to `./thinkspc`.
-Output defaults to readable text in interactive terminals; pass `--json` for machine parsing.
+Wrapper defaults are token-efficient (`text` + `brief` output). Use `--full` for detailed text or `--json` for machine parsing.
+Global output flags (`--json`, `--text`, `--brief`, `--full`) must appear before the command.
+Shortcuts are supported: `search`, `claim`, `comment`, `done`, `wip`, `ready`, `blocked`, `context`.
+CLI parsing supports both `--flag value` and `--flag=value`.
+Long values can be loaded from files with `--<flag>-file` (for example `--text-file ./note.md`).
 
 ### Required fields for node creation (easy to forget, causes bugs):
 - `--projectRoot coding-projects/thinking-space` — without it, nodes land at vault root and won't appear in organizer UI
@@ -151,6 +155,7 @@ Output defaults to readable text in interactive terminals; pass `--json` for mac
 ./thinkspc organizer.nodes.list_roots --typeFilter program
 ./thinkspc organizer.nodes.list_children --parentKey "epic-auth"
 ./thinkspc organizer.nodes.search --query "auth bug" --limit 10
+./thinkspc search --query "auth bug" --limit 10
 ./thinkspc organizer.node.get --uuid "abc-123"
 
 # Create node (all required fields shown)
@@ -164,11 +169,13 @@ Output defaults to readable text in interactive terminals; pass `--json` for mac
 ./thinkspc organizer.node.update --uuid "abc-123" --status active --priority high
 ./thinkspc task.claim --uuid "abc-123" --owner claude-code
 ./thinkspc task.update_status --uuid "abc-123" --taskStatus done
+./thinkspc done --uuid "abc-123"
 ./thinkspc run.log --title "Session log" --projectRoot coding-projects/thinking-space --agentName claude-code --result success
 ./thinkspc handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space \
   --summary "Notes" --fromAgent claude-code --toAgent human \
   --parentKey handoffs-agent-operations
 ./thinkspc comment.add --uuid "abc-123" --text "Done" --addedBy claude-code
+./thinkspc comment --uuid "abc-123" --text-file ./status-update.md
 
 # Raw JSON escape hatch (reads stdin, for complex payloads)
 ./thinkspc invoke < payload.json

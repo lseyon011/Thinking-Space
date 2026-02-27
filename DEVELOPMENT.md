@@ -162,9 +162,13 @@ Quick invocation examples:
 ```bash
 # CLI wrapper (recommended for agents — auto-loads .env, sets flags, defaults actor)
 # Legacy alias: `./ltm` still works and forwards to `./thinkspc`
+# Wrapper defaults are token-efficient (text + brief). Use --full or --json when needed.
 ./thinkspc organizer.nodes.list_roots --typeFilter program
+./thinkspc search --query "status active" --limit 10
 ./thinkspc organizer.context --url "http://localhost:5173/thinking-space/thinking-organizer?tab=backlog&projectRoot=operations%2Fsfw"
 ./thinkspc task.claim --uuid "abc-123" --owner claude-code
+./thinkspc done --uuid "abc-123"
+./thinkspc comment --uuid "abc-123" --text-file ./status-update.md
 ./thinkspc run.log --title "Session" --projectRoot coding-projects/thinking-space --agentName claude-code --result success
 
 # curl via FastAPI proxy (requires backend running)

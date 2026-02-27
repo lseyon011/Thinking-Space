@@ -77,7 +77,7 @@ Most note-taking tools force you into rigid plugin systems and disconnected AI w
 ### Agent Capabilities
 - [x] 55+ typed capability operations with policy enforcement
 - [x] Capability router with audit trail and dry-run support
-- [x] CLI wrapper (`./thinkspc`) for agent invocations
+- [x] CLI wrapper (`./thinkspc`) with brief/full output modes, shortcuts, and file-backed flag inputs
 - [x] Task lifecycle management (claim, update, handoff, comment)
 - [x] Run logging and cross-session handoff records
 

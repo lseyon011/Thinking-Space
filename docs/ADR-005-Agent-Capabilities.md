@@ -71,6 +71,11 @@ Operational tool usage pattern:
 
 Use the `./thinkspc` wrapper from the repo root. It auto-loads `.env` (for `THINKSPC_VAULT_ROOT` or legacy `LTM_VAULT_ROOT`), sets runner flags, and defaults actor to `{kind: "agent", id: "claude-code"}`.
 Legacy alias: `./ltm` forwards to `./thinkspc`.
+Wrapper defaults are token-efficient (`text` + `brief` output); use `--full` for detailed text and `--json` for machine parsing.
+Global output flags (`--json`, `--text`, `--brief`, `--full`) must appear before the command.
+CLI parser accepts both `--flag value` and `--flag=value`.
+Shortcut commands are supported: `search`, `claim`, `comment`, `done`, `wip`, `ready`, `blocked`, `context`.
+Long values can be loaded from files with `--<flag>-file` (for example `--text-file ./note.md`).
 
 ```bash
 # List capabilities
@@ -78,9 +83,12 @@ Legacy alias: `./ltm` forwards to `./thinkspc`.
 
 # Invoke with --flag syntax
 ./thinkspc organizer.nodes.list_roots --typeFilter program
+./thinkspc search --query "status active" --limit 10
 ./thinkspc organizer.node.get --uuid "abc-123"
 ./thinkspc organizer.node.create --type task --title "My task" --parentKey "epic-key" --extra-record_kind task
 ./thinkspc task.claim --uuid "abc-123" --owner claude-code
+./thinkspc done --uuid "abc-123"
+./thinkspc comment --uuid "abc-123" --text-file ./status-update.md
 
 # Raw JSON escape hatch (reads stdin, for complex payloads)
 ./thinkspc invoke < payload.json

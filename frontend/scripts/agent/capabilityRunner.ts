@@ -190,6 +190,68 @@ export class NodeVaultFS implements VaultFS {
 const NUMBER_FIELDS = new Set(['limit', 'lineNumber'])
 const ARRAY_FIELDS = new Set(['tags', 'items', 'artifacts', 'relatedNodes', 'emotions', 'comments'])
 const BOOLEAN_FIELDS = new Set(['dryRun', 'dry-run', 'date_header', 'text-stdin'])
+const GREEDY_TEXT_FIELDS = new Set([
+  'text',
+  'note',
+  'summary',
+  'description',
+  'body',
+  'content',
+  'inputText',
+  'headingsText',
+  'input_text',
+  'headings_text',
+  'title',
+])
+
+const COMMAND_SHORTCUTS: Record<string, string> = {
+  context: 'organizer.context',
+  search: 'organizer.nodes.search',
+  claim: 'task.claim',
+  comment: 'comment.add',
+}
+
+function hasFlagArg(args: string[], flag: string): boolean {
+  return args.some(arg => arg === `--${flag}` || arg.startsWith(`--${flag}=`))
+}
+
+export function resolveCommandShortcut(
+  command: string,
+  args: string[],
+): { command: string; args: string[]; warnings: string[] } {
+  const normalized = command.trim()
+  if (!normalized) return { command: normalized, args, warnings: [] }
+
+  const directAlias = COMMAND_SHORTCUTS[normalized]
+  if (directAlias) {
+    return {
+      command: directAlias,
+      args,
+      warnings: [`Shortcut "${normalized}" expanded to "${directAlias}".`],
+    }
+  }
+
+  const taskStatusShortcut: Record<string, string> = {
+    done: 'done',
+    wip: 'in_progress',
+    blocked: 'blocked',
+    ready: 'ready',
+  }
+
+  const shortcutStatus = taskStatusShortcut[normalized]
+  if (!shortcutStatus) return { command: normalized, args, warnings: [] }
+
+  const nextArgs = [...args]
+  if (!hasFlagArg(nextArgs, 'taskStatus')) {
+    nextArgs.unshift(shortcutStatus)
+    nextArgs.unshift('--taskStatus')
+  }
+  return {
+    command: 'task.update_status',
+    args: nextArgs,
+    warnings: [`Shortcut "${normalized}" expanded to "task.update_status --taskStatus ${shortcutStatus}".`],
+  }
+}
 
 /** Capabilities where non-identity fields are wrapped in an `updates` sub-object. */
 const WRAPPED_CAPABILITIES: Record<string, string> = {
@@ -375,22 +437,51 @@ function parseCLIArgs(capability: string, args: string[]): ParsedCLIArgsResult {
   while (i < args.length) {
     const arg = args[i]!
     if (!arg.startsWith('--')) {
+      if (capability === 'comment.add' && typeof result.text !== 'string') {
+        const parts: string[] = []
+        let cursor = i
+        while (cursor < args.length && !args[cursor]!.startsWith('--')) {
+          parts.push(args[cursor]!)
+          cursor += 1
+        }
+        const text = parts.join(' ').trim()
+        if (!text) {
+          throw new Error(`Unexpected positional argument: ${arg}`)
+        }
+        result.text = text
+        warnings.push('Detected positional text for comment.add. Prefer --text "..." (or --text-stdin for multi-line text).')
+        i = cursor
+        continue
+      }
       throw new Error(`Unexpected positional argument: ${arg}`)
     }
-    const key = arg.slice(2)
+
+    const inlineEqualsIndex = arg.indexOf('=')
+    const hasInlineValue = inlineEqualsIndex > 2
+    const key = hasInlineValue ? arg.slice(2, inlineEqualsIndex) : arg.slice(2)
+    const inlineValue = hasInlineValue ? arg.slice(inlineEqualsIndex + 1) : null
+
     // Boolean flags: if next arg is missing or starts with --, treat as true
-    if (BOOLEAN_FIELDS.has(key) && (i + 1 >= args.length || args[i + 1]!.startsWith('--'))) {
+    if (!hasInlineValue && BOOLEAN_FIELDS.has(key) && (i + 1 >= args.length || args[i + 1]!.startsWith('--'))) {
       result[key] = true
       i++
       continue
     }
-    if (i + 1 >= args.length) {
+    if (!hasInlineValue && i + 1 >= args.length) {
       throw new Error(`Missing value for --${key}`)
     }
-    const value = args[i + 1]!
-    i += 2
     const { key: resolvedKey, warning } = getAliasedKey(capability, key)
     if (warning) warnings.push(warning)
+
+    let value = inlineValue ?? args[i + 1]!
+    i += hasInlineValue ? 1 : 2
+
+    if (!hasInlineValue && GREEDY_TEXT_FIELDS.has(resolvedKey)) {
+      while (i < args.length && !args[i]!.startsWith('--')) {
+        value = `${value} ${args[i]!}`
+        i += 1
+      }
+    }
 
     if (resolvedKey.startsWith('extra-')) {
       const extraKey = resolvedKey.slice(6)
@@ -434,6 +525,10 @@ export function buildCLIInvokePayload(
   const dryRun = inputArgs.dryRun === true || inputArgs['dry-run'] === true
   delete inputArgs.dryRun
   delete inputArgs['dry-run']
+
+  if (capability === 'comment.add' && typeof inputArgs.addedBy !== 'string') {
+    inputArgs.addedBy = actorId
+  }
 
   // Handle wrapped capabilities (e.g., organizer.node.update wraps non-uuid fields in `updates`)
   const wrapKey = WRAPPED_CAPABILITIES[capability]
@@ -581,7 +676,7 @@ export function renderRunnerHelp(): string {
     'Thinking Space capability runner',
     '',
     'Usage:',
-    '  ./thinkspc [--text|--json] <command>',
+    '  ./thinkspc [--text|--json] [--brief|--full] <command>',
     '  ./thinkspc list',
     '  ./thinkspc invoke < payload.json',
     '  ./thinkspc <capability> [--flag value ...]',
@@ -590,12 +685,16 @@ export function renderRunnerHelp(): string {
     '  ./thinkspc <capability> --help',
     '',
     'Notes:',
-    '  - Output defaults to text. Use --json for machine-parseable output.',
+    '  - Output defaults to text in terminals and json in non-interactive mode.',
+    '  - Global output flags (--json, --text) must appear before the command.',
+    '  - Output verbosity flags (--brief, --full) must appear before the command.',
     '  - --extra-* is for custom metadata only (extraFields).',
     '  - For first-class fields use first-class flags (e.g., --comments, --description).',
     '  - Use comment.add for append-only task notes.',
+    '  - You can load long text values from files via --<flag>-file (e.g., --text-file ./note.md).',
     '  - ./ltm remains a compatibility alias for ./thinkspc.',
     '  - Passing a thinking-organizer URL directly is treated like organizer.context.',
+    '  - Shortcuts: context, search, claim, comment, done, wip, ready, blocked.',
     '  - For long/multi-line text, use --text-stdin and pipe via stdin:',
     '      echo "my long text" | ./thinkspc comment.add --uuid <id> --addedBy agent --text-stdin',
     '      ./thinkspc comment.add --uuid <id> --addedBy agent --text-stdin <<\'EOF\'',
@@ -745,6 +844,7 @@ function writeText(text: string): void {
 }
 
 type CliOutputFormat = 'json' | 'text'
+type CliOutputVerbosity = 'brief' | 'full'
 
 function normalizeOutputFormat(value: string | undefined): CliOutputFormat | null {
   const normalized = (value || '').trim().toLowerCase()
@@ -753,25 +853,81 @@ function normalizeOutputFormat(value: string | undefined): CliOutputFormat | nul
   return null
 }
 
+function normalizeOutputVerbosity(value: string | undefined): CliOutputVerbosity | null {
+  const normalized = (value || '').trim().toLowerCase()
+  if (normalized === 'brief') return 'brief'
+  if (normalized === 'full') return 'full'
+  if (normalized === '1' || normalized === 'true' || normalized === 'yes') return 'brief'
+  if (normalized === '0' || normalized === 'false' || normalized === 'no') return 'full'
+  return null
+}
+
 export function resolveOutputFormat(
   args: string[],
   options?: { envFormat?: string; isTTY?: boolean },
-): { format: CliOutputFormat; args: string[] } {
+): { format: CliOutputFormat; verbosity: CliOutputVerbosity; args: string[] } {
   let explicit: CliOutputFormat | null = null
-  const passthrough: string[] = []
-  for (const arg of args) {
-    if (arg === '--json') {
+  let explicitVerbosity: CliOutputVerbosity | null = null
+  const passthrough = [...args]
+  while (passthrough.length > 0) {
+    const head = passthrough[0]
+    if (head === '--json') {
       explicit = 'json'
-    } else if (arg === '--text') {
-      explicit = 'text'
-    } else {
-      passthrough.push(arg)
+      passthrough.shift()
+      continue
     }
+    if (head === '--text') {
+      explicit = 'text'
+      passthrough.shift()
+      continue
+    }
+    if (head === '--brief') {
+      explicitVerbosity = 'brief'
+      passthrough.shift()
+      continue
+    }
+    if (head === '--full') {
+      explicitVerbosity = 'full'
+      passthrough.shift()
+      continue
+    }
+    break
   }
 
   const envFormat = normalizeOutputFormat(options?.envFormat ?? process.env.LTM_OUTPUT_FORMAT)
-  const format = explicit ?? envFormat ?? 'text'
-  return { format, args: passthrough }
+  const envVerbosity = normalizeOutputVerbosity(process.env.LTM_OUTPUT_BRIEF)
+  const isTTY = options?.isTTY ?? Boolean(process.stdout.isTTY)
+  const format = explicit ?? envFormat ?? (isTTY ? 'text' : 'json')
+  const verbosity = explicitVerbosity ?? envVerbosity ?? 'full'
+  return { format, verbosity, args: passthrough }
+}
+
+export async function materializeFileBackedInputs(input: Record<string, unknown>): Promise<void> {
+  const baseDir = process.env.THINKSPC_CALLER_CWD
+    ? path.resolve(process.env.THINKSPC_CALLER_CWD)
+    : process.cwd()
+  const entries = Object.entries(input)
+  for (const [key, rawValue] of entries) {
+    if (!key.endsWith('-file')) continue
+
+    const targetKey = key.slice(0, -5)
+    const filePath = typeof rawValue === 'string' ? rawValue.trim() : ''
+    if (!filePath) {
+      throw new Error(`Missing file path for --${key}.`)
+    }
+    if (input[targetKey] !== undefined) {
+      throw new Error(`Cannot combine --${targetKey} with --${key}.`)
+    }
+
+    const resolvedFilePath = path.resolve(baseDir, filePath)
+    const fileText = await fsPromises.readFile(resolvedFilePath, 'utf-8')
+    const normalizedText = fileText.trimEnd()
+    if (!normalizedText) {
+      throw new Error(`File for --${key} is empty: ${resolvedFilePath}`)
+    }
+    input[targetKey] = normalizedText
+    delete input[key]
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -863,6 +1019,17 @@ function renderListOutput(payload: unknown): string {
   return lines.join('\n')
 }
 
+function renderListOutputBrief(payload: unknown): string {
+  const record = asRecord(payload)
+  const capabilities = Array.isArray(record?.capabilities) ? record!.capabilities : []
+  const names = capabilities
+    .map((capability) => asRecord(capability))
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+    .map((entry) => asString(entry.name))
+    .filter((name): name is string => Boolean(name))
+  return `Capabilities (${names.length}): ${names.join(', ')}`
+}
+
 function renderInvokeOutput(payload: unknown): string {
   const record = asRecord(payload)
   if (!record) return formatUnknown(payload)
@@ -929,20 +1096,70 @@ function renderInvokeOutput(payload: unknown): string {
   return lines.join('\n')
 }
 
-function writeOutput(payload: unknown, format: CliOutputFormat, context: 'list' | 'invoke'): void {
+function renderInvokeOutputBrief(payload: unknown): string {
+  const record = asRecord(payload)
+  if (!record) return formatUnknown(payload)
+
+  const capability = asString(record.capability) || '<unknown>'
+  const ok = record.ok === true
+  const failed = record.ok === false
+  if (!ok && !failed) return formatUnknown(payload)
+
+  if (!ok) {
+    const error = asRecord(record.error)
+    if (error) {
+      return `Failure: ${capability}\nError: ${asString(error.code) || 'UNKNOWN'} - ${asString(error.message) || 'Unknown error'}`
+    }
+    return `Failure: ${capability}`
+  }
+
+  const lines: string[] = [`Success: ${capability}`]
+  const data = asRecord(record.data)
+  if (!data) return lines.join('\n')
+
+  if (Array.isArray(data.nodes)) {
+    const nodes = data.nodes.slice(0, 5)
+    lines.push(`Nodes: ${data.nodes.length}`)
+    nodes.forEach((entry, index) => {
+      const rec = asRecord(entry)
+      lines.push(`  ${index + 1}. ${rec ? nodeSummary(rec) : String(entry)}`)
+    })
+    if (data.nodes.length > nodes.length) {
+      lines.push(`  ... ${data.nodes.length - nodes.length} more`)
+    }
+    return lines.join('\n')
+  }
+
+  if (data.node) {
+    const node = asRecord(data.node)
+    if (node) {
+      lines.push(`Node: ${nodeSummary(node)}`)
+      return lines.join('\n')
+    }
+  }
+
+  return lines.join('\n')
+}
+
+function writeOutput(
+  payload: unknown,
+  format: CliOutputFormat,
+  context: 'list' | 'invoke',
+  verbosity: CliOutputVerbosity,
+): void {
   if (format === 'json') {
     writeJson(payload)
     return
   }
   if (context === 'list') {
-    writeText(renderListOutput(payload))
+    writeText(verbosity === 'brief' ? renderListOutputBrief(payload) : renderListOutput(payload))
     return
   }
-  writeText(renderInvokeOutput(payload))
+  writeText(verbosity === 'brief' ? renderInvokeOutputBrief(payload) : renderInvokeOutput(payload))
 }
 
 async function main(): Promise<void> {
-  const { format: outputFormat, args } = resolveOutputFormat(process.argv.slice(2))
+  const { format: outputFormat, verbosity: outputVerbosity, args } = resolveOutputFormat(process.argv.slice(2))
   const command = args[0]
 
   if (!command || command === 'help' || command === '--help' || command === '-h') {
@@ -951,13 +1168,13 @@ async function main(): Promise<void> {
   }
 
   if (command === 'list') {
-    writeOutput(await runCapabilityRunnerCommand('list'), outputFormat, 'list')
+    writeOutput(await runCapabilityRunnerCommand('list'), outputFormat, 'list', outputVerbosity)
     return
   }
 
   if (command === 'invoke') {
     const payload = await parseInvokePayload()
-    writeOutput(await runCapabilityRunnerCommand('invoke', payload), outputFormat, 'invoke')
+    writeOutput(await runCapabilityRunnerCommand('invoke', payload), outputFormat, 'invoke', outputVerbosity)
     return
   }
 
@@ -975,8 +1192,13 @@ async function main(): Promise<void> {
     return
   }
 
-  if (command === 'organizer.context') {
-    const cliArgs = args.slice(1)
+  const shortcutResolution = resolveCommandShortcut(command, args.slice(1))
+  writeCLIWarnings(shortcutResolution.warnings)
+  const resolvedCommand = shortcutResolution.command
+  const resolvedArgs = shortcutResolution.args
+
+  if (resolvedCommand === 'organizer.context') {
+    const cliArgs = resolvedArgs
     if (cliArgs.includes('--help') || cliArgs.includes('-h')) {
       writeText(renderOrganizerContextHelp())
       return
@@ -995,18 +1217,22 @@ async function main(): Promise<void> {
   }
 
   // CLI-arg mode: treat argv[2] as a capability name
-  if (command && command.includes('.')) {
-    const cliArgs = args.slice(1)
+  if (resolvedCommand && resolvedCommand.includes('.')) {
+    const cliArgs = resolvedArgs
     if (cliArgs.includes('--help') || cliArgs.includes('-h')) {
-      writeText(renderCapabilityHelp(command))
+      writeText(renderCapabilityHelp(resolvedCommand))
       return
     }
-    const { payload, warnings } = buildCLIInvokePayload(command, cliArgs)
+    const { payload, warnings } = buildCLIInvokePayload(resolvedCommand, cliArgs)
 
     // --text-stdin: read the --text value from stdin to avoid shell quoting issues
     const input = payload.request.input as Record<string, unknown>
+    await materializeFileBackedInputs(input)
     if (input['text-stdin'] === true) {
       delete input['text-stdin']
+      if (typeof input.text === 'string' && input.text.trim()) {
+        throw new Error('Cannot combine --text-stdin with --text/--text-file.')
+      }
       const stdinText = await readStdin()
       if (!stdinText.trim()) {
         throw new Error('--text-stdin was set but stdin was empty. Pipe text via stdin.')
@@ -1015,11 +1241,11 @@ async function main(): Promise<void> {
     }
 
     writeCLIWarnings(warnings)
-    writeOutput(await runCapabilityRunnerCommand('invoke', payload), outputFormat, 'invoke')
+    writeOutput(await runCapabilityRunnerCommand('invoke', payload), outputFormat, 'invoke', outputVerbosity)
     return
   }
 
-  throw new Error(`Unknown command: ${command ?? '<missing>'}. Use "list", "invoke", or a capability name (e.g. organizer.nodes.list_roots).`)
+  throw new Error(`Unknown command: ${command ?? '<missing>'}. Use "list", "invoke", organizer shortcuts (e.g. search, claim, done), or a capability name (e.g. organizer.nodes.list_roots).`)
 }
 
 export async function runCapabilityRunnerCommand(
