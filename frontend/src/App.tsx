@@ -38,6 +38,7 @@ import Settings from './pages/Settings'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import AppTabsBlock, { type AppWorkspaceTabBlockModel } from './components/lego_blocks/units/AppTabsBlock'
 import UniversalSearchBlock from './components/lego_blocks/integrations/UniversalSearchBlock'
+import { UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK } from './components/lego_blocks/integrations/universalSearchPresetBlock'
 import { useUILayoutBlock } from './components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useUIThemeBlock } from './components/lego_blocks/units/UIThemeBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
@@ -1191,6 +1192,7 @@ function App() {
             <div className="ltm-cmd-card ltm-shell-command-card ltm-shell-command-surface ltm-shell-motion-modal max-h-full w-full max-w-2xl overflow-hidden rounded-2xl">
               <div className="p-3">
                 <UniversalSearchBlock
+                  {...UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK}
                   items={allCommandItems}
                   query={commandQuery}
                   onQueryChange={setCommandQuery}
@@ -1206,18 +1208,9 @@ function App() {
                     item.keywords ?? '',
                   ]}
                   placeholder="Jump to a page or file..."
-                  limit={80}
                   open
-                  dismissOnOutsideClick={false}
-                  closeOnSelect={false}
                   onEscapeKeyDown={closeCommandPalette}
                   inputRef={commandInputRef}
-                  inputWrapperClassName="ltm-shell-field-surface flex items-center gap-2 rounded-lg px-2.5"
-                  inputClassName="h-10 border-0 bg-transparent text-sm placeholder:text-muted-foreground focus:ring-0 focus:ring-offset-0"
-                  dropdownClassName="static z-auto mt-2 max-h-[min(58vh,520px)] overflow-y-auto border-0 bg-transparent shadow-none"
-                  listClassName="space-y-0 p-2"
-                  emptyClassName="rounded-lg px-3 py-4 text-sm text-muted-foreground"
-                  emptyMessage="No matches. Try another keyword."
                   itemClassName={(item) => {
                     const active = isNavItemActive(location.pathname, {
                       to: item.to,

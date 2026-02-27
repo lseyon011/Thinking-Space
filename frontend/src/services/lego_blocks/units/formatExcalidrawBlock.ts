@@ -11,8 +11,11 @@ export interface FormatOptions {
 const PART_RE = /^PART\s+[IVXLC]+\s*$/i
 const CHAPTER_RE = /^(?:##\s*)?Chapter\s+(\d+)(?::\s*(.+))?$/i
 const CHAPTER_LINE_RE = /^CHAPTER\s+(\d+)\s*$/i
+const CHAPTER_MARKER_RE = /^(?:#{1,6}\s*)?CHAPTER\s+(\d+)\s*$/i
+const MARKDOWN_HEADING_RE = /^#{1,6}\s+(.+)$/
 const CHAPTER_SECTION_RE = /^##\s+Chapter\s+(\d+)(?::\s*(.+))?$/i
 const CONTENTS_HEADING_RE = /^(?:#{1,6}\s*)?(?:table of contents|contents|index)\s*$/i
+const NOTES_HEADING_RE = /^#{1,6}\s+notes\b/i
 const INDEX_DOT_LEADER_RE = /\.{2,}\s*\d+\s*$/
 const CHAPTER_PART_WORD_LIMIT = 2000
 // Used for future split_long_paragraphs feature
@@ -30,10 +33,32 @@ function cleanChapterTitle(raw: string): string {
   return title.trim()
 }
 
+function stripHeadingPrefix(line: string): string {
+  const match = line.trim().match(MARKDOWN_HEADING_RE)
+  return match ? match[1].trim() : line.trim()
+}
+
+function normalizeHeadingKey(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function findNextNonEmptyLine(lines: string[], startIndex: number, maxLookahead = 8): { index: number; text: string } | null {
+  const limit = Math.min(lines.length, startIndex + maxLookahead + 1)
+  for (let i = startIndex + 1; i < limit; i += 1) {
+    const text = lines[i].trim()
+    if (text) return { index: i, text }
+  }
+  return null
+}
+
 function parseIndexChapterEntry(line: string): { chapterNum: string; chapterTitle: string } | null {
   const stripped = line.trim()
   if (!stripped) return null
-  const withoutMarker = stripped.replace(/^[-*•]\s+/, '')
+  const withoutMarker = stripHeadingPrefix(stripped).replace(/^[-*•]\s+/, '')
 
   let m = withoutMarker.match(/^Chapter\s+(\d+)\s*[:.\-–]?\s*(.+)$/i)
   if (m) {
@@ -50,43 +75,31 @@ function parseIndexChapterEntry(line: string): { chapterNum: string; chapterTitl
   return null
 }
 
-function findFirstBodyChapterIndex(lines: string[]): number {
-  for (let i = 0; i < lines.length; i += 1) {
-    const stripped = lines[i].trim()
-    if (!stripped) continue
-
-    if (CHAPTER_LINE_RE.test(stripped)) return i
-
-    const m = stripped.match(CHAPTER_RE)
-    if (!m) continue
-
-    // TOC/index chapter entries often have dot-leaders and page numbers.
-    if (INDEX_DOT_LEADER_RE.test(stripped)) continue
-    return i
-  }
-  return -1
-}
-
 function collectIndexChapterHints(lines: string[]): Map<string, string> {
   const hints = new Map<string, string>()
-  const firstBodyChapterIndex = findFirstBodyChapterIndex(lines)
-  const limit = firstBodyChapterIndex > 0 ? firstBodyChapterIndex : Math.min(lines.length, 400)
-  let inContentsSection = false
+  const contentsIndex = lines.findIndex(line => CONTENTS_HEADING_RE.test(line.trim()))
+  const hasContentsHeading = contentsIndex >= 0
+  const start = hasContentsHeading ? contentsIndex + 1 : 0
+  const limit = hasContentsHeading
+    ? Math.min(lines.length, start + 500)
+    : Math.min(lines.length, 400)
 
-  for (let i = 0; i < limit; i += 1) {
+  for (let i = start; i < limit; i += 1) {
     const stripped = lines[i].trim()
     if (!stripped) continue
 
-    if (CONTENTS_HEADING_RE.test(stripped)) {
-      inContentsSection = true
-      continue
+    if (hasContentsHeading) {
+      if (/^```/.test(stripped)) break
+      const headingLevelMatch = stripped.match(/^(#{1,6})\s+/)
+      if (headingLevelMatch && headingLevelMatch[1].length === 1) break
     }
 
     let chapterEntry = parseIndexChapterEntry(stripped)
     if (!chapterEntry) {
-      const chapterOnly = stripped.match(/^Chapter\s+(\d+)\s*$/i)
-      if (chapterOnly && i + 1 < limit) {
-        const maybeTitle = cleanChapterTitle(lines[i + 1].trim())
+      const chapterOnly = stripHeadingPrefix(stripped).match(/^Chapter\s+(\d+)\s*$/i)
+      const nextContent = chapterOnly ? findNextNonEmptyLine(lines, i, 6) : null
+      if (chapterOnly && nextContent) {
+        const maybeTitle = cleanChapterTitle(stripHeadingPrefix(nextContent.text))
         if (maybeTitle && !/^Chapter\s+\d+/i.test(maybeTitle)) {
           chapterEntry = { chapterNum: chapterOnly[1], chapterTitle: maybeTitle }
         }
@@ -95,7 +108,10 @@ function collectIndexChapterHints(lines: string[]): Map<string, string> {
 
     if (!chapterEntry) continue
 
-    const shouldTrustHint = inContentsSection || INDEX_DOT_LEADER_RE.test(stripped) || /^Chapter\s+\d+/i.test(stripped)
+    const shouldTrustHint = hasContentsHeading
+      || INDEX_DOT_LEADER_RE.test(stripped)
+      || /^Chapter\s+\d+/i.test(stripHeadingPrefix(stripped))
+
     if (shouldTrustHint && !hints.has(chapterEntry.chapterNum)) {
       hints.set(chapterEntry.chapterNum, chapterEntry.chapterTitle)
     }
@@ -144,14 +160,114 @@ function normalizeBookStructure(lines: string[], chapterIndexHints: Map<string, 
   const out: string[] = []
   let i = 0
   const n = lines.length
-  const firstBodyChapterIndex = findFirstBodyChapterIndex(lines)
+  let inContentsSection = false
+  let inNotesSection = false
+  const chapterTitleToNumber = new Map<string, string>()
+  const emittedChapterNumbers = new Set<string>()
+
+  for (const [chapterNum, chapterTitle] of chapterIndexHints.entries()) {
+    const key = normalizeHeadingKey(chapterTitle)
+    if (key && !chapterTitleToNumber.has(key)) {
+      chapterTitleToNumber.set(key, chapterNum)
+    }
+  }
 
   while (i < n) {
     const line = lines[i]
     const stripped = line.trim()
 
-    // Skip TOC/index chapter list lines once hints are captured.
-    if (i < firstBodyChapterIndex && (CONTENTS_HEADING_RE.test(stripped) || parseIndexChapterEntry(stripped))) {
+    if (CONTENTS_HEADING_RE.test(stripped)) {
+      inContentsSection = true
+      i++
+      continue
+    }
+
+    // Drop table-of-contents section entirely.
+    if (inContentsSection) {
+      if (!stripped) {
+        i++
+        continue
+      }
+      const headingLevelMatch = stripped.match(/^(#{1,6})\s+/)
+      if (headingLevelMatch) {
+        const headingLevel = headingLevelMatch[1].length
+        if (headingLevel === 1 && !CONTENTS_HEADING_RE.test(stripped)) {
+          inContentsSection = false
+        } else {
+          i++
+          continue
+        }
+      } else if (CHAPTER_LINE_RE.test(stripped)) {
+        inContentsSection = false
+      } else if (parseIndexChapterEntry(stripped) || CHAPTER_MARKER_RE.test(stripped)) {
+        i++
+        continue
+      } else if (/^```/.test(stripped)) {
+        inContentsSection = false
+      } else {
+        inContentsSection = false
+      }
+
+      if (inContentsSection) {
+        i++
+        continue
+      }
+    }
+
+    // Drop markdown chapter markers (like ### CHAPTER 1) after TOC parse.
+    if (CHAPTER_MARKER_RE.test(stripped) && !CHAPTER_LINE_RE.test(stripped)) {
+      if (stripped.startsWith('#')) {
+        i++
+        continue
+      }
+    }
+
+    if (NOTES_HEADING_RE.test(stripped)) {
+      inNotesSection = true
+      out.push(line)
+      i++
+      continue
+    }
+
+    if (inNotesSection) {
+      out.push(line)
+      i++
+      continue
+    }
+
+    // CHAPTER headers
+    let m = stripped.match(CHAPTER_RE)
+    if (!m) m = stripped.match(CHAPTER_LINE_RE)
+    if (!m) m = stripped.match(CHAPTER_MARKER_RE)
+    if (m) {
+      const chapNum = m[1]
+      let chapTitle = cleanChapterTitle(m.length >= 3 && m[2] ? m[2] : '')
+
+      if (!chapTitle) {
+        const nextContent = findNextNonEmptyLine(lines, i, 6)
+        const nextLine = nextContent?.text ?? ''
+        if (
+          nextLine
+          && !nextLine.toUpperCase().startsWith('CHAPTER')
+          && !PART_RE.test(nextLine)
+          && looksLikeChapterTitleCandidate(nextLine)
+        ) {
+          chapTitle = cleanChapterTitle(nextLine)
+          i = nextContent?.index ?? i
+        }
+      }
+
+      if (!chapTitle) {
+        chapTitle = chapterIndexHints.get(chapNum) ?? ''
+      }
+
+      if (chapTitle) {
+        out.push(`\n## Chapter ${chapNum}: ${chapTitle}\n`)
+      } else {
+        out.push(`\n## Chapter ${chapNum}\n`)
+      }
+      emittedChapterNumbers.add(chapNum)
+      inContentsSection = false
       i++
       continue
     }
@@ -176,37 +292,17 @@ function normalizeBookStructure(lines: string[], chapterIndexHints: Map<string, 
       continue
     }
 
-    // CHAPTER headers
-    let m = stripped.match(CHAPTER_RE)
-    if (!m) m = stripped.match(CHAPTER_LINE_RE)
-    if (m) {
-      const chapNum = m[1]
-      let chapTitle = cleanChapterTitle(m.length >= 3 && m[2] ? m[2] : '')
-
-      if (!chapTitle && i + 1 < n) {
-        const nextLine = lines[i + 1].trim()
-        if (
-          nextLine
-          && !nextLine.toUpperCase().startsWith('CHAPTER')
-          && !PART_RE.test(nextLine)
-          && looksLikeChapterTitleCandidate(nextLine)
-        ) {
-          chapTitle = cleanChapterTitle(nextLine)
-          i++
-        }
+    // Convert chapter-title headings (from TOC hints) into numbered chapter headings.
+    const headingMatch = stripped.match(MARKDOWN_HEADING_RE)
+    if (headingMatch) {
+      const headingTitle = cleanChapterTitle(headingMatch[1])
+      const chapterNum = chapterTitleToNumber.get(normalizeHeadingKey(headingTitle))
+      if (chapterNum && !emittedChapterNumbers.has(chapterNum)) {
+        out.push(`\n## Chapter ${chapterNum}: ${chapterIndexHints.get(chapterNum) ?? headingTitle}\n`)
+        emittedChapterNumbers.add(chapterNum)
+        i++
+        continue
       }
-
-      if (!chapTitle) {
-        chapTitle = chapterIndexHints.get(chapNum) ?? ''
-      }
-
-      if (chapTitle) {
-        out.push(`\n## Chapter ${chapNum}: ${chapTitle}\n`)
-      } else {
-        out.push(`\n## Chapter ${chapNum}\n`)
-      }
-      i++
-      continue
     }
 
     out.push(line)
@@ -227,7 +323,7 @@ function cleanExcessNewlines(text: string): string {
 function autoDetectBook(lines: string[]): boolean {
   for (const line of lines) {
     const s = line.trim()
-    if (PART_RE.test(s) || CHAPTER_RE.test(s) || CHAPTER_LINE_RE.test(s)) return true
+    if (PART_RE.test(s) || CHAPTER_RE.test(s) || CHAPTER_LINE_RE.test(s) || CHAPTER_MARKER_RE.test(s) || CONTENTS_HEADING_RE.test(s)) return true
   }
   return false
 }
@@ -389,8 +485,21 @@ function splitChapterBodyIntoChunks(lines: string[], maxWords: number): string[]
 function splitChapterSections(lines: string[], maxWordsPerPart: number): string[] {
   const out: string[] = []
   let i = 0
+  let inNotesSection = false
 
   while (i < lines.length) {
+    if (NOTES_HEADING_RE.test(lines[i].trim())) {
+      inNotesSection = true
+      out.push(lines[i])
+      i++
+      continue
+    }
+    if (inNotesSection) {
+      out.push(lines[i])
+      i++
+      continue
+    }
+
     const chapterMatch = lines[i].trim().match(CHAPTER_SECTION_RE)
     if (!chapterMatch) {
       out.push(lines[i])

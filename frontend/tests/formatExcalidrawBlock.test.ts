@@ -57,4 +57,34 @@ describe('formatExcalidrawBlock', () => {
     expect(output).toContain('## Chapter 7: Systems Thinking')
     expect(output).toContain('### Chapter 7 Part 1')
   })
+
+  it('handles contents pattern with separate CHAPTER and title heading lines', () => {
+    const longChapterBody = Array.from({ length: 2200 }, (_, index) => `body${index + 1}`).join(' ')
+    const input = [
+      '# Contents',
+      '### CHAPTER 1',
+      '## The Way of the Wind',
+      '### CHAPTER 2',
+      '## How the Grid Got Its Wires',
+      '',
+      '# Introduction',
+      'Short intro text.',
+      '',
+      '## The Way of the Wind',
+      longChapterBody,
+      '',
+      '## How the Grid Got Its Wires',
+      'Short second chapter.',
+    ].join('\n')
+
+    const output = formatMarkdown(input, DEFAULT_OPTIONS)
+
+    expect(output).not.toContain('### CHAPTER 1')
+    expect(output).not.toContain('## The Way of the Wind\n### CHAPTER 2')
+    expect(output).toContain('## Chapter 1: The Way of the Wind')
+    expect(output).toContain('### Chapter 1 Part 1')
+    expect(output).toContain('### Chapter 1 Part 2')
+    expect(output).toContain('## Chapter 2: How the Grid Got Its Wires')
+    expect(output).toContain('### Chapter 2 Part 1')
+  })
 })

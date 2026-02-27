@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
+import {
+  UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK,
+  buildPathSearchCandidatesBlock,
+} from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
 
 interface SearchDropdownProps {
   items: string[]
@@ -20,9 +24,9 @@ export default function SearchDropdown({
   onSelect,
   onInputChange,
   getSearchCandidates,
-  limit = 50,
+  limit = UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK.limit ?? 80,
   allowCustomValue = false,
-  emptyMessage = 'No matches found.',
+  emptyMessage = UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK.emptyMessage ?? 'No matches found.',
 }: SearchDropdownProps) {
   const [query, setQuery] = useState(selected)
 
@@ -32,6 +36,7 @@ export default function SearchDropdown({
 
   return (
     <UniversalSearchBlock
+      {...UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK}
       items={items}
       query={query}
       onQueryChange={(value) => {
@@ -44,7 +49,7 @@ export default function SearchDropdown({
       }}
       getItemKey={(value) => value}
       getItemLabel={(value) => value}
-      getItemSearchCandidates={(value) => getSearchCandidates?.(value) ?? [value]}
+      getItemSearchCandidates={(value) => getSearchCandidates?.(value) ?? buildPathSearchCandidatesBlock(value)}
       placeholder={placeholder}
       selectedItemKey={selected || null}
       limit={limit}
