@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, 
 import {
   Bot,
   CheckSquare2,
-  ChevronDown,
   Compass,
   FolderKanban,
   FileText,
@@ -12,7 +11,6 @@ import {
   MessageSquare,
   PanelLeft,
   PanelLeftClose,
-  PenLine,
   PlusSquare,
   Search,
   Settings as SettingsIcon,
@@ -20,7 +18,9 @@ import {
   X,
 } from 'lucide-react'
 import treeOfLifeLogo from './assets/tree-of-life-logo.jpg'
+import excalidrawLogo from './assets/excalidraw-logo.svg'
 import Home from './pages/Home'
+import ExcalidrawPlus from './pages/ExcalidrawPlus'
 import FormatExcalidraw from './pages/FormatExcalidraw'
 import ExcalidrawPlugin from './pages/ExcalidrawPlugin'
 import MindmapBuilder from './pages/MindmapBuilder'
@@ -37,6 +37,11 @@ import ExtensionBuilder from './pages/ExtensionBuilder'
 import Settings from './pages/Settings'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import AppTabsBlock, { type AppWorkspaceTabBlockModel } from './components/lego_blocks/units/AppTabsBlock'
+import {
+  EXCALIDRAW_PLUS_ROOT_ROUTE,
+  EXCALIDRAW_PLUS_TOOL_ROUTES,
+  isExcalidrawPlusRoute,
+} from './components/lego_blocks/units/ExcalidrawPlusRoutesBlock'
 import UniversalSearchBlock from './components/lego_blocks/integrations/UniversalSearchBlock'
 import { UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK } from './components/lego_blocks/integrations/universalSearchPresetBlock'
 import { useUILayoutBlock } from './components/lego_blocks/hooks/shared/useUILayoutBlock'
@@ -105,21 +110,17 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   },
 ]
 
-const TOOL_NAV_ITEMS: NavItem[] = [
-  { to: '/excalidraw-plugin', label: 'Excalidraw Plugin', icon: Sparkles },
-  { to: '/format-excalidraw', label: 'Format for Excalidraw', icon: Sparkles },
-  { to: '/mindmap-builder', label: 'Mindmap Builder', icon: Sparkles },
-  { to: '/pdf-to-markdown', label: 'PDF to Markdown', icon: Sparkles },
-  { to: '/transcript-cleaner', label: 'Transcript Cleaner', icon: Sparkles },
-]
-
 function ExcalidrawPlusIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
-    <span className={`relative inline-flex items-center justify-center ${className}`}>
-      <PenLine className="h-full w-full" />
-      <span className="absolute -right-1 -top-1 text-[9px] font-bold leading-none">++</span>
-    </span>
+    <img src={excalidrawLogo} alt="" aria-hidden="true" className={className} />
   )
+}
+
+const EXCALIDRAW_NAV_ITEM: NavItem = {
+  to: EXCALIDRAW_PLUS_ROOT_ROUTE,
+  label: 'Excalidraw++',
+  icon: ExcalidrawPlusIcon,
+  activePaths: EXCALIDRAW_PLUS_TOOL_ROUTES.flatMap(tool => [tool.route, tool.legacyRoute]),
 }
 
 function isNavItemActive(pathname: string, item: NavItem): boolean {
@@ -217,9 +218,6 @@ function App() {
   const [commandQuery, setCommandQuery] = useState('')
   const [commandFileItems, setCommandFileItems] = useState<CommandItem[]>([])
   const [commandFilesLastLoadedAt, setCommandFilesLastLoadedAt] = useState(0)
-  const [excalidrawNavExpanded, setExcalidrawNavExpanded] = useState(() => (
-    getStorageItem(STORAGE_KEYS.appShellExcalidrawExpanded) === '1'
-  ))
   const [explorerIconStyle, setExplorerIconStyle] = useState<ExplorerIconStyleBlock>('outline')
   const commandInputRef = useRef<HTMLInputElement | null>(null)
   const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
@@ -282,11 +280,17 @@ function App() {
       group: 'Workspace' as const,
       activePaths: item.activePaths,
     })),
-    ...TOOL_NAV_ITEMS.map(item => ({
-      to: item.to,
-      label: item.label,
+    {
+      to: EXCALIDRAW_NAV_ITEM.to,
+      label: EXCALIDRAW_NAV_ITEM.label,
       group: 'Excalidraw++' as const,
-      activePaths: item.activePaths,
+      activePaths: EXCALIDRAW_NAV_ITEM.activePaths,
+    },
+    ...EXCALIDRAW_PLUS_TOOL_ROUTES.map(tool => ({
+      to: tool.route,
+      label: tool.label,
+      group: 'Excalidraw++' as const,
+      activePaths: [tool.legacyRoute],
     })),
   ]), [utilityNavItems])
 
@@ -343,7 +347,7 @@ function App() {
   )
   const compactDrawerTriggerLeft = Math.max(16, leftInset + 16)
   const excalidrawGroupActive = useMemo(
-    () => TOOL_NAV_ITEMS.some(item => isNavItemActive(location.pathname, item)),
+    () => isExcalidrawPlusRoute(location.pathname),
     [location.pathname],
   )
   const shellSafeAreaVars = useMemo<CSSProperties>(() => ({
@@ -587,16 +591,6 @@ function App() {
   useEffect(() => {
     setStorageItem(STORAGE_KEYS.appShellSidebarCollapsed, sidebarCollapsed ? '1' : '0')
   }, [sidebarCollapsed])
-
-  useEffect(() => {
-    setStorageItem(STORAGE_KEYS.appShellExcalidrawExpanded, excalidrawNavExpanded ? '1' : '0')
-  }, [excalidrawNavExpanded])
-
-  useEffect(() => {
-    if (excalidrawGroupActive && !excalidrawNavExpanded) {
-      setExcalidrawNavExpanded(true)
-    }
-  }, [excalidrawGroupActive, excalidrawNavExpanded])
 
   useEffect(() => {
     if (!commandPaletteOpen) return
@@ -887,46 +881,28 @@ function App() {
                     )}
                     {sidebarCollapsed ? (
                       <Link
-                        to={TOOL_NAV_ITEMS[0].to}
+                        to={EXCALIDRAW_NAV_ITEM.to}
                         title="Excalidraw++"
                         className={`ltm-motion-fast ltm-touch-row flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-colors ${
-                          excalidrawGroupActive ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          excalidrawGroupActive
+                            ? 'bg-foreground text-background'
+                            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                         }`}
                       >
                         <ExcalidrawPlusIcon className="h-4 w-4" />
                       </Link>
                     ) : (
-                      <div className="space-y-1">
-                        <button
-                          type="button"
-                          onClick={() => setExcalidrawNavExpanded(prev => !prev)}
-                          className={`ltm-motion-fast ltm-touch-row flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                            excalidrawGroupActive ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                          }`}
-                        >
-                          <ExcalidrawPlusIcon className="h-4 w-4" />
-                          <span className="flex-1 truncate text-left">Excalidraw++</span>
-                          <ChevronDown className={`h-4 w-4 transition-transform ${excalidrawNavExpanded ? 'rotate-180' : ''}`} />
-                        </button>
-                        {excalidrawNavExpanded && (
-                          <div className="ml-5 space-y-1">
-                            {TOOL_NAV_ITEMS.map((item) => {
-                              const active = isNavItemActive(location.pathname, item)
-                              return (
-                                <Link
-                                  key={item.to}
-                                  to={item.to}
-                                  className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
-                                    active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                                  }`}
-                                >
-                                  <span className="truncate">{item.label}</span>
-                                </Link>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
+                      <Link
+                        to={EXCALIDRAW_NAV_ITEM.to}
+                        className={`ltm-motion-fast ltm-touch-row flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                          excalidrawGroupActive
+                            ? 'bg-foreground text-background'
+                            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        <ExcalidrawPlusIcon className="h-4 w-4" />
+                        <span className="flex-1 truncate text-left">Excalidraw++</span>
+                      </Link>
                     )}
                   </div>
                 </div>
@@ -984,12 +960,20 @@ function App() {
               <Route path="/thinking-space" element={<ThinkingSpace />} />
               <Route path="/thinking-organizer" element={<ThinkingOrganizer />} />
               <Route path="/file-organizer" element={<ThinkingOrganizer />} />
-              <Route path="/excalidraw-plugin" element={<ExcalidrawPlugin />} />
-              <Route path="/format-excalidraw" element={<FormatExcalidraw />} />
-              <Route path="/mindmap-builder" element={<MindmapBuilder />} />
+              <Route path="/excalidraw-plus" element={<ExcalidrawPlus />}>
+                <Route index element={<Navigate to="plugin" replace />} />
+                <Route path="plugin" element={<ExcalidrawPlugin />} />
+                <Route path="format" element={<FormatExcalidraw />} />
+                <Route path="mindmap" element={<MindmapBuilder />} />
+                <Route path="pdf" element={<PdfToMarkdown />} />
+                <Route path="transcript" element={<TranscriptCleaner />} />
+              </Route>
+              <Route path="/excalidraw-plugin" element={<Navigate to="/excalidraw-plus/plugin" replace />} />
+              <Route path="/format-excalidraw" element={<Navigate to="/excalidraw-plus/format" replace />} />
+              <Route path="/mindmap-builder" element={<Navigate to="/excalidraw-plus/mindmap" replace />} />
+              <Route path="/pdf-to-markdown" element={<Navigate to="/excalidraw-plus/pdf" replace />} />
+              <Route path="/transcript-cleaner" element={<Navigate to="/excalidraw-plus/transcript" replace />} />
               <Route path="/git-insights" element={<GitInsights />} />
-              <Route path="/pdf-to-markdown" element={<PdfToMarkdown />} />
-              <Route path="/transcript-cleaner" element={<TranscriptCleaner />} />
               <Route path="/new-thought" element={<NewThought />} />
               <Route path="/todos" element={<Todos />} />
               <Route path="/chat" element={<Chat />} />
@@ -1117,36 +1101,16 @@ function App() {
                   <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Excalidraw++
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setExcalidrawNavExpanded(prev => !prev)}
+                  <Link
+                    to={EXCALIDRAW_NAV_ITEM.to}
+                    onClick={() => setDrawerOpen(false)}
                     className={`ltm-motion-fast ltm-touch-row flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
                       excalidrawGroupActive ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                     }`}
                   >
                     <ExcalidrawPlusIcon className="h-4 w-4" />
-                    <span className="flex-1 truncate text-left">Excalidraw++</span>
-                    <ChevronDown className={`h-4 w-4 transition-transform ${excalidrawNavExpanded ? 'rotate-180' : ''}`} />
-                  </button>
-                  {excalidrawNavExpanded && (
-                    <div className="ml-5 space-y-1">
-                      {TOOL_NAV_ITEMS.map((item) => {
-                        const active = isNavItemActive(location.pathname, item)
-                        return (
-                          <Link
-                            key={item.to}
-                            to={item.to}
-                            onClick={() => setDrawerOpen(false)}
-                            className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
-                              active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                            }`}
-                          >
-                            <span className="truncate">{item.label}</span>
-                          </Link>
-                        )
-                      })}
-                    </div>
-                  )}
+                    <span className="truncate">Excalidraw++</span>
+                  </Link>
                 </div>
               </div>
 

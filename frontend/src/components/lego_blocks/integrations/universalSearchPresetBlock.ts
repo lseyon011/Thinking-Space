@@ -3,6 +3,7 @@ import type { UniversalSearchBlockProps } from '@/components/lego_blocks/integra
 type UniversalSearchPresetKeysBlock<T> = Pick<
   UniversalSearchBlockProps<T>,
   | 'limit'
+  | 'showDropdown'
   | 'dismissOnOutsideClick'
   | 'closeOnSelect'
   | 'inputWrapperClassName'
@@ -34,6 +35,22 @@ export const UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK: UniversalSearchPresetKeysBl
   listClassName: 'max-h-[min(52vh,420px)] overflow-auto space-y-0 p-2',
   emptyClassName: 'rounded-lg px-3 py-4 text-sm text-muted-foreground',
   emptyMessage: 'No matches. Try another keyword.',
+}
+
+export const UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK: UniversalSearchPresetKeysBlock<unknown> = {
+  limit: 80,
+  showDropdown: false,
+  dismissOnOutsideClick: false,
+  closeOnSelect: false,
+  inputClassName: 'h-8 rounded-md border border-input bg-background pl-8 pr-2 text-xs text-foreground outline-none ring-0 transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-0 focus:ring-offset-0',
+}
+
+export const UNIVERSAL_SEARCH_PILL_FILTER_PRESET_BLOCK: UniversalSearchPresetKeysBlock<unknown> = {
+  limit: 80,
+  showDropdown: false,
+  dismissOnOutsideClick: false,
+  closeOnSelect: false,
+  inputClassName: 'h-9 w-56 rounded-full border border-input bg-background pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
 }
 
 function appendUniqueCandidateBlock(target: string[], value: string): void {

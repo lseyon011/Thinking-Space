@@ -9,6 +9,10 @@ import {
   RefreshCcw,
 } from 'lucide-react'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
+import {
+  buildPathSearchCandidatesBlock,
+  UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK,
+} from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
   EXPLORER_PERSISTENCE_PREFIX,
@@ -21,6 +25,7 @@ import {
   readDroppedNodeId,
   readPersistedExplorerState,
 } from '@/components/lego_blocks/units/VaultExplorerUtilsBlock'
+import { rankFuzzyItemsBlock } from '@/services/lego_blocks/units/fuzzySearchBlock'
 import { cn } from '@/lib/utils'
 
 interface FolderEntries {
@@ -136,6 +141,7 @@ export default function VaultExplorerBlock({
   const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const renameSubmittingRef = useRef(false)
+  const queryMatchCacheRef = useRef<Map<string, boolean>>(new Map())
 
   const getNode = useCallback(
     (path: string): NodeState =>
@@ -240,27 +246,52 @@ export default function VaultExplorerBlock({
   const hasTitle = title.trim().length > 0
   const inlineRenameSession = inlineRename ? `${inlineRename.kind}:${inlineRename.path}` : null
 
+  useEffect(() => {
+    queryMatchCacheRef.current = new Map()
+  }, [normalizedQuery])
+
+  const pathMatchesSearch = useCallback((path: string): boolean => {
+    if (!normalizedQuery) return true
+    const normalizedPath = path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    if (!normalizedPath) return false
+
+    const cached = queryMatchCacheRef.current.get(normalizedPath)
+    if (typeof cached === 'boolean') return cached
+
+    const matched = rankFuzzyItemsBlock({
+      items: [normalizedPath],
+      query: normalizedQuery,
+      limit: 1,
+      getCandidates: item => buildPathSearchCandidatesBlock(item),
+    }).length > 0
+
+    queryMatchCacheRef.current.set(normalizedPath, matched)
+    return matched
+  }, [normalizedQuery])
+
   const pathMatchesQuery = useCallback(
     (path: string, visited: Set<string>): boolean => {
       if (!normalizedQuery) return true
       if (visited.has(path)) return false
       visited.add(path)
 
+      if (pathMatchesSearch(path)) return true
+
       const node = getNode(path)
 
       for (const folderName of node.folders) {
         const full = joinPath(path, folderName)
-        if (folderName.toLowerCase().includes(normalizedQuery)) return true
+        if (pathMatchesSearch(full)) return true
         if (pathMatchesQuery(full, visited)) return true
       }
 
       for (const fileName of node.files) {
-        if (fileName.toLowerCase().includes(normalizedQuery)) return true
+        if (pathMatchesSearch(joinPath(path, fileName))) return true
       }
 
       return false
     },
-    [getNode, normalizedQuery],
+    [getNode, normalizedQuery, pathMatchesSearch],
   )
 
   const toggleFolder = useCallback(
@@ -473,13 +504,14 @@ export default function VaultExplorerBlock({
 
       const visibleFolders = node.folders.filter(folderName => {
         if (!normalizedQuery) return true
-        if (folderName.toLowerCase().includes(normalizedQuery)) return true
-        return pathMatchesQuery(joinPath(path, folderName), new Set())
+        const full = joinPath(path, folderName)
+        if (pathMatchesSearch(full)) return true
+        return pathMatchesQuery(full, new Set())
       })
 
       const visibleFiles = node.files.filter(fileName => {
         if (!normalizedQuery) return true
-        return fileName.toLowerCase().includes(normalizedQuery)
+        return pathMatchesSearch(joinPath(path, fileName))
       })
 
       visibleFolders.forEach(folderName => {
@@ -760,6 +792,7 @@ export default function VaultExplorerBlock({
       onOpenInNewTab,
       onSelectFile,
       openContextMenu,
+      pathMatchesSearch,
       pathMatchesQuery,
       pendingRename,
       selectedFilePath,
@@ -825,6 +858,7 @@ export default function VaultExplorerBlock({
         )}
 
         <UniversalSearchBlock
+          {...UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK}
           items={[]}
           query={query}
           onQueryChange={setQuery}
@@ -832,10 +866,6 @@ export default function VaultExplorerBlock({
           getItemKey={(value) => value}
           getItemLabel={(value) => value}
           placeholder="Filter files..."
-          showDropdown={false}
-          dismissOnOutsideClick={false}
-          closeOnSelect={false}
-          inputClassName="h-8 rounded-md border border-input bg-background pl-8 pr-2 text-xs text-foreground outline-none ring-0 transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-0 focus:ring-offset-0"
         />
       </div>
 

@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { HOW_WE_FEEL, EmotionItem, EmotionColor } from '@/data/howWeFeel'
+import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
+import { UNIVERSAL_SEARCH_PILL_FILTER_PRESET_BLOCK } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
 
 interface EmotionTaggerProps {
   selected: string[]
@@ -132,11 +134,15 @@ export default function EmotionTagger({ selected, onChange }: EmotionTaggerProps
                 </button>
               ))}
               <div className="ml-auto">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                <UniversalSearchBlock
+                  {...UNIVERSAL_SEARCH_PILL_FILTER_PRESET_BLOCK}
+                  items={[]}
+                  query={query}
+                  onQueryChange={setQuery}
+                  onSelect={() => {}}
+                  getItemKey={(value) => value}
+                  getItemLabel={(value) => value}
                   placeholder="Search feelings"
-                  className="h-9 w-56 rounded-full border border-input bg-background px-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 />
               </div>
               <button
