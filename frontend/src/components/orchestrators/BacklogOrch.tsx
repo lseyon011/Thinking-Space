@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarDays, Download, Loader2, Plus, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
@@ -41,6 +41,12 @@ import {
   splitTagInputBlock,
   tagLookupKeyBlock,
 } from '@/services/lego_blocks/units/tagBlock'
+import {
+  readOrganizerUiStateOrch,
+  writeOrganizerUiStateOrch,
+  type OrganizerProgramGroupEntryOrch,
+  type OrganizerUiStateOrch,
+} from '@/services/orchestrators/organizerUiStateOrch'
 
 interface ProjectEntry {
   name: string
@@ -48,7 +54,7 @@ interface ProjectEntry {
 }
 type ProjectPresetTagsByRoot = Record<string, string[]>
 type ProjectTagColorsByRoot = Record<string, Record<string, string>>
-interface ProgramGroupEntry {
+interface ProgramGroupEntry extends OrganizerProgramGroupEntryOrch {
   id: string
   name: string
   programIds: string[]
@@ -176,6 +182,97 @@ function normalizeProgramGroups(groups: ProgramGroupEntry[]): ProgramGroupEntry[
   return normalized
 }
 
+function normalizeTagColorMap(colors: Record<string, string>): Record<string, string> {
+  const normalized: Record<string, string> = {}
+  for (const [tag, color] of Object.entries(colors)) {
+    const tagKey = tagLookupKeyBlock(tag)
+    const normalizedColor = normalizeHexColorBlock(color)
+    if (!tagKey || !normalizedColor) continue
+    normalized[tagKey] = normalizedColor
+  }
+  return normalized
+}
+
+function projectUiStateSignature(state: OrganizerUiStateOrch): string {
+  return JSON.stringify({
+    projectName: state.projectName ?? null,
+    presetTags: normalizeTagListBlock(state.presetTags ?? []),
+    tagColors: normalizeTagColorMap(state.tagColors ?? {}),
+    programGroups: normalizeProgramGroups(state.programGroups ?? []),
+  })
+}
+
+function hasProjectUiStateData(state: OrganizerUiStateOrch): boolean {
+  return Boolean(
+    (state.projectName && state.projectName.trim())
+    || state.presetTags.length > 0
+    || Object.keys(state.tagColors).length > 0
+    || state.programGroups.length > 0,
+  )
+}
+
+function readProgramGroupFromNode(node: NodeRecord): string | null {
+  const metadata = node.metadata as Record<string, unknown> | undefined
+  const value = metadata?.program_group
+  if (typeof value !== 'string') return null
+  const normalized = value.trim()
+  return normalized || null
+}
+
+function mergeProgramGroupsWithYamlAssignments(
+  groups: ProgramGroupEntry[],
+  projectPrograms: NodeRecord[],
+): ProgramGroupEntry[] {
+  const normalizedGroups = normalizeProgramGroups(groups)
+  const groupOrder = normalizedGroups.map(group => group.id)
+  const groupMeta = new Map<string, Pick<ProgramGroupEntry, 'name' | 'collapsed'>>(
+    normalizedGroups.map(group => [group.id, { name: group.name, collapsed: group.collapsed }]),
+  )
+  const existingAssignmentByProgram = new Map<string, string>()
+  for (const group of normalizedGroups) {
+    for (const programId of group.programIds) {
+      existingAssignmentByProgram.set(programId, group.id)
+    }
+  }
+
+  const programIdsByGroup = new Map<string, string[]>()
+  const seenProgramIdsByGroup = new Map<string, Set<string>>()
+  const pushProgram = (groupId: string, programId: string) => {
+    const normalizedGroupId = groupId.trim()
+    const normalizedProgramId = programId.trim()
+    if (!normalizedGroupId || !normalizedProgramId) return
+    if (!programIdsByGroup.has(normalizedGroupId)) {
+      programIdsByGroup.set(normalizedGroupId, [])
+      seenProgramIdsByGroup.set(normalizedGroupId, new Set())
+    }
+    const seen = seenProgramIdsByGroup.get(normalizedGroupId)!
+    if (seen.has(normalizedProgramId)) return
+    seen.add(normalizedProgramId)
+    programIdsByGroup.get(normalizedGroupId)!.push(normalizedProgramId)
+  }
+
+  for (const program of projectPrograms) {
+    const yamlGroupId = readProgramGroupFromNode(program)
+    const groupId = yamlGroupId ?? existingAssignmentByProgram.get(program.uuid)
+    if (!groupId) continue
+    if (!groupMeta.has(groupId)) {
+      groupMeta.set(groupId, { name: humanizeKey(groupId), collapsed: false })
+      groupOrder.push(groupId)
+    }
+    pushProgram(groupId, program.uuid)
+  }
+
+  return groupOrder.map((groupId) => {
+    const meta = groupMeta.get(groupId) ?? { name: 'Group', collapsed: false }
+    return {
+      id: groupId,
+      name: meta.name?.trim() || 'Group',
+      collapsed: !!meta.collapsed,
+      programIds: programIdsByGroup.get(groupId) ?? [],
+    }
+  })
+}
+
 function normalizeStoredSegments(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value
@@ -264,8 +361,10 @@ export default function BacklogOrch() {
   const [projectProgramGroupsByRoot, setProjectProgramGroupsByRoot] = useState<ProjectProgramGroupsByRoot>(
     () => getJsonStorageItem<ProjectProgramGroupsByRoot>(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, {}),
   )
+  const projectUiStateHydratedRootsRef = useRef<Set<string>>(new Set())
+  const projectUiStatePersistedSignatureByRootRef = useRef<Record<string, string>>({})
   const [initialProjectLoadResolved, setInitialProjectLoadResolved] = useState(false)
-  const [initialStoredProjectRoot] = useState(() => readStoredProjectRoot())
+  const [storedProjectRootPreference, setStoredProjectRootPreference] = useState(() => readStoredProjectRoot())
   const activeProjectRoot = useMemo(
     () => normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? ''),
     [searchParams],
@@ -286,6 +385,135 @@ export default function BacklogOrch() {
     return normalizePath(root) ? normalizePath(`${root}/${THINKING_ORGANIZER_DIR}`) : ''
   })
   const [creatingProject, setCreatingProject] = useState(false)
+
+  const buildProjectUiState = useCallback((projectRoot: string): OrganizerUiStateOrch => {
+    const normalizedRoot = normalizePath(projectRoot)
+    const projectEntry = projectEntries.find(entry => normalizePath(entry.root) === normalizedRoot)
+    const projectPrograms = programs.filter(
+      program => normalizePath(program.projectRoot ?? '') === normalizedRoot && program.type === 'program',
+    )
+    const mergedProgramGroups = mergeProgramGroupsWithYamlAssignments(
+      normalizeProgramGroups(projectProgramGroupsByRoot[normalizedRoot] ?? []),
+      projectPrograms,
+    )
+    return {
+      schemaVersion: 1,
+      updatedAt: new Date().toISOString(),
+      projectName: projectEntry?.name?.trim() || undefined,
+      presetTags: normalizeTagListBlock(projectPresetTagsByRoot[normalizedRoot] ?? []),
+      tagColors: normalizeTagColorMap(projectTagColorsByRoot[normalizedRoot] ?? {}),
+      programGroups: mergedProgramGroups,
+    }
+  }, [programs, projectEntries, projectPresetTagsByRoot, projectProgramGroupsByRoot, projectTagColorsByRoot])
+
+  const applyProjectUiStateToCache = useCallback((projectRoot: string, state: OrganizerUiStateOrch) => {
+    const normalizedRoot = normalizePath(projectRoot)
+    if (!normalizedRoot) return
+    const normalizedState: OrganizerUiStateOrch = {
+      ...state,
+      presetTags: normalizeTagListBlock(state.presetTags ?? []),
+      tagColors: normalizeTagColorMap(state.tagColors ?? {}),
+      programGroups: normalizeProgramGroups(state.programGroups ?? []),
+    }
+
+    if (normalizedState.projectName?.trim()) {
+      setProjectEntries((prev) => {
+        const next = [...prev]
+        const idx = next.findIndex(project => normalizePath(project.root) === normalizedRoot)
+        if (idx >= 0) next[idx] = { root: normalizedRoot, name: normalizedState.projectName! }
+        else next.push({ root: normalizedRoot, name: normalizedState.projectName! })
+        next.sort((a, b) => a.name.localeCompare(b.name))
+        setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjects, next)
+        return next
+      })
+    }
+
+    setProjectPresetTagsByRoot((prev) => {
+      const next: ProjectPresetTagsByRoot = { ...prev }
+      if (normalizedState.presetTags.length > 0) next[normalizedRoot] = normalizedState.presetTags
+      else delete next[normalizedRoot]
+      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectPresetTags, next)
+      return next
+    })
+
+    setProjectTagColorsByRoot((prev) => {
+      const next: ProjectTagColorsByRoot = { ...prev }
+      if (Object.keys(normalizedState.tagColors).length > 0) next[normalizedRoot] = normalizedState.tagColors
+      else delete next[normalizedRoot]
+      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectTagColors, next)
+      return next
+    })
+
+    setProjectProgramGroupsByRoot((prev) => {
+      const next: ProjectProgramGroupsByRoot = { ...prev }
+      if (normalizedState.programGroups.length > 0) next[normalizedRoot] = normalizedState.programGroups
+      else delete next[normalizedRoot]
+      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, next)
+      return next
+    })
+
+    projectUiStatePersistedSignatureByRootRef.current[normalizedRoot] = projectUiStateSignature(normalizedState)
+    projectUiStateHydratedRootsRef.current.add(normalizedRoot)
+  }, [])
+
+  useEffect(() => {
+    if (!activeProjectRoot) return
+    const normalizedRoot = normalizePath(activeProjectRoot)
+    if (!normalizedRoot) return
+    if (projectUiStateHydratedRootsRef.current.has(normalizedRoot)) return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const fromVault = await readOrganizerUiStateOrch(normalizedRoot)
+        if (cancelled) return
+        if (fromVault) {
+          applyProjectUiStateToCache(normalizedRoot, fromVault)
+          return
+        }
+
+        const cachedState = buildProjectUiState(normalizedRoot)
+        if (hasProjectUiStateData(cachedState)) {
+          const persisted = await writeOrganizerUiStateOrch(normalizedRoot, cachedState)
+          if (cancelled) return
+          applyProjectUiStateToCache(normalizedRoot, persisted)
+          return
+        }
+
+        projectUiStatePersistedSignatureByRootRef.current[normalizedRoot] = projectUiStateSignature(cachedState)
+        projectUiStateHydratedRootsRef.current.add(normalizedRoot)
+      } catch (err) {
+        if (!cancelled) setError(errorMessage(err, 'Failed to load project organizer UI settings'))
+        projectUiStateHydratedRootsRef.current.add(normalizedRoot)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [activeProjectRoot, applyProjectUiStateToCache, buildProjectUiState])
+
+  useEffect(() => {
+    if (!activeProjectRoot) return
+    const normalizedRoot = normalizePath(activeProjectRoot)
+    if (!normalizedRoot) return
+    if (!projectUiStateHydratedRootsRef.current.has(normalizedRoot)) return
+
+    const snapshot = buildProjectUiState(normalizedRoot)
+    const signature = projectUiStateSignature(snapshot)
+    if (projectUiStatePersistedSignatureByRootRef.current[normalizedRoot] === signature) return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const persisted = await writeOrganizerUiStateOrch(normalizedRoot, snapshot)
+        if (cancelled) return
+        projectUiStatePersistedSignatureByRootRef.current[normalizedRoot] = projectUiStateSignature(persisted)
+      } catch (err) {
+        if (!cancelled) setError(errorMessage(err, 'Failed to persist project organizer UI settings'))
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [activeProjectRoot, buildProjectUiState])
 
   const loadPrograms = useCallback(async (syncVault = false): Promise<boolean> => {
     setLoading(true)
@@ -333,6 +561,7 @@ export default function BacklogOrch() {
       STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot,
       normalized ? normalized.split('/') : [],
     )
+    setStoredProjectRootPreference(normalized)
   }, [setSearchParams])
 
   const updateProjectTagColor = useCallback((projectRoot: string, tag: string, color: string | null) => {
@@ -440,8 +669,14 @@ export default function BacklogOrch() {
 
   const activeProjectProgramGroups = useMemo(() => {
     if (!activeProjectRoot) return []
-    return normalizeProgramGroups(projectProgramGroupsByRoot[activeProjectRoot] ?? [])
-  }, [activeProjectRoot, projectProgramGroupsByRoot])
+    const projectPrograms = programs.filter(
+      program => normalizePath(program.projectRoot ?? '') === activeProjectRoot && program.type === 'program',
+    )
+    return mergeProgramGroupsWithYamlAssignments(
+      normalizeProgramGroups(projectProgramGroupsByRoot[activeProjectRoot] ?? []),
+      projectPrograms,
+    )
+  }, [activeProjectRoot, programs, projectProgramGroupsByRoot])
 
   const activeProjectProgramGroupIdByProgram = useMemo(() => {
     const byProgram: Record<string, string> = {}
@@ -452,6 +687,32 @@ export default function BacklogOrch() {
     }
     return byProgram
   }, [activeProjectProgramGroups])
+
+  const persistProgramGroupAssignmentInYaml = useCallback(async (
+    programUuid: string,
+    groupId: string | null,
+  ) => {
+    const normalizedProgramUuid = programUuid.trim()
+    if (!normalizedProgramUuid) return
+    const normalizedGroupId = groupId?.trim() || null
+    try {
+      const { node: updated } = await invokeCapabilityOrThrow({
+        capability: 'organizer.node.update',
+        input: {
+          uuid: normalizedProgramUuid,
+          updates: {
+            extraFields: {
+              program_group: normalizedGroupId,
+            },
+          },
+        },
+        actor: BACKLOG_ACTOR,
+      })
+      setPrograms(prev => prev.map(program => (program.uuid === updated.uuid ? updated : program)))
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to persist program group in YAML frontmatter'))
+    }
+  }, [])
 
   const createActiveProjectProgramGroup = useCallback((name: string) => {
     if (!activeProjectRoot) return
@@ -472,10 +733,14 @@ export default function BacklogOrch() {
     if (!activeProjectRoot) return
     const normalizedGroupId = groupId.trim()
     if (!normalizedGroupId) return
+    const removedProgramIds = activeProjectProgramGroups.find(group => group.id === normalizedGroupId)?.programIds ?? []
     updateProjectProgramGroups(activeProjectRoot, groups =>
       groups.filter(group => group.id !== normalizedGroupId),
     )
-  }, [activeProjectRoot, updateProjectProgramGroups])
+    for (const programId of removedProgramIds) {
+      void persistProgramGroupAssignmentInYaml(programId, null)
+    }
+  }, [activeProjectProgramGroups, activeProjectRoot, persistProgramGroupAssignmentInYaml, updateProjectProgramGroups])
 
   const toggleActiveProjectProgramGroupCollapsed = useCallback((groupId: string) => {
     if (!activeProjectRoot) return
@@ -507,7 +772,8 @@ export default function BacklogOrch() {
           : group
       ))
     })
-  }, [activeProjectRoot, updateProjectProgramGroups])
+    void persistProgramGroupAssignmentInYaml(normalizedProgramUuid, normalizedGroupId)
+  }, [activeProjectRoot, persistProgramGroupAssignmentInYaml, updateProjectProgramGroups])
 
   useEffect(() => {
     if (urlHydrated) return
@@ -548,9 +814,9 @@ export default function BacklogOrch() {
   useEffect(() => {
     if (!urlHydrated) return
     if (activeProjectRoot) return
-    if (!initialStoredProjectRoot) return
-    selectProject(initialStoredProjectRoot)
-  }, [activeProjectRoot, initialStoredProjectRoot, selectProject, urlHydrated])
+    if (!storedProjectRootPreference) return
+    selectProject(storedProjectRootPreference)
+  }, [activeProjectRoot, selectProject, storedProjectRootPreference, urlHydrated])
 
   const refreshExecutionProgress = useCallback(async () => {
     setActiveExecutionTasksLoading(true)
@@ -680,11 +946,11 @@ export default function BacklogOrch() {
     if (exists) return
 
     const fallbackFromStored = availableProjects.find(
-      project => project.root === initialStoredProjectRoot,
+      project => project.root === storedProjectRootPreference,
     )?.root
     const fallback = fallbackFromStored ?? availableProjects[0].root
     selectProject(fallback)
-  }, [activeProjectRoot, availableProjects, initialProjectLoadResolved, initialStoredProjectRoot, selectProject])
+  }, [activeProjectRoot, availableProjects, initialProjectLoadResolved, selectProject, storedProjectRootPreference])
 
   const visiblePrograms = useMemo(() => {
     if (!activeProjectRoot) return programs
