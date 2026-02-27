@@ -16,6 +16,8 @@ export interface MarkdownMeta {
   words: number | null
   headings: number | null
   size: string
+  createdAt: string | null
+  updatedAt: string | null
 }
 
 export interface MarkdownFrontmatterMetaEntry {
@@ -123,6 +125,13 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+export function formatUnixTimestampForMeta(timestampSeconds: number | null): string | null {
+  if (typeof timestampSeconds !== 'number' || !Number.isFinite(timestampSeconds) || timestampSeconds <= 0) return null
+  const date = new Date(timestampSeconds * 1000)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleString()
 }
 
 export function scheduleDeferredWork(callback: () => void): () => void {

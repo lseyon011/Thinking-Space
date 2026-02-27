@@ -50,6 +50,7 @@ import {
   DEFERRED_RENDER_CHARS,
   buildFrontmatterMetaState,
   extractTextFromNode,
+  formatUnixTimestampForMeta,
   formatBytes,
   frontmatterObjectToBlock,
   isBlankLineMarkerText,
@@ -103,6 +104,7 @@ function MarkdownDocumentBlock({
   const [content, setContent] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [baseMtime, setBaseMtime] = useState<number | null>(null)
+  const [baseCtime, setBaseCtime] = useState<number | null>(null)
   const [baseHash, setBaseHash] = useState<string | null>(null)
 
   const [sizeBytes, setSizeBytes] = useState(0)
@@ -187,6 +189,7 @@ function MarkdownDocumentBlock({
       setContent(data.content)
       setDraft(seedDraft && !isExcalidrawDoc ? data.content : '')
       setBaseMtime(data.mtime)
+      setBaseCtime(data.ctime)
       setBaseHash(data.hash)
       setSizeBytes(data.size)
     } catch (err) {
@@ -194,6 +197,7 @@ function MarkdownDocumentBlock({
       setContent(null)
       setDraft('')
       setBaseMtime(null)
+      setBaseCtime(null)
       setBaseHash(null)
       setSizeBytes(0)
     } finally {
@@ -546,6 +550,8 @@ function MarkdownDocumentBlock({
       words: null,
       headings: null,
       size: formatBytes(sizeBytes),
+      createdAt: formatUnixTimestampForMeta(baseCtime),
+      updatedAt: formatUnixTimestampForMeta(baseMtime),
     })
 
     if (!showMeta) return
@@ -558,6 +564,8 @@ function MarkdownDocumentBlock({
         words: content.split(/\s+/).filter(Boolean).length,
         headings: (content.match(/^#{1,6}\s/gm) || []).length,
         size: formatBytes(sizeBytes),
+        createdAt: formatUnixTimestampForMeta(baseCtime),
+        updatedAt: formatUnixTimestampForMeta(baseMtime),
       })
     })
 
@@ -565,7 +573,7 @@ function MarkdownDocumentBlock({
       cancelled = true
       cancelDeferred()
     }
-  }, [content, showMeta, sizeBytes])
+  }, [baseCtime, baseMtime, content, showMeta, sizeBytes])
 
   useEffect(() => {
     if (content === null || isEditing || isExcalidrawDoc) {
@@ -680,6 +688,7 @@ function MarkdownDocumentBlock({
       if (current.content === latestBaseline.content) {
         setContent(current.content)
         setBaseMtime(current.mtime)
+        setBaseCtime(current.ctime)
         setBaseHash(current.hash)
         setSizeBytes(current.size)
         setDraft('')
@@ -695,6 +704,7 @@ function MarkdownDocumentBlock({
       })
       setContent(latestBaseline.content)
       setBaseMtime(result.mtime)
+      setBaseCtime(result.ctime)
       setBaseHash(result.hash)
       setSizeBytes(result.size)
       setDraft('')
@@ -788,6 +798,7 @@ function MarkdownDocumentBlock({
         })
         setContent(draftToSave)
         setBaseMtime(result.mtime)
+        setBaseCtime(result.ctime)
         setBaseHash(result.hash)
         setSizeBytes(result.size)
         // Keep cancel baseline aligned with the latest persisted draft, including auto-saves.
@@ -856,6 +867,7 @@ function MarkdownDocumentBlock({
       setContent(reloaded.content)
       setDraft('')
       setBaseMtime(reloaded.mtime)
+      setBaseCtime(reloaded.ctime)
       setBaseHash(reloaded.hash)
       setSizeBytes(reloaded.size)
       setMode('view')
@@ -1048,6 +1060,8 @@ function MarkdownDocumentBlock({
                 <span><strong className="text-foreground/70">{meta.words ?? '…'}</strong> words</span>
                 <span><strong className="text-foreground/70">{meta.headings ?? '…'}</strong> headings</span>
                 <span>{meta.size}</span>
+                <span>Created: <strong className="text-foreground/70">{meta.createdAt ?? '—'}</strong></span>
+                <span>Updated: <strong className="text-foreground/70">{meta.updatedAt ?? '—'}</strong></span>
               </div>
 
               {!isExcalidrawDoc && (

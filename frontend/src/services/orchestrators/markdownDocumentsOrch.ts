@@ -19,6 +19,7 @@ interface MarkdownReadCacheEntry {
   path: string
   content: string
   mtime: number
+  ctime: number
   size: number
   hash: string
   cachedAt: number
@@ -63,10 +64,12 @@ async function readMarkdownDocumentShared(path: string): Promise<MarkdownReadCac
     }
 
     const content = await fs.read(path)
+    const ctime = stat.ctime ?? stat.mtime
     return writeCacheEntry(path, {
       path,
       content,
       mtime: stat.mtime,
+      ctime,
       size: stat.size,
       hash: hashContent(content),
     })
@@ -135,6 +138,7 @@ export async function readMarkdownDocument(path: string): Promise<{
   path: string
   content: string
   mtime: number
+  ctime: number
   size: number
   hash: string
 }>
@@ -145,6 +149,7 @@ export async function readMarkdownDocument(
   path: string
   content: string
   mtime: number
+  ctime: number
   size: number
   hash: null
 }>
@@ -155,6 +160,7 @@ export async function readMarkdownDocument(
   path: string
   content: string
   mtime: number
+  ctime: number
   size: number
   hash: string | null
 }> {
@@ -164,6 +170,7 @@ export async function readMarkdownDocument(
     path,
     content: cached.content,
     mtime: cached.mtime,
+    ctime: cached.ctime,
     size: cached.size,
     hash: includeHash ? cached.hash : null,
   }
@@ -175,7 +182,7 @@ export async function saveMarkdownDocument(params: {
   baseMtime: number
   baseHash?: string | null
   baseContent?: string | null
-}): Promise<{ output_path: string; revision_path: string | null; mtime: number; size: number; hash: string }> {
+}): Promise<{ output_path: string; revision_path: string | null; mtime: number; ctime: number; size: number; hash: string }> {
   const fs = getVaultFS()
 
   const current = await readMarkdownDocumentShared(params.path)
@@ -226,6 +233,7 @@ export async function saveMarkdownDocument(params: {
     path: params.path,
     content: params.content,
     mtime: savedStat.mtime,
+    ctime: savedStat.ctime ?? savedStat.mtime,
     size: savedStat.size,
     hash: savedHash,
   })
@@ -233,6 +241,7 @@ export async function saveMarkdownDocument(params: {
     output_path: params.path,
     revision_path: revisionPath,
     mtime: savedStat.mtime,
+    ctime: savedStat.ctime ?? savedStat.mtime,
     size: savedStat.size,
     hash: savedHash,
   }
