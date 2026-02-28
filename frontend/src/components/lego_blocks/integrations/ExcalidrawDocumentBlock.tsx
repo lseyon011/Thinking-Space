@@ -30,6 +30,12 @@ import {
   type ExcalidrawHighlighterPresetBlock,
 } from '@/services/orchestrators/excalidrawHighlighterOrch'
 import {
+  buildExcalidrawPenDefaultsAppStatePatchOrch,
+  readExcalidrawPenDefaultsOrch,
+  writeExcalidrawPenDefaultsOrch,
+  type ExcalidrawPenDefaultsOrch,
+} from '@/services/orchestrators/excalidrawPenDefaultsOrch'
+import {
   type SceneAnalysis,
   EMPTY_SCENE_ANALYSIS,
   LARGE_SCENE_ELEMENT_THRESHOLD,
@@ -160,6 +166,7 @@ export default function ExcalidrawDocumentBlock({
   const pencilBridgeStopRef = useRef<(() => Promise<void>) | null>(null)
   const pencilAppStateFrameRef = useRef<number | null>(null)
   const pendingPencilAppStateRef = useRef<Record<string, unknown> | null>(null)
+  const lastSelectedPresetIdRef = useRef<string | null>(null)
   const viewportSubscriptionActiveRef = useRef(false)
   const [miniMapElements, setMiniMapElements] = useState<readonly unknown[] | null>(null)
   const pendingMiniMapElementsRef = useRef<readonly unknown[] | null>(null)
@@ -171,6 +178,7 @@ export default function ExcalidrawDocumentBlock({
   )
   const [activeHighlighterPresetId, setActiveHighlighterPresetId] = useState<string | null>(null)
   const [currentStrokeWidth, setCurrentStrokeWidth] = useState(2)
+  const [penDefaults, setPenDefaults] = useState<ExcalidrawPenDefaultsOrch>(() => readExcalidrawPenDefaultsOrch())
 
   // ---------------------------------------------------------------------------
   // Debug logging
@@ -444,7 +452,15 @@ export default function ExcalidrawDocumentBlock({
       return
     }
     const nextPresetId = matchExcalidrawHighlighterPresetOrch(appState, highlighterPresets)
-    setActiveHighlighterPresetId((prev) => (prev === nextPresetId ? prev : nextPresetId))
+    const activeToolType = readActiveToolType(appState)
+    setActiveHighlighterPresetId((prev) => {
+      if (nextPresetId && nextPresetId !== 'custom') {
+        lastSelectedPresetIdRef.current = nextPresetId
+        return prev === nextPresetId ? prev : nextPresetId
+      }
+      if (activeToolType !== 'freedraw') return null
+      return prev ?? lastSelectedPresetIdRef.current
+    })
     const width = typeof appState.currentItemStrokeWidth === 'number'
       ? appState.currentItemStrokeWidth : 2
     setCurrentStrokeWidth((prev) => (prev === width ? prev : width))
@@ -455,21 +471,60 @@ export default function ExcalidrawDocumentBlock({
     const preset = highlighterPresets.find((item) => item.id === presetId)
     if (!preset) return
     const appState = excalidrawApi.getAppStateBlock()
-    excalidrawApi.updateAppStateBlock(
-      buildExcalidrawHighlighterAppStatePatchOrch(preset, appState),
-    )
+    const presetPatch = buildExcalidrawHighlighterAppStatePatchOrch(preset, appState)
+    const nextStrokeOptionsBase = isObjectLike(appState.currentStrokeOptions)
+      ? appState.currentStrokeOptions as Record<string, unknown>
+      : {}
+    const presetStrokeOptions = isObjectLike(presetPatch.currentStrokeOptions)
+      ? presetPatch.currentStrokeOptions as Record<string, unknown>
+      : {}
+    const nextAppState = {
+      ...appState,
+      ...presetPatch,
+      currentStrokeOptions: {
+        ...nextStrokeOptionsBase,
+        ...presetStrokeOptions,
+      },
+    }
+    const defaultsPatch = buildExcalidrawPenDefaultsAppStatePatchOrch(penDefaults, nextAppState)
+    const defaultsStrokeOptions = isObjectLike(defaultsPatch.currentStrokeOptions)
+      ? defaultsPatch.currentStrokeOptions as Record<string, unknown>
+      : {}
+    excalidrawApi.updateAppStateBlock({
+      ...presetPatch,
+      ...defaultsPatch,
+      currentStrokeOptions: {
+        ...nextStrokeOptionsBase,
+        ...presetStrokeOptions,
+        ...defaultsStrokeOptions,
+      },
+    })
     setActiveHighlighterPresetId(preset.id)
+    lastSelectedPresetIdRef.current = preset.id
     // Sync stroke width display from the applied preset or current state
-    const nextWidth = preset.strokeWidth > 0
-      ? preset.strokeWidth
-      : (typeof appState.currentItemStrokeWidth === 'number' ? appState.currentItemStrokeWidth : 2)
+    const nextWidth = typeof defaultsPatch.currentItemStrokeWidth === 'number'
+      ? defaultsPatch.currentItemStrokeWidth
+      : (preset.strokeWidth > 0
+        ? preset.strokeWidth
+        : (typeof appState.currentItemStrokeWidth === 'number' ? appState.currentItemStrokeWidth : 2))
     setCurrentStrokeWidth(nextWidth)
-  }, [editable, excalidrawApi, highlighterPresets])
+  }, [editable, excalidrawApi, highlighterPresets, penDefaults])
 
   const handleStrokeWidthChange = useCallback((width: number) => {
     if (!editable || !excalidrawApi) return
     excalidrawApi.updateAppStateBlock({ currentItemStrokeWidth: width })
     setCurrentStrokeWidth(width)
+  }, [editable, excalidrawApi])
+
+  const handlePenDefaultsChange = useCallback((nextDefaults: ExcalidrawPenDefaultsOrch) => {
+    setPenDefaults(nextDefaults)
+    writeExcalidrawPenDefaultsOrch(nextDefaults)
+    setCurrentStrokeWidth(nextDefaults.strokeWidth)
+    if (!editable || !excalidrawApi) return
+    const appState = excalidrawApi.getAppStateBlock()
+    excalidrawApi.updateAppStateBlock(
+      buildExcalidrawPenDefaultsAppStatePatchOrch(nextDefaults, appState),
+    )
   }, [editable, excalidrawApi])
 
   // ---------------------------------------------------------------------------
@@ -1164,6 +1219,8 @@ export default function ExcalidrawDocumentBlock({
           presets={highlighterPresets}
           activePresetId={activeHighlighterPresetId}
           onSelectPreset={applyHighlighterPreset}
+          penDefaults={penDefaults}
+          onPenDefaultsChange={handlePenDefaultsChange}
           currentStrokeWidth={currentStrokeWidth}
           onStrokeWidthChange={handleStrokeWidthChange}
         />
