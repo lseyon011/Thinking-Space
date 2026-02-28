@@ -91,6 +91,43 @@ export interface SyncF9ExecutionResultBlock {
   warnings: string[]
 }
 
+export interface CreateF9CompanyInputBlock {
+  executionFolderPath: string
+  companyTicker: string
+  fs?: VaultFS
+}
+
+export interface CreateF9ManualPositionInputBlock {
+  executionFolderPath: string
+  companyTicker: string
+  title?: string
+  status?: 'taken' | 'planned' | 'watchlist'
+  instrumentType?: 'STOCK' | 'OPTION'
+  optionType?: 'CALL' | 'PUT' | null
+  optionExpireDate?: string | null
+  optionExercisePrice?: string | null
+  linkedIdeaId?: string | null
+  notes?: string
+  fs?: VaultFS
+}
+
+export interface UpdateF9PositionOverlayInputBlock {
+  executionFolderPath: string
+  companyTicker: string
+  fileName: string
+  status?: 'taken' | 'planned' | 'watchlist'
+  linkedIdeaId?: string | null
+  fs?: VaultFS
+}
+
+export interface SaveF9PositionBodyInputBlock {
+  executionFolderPath: string
+  companyTicker: string
+  fileName: string
+  body: string
+  fs?: VaultFS
+}
+
 interface ParsedMarkdownFrontmatterBlock {
   frontmatter: Record<string, unknown>
   body: string
@@ -311,6 +348,200 @@ export async function readF9PositionDetailBlock(
   }
 }
 
+export async function createF9CompanyBlock(
+  input: CreateF9CompanyInputBlock,
+): Promise<F9CompanyOverviewBlock> {
+  const fs = input.fs ?? getVaultFS()
+  const executionRoot = resolveF9ExecutionRootForVaultBlock(input.executionFolderPath)
+  const ticker = normalizeTickerBlock(input.companyTicker)
+  if (!ticker) throw new Error(`Invalid company ticker: ${input.companyTicker}`)
+  const companyDir = joinPathBlock(executionRoot, ticker)
+  const positionsDir = joinPathBlock(companyDir, 'positions')
+  await ensureDirBlock(fs, executionRoot)
+  await ensureDirBlock(fs, companyDir)
+  await ensureDirBlock(fs, positionsDir)
+  await upsertCompanyIndexBlock({
+    fs,
+    companyDir,
+    ticker,
+    indexId: `${ticker}-index`,
+    summaries: await readExistingPositionRecordsBlock(fs, positionsDir).then((records) => records.map((record) => record.summary)),
+  })
+  const overview = await readF9ExecutionOverviewBlock(input.executionFolderPath, fs)
+  const company = overview.companies.find((row) => row.companyTicker === ticker)
+  if (!company) {
+    throw new Error(`Failed to create company index for ${ticker}`)
+  }
+  return company
+}
+
+export async function createF9ManualPositionBlock(
+  input: CreateF9ManualPositionInputBlock,
+): Promise<F9PositionSummaryBlock> {
+  const fs = input.fs ?? getVaultFS()
+  const ticker = normalizeTickerBlock(input.companyTicker)
+  if (!ticker) throw new Error(`Invalid company ticker: ${input.companyTicker}`)
+
+  const company = await createF9CompanyBlock({
+    executionFolderPath: input.executionFolderPath,
+    companyTicker: ticker,
+    fs,
+  })
+  const executionRoot = resolveF9ExecutionRootForVaultBlock(input.executionFolderPath)
+  const companyDir = joinPathBlock(executionRoot, ticker)
+  const positionsDir = joinPathBlock(companyDir, 'positions')
+  const existingRecords = await readExistingPositionRecordsBlock(fs, positionsDir)
+  const existingById = new Map(existingRecords.map((record) => [record.id, record]))
+
+  const instrumentType = (input.instrumentType ?? 'STOCK').toUpperCase() === 'OPTION' ? 'OPTION' : 'STOCK'
+  const status = normalizePositionStatusBlock(input.status ?? 'planned')
+  const positionId = `manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+  const manualRow: Record<string, unknown> = {
+    id: positionId,
+    symbol: ticker,
+    instrument_type: instrumentType,
+    option_type: instrumentType === 'OPTION' ? readStringFieldBlock(input.optionType) : '',
+    option_expire_date: instrumentType === 'OPTION' ? readStringFieldBlock(input.optionExpireDate) : '',
+    option_exercise_price: instrumentType === 'OPTION' ? readStringFieldBlock(input.optionExercisePrice) : '',
+    status,
+    source: 'manual',
+  }
+
+  const preferredFileName = buildPreferredFileNameBlock(manualRow, ticker, positionId)
+  let fileName = preferredFileName
+  let filePath = joinPathBlock(positionsDir, fileName)
+  if (await fs.exists(filePath)) {
+    fileName = appendFileNameSuffixBlock(preferredFileName, positionId.slice(-6))
+    filePath = joinPathBlock(positionsDir, fileName)
+  }
+
+  const now = new Date().toISOString()
+  const title = readStringFieldBlock(input.title) || removeMdExtensionBlock(fileName)
+  const notes = readStringFieldBlock(input.notes)
+  const body = notes
+    ? `## Notes\n\n${notes}\n\n## Comments\n`
+    : DEFAULT_POSITION_BODY_BLOCK
+  const frontmatter: Record<string, unknown> = {
+    id: positionId,
+    parent_id: company.indexId,
+    title,
+    symbol: ticker,
+    company_ticker: ticker,
+    source: 'manual',
+    status,
+    instrument_type: instrumentType,
+    option_type: instrumentType === 'OPTION' ? readNullableStringFieldBlock(input.optionType) : null,
+    option_expire_date: instrumentType === 'OPTION' ? readNullableStringFieldBlock(input.optionExpireDate) : null,
+    option_exercise_price: instrumentType === 'OPTION' ? readNullableStringFieldBlock(input.optionExercisePrice) : null,
+    linked_idea_id: readNullableStringFieldBlock(input.linkedIdeaId),
+    created_at: now,
+    updated_at: now,
+    history: [
+      {
+        at: now,
+        type: 'create',
+        source: 'manual',
+        note: 'Created manually from F9 workspace.',
+      },
+    ],
+  }
+  await fs.write(filePath, stringifyMarkdownFrontmatterBlock(frontmatter, body))
+  const createdSummary = buildPositionSummaryFromFrontmatterBlock(frontmatter, fileName, ticker)
+  existingById.set(createdSummary.id, {
+    id: createdSummary.id,
+    fileName,
+    filePath,
+    frontmatter,
+    body,
+    summary: createdSummary,
+  })
+  await upsertCompanyIndexBlock({
+    fs,
+    companyDir,
+    ticker,
+    indexId: company.indexId,
+    summaries: [...existingById.values()].map((record) => record.summary).sort((a, b) => a.fileName.localeCompare(b.fileName)),
+  })
+  return createdSummary
+}
+
+export async function updateF9PositionOverlayBlock(
+  input: UpdateF9PositionOverlayInputBlock,
+): Promise<F9PositionDetailBlock> {
+  const fs = input.fs ?? getVaultFS()
+  const detail = await readF9PositionDetailBlock({
+    executionFolderPath: input.executionFolderPath,
+    companyTicker: input.companyTicker,
+    fileName: input.fileName,
+    fs,
+  })
+  const now = new Date().toISOString()
+  const nextFrontmatter: Record<string, unknown> = {
+    ...detail.frontmatter,
+    updated_at: now,
+  }
+  if (input.status) {
+    nextFrontmatter.status = normalizePositionStatusBlock(input.status)
+  }
+  if (input.linkedIdeaId !== undefined) {
+    const normalizedLinkedIdea = readNullableStringFieldBlock(input.linkedIdeaId)
+    if (normalizedLinkedIdea) nextFrontmatter.linked_idea_id = normalizedLinkedIdea
+    else delete nextFrontmatter.linked_idea_id
+  }
+  const history = asHistoryEntryListBlock(nextFrontmatter.history)
+  history.push({
+    at: now,
+    type: 'overlay_update',
+    source: 'manual',
+    note: 'Updated status/idea linkage in F9 workspace.',
+  })
+  nextFrontmatter.history = history.slice(-80)
+  await fs.write(detail.filePath, stringifyMarkdownFrontmatterBlock(nextFrontmatter, detail.body))
+  await refreshCompanyIndexFromPositionsBlock({
+    fs,
+    executionFolderPath: input.executionFolderPath,
+    companyTicker: detail.companyTicker,
+  })
+  return {
+    ...detail,
+    summary: buildPositionSummaryFromFrontmatterBlock(nextFrontmatter, detail.summary.fileName, detail.companyTicker),
+    frontmatter: nextFrontmatter,
+  }
+}
+
+export async function saveF9PositionBodyBlock(
+  input: SaveF9PositionBodyInputBlock,
+): Promise<F9PositionDetailBlock> {
+  const fs = input.fs ?? getVaultFS()
+  const detail = await readF9PositionDetailBlock({
+    executionFolderPath: input.executionFolderPath,
+    companyTicker: input.companyTicker,
+    fileName: input.fileName,
+    fs,
+  })
+  const now = new Date().toISOString()
+  const nextFrontmatter: Record<string, unknown> = {
+    ...detail.frontmatter,
+    updated_at: now,
+  }
+  const history = asHistoryEntryListBlock(nextFrontmatter.history)
+  history.push({
+    at: now,
+    type: 'body_update',
+    source: 'manual',
+    note: 'Updated notes/comments body in F9 workspace.',
+  })
+  nextFrontmatter.history = history.slice(-80)
+  const body = input.body ?? ''
+  await fs.write(detail.filePath, stringifyMarkdownFrontmatterBlock(nextFrontmatter, body))
+  return {
+    ...detail,
+    frontmatter: nextFrontmatter,
+    body,
+  }
+}
+
 async function upsertCompanyIndexBlock(input: {
   fs: VaultFS
   companyDir: string
@@ -463,6 +694,27 @@ async function readExistingPositionRecordsBlock(
     })
   }
   return records
+}
+
+async function refreshCompanyIndexFromPositionsBlock(input: {
+  fs: VaultFS
+  executionFolderPath: string
+  companyTicker: string
+}): Promise<void> {
+  const { fs } = input
+  const executionRoot = resolveF9ExecutionRootForVaultBlock(input.executionFolderPath)
+  const ticker = normalizeTickerBlock(input.companyTicker)
+  if (!ticker) return
+  const companyDir = joinPathBlock(executionRoot, ticker)
+  const positionsDir = joinPathBlock(companyDir, 'positions')
+  const records = await readExistingPositionRecordsBlock(fs, positionsDir)
+  await upsertCompanyIndexBlock({
+    fs,
+    companyDir,
+    ticker,
+    indexId: `${ticker}-index`,
+    summaries: records.map((record) => record.summary).sort((a, b) => a.fileName.localeCompare(b.fileName)),
+  })
 }
 
 function buildPositionSummaryFromFrontmatterBlock(
@@ -768,4 +1020,3 @@ async function ensureDirBlock(fs: VaultFS, path: string): Promise<void> {
     // Folder may already exist depending on runtime implementation.
   }
 }
-
