@@ -112,14 +112,14 @@ const WRAP_WIDTH_MAX = 10000
 export const DEFAULT_MINDMAP_BUILD_OPTIONS: MindmapBuildOptions = {
   includeFullText: true,
   maxDepth: 6,
-  maxWrapWidth: WRAP_WIDTH_MAX,
-  growthMode: 'right-left',
-  arrowType: 'curved',
+  maxWrapWidth: 1000,
+  growthMode: 'down-facing',
+  arrowType: 'elbow',
   fillSweep: false,
   centerText: false,
   multicolorBranches: true,
   boxNodes: true,
-  roundedCorners: true,
+  roundedCorners: false,
   fontScale: 'fibonacci',
   fontFamily: 'excalidraw',
 }
