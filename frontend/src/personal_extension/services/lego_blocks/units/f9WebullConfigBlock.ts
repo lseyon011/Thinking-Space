@@ -2,6 +2,7 @@ export interface F9WebullConfigBlock {
   appKey: string
   appSecret: string
   baseUrl: string
+  openApiBaseUrl: string
   accountListPath?: string
   accountBalancePath?: string
   accountPositionsPath?: string
@@ -11,6 +12,7 @@ export interface F9WebullConfigBlock {
 }
 
 const DEFAULT_WEBULL_BASE_URL_BLOCK = 'https://api.webull.com'
+const DEFAULT_WEBULL_OPENAPI_BASE_URL_BLOCK = 'https://us-openapi-alb.uat.webullbroker.com'
 const DEFAULT_QUOTE_SYMBOLS_BLOCK = ['SPY', 'QQQ', 'AAPL', 'TSLA', 'NVDA']
 
 function normalizeValueBlock(value: string | undefined): string {
@@ -21,6 +23,7 @@ function readConfigBlock(): F9WebullConfigBlock {
   const appKey = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_APP_KEY)
   const appSecret = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_APP_SECRET)
   const baseUrl = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_BASE_URL) || DEFAULT_WEBULL_BASE_URL_BLOCK
+  const openApiBaseUrl = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_OPENAPI_BASE_URL) || DEFAULT_WEBULL_OPENAPI_BASE_URL_BLOCK
   const accountListPath = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_ACCOUNT_LIST_PATH)
   const accountBalancePath = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_ACCOUNT_BALANCE_PATH)
   const accountPositionsPath = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_ACCOUNT_POSITIONS_PATH)
@@ -38,6 +41,7 @@ function readConfigBlock(): F9WebullConfigBlock {
     appKey,
     appSecret,
     baseUrl,
+    openApiBaseUrl,
     accountListPath: accountListPath || undefined,
     accountBalancePath: accountBalancePath || undefined,
     accountPositionsPath: accountPositionsPath || undefined,
@@ -68,6 +72,11 @@ export function getF9WebullConfigBlock(): F9WebullConfigBlock {
     new URL(config.baseUrl)
   } catch {
     throw new Error('VITE_F9_WEBULL_BASE_URL must be a valid absolute URL.')
+  }
+  try {
+    new URL(config.openApiBaseUrl)
+  } catch {
+    throw new Error('VITE_F9_WEBULL_OPENAPI_BASE_URL must be a valid absolute URL.')
   }
 
   if (config.accountListPath) {

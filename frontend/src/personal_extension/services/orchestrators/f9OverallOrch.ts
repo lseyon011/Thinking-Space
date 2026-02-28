@@ -1,10 +1,9 @@
 import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeOrch'
-import { getF9WebullConfigBlock } from '../lego_blocks/units/f9WebullConfigBlock'
 import {
+  fetchF9WebullAssetsPositionsBlock,
   fetchF9WebullAccountBalanceBlock,
   fetchF9WebullAccountListBlock,
   fetchF9WebullAccountPositionsBlock,
-  fetchF9WebullMarketQuotesBlock,
   type F9WebullApiResultBlock,
 } from '../lego_blocks/integrations/f9WebullApiBlock'
 
@@ -21,14 +20,18 @@ export interface F9OverallSnapshotOrch {
   fetchedAt: string
   endpoints: {
     accountList: string | null
-    accountBalance: string | null
-    accountPositions: string | null
+    accountBalanceLegacy: string | null
+    accountPositionsLegacy: string | null
+    assetsAccount: string | null
+    assetsPositions: string | null
     marketQuotes: string | null
   }
   selectedAccount: F9SelectedAccountOrch | null
   accountList: unknown
-  accountBalance: unknown | null
-  accountPositions: unknown | null
+  accountBalanceLegacy: unknown | null
+  accountPositionsLegacy: unknown | null
+  assetsAccount: unknown | null
+  assetsPositions: unknown | null
   marketQuotes: unknown | null
   attempts: string[]
   warnings: string[]
@@ -37,6 +40,17 @@ export interface F9OverallSnapshotOrch {
 function asErrorMessageBlock(value: unknown): string {
   if (value instanceof Error) return value.message
   return String(value)
+}
+
+function summarizeApiUnavailableBlock(label: string, value: unknown): string {
+  const message = asErrorMessageBlock(value)
+  if (message.includes('route not found for candidate paths')) {
+    return `${label} unavailable (Webull returned HTTP 404 for all candidate routes).`
+  }
+  if (message.includes('route/params not found')) {
+    return `${label} unavailable (route/params not found for this app key).`
+  }
+  return `${label} unavailable: ${message}`
 }
 
 function asRecordArrayBlock(value: unknown): Array<Record<string, unknown>> {
@@ -51,36 +65,6 @@ function firstNonEmptyStringBlock(...candidates: unknown[]): string | null {
     if (normalized) return normalized
   }
   return null
-}
-
-function extractHoldingsRowsBlock(value: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(value)) {
-    return value.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
-  }
-  if (!value || typeof value !== 'object') return []
-
-  const row = value as Record<string, unknown>
-  const nested = row.holdings
-  if (Array.isArray(nested)) {
-    return nested.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
-  }
-  return []
-}
-
-function buildMarketQuoteFallbackFromPositionsBlock(positionsData: unknown): unknown {
-  const rows = extractHoldingsRowsBlock(positionsData)
-  const mapped = rows
-    .map((row) => {
-      const symbol = firstNonEmptyStringBlock(row.symbol, row.ticker, row.stock_symbol)
-      if (!symbol) return null
-      return {
-        symbol,
-        last_price: firstNonEmptyStringBlock(row.last_price, row.lastPrice, row.price),
-        change_percent: firstNonEmptyStringBlock(row.change_percent, row.unrealized_profit_loss_rate),
-        source: 'positions_holding_fallback',
-      }
-    })
-  return mapped.filter((item): item is NonNullable<typeof item> => item !== null)
 }
 
 function resolveSelectedAccountBlock(accountListData: unknown): F9SelectedAccountOrch | null {
@@ -122,50 +106,41 @@ export async function fetchF9OverallSnapshotOrch(): Promise<F9OverallSnapshotOrc
   const accountListResult = await fetchF9WebullAccountListBlock()
   const selectedAccount = resolveSelectedAccountBlock(accountListResult.data)
   const warnings: string[] = []
-  const quoteSymbols = getF9WebullConfigBlock().quoteSymbols
   const hasAccountId = !!selectedAccount?.accountId
   if (!hasAccountId) {
     warnings.push('No account_id found in account list payload; positions and balance were skipped.')
   }
 
-  const [balanceSettled, positionsSettled, quotesSettled] = await Promise.allSettled([
+  const [legacyBalanceSettled, legacyPositionsSettled, assetsPositionsSettled] = await Promise.allSettled([
     hasAccountId && selectedAccount
       ? fetchF9WebullAccountBalanceBlock(selectedAccount.accountId)
       : Promise.resolve<F9WebullApiResultBlock | null>(null),
     hasAccountId && selectedAccount
       ? fetchF9WebullAccountPositionsBlock(selectedAccount.accountId)
       : Promise.resolve<F9WebullApiResultBlock | null>(null),
-    fetchF9WebullMarketQuotesBlock(quoteSymbols),
+    hasAccountId && selectedAccount
+      ? fetchF9WebullAssetsPositionsBlock(selectedAccount.accountId)
+      : Promise.resolve<F9WebullApiResultBlock | null>(null),
   ])
 
-  const accountBalanceResult = balanceSettled.status === 'fulfilled'
-    ? balanceSettled.value
+  const legacyAccountBalanceResult = legacyBalanceSettled.status === 'fulfilled'
+    ? legacyBalanceSettled.value
     : null
-  const accountPositionsResult = positionsSettled.status === 'fulfilled'
-    ? positionsSettled.value
+  const legacyAccountPositionsResult = legacyPositionsSettled.status === 'fulfilled'
+    ? legacyPositionsSettled.value
     : null
-  let marketQuotesResult = quotesSettled.status === 'fulfilled'
-    ? quotesSettled.value
+  let assetsPositionsResult = assetsPositionsSettled.status === 'fulfilled'
+    ? assetsPositionsSettled.value
     : null
 
-  if (balanceSettled.status === 'rejected') {
-    warnings.push(`Account balance unavailable: ${asErrorMessageBlock(balanceSettled.reason)}`)
+  if (legacyBalanceSettled.status === 'rejected') {
+    warnings.push(summarizeApiUnavailableBlock('Account balance', legacyBalanceSettled.reason))
   }
-  if (positionsSettled.status === 'rejected') {
-    warnings.push(`Positions unavailable: ${asErrorMessageBlock(positionsSettled.reason)}`)
+  if (legacyPositionsSettled.status === 'rejected') {
+    warnings.push(summarizeApiUnavailableBlock('Positions', legacyPositionsSettled.reason))
   }
-  if (quotesSettled.status === 'rejected') {
-    if (accountPositionsResult) {
-      marketQuotesResult = {
-        endpoint: `${accountPositionsResult.endpoint} (fallback from positions last_price)`,
-        requestedAt: accountPositionsResult.requestedAt,
-        data: buildMarketQuoteFallbackFromPositionsBlock(accountPositionsResult.data),
-        attempts: [],
-      }
-      warnings.push('Market quote endpoint unavailable; using positions last_price as quote fallback.')
-    } else {
-      warnings.push(`Market quotes unavailable: ${asErrorMessageBlock(quotesSettled.reason)}`)
-    }
+  if (assetsPositionsSettled.status === 'rejected') {
+    warnings.push(summarizeApiUnavailableBlock('OpenAPI assets positions', assetsPositionsSettled.reason))
   }
 
   return {
@@ -173,20 +148,24 @@ export async function fetchF9OverallSnapshotOrch(): Promise<F9OverallSnapshotOrc
     fetchedAt: accountListResult.requestedAt,
     endpoints: {
       accountList: accountListResult.endpoint,
-      accountBalance: accountBalanceResult?.endpoint ?? null,
-      accountPositions: accountPositionsResult?.endpoint ?? null,
-      marketQuotes: marketQuotesResult?.endpoint ?? null,
+      accountBalanceLegacy: legacyAccountBalanceResult?.endpoint ?? null,
+      accountPositionsLegacy: legacyAccountPositionsResult?.endpoint ?? null,
+      assetsAccount: null,
+      assetsPositions: assetsPositionsResult?.endpoint ?? null,
+      marketQuotes: null,
     },
     selectedAccount,
     accountList: accountListResult.data,
-    accountBalance: accountBalanceResult?.data ?? null,
-    accountPositions: accountPositionsResult?.data ?? null,
-    marketQuotes: marketQuotesResult?.data ?? null,
+    accountBalanceLegacy: legacyAccountBalanceResult?.data ?? null,
+    accountPositionsLegacy: legacyAccountPositionsResult?.data ?? null,
+    assetsAccount: null,
+    assetsPositions: assetsPositionsResult?.data ?? null,
+    marketQuotes: null,
     attempts: mergeAttemptsBlock(
       accountListResult,
-      accountBalanceResult,
-      accountPositionsResult,
-      marketQuotesResult,
+      legacyAccountBalanceResult,
+      legacyAccountPositionsResult,
+      assetsPositionsResult,
     ),
     warnings,
   }

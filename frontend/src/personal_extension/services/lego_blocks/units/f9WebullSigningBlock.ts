@@ -4,6 +4,8 @@ export interface BuildF9WebullHeadersInputBlock {
   appKey: string
   appSecret: string
   body?: string
+  version?: string
+  accessToken?: string
 }
 
 export interface BuildF9WebullHeadersResultBlock {
@@ -59,7 +61,10 @@ function buildCanonicalSourceBlock(
 }
 
 function encodeSignatureSourceBlock(value: string): string {
-  return encodeURIComponent(value)
+  // Match Python urllib.parse.quote(..., safe='') used by Webull SDK.
+  return encodeURIComponent(value).replace(/[!'()*]/g, (char) => (
+    `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+  ))
 }
 
 function bytesToBase64Block(bytes: Uint8Array): string {
@@ -123,6 +128,7 @@ export async function buildF9WebullHeadersBlock(
     nonce,
     signature,
     headers: {
+      ...(input.version ? { 'x-version': input.version } : {}),
       host: url.host,
       'x-app-key': input.appKey,
       'x-signature-algorithm': 'HMAC-SHA1',
@@ -130,8 +136,10 @@ export async function buildF9WebullHeadersBlock(
       'x-timestamp': timestamp,
       'x-signature': signature,
       'x-signature-nonce': nonce,
+      'Accept-Encoding': 'gzip',
       'Content-Type': 'application/json',
       Accept: 'application/json',
+      ...(input.accessToken ? { 'x-access-token': input.accessToken } : {}),
       'User-Agent': 'think-space-f9',
     },
   }

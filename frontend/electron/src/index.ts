@@ -10,6 +10,8 @@ import * as fsPromises from 'fs/promises';
 import * as path from 'path';
 import * as https from 'https';
 import { spawn } from 'child_process';
+import { createHash, createHmac, randomUUID } from 'crypto';
+import { brotliDecompressSync, gunzipSync, inflateSync } from 'zlib';
 
 import { ElectronCapacitorApp, setupContentSecurityPolicy, setupReloadWatcher } from './setup';
 import {
@@ -285,11 +287,23 @@ interface ElectronCapabilityInvokePayload {
 interface F9WebullGetPayload {
   url: string;
   headers: Record<string, string>;
+  method?: 'GET' | 'POST';
+  body?: string;
 }
 
 interface F9WebullGetResponse {
   status: number;
   body: string;
+}
+
+interface F9WebullSignedRequestPayload {
+  method: 'GET' | 'POST';
+  url: string;
+  appKey: string;
+  appSecret: string;
+  version?: string;
+  accessToken?: string;
+  body?: string;
 }
 
 interface CapabilityRunnerLocation {
@@ -454,10 +468,77 @@ function fetchBuffer(url: string, headers: Record<string, string> = {}, redirect
 function assertAllowedF9WebullUrl(url: string): URL {
   const parsed = new URL(url);
   const host = parsed.hostname.toLowerCase();
-  if (!(host === 'api.webull.com' || host === 'openapi.webull.com')) {
+  const allowedHosts = new Set([
+    'api.webull.com',
+    'openapi.webull.com',
+    'us-openapi-alb.uat.webullbroker.com',
+  ]);
+  if (!allowedHosts.has(host)) {
     throw new Error(`Unsupported F9 Webull host: ${parsed.hostname}`);
   }
   return parsed;
+}
+
+const WEBULL_REQUEST_MAX_REDIRECTS_BLOCK = 20;
+
+function encodeWebullSignatureSourceBlock(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (char) => (
+    `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+  ));
+}
+
+function buildWebullSignedHeadersBlock(payload: F9WebullSignedRequestPayload): Record<string, string> {
+  const parsed = assertAllowedF9WebullUrl(payload.url);
+  const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const nonce = randomUUID();
+
+  const signParams = new Map<string, string>();
+  signParams.set('host', parsed.host);
+  signParams.set('x-app-key', payload.appKey);
+  signParams.set('x-signature-algorithm', 'HMAC-SHA1');
+  signParams.set('x-signature-nonce', nonce);
+  signParams.set('x-signature-version', '1.0');
+  signParams.set('x-timestamp', timestamp);
+
+  for (const [key, value] of parsed.searchParams.entries()) {
+    const normalizedKey = key.trim().toLowerCase();
+    if (!normalizedKey) continue;
+    const normalizedValue = value.trim();
+    const existing = signParams.get(normalizedKey);
+    signParams.set(normalizedKey, existing ? `${existing}&${normalizedValue}` : normalizedValue);
+  }
+
+  const sorted = Array.from(signParams.entries())
+    .sort((a, b) => {
+      const keyCompare = a[0].localeCompare(b[0]);
+      if (keyCompare !== 0) return keyCompare;
+      return a[1].localeCompare(b[1]);
+    })
+    .map(([key, value]) => `${key}=${value}`)
+    .join('&');
+
+  let stringToSign = `${parsed.pathname}&${sorted}`;
+  if (typeof payload.body === 'string' && payload.body.length > 0) {
+    const bodyMd5UpperHex = createHash('md5').update(payload.body, 'utf8').digest('hex').toUpperCase();
+    stringToSign = `${stringToSign}&${bodyMd5UpperHex}`;
+  }
+  const encodedToSign = encodeWebullSignatureSourceBlock(stringToSign);
+  const signature = createHmac('sha1', `${payload.appSecret}&`).update(encodedToSign, 'utf8').digest('base64');
+
+  return {
+    ...(payload.version ? { 'x-version': payload.version } : {}),
+    'x-app-key': payload.appKey,
+    'x-timestamp': timestamp,
+    'x-signature-version': '1.0',
+    'x-signature-algorithm': 'HMAC-SHA1',
+    'x-signature-nonce': nonce,
+    'x-signature': signature,
+    'Accept-Encoding': 'gzip',
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    ...(payload.accessToken ? { 'x-access-token': payload.accessToken } : {}),
+    'User-Agent': 'think-space-f9',
+  };
 }
 
 function requestTextOverHttps(
@@ -482,7 +563,7 @@ function requestTextOverHttps(
         const location = res.headers.location;
 
         if ([301, 302, 303, 307, 308].includes(status) && location) {
-          if (redirects >= 5) {
+          if (redirects >= WEBULL_REQUEST_MAX_REDIRECTS_BLOCK) {
             res.resume();
             reject(new Error('Too many redirects while requesting Webull API'));
             return;
@@ -496,9 +577,30 @@ function requestTextOverHttps(
         const chunks: Buffer[] = [];
         res.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
         res.on('end', () => {
+          const rawBody = Buffer.concat(chunks);
+          const contentEncodingHeader = res.headers['content-encoding'];
+          const contentEncoding = Array.isArray(contentEncodingHeader)
+            ? (contentEncodingHeader[0] ?? '').toLowerCase()
+            : (contentEncodingHeader ?? '').toLowerCase();
+
+          let decodedBody = rawBody;
+          try {
+            if (contentEncoding.includes('gzip')) {
+              decodedBody = gunzipSync(rawBody);
+            } else if (contentEncoding.includes('deflate')) {
+              decodedBody = inflateSync(rawBody);
+            } else if (contentEncoding.includes('br')) {
+              decodedBody = brotliDecompressSync(rawBody);
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            reject(new Error(`Failed to decode Webull response body (${contentEncoding || 'unknown encoding'}): ${message}`));
+            return;
+          }
+
           resolve({
             status,
-            body: Buffer.concat(chunks).toString('utf-8'),
+            body: decodedBody.toString('utf-8'),
           });
         });
       },
@@ -699,13 +801,42 @@ ipcMain.handle('f9:webull:get', async (_event, payload: F9WebullGetPayload) => {
   if (!payload.headers || typeof payload.headers !== 'object') {
     throw new Error('F9 Webull payload requires a "headers" object.');
   }
-
-  return requestTextOverHttps('GET', payload.url, payload.headers);
+  const method = payload.method === 'POST' ? 'POST' : 'GET';
+  const body = typeof payload.body === 'string' ? payload.body : '';
+  return requestTextOverHttps(method, payload.url, payload.headers, body);
 });
 
 // Backward-compatible alias for the initial F9 account-list bridge.
 ipcMain.handle('f9:webull:accountList', async (_event, payload: F9WebullGetPayload) => {
-  return requestTextOverHttps('GET', payload.url, payload.headers);
+  const method = payload.method === 'POST' ? 'POST' : 'GET';
+  const body = typeof payload.body === 'string' ? payload.body : '';
+  return requestTextOverHttps(method, payload.url, payload.headers, body);
+});
+
+// SDK-style signed request helper for v2 APIs (token + account_v2 parity).
+ipcMain.handle('f9:webull:signedRequest', async (_event, payload: F9WebullSignedRequestPayload) => {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('F9 Webull signed payload must be an object.');
+  }
+  if (typeof payload.url !== 'string' || payload.url.trim().length === 0) {
+    throw new Error('F9 Webull signed payload requires a non-empty "url".');
+  }
+  if (payload.method !== 'GET' && payload.method !== 'POST') {
+    throw new Error('F9 Webull signed payload requires method GET or POST.');
+  }
+  if (typeof payload.appKey !== 'string' || payload.appKey.trim().length === 0) {
+    throw new Error('F9 Webull signed payload requires a non-empty "appKey".');
+  }
+  if (typeof payload.appSecret !== 'string' || payload.appSecret.trim().length === 0) {
+    throw new Error('F9 Webull signed payload requires a non-empty "appSecret".');
+  }
+  if (payload.body !== undefined && typeof payload.body !== 'string') {
+    throw new Error('F9 Webull signed payload body must be a string when provided.');
+  }
+
+  const headers = buildWebullSignedHeadersBlock(payload);
+  const body = typeof payload.body === 'string' ? payload.body : '';
+  return requestTextOverHttps(payload.method, payload.url, headers, body);
 });
 
 // -- Vault folder picker --

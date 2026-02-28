@@ -29,6 +29,7 @@ Set these in your frontend env file (for example `frontend/.env.local`):
 - `VITE_F9_WEBULL_APP_KEY`
 - `VITE_F9_WEBULL_APP_SECRET`
 - `VITE_F9_WEBULL_BASE_URL` (optional, defaults to `https://api.webull.com`)
+- `VITE_F9_WEBULL_OPENAPI_BASE_URL` (optional, defaults to `https://us-openapi-alb.uat.webullbroker.com`)
 - `VITE_F9_WEBULL_ACCOUNT_LIST_PATH` (optional, override account-list route if your account uses a non-default path)
 - `VITE_F9_WEBULL_ACCOUNT_BALANCE_PATH` (optional)
 - `VITE_F9_WEBULL_ACCOUNT_POSITIONS_PATH` (optional)

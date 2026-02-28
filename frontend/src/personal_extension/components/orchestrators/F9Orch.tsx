@@ -54,14 +54,18 @@ export default function F9Orch() {
       fetchedAt={snapshot?.fetchedAt ?? null}
       endpoints={snapshot?.endpoints ?? {
         accountList: null,
-        accountBalance: null,
-        accountPositions: null,
+        accountBalanceLegacy: null,
+        accountPositionsLegacy: null,
+        assetsAccount: null,
+        assetsPositions: null,
         marketQuotes: null,
       }}
       selectedAccount={snapshot?.selectedAccount ?? null}
       accountList={snapshot?.accountList ?? null}
-      accountBalance={snapshot?.accountBalance ?? null}
-      accountPositions={snapshot?.accountPositions ?? null}
+      accountBalanceLegacy={snapshot?.accountBalanceLegacy ?? null}
+      accountPositionsLegacy={snapshot?.accountPositionsLegacy ?? null}
+      assetsAccount={snapshot?.assetsAccount ?? null}
+      assetsPositions={snapshot?.assetsPositions ?? null}
       marketQuotes={snapshot?.marketQuotes ?? null}
       warnings={snapshot?.warnings ?? []}
       attempts={snapshot?.attempts ?? []}

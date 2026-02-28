@@ -158,9 +158,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   f9WebullGet: (payload: {
     url: string
     headers: Record<string, string>
+    method?: 'GET' | 'POST'
+    body?: string
   }) => ipcRenderer.invoke('f9:webull:get', payload),
   f9WebullAccountList: (payload: {
     url: string
     headers: Record<string, string>
+    method?: 'GET' | 'POST'
+    body?: string
   }) => ipcRenderer.invoke('f9:webull:accountList', payload),
+  f9WebullSignedRequest: (payload: {
+    method: 'GET' | 'POST'
+    url: string
+    appKey: string
+    appSecret: string
+    version?: string
+    accessToken?: string
+    body?: string
+  }) => ipcRenderer.invoke('f9:webull:signedRequest', payload),
 });

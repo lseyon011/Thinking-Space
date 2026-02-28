@@ -18,33 +18,34 @@ interface F9WorkspaceBlockProps {
   fetchedAt: string | null
   endpoints: {
     accountList: string | null
-    accountBalance: string | null
-    accountPositions: string | null
+    accountBalanceLegacy: string | null
+    accountPositionsLegacy: string | null
+    assetsAccount: string | null
+    assetsPositions: string | null
     marketQuotes: string | null
   }
   selectedAccount: F9SelectedAccountOrch | null
   accountList: unknown
-  accountBalance: unknown | null
-  accountPositions: unknown | null
+  accountBalanceLegacy: unknown | null
+  accountPositionsLegacy: unknown | null
+  assetsAccount: unknown | null
+  assetsPositions: unknown | null
   marketQuotes: unknown | null
   warnings: string[]
   attempts: string[]
   onRefreshOverall: () => void
 }
 
-interface F9TabularPositionBlock {
-  type: string
-  symbol: string
-  quantity: string
-  lastPrice: string
-  marketValue: string
-  unrealizedPnl: string
-}
-
 interface F9TabularQuoteBlock {
   symbol: string
   lastPrice: string
   changePercent: string
+}
+
+interface F9OptionLegRowBlock extends Record<string, unknown> {
+  position_symbol: string
+  position_instrument_id: string
+  leg_index: number
 }
 
 function formatRuntimeLabelBlock(value: F9RuntimeSurfaceOrch | null): string {
@@ -70,6 +71,11 @@ function asRecordArrayBlock(value: unknown): Array<Record<string, unknown>> {
   }
 
   return []
+}
+
+function asRecordBlock(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
 }
 
 function firstStringBlock(...values: unknown[]): string {
@@ -137,30 +143,43 @@ function extractOverallValueBlock(balanceData: unknown): number | null {
   )
 }
 
-function toPositionsBlock(data: unknown): F9TabularPositionBlock[] {
-  return asRecordArrayBlock(data).map((row) => ({
-    type: firstStringBlock(row.instrument_type, row.instrumentType, row.asset_type, row.assetType),
-    symbol: firstStringBlock(
-      row.symbol,
-      row.ticker,
-      row.stock,
-      row.stock_code,
-      row.stock_ticker,
-      row.option_symbol,
-      row.optionSymbol,
-      row.option_display_symbol,
-      row.optionDisplaySymbol,
-      row.contract_code,
-      row.contractCode,
-      row.short_name,
-      row.shortName,
-      row.name,
-    ),
-    quantity: firstStringBlock(row.quantity, row.qty, row.position, row.holding_quantity, row.holdingQty),
-    lastPrice: firstStringBlock(row.last_price, row.lastPrice, row.price),
-    marketValue: firstStringBlock(row.market_value, row.marketValue, row.position_value, row.value),
-    unrealizedPnl: firstStringBlock(row.unrealized_pnl, row.unrealizedPnL, row.unrealized_profit_loss, row.pnl),
-  }))
+function toDisplayCellBlock(value: unknown): string {
+  if (value === null || value === undefined) return '—'
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    return normalized || '—'
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function extractPositionRowsBlock(data: unknown): Array<Record<string, unknown>> {
+  return asRecordArrayBlock(data)
+}
+
+function extractPositionMetaFieldsBlock(data: unknown): Array<{ key: string; value: string }> {
+  const top = asRecordBlock(data)
+  if (!top) return []
+  return Object.entries(top)
+    .filter(([key]) => key !== 'holdings')
+    .map(([key, value]) => ({ key, value: toDisplayCellBlock(value) }))
+}
+
+function collectTableColumnsBlock(rows: Array<Record<string, unknown>>): string[] {
+  const columns: string[] = []
+  const seen = new Set<string>()
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (seen.has(key)) continue
+      seen.add(key)
+      columns.push(key)
+    }
+  }
+  return columns
 }
 
 function toQuotesBlock(data: unknown): F9TabularQuoteBlock[] {
@@ -175,14 +194,38 @@ function toQuotesBlock(data: unknown): F9TabularQuoteBlock[] {
   }))
 }
 
-function fallbackQuotesFromPositionsBlock(positions: F9TabularPositionBlock[]): F9TabularQuoteBlock[] {
-  return positions
-    .filter(position => position.symbol !== '—')
-    .map(position => ({
-      symbol: position.symbol,
-      lastPrice: position.lastPrice,
-      changePercent: '—',
-    }))
+function extractOptionLegRowsBlock(data: unknown): F9OptionLegRowBlock[] {
+  const rows = extractPositionRowsBlock(data)
+  const optionLegRows: F9OptionLegRowBlock[] = []
+  for (const row of rows) {
+    const legs = row.legs
+    if (!Array.isArray(legs)) continue
+    const positionSymbol = firstStringBlock(
+      row.symbol,
+      row.option_symbol,
+      row.optionSymbol,
+      row.option_display_symbol,
+      row.optionDisplaySymbol,
+      row.short_name,
+      row.shortName,
+    )
+    const positionInstrumentId = firstStringBlock(
+      row.instrument_id,
+      row.instrumentId,
+      row.ticker_id,
+      row.tickerId,
+    )
+    legs.forEach((leg, index) => {
+      if (!leg || typeof leg !== 'object') return
+      optionLegRows.push({
+        position_symbol: positionSymbol,
+        position_instrument_id: positionInstrumentId,
+        leg_index: index + 1,
+        ...(leg as Record<string, unknown>),
+      })
+    })
+  }
+  return optionLegRows
 }
 
 function toJsonBlock(value: unknown): string {
@@ -201,20 +244,31 @@ export default function F9WorkspaceBlock({
   endpoints,
   selectedAccount,
   accountList,
-  accountBalance,
-  accountPositions,
+  accountBalanceLegacy,
+  accountPositionsLegacy,
+  assetsAccount,
+  assetsPositions,
   marketQuotes,
   warnings,
   attempts,
   onRefreshOverall,
 }: F9WorkspaceBlockProps) {
-  const overallValue = extractOverallValueBlock(accountBalance)
-  const positions = toPositionsBlock(accountPositions)
-  const quotes = (() => {
-    const direct = toQuotesBlock(marketQuotes)
-    if (direct.length > 0) return direct
-    return fallbackQuotesFromPositionsBlock(positions)
-  })()
+  const overallValue = extractOverallValueBlock(accountBalanceLegacy ?? assetsAccount)
+  const legacyPositionRows = extractPositionRowsBlock(accountPositionsLegacy)
+  const legacyPositionMetaFields = extractPositionMetaFieldsBlock(accountPositionsLegacy)
+  const legacyPositionColumns = collectTableColumnsBlock(legacyPositionRows)
+  const legacyPositionTableColumns = legacyPositionColumns.length > 0 ? legacyPositionColumns : ['payload']
+  const assetsPositionRows = extractPositionRowsBlock(assetsPositions)
+  const assetsPositionMetaFields = extractPositionMetaFieldsBlock(assetsPositions)
+  const assetsPositionColumns = collectTableColumnsBlock(assetsPositionRows)
+  const assetsPositionTableColumns = assetsPositionColumns.length > 0 ? assetsPositionColumns : ['payload']
+  const legacyOptionLegRows = extractOptionLegRowsBlock(accountPositionsLegacy)
+  const legacyOptionLegColumns = collectTableColumnsBlock(legacyOptionLegRows)
+  const legacyOptionLegTableColumns = legacyOptionLegColumns.length > 0 ? legacyOptionLegColumns : ['payload']
+  const assetsOptionLegRows = extractOptionLegRowsBlock(assetsPositions)
+  const assetsOptionLegColumns = collectTableColumnsBlock(assetsOptionLegRows)
+  const assetsOptionLegTableColumns = assetsOptionLegColumns.length > 0 ? assetsOptionLegColumns : ['payload']
+  const quotes = toQuotesBlock(marketQuotes)
 
   return (
     <div className="grid gap-4 lg:grid-cols-[180px_minmax(0,1fr)]">
@@ -293,7 +347,8 @@ export default function F9WorkspaceBlock({
               <p><span className="font-medium">Account Number:</span> {selectedAccount?.accountNumber ?? 'Not available'}</p>
             </div>
             <div className="rounded-lg border bg-background p-3">
-              <p><span className="font-medium">Positions:</span> {positions.length}</p>
+              <p><span className="font-medium">Legacy Positions:</span> {legacyPositionRows.length}</p>
+              <p><span className="font-medium">OpenAPI Positions:</span> {assetsPositionRows.length}</p>
               <p><span className="font-medium">Quotes:</span> {quotes.length}</p>
             </div>
           </div>
@@ -301,39 +356,169 @@ export default function F9WorkspaceBlock({
           <div className="space-y-2 rounded-xl border bg-background p-3">
             <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Endpoints</p>
             <p className="text-xs"><span className="font-medium">Account list:</span> {endpoints.accountList ?? 'Not requested'}</p>
-            <p className="text-xs"><span className="font-medium">Balance:</span> {endpoints.accountBalance ?? 'Not requested'}</p>
-            <p className="text-xs"><span className="font-medium">Positions:</span> {endpoints.accountPositions ?? 'Not requested'}</p>
+            <p className="text-xs"><span className="font-medium">Legacy balance:</span> {endpoints.accountBalanceLegacy ?? 'Not requested'}</p>
+            <p className="text-xs"><span className="font-medium">Legacy positions:</span> {endpoints.accountPositionsLegacy ?? 'Not requested'}</p>
+            <p className="text-xs"><span className="font-medium">OpenAPI assets account:</span> {endpoints.assetsAccount ?? 'Not requested'}</p>
+            <p className="text-xs"><span className="font-medium">OpenAPI assets positions:</span> {endpoints.assetsPositions ?? 'Not requested'}</p>
             <p className="text-xs"><span className="font-medium">Quotes:</span> {endpoints.marketQuotes ?? 'Not requested'}</p>
           </div>
 
           <div className="rounded-xl border bg-background">
             <div className="border-b px-3 py-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              Positions
+              Legacy Positions (/account/positions)
             </div>
-            {positions.length === 0 ? (
+            {legacyPositionRows.length === 0 ? (
               <p className="p-3 text-sm text-muted-foreground">No positions returned yet.</p>
+            ) : (
+              <div className="overflow-auto">
+                {legacyPositionMetaFields.length > 0 && (
+                  <table className="min-w-full border-b text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                        <th className="px-3 py-2">Payload Field</th>
+                        <th className="px-3 py-2">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {legacyPositionMetaFields.map((item) => (
+                        <tr key={item.key} className="border-b last:border-b-0">
+                          <td className="px-3 py-2 font-mono text-xs">{item.key}</td>
+                          <td className="px-3 py-2">{item.value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                      {legacyPositionTableColumns.map((column) => (
+                        <th key={column} className="px-3 py-2 font-mono text-[11px]">{column}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {legacyPositionRows.map((row, rowIndex) => (
+                      <tr key={rowIndex} className="border-b last:border-b-0">
+                        {legacyPositionTableColumns.map((column) => (
+                          <td key={`${rowIndex}-${column}`} className="px-3 py-2 align-top">
+                            {column === 'payload' ? toDisplayCellBlock(row) : toDisplayCellBlock(row[column])}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border bg-background">
+            <div className="border-b px-3 py-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              Legacy Option Legs (from position payload)
+            </div>
+            {legacyOptionLegRows.length === 0 ? (
+              <p className="p-3 text-sm text-muted-foreground">No option legs returned yet.</p>
             ) : (
               <div className="overflow-auto">
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                      <th className="px-3 py-2">Type</th>
-                      <th className="px-3 py-2">Symbol</th>
-                      <th className="px-3 py-2">Quantity</th>
-                      <th className="px-3 py-2">Last Price</th>
-                      <th className="px-3 py-2">Market Value</th>
-                      <th className="px-3 py-2">Unrealized PnL</th>
+                      {legacyOptionLegTableColumns.map((column) => (
+                        <th key={column} className="px-3 py-2 font-mono text-[11px]">{column}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {positions.map((position, index) => (
-                      <tr key={`${position.symbol}-${index}`} className="border-b last:border-b-0">
-                        <td className="px-3 py-2">{position.type}</td>
-                        <td className="px-3 py-2">{position.symbol}</td>
-                        <td className="px-3 py-2">{position.quantity}</td>
-                        <td className="px-3 py-2">{position.lastPrice}</td>
-                        <td className="px-3 py-2">{position.marketValue}</td>
-                        <td className="px-3 py-2">{position.unrealizedPnl}</td>
+                    {legacyOptionLegRows.map((row, rowIndex) => (
+                      <tr key={rowIndex} className="border-b last:border-b-0">
+                        {legacyOptionLegTableColumns.map((column) => (
+                          <td key={`${rowIndex}-${column}`} className="px-3 py-2 align-top">
+                            {column === 'payload' ? toDisplayCellBlock(row) : toDisplayCellBlock(row[column])}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border bg-background">
+            <div className="border-b px-3 py-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              OpenAPI Positions (/openapi/assets/positions)
+            </div>
+            {assetsPositionRows.length === 0 ? (
+              <p className="p-3 text-sm text-muted-foreground">No positions returned yet.</p>
+            ) : (
+              <div className="overflow-auto">
+                {assetsPositionMetaFields.length > 0 && (
+                  <table className="min-w-full border-b text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                        <th className="px-3 py-2">Payload Field</th>
+                        <th className="px-3 py-2">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {assetsPositionMetaFields.map((item) => (
+                        <tr key={item.key} className="border-b last:border-b-0">
+                          <td className="px-3 py-2 font-mono text-xs">{item.key}</td>
+                          <td className="px-3 py-2">{item.value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                      {assetsPositionTableColumns.map((column) => (
+                        <th key={column} className="px-3 py-2 font-mono text-[11px]">{column}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assetsPositionRows.map((row, rowIndex) => (
+                      <tr key={rowIndex} className="border-b last:border-b-0">
+                        {assetsPositionTableColumns.map((column) => (
+                          <td key={`${rowIndex}-${column}`} className="px-3 py-2 align-top">
+                            {column === 'payload' ? toDisplayCellBlock(row) : toDisplayCellBlock(row[column])}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border bg-background">
+            <div className="border-b px-3 py-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              OpenAPI Option Legs (from position payload)
+            </div>
+            {assetsOptionLegRows.length === 0 ? (
+              <p className="p-3 text-sm text-muted-foreground">No option legs returned yet.</p>
+            ) : (
+              <div className="overflow-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                      {assetsOptionLegTableColumns.map((column) => (
+                        <th key={column} className="px-3 py-2 font-mono text-[11px]">{column}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assetsOptionLegRows.map((row, rowIndex) => (
+                      <tr key={rowIndex} className="border-b last:border-b-0">
+                        {assetsOptionLegTableColumns.map((column) => (
+                          <td key={`${rowIndex}-${column}`} className="px-3 py-2 align-top">
+                            {column === 'payload' ? toDisplayCellBlock(row) : toDisplayCellBlock(row[column])}
+                          </td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
@@ -382,12 +567,20 @@ export default function F9WorkspaceBlock({
                 <pre className="max-h-48 overflow-auto rounded-md border p-2 text-xs leading-5">{toJsonBlock(accountList)}</pre>
               </div>
               <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">Account Balance</p>
-                <pre className="max-h-48 overflow-auto rounded-md border p-2 text-xs leading-5">{toJsonBlock(accountBalance)}</pre>
+                <p className="mb-1 text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">Legacy Account Balance</p>
+                <pre className="max-h-48 overflow-auto rounded-md border p-2 text-xs leading-5">{toJsonBlock(accountBalanceLegacy)}</pre>
               </div>
               <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">Positions</p>
-                <pre className="max-h-48 overflow-auto rounded-md border p-2 text-xs leading-5">{toJsonBlock(accountPositions)}</pre>
+                <p className="mb-1 text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">Legacy Positions</p>
+                <pre className="max-h-48 overflow-auto rounded-md border p-2 text-xs leading-5">{toJsonBlock(accountPositionsLegacy)}</pre>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">OpenAPI Assets Account</p>
+                <pre className="max-h-48 overflow-auto rounded-md border p-2 text-xs leading-5">{toJsonBlock(assetsAccount)}</pre>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">OpenAPI Assets Positions</p>
+                <pre className="max-h-48 overflow-auto rounded-md border p-2 text-xs leading-5">{toJsonBlock(assetsPositions)}</pre>
               </div>
               <div>
                 <p className="mb-1 text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">Market Quotes</p>

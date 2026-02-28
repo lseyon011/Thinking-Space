@@ -152,10 +152,23 @@ interface ElectronAPI {
   f9WebullGet?(payload: {
     url: string
     headers: Record<string, string>
+    method?: 'GET' | 'POST'
+    body?: string
   }): Promise<{ status: number; body: string }>
   f9WebullAccountList?(payload: {
     url: string
     headers: Record<string, string>
+    method?: 'GET' | 'POST'
+    body?: string
+  }): Promise<{ status: number; body: string }>
+  f9WebullSignedRequest?(payload: {
+    method: 'GET' | 'POST'
+    url: string
+    appKey: string
+    appSecret: string
+    version?: string
+    accessToken?: string
+    body?: string
   }): Promise<{ status: number; body: string }>
 }
 
