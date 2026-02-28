@@ -33,6 +33,12 @@ interface F9WorkspaceBlockProps {
   marketQuotes: unknown | null
   warnings: string[]
   attempts: string[]
+  executionRoot: string | null
+  executionCompanyCount: number
+  executionPositionCount: number
+  executionSyncSource: 'assets_positions' | 'legacy_positions' | 'none'
+  executionSyncWarnings: string[]
+  executionSyncError: string | null
   onRefreshOverall: () => void
 }
 
@@ -251,6 +257,12 @@ export default function F9WorkspaceBlock({
   marketQuotes,
   warnings,
   attempts,
+  executionRoot,
+  executionCompanyCount,
+  executionPositionCount,
+  executionSyncSource,
+  executionSyncWarnings,
+  executionSyncError,
   onRefreshOverall,
 }: F9WorkspaceBlockProps) {
   const overallValue = extractOverallValueBlock(accountBalanceLegacy ?? assetsAccount)
@@ -269,6 +281,7 @@ export default function F9WorkspaceBlock({
   const assetsOptionLegColumns = collectTableColumnsBlock(assetsOptionLegRows)
   const assetsOptionLegTableColumns = assetsOptionLegColumns.length > 0 ? assetsOptionLegColumns : ['payload']
   const quotes = toQuotesBlock(marketQuotes)
+  const allWarnings = [...warnings, ...executionSyncWarnings]
 
   return (
     <div className="grid gap-4 lg:grid-cols-[180px_minmax(0,1fr)]">
@@ -318,15 +331,21 @@ export default function F9WorkspaceBlock({
             </div>
           )}
 
-          {warnings.length > 0 && (
+          {allWarnings.length > 0 && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
-              {warnings.map((warning) => (
+              {allWarnings.map((warning) => (
                 <p key={warning}>{warning}</p>
               ))}
             </div>
           )}
 
-          <div className="grid gap-3 text-sm sm:grid-cols-3">
+          {executionSyncError && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+              {executionSyncError}
+            </div>
+          )}
+
+          <div className="grid gap-3 text-sm sm:grid-cols-4">
             <div className="rounded-lg border bg-background p-3">
               <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Runtime</p>
               <p className="mt-1 font-medium">{formatRuntimeLabelBlock(runtime)}</p>
@@ -338,6 +357,10 @@ export default function F9WorkspaceBlock({
             <div className="rounded-lg border bg-background p-3">
               <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Overall Value</p>
               <p className="mt-1 font-medium">{formatCurrencyBlock(overallValue)}</p>
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Execution Companies</p>
+              <p className="mt-1 font-medium">{executionCompanyCount}</p>
             </div>
           </div>
 
@@ -351,6 +374,12 @@ export default function F9WorkspaceBlock({
               <p><span className="font-medium">OpenAPI Positions:</span> {assetsPositionRows.length}</p>
               <p><span className="font-medium">Quotes:</span> {quotes.length}</p>
             </div>
+          </div>
+
+          <div className="rounded-xl border bg-background p-3 text-sm">
+            <p><span className="font-medium">Execution Root:</span> {executionRoot ?? 'Not configured'}</p>
+            <p><span className="font-medium">Indexed Positions:</span> {executionPositionCount}</p>
+            <p><span className="font-medium">Sync Source:</span> {executionSyncSource}</p>
           </div>
 
           <div className="space-y-2 rounded-xl border bg-background p-3">

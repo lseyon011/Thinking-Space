@@ -24,6 +24,7 @@ export const STORAGE_KEYS = {
   aiTelemetryEvents: 'ltm-ai-telemetry-events',
   aiSettings: 'ltm-ai-settings',
   markdownEditorSettings: 'ltm-markdown-editor-settings',
+  f9ExecutionSettings: 'ltm-f9-execution-settings',
   aiManualCredentials: 'ltm-ai-manual-credentials',
   aiOauthCredentials: 'ltm-ai-oauth-credentials',
 } as const

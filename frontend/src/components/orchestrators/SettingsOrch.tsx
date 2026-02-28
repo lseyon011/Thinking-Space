@@ -11,10 +11,15 @@ import {
   type MarkdownEditorSettingsBlock,
 } from '@/services/orchestrators/markdownEditorSettingsOrch'
 import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeOrch'
+import {
+  getDefaultF9ExecutionSettingsOrch,
+  readF9ExecutionSettingsOrch,
+  writeF9ExecutionSettingsOrch,
+} from '@/personal_extension/services/orchestrators/f9ExecutionSettingsOrch'
 import type { ExplorerIconStyleBlock } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import type { UIThemeId } from '@/services/orchestrators/uiThemeOrch'
 
-export type SettingsTabId = 'theme' | 'ai' | 'cache' | 'vault'
+export type SettingsTabId = 'theme' | 'ai' | 'f9' | 'cache' | 'vault'
 
 interface SettingsOrchProps {
   explorerIconStyle: ExplorerIconStyleBlock
@@ -26,6 +31,7 @@ interface SettingsOrchProps {
 const TAB_OPTIONS: Array<{ id: SettingsTabId; label: string }> = [
   { id: 'theme', label: 'Theme' },
   { id: 'ai', label: 'AI' },
+  { id: 'f9', label: 'F9' },
   { id: 'cache', label: 'Clear Cache' },
   { id: 'vault', label: 'Select Vault' },
 ]
@@ -40,6 +46,12 @@ export default function SettingsOrch({
   const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab)
   const [markdownEditorSettings, setMarkdownEditorSettings] = useState<MarkdownEditorSettingsBlock>(
     () => readMarkdownEditorSettingsOrch(),
+  )
+  const [f9ExecutionFolderPathInput, setF9ExecutionFolderPathInput] = useState<string>(
+    () => readF9ExecutionSettingsOrch().executionFolderPath,
+  )
+  const [f9SavedExecutionFolderPath, setF9SavedExecutionFolderPath] = useState<string>(
+    () => readF9ExecutionSettingsOrch().executionFolderPath,
   )
   const [busyAction, setBusyAction] = useState<SettingsTabId | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -81,6 +93,44 @@ export default function SettingsOrch({
   const updateMarkdownEditorSettings = (nextSettings: MarkdownEditorSettingsBlock) => {
     setMarkdownEditorSettings(nextSettings)
     writeMarkdownEditorSettingsOrch(nextSettings)
+  }
+
+  const onSaveF9Settings = () => {
+    const normalized = f9ExecutionFolderPathInput.trim()
+    if (!normalized) {
+      setError('F9 execution folder path cannot be empty.')
+      return
+    }
+    setBusyAction('f9')
+    setError(null)
+    setMessage(null)
+    try {
+      const saved = writeF9ExecutionSettingsOrch({ executionFolderPath: normalized })
+      setF9ExecutionFolderPathInput(saved.executionFolderPath)
+      setF9SavedExecutionFolderPath(saved.executionFolderPath)
+      setMessage('F9 execution folder path saved.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save F9 settings')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  const onResetF9Settings = () => {
+    setBusyAction('f9')
+    setError(null)
+    setMessage(null)
+    try {
+      const defaults = getDefaultF9ExecutionSettingsOrch()
+      const saved = writeF9ExecutionSettingsOrch(defaults)
+      setF9ExecutionFolderPathInput(saved.executionFolderPath)
+      setF9SavedExecutionFolderPath(saved.executionFolderPath)
+      setMessage('F9 execution folder path reset to default.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reset F9 settings')
+    } finally {
+      setBusyAction(null)
+    }
   }
 
   return (
@@ -177,6 +227,52 @@ export default function SettingsOrch({
 
       {activeTab === 'ai' && (
         <AiSettingsOrch />
+      )}
+
+      {activeTab === 'f9' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>F9 Execution Storage</CardTitle>
+            <CardDescription>
+              Configure where F9 stores `overall.json`, company index files, and per-position markdown files.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <label htmlFor="ltm-settings-f9-execution-folder" className="text-sm font-medium">
+                Execution Folder Path
+              </label>
+              <input
+                id="ltm-settings-f9-execution-folder"
+                type="text"
+                value={f9ExecutionFolderPathInput}
+                onChange={(event) => setF9ExecutionFolderPathInput(event.target.value)}
+                placeholder="Absolute or vault-relative path"
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Current saved value: <span className="font-mono">{f9SavedExecutionFolderPath}</span>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={onSaveF9Settings}
+                disabled={busyAction === 'f9'}
+              >
+                {busyAction === 'f9' ? 'Saving...' : 'Save F9 Path'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onResetF9Settings}
+                disabled={busyAction === 'f9'}
+              >
+                Reset to Default
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {activeTab === 'cache' && (
