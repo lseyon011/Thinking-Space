@@ -1,10 +1,9 @@
-import { memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { memo, useCallback, useEffect, useId, useMemo, useState } from 'react'
 import * as Toolbar from '@radix-ui/react-toolbar'
 import {
   DataSheetGrid,
   keyColumn,
-  type CellComponent,
-  type Column,
+  textColumn,
 } from 'react-datasheet-grid'
 import 'react-datasheet-grid/dist/style.css'
 import { CloudDownload, CloudUpload, FileSpreadsheet, Pencil, Plus, Save, X } from 'lucide-react'
@@ -52,51 +51,6 @@ interface SelectionRangeBlock {
   end: GridCellWithIdBlock
 }
 
-interface StyledColumnDataBlock {
-  colIndex: number
-  getFormat: (row: number, col: number) => TableCellFormatBlock | undefined
-  editable: boolean
-}
-
-const StyledTextCellBlock: CellComponent<string | null, StyledColumnDataBlock> = ({
-  rowData,
-  setRowData,
-  focus,
-  rowIndex,
-  columnData,
-}) => {
-  const value = rowData ?? ''
-  const format = columnData.getFormat(rowIndex, columnData.colIndex)
-  return (
-    <input
-      value={value}
-      className={cn('dsg-input', format?.align === 'right' && 'dsg-input-align-right')}
-      tabIndex={-1}
-      style={{
-        ...cellStyleFromFormatBlock(format),
-        pointerEvents: focus && columnData.editable ? 'auto' : 'none',
-      }}
-      onChange={(event) => setRowData(event.target.value)}
-      readOnly={!columnData.editable}
-    />
-  )
-}
-
-function createStyledTextColumnBlock(opts: StyledColumnDataBlock): Partial<Column<string | null, StyledColumnDataBlock, string>> {
-  return {
-    component: StyledTextCellBlock,
-    columnData: opts,
-    disabled: !opts.editable,
-    deleteValue: () => null,
-    copyValue: ({ rowData }) => rowData ?? '',
-    pasteValue: ({ value }) => value,
-    prePasteValues: (values) => values,
-    isCellEmpty: ({ rowData }) => !rowData,
-    keepFocus: false,
-    disableKeys: false,
-  }
-}
-
 function TableDocumentBlock({
   path,
   initialMode = 'view',
@@ -120,6 +74,12 @@ function TableDocumentBlock({
   const [conflict, setConflict] = useState<TableDocumentConflictError | null>(null)
   const [activeCell, setActiveCell] = useState<GridCellWithIdBlock | null>(null)
   const [selection, setSelection] = useState<GridSelectionWithIdBlock | null>(null)
+  const scopeId = useId()
+
+  const gridScopeClass = useMemo(() => {
+    const suffix = scopeId.replace(/[^a-zA-Z0-9_-]/g, '')
+    return `table-document-grid-${suffix}`
+  }, [scopeId])
 
   const loadDocument = useCallback(async () => {
     setLoading(true)
@@ -176,6 +136,8 @@ function TableDocumentBlock({
     return ensureTableRectBlock(activeSheet.rows, Math.max(1, activeSheet.rows.length), columnCount)
   }, [activeSheet, columnCount])
 
+  const canPersistCellFormatting = draft?.kind === 'xlsx'
+
   const rowCount = activeSheetRows.length
 
   const selectedBounds = useMemo(() => {
@@ -187,6 +149,35 @@ function TableDocumentBlock({
   }, [activeSheetRows, selectedBounds.start.col, selectedBounds.start.row])
 
   const currentFormat = currentCell?.format ?? {}
+
+  const formattedCellCssText = useMemo(() => {
+    const rules: string[] = []
+    for (let rowIndex = 0; rowIndex < activeSheetRows.length; rowIndex++) {
+      const row = activeSheetRows[rowIndex]
+      for (let colIndex = 0; colIndex < row.length; colIndex++) {
+        const format = sanitizeFormatBlock(row[colIndex]?.format)
+        if (!format) continue
+        const declarations: string[] = []
+        if (format.bold) declarations.push('font-weight: 700')
+        if (format.italic) declarations.push('font-style: italic')
+        if (format.underline) declarations.push('text-decoration: underline')
+        if (format.align) declarations.push(`text-align: ${format.align}`)
+        if (format.textColor) {
+          const color = sanitizeCssColorBlock(format.textColor)
+          if (color) declarations.push(`color: ${color}`)
+        }
+        if (format.backgroundColor) {
+          const color = sanitizeCssColorBlock(format.backgroundColor)
+          if (color) declarations.push(`background-color: ${color}`)
+        }
+        if (declarations.length === 0) continue
+        rules.push(
+          `.${gridScopeClass} .${formattedCellClassNameBlock(rowIndex, colIndex)} .dsg-input { ${declarations.join('; ')}; }`,
+        )
+      }
+    }
+    return rules.join('\n')
+  }, [activeSheetRows, gridScopeClass])
 
   const gridRows = useMemo<GridRowBlock[]>(() => {
     return activeSheetRows.map((row) => {
@@ -208,24 +199,30 @@ function TableDocumentBlock({
   }, [])
 
   const gridColumns = useMemo(() => {
-    const getFormat = (row: number, col: number) => activeSheetRows[row]?.[col]?.format
     return Array.from({ length: columnCount }, (_, colIndex) => {
       const key = columnKeyBlock(colIndex)
       return {
         ...keyColumn(
           key,
-          createStyledTextColumnBlock({
-            colIndex,
-            editable: isEditing,
-            getFormat,
-          }),
+          {
+            ...textColumn,
+            disabled: !isEditing,
+          },
         ),
         id: key,
         title: columnLabelBlock(colIndex),
         minWidth: 120,
-      } as Partial<Column<GridRowBlock, unknown, string>>
+      }
     })
-  }, [activeSheetRows, columnCount, isEditing])
+  }, [columnCount, isEditing])
+
+  const gridCellClassName = useCallback((opts: { rowIndex: number; columnId?: string }) => {
+    const colIndex = columnIndexFromKeyBlock(opts.columnId)
+    if (colIndex === null) return undefined
+    const format = activeSheetRows[opts.rowIndex]?.[colIndex]?.format
+    if (!sanitizeFormatBlock(format)) return undefined
+    return formattedCellClassNameBlock(opts.rowIndex, colIndex)
+  }, [activeSheetRows])
 
   const handleGridRowsChange = useCallback((rows: GridRowBlock[]) => {
     applyDraftChange((current) => mutateActiveSheetBlock(current, (sheet) => {
@@ -248,6 +245,7 @@ function TableDocumentBlock({
   }, [applyDraftChange, columnCount])
 
   const applyFormatToSelection = useCallback((updater: (format: TableCellFormatBlock | undefined) => TableCellFormatBlock | undefined) => {
+    if (!canPersistCellFormatting) return
     applyDraftChange((current) => mutateActiveSheetBlock(current, (sheet) => {
       const rows = ensureTableRectBlock(sheet.rows, selectedBounds.end.row + 1, selectedBounds.end.col + 1)
       for (let r = selectedBounds.start.row; r <= selectedBounds.end.row; r++) {
@@ -261,7 +259,7 @@ function TableDocumentBlock({
       }
       return { ...sheet, rows }
     }))
-  }, [applyDraftChange, selectedBounds.end.col, selectedBounds.end.row, selectedBounds.start.col, selectedBounds.start.row])
+  }, [applyDraftChange, canPersistCellFormatting, selectedBounds.end.col, selectedBounds.end.row, selectedBounds.start.col, selectedBounds.start.row])
 
   const toggleBooleanFormat = useCallback((key: 'bold' | 'italic' | 'underline') => {
     applyFormatToSelection((format) => ({ ...format, [key]: !format?.[key] }))
@@ -497,26 +495,79 @@ function TableDocumentBlock({
           className="border-b border-border/40 bg-background px-5 py-2.5"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <Toolbar.Button type="button" className={formatButtonClassBlock(!!currentFormat.bold)} onClick={() => toggleBooleanFormat('bold')}>B</Toolbar.Button>
-            <Toolbar.Button type="button" className={formatButtonClassBlock(!!currentFormat.italic)} onClick={() => toggleBooleanFormat('italic')}><i>I</i></Toolbar.Button>
-            <Toolbar.Button type="button" className={formatButtonClassBlock(!!currentFormat.underline)} onClick={() => toggleBooleanFormat('underline')}><u>U</u></Toolbar.Button>
+            <Toolbar.Button
+              type="button"
+              className={formatButtonClassBlock(!!currentFormat.bold)}
+              onClick={() => toggleBooleanFormat('bold')}
+              disabled={!canPersistCellFormatting}
+            >
+              B
+            </Toolbar.Button>
+            <Toolbar.Button
+              type="button"
+              className={formatButtonClassBlock(!!currentFormat.italic)}
+              onClick={() => toggleBooleanFormat('italic')}
+              disabled={!canPersistCellFormatting}
+            >
+              <i>I</i>
+            </Toolbar.Button>
+            <Toolbar.Button
+              type="button"
+              className={formatButtonClassBlock(!!currentFormat.underline)}
+              onClick={() => toggleBooleanFormat('underline')}
+              disabled={!canPersistCellFormatting}
+            >
+              <u>U</u>
+            </Toolbar.Button>
             <Toolbar.Separator className="h-6 w-px bg-border/70" />
-            <Toolbar.Button type="button" className={formatButtonClassBlock(currentFormat.align === 'left')} onClick={() => setAlignFormat('left')}>Left</Toolbar.Button>
-            <Toolbar.Button type="button" className={formatButtonClassBlock(currentFormat.align === 'center')} onClick={() => setAlignFormat('center')}>Center</Toolbar.Button>
-            <Toolbar.Button type="button" className={formatButtonClassBlock(currentFormat.align === 'right')} onClick={() => setAlignFormat('right')}>Right</Toolbar.Button>
+            <Toolbar.Button
+              type="button"
+              className={formatButtonClassBlock(currentFormat.align === 'left')}
+              onClick={() => setAlignFormat('left')}
+              disabled={!canPersistCellFormatting}
+            >
+              Left
+            </Toolbar.Button>
+            <Toolbar.Button
+              type="button"
+              className={formatButtonClassBlock(currentFormat.align === 'center')}
+              onClick={() => setAlignFormat('center')}
+              disabled={!canPersistCellFormatting}
+            >
+              Center
+            </Toolbar.Button>
+            <Toolbar.Button
+              type="button"
+              className={formatButtonClassBlock(currentFormat.align === 'right')}
+              onClick={() => setAlignFormat('right')}
+              disabled={!canPersistCellFormatting}
+            >
+              Right
+            </Toolbar.Button>
             <Toolbar.Separator className="h-6 w-px bg-border/70" />
             <label className="inline-flex items-center gap-1 rounded border border-border/70 bg-background px-2 py-1 text-xs">
               Text
-              <input type="color" value={currentFormat.textColor || '#111111'} onChange={(event) => setColorFormat('textColor', event.target.value)} />
+              <input
+                type="color"
+                value={normalizeColorForPickerBlock(currentFormat.textColor)}
+                onChange={(event) => setColorFormat('textColor', event.target.value)}
+                disabled={!canPersistCellFormatting}
+              />
             </label>
             <label className="inline-flex items-center gap-1 rounded border border-border/70 bg-background px-2 py-1 text-xs">
               Fill
-              <input type="color" value={currentFormat.backgroundColor || '#ffffff'} onChange={(event) => setColorFormat('backgroundColor', event.target.value)} />
+              <input
+                type="color"
+                value={normalizeColorForPickerBlock(currentFormat.backgroundColor, '#ffffff')}
+                onChange={(event) => setColorFormat('backgroundColor', event.target.value)}
+                disabled={!canPersistCellFormatting}
+              />
             </label>
             <select
-              className="rounded border border-border/70 bg-background px-2 py-1 text-xs"
+              className="rounded border border-border/70 bg-background px-2 py-1 text-xs disabled:opacity-50"
               value={currentFormat.numberFormat || 'general'}
               onChange={(event) => setNumberFormat(event.target.value as TableCellFormatBlock['numberFormat'])}
+              disabled={!canPersistCellFormatting}
             >
               <option value="general">General</option>
               <option value="number">Number</option>
@@ -526,6 +577,11 @@ function TableDocumentBlock({
               <option value="text">Text</option>
             </select>
           </div>
+          {!canPersistCellFormatting && (
+            <div className="mt-2 text-xs text-muted-foreground">
+              Cell formatting is saved to XLSX files. CSV/TSV do not support persistent cell styles in Excel.
+            </div>
+          )}
         </Toolbar.Root>
       )}
 
@@ -607,15 +663,17 @@ function TableDocumentBlock({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto">
+        {formattedCellCssText && <style>{formattedCellCssText}</style>}
         {loading && <div className="text-sm text-muted-foreground">Loading table...</div>}
         {error && <div className="text-sm text-destructive">{error}</div>}
         {!loading && !error && activeSheet && (
           <DataSheetGrid<GridRowBlock>
+            className={gridScopeClass}
             value={gridRows}
             onChange={handleGridRowsChange}
             columns={gridColumns}
-            rowHeight={34}
+            cellClassName={({ rowIndex, columnId }) => gridCellClassName({ rowIndex, columnId })}
             height={gridHeight}
             autoAddRow={isEditing}
             lockRows={!isEditing}
@@ -704,26 +762,39 @@ function resolveSelectionBoundsBlock(
   }
 }
 
-function cellStyleFromFormatBlock(format: TableCellFormatBlock | undefined): CSSProperties {
-  return {
-    fontWeight: format?.bold ? 700 : undefined,
-    fontStyle: format?.italic ? 'italic' : undefined,
-    textDecoration: format?.underline ? 'underline' : undefined,
-    textAlign: format?.align,
-    color: format?.textColor,
-    backgroundColor: format?.backgroundColor,
-  }
-}
-
 function formatButtonClassBlock(active: boolean): string {
   return cn(
-    'rounded border px-2 py-1 text-xs font-medium',
+    'rounded border px-2 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50',
     active ? 'border-primary bg-primary/10 text-foreground' : 'border-border/70 bg-background hover:bg-muted',
   )
 }
 
 function columnKeyBlock(index: number): string {
   return `c${index}`
+}
+
+function columnIndexFromKeyBlock(columnId: string | undefined): number | null {
+  if (!columnId) return null
+  const match = /^c(\d+)$/.exec(columnId)
+  if (!match) return null
+  const out = Number.parseInt(match[1] || '', 10)
+  return Number.isFinite(out) ? out : null
+}
+
+function formattedCellClassNameBlock(rowIndex: number, colIndex: number): string {
+  return `table-cell-fmt-r${rowIndex}-c${colIndex}`
+}
+
+function sanitizeCssColorBlock(input: string): string | null {
+  const value = input.trim()
+  if (!value) return null
+  if (/^#[0-9a-fA-F]{6}$/.test(value)) return value
+  if (/^#[0-9a-fA-F]{8}$/.test(value)) return `#${value.slice(1, 7)}`
+  return null
+}
+
+function normalizeColorForPickerBlock(input: string | undefined, fallback = '#111111'): string {
+  return sanitizeCssColorBlock(input || '') ?? fallback
 }
 
 function createEmptyGridRowBlock(columnCount: number): GridRowBlock {
