@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/lego_blocks/units/ui/card'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
-import { ArrowLeft, FileText, Check, Loader2 } from 'lucide-react'
+import { FileText, Check, Loader2 } from 'lucide-react'
 import SearchDropdown from '@/components/lego_blocks/integrations/SearchDropdownBlock'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
 import type { FormatOptions, FormatPreviewData, FormatResult } from '@/services/lego_blocks/units/typesBlock'
@@ -92,13 +91,6 @@ export default function FormatExcalidraw() {
       <div className="ltm-page-shell ltm-shell-narrow">
         {/* Header */}
         <header className="mb-8">
-          <Link
-            to="/"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Link>
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10">
               <FileText className="h-6 w-6 text-primary" />

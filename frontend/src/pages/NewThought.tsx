@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { ArrowLeft, PenLine, Loader2, CheckCircle2, LayoutList, Eye, Pencil, Trash2, X, Sparkles } from 'lucide-react'
+import { PenLine, Loader2, CheckCircle2, LayoutList, Eye, Pencil, Trash2, X, Sparkles } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
@@ -665,7 +664,7 @@ function CreateTab() {
               <CardTitle className="text-sm">Edit Note</CardTitle>
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="secondary" size="sm" onClick={() => setEditorPath(null)}>
-                  Back to Compose
+                  Close Editor
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleCreateAnother}>
                   Create Another
@@ -920,13 +919,6 @@ export default function NewThought() {
 
       <div className="relative z-10 ltm-page-shell ltm-shell-wide">
         <header className="mb-6 sm:mb-8">
-          <Link
-            to="/"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Link>
           <div className="flex items-start sm:items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10 shrink-0">
               <PenLine className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />

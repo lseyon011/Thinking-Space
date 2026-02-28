@@ -279,7 +279,7 @@ export default function FileActivityOrch() {
                     onClick={() => setSelectedDate(null)}
                     className="ml-2 text-primary hover:underline"
                   >
-                    Back to month
+                    Clear day selection
                   </button>
                 )}
               </CardDescription>

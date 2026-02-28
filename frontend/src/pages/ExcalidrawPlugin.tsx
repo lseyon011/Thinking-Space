@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { ArrowLeft, Download, Loader2, RefreshCw, Wrench } from 'lucide-react'
+import { Download, Loader2, RefreshCw, Wrench } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import type { ExcalidrawPluginStatus } from '@/services/lego_blocks/units/typesBlock'
@@ -94,13 +93,6 @@ export default function ExcalidrawPlugin() {
     <div className="ltm-page">
       <div className="ltm-page-shell ltm-shell-narrow">
         <header className="mb-8">
-          <Link
-            to="/"
-            className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Link>
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-primary/10 p-2">
               <Wrench className="h-6 w-6 text-primary" />

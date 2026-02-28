@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { ArrowLeft, CheckSquare, Loader2, CheckCircle2, LayoutList, Eye } from 'lucide-react'
+import { CheckSquare, Loader2, CheckCircle2, LayoutList, Eye } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import CascadingFolderPicker, {
@@ -230,13 +229,6 @@ export default function Todos() {
     <div className="ltm-page">
       <div className="ltm-page-shell ltm-shell-wide">
         <header className="mb-6 sm:mb-8">
-          <Link
-            to="/"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Link>
           <div className="flex items-start sm:items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10 shrink-0">
               <CheckSquare className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
