@@ -27,6 +27,7 @@ import {
   NodeStatusBadgeBlock,
   NodeStatusSelectBlock,
 } from '@/components/lego_blocks/units/NodeStatusBlock'
+import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { cn } from '@/lib/utils'
 import { tagColorClassBlock, tagColorStyleBlock } from '@/services/lego_blocks/units/tagBlock'
 
@@ -54,6 +55,7 @@ interface BacklogNodeRowBlockProps {
   canEditTaskStatus: boolean
   canEditNodeStatus: boolean
   canToggleDetails: boolean
+  rowColumns: BacklogRowColumnBlock[]
   ticketBadge: ReactNode
   lookupTagColor: (node: NodeRecord, tag: string) => string | undefined
   onToggleNode: () => void
@@ -94,6 +96,7 @@ export function BacklogNodeRowBlock({
   canEditTaskStatus,
   canEditNodeStatus,
   canToggleDetails,
+  rowColumns,
   ticketBadge,
   lookupTagColor,
   onToggleNode,
@@ -112,6 +115,7 @@ export function BacklogNodeRowBlock({
   const Icon = iconForNodeType(node.type)
   const taskNode = isTaskNode(node)
   const taskStatus = getTaskStatusBadge(node)
+  const applicableColumns = rowColumns.filter(column => !column.showForTypes || column.showForTypes.includes(node.type))
 
   return (
     <div
@@ -157,6 +161,27 @@ export function BacklogNodeRowBlock({
           {nodeTitleWithoutTicket(node) || nodeDisplayTitle(node) || 'Untitled'}
         </span>
       </button>
+      {applicableColumns.length > 0 && (
+        <div className="hidden items-center gap-2 xl:flex">
+          {applicableColumns.map(column => {
+            const content = column.render(node)
+            return (
+              <div
+                key={`${node.uuid}-column-${column.id}`}
+                className={cn(
+                  'truncate text-xs text-muted-foreground',
+                  column.widthClassName ?? 'w-24',
+                  column.align === 'center' && 'text-center',
+                  column.align === 'right' && 'text-right',
+                )}
+                title={typeof content === 'string' ? content : undefined}
+              >
+                {content}
+              </div>
+            )
+          })}
+        </div>
+      )}
       {rowPresetTags.visible.length > 0 && (
         <div className="hidden max-w-[35%] items-center gap-1 overflow-hidden lg:flex">
           {rowPresetTags.visible.map(tag => (
@@ -234,7 +259,7 @@ export function BacklogNodeRowBlock({
           </div>
         )
       )}
-      {!readOnly && canToggleDetails && (
+      {canToggleDetails && (
         <button
           type="button"
           onClick={(event) => {

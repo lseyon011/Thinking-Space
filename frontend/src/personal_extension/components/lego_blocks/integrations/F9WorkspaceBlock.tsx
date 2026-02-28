@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
+import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
@@ -249,6 +250,12 @@ function toJsonBlock(value: unknown): string {
   return JSON.stringify(value ?? {}, null, 2)
 }
 
+function asMetadataRecordBlock(node: NodeRecord): Record<string, unknown> {
+  const metadata = node.metadata
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {}
+  return metadata as Record<string, unknown>
+}
+
 export default function F9WorkspaceBlock({
   subtabs,
   activeSubtabId,
@@ -338,6 +345,7 @@ export default function F9WorkspaceBlock({
         updatedAt: now,
         metadata: {
           f9_company_ticker: companyTicker,
+          f9_position_count: company.positions.length,
         },
       })
 
@@ -381,6 +389,23 @@ export default function F9WorkspaceBlock({
             f9_position_file_name: fileName,
             f9_position_status: position.status || 'taken',
             f9_linked_idea_id: position.linkedIdeaId ?? '',
+            f9_position_payload: {
+              id: position.id,
+              file_name: position.fileName,
+              symbol: position.symbol,
+              status: position.status,
+              source: position.source,
+              instrument_type: position.instrumentType,
+              option_type: position.optionType,
+              option_expire_date: position.optionExpireDate,
+              option_exercise_price: position.optionExercisePrice,
+              cost: position.cost,
+              proportion: position.proportion,
+              last_price: position.lastPrice,
+              unrealized_profit_loss: position.unrealizedProfitLoss,
+              day_profit_loss: position.dayProfitLoss,
+              linked_idea_id: position.linkedIdeaId,
+            },
           },
         } satisfies NodeRecord
       })
@@ -424,6 +449,113 @@ export default function F9WorkspaceBlock({
     onSelectCompanyTicker,
     onSelectPositionFileName,
   ])
+
+  const f9RowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
+    const getMetaValue = (node: NodeRecord, key: string): string => {
+      const metadata = asMetadataRecordBlock(node)
+      return firstStringBlock(metadata[key])
+    }
+    const epicOnly: NodeRecord['type'][] = ['epic']
+    return [
+      {
+        id: 'status',
+        label: 'Status',
+        widthClassName: 'w-24',
+        showForTypes: epicOnly,
+        render: (node) => {
+          const status = getMetaValue(node, 'f9_position_status') || '—'
+          return (
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] ${statusChipClassBlock(status)}`}>
+              {status}
+            </span>
+          )
+        },
+      },
+      {
+        id: 'type',
+        label: 'Type',
+        widthClassName: 'w-16',
+        showForTypes: epicOnly,
+        render: (node) => {
+          const payload = asMetadataRecordBlock(node).f9_position_payload as Record<string, unknown> | undefined
+          return firstStringBlock(payload?.instrument_type) || '—'
+        },
+      },
+      {
+        id: 'last',
+        label: 'Last',
+        widthClassName: 'w-20',
+        align: 'right',
+        showForTypes: epicOnly,
+        render: (node) => {
+          const payload = asMetadataRecordBlock(node).f9_position_payload as Record<string, unknown> | undefined
+          return formatCurrencyFromUnknownBlock(payload?.last_price)
+        },
+      },
+      {
+        id: 'cost',
+        label: 'Cost',
+        widthClassName: 'w-20',
+        align: 'right',
+        showForTypes: epicOnly,
+        render: (node) => {
+          const payload = asMetadataRecordBlock(node).f9_position_payload as Record<string, unknown> | undefined
+          return formatCurrencyFromUnknownBlock(payload?.cost)
+        },
+      },
+      {
+        id: 'upl',
+        label: 'U P/L',
+        widthClassName: 'w-24',
+        align: 'right',
+        showForTypes: epicOnly,
+        render: (node) => {
+          const payload = asMetadataRecordBlock(node).f9_position_payload as Record<string, unknown> | undefined
+          return formatCurrencyFromUnknownBlock(payload?.unrealized_profit_loss)
+        },
+      },
+      {
+        id: 'idea',
+        label: 'Linked Idea',
+        widthClassName: 'w-28',
+        showForTypes: epicOnly,
+        render: (node) => getMetaValue(node, 'f9_linked_idea_id') || '—',
+      },
+    ]
+  }, [])
+
+  const renderF9RowDetails = useCallback((node: NodeRecord) => {
+    const metadata = asMetadataRecordBlock(node)
+    if (node.type === 'program') {
+      return (
+        <div className="grid gap-1 text-xs">
+          <p><span className="font-medium text-foreground">Company:</span> {firstStringBlock(metadata.f9_company_ticker) || node.title}</p>
+          <p><span className="font-medium text-foreground">Positions:</span> {firstStringBlock(metadata.f9_position_count) || '0'}</p>
+          <p><span className="font-medium text-foreground">Source:</span> Company index + position files</p>
+        </div>
+      )
+    }
+
+    const payload = metadata.f9_position_payload
+    const payloadEntries = payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? Object.entries(payload as Record<string, unknown>)
+      : []
+
+    if (payloadEntries.length === 0) {
+      return <p className="text-xs text-muted-foreground">No position payload details.</p>
+    }
+
+    return (
+      <div className="grid gap-1 text-xs md:grid-cols-2">
+        {payloadEntries.map(([key, value]) => (
+          <p key={`${node.uuid}-detail-${key}`}>
+            <span className="font-medium text-foreground">{key}:</span>{' '}
+            <span className="text-muted-foreground">{firstStringBlock(value) || '—'}</span>
+          </p>
+        ))}
+      </div>
+    )
+  }, [])
 
   const [newCompanyTicker, setNewCompanyTicker] = useState('')
   const [newPositionTitle, setNewPositionTitle] = useState('')
@@ -612,6 +744,8 @@ export default function F9WorkspaceBlock({
                 selectedNodeId={selectedBacklogNodeId}
                 readOnly
                 onSelectNode={onSelectBacklogNode}
+                rowColumns={f9RowColumns}
+                rowDetailsRenderer={renderF9RowDetails}
               />
             </div>
           ) : (
@@ -624,6 +758,8 @@ export default function F9WorkspaceBlock({
                   selectedNodeId={selectedBacklogNodeId}
                   readOnly
                   onSelectNode={onSelectBacklogNode}
+                  rowColumns={f9RowColumns}
+                  rowDetailsRenderer={renderF9RowDetails}
                 />
               </div>
 

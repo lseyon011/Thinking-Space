@@ -7,6 +7,7 @@ import {
   NodeStatusBadgeBlock,
   NodeStatusSelectBlock,
 } from '@/components/lego_blocks/units/NodeStatusBlock'
+import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { cn } from '@/lib/utils'
 import { tagColorClassBlock, tagColorStyleBlock } from '@/services/lego_blocks/units/tagBlock'
 
@@ -33,6 +34,7 @@ interface BacklogProgramRowBlockProps {
   statusBusy: boolean
   canEditNodeStatus: boolean
   canToggleDetails: boolean
+  rowColumns: BacklogRowColumnBlock[]
   canAssignToGroup: boolean
   assignedGroupId: string
   programGroups: ProgramGroupEntryBlock[]
@@ -69,6 +71,7 @@ export function BacklogProgramRowBlock({
   statusBusy,
   canEditNodeStatus,
   canToggleDetails,
+  rowColumns,
   canAssignToGroup,
   assignedGroupId,
   programGroups,
@@ -87,6 +90,8 @@ export function BacklogProgramRowBlock({
   onCopyRowLabel,
   onNodeStatusChange,
 }: BacklogProgramRowBlockProps) {
+  const applicableColumns = rowColumns.filter(column => !column.showForTypes || column.showForTypes.includes(program.type))
+
   return (
     <div
       draggable={allowProgramLayoutEditing}
@@ -143,6 +148,27 @@ export function BacklogProgramRowBlock({
           {nodeTitleWithoutTicket(program) || nodeDisplayTitle(program) || 'Untitled'}
         </span>
       </div>
+      {applicableColumns.length > 0 && (
+        <div className="hidden items-center gap-2 xl:flex">
+          {applicableColumns.map(column => {
+            const content = column.render(program)
+            return (
+              <div
+                key={`${program.uuid}-column-${column.id}`}
+                className={cn(
+                  'truncate text-xs text-muted-foreground',
+                  column.widthClassName ?? 'w-24',
+                  column.align === 'center' && 'text-center',
+                  column.align === 'right' && 'text-right',
+                )}
+                title={typeof content === 'string' ? content : undefined}
+              >
+                {content}
+              </div>
+            )
+          })}
+        </div>
+      )}
       {rowPresetTags.visible.length > 0 && (
         <div className="hidden max-w-[35%] items-center gap-1 overflow-hidden lg:flex">
           {rowPresetTags.visible.map(tag => (
@@ -206,7 +232,7 @@ export function BacklogProgramRowBlock({
           </select>
         </div>
       )}
-      {!readOnly && canToggleDetails && (
+      {canToggleDetails && (
         <button
           type="button"
           onClick={(event) => {

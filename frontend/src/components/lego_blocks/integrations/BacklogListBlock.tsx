@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import { BacklogNodeRowBlock } from '@/components/lego_blocks/units/BacklogNodeRowBlock'
 import { BacklogProgramRowBlock } from '@/components/lego_blocks/units/BacklogProgramRowBlock'
+import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { BacklogInlineCreateBlock } from '@/components/lego_blocks/integrations/BacklogInlineCreateBlock'
 import { BacklogInlineNotesEditorBlock } from '@/components/lego_blocks/integrations/BacklogInlineNotesEditorBlock'
@@ -66,6 +67,8 @@ export interface BacklogListBlockProps {
   onUpdateNodeStatus?: (node: NodeRecord, status: NodeStatus) => Promise<NodeRecord | void>
   onUpdateTaskStatus?: (node: NodeRecord, taskStatus: TaskStatusOption) => Promise<NodeRecord | void>
   onUpdateNodeNotes?: (node: NodeRecord, description: string, comments: YAMLCommentEntry[]) => Promise<NodeRecord | void>
+  rowColumns?: BacklogRowColumnBlock[]
+  rowDetailsRenderer?: ((node: NodeRecord) => ReactNode) | null
 }
 
 
@@ -91,6 +94,8 @@ export default function BacklogListBlock({
   onUpdateNodeStatus,
   onUpdateTaskStatus,
   onUpdateNodeNotes,
+  rowColumns = [],
+  rowDetailsRenderer = null,
 }: BacklogListBlockProps) {
   const [childrenByNode, setChildrenByNode] = useState<Record<string, ChildStateBlock>>({})
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({})
@@ -103,6 +108,7 @@ export default function BacklogListBlock({
   const [copiedRowNodeId, setCopiedRowNodeId] = useState<string | null>(null)
   const [statusBusyByNode, setStatusBusyByNode] = useState<Record<string, boolean>>({})
   const [newlyCreatedNodeIds, setNewlyCreatedNodeIds] = useState<Record<string, boolean>>({})
+  const [rowDetailsNodeId, setRowDetailsNodeId] = useState<string | null>(null)
   const [programLayoutEditMode, setProgramLayoutEditMode] = useState(false)
   const [programGroupDraft, setProgramGroupDraft] = useState('')
   const newRowHighlightTimeoutByNodeRef = useRef<Record<string, number>>({})
@@ -163,6 +169,11 @@ export default function BacklogListBlock({
     if (!readOnly) return
     setProgramLayoutEditMode(false)
   }, [readOnly])
+
+  useEffect(() => {
+    if (rowDetailsRenderer) return
+    setRowDetailsNodeId(null)
+  }, [rowDetailsRenderer])
 
   useEffect(() => () => {
     for (const timeoutId of Object.values(newRowHighlightTimeoutByNodeRef.current)) {
@@ -481,6 +492,24 @@ export default function BacklogListBlock({
     removeInlineCommentDraft,
   ])
 
+  const toggleRowDetails = useCallback((node: NodeRecord) => {
+    if (rowDetailsRenderer) {
+      setRowDetailsNodeId(current => (current === node.uuid ? null : node.uuid))
+      return
+    }
+    void toggleInlineNotes(node)
+  }, [rowDetailsRenderer, toggleInlineNotes])
+
+  const renderInlineDetailsPanel = useCallback((node: NodeRecord, depthPadding: number) => {
+    if (!rowDetailsRenderer) return null
+    if (rowDetailsNodeId !== node.uuid) return null
+    return (
+      <div className="border-t border-border/60 bg-muted/10 px-3 py-2 text-xs" style={{ paddingLeft: `${depthPadding}px` }}>
+        {rowDetailsRenderer(node)}
+      </div>
+    )
+  }, [rowDetailsNodeId, rowDetailsRenderer])
+
   const renderInlineCreate = useCallback((parent: NodeRecord | null, draftKey: string, placeholder: string) => {
     if (readOnly) return null
 
@@ -540,6 +569,11 @@ export default function BacklogListBlock({
     const rowPresetTags = compactTagList(
       selectedPresetTagsForNode(node, projectPresetTagsByRoot),
     )
+    const detailsOpen = rowDetailsRenderer
+      ? rowDetailsNodeId === node.uuid
+      : inlineNotesNode?.uuid === node.uuid
+    const canToggleDetails = !!rowDetailsRenderer || (!!onUpdateNodeNotes && !readOnly)
+    const detailsBusy = rowDetailsRenderer ? false : inlineNotesSaving
 
     return (
       <div key={node.uuid} className="border-b border-border/70 last:border-b-0">
@@ -561,12 +595,13 @@ export default function BacklogListBlock({
           copied={copiedRowNodeId === node.uuid}
           canShowGroupingInfo={canShowGroupingInfo}
           groupingInfoOpen={groupingInfoOpen}
-          detailsOpen={inlineNotesNode?.uuid === node.uuid}
-          inlineNotesSaving={inlineNotesSaving}
+          detailsOpen={detailsOpen}
+          inlineNotesSaving={detailsBusy}
           statusBusy={!!statusBusyByNode[node.uuid]}
           canEditTaskStatus={!!onUpdateTaskStatus}
           canEditNodeStatus={!!onUpdateNodeStatus}
-          canToggleDetails={!!onUpdateNodeNotes}
+          canToggleDetails={canToggleDetails}
+          rowColumns={rowColumns}
           ticketBadge={renderTicketBadge(node)}
           lookupTagColor={lookupTagColor}
           onToggleNode={() => toggleNode(node)}
@@ -576,7 +611,7 @@ export default function BacklogListBlock({
           onDragOver={event => handleDragOver(node, event)}
           onDragLeave={() => handleDragLeave(node.uuid)}
           onDrop={event => { void handleDrop(node, event) }}
-          onToggleInlineNotes={() => { void toggleInlineNotes(node) }}
+          onToggleInlineNotes={() => { void toggleRowDetails(node) }}
           onCopyRowLabel={event => { void copyRowLabelForNode(node, event) }}
           onToggleGroupingInfo={() => setGroupingInfoOpenByNode(prev => ({ ...prev, [node.uuid]: !prev[node.uuid] }))}
           onTaskStatusChange={(nextStatus) => { void handleInlineTaskStatusChange(node, nextStatus) }}
@@ -589,6 +624,7 @@ export default function BacklogListBlock({
             Parent: <span className="text-foreground">{nodeDisplayTitle(parentNode!)}</span>
           </div>
         )}
+        {renderInlineDetailsPanel(node, 36 + (depth * 16))}
         {renderInlineNotesEditor(node, 36 + (depth * 16))}
 
         {isExpanded && (
@@ -621,7 +657,7 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [allowProgramLayoutEditing, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineNotesEditor, renderTicketBadge, selectedNodeId, statusBusyByNode, toggleInlineNotes, toggleNode])
+  }, [allowProgramLayoutEditing, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderTicketBadge, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, statusBusyByNode, toggleNode, toggleRowDetails])
 
   const renderProgramSection = useCallback((program: NodeRecord, programIndex: number) => {
     void ensureProgramLoaded(program)
@@ -631,6 +667,11 @@ export default function BacklogListBlock({
     const rowPresetTags = compactTagList(
       selectedPresetTagsForNode(program, projectPresetTagsByRoot),
     )
+    const detailsOpen = rowDetailsRenderer
+      ? rowDetailsNodeId === program.uuid
+      : inlineNotesNode?.uuid === program.uuid
+    const canToggleDetails = !!rowDetailsRenderer || (!!onUpdateNodeNotes && !readOnly)
+    const detailsBusy = rowDetailsRenderer ? false : inlineNotesSaving
 
     return (
       <div key={program.uuid} className="overflow-hidden rounded-xl border border-border/70 bg-muted/25">
@@ -646,11 +687,12 @@ export default function BacklogListBlock({
           readOnly={readOnly}
           rowPresetTags={rowPresetTags}
           copied={copiedRowNodeId === program.uuid}
-          detailsOpen={inlineNotesNode?.uuid === program.uuid}
-          inlineNotesSaving={inlineNotesSaving}
+          detailsOpen={detailsOpen}
+          inlineNotesSaving={detailsBusy}
           statusBusy={!!statusBusyByNode[program.uuid]}
           canEditNodeStatus={!!onUpdateNodeStatus}
-          canToggleDetails={!!onUpdateNodeNotes}
+          canToggleDetails={canToggleDetails}
+          rowColumns={rowColumns}
           canAssignToGroup={allowProgramLayoutEditing && !!onAssignProgramToGroup && programGroups.length > 0}
           assignedGroupId={assignedGroupId}
           programGroups={programGroups}
@@ -665,10 +707,11 @@ export default function BacklogListBlock({
           onMoveProgramUp={() => { void moveProgramByOffset(program, -1) }}
           onMoveProgramDown={() => { void moveProgramByOffset(program, 1) }}
           onAssignProgramToGroup={(groupId) => onAssignProgramToGroup?.(program, groupId)}
-          onToggleInlineNotes={() => { void toggleInlineNotes(program) }}
+          onToggleInlineNotes={() => { void toggleRowDetails(program) }}
           onCopyRowLabel={event => { void copyRowLabelForNode(program, event) }}
           onNodeStatusChange={(nextStatus) => { void handleInlineNodeStatusChange(program, nextStatus) }}
         />
+        {renderInlineDetailsPanel(program, 36)}
         {renderInlineNotesEditor(program, 36)}
 
         <div className="bg-muted/15">
@@ -693,7 +736,7 @@ export default function BacklogListBlock({
         </div>
       </div>
     )
-  }, [allowProgramLayoutEditing, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, resolvedProgramGroupIdByProgram, selectedNodeId, statusBusyByNode, toggleInlineNotes])
+  }, [allowProgramLayoutEditing, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, statusBusyByNode, toggleRowDetails])
 
   return (
     <div className="flex flex-col space-y-3">
@@ -716,6 +759,24 @@ export default function BacklogListBlock({
       )}
 
       {!readOnly && renderInlineCreate(null, ROOT_INPUT_KEY, 'Add program...')}
+
+      {rowColumns.length > 0 && (
+        <div className="hidden items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-1 xl:flex">
+          <span className="min-w-0 flex-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Title
+          </span>
+          {rowColumns.map(column => (
+            <span
+              key={`column-header-${column.id}`}
+              className={`truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground ${column.widthClassName ?? 'w-24'} ${
+                column.align === 'center' ? 'text-center' : column.align === 'right' ? 'text-right' : ''
+              }`}
+            >
+              {column.label}
+            </span>
+          ))}
+        </div>
+      )}
 
       {allowProgramLayoutEditing && onCreateProgramGroup && (
         <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5">
