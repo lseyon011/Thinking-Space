@@ -149,6 +149,14 @@ interface ElectronAPI {
     accountId?: string,
     model?: string,
   ): Promise<{ text: string; model: string; inputTokens?: number; outputTokens?: number; totalTokens?: number }>
+  f9WebullGet?(payload: {
+    url: string
+    headers: Record<string, string>
+  }): Promise<{ status: number; body: string }>
+  f9WebullAccountList?(payload: {
+    url: string
+    headers: Record<string, string>
+  }): Promise<{ status: number; body: string }>
 }
 
 declare global {

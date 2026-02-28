@@ -282,6 +282,16 @@ interface ElectronCapabilityInvokePayload {
   apiBaseUrl?: string;
 }
 
+interface F9WebullGetPayload {
+  url: string;
+  headers: Record<string, string>;
+}
+
+interface F9WebullGetResponse {
+  status: number;
+  body: string;
+}
+
 interface CapabilityRunnerLocation {
   frontendRoot: string;
   viteNodeExec: string;
@@ -438,6 +448,67 @@ function fetchBuffer(url: string, headers: Record<string, string> = {}, redirect
     );
 
     request.on('error', reject);
+  });
+}
+
+function assertAllowedF9WebullUrl(url: string): URL {
+  const parsed = new URL(url);
+  const host = parsed.hostname.toLowerCase();
+  if (!(host === 'api.webull.com' || host === 'openapi.webull.com')) {
+    throw new Error(`Unsupported F9 Webull host: ${parsed.hostname}`);
+  }
+  return parsed;
+}
+
+function requestTextOverHttps(
+  method: 'GET' | 'POST',
+  url: string,
+  headers: Record<string, string>,
+  body = '',
+  redirects = 0,
+): Promise<F9WebullGetResponse> {
+  return new Promise((resolve, reject) => {
+    const parsed = assertAllowedF9WebullUrl(url);
+    const request = https.request(
+      parsed,
+      {
+        method,
+        headers: {
+          ...headers,
+        },
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        const location = res.headers.location;
+
+        if ([301, 302, 303, 307, 308].includes(status) && location) {
+          if (redirects >= 5) {
+            res.resume();
+            reject(new Error('Too many redirects while requesting Webull API'));
+            return;
+          }
+          const redirected = new URL(location, parsed.toString()).toString();
+          res.resume();
+          requestTextOverHttps(method, redirected, headers, body, redirects + 1).then(resolve).catch(reject);
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        res.on('end', () => {
+          resolve({
+            status,
+            body: Buffer.concat(chunks).toString('utf-8'),
+          });
+        });
+      },
+    );
+
+    request.on('error', reject);
+    if (body) {
+      request.write(body);
+    }
+    request.end();
   });
 }
 
@@ -615,6 +686,26 @@ ipcMain.handle('extension-runtime:invoke', async (_event, payload: ExtensionRunt
   return invokeSandboxedExtensionActionBlock(payload, {
     runCapability: (invokePayload) => runCapabilityRunnerViaViteNode('invoke', invokePayload as ElectronCapabilityInvokePayload),
   });
+});
+
+// -- F9 Webull GET bridge (main-process network bridge) --
+ipcMain.handle('f9:webull:get', async (_event, payload: F9WebullGetPayload) => {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('F9 Webull payload must be an object.');
+  }
+  if (typeof payload.url !== 'string' || payload.url.trim().length === 0) {
+    throw new Error('F9 Webull payload requires a non-empty "url".');
+  }
+  if (!payload.headers || typeof payload.headers !== 'object') {
+    throw new Error('F9 Webull payload requires a "headers" object.');
+  }
+
+  return requestTextOverHttps('GET', payload.url, payload.headers);
+});
+
+// Backward-compatible alias for the initial F9 account-list bridge.
+ipcMain.handle('f9:webull:accountList', async (_event, payload: F9WebullGetPayload) => {
+  return requestTextOverHttps('GET', payload.url, payload.headers);
 });
 
 // -- Vault folder picker --

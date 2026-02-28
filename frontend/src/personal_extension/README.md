@@ -15,9 +15,28 @@ without mixing directly into shared product folders.
 
 ## Current Feature
 
-- Route: `/personal-extension`
-- UI orchestrator: `components/orchestrators/PersonalExtensionOrch.tsx`
-- Service workflow: `services/orchestrators/personalExtensionOrch.ts`
+- Route: `/f9`
+- UI orchestrator: `components/orchestrators/F9Orch.tsx`
+- Service workflow: `services/orchestrators/f9OverallOrch.ts`
+- Subtab layout: vertical left rail (stacked subtabs)
+- First subtab: `Overall` (loads Webull account list data)
+- Runtime note: `Overall` currently calls Webull through Electron main-process IPC (renderer/browser CORS-safe).
+
+## Environment
+
+Set these in your frontend env file (for example `frontend/.env.local`):
+
+- `VITE_F9_WEBULL_APP_KEY`
+- `VITE_F9_WEBULL_APP_SECRET`
+- `VITE_F9_WEBULL_BASE_URL` (optional, defaults to `https://api.webull.com`)
+- `VITE_F9_WEBULL_ACCOUNT_LIST_PATH` (optional, override account-list route if your account uses a non-default path)
+- `VITE_F9_WEBULL_ACCOUNT_BALANCE_PATH` (optional)
+- `VITE_F9_WEBULL_ACCOUNT_POSITIONS_PATH` (optional)
+- `VITE_F9_WEBULL_MARKET_SNAPSHOT_PATH` (optional)
+- `VITE_F9_WEBULL_MARKET_QUOTES_PATH` (optional)
+- `VITE_F9_WEBULL_QUOTE_SYMBOLS` (optional CSV, default: `SPY,QQQ,AAPL,TSLA,NVDA`)
+
+Do not commit real credentials.
 
 ## Notes
 

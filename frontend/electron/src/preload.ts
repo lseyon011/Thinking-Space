@@ -153,4 +153,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     accountId?: string,
     model?: string,
   ) => ipcRenderer.invoke('ai:chat:codex', messages, accessToken, accountId, model),
+
+  // F9 / Webull bridge (main-process network to bypass renderer CORS limits)
+  f9WebullGet: (payload: {
+    url: string
+    headers: Record<string, string>
+  }) => ipcRenderer.invoke('f9:webull:get', payload),
+  f9WebullAccountList: (payload: {
+    url: string
+    headers: Record<string, string>
+  }) => ipcRenderer.invoke('f9:webull:accountList', payload),
 });
