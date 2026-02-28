@@ -65,6 +65,7 @@ interface VaultExplorerBlockProps {
   onOpenFile: (path: string) => void
   onCreateFolder?: (parentPath: string) => ExplorerActionResult
   onCreateFile?: (parentPath: string) => ExplorerActionResult
+  onCreateCsvFile?: (parentPath: string) => ExplorerActionResult
   onCreateDrawing?: (parentPath: string) => ExplorerActionResult
   onCopyAbsolutePath?: (path: string) => ExplorerActionResult
   onCopyRelativePath?: (path: string) => ExplorerActionResult
@@ -95,6 +96,7 @@ export default function VaultExplorerBlock({
   onOpenFile,
   onCreateFolder,
   onCreateFile,
+  onCreateCsvFile,
   onCreateDrawing,
   onCopyAbsolutePath,
   onCopyRelativePath,
@@ -828,7 +830,7 @@ export default function VaultExplorerBlock({
   const contextMenuStyle = useMemo(() => {
     if (!contextMenu) return undefined
     const menuWidth = 228
-    const menuHeight = contextMenu.kind === 'file' ? 420 : 272
+    const menuHeight = contextMenu.kind === 'file' ? 452 : 304
     const maxX = Math.max(8, window.innerWidth - menuWidth - 8)
     const maxY = Math.max(8, window.innerHeight - menuHeight - 8)
     return {
@@ -845,28 +847,33 @@ export default function VaultExplorerBlock({
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               {title}
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={refreshRoot}
-              title="Refresh explorer"
-            >
-              <RefreshCcw className="h-3.5 w-3.5" />
-            </Button>
           </div>
         )}
 
-        <UniversalSearchBlock
-          {...UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK}
-          items={[]}
-          query={query}
-          onQueryChange={setQuery}
-          onSelect={() => {}}
-          getItemKey={(value) => value}
-          getItemLabel={(value) => value}
-          placeholder="Filter files..."
-        />
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <UniversalSearchBlock
+              {...UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK}
+              items={[]}
+              query={query}
+              onQueryChange={setQuery}
+              onSelect={() => {}}
+              getItemKey={(value) => value}
+              getItemLabel={(value) => value}
+              placeholder="Filter files..."
+            />
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            onClick={refreshRoot}
+            title="Refresh explorer"
+            aria-label="Refresh explorer"
+          >
+            <RefreshCcw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-1.5 py-2">{content}</div>
@@ -920,6 +927,11 @@ export default function VaultExplorerBlock({
                   label="New File"
                   onClick={() => { void runContextAction(onCreateFile ? () => onCreateFile(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) }}
                   disabled={!onCreateFile}
+                />
+                <MenuItem
+                  label="New CSV File"
+                  onClick={() => { void runContextAction(onCreateCsvFile ? () => onCreateCsvFile(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) }}
+                  disabled={!onCreateCsvFile}
                 />
                 <MenuItem
                   label="New Drawing"

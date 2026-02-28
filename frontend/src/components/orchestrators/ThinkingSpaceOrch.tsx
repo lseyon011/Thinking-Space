@@ -212,6 +212,12 @@ export default function ThinkingSpaceOrch() {
     return outputPath
   }, [setInlinePathAndSyncUrl])
 
+  const handleExplorerCreateCsvFile = useCallback(async (parentPath: string): Promise<string> => {
+    const outputPath = await createFileOrch(parentPath, 'New Table.csv')
+    setInlinePathAndSyncUrl(outputPath, 'edit')
+    return outputPath
+  }, [setInlinePathAndSyncUrl])
+
   const handleExplorerCreateDrawing = useCallback(async (parentPath: string): Promise<string | boolean> => {
     // Avoid window.prompt() — not supported in Capacitor WebView.
     // Create with default name; user can rename inline like folders.
@@ -436,6 +442,7 @@ export default function ThinkingSpaceOrch() {
           onOpenFile={setInlinePathAndSyncUrl}
           onCreateFolder={handleExplorerCreateFolder}
           onCreateFile={handleExplorerCreateFile}
+          onCreateCsvFile={handleExplorerCreateCsvFile}
           onCreateDrawing={handleExplorerCreateDrawing}
           onCopyRelativePath={handleExplorerCopyRelativePath}
           onCopyAbsolutePath={handleExplorerCopyAbsolutePath}
@@ -455,7 +462,7 @@ export default function ThinkingSpaceOrch() {
         />
       </div>
     </>
-  ), [inlinePath, setInlinePathAndSyncUrl])
+  ), [handleExplorerCreateCsvFile, inlinePath, setInlinePathAndSyncUrl])
 
   const inlineDocumentContent = useMemo(() => {
     if (mountedInlinePaths.length === 0) return null
@@ -606,6 +613,7 @@ export default function ThinkingSpaceOrch() {
                 onOpenFile={handleDrawerFileOpen}
                 onCreateFolder={handleExplorerCreateFolder}
                 onCreateFile={handleExplorerCreateFile}
+                onCreateCsvFile={handleExplorerCreateCsvFile}
                 onCreateDrawing={handleExplorerCreateDrawing}
                 onCopyRelativePath={handleExplorerCopyRelativePath}
                 onCopyAbsolutePath={handleExplorerCopyAbsolutePath}
