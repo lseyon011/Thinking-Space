@@ -640,6 +640,21 @@ ipcMain.handle('vault:write', async (_event, vaultRoot: string, relPath: string,
   await fsPromises.writeFile(full, data, 'utf-8');
 });
 
+// -- Read bytes (base64) --
+ipcMain.handle('vault:readBytesBase64', async (_event, vaultRoot: string, relPath: string) => {
+  const full = assertInsideVault(vaultRoot, relPath);
+  const bytes = await fsPromises.readFile(full);
+  return bytes.toString('base64');
+});
+
+// -- Write bytes (base64) --
+ipcMain.handle('vault:writeBytesBase64', async (_event, vaultRoot: string, relPath: string, base64Data: string) => {
+  const full = assertInsideVault(vaultRoot, relPath);
+  await fsPromises.mkdir(path.dirname(full), { recursive: true });
+  const bytes = Buffer.from(base64Data, 'base64');
+  await fsPromises.writeFile(full, bytes);
+});
+
 // -- List directory (returns { files, folders }) --
 ipcMain.handle('vault:list', async (_event, vaultRoot: string, relPath: string) => {
   const full = assertInsideVault(vaultRoot, relPath || '.');

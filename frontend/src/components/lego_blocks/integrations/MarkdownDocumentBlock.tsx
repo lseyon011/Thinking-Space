@@ -31,6 +31,7 @@ import {
 } from '@/services/orchestrators/obsidianLinkOrch'
 import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/integrations/ExcalidrawDocumentBlock'
+import TableDocumentBlock from '@/components/lego_blocks/integrations/TableDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/MarkdownMiniNavBlock'
 import MarkdownRichEditorBlock, { type MarkdownRichEditorBlockHandle } from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
@@ -63,6 +64,7 @@ import {
   yamlTextToFrontmatterBlock,
   yieldToNextFrame,
 } from '@/components/lego_blocks/units/MarkdownDocumentContentBlock'
+import { isTableDocumentPathBlock } from '@/services/lego_blocks/units/tableDocumentPathBlock'
 
 export type MarkdownViewerMode = 'view' | 'edit'
 
@@ -86,7 +88,7 @@ interface MarkdownEditBaselineState {
   content: string
 }
 
-function MarkdownDocumentBlock({
+function MarkdownTextDocumentRuntimeBlock({
   path,
   initialMode = 'view',
   onSaved,
@@ -1464,6 +1466,22 @@ function MarkdownDocumentBlock({
       </div>
     </div>
   )
+}
+
+function MarkdownDocumentBlock(props: MarkdownDocumentBlockProps) {
+  if (isTableDocumentPathBlock(props.path)) {
+    return (
+      <TableDocumentBlock
+        path={props.path}
+        initialMode={props.initialMode}
+        onSaved={props.onSaved}
+        onClose={props.onClose}
+        showCloseButton={props.showCloseButton}
+        className={props.className}
+      />
+    )
+  }
+  return <MarkdownTextDocumentRuntimeBlock {...props} />
 }
 
 export default memo(MarkdownDocumentBlock)

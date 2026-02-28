@@ -47,6 +47,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('vault:read', vaultRoot, relPath),
   write: (vaultRoot: string, relPath: string, data: string) =>
     ipcRenderer.invoke('vault:write', vaultRoot, relPath, data),
+  readBytesBase64: (vaultRoot: string, relPath: string) =>
+    ipcRenderer.invoke('vault:readBytesBase64', vaultRoot, relPath),
+  writeBytesBase64: (vaultRoot: string, relPath: string, base64Data: string) =>
+    ipcRenderer.invoke('vault:writeBytesBase64', vaultRoot, relPath, base64Data),
   list: (vaultRoot: string, relPath: string) =>
     ipcRenderer.invoke('vault:list', vaultRoot, relPath),
   walkVault: (vaultRoot: string, extensions: string[]) =>

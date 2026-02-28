@@ -7,6 +7,12 @@ import { Capacitor } from '@capacitor/core'
 import { EXCLUDED_DIRS } from '@/services/lego_blocks/units/vaultConstantsBlock'
 import { getStoredVaultRoot, setStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { notifyFileChanged } from '@/services/lego_blocks/units/crossWindowSyncBlock'
+import {
+  base64ToBytesBlock,
+  bytesToBase64Block,
+  utf8ToBytesBlock,
+  bytesToUtf8Block,
+} from '@/services/lego_blocks/units/byteEncodingBlock'
 
 // ── Types ──
 
@@ -66,6 +72,8 @@ interface ElectronAPI {
   newWindow?(route?: string): Promise<void>
   read(vaultRoot: string, relPath: string): Promise<string>
   write(vaultRoot: string, relPath: string, data: string): Promise<void>
+  readBytesBase64?(vaultRoot: string, relPath: string): Promise<string>
+  writeBytesBase64?(vaultRoot: string, relPath: string, base64Data: string): Promise<void>
   list(vaultRoot: string, relPath: string): Promise<ListedFiles>
   walkVault(vaultRoot: string, extensions: string[]): Promise<VaultEntry[]>
   stat(vaultRoot: string, relPath: string): Promise<VaultStat>
@@ -154,6 +162,8 @@ declare global {
 export interface VaultFS {
   read(path: string): Promise<string>
   write(path: string, data: string): Promise<void>
+  readBytes(path: string): Promise<Uint8Array>
+  writeBytes(path: string, data: Uint8Array): Promise<void>
   create(path: string, data: string): Promise<void>
   list(path: string): Promise<ListedFiles>
   walkVault(extensions?: string[]): Promise<VaultEntry[]>
@@ -190,6 +200,36 @@ class WebVaultFS implements VaultFS {
       body: JSON.stringify({ path, content: data }),
     })
     if (!res.ok) throw new Error(`Failed to write file: ${path}`)
+    notifyFileChanged(path)
+  }
+
+  async readBytes(path: string): Promise<Uint8Array> {
+    const res = await fetch(`/api/tools/vault/read-bytes?path=${encodeURIComponent(path)}`)
+    if (!res.ok) {
+      let detail = ''
+      try {
+        const payload = await res.json()
+        if (payload?.detail) detail = String(payload.detail)
+      } catch {
+        // ignore JSON parse errors
+      }
+      const suffix = detail || res.statusText || `HTTP ${res.status}`
+      throw new Error(`Failed to read bytes: ${path} (${suffix})`)
+    }
+    const payload = await res.json() as { data_base64?: string }
+    return base64ToBytesBlock(payload.data_base64 || '')
+  }
+
+  async writeBytes(path: string, data: Uint8Array): Promise<void> {
+    const res = await fetch('/api/tools/vault/write-bytes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path,
+        data_base64: bytesToBase64Block(data),
+      }),
+    })
+    if (!res.ok) throw new Error(`Failed to write bytes: ${path}`)
     notifyFileChanged(path)
   }
 
@@ -284,6 +324,24 @@ class ElectronVaultFS implements VaultFS {
     notifyFileChanged(path)
   }
 
+  async readBytes(path: string): Promise<Uint8Array> {
+    if (this.api.readBytesBase64) {
+      const base64 = await this.api.readBytesBase64(this.vaultRoot, path)
+      return base64ToBytesBlock(base64)
+    }
+    const text = await this.read(path)
+    return utf8ToBytesBlock(text)
+  }
+
+  async writeBytes(path: string, data: Uint8Array): Promise<void> {
+    if (this.api.writeBytesBase64) {
+      await this.api.writeBytesBase64(this.vaultRoot, path, bytesToBase64Block(data))
+      notifyFileChanged(path)
+      return
+    }
+    await this.write(path, bytesToUtf8Block(data))
+  }
+
   async create(path: string, data: string): Promise<void> {
     if (await this.exists(path)) throw new Error(`File already exists: ${path}`)
     await this.write(path, data)
@@ -358,6 +416,28 @@ class CapacitorVaultFS implements VaultFS {
     const { Filesystem, Encoding } = await import('@capacitor/filesystem')
     const opts = await this.fsOpts(path)
     await Filesystem.writeFile({ ...opts, data, encoding: Encoding.UTF8, recursive: true })
+    notifyFileChanged(path)
+  }
+
+  async readBytes(path: string): Promise<Uint8Array> {
+    const { Filesystem } = await import('@capacitor/filesystem')
+    const opts = await this.fsOpts(path)
+    const result = await Filesystem.readFile(opts)
+    if (typeof result.data === 'string') {
+      return base64ToBytesBlock(result.data)
+    }
+    const arrayBuffer = await (result.data as Blob).arrayBuffer()
+    return new Uint8Array(arrayBuffer)
+  }
+
+  async writeBytes(path: string, data: Uint8Array): Promise<void> {
+    const { Filesystem } = await import('@capacitor/filesystem')
+    const opts = await this.fsOpts(path)
+    await Filesystem.writeFile({
+      ...opts,
+      data: bytesToBase64Block(data),
+      recursive: true,
+    })
     notifyFileChanged(path)
   }
 
@@ -540,6 +620,23 @@ export class BrowserVaultFS implements VaultFS {
     const handle = await this.resolveFile(filePath, true)
     const writable = await handle.createWritable()
     await writable.write(data)
+    await writable.close()
+    notifyFileChanged(filePath)
+  }
+
+  async readBytes(filePath: string): Promise<Uint8Array> {
+    const handle = await this.resolveFile(filePath)
+    const file = await handle.getFile()
+    const buffer = await file.arrayBuffer()
+    return new Uint8Array(buffer)
+  }
+
+  async writeBytes(filePath: string, data: Uint8Array): Promise<void> {
+    const handle = await this.resolveFile(filePath, true)
+    const writable = await handle.createWritable()
+    const copy = new Uint8Array(data.byteLength)
+    copy.set(data)
+    await writable.write(copy)
     await writable.close()
     notifyFileChanged(filePath)
   }

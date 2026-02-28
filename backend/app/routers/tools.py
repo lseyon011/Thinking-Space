@@ -875,6 +875,42 @@ async def vault_write(request: VaultWriteRequest):
     return {"success": True, "path": request.path}
 
 
+@router.get("/vault/read-bytes")
+async def vault_read_bytes(path: str):
+    """Read a vault file as base64 bytes."""
+    import base64
+
+    target = _resolve_vault_target(path)
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail=f"Not found: {path}")
+    data = target.read_bytes()
+    return {
+        "path": path,
+        "data_base64": base64.b64encode(data).decode("ascii"),
+        "size_bytes": len(data),
+    }
+
+
+class VaultWriteBytesRequest(BaseModel):
+    path: str = Field(..., description="Relative path from vault root")
+    data_base64: str = Field(..., description="Base64 encoded file bytes")
+
+
+@router.post("/vault/write-bytes")
+async def vault_write_bytes(request: VaultWriteBytesRequest):
+    """Write base64 bytes to a vault file."""
+    import base64
+
+    target = _resolve_vault_target(request.path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        payload = base64.b64decode(request.data_base64, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 payload")
+    target.write_bytes(payload)
+    return {"success": True, "path": request.path, "size_bytes": len(payload)}
+
+
 class VaultMkdirRequest(BaseModel):
     path: str = Field(..., description="Relative path from vault root")
 
