@@ -91,6 +91,9 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - `frontend/src/components/lego_blocks/integrations/*` stores composite blocks that compose multiple units and feature-level UI glue.
 - `frontend/src/components/lego_blocks/hooks/*` stores reusable component-layer hooks (behavior lego, no rendering).
 - `frontend/src/components/orchestrators/*` stores page/feature orchestration containers only.
+- `frontend/src/personal_extension/components/*` is allowed for personal-only first-party code when it mirrors the same architecture:
+  - `lego_blocks/{units,integrations,hooks}`
+  - `orchestrators`
 - Do not create `*HelperBlock` or `*HelpersBlock` files. These are treated as grab-bag anti-patterns.
 - If logic has a single consumer, keep it local to that block/orchestrator.
 - If logic is reusable, extract it into a domain-specific `*Block`/`use*Block` with a concrete name (for example `BacklogListDomainBlock`, `MarkdownDocumentContentBlock`) rather than generic helper naming.
@@ -106,6 +109,9 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - `frontend/src/services/lego_blocks/units/*` stores smallest reusable service primitives (runtime adapters, scanners, transforms, shared types).
 - `frontend/src/services/lego_blocks/integrations/*` stores composite service lego blocks that compose multiple units.
 - `frontend/src/services/orchestrators/*` stores workflow service composition entrypoints used by UI orchestrators/pages.
+- `frontend/src/personal_extension/services/*` is allowed for personal-only first-party code when it mirrors the same architecture:
+  - `lego_blocks/{units,integrations}`
+  - `orchestrators`
 - Service file naming is mandatory:
   - Primitive and integration service files end with `Block` (example: `fsBlock.ts`, `yamlNoteBlock.ts`).
   - Workflow service files end with `Orch` (example: `thoughtsOrch.ts`, `vaultSyncOrch.ts`).

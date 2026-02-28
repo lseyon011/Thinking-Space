@@ -72,6 +72,9 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - Composite UI lego blocks that compose units must live in `frontend/src/components/lego_blocks/integrations/*`.
 - Component-layer hooks must live in `frontend/src/components/lego_blocks/hooks/*`.
 - Page/feature orchestration must live in `frontend/src/components/orchestrators/*`.
+- `frontend/src/personal_extension/components/*` is allowed for personal-only first-party code when it mirrors the same architecture:
+  - `lego_blocks/{units,integrations,hooks}`
+  - `orchestrators`
 - Do not create `*HelperBlock` or `*HelpersBlock` component files. Prefer concrete domain block names.
 - If logic has only one consumer, keep it local.
 - If logic is reusable, extract to a domain-specific `*Block`/`use*Block` (for example `BacklogListDomainBlock`, `MarkdownDocumentContentBlock`) instead of helper-style naming.
@@ -88,6 +91,9 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - Low-level reusable service primitives must live in `frontend/src/services/lego_blocks/units/*`.
 - Composite reusable service lego blocks must live in `frontend/src/services/lego_blocks/integrations/*`.
 - Workflow service composition must live in `frontend/src/services/orchestrators/*`.
+- `frontend/src/personal_extension/services/*` is allowed for personal-only first-party code when it mirrors the same architecture:
+  - `lego_blocks/{units,integrations}`
+  - `orchestrators`
 - Naming is mandatory:
   - Service primitive and integration files use `*Block` suffix.
   - Service workflow files use `*Orch` suffix.

@@ -15,6 +15,7 @@ import {
   Search,
   Settings as SettingsIcon,
   Sparkles,
+  UserSquare2,
   X,
 } from 'lucide-react'
 import treeOfLifeLogo from './assets/tree-of-life-logo.jpg'
@@ -35,6 +36,7 @@ import Chat from './pages/Chat'
 import CapabilityDiscovery from './pages/CapabilityDiscovery'
 import ExtensionBuilder from './pages/ExtensionBuilder'
 import Settings from './pages/Settings'
+import PersonalExtensionPage from './personal_extension/pages/PersonalExtensionPage'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import AppTabsBlock, { type AppWorkspaceTabBlockModel } from './components/lego_blocks/units/AppTabsBlock'
 import {
@@ -102,6 +104,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/todos', label: 'Todos', icon: CheckSquare2 },
   { to: '/git-insights', label: 'Insights', icon: GitBranch },
   { to: '/chat', label: 'Chat', icon: MessageSquare },
+  { to: '/personal-extension', label: 'Personal Extension', icon: UserSquare2 },
   {
     to: '/thinking-organizer',
     label: 'Thinking Organizer',
@@ -977,6 +980,7 @@ function App() {
               <Route path="/new-thought" element={<NewThought />} />
               <Route path="/todos" element={<Todos />} />
               <Route path="/chat" element={<Chat />} />
+              <Route path="/personal-extension" element={<PersonalExtensionPage />} />
               <Route
                 path="/settings"
                 element={
