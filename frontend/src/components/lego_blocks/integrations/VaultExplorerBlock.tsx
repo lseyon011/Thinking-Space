@@ -959,12 +959,12 @@ export default function VaultExplorerBlock({
                     />
                     <MenuItem
                       label="Duplicate"
-                      onClick={() => { void runContextAction(onDuplicateFile ? () => onDuplicateFile(filePath) : undefined, { refresh: true }) }}
+                      onClick={() => { void runContextAction(onDuplicateFile ? () => onDuplicateFile(filePath) : undefined, { refreshPath: parentPath }) }}
                       disabled={!onDuplicateFile}
                     />
                     <MenuItem
                       label="Delete"
-                      onClick={() => { void runContextAction(onDeleteFile ? () => onDeleteFile(filePath) : undefined, { refresh: true }) }}
+                      onClick={() => { void runContextAction(onDeleteFile ? () => onDeleteFile(filePath) : undefined, { refreshPath: parentPath }) }}
                       disabled={!onDeleteFile}
                       destructive
                     />
