@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PanelLeft, PanelLeftClose } from 'lucide-react'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
+import FileSelectionViewerBlock from '@/components/lego_blocks/integrations/FileSelectionViewerBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
 import ProjectMemoryFilesBlock from '@/components/lego_blocks/integrations/ProjectMemoryFilesBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
-import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
-import { buildPathSearchCandidatesBlock, UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
 import { TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
@@ -136,6 +135,7 @@ type F9ProjectMemoryFilesByRootBlock = Record<string, {
   quotesPath: string | null
   rememberPath: string | null
 }>
+type F9OverallRememberByProjectRootBlock = Record<string, string>
 
 function makeProgramGroupIdBlock(): string {
   return `program-group-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -883,15 +883,24 @@ export default function F9WorkspaceBlock({
     () => getJsonStorageItem<F9ProjectProgramGroupsByRootBlock>(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, {}),
   )
   const [projectMemoryFilesByRoot, setProjectMemoryFilesByRoot] = useState<F9ProjectMemoryFilesByRootBlock>({})
+  const [overallRememberByProjectRoot, setOverallRememberByProjectRoot] = useState<F9OverallRememberByProjectRootBlock>(
+    () => getJsonStorageItem<F9OverallRememberByProjectRootBlock>(STORAGE_KEYS.f9OverallRememberByProjectRoot, {}),
+  )
   const projectMemoryHydratedRootsRef = useRef<Set<string>>(new Set())
   const [linkOptions, setLinkOptions] = useState<F9LinkOptionBlock[]>([])
   const [pdfOptions, setPdfOptions] = useState<F9PdfOptionBlock[]>([])
   const [companyFilePickerOpen, setCompanyFilePickerOpen] = useState(false)
   const [companyFileQuery, setCompanyFileQuery] = useState('')
   const [companyFileViewerNonce, setCompanyFileViewerNonce] = useState(0)
+  const [companyFileControlsHidden, setCompanyFileControlsHidden] = useState(false)
   const [companyPdfPickerOpen, setCompanyPdfPickerOpen] = useState(false)
   const [companyPdfQuery, setCompanyPdfQuery] = useState('')
   const [companyPdfViewerNonce, setCompanyPdfViewerNonce] = useState(0)
+  const [companyPdfControlsHidden, setCompanyPdfControlsHidden] = useState(false)
+  const [overallRememberPickerOpen, setOverallRememberPickerOpen] = useState(false)
+  const [overallRememberQuery, setOverallRememberQuery] = useState('')
+  const [overallRememberViewerNonce, setOverallRememberViewerNonce] = useState(0)
+  const [overallRememberControlsHidden, setOverallRememberControlsHidden] = useState(false)
 
   const updateProjectProgramGroups = useCallback((
     root: string,
@@ -1114,7 +1123,7 @@ export default function F9WorkspaceBlock({
           const options: F9LinkOptionBlock[] = []
           for (const entry of markdownResult.value) {
             const path = normalizeRelativePathBlock(entry.path)
-            if (!path || path.toLowerCase().endsWith('.excalidraw.md')) continue
+            if (!path) continue
             const node = nodeByPath.get(path)
             options.push({
               path,
@@ -1538,6 +1547,22 @@ export default function F9WorkspaceBlock({
     }
   }, [projectMemoryFilesByRoot, projectRootKey])
 
+  const updateActiveOverallRememberPath = useCallback((path: string | null) => {
+    const normalizedRoot = normalizeRelativePathBlock(projectRootKey)
+    if (!normalizedRoot) return
+    const normalizedPath = normalizeRelativePathBlock(path ?? '')
+
+    setOverallRememberByProjectRoot((prev) => {
+      const current = normalizeRelativePathBlock(prev[normalizedRoot] ?? '')
+      if (current === normalizedPath) return prev
+      const next: F9OverallRememberByProjectRootBlock = { ...prev }
+      if (normalizedPath) next[normalizedRoot] = normalizedPath
+      else delete next[normalizedRoot]
+      setJsonStorageItem(STORAGE_KEYS.f9OverallRememberByProjectRoot, next)
+      return next
+    })
+  }, [projectRootKey])
+
   const companyPortfolioWeight = percentOfBlock(selectedCompanyMetrics?.totalCost ?? null, portfolioTotalCost)
   const stockCostWeight = percentOfBlock(selectedCompanyMetrics?.stockCost ?? null, selectedCompanyMetrics?.totalCost ?? null)
   const optionCostWeight = percentOfBlock(selectedCompanyMetrics?.optionCost ?? null, selectedCompanyMetrics?.totalCost ?? null)
@@ -1556,6 +1581,12 @@ export default function F9WorkspaceBlock({
   const selectedCompanyPdfPath = normalizeRelativePathBlock(selectedCompany?.companyPdfReportPath ?? '')
   const selectedCompanyPdfLabel = selectedCompanyPdfPath
     ? (pdfOptions.find((option) => option.path === selectedCompanyPdfPath)?.label ?? selectedCompanyPdfPath.split('/').pop() ?? selectedCompanyPdfPath)
+    : ''
+  const selectedProjectRememberPath = normalizeRelativePathBlock(
+    overallRememberByProjectRoot[normalizeRelativePathBlock(projectRootKey)] ?? '',
+  )
+  const selectedProjectRememberLabel = selectedProjectRememberPath
+    ? (linkOptionsByPath.get(selectedProjectRememberPath)?.label ?? linkLabelFromPathBlock(selectedProjectRememberPath))
     : ''
   const onRefreshWorkspace = useCallback(() => {
     onRefreshOverall()
@@ -1737,8 +1768,7 @@ export default function F9WorkspaceBlock({
               onSelectRememberPath={(path) => { void updateActiveProjectMemoryFiles({ rememberPath: path }) }}
               onOpenFile={onOpenNodeFile}
               disabled={workspaceBusy}
-              className="rounded-xl border bg-background p-3"
-              viewerHeightClassName="h-[560px]"
+              viewerHeightClassName="h-[700px]"
             />
           )}
 
@@ -1766,6 +1796,47 @@ export default function F9WorkspaceBlock({
             <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300">
               {workspaceMessage}
             </div>
+          )}
+
+          {overallTabActive && (
+            <FileSelectionViewerBlock
+              heading="Things To Remember"
+              summary="Project-level reminders shown directly in Overall Positions."
+              selectedPath={selectedProjectRememberPath || null}
+              selectedLabel={selectedProjectRememberLabel}
+              emptySelectionMessage="No things-to-remember file selected."
+              options={linkOptions}
+              query={overallRememberQuery}
+              onQueryChange={setOverallRememberQuery}
+              pickerOpen={overallRememberPickerOpen}
+              onPickerOpenChange={setOverallRememberPickerOpen}
+              controlsHidden={overallRememberControlsHidden}
+              onControlsHiddenChange={setOverallRememberControlsHidden}
+              onSelectPath={(path) => {
+                const nextPath = normalizeRelativePathBlock(path ?? '')
+                updateActiveOverallRememberPath(nextPath || null)
+                setOverallRememberViewerNonce((prev) => prev + 1)
+              }}
+              onOpenPath={onOpenNodeFile}
+              disabled={workspaceBusy}
+              searchPlaceholder="Search things-to-remember file"
+              searchEmptyMessage="No markdown files found"
+              allowCustomValue
+              hideDetailsWithSelectionControls
+              emptyViewerMessage="Select a file to render it here."
+              renderSelectedContent={() => (
+                <div className="h-[320px] overflow-hidden rounded-lg border">
+                  <MarkdownDocumentBlock
+                    key={`overall-remember::${selectedProjectRememberPath}::${overallRememberViewerNonce}`}
+                    path={selectedProjectRememberPath}
+                    initialMode="view"
+                    onOpenPath={(path) => onOpenNodeFile(path)}
+                    onOpenPathForEdit={(path) => onOpenNodeFile(path)}
+                    className="h-full"
+                  />
+                </div>
+              )}
+            />
           )}
 
           {overallTabActive && (
@@ -1816,102 +1887,29 @@ export default function F9WorkspaceBlock({
                 </div>
               </div>
 
-              <div className="rounded-xl border bg-background p-3">
-                <div className="mb-3 flex flex-wrap items-end gap-2">
-                  <div className="min-w-[260px] flex-1">
-                    <p className="mb-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Company File</p>
-                    <p className="text-xs text-muted-foreground">
-                      Your most important notes on company, e.g. valuations, quick things to always remember, etc.
-                    </p>
-                    {selectedCompanyFilePath ? (
-                      <p className="mt-1 text-xs text-foreground/80">
-                        <span className="font-medium">{selectedCompanyFileLabel}</span>
-                        {' · '}
-                        <button
-                          type="button"
-                          className="text-left text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                          onClick={(event) => {
-                            event.preventDefault()
-                            event.stopPropagation()
-                            onOpenNodeFile(selectedCompanyFilePath)
-                          }}
-                          title="Open in Thinking Space explorer"
-                        >
-                          {selectedCompanyFilePath}
-                        </button>
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-xs text-muted-foreground">No company file selected.</p>
-                    )}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={workspaceBusy}
-                    onClick={() => setCompanyFilePickerOpen((prev) => !prev)}
-                  >
-                    {companyFilePickerOpen ? 'Close Selection' : 'Select File'}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={workspaceBusy || !selectedCompanyFilePath}
-                    onClick={() => {
-                      void onUpdateCompanyOverlay({ valuationNotePath: null })
-                      setCompanyFileViewerNonce((prev) => prev + 1)
-                    }}
-                  >
-                    Clear
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={!selectedCompanyFilePath}
-                    onClick={() => {
-                      if (!selectedCompanyFilePath) return
-                      onOpenNodeFile(selectedCompanyFilePath)
-                    }}
-                  >
-                    Open File
-                  </Button>
-                </div>
-
-                {companyFilePickerOpen && (
-                  <div className="mb-3 rounded-lg border bg-muted/10 p-2">
-                    <UniversalSearchBlock<F9LinkOptionBlock>
-                      {...UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK}
-                      items={linkOptions}
-                      query={companyFileQuery}
-                      onQueryChange={setCompanyFileQuery}
-                      onSelect={(item) => { void selectCompanyFilePath(item.path) }}
-                      getItemKey={(item) => item.path}
-                      getItemLabel={(item) => item.label}
-                      getItemDescription={(item) => item.path}
-                      getItemSearchCandidates={(item) => [
-                        item.label,
-                        item.path,
-                        item.summary ?? '',
-                        ...buildPathSearchCandidatesBlock(item.path),
-                      ]}
-                      selectedItemKey={selectedCompanyFilePath || null}
-                      placeholder="Search markdown file"
-                      emptyMessage="No markdown files found"
-                      allowCustomValue
-                      onSelectCustomValue={(value) => { void selectCompanyFilePath(value) }}
-                      open={companyFilePickerOpen}
-                      onOpenChange={setCompanyFilePickerOpen}
-                      dismissOnOutsideClick={false}
-                      inputClassName="h-9 border border-input bg-background pl-10 pr-3 text-sm focus:ring-0 focus:ring-offset-0"
-                      dropdownClassName="z-50 mt-1"
-                      listClassName="max-h-64 overflow-auto p-1"
-                    />
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      Select a file to set it as the company file.
-                    </p>
-                  </div>
-                )}
-
-                {selectedCompanyFilePath ? (
+              <FileSelectionViewerBlock
+                heading="Company File"
+                summary="Your most important notes on company, e.g. valuations, quick things to always remember, etc."
+                selectedPath={selectedCompanyFilePath || null}
+                selectedLabel={selectedCompanyFileLabel}
+                emptySelectionMessage="No company file selected."
+                options={linkOptions}
+                query={companyFileQuery}
+                onQueryChange={setCompanyFileQuery}
+                pickerOpen={companyFilePickerOpen}
+                onPickerOpenChange={setCompanyFilePickerOpen}
+                controlsHidden={companyFileControlsHidden}
+                onControlsHiddenChange={setCompanyFileControlsHidden}
+                onSelectPath={(path) => { void selectCompanyFilePath(path ?? '') }}
+                onOpenPath={onOpenNodeFile}
+                disabled={workspaceBusy}
+                searchPlaceholder="Search markdown file"
+                searchEmptyMessage="No markdown files found"
+                allowCustomValue
+                hideDetailsWithSelectionControls
+                searchHelperText="Select a file to set it as the company file."
+                emptyViewerMessage="Select a company file to display it here with the full markdown viewer."
+                renderSelectedContent={() => (
                   <div className="h-[700px] overflow-hidden rounded-lg border">
                     <MarkdownDocumentBlock
                       key={`${selectedCompanyFilePath}::${companyFileViewerNonce}`}
@@ -1922,12 +1920,8 @@ export default function F9WorkspaceBlock({
                       className="h-full"
                     />
                   </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Select a company file to display it here with the full markdown viewer.
-                  </p>
                 )}
-              </div>
+              />
 
               <div className="rounded-xl border bg-background p-3">
                 <ScrollableZoomSurfaceBlock
@@ -2091,90 +2085,30 @@ export default function F9WorkspaceBlock({
                     : 'Click a position row (or its details icon) to open the shared details panel with note, description, comments, and tags.')}
               </p>
 
-              <div className="rounded-xl border bg-background p-3">
-                <div className="mb-3 flex flex-wrap items-end gap-2">
-                  <div className="min-w-[260px] flex-1">
-                    <p className="mb-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">ValueLine PDF Report</p>
-                    <p className="text-xs text-muted-foreground">
-                      Keep your core external research report for this company here.
-                    </p>
-                    {selectedCompanyPdfPath ? (
-                      <p className="mt-1 text-xs text-foreground/80">
-                        <span className="font-medium">{selectedCompanyPdfLabel}</span>
-                        {' · '}
-                        <button
-                          type="button"
-                          className="text-left text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                          onClick={(event) => {
-                            event.preventDefault()
-                            event.stopPropagation()
-                            onOpenNodeFile(selectedCompanyPdfPath)
-                          }}
-                          title="Open in Thinking Space explorer"
-                        >
-                          {selectedCompanyPdfPath}
-                        </button>
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-xs text-muted-foreground">No PDF report selected.</p>
-                    )}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={workspaceBusy}
-                    onClick={() => setCompanyPdfPickerOpen((prev) => !prev)}
-                  >
-                    {companyPdfPickerOpen ? 'Close Selection' : 'Select PDF'}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={workspaceBusy || !selectedCompanyPdfPath}
-                    onClick={() => {
-                      void onUpdateCompanyOverlay({ companyPdfReportPath: null })
-                      setCompanyPdfViewerNonce((prev) => prev + 1)
-                    }}
-                  >
-                    Clear
-                  </Button>
-                </div>
-
-                {companyPdfPickerOpen && (
-                  <div className="mb-3 rounded-lg border bg-muted/10 p-2">
-                    <UniversalSearchBlock<F9PdfOptionBlock>
-                      {...UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK}
-                      items={pdfOptions}
-                      query={companyPdfQuery}
-                      onQueryChange={setCompanyPdfQuery}
-                      onSelect={(item) => { void selectCompanyPdfPath(item.path) }}
-                      getItemKey={(item) => item.path}
-                      getItemLabel={(item) => item.label}
-                      getItemDescription={(item) => item.path}
-                      getItemSearchCandidates={(item) => [
-                        item.label,
-                        item.path,
-                        ...buildPathSearchCandidatesBlock(item.path),
-                      ]}
-                      selectedItemKey={selectedCompanyPdfPath || null}
-                      placeholder="Search PDF report"
-                      emptyMessage="No PDF files found"
-                      allowCustomValue
-                      onSelectCustomValue={(value) => { void selectCompanyPdfPath(value) }}
-                      open={companyPdfPickerOpen}
-                      onOpenChange={setCompanyPdfPickerOpen}
-                      dismissOnOutsideClick={false}
-                      inputClassName="h-9 border border-input bg-background pl-10 pr-3 text-sm focus:ring-0 focus:ring-offset-0"
-                      dropdownClassName="z-50 mt-1"
-                      listClassName="max-h-64 overflow-auto p-1"
-                    />
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      Select a PDF report file to view it inline.
-                    </p>
-                  </div>
-                )}
-
-                {selectedCompanyPdfPath ? (
+              <FileSelectionViewerBlock
+                heading="ValueLine PDF Report"
+                summary="Keep your core external research report for this company here."
+                selectedPath={selectedCompanyPdfPath || null}
+                selectedLabel={selectedCompanyPdfLabel}
+                emptySelectionMessage="No PDF report selected."
+                options={pdfOptions}
+                query={companyPdfQuery}
+                onQueryChange={setCompanyPdfQuery}
+                pickerOpen={companyPdfPickerOpen}
+                onPickerOpenChange={setCompanyPdfPickerOpen}
+                controlsHidden={companyPdfControlsHidden}
+                onControlsHiddenChange={setCompanyPdfControlsHidden}
+                onSelectPath={(path) => { void selectCompanyPdfPath(path ?? '') }}
+                onOpenPath={onOpenNodeFile}
+                disabled={workspaceBusy}
+                selectButtonLabel="Select PDF"
+                searchPlaceholder="Search PDF report"
+                searchEmptyMessage="No PDF files found"
+                allowCustomValue
+                hideDetailsWithSelectionControls
+                searchHelperText="Select a PDF report file to view it inline."
+                emptyViewerMessage="Select a PDF report to display it here."
+                renderSelectedContent={() => (
                   <div className="h-[820px] overflow-hidden rounded-lg border">
                     <PdfDocumentBlock
                       key={`${selectedCompanyPdfPath}::${companyPdfViewerNonce}`}
@@ -2182,12 +2116,8 @@ export default function F9WorkspaceBlock({
                       className="h-full"
                     />
                   </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Select a PDF report to display it here.
-                  </p>
                 )}
-              </div>
+              />
             </>
           ) : overallTabActive ? (
             <div className="rounded-xl border bg-background p-3">

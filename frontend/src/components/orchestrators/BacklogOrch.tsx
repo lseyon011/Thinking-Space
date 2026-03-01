@@ -605,7 +605,7 @@ export default function BacklogOrch() {
       const options: ProjectMemoryFileOptionBlock[] = []
       for (const entry of markdownResult.value) {
         const path = normalizePath(entry.path)
-        if (!path || path.toLowerCase().endsWith('.excalidraw.md')) continue
+        if (!path) continue
         const node = nodeByPath.get(path)
         options.push({
           path,
@@ -1852,8 +1852,7 @@ export default function BacklogOrch() {
             onSelectRememberPath={setActiveProjectRememberPath}
             onOpenFile={openFile}
             disabled={working || syncing || creatingProject}
-            className="rounded-md border border-border/70 bg-card p-3"
-            viewerHeightClassName="h-[620px]"
+            viewerHeightClassName="h-[760px]"
           />
         ) : (
           <Card>

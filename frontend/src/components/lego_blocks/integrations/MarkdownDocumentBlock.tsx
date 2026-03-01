@@ -10,7 +10,7 @@ import {
 } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X, FileText, ExternalLink, Pencil, Save, Sparkles, Loader2, RotateCcw, RotateCw } from 'lucide-react'
+import { X, FileText, ExternalLink, Pencil, Save, Sparkles, Loader2, RotateCcw, RotateCw, Eye, EyeOff } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -47,6 +47,7 @@ import {
   readMarkdownEditorSettingsOrch,
   type MarkdownEditorSettingsBlock,
 } from '@/services/orchestrators/markdownEditorSettingsOrch'
+import { STORAGE_KEYS, getStorageItem, setStorageItem } from '@/services/orchestrators/storageOrch'
 import { generateStewardMetadataSuggestionForFileOrch, type StewardMetadataSuggestion } from '@/services/orchestrators/stewardMetadataOrch'
 import {
   DEFERRED_RENDER_CHARS,
@@ -124,6 +125,9 @@ function MarkdownTextDocumentRuntimeBlock({
   const [relatedError, setRelatedError] = useState<string | null>(null)
 
   const [showMeta, setShowMeta] = useState(true)
+  const [topBarHiddenInViewMode, setTopBarHiddenInViewMode] = useState<boolean>(
+    () => getStorageItem(STORAGE_KEYS.markdownDocumentTopBarHidden) === '1',
+  )
   const [showAiPanel, setShowAiPanel] = useState(false)
   const [purposeLoading, setPurposeLoading] = useState(false)
   const [purposeError, setPurposeError] = useState<string | null>(null)
@@ -224,7 +228,7 @@ function MarkdownTextDocumentRuntimeBlock({
   }, [excalidrawImmersive])
 
   useEffect(() => {
-    if (isExcalidrawDoc || mode === 'edit' || isIosSurface || layout.keyboardVisible) return
+    if (isExcalidrawDoc || mode === 'edit' || isIosSurface || layout.keyboardVisible || topBarHiddenInViewMode) return
     const chromeContainer = chromeContainerRef.current
     const scroller = contentScrollRef.current
     if (!chromeContainer || !scroller) return
@@ -293,7 +297,7 @@ function MarkdownTextDocumentRuntimeBlock({
       scroller.removeEventListener('touchstart', onTouchStart)
       scroller.removeEventListener('touchmove', onTouchMove)
     }
-  }, [content, isExcalidrawDoc, isIosSurface, layout.keyboardVisible, mode, path])
+  }, [content, isExcalidrawDoc, isIosSurface, layout.keyboardVisible, mode, path, topBarHiddenInViewMode])
 
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
@@ -301,6 +305,7 @@ function MarkdownTextDocumentRuntimeBlock({
   const openLinkedPath = onOpenPath ?? onOpenPathForEdit
 
   const isEditing = mode === 'edit'
+  const hideTopBarInView = !isEditing && topBarHiddenInViewMode
   const hasTextChanges = isEditing && content !== null && draft !== content
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
   const shouldPadViewerContent = !isEditing && !isExcalidrawDoc
@@ -922,12 +927,20 @@ function MarkdownTextDocumentRuntimeBlock({
     autoSaving,
   ])
 
+  const toggleTopBarHiddenInViewMode = useCallback(() => {
+    setTopBarHiddenInViewMode((prev) => {
+      const next = !prev
+      setStorageItem(STORAGE_KEYS.markdownDocumentTopBarHidden, next ? '1' : '0')
+      return next
+    })
+  }, [])
+
   return (
     <div
       className={cn('flex h-full min-h-0 flex-col bg-card', className)}
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
-      <div ref={chromeContainerRef} className="min-h-0 overflow-hidden">
+      <div ref={chromeContainerRef} className={cn('min-h-0 overflow-hidden', hideTopBarInView && 'hidden')}>
         <div className="min-h-0 overflow-hidden">
           <div className={cn(
             'ts-md-header flex items-start justify-between gap-3 border-b border-border/50',
@@ -944,6 +957,17 @@ function MarkdownTextDocumentRuntimeBlock({
             </div>
 
             <div className="flex shrink-0 items-center gap-1">
+              {!isEditing && (
+                <button
+                  type="button"
+                  onClick={toggleTopBarHiddenInViewMode}
+                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  title="Hide top bar"
+                >
+                  <EyeOff className="h-4 w-4" />
+                </button>
+              )}
+
               <InfoPanelToggleButtonBlock active={showMeta} onToggle={() => setShowMeta(v => !v)} />
 
               {!isEditing && (
@@ -1130,6 +1154,18 @@ function MarkdownTextDocumentRuntimeBlock({
       </div>
 
       <div className="relative min-h-0 flex-1">
+        {hideTopBarInView && (
+          <div className="absolute right-3 top-3 z-40">
+            <button
+              type="button"
+              onClick={toggleTopBarHiddenInViewMode}
+              className="rounded-lg border border-border/70 bg-background/95 p-1.5 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
+              title="Show top bar"
+            >
+              <Eye className="h-4 w-4" />
+            </button>
+          </div>
+        )}
         <div
           ref={contentScrollRef}
           className={cn(

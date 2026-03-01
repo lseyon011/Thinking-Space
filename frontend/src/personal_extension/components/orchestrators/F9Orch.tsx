@@ -149,7 +149,7 @@ export default function F9Orch() {
         const cachedSnapshot = await loadSavedOverallSnapshot()
         await loadExecutionOverview()
         if (cachedSnapshot) {
-          setWorkspaceMessage('Loaded saved F9 data. Use the Electron app to refresh live Webull data.')
+          setWorkspaceMessage(null)
         } else {
           setError('No saved F9 data found. Refresh once from the Electron app to generate overall.json.')
         }
