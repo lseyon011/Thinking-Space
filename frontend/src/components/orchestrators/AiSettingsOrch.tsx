@@ -76,7 +76,7 @@ export default function AiSettingsOrch() {
     chat: 'Chat tab',
     markdown_editor: 'Markdown editor',
     new_thought: 'New Note tab',
-    todos: 'Todos tab',
+    todos: 'New Note todo mode',
     steward_metadata: 'Steward metadata',
   }
 

@@ -4,7 +4,6 @@ import { createPortal } from 'react-dom'
 import {
   Bot,
   ChevronDown,
-  CheckSquare2,
   Compass,
   FolderKanban,
   FileText,
@@ -32,7 +31,6 @@ import PdfToMarkdown from './pages/PdfToMarkdown'
 import GitInsights from './pages/GitInsights'
 import TranscriptCleaner from './pages/TranscriptCleaner'
 import NewThought from './pages/NewThought'
-import Todos from './pages/Todos'
 import ThinkingSpace from './pages/ThinkingSpace'
 import ThinkingOrganizer from './pages/ThinkingOrganizer'
 import Chat from './pages/Chat'
@@ -123,7 +121,6 @@ function formatSyncTimestamp(value: number | null): string {
 const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/thinking-space', label: 'Thinking Space', icon: Compass },
   { to: '/new-thought', label: 'New Note', icon: PlusSquare },
-  { to: '/todos', label: 'Todos', icon: CheckSquare2 },
   { to: '/git-insights', label: 'Insights', icon: GitBranch },
   { to: '/chat', label: 'Chat', icon: MessageSquare },
   { to: '/f9', label: 'F9', icon: F9NavIcon },
@@ -1229,7 +1226,6 @@ function App() {
               <Route path="/transcript-cleaner" element={<Navigate to="/excalidraw-plus/transcript" replace />} />
               <Route path="/git-insights" element={<GitInsights />} />
               <Route path="/new-thought" element={<NewThought />} />
-              <Route path="/todos" element={<Todos />} />
               <Route path="/chat" element={<Chat />} />
               <Route path="/f9" element={<F9Page />} />
               <Route path="/personal-extension" element={<Navigate to="/f9" replace />} />

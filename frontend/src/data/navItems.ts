@@ -1,7 +1,6 @@
 import type { ComponentType } from 'react'
 import {
   Bot,
-  CheckSquare2,
   Compass,
   FolderKanban,
   GitBranch,
@@ -21,7 +20,6 @@ export interface NavItem {
 export const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/thinking-space', label: 'Thinking Space', icon: Compass },
   { to: '/new-thought', label: 'New Note', icon: PlusSquare },
-  { to: '/todos', label: 'Todos', icon: CheckSquare2 },
   { to: '/git-insights', label: 'Insights', icon: GitBranch },
   { to: '/chat', label: 'Chat', icon: MessageSquare },
   { to: '/thinking-organizer', label: 'Thinking Organizer', icon: FolderKanban, activePaths: ['/file-organizer'] },

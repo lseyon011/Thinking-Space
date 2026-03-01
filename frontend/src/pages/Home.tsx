@@ -41,12 +41,6 @@ export default function Home() {
               </Link>
             </Button>
             <Button asChild variant="secondary" className="h-10 w-full justify-between px-3 text-sm sm:h-11 sm:w-auto sm:px-5 sm:text-base">
-              <Link to="/todos">
-                Todos
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-            <Button asChild variant="secondary" className="h-10 w-full justify-between px-3 text-sm sm:h-11 sm:w-auto sm:px-5 sm:text-base">
               <Link to="/transcript-cleaner">
                 Transcript Cleaner
                 <ArrowRight className="ml-2 h-4 w-4" />
