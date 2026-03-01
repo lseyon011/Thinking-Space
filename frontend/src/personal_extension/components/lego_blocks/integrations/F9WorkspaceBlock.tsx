@@ -1676,6 +1676,8 @@ export default function F9WorkspaceBlock({
               <ScrollableZoomSurfaceBlock
                 minWidthClassName={F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
                 controlsLabel="Table zoom"
+                showFitColumnsToWidthButton
+                persistStateKey="f9-table-viewport-fit"
               >
                 <BacklogListBlock
                   programs={backlogTableModel.programs}
@@ -1870,6 +1872,8 @@ export default function F9WorkspaceBlock({
                 <ScrollableZoomSurfaceBlock
                   minWidthClassName={F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
                   controlsLabel="Table zoom"
+                  showFitColumnsToWidthButton
+                  persistStateKey="f9-table-viewport-fit"
                 >
                   <BacklogListBlock
                     programs={backlogTableModel.programs}

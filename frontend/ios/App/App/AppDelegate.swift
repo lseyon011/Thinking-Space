@@ -28,7 +28,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 // MARK: - Custom Bridge ViewController
 // Subclass CAPBridgeViewController to register local plugins.
-// Main.storyboard must reference "LTMBridgeViewController" as the custom class.
+// Main.storyboard must reference "LTMBridgeViewController" as the custom class.see
 
 class LTMBridgeViewController: CAPBridgeViewController {
     private let shellBackgroundColor = UIColor(

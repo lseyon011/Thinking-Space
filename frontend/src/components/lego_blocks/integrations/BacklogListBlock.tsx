@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Loader2 } from 'lucide-react'
 import { BacklogNodeRowBlock } from '@/components/lego_blocks/units/BacklogNodeRowBlock'
 import { BacklogProgramRowBlock } from '@/components/lego_blocks/units/BacklogProgramRowBlock'
-import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
+import { scaledWidthStyleFromClassBlock, type BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { BacklogInlineCreateBlock } from '@/components/lego_blocks/integrations/BacklogInlineCreateBlock'
 import { BacklogInlineNotesEditorBlock } from '@/components/lego_blocks/integrations/BacklogInlineNotesEditorBlock'
@@ -532,6 +532,8 @@ export default function BacklogListBlock({
         actionsRightEdge && !statusRightAligned && 'ml-auto',
         linksColumnPaddingClassName,
         linksColumnWidthClassName ?? (actionsRightEdge ? 'max-w-[24rem] min-w-[10rem]' : 'max-w-[24rem]'),
+      )} style={scaledWidthStyleFromClassBlock(
+        linksColumnWidthClassName ?? (actionsRightEdge ? 'max-w-[24rem] min-w-[10rem]' : 'max-w-[24rem]'),
       )}>
         <LinkedItemChipsBlock
           items={linkedItems}
@@ -1000,7 +1002,7 @@ export default function BacklogListBlock({
           <span className={cn(
             'text-[10px] font-semibold uppercase tracking-wide text-muted-foreground',
             titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'min-w-0 flex-1',
-          )}>
+          )} style={scaledWidthStyleFromClassBlock(titleColumnClassName)}>
             Title
           </span>
           {rowColumns.map(column => (
@@ -1009,6 +1011,7 @@ export default function BacklogListBlock({
               className={`shrink-0 truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground ${column.widthClassName ?? 'w-24'} ${
                 column.align === 'center' ? 'text-center' : column.align === 'right' ? 'text-right' : ''
               }`}
+              style={scaledWidthStyleFromClassBlock(column.widthClassName ?? 'w-24')}
             >
               {column.label}
             </span>
@@ -1022,7 +1025,7 @@ export default function BacklogListBlock({
                 : linksColumnAlign === 'left'
                   ? 'text-left'
                   : 'text-right',
-            )}>
+            )} style={scaledWidthStyleFromClassBlock(linksColumnWidthClassName ?? 'w-72')}>
               {linksColumnLabel}
             </span>
           )}

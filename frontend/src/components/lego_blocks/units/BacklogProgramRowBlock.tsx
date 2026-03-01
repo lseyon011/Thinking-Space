@@ -7,7 +7,7 @@ import {
   NodeStatusBadgeBlock,
   NodeStatusSelectBlock,
 } from '@/components/lego_blocks/units/NodeStatusBlock'
-import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
+import { scaledWidthStyleFromClassBlock, type BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { cn } from '@/lib/utils'
 import { tagColorClassBlock, tagColorStyleBlock } from '@/services/lego_blocks/units/tagBlock'
 
@@ -173,7 +173,7 @@ export function BacklogProgramRowBlock({
         'min-w-0 flex gap-2',
         titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',
         'items-center',
-      )}>
+      )} style={scaledWidthStyleFromClassBlock(titleColumnClassName)}>
         {ticketBadge}
         <span className={cn(
           'min-w-0 text-sm font-bold',
@@ -198,6 +198,7 @@ export function BacklogProgramRowBlock({
                   column.align === 'center' && 'text-center',
                   column.align === 'right' && 'text-right',
                 )}
+                style={scaledWidthStyleFromClassBlock(column.widthClassName ?? 'w-24')}
                 title={typeof content === 'string' ? content : undefined}
               >
                 {content}
@@ -211,6 +212,8 @@ export function BacklogProgramRowBlock({
         <div className={cn(
           'hidden self-center items-center gap-1 overflow-hidden lg:flex',
           actionsRightEdge && !statusRightAligned && !linksSlot && 'ml-auto',
+          rowPresetTagsClassName ?? (actionsRightEdge ? 'min-w-0 flex-1 justify-end' : 'max-w-[35%]'),
+        )} style={scaledWidthStyleFromClassBlock(
           rowPresetTagsClassName ?? (actionsRightEdge ? 'min-w-0 flex-1 justify-end' : 'max-w-[35%]'),
         )}>
           {rowPresetTags.visible.map(tag => (
