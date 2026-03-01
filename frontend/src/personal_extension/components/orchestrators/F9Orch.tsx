@@ -25,10 +25,11 @@ import {
 import { hasF9WebullConfigBlock } from '../../services/lego_blocks/units/f9WebullConfigBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 
-type F9SubtabId = 'overall'
+type F9SubtabId = 'overall' | 'memory'
 
 const F9_SUBTABS: Array<{ id: F9SubtabId; label: string }> = [
-  { id: 'overall', label: 'Overall' },
+  { id: 'overall', label: 'Overall Positions' },
+  { id: 'memory', label: 'Quotes + Remember' },
 ]
 
 function toSnapshotFromCacheBlock(

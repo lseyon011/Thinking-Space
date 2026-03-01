@@ -13,12 +13,14 @@ export interface OrganizerUiStateBlock {
   schemaVersion: number
   updatedAt: string
   projectName?: string
+  projectQuotesPath?: string
+  projectRememberPath?: string
   presetTags: string[]
   tagColors: Record<string, string>
   programGroups: OrganizerProgramGroupEntryBlock[]
 }
 
-const ORGANIZER_UI_STATE_SCHEMA_VERSION_BLOCK = 1
+const ORGANIZER_UI_STATE_SCHEMA_VERSION_BLOCK = 2
 const ORGANIZER_UI_STATE_FILE_BLOCK = 'organizer-ui-state.json'
 
 function normalizePath(value: string): string {
@@ -104,6 +106,12 @@ function normalizeUpdatedAt(raw: unknown): string {
   return parsed.toISOString()
 }
 
+function normalizeProjectMemoryPath(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined
+  const normalized = normalizePath(raw)
+  return normalized || undefined
+}
+
 export function normalizeOrganizerUiStateBlock(raw: unknown): OrganizerUiStateBlock {
   const record = raw && typeof raw === 'object'
     ? (raw as Record<string, unknown>)
@@ -112,6 +120,8 @@ export function normalizeOrganizerUiStateBlock(raw: unknown): OrganizerUiStateBl
     schemaVersion: ORGANIZER_UI_STATE_SCHEMA_VERSION_BLOCK,
     updatedAt: normalizeUpdatedAt(record.updatedAt),
     projectName: normalizeProjectName(record.projectName),
+    projectQuotesPath: normalizeProjectMemoryPath(record.projectQuotesPath),
+    projectRememberPath: normalizeProjectMemoryPath(record.projectRememberPath),
     presetTags: normalizePresetTags(record.presetTags),
     tagColors: normalizeTagColors(record.tagColors),
     programGroups: normalizeProgramGroups(record.programGroups),

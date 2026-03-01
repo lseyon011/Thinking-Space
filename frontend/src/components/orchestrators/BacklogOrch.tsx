@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarDays, Download, Loader2, Plus, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
+import ProjectMemoryFilesBlock, { type ProjectMemoryFileOptionBlock } from '@/components/lego_blocks/integrations/ProjectMemoryFilesBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import ExecutionProgressBlock from '@/components/lego_blocks/units/ExecutionProgressBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
@@ -15,13 +16,14 @@ import CascadingFolderPicker, {
 } from '@/components/lego_blocks/integrations/CascadingFolderPickerBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
-import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import { getAllNodes, type NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import type { NodeStatus, NodeType, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
 import {
   THINKING_ORGANIZER_DIR,
   getVaultFsOrch,
   hierarchyToExcalidrawMdOrch,
 } from '@/services/orchestrators/backlogProjectOrch'
+import { listMarkdownEntries } from '@/services/orchestrators/fileSystemOrch'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { defaultNodeKindLabel } from '@/components/lego_blocks/integrations/HierarchyTreeBlock'
 import {
@@ -55,6 +57,10 @@ interface ProjectEntry {
 }
 type ProjectPresetTagsByRoot = Record<string, string[]>
 type ProjectTagColorsByRoot = Record<string, Record<string, string>>
+type ProjectMemoryFilesByRoot = Record<string, {
+  quotesPath: string | null
+  rememberPath: string | null
+}>
 interface ProgramGroupEntry extends OrganizerProgramGroupEntryOrch {
   id: string
   name: string
@@ -197,6 +203,8 @@ function normalizeTagColorMap(colors: Record<string, string>): Record<string, st
 function projectUiStateSignature(state: OrganizerUiStateOrch): string {
   return JSON.stringify({
     projectName: state.projectName ?? null,
+    projectQuotesPath: state.projectQuotesPath ?? null,
+    projectRememberPath: state.projectRememberPath ?? null,
     presetTags: normalizeTagListBlock(state.presetTags ?? []),
     tagColors: normalizeTagColorMap(state.tagColors ?? {}),
     programGroups: normalizeProgramGroups(state.programGroups ?? []),
@@ -206,6 +214,8 @@ function projectUiStateSignature(state: OrganizerUiStateOrch): string {
 function hasProjectUiStateData(state: OrganizerUiStateOrch): boolean {
   return Boolean(
     (state.projectName && state.projectName.trim())
+    || (state.projectQuotesPath && state.projectQuotesPath.trim())
+    || (state.projectRememberPath && state.projectRememberPath.trim())
     || state.presetTags.length > 0
     || Object.keys(state.tagColors).length > 0
     || state.programGroups.length > 0,
@@ -305,6 +315,13 @@ function humanizeKey(value: string): string {
     .join(' ') || 'Project'
 }
 
+function labelFromMarkdownPath(path: string): string {
+  const normalized = normalizePath(path)
+  if (!normalized) return ''
+  const fileName = normalized.split('/').pop() ?? normalized
+  return fileName.toLowerCase().endsWith('.md') ? fileName.slice(0, -3) : fileName
+}
+
 function allowedChildTypes(parentType: NodeType | null): NodeType[] {
   if (!parentType) return ['program']
   const all: NodeType[] = ['epic', 'idea_bucket', 'idea', 'thought_bucket', 'thought', 'task', 'run', 'handoff']
@@ -324,7 +341,7 @@ function isTaskLikeNode(node: Pick<NodeRecord, 'type' | 'recordKind' | 'taskStat
 
 type BacklogNodeStatus = NodeStatus
 type BacklogTaskStatus = 'ready' | 'in_progress' | 'blocked' | 'done' | 'cancelled'
-type BacklogSubTab = 'hierarchy' | 'timeline'
+type BacklogSubTab = 'hierarchy' | 'timeline' | 'memory'
 
 export default function BacklogOrch() {
   const { openFile } = useMarkdownViewer()
@@ -362,6 +379,8 @@ export default function BacklogOrch() {
   const [projectProgramGroupsByRoot, setProjectProgramGroupsByRoot] = useState<ProjectProgramGroupsByRoot>(
     () => getJsonStorageItem<ProjectProgramGroupsByRoot>(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, {}),
   )
+  const [projectMemoryFilesByRoot, setProjectMemoryFilesByRoot] = useState<ProjectMemoryFilesByRoot>({})
+  const [projectMemoryFileOptions, setProjectMemoryFileOptions] = useState<ProjectMemoryFileOptionBlock[]>([])
   const projectUiStateHydratedRootsRef = useRef<Set<string>>(new Set())
   const projectUiStatePersistedSignatureByRootRef = useRef<Record<string, string>>({})
   const [initialProjectLoadResolved, setInitialProjectLoadResolved] = useState(false)
@@ -390,6 +409,7 @@ export default function BacklogOrch() {
   const buildProjectUiState = useCallback((projectRoot: string): OrganizerUiStateOrch => {
     const normalizedRoot = normalizePath(projectRoot)
     const projectEntry = projectEntries.find(entry => normalizePath(entry.root) === normalizedRoot)
+    const projectMemoryFiles = projectMemoryFilesByRoot[normalizedRoot] ?? { quotesPath: null, rememberPath: null }
     const projectPrograms = programs.filter(
       program => normalizePath(program.projectRoot ?? '') === normalizedRoot && program.type === 'program',
     )
@@ -401,17 +421,21 @@ export default function BacklogOrch() {
       schemaVersion: 1,
       updatedAt: new Date().toISOString(),
       projectName: projectEntry?.name?.trim() || undefined,
+      projectQuotesPath: normalizePath(projectMemoryFiles.quotesPath ?? '') || undefined,
+      projectRememberPath: normalizePath(projectMemoryFiles.rememberPath ?? '') || undefined,
       presetTags: normalizeTagListBlock(projectPresetTagsByRoot[normalizedRoot] ?? []),
       tagColors: normalizeTagColorMap(projectTagColorsByRoot[normalizedRoot] ?? {}),
       programGroups: mergedProgramGroups,
     }
-  }, [programs, projectEntries, projectPresetTagsByRoot, projectProgramGroupsByRoot, projectTagColorsByRoot])
+  }, [programs, projectEntries, projectMemoryFilesByRoot, projectPresetTagsByRoot, projectProgramGroupsByRoot, projectTagColorsByRoot])
 
   const applyProjectUiStateToCache = useCallback((projectRoot: string, state: OrganizerUiStateOrch) => {
     const normalizedRoot = normalizePath(projectRoot)
     if (!normalizedRoot) return
     const normalizedState: OrganizerUiStateOrch = {
       ...state,
+      projectQuotesPath: normalizePath(state.projectQuotesPath ?? '') || undefined,
+      projectRememberPath: normalizePath(state.projectRememberPath ?? '') || undefined,
       presetTags: normalizeTagListBlock(state.presetTags ?? []),
       tagColors: normalizeTagColorMap(state.tagColors ?? {}),
       programGroups: normalizeProgramGroups(state.programGroups ?? []),
@@ -450,6 +474,15 @@ export default function BacklogOrch() {
       if (normalizedState.programGroups.length > 0) next[normalizedRoot] = normalizedState.programGroups
       else delete next[normalizedRoot]
       setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, next)
+      return next
+    })
+
+    setProjectMemoryFilesByRoot((prev) => {
+      const next: ProjectMemoryFilesByRoot = { ...prev }
+      const quotesPath = normalizePath(normalizedState.projectQuotesPath ?? '') || null
+      const rememberPath = normalizePath(normalizedState.projectRememberPath ?? '') || null
+      if (quotesPath || rememberPath) next[normalizedRoot] = { quotesPath, rememberPath }
+      else delete next[normalizedRoot]
       return next
     })
 
@@ -550,6 +583,45 @@ export default function BacklogOrch() {
     return () => { cancelled = true }
   }, [loadPrograms])
 
+  useEffect(() => {
+    let cancelled = false
+    void Promise.allSettled([
+      listMarkdownEntries(),
+      getAllNodes(),
+    ]).then((results) => {
+      if (cancelled) return
+      const markdownResult = results[0]
+      const nodesResult = results[1]
+      const nodes = (nodesResult.status === 'fulfilled') ? nodesResult.value : []
+      const nodeByPath = new Map(
+        nodes.map(node => [normalizePath(node.filePath), node] as const),
+      )
+
+      if (markdownResult.status !== 'fulfilled') {
+        setProjectMemoryFileOptions([])
+        return
+      }
+
+      const options: ProjectMemoryFileOptionBlock[] = []
+      for (const entry of markdownResult.value) {
+        const path = normalizePath(entry.path)
+        if (!path || path.toLowerCase().endsWith('.excalidraw.md')) continue
+        const node = nodeByPath.get(path)
+        options.push({
+          path,
+          label: node?.title?.trim() || labelFromMarkdownPath(path),
+          summary: node?.aiSummary?.trim() || node?.bodyExcerpt?.trim() || node?.description?.trim() || undefined,
+        })
+      }
+
+      options.sort((a, b) => a.label.localeCompare(b.label))
+      setProjectMemoryFileOptions(options)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const selectProject = useCallback((root: string) => {
     const normalized = normalizePath(root)
     setSearchParams((prev) => {
@@ -627,6 +699,38 @@ export default function BacklogOrch() {
     if (!activeProjectRoot) return {}
     return projectTagColorsByRoot[activeProjectRoot] ?? {}
   }, [activeProjectRoot, projectTagColorsByRoot])
+  const activeProjectMemoryFiles = useMemo(() => {
+    if (!activeProjectRoot) return { quotesPath: null, rememberPath: null }
+    return projectMemoryFilesByRoot[activeProjectRoot] ?? { quotesPath: null, rememberPath: null }
+  }, [activeProjectRoot, projectMemoryFilesByRoot])
+
+  const setActiveProjectQuotesPath = useCallback((path: string | null) => {
+    if (!activeProjectRoot) return
+    const normalizedPath = normalizePath(path ?? '') || null
+    setProjectMemoryFilesByRoot((prev) => {
+      const current = prev[activeProjectRoot] ?? { quotesPath: null, rememberPath: null }
+      if (current.quotesPath === normalizedPath) return prev
+      const next: ProjectMemoryFilesByRoot = { ...prev }
+      const nextEntry = { ...current, quotesPath: normalizedPath }
+      if (nextEntry.quotesPath || nextEntry.rememberPath) next[activeProjectRoot] = nextEntry
+      else delete next[activeProjectRoot]
+      return next
+    })
+  }, [activeProjectRoot])
+
+  const setActiveProjectRememberPath = useCallback((path: string | null) => {
+    if (!activeProjectRoot) return
+    const normalizedPath = normalizePath(path ?? '') || null
+    setProjectMemoryFilesByRoot((prev) => {
+      const current = prev[activeProjectRoot] ?? { quotesPath: null, rememberPath: null }
+      if (current.rememberPath === normalizedPath) return prev
+      const next: ProjectMemoryFilesByRoot = { ...prev }
+      const nextEntry = { ...current, rememberPath: normalizedPath }
+      if (nextEntry.quotesPath || nextEntry.rememberPath) next[activeProjectRoot] = nextEntry
+      else delete next[activeProjectRoot]
+      return next
+    })
+  }, [activeProjectRoot])
 
   const addActiveProjectPresetTags = useCallback(() => {
     if (!activeProjectRoot) return
@@ -1616,6 +1720,15 @@ export default function BacklogOrch() {
           <CalendarDays className="h-3.5 w-3.5" />
           Epic Timeline
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeBacklogSubTab === 'memory'}
+          className={`rounded px-2.5 py-1.5 ${activeBacklogSubTab === 'memory' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setActiveBacklogSubTab('memory')}
+        >
+          Quotes + Remember
+        </button>
       </div>
 
       {activeBacklogSubTab === 'timeline' && (
@@ -1726,6 +1839,28 @@ export default function BacklogOrch() {
               onUpdateNodeNotes={updateNodeNotesFor}
             />
           </ScrollableZoomSurfaceBlock>
+        )
+      )}
+
+      {activeBacklogSubTab === 'memory' && (
+        activeProjectRoot ? (
+          <ProjectMemoryFilesBlock
+            markdownOptions={projectMemoryFileOptions}
+            quotesPath={activeProjectMemoryFiles.quotesPath}
+            rememberPath={activeProjectMemoryFiles.rememberPath}
+            onSelectQuotesPath={setActiveProjectQuotesPath}
+            onSelectRememberPath={setActiveProjectRememberPath}
+            onOpenFile={openFile}
+            disabled={working || syncing || creatingProject}
+            className="rounded-md border border-border/70 bg-card p-3"
+            viewerHeightClassName="h-[620px]"
+          />
+        ) : (
+          <Card>
+            <CardContent className="py-6 text-sm text-muted-foreground">
+              Select a project to manage quotes and things to remember.
+            </CardContent>
+          </Card>
         )
       )}
 

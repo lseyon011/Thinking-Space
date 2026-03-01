@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PanelLeft, PanelLeftClose } from 'lucide-react'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
+import ProjectMemoryFilesBlock from '@/components/lego_blocks/integrations/ProjectMemoryFilesBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import { buildPathSearchCandidatesBlock, UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
@@ -14,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { cn } from '@/lib/utils'
 import { getAllNodes, type NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services/orchestrators/storageOrch'
+import { readOrganizerUiStateOrch, writeOrganizerUiStateOrch } from '@/services/orchestrators/organizerUiStateOrch'
 import {
   normalizeOrganizerUiStateBlock,
   type OrganizerProgramGroupEntryBlock,
@@ -30,7 +32,7 @@ import type {
 } from '@/personal_extension/services/orchestrators/f9ExecutionOrch'
 
 interface F9SubtabBlock {
-  id: 'overall'
+  id: 'overall' | 'memory'
   label: string
 }
 
@@ -47,8 +49,8 @@ interface F9PdfOptionBlock {
 
 interface F9WorkspaceBlockProps {
   subtabs: F9SubtabBlock[]
-  activeSubtabId: 'overall'
-  onSelectSubtab: (id: 'overall') => void
+  activeSubtabId: 'overall' | 'memory'
+  onSelectSubtab: (id: 'overall' | 'memory') => void
   hasConfig: boolean
   liveRefreshAvailable: boolean
   loading: boolean
@@ -130,6 +132,10 @@ const F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK = 'f9_workspace_side_tabs_collaps
 const F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK = 'min-w-[1360px]'
 type F9ProjectPresetTagsByRootBlock = Record<string, string[]>
 type F9ProjectProgramGroupsByRootBlock = Record<string, OrganizerProgramGroupEntryBlock[]>
+type F9ProjectMemoryFilesByRootBlock = Record<string, {
+  quotesPath: string | null
+  rememberPath: string | null
+}>
 
 function makeProgramGroupIdBlock(): string {
   return `program-group-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -876,6 +882,8 @@ export default function F9WorkspaceBlock({
   const [projectProgramGroupsByRoot, setProjectProgramGroupsByRoot] = useState<F9ProjectProgramGroupsByRootBlock>(
     () => getJsonStorageItem<F9ProjectProgramGroupsByRootBlock>(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, {}),
   )
+  const [projectMemoryFilesByRoot, setProjectMemoryFilesByRoot] = useState<F9ProjectMemoryFilesByRootBlock>({})
+  const projectMemoryHydratedRootsRef = useRef<Set<string>>(new Set())
   const [linkOptions, setLinkOptions] = useState<F9LinkOptionBlock[]>([])
   const [pdfOptions, setPdfOptions] = useState<F9PdfOptionBlock[]>([])
   const [companyFilePickerOpen, setCompanyFilePickerOpen] = useState(false)
@@ -1442,6 +1450,94 @@ export default function F9WorkspaceBlock({
     return { [projectRootKey]: allTags }
   }, [availableProjectPresetTags, backlogTableModel.nodeByUuid, projectRootKey])
 
+  useEffect(() => {
+    const normalizedRoot = normalizeRelativePathBlock(projectRootKey)
+    if (!normalizedRoot) return
+    if (projectMemoryHydratedRootsRef.current.has(normalizedRoot)) return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const state = await readOrganizerUiStateOrch(normalizedRoot)
+        if (cancelled) return
+        const quotesPath = normalizeRelativePathBlock(state?.projectQuotesPath ?? '') || null
+        const rememberPath = normalizeRelativePathBlock(state?.projectRememberPath ?? '') || null
+        setProjectMemoryFilesByRoot((prev) => {
+          const next: F9ProjectMemoryFilesByRootBlock = { ...prev }
+          if (quotesPath || rememberPath) next[normalizedRoot] = { quotesPath, rememberPath }
+          else delete next[normalizedRoot]
+          return next
+        })
+      } catch {
+        // Ignore read failures and fallback to empty selections for this root.
+      } finally {
+        projectMemoryHydratedRootsRef.current.add(normalizedRoot)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectRootKey])
+
+  const activeProjectMemoryFiles = useMemo(() => {
+    const normalizedRoot = normalizeRelativePathBlock(projectRootKey)
+    if (!normalizedRoot) return { quotesPath: null, rememberPath: null }
+    return projectMemoryFilesByRoot[normalizedRoot] ?? { quotesPath: null, rememberPath: null }
+  }, [projectMemoryFilesByRoot, projectRootKey])
+
+  const updateActiveProjectMemoryFiles = useCallback(async (updates: {
+    quotesPath?: string | null
+    rememberPath?: string | null
+  }) => {
+    const normalizedRoot = normalizeRelativePathBlock(projectRootKey)
+    if (!normalizedRoot) return
+
+    const current = projectMemoryFilesByRoot[normalizedRoot] ?? { quotesPath: null, rememberPath: null }
+    const next = {
+      quotesPath: updates.quotesPath !== undefined
+        ? (normalizeRelativePathBlock(updates.quotesPath ?? '') || null)
+        : current.quotesPath,
+      rememberPath: updates.rememberPath !== undefined
+        ? (normalizeRelativePathBlock(updates.rememberPath ?? '') || null)
+        : current.rememberPath,
+    }
+
+    setProjectMemoryFilesByRoot((prev) => {
+      const draft: F9ProjectMemoryFilesByRootBlock = { ...prev }
+      if (next.quotesPath || next.rememberPath) draft[normalizedRoot] = next
+      else delete draft[normalizedRoot]
+      return draft
+    })
+
+    try {
+      const stateFromVault = await readOrganizerUiStateOrch(normalizedRoot)
+      const baseState = normalizeOrganizerUiStateBlock(stateFromVault ?? {})
+      const persisted = await writeOrganizerUiStateOrch(normalizedRoot, {
+        ...baseState,
+        updatedAt: new Date().toISOString(),
+        projectQuotesPath: next.quotesPath || undefined,
+        projectRememberPath: next.rememberPath || undefined,
+      })
+      const persistedQuotesPath = normalizeRelativePathBlock(persisted.projectQuotesPath ?? '') || null
+      const persistedRememberPath = normalizeRelativePathBlock(persisted.projectRememberPath ?? '') || null
+      setProjectMemoryFilesByRoot((prev) => {
+        const draft: F9ProjectMemoryFilesByRootBlock = { ...prev }
+        if (persistedQuotesPath || persistedRememberPath) {
+          draft[normalizedRoot] = {
+            quotesPath: persistedQuotesPath,
+            rememberPath: persistedRememberPath,
+          }
+        } else {
+          delete draft[normalizedRoot]
+        }
+        return draft
+      })
+      projectMemoryHydratedRootsRef.current.add(normalizedRoot)
+    } catch {
+      // Leave local view state as-is even if persistence fails.
+    }
+  }, [projectMemoryFilesByRoot, projectRootKey])
+
   const companyPortfolioWeight = percentOfBlock(selectedCompanyMetrics?.totalCost ?? null, portfolioTotalCost)
   const stockCostWeight = percentOfBlock(selectedCompanyMetrics?.stockCost ?? null, selectedCompanyMetrics?.totalCost ?? null)
   const optionCostWeight = percentOfBlock(selectedCompanyMetrics?.optionCost ?? null, selectedCompanyMetrics?.totalCost ?? null)
@@ -1466,6 +1562,17 @@ export default function F9WorkspaceBlock({
     setCompanyFileViewerNonce((prev) => prev + 1)
     setCompanyPdfViewerNonce((prev) => prev + 1)
   }, [onRefreshOverall])
+
+  const memoryTabActive = !showCompanyView && activeSubtabId === 'memory'
+  const overallTabActive = !showCompanyView && activeSubtabId === 'overall'
+  const workspaceTitle = showCompanyView && selectedCompany
+    ? `${selectedCompany.companyTicker} Positions`
+    : (memoryTabActive ? 'Quotes + Things To Remember' : 'Overall Positions')
+  const workspaceDescription = showCompanyView && selectedCompany
+    ? 'Company-specific position rows and overlay edits.'
+    : (memoryTabActive
+      ? 'Project-level files for quotes and things to remember.'
+      : 'Canonical overall positions from Webull sync.')
 
   return (
     <div className={cn('grid gap-4', sideTabsCollapsed ? 'grid-cols-1' : 'lg:grid-cols-[200px_minmax(0,1fr)]')}>
@@ -1504,7 +1611,7 @@ export default function F9WorkspaceBlock({
                     : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                 }`}
               >
-                Overall Positions
+                {subtab.label}
               </button>
             )
           })}
@@ -1575,12 +1682,8 @@ export default function F9WorkspaceBlock({
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
           <div>
-            <CardTitle>{showCompanyView && selectedCompany ? `${selectedCompany.companyTicker} Positions` : 'Overall Positions'}</CardTitle>
-            <CardDescription>
-              {showCompanyView && selectedCompany
-                ? 'Company-specific position rows and overlay edits.'
-                : 'Canonical overall positions from Webull sync.'}
-            </CardDescription>
+            <CardTitle>{workspaceTitle}</CardTitle>
+            <CardDescription>{workspaceDescription}</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
             {sideTabsCollapsed && (
@@ -1625,6 +1728,20 @@ export default function F9WorkspaceBlock({
             </div>
           )}
 
+          {memoryTabActive && (
+            <ProjectMemoryFilesBlock
+              markdownOptions={linkOptions}
+              quotesPath={activeProjectMemoryFiles.quotesPath}
+              rememberPath={activeProjectMemoryFiles.rememberPath}
+              onSelectQuotesPath={(path) => { void updateActiveProjectMemoryFiles({ quotesPath: path }) }}
+              onSelectRememberPath={(path) => { void updateActiveProjectMemoryFiles({ rememberPath: path }) }}
+              onOpenFile={onOpenNodeFile}
+              disabled={workspaceBusy}
+              className="rounded-xl border bg-background p-3"
+              viewerHeightClassName="h-[560px]"
+            />
+          )}
+
           {error && (
             <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
               {error}
@@ -1651,7 +1768,7 @@ export default function F9WorkspaceBlock({
             </div>
           )}
 
-          {!showCompanyView && (
+          {overallTabActive && (
             <div className="grid gap-3 text-sm sm:grid-cols-3">
               <div className="rounded-lg border bg-background p-3">
                 <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Fetched</p>
@@ -1671,63 +1788,7 @@ export default function F9WorkspaceBlock({
             </div>
           )}
 
-          {!showCompanyView ? (
-            <div className="rounded-xl border bg-background p-3">
-              <ScrollableZoomSurfaceBlock
-                minWidthClassName={F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
-                controlsLabel="Table zoom"
-                showFitColumnsToWidthButton
-                persistStateKey="f9-table-viewport-fit"
-              >
-                <BacklogListBlock
-                  programs={backlogTableModel.programs}
-                  loadEpics={loadBacklogEpics}
-                  loadChildren={loadBacklogChildren}
-                  selectedNodeId={selectedBacklogNodeId}
-                  readOnly
-                  allowProgramLayoutEditingInReadOnly
-                  onSelectNode={onSelectBacklogNode}
-                  programGroups={activeProjectProgramGroups}
-                  programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
-                  onCreateProgramGroup={createActiveProjectCompanyGroup}
-                  onDeleteProgramGroup={deleteActiveProjectCompanyGroup}
-                  onToggleProgramGroupCollapsed={toggleActiveProjectCompanyGroupCollapsed}
-                  onAssignProgramToGroup={assignProgramToActiveProjectCompanyGroup}
-                  onOpenNodeDetails={onOpenBacklogNodeDetails}
-                  onUpdateNodeNotes={onUpdateBacklogNodeNotes}
-                  relatedNodeOptions={linkOptions}
-                  onOpenRelatedNode={(path) => onOpenNodeFile(path)}
-                  programLabelSingular="company"
-                  programLabelPlural="companies"
-                  programGroupLabelSingular="company group"
-                  projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
-                  canOpenNodeDetails={(node) => node.type === 'epic'}
-                  rowColumns={f9RowColumns}
-                  showRowColumnsOnCompact
-                  rowPresetTagLimit={5}
-                  rowPresetTagsClassName="ml-auto w-[18rem] justify-end"
-                  reserveTagsSlotWhenEmpty
-                  linksColumnLabel="Links"
-                  linksColumnWidthClassName="w-[8rem] mx-6"
-                  linksColumnAlign="left"
-                  linksColumnPaddingClassName="px-0"
-                  linksBeforeTags
-                  statusRightAligned={false}
-                  rowDetailsRenderer={renderF9InlineDetails}
-                  titleColumnClassName="w-[20rem]"
-                  wrapTitleText
-                  actionsRightEdge
-                  showProgramStatus={false}
-                  showProgramCopyButton={false}
-                  preferInlineDetailsButton
-                  allowInlineNotesInReadOnly
-                  showNodeTypeIcons={false}
-                  showExpandToggles={false}
-                  showPriorityDots={false}
-                />
-              </ScrollableZoomSurfaceBlock>
-            </div>
-          ) : (
+          {showCompanyView ? (
             <>
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="rounded-lg border bg-background p-3">
@@ -2128,7 +2189,63 @@ export default function F9WorkspaceBlock({
                 )}
               </div>
             </>
-          )}
+          ) : overallTabActive ? (
+            <div className="rounded-xl border bg-background p-3">
+              <ScrollableZoomSurfaceBlock
+                minWidthClassName={F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
+                controlsLabel="Table zoom"
+                showFitColumnsToWidthButton
+                persistStateKey="f9-table-viewport-fit"
+              >
+                <BacklogListBlock
+                  programs={backlogTableModel.programs}
+                  loadEpics={loadBacklogEpics}
+                  loadChildren={loadBacklogChildren}
+                  selectedNodeId={selectedBacklogNodeId}
+                  readOnly
+                  allowProgramLayoutEditingInReadOnly
+                  onSelectNode={onSelectBacklogNode}
+                  programGroups={activeProjectProgramGroups}
+                  programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
+                  onCreateProgramGroup={createActiveProjectCompanyGroup}
+                  onDeleteProgramGroup={deleteActiveProjectCompanyGroup}
+                  onToggleProgramGroupCollapsed={toggleActiveProjectCompanyGroupCollapsed}
+                  onAssignProgramToGroup={assignProgramToActiveProjectCompanyGroup}
+                  onOpenNodeDetails={onOpenBacklogNodeDetails}
+                  onUpdateNodeNotes={onUpdateBacklogNodeNotes}
+                  relatedNodeOptions={linkOptions}
+                  onOpenRelatedNode={(path) => onOpenNodeFile(path)}
+                  programLabelSingular="company"
+                  programLabelPlural="companies"
+                  programGroupLabelSingular="company group"
+                  projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
+                  canOpenNodeDetails={(node) => node.type === 'epic'}
+                  rowColumns={f9RowColumns}
+                  showRowColumnsOnCompact
+                  rowPresetTagLimit={5}
+                  rowPresetTagsClassName="ml-auto w-[18rem] justify-end"
+                  reserveTagsSlotWhenEmpty
+                  linksColumnLabel="Links"
+                  linksColumnWidthClassName="w-[8rem] mx-6"
+                  linksColumnAlign="left"
+                  linksColumnPaddingClassName="px-0"
+                  linksBeforeTags
+                  statusRightAligned={false}
+                  rowDetailsRenderer={renderF9InlineDetails}
+                  titleColumnClassName="w-[20rem]"
+                  wrapTitleText
+                  actionsRightEdge
+                  showProgramStatus={false}
+                  showProgramCopyButton={false}
+                  preferInlineDetailsButton
+                  allowInlineNotesInReadOnly
+                  showNodeTypeIcons={false}
+                  showExpandToggles={false}
+                  showPriorityDots={false}
+                />
+              </ScrollableZoomSurfaceBlock>
+            </div>
+          ) : null}
 
           <details className="rounded-xl border bg-background">
             <summary className="cursor-pointer border-b px-3 py-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
