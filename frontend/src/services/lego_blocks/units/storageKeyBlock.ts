@@ -25,6 +25,7 @@ export const STORAGE_KEYS = {
   aiSettings: 'ltm-ai-settings',
   markdownEditorSettings: 'ltm-markdown-editor-settings',
   f9ExecutionSettings: 'ltm-f9-execution-settings',
+  f9ProjectPresetTags: 'ltm-f9-project-preset-tags',
   aiManualCredentials: 'ltm-ai-manual-credentials',
   aiOauthCredentials: 'ltm-ai-oauth-credentials',
 } as const

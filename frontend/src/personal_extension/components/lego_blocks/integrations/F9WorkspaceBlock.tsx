@@ -8,7 +8,8 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { cn } from '@/lib/utils'
 import { getAllNodes, type NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
-import { normalizeTagBlock, normalizeTagListBlock, splitTagInputBlock } from '@/services/lego_blocks/units/tagBlock'
+import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services/orchestrators/storageOrch'
+import { normalizeTagBlock, normalizeTagListBlock, splitTagInputBlock, tagsEqualBlock } from '@/services/lego_blocks/units/tagBlock'
 import type { NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { listMarkdownEntries } from '@/services/orchestrators/fileSystemOrch'
 import type { F9RuntimeSurfaceOrch, F9SelectedAccountOrch } from '@/personal_extension/services/orchestrators/f9OverallOrch'
@@ -100,12 +101,12 @@ interface F9WorkspaceBlockProps {
   }) => Promise<void>
   onSavePositionBody: (body: string) => Promise<void>
   onOpenNodeFile: (filePath: string) => void
-  onRefreshExecutionOverview: () => Promise<F9ExecutionOverviewBlock | null>
   onRefreshOverall: () => void
 }
 
 const F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK = 'f9_workspace_side_tabs_collapsed'
 const F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK = 'min-w-[1800px]'
+type F9ProjectPresetTagsByRootBlock = Record<string, string[]>
 
 function formatRuntimeLabelBlock(value: F9RuntimeSurfaceOrch | null): string {
   if (value === 'electron') return 'Electron'
@@ -508,7 +509,6 @@ export default function F9WorkspaceBlock({
   onUpdatePositionOverlay,
   onSavePositionBody,
   onOpenNodeFile,
-  onRefreshExecutionOverview,
   onRefreshOverall,
 }: F9WorkspaceBlockProps) {
   const allWarnings = [...warnings, ...executionSyncWarnings]
@@ -520,6 +520,7 @@ export default function F9WorkspaceBlock({
     if (typeof window === 'undefined') return false
     return window.localStorage.getItem(F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK) === '1'
   })
+  const projectRootKey = normalizeRelativePathBlock(executionRoot ?? 'f9-execution') || 'f9-execution'
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -640,7 +641,9 @@ export default function F9WorkspaceBlock({
   }, [companiesForTable, executionRoot])
 
   const [detailPanelNodeId, setDetailPanelNodeId] = useState<string | null>(null)
-  const [availableProjectPresetTags, setAvailableProjectPresetTags] = useState<string[]>([])
+  const [projectPresetTagsByRoot, setProjectPresetTagsByRoot] = useState<F9ProjectPresetTagsByRootBlock>(
+    () => getJsonStorageItem<F9ProjectPresetTagsByRootBlock>(STORAGE_KEYS.f9ProjectPresetTags, {}),
+  )
   const [linkOptions, setLinkOptions] = useState<F9LinkOptionBlock[]>([])
 
   const selectedBacklogNodeId = useMemo(() => {
@@ -947,11 +950,31 @@ export default function F9WorkspaceBlock({
     [detailPanelPositionDetail?.frontmatter],
   )
 
+  const availableProjectPresetTags = useMemo(
+    () => normalizeTagListBlock(projectPresetTagsByRoot[projectRootKey] ?? []),
+    [projectPresetTagsByRoot, projectRootKey],
+  )
+
+  const updateProjectPresetTags = useCallback((root: string, tags: string[]) => {
+    const normalizedRoot = normalizeRelativePathBlock(root)
+    if (!normalizedRoot) return
+    const normalizedTags = normalizeTagListBlock(tags)
+    setProjectPresetTagsByRoot((prev) => {
+      const existingTags = normalizeTagListBlock(prev[normalizedRoot] ?? [])
+      if (tagsEqualBlock(existingTags, normalizedTags)) return prev
+      const next: F9ProjectPresetTagsByRootBlock = { ...prev }
+      if (normalizedTags.length > 0) next[normalizedRoot] = normalizedTags
+      else delete next[normalizedRoot]
+      setJsonStorageItem(STORAGE_KEYS.f9ProjectPresetTags, next)
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     const fromFrontmatter = asStringArrayBlock(detailPanelPositionDetail?.frontmatter?.project_preset_tags)
     if (fromFrontmatter.length === 0) return
-    setAvailableProjectPresetTags(prev => normalizeTagListBlock([...prev, ...fromFrontmatter]))
-  }, [detailPanelPositionDetail?.frontmatter?.project_preset_tags])
+    updateProjectPresetTags(projectRootKey, [...availableProjectPresetTags, ...fromFrontmatter])
+  }, [availableProjectPresetTags, detailPanelPositionDetail?.frontmatter?.project_preset_tags, projectRootKey, updateProjectPresetTags])
 
   const detailPanelPresetTags = useMemo(
     () => normalizeTagListBlock([...availableProjectPresetTags, ...(detailPanelNode?.projectPresetTags ?? [])]),
@@ -968,21 +991,23 @@ export default function F9WorkspaceBlock({
   const [newLinkedIdeaId, setNewLinkedIdeaId] = useState('')
   const [newPositionNotes, setNewPositionNotes] = useState('')
   const [projectPresetTagDraft, setProjectPresetTagDraft] = useState('')
+  const [projectTagsOpen, setProjectTagsOpen] = useState(false)
 
   const addProjectPresetTags = useCallback(() => {
     const additions = splitTagInputBlock(projectPresetTagDraft)
     if (additions.length === 0) return
-    setAvailableProjectPresetTags(prev => normalizeTagListBlock([...prev, ...additions]))
+    updateProjectPresetTags(projectRootKey, [...availableProjectPresetTags, ...additions])
     setProjectPresetTagDraft('')
-  }, [projectPresetTagDraft])
+  }, [availableProjectPresetTags, projectPresetTagDraft, projectRootKey, updateProjectPresetTags])
 
   const removeProjectPresetTag = useCallback((tag: string) => {
     const target = normalizeTagBlock(tag).toLowerCase()
     if (!target) return
-    setAvailableProjectPresetTags(prev => (
-      prev.filter(existing => normalizeTagBlock(existing).toLowerCase() !== target)
-    ))
-  }, [])
+    const next = availableProjectPresetTags.filter(
+      existing => normalizeTagBlock(existing).toLowerCase() !== target,
+    )
+    updateProjectPresetTags(projectRootKey, next)
+  }, [availableProjectPresetTags, projectRootKey, updateProjectPresetTags])
 
   useEffect(() => {
     const tagsFromOverview = normalizeTagListBlock(
@@ -991,10 +1016,9 @@ export default function F9WorkspaceBlock({
         .flatMap(position => position.projectPresetTags ?? []),
     )
     if (tagsFromOverview.length === 0) return
-    setAvailableProjectPresetTags(prev => normalizeTagListBlock([...prev, ...tagsFromOverview]))
-  }, [executionOverview])
+    updateProjectPresetTags(projectRootKey, [...availableProjectPresetTags, ...tagsFromOverview])
+  }, [availableProjectPresetTags, executionOverview, projectRootKey, updateProjectPresetTags])
 
-  const projectRootKey = (executionRoot ?? 'f9-execution').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
   const rowProjectPresetTagsByRoot = useMemo<Record<string, string[]>>(() => {
     if (!projectRootKey) return {}
     const tagsFromRows = Array.from(backlogTableModel.nodeByUuid.values()).flatMap(node => node.projectPresetTags ?? [])
@@ -1102,21 +1126,6 @@ export default function F9WorkspaceBlock({
           </div>
         </div>
 
-        <div className="rounded-xl border bg-background p-3">
-          <TagListEditorBlock
-            heading="Project Tags"
-            tags={availableProjectPresetTags}
-            emptyMessage="No project tags yet."
-            draftValue={projectPresetTagDraft}
-            onDraftValueChange={setProjectPresetTagDraft}
-            onAddTag={addProjectPresetTags}
-            addPlaceholder="Add project tags (comma separated)"
-            addDisabled={splitTagInputBlock(projectPresetTagDraft).length === 0}
-            onRemoveTag={removeProjectPresetTag}
-            chipTone="sky"
-            disabled={workspaceBusy}
-          />
-        </div>
         </aside>
       )}
 
@@ -1141,11 +1150,15 @@ export default function F9WorkspaceBlock({
                 Show Side Tabs
               </Button>
             )}
-            <Button type="button" variant="outline" onClick={() => { void onRefreshExecutionOverview() }} disabled={workspaceBusy || executionOverviewLoading}>
-              {executionOverviewLoading ? 'Refreshing companies...' : 'Refresh Companies'}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setProjectTagsOpen(prev => !prev)}
+            >
+              {projectTagsOpen ? 'Hide Project Tags' : 'Project Tags'}
             </Button>
-            <Button type="button" onClick={onRefreshOverall} disabled={loading || (liveRefreshAvailable && !hasConfig)}>
-              {loading
+            <Button type="button" onClick={onRefreshOverall} disabled={loading || executionOverviewLoading || (liveRefreshAvailable && !hasConfig)}>
+              {(loading || executionOverviewLoading)
                 ? (liveRefreshAvailable ? 'Refreshing overall...' : 'Reloading saved...')
                 : (liveRefreshAvailable ? 'Refresh Overall' : 'Reload Saved Data')}
             </Button>
@@ -1153,6 +1166,24 @@ export default function F9WorkspaceBlock({
         </CardHeader>
 
         <CardContent className="space-y-4">
+          {projectTagsOpen && (
+            <div className="rounded-xl border bg-background p-3">
+              <TagListEditorBlock
+                heading="Project Tags"
+                tags={availableProjectPresetTags}
+                emptyMessage="No project tags yet."
+                draftValue={projectPresetTagDraft}
+                onDraftValueChange={setProjectPresetTagDraft}
+                onAddTag={addProjectPresetTags}
+                addPlaceholder="Add project tags (comma separated)"
+                addDisabled={splitTagInputBlock(projectPresetTagDraft).length === 0}
+                onRemoveTag={removeProjectPresetTag}
+                chipTone="sky"
+                disabled={workspaceBusy}
+              />
+            </div>
+          )}
+
           {!liveRefreshAvailable && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
               Live Webull refresh is available only in the Electron app. This runtime shows saved F9 data from your last Electron refresh.
@@ -1459,7 +1490,7 @@ export default function F9WorkspaceBlock({
           }}
           onUpdateProjectPresetTags={async (tags) => {
             if (!detailPanelPositionRef) return
-            setAvailableProjectPresetTags(prev => normalizeTagListBlock([...prev, ...tags]))
+            updateProjectPresetTags(projectRootKey, [...availableProjectPresetTags, ...tags])
             await onUpdatePositionOverlay({
               fileName: detailPanelPositionRef.fileName,
               projectPresetTags: tags,

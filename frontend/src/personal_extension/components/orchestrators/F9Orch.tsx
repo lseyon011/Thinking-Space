@@ -325,6 +325,7 @@ export default function F9Orch() {
       added_at?: string
       added_by?: string
     }>
+    relatedNodes?: string[]
     tags?: string[]
     projectPresetTags?: string[]
   }) => {
@@ -435,7 +436,6 @@ export default function F9Orch() {
       onUpdatePositionOverlay={onUpdatePositionOverlay}
       onSavePositionBody={onSavePositionBody}
       onOpenNodeFile={(filePath) => openFile(filePath, { mode: 'edit' })}
-      onRefreshExecutionOverview={loadExecutionOverview}
       onRefreshOverall={refreshOverall}
     />
   )
