@@ -75,6 +75,7 @@ export interface F9CompanyOverviewBlock {
   indexId: string
   strategyNotes: string
   relatedIdeaIds: string[]
+  programGroupId: string | null
   valuationNotePath: string | null
   companyPdfReportPath: string | null
   positions: F9PositionSummaryBlock[]
@@ -169,6 +170,7 @@ export interface UpdateF9CompanyOverlayInputBlock {
   companyTicker: string
   strategyNotes?: string | null
   relatedIdeaIds?: string[]
+  programGroupId?: string | null
   valuationNotePath?: string | null
   companyPdfReportPath?: string | null
   fs?: VaultFS
@@ -370,6 +372,8 @@ export async function readF9ExecutionOverviewBlock(
     const positions = sortPositionSummariesAscendingBlock(asPositionSummaryListBlock(frontmatter.positions))
     const strategyNotes = readStringFieldBlock(frontmatter.strategy_notes)
     const relatedIdeaIds = readStringArrayFieldBlock(frontmatter.related_idea_ids)
+    const programGroupIdRaw = readNullableStringFieldBlock(frontmatter.program_group)
+    const programGroupId = programGroupIdRaw ? programGroupIdRaw.trim() : ''
     const valuationNotePathRaw = readNullableStringFieldBlock(frontmatter.valuation_note_path)
     const valuationNotePath = valuationNotePathRaw
       ? normalizeSlashPathBlock(valuationNotePathRaw).replace(/^\/+|\/+$/g, '')
@@ -385,6 +389,7 @@ export async function readF9ExecutionOverviewBlock(
       indexId,
       strategyNotes,
       relatedIdeaIds,
+      programGroupId: programGroupId || null,
       valuationNotePath,
       companyPdfReportPath,
       positions,
@@ -723,6 +728,11 @@ export async function updateF9CompanyOverlayBlock(
     const normalizedRelatedIdeaIds = readStringArrayFieldBlock(input.relatedIdeaIds)
     if (normalizedRelatedIdeaIds.length > 0) nextFrontmatter.related_idea_ids = normalizedRelatedIdeaIds
     else delete nextFrontmatter.related_idea_ids
+  }
+  if (input.programGroupId !== undefined) {
+    const normalizedProgramGroupId = readStringFieldBlock(input.programGroupId)
+    if (normalizedProgramGroupId) nextFrontmatter.program_group = normalizedProgramGroupId
+    else delete nextFrontmatter.program_group
   }
   if (input.valuationNotePath !== undefined) {
     const valuationPath = readStringFieldBlock(input.valuationNotePath)

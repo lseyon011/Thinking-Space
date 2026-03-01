@@ -14,6 +14,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { cn } from '@/lib/utils'
 import { getAllNodes, type NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services/orchestrators/storageOrch'
+import {
+  normalizeOrganizerUiStateBlock,
+  type OrganizerProgramGroupEntryBlock,
+} from '@/services/lego_blocks/integrations/organizerUiStateBlock'
 import { normalizeTagBlock, normalizeTagListBlock, splitTagInputBlock, tagsEqualBlock } from '@/services/lego_blocks/units/tagBlock'
 import type { NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { listMarkdownEntries, listPdfFiles } from '@/services/orchestrators/fileSystemOrch'
@@ -110,8 +114,10 @@ interface F9WorkspaceBlockProps {
     projectPresetTags?: string[]
   }) => Promise<void>
   onUpdateCompanyOverlay: (input: {
+    companyTicker?: string | null
     strategyNotes?: string | null
     relatedIdeaIds?: string[]
+    programGroupId?: string | null
     valuationNotePath?: string | null
     companyPdfReportPath?: string | null
   }) => Promise<void>
@@ -123,6 +129,64 @@ interface F9WorkspaceBlockProps {
 const F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK = 'f9_workspace_side_tabs_collapsed'
 const F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK = 'min-w-[1360px]'
 type F9ProjectPresetTagsByRootBlock = Record<string, string[]>
+type F9ProjectProgramGroupsByRootBlock = Record<string, OrganizerProgramGroupEntryBlock[]>
+
+function makeProgramGroupIdBlock(): string {
+  return `program-group-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function normalizeProgramGroupsBlock(groups: OrganizerProgramGroupEntryBlock[]): OrganizerProgramGroupEntryBlock[] {
+  return normalizeOrganizerUiStateBlock({ programGroups: groups }).programGroups
+}
+
+function readProgramGroupFromNodeBlock(node: NodeRecord): string | null {
+  const metadata = asMetadataRecordBlock(node)
+  const value = firstStringBlock(metadata.program_group)
+  return value ? value.trim() : null
+}
+
+function mergeProgramGroupsWithAssignmentsBlock(
+  groups: OrganizerProgramGroupEntryBlock[],
+  programs: NodeRecord[],
+  assignedGroupByProgram: Record<string, string>,
+): OrganizerProgramGroupEntryBlock[] {
+  const normalizedGroups = normalizeProgramGroupsBlock(groups)
+  const groupOrder = normalizedGroups.map(group => group.id)
+  const groupMeta = new Map<string, Pick<OrganizerProgramGroupEntryBlock, 'name' | 'collapsed'>>(
+    normalizedGroups.map(group => [group.id, { name: group.name, collapsed: !!group.collapsed }]),
+  )
+  const programIdsByGroup = new Map<string, string[]>(
+    normalizedGroups.map(group => [group.id, []]),
+  )
+
+  for (const groupIdRaw of Object.values(assignedGroupByProgram)) {
+    const groupId = groupIdRaw.trim()
+    if (!groupId) continue
+    if (!groupMeta.has(groupId)) {
+      groupMeta.set(groupId, { name: groupId, collapsed: false })
+      groupOrder.push(groupId)
+      programIdsByGroup.set(groupId, [])
+    }
+  }
+
+  for (const program of programs) {
+    const groupId = assignedGroupByProgram[program.uuid]?.trim()
+    if (!groupId) continue
+    const bucket = programIdsByGroup.get(groupId)
+    if (!bucket) continue
+    bucket.push(program.uuid)
+  }
+
+  return groupOrder.map((groupId) => {
+    const meta = groupMeta.get(groupId) ?? { name: groupId, collapsed: false }
+    return {
+      id: groupId,
+      name: meta.name,
+      collapsed: !!meta.collapsed,
+      programIds: programIdsByGroup.get(groupId) ?? [],
+    }
+  })
+}
 
 function formatRuntimeLabelBlock(value: F9RuntimeSurfaceOrch | null): string {
   if (value === 'electron') return 'Electron'
@@ -380,6 +444,7 @@ function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, u
       indexId: `${ticker}-index`,
       strategyNotes: '',
       relatedIdeaIds: [],
+      programGroupId: null,
       valuationNotePath: null,
       companyPdfReportPath: null,
       positions: sortF9PositionsAscendingBlock(positions),
@@ -735,6 +800,7 @@ export default function F9WorkspaceBlock({
           f9_avg_unit_cost: companyTotals.avgUnitCost,
           f9_total_unrealized_profit_loss: companyTotals.totalUnrealizedProfitLoss,
           f9_total_current_price: companyTotals.totalCurrentPrice,
+          program_group: company.programGroupId,
         },
       }
       programs.push(programNode)
@@ -807,6 +873,9 @@ export default function F9WorkspaceBlock({
   const [projectPresetTagsByRoot, setProjectPresetTagsByRoot] = useState<F9ProjectPresetTagsByRootBlock>(
     () => getJsonStorageItem<F9ProjectPresetTagsByRootBlock>(STORAGE_KEYS.f9ProjectPresetTags, {}),
   )
+  const [projectProgramGroupsByRoot, setProjectProgramGroupsByRoot] = useState<F9ProjectProgramGroupsByRootBlock>(
+    () => getJsonStorageItem<F9ProjectProgramGroupsByRootBlock>(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, {}),
+  )
   const [linkOptions, setLinkOptions] = useState<F9LinkOptionBlock[]>([])
   const [pdfOptions, setPdfOptions] = useState<F9PdfOptionBlock[]>([])
   const [companyFilePickerOpen, setCompanyFilePickerOpen] = useState(false)
@@ -815,6 +884,124 @@ export default function F9WorkspaceBlock({
   const [companyPdfPickerOpen, setCompanyPdfPickerOpen] = useState(false)
   const [companyPdfQuery, setCompanyPdfQuery] = useState('')
   const [companyPdfViewerNonce, setCompanyPdfViewerNonce] = useState(0)
+
+  const updateProjectProgramGroups = useCallback((
+    root: string,
+    updater: (groups: OrganizerProgramGroupEntryBlock[]) => OrganizerProgramGroupEntryBlock[],
+  ) => {
+    const normalizedRoot = normalizeRelativePathBlock(root)
+    if (!normalizedRoot) return
+
+    setProjectProgramGroupsByRoot((prev) => {
+      const current = normalizeProgramGroupsBlock(prev[normalizedRoot] ?? [])
+      const nextGroups = normalizeProgramGroupsBlock(updater(current))
+      const next = { ...prev }
+      if (nextGroups.length > 0) next[normalizedRoot] = nextGroups
+      else delete next[normalizedRoot]
+      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, next)
+      return next
+    })
+  }, [])
+
+  const activeProjectProgramGroupIdByProgram = useMemo(() => {
+    const byProgram: Record<string, string> = {}
+    for (const program of backlogTableModel.programs) {
+      const groupId = readProgramGroupFromNodeBlock(program)
+      if (!groupId) continue
+      byProgram[program.uuid] = groupId
+    }
+    return byProgram
+  }, [backlogTableModel.programs])
+
+  const activeProjectProgramGroups = useMemo(() => {
+    return mergeProgramGroupsWithAssignmentsBlock(
+      projectProgramGroupsByRoot[projectRootKey] ?? [],
+      backlogTableModel.programs,
+      activeProjectProgramGroupIdByProgram,
+    )
+  }, [
+    activeProjectProgramGroupIdByProgram,
+    backlogTableModel.programs,
+    projectProgramGroupsByRoot,
+    projectRootKey,
+  ])
+
+  const createActiveProjectCompanyGroup = useCallback((name: string) => {
+    const nextName = name.trim()
+    if (!nextName) return
+    updateProjectProgramGroups(projectRootKey, (groups) => [
+      ...groups,
+      {
+        id: makeProgramGroupIdBlock(),
+        name: nextName,
+        collapsed: false,
+        programIds: [],
+      },
+    ])
+  }, [projectRootKey, updateProjectProgramGroups])
+
+  const deleteActiveProjectCompanyGroup = useCallback((groupId: string) => {
+    const normalizedGroupId = groupId.trim()
+    if (!normalizedGroupId) return
+    const removedProgramIds = Object.entries(activeProjectProgramGroupIdByProgram)
+      .flatMap(([programUuid, assignedGroupId]) => (assignedGroupId === normalizedGroupId ? [programUuid] : []))
+
+    updateProjectProgramGroups(projectRootKey, groups => groups.filter(group => group.id !== normalizedGroupId))
+
+    for (const programUuid of removedProgramIds) {
+      const companyTicker = backlogTableModel.companyTickerByProgramUuid.get(programUuid)
+      if (!companyTicker) continue
+      void onUpdateCompanyOverlay({
+        companyTicker,
+        programGroupId: null,
+      })
+    }
+  }, [
+    activeProjectProgramGroupIdByProgram,
+    backlogTableModel.companyTickerByProgramUuid,
+    onUpdateCompanyOverlay,
+    projectRootKey,
+    updateProjectProgramGroups,
+  ])
+
+  const toggleActiveProjectCompanyGroupCollapsed = useCallback((groupId: string) => {
+    const normalizedGroupId = groupId.trim()
+    if (!normalizedGroupId) return
+    updateProjectProgramGroups(projectRootKey, groups =>
+      groups.map(group => (
+        group.id === normalizedGroupId
+          ? { ...group, collapsed: !group.collapsed }
+          : group
+      )),
+    )
+  }, [projectRootKey, updateProjectProgramGroups])
+
+  const assignProgramToActiveProjectCompanyGroup = useCallback((program: NodeRecord, groupId: string | null) => {
+    const companyTicker = backlogTableModel.companyTickerByProgramUuid.get(program.uuid)
+    if (!companyTicker) return
+    const normalizedGroupId = groupId?.trim() || null
+    updateProjectProgramGroups(projectRootKey, (groups) => {
+      const stripped = groups.map(group => ({
+        ...group,
+        programIds: group.programIds.filter(existing => existing !== program.uuid),
+      }))
+      if (!normalizedGroupId) return stripped
+      return stripped.map(group => (
+        group.id === normalizedGroupId
+          ? { ...group, programIds: [...group.programIds, program.uuid] }
+          : group
+      ))
+    })
+    void onUpdateCompanyOverlay({
+      companyTicker,
+      programGroupId: normalizedGroupId,
+    })
+  }, [
+    backlogTableModel.companyTickerByProgramUuid,
+    onUpdateCompanyOverlay,
+    projectRootKey,
+    updateProjectProgramGroups,
+  ])
 
   const selectedBacklogNodeId = useMemo(() => {
     if (!activeCompanyTicker || !activePositionFileName) return null
@@ -1496,11 +1683,21 @@ export default function F9WorkspaceBlock({
                   loadChildren={loadBacklogChildren}
                   selectedNodeId={selectedBacklogNodeId}
                   readOnly
+                  allowProgramLayoutEditingInReadOnly
                   onSelectNode={onSelectBacklogNode}
+                  programGroups={activeProjectProgramGroups}
+                  programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
+                  onCreateProgramGroup={createActiveProjectCompanyGroup}
+                  onDeleteProgramGroup={deleteActiveProjectCompanyGroup}
+                  onToggleProgramGroupCollapsed={toggleActiveProjectCompanyGroupCollapsed}
+                  onAssignProgramToGroup={assignProgramToActiveProjectCompanyGroup}
                   onOpenNodeDetails={onOpenBacklogNodeDetails}
                   onUpdateNodeNotes={onUpdateBacklogNodeNotes}
                   relatedNodeOptions={linkOptions}
                   onOpenRelatedNode={(path) => onOpenNodeFile(path)}
+                  programLabelSingular="company"
+                  programLabelPlural="companies"
+                  programGroupLabelSingular="company group"
                   projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
                   canOpenNodeDetails={(node) => node.type === 'epic'}
                   rowColumns={f9RowColumns}
@@ -1680,11 +1877,21 @@ export default function F9WorkspaceBlock({
                     loadChildren={loadBacklogChildren}
                     selectedNodeId={selectedBacklogNodeId}
                     readOnly
+                    allowProgramLayoutEditingInReadOnly
                     onSelectNode={onSelectBacklogNode}
+                    programGroups={activeProjectProgramGroups}
+                    programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
+                    onCreateProgramGroup={createActiveProjectCompanyGroup}
+                    onDeleteProgramGroup={deleteActiveProjectCompanyGroup}
+                    onToggleProgramGroupCollapsed={toggleActiveProjectCompanyGroupCollapsed}
+                    onAssignProgramToGroup={assignProgramToActiveProjectCompanyGroup}
                     onOpenNodeDetails={onOpenBacklogNodeDetails}
                     onUpdateNodeNotes={onUpdateBacklogNodeNotes}
                     relatedNodeOptions={linkOptions}
                     onOpenRelatedNode={(path) => onOpenNodeFile(path)}
+                    programLabelSingular="company"
+                    programLabelPlural="companies"
+                    programGroupLabelSingular="company group"
                     projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
                     canOpenNodeDetails={(node) => node.type === 'epic'}
                     rowColumns={f9RowColumns}

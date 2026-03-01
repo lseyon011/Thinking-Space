@@ -354,21 +354,26 @@ export default function F9Orch() {
   }, [activeCompanyTicker, activePositionFileName, loadExecutionOverview])
 
   const onUpdateCompanyOverlay = useCallback(async (input: {
+    companyTicker?: string | null
     strategyNotes?: string | null
     relatedIdeaIds?: string[]
+    programGroupId?: string | null
     valuationNotePath?: string | null
     companyPdfReportPath?: string | null
   }) => {
-    if (!activeCompanyTicker) return
+    const targetCompanyTicker = (input.companyTicker ?? activeCompanyTicker)?.trim() ?? ''
+    if (!targetCompanyTicker) return
     setWorkspaceBusy(true)
     setWorkspaceMessage(null)
     setExecutionSyncError(null)
     try {
       const company = await updateF9CompanyOverlayOrch({
-        companyTicker: activeCompanyTicker,
         ...input,
+        companyTicker: targetCompanyTicker,
       })
-      setActiveCompanyTicker(company.companyTicker)
+      if (!input.companyTicker || input.companyTicker === activeCompanyTicker) {
+        setActiveCompanyTicker(company.companyTicker)
+      }
       await loadExecutionOverview()
       setWorkspaceMessage('Company metadata updated.')
     } catch (err) {

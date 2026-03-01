@@ -3,8 +3,6 @@ import { ChevronLeft, ChevronRight, RefreshCw, ScanLine, ZoomIn, ZoomOut } from 
 import { Document, Page, pdfjs } from 'react-pdf'
 import PdfJsWorkerBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
 import pdfWorkerSrcBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { select } from 'd3-selection'
-import { zoom, zoomIdentity } from 'd3-zoom'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import { Button } from '@/components/lego_blocks/units/ui/button'
@@ -85,9 +83,10 @@ export default function PdfDocumentBlock({
 }: PdfDocumentBlockProps) {
   const electronRuntime = isElectronRuntimeBlock()
   const viewportRef = useRef<HTMLDivElement | null>(null)
-  const zoomBehaviorRef = useRef<any>(null)
-  const zoomSelectionRef = useRef<any>(null)
-  const suppressZoomEventRef = useRef(false)
+  const previewContainerRef = useRef<HTMLDivElement | null>(null)
+  const pinchTouchActiveRef = useRef(false)
+  const pinchStartDistanceRef = useRef(0)
+  const pinchStartScaleRef = useRef(1)
   const fitWidthRef = useRef(true)
   const scaleRef = useRef(1)
   const pendingScaleRef = useRef<number | null>(null)
@@ -100,7 +99,6 @@ export default function PdfDocumentBlock({
   const [numPages, setNumPages] = useState(0)
   const [pageNumber, setPageNumber] = useState(1)
   const [scale, setScale] = useState(1)
-  const [gesturePreviewScale, setGesturePreviewScale] = useState<number | null>(null)
   const [fitWidth, setFitWidth] = useState(true)
   const [viewportWidth, setViewportWidth] = useState(0)
   const [renderNonce, setRenderNonce] = useState(0)
@@ -151,10 +149,38 @@ export default function PdfDocumentBlock({
     scaleRef.current = scale
   }, [scale])
 
+  const clearPreviewTransformBlock = () => {
+    const previewTarget = previewContainerRef.current
+    if (!previewTarget) return
+    previewTarget.style.transform = ''
+    previewTarget.style.transformOrigin = ''
+    previewTarget.style.willChange = ''
+  }
+
+  const applyPreviewTransformBlock = (nextScale: number) => {
+    const previewTarget = previewContainerRef.current
+    if (!previewTarget) return
+    const baseScale = fitWidthRef.current ? 1 : scaleRef.current
+    if (!Number.isFinite(baseScale) || baseScale <= 0) return
+    const transformScale = nextScale / baseScale
+    if (!Number.isFinite(transformScale)) return
+    if (Math.abs(transformScale - 1) < 0.001) {
+      clearPreviewTransformBlock()
+      return
+    }
+    previewTarget.style.transform = `scale(${transformScale})`
+    previewTarget.style.transformOrigin = 'top center'
+    previewTarget.style.willChange = 'transform'
+  }
+
   useEffect(() => {
     if (!fitWidth) return
     pendingScaleRef.current = null
-    setGesturePreviewScale(null)
+    if (previewRafRef.current !== null) {
+      window.cancelAnimationFrame(previewRafRef.current)
+      previewRafRef.current = null
+    }
+    clearPreviewTransformBlock()
   }, [fitWidth])
 
   useEffect(() => {
@@ -176,7 +202,7 @@ export default function PdfDocumentBlock({
       const nextScale = pendingScaleRef.current
       clearPendingRenderHandlesBlock()
       pendingScaleRef.current = null
-      setGesturePreviewScale(null)
+      clearPreviewTransformBlock()
       if (nextScale === null || Math.abs(scaleRef.current - nextScale) < 0.01) return
       scaleRef.current = nextScale
       setScale(nextScale)
@@ -187,7 +213,9 @@ export default function PdfDocumentBlock({
       if (previewRafRef.current !== null) return
       previewRafRef.current = window.requestAnimationFrame(() => {
         previewRafRef.current = null
-        if (pendingScaleRef.current !== null) setGesturePreviewScale(pendingScaleRef.current)
+        if (pendingScaleRef.current !== null) {
+          applyPreviewTransformBlock(pendingScaleRef.current)
+        }
       })
     }
 
@@ -201,85 +229,93 @@ export default function PdfDocumentBlock({
       }, delayMs)
     }
 
-    const selection = select(target)
-    const zoomBehavior = zoom()
-      .scaleExtent([MIN_SCALE_BLOCK, MAX_SCALE_BLOCK])
-      .wheelDelta((event: WheelEvent) => {
-        if (!event.ctrlKey || !Number.isFinite(event.deltaY)) return 0
-        return -event.deltaY * TRACKPAD_ZOOM_SENSITIVITY_BLOCK * 120
-      })
-      .filter((event: Event) => {
-        if (event.type === 'wheel') {
-          return (event as WheelEvent).ctrlKey
-        }
-        return event.type.startsWith('touch')
-      })
-      .on('start', (event: any) => {
-        if (suppressZoomEventRef.current) return
-        const sourceEventType = String(event?.sourceEvent?.type ?? '')
-        if (!sourceEventType) return
+    const readTouchDistanceBlock = (touches: TouchList): number | null => {
+      if (touches.length < 2) return null
+      const [firstTouch, secondTouch] = [touches[0], touches[1]]
+      return Math.hypot(firstTouch.clientX - secondTouch.clientX, firstTouch.clientY - secondTouch.clientY)
+    }
 
-        if (commitTimerRef.current !== null) {
-          window.clearTimeout(commitTimerRef.current)
-          commitTimerRef.current = null
-        }
+    const handleTouchStartBlock = (event: TouchEvent) => {
+      if (event.touches.length !== 2) return
+      const distance = readTouchDistanceBlock(event.touches)
+      if (!distance || distance <= 0) return
 
-        if (fitWidthRef.current) {
-          fitWidthRef.current = false
-          setFitWidth(false)
-        }
-      })
-      .on('zoom', (event: any) => {
-        if (suppressZoomEventRef.current) return
-        const nextScale = normalizeScaleBlock(event?.transform?.k ?? scaleRef.current)
-        if (Math.abs((pendingScaleRef.current ?? scaleRef.current) - nextScale) < 0.01) return
+      if (commitTimerRef.current !== null) {
+        window.clearTimeout(commitTimerRef.current)
+        commitTimerRef.current = null
+      }
 
-        schedulePreviewScaleBlock(nextScale)
+      const currentInteractiveScale = fitWidthRef.current
+        ? 1
+        : (pendingScaleRef.current ?? scaleRef.current)
 
-        const sourceEventType = String(event?.sourceEvent?.type ?? '')
-        if (sourceEventType === 'wheel') {
-          scheduleCommitScaleBlock(TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK)
-        }
-      })
-      .on('end', (event: any) => {
-        if (suppressZoomEventRef.current) return
-        const sourceEventType = String(event?.sourceEvent?.type ?? '')
-        if (sourceEventType === 'wheel') {
-          scheduleCommitScaleBlock(TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK)
-          return
-        }
-        scheduleCommitScaleBlock(0)
-      })
+      pinchTouchActiveRef.current = true
+      pinchStartDistanceRef.current = distance
+      pinchStartScaleRef.current = currentInteractiveScale
 
-    zoomBehaviorRef.current = zoomBehavior
-    zoomSelectionRef.current = selection
+      if (fitWidthRef.current) {
+        fitWidthRef.current = false
+        setFitWidth(false)
+      }
+    }
 
-    selection.call(zoomBehavior)
-    selection.on('dblclick.zoom', null)
+    const handleTouchMoveBlock = (event: TouchEvent) => {
+      if (!pinchTouchActiveRef.current) return
+      const distance = readTouchDistanceBlock(event.touches)
+      if (!distance || distance <= 0) return
 
-    suppressZoomEventRef.current = true
-    selection.call(zoomBehavior.transform, zoomIdentity.scale(fitWidthRef.current ? 1 : scaleRef.current))
-    suppressZoomEventRef.current = false
+      event.preventDefault()
+      const nextScale = normalizeScaleBlock(pinchStartScaleRef.current * (distance / pinchStartDistanceRef.current))
+      if (Math.abs((pendingScaleRef.current ?? scaleRef.current) - nextScale) < 0.01) return
+      schedulePreviewScaleBlock(nextScale)
+    }
+
+    const handleTouchEndBlock = (event: TouchEvent) => {
+      if (!pinchTouchActiveRef.current) return
+      if (event.touches.length >= 2) return
+      pinchTouchActiveRef.current = false
+      scheduleCommitScaleBlock(0)
+    }
+
+    const handleWheelBlock = (event: WheelEvent) => {
+      if (!event.ctrlKey || !Number.isFinite(event.deltaY) || event.deltaY === 0) return
+      event.preventDefault()
+
+      const currentInteractiveScale = fitWidthRef.current
+        ? 1
+        : (pendingScaleRef.current ?? scaleRef.current)
+
+      if (fitWidthRef.current) {
+        fitWidthRef.current = false
+        setFitWidth(false)
+      }
+
+      const zoomMultiplier = Math.exp(-event.deltaY * TRACKPAD_ZOOM_SENSITIVITY_BLOCK)
+      const nextScale = normalizeScaleBlock(currentInteractiveScale * zoomMultiplier)
+      if (Math.abs(currentInteractiveScale - nextScale) < 0.01) return
+
+      schedulePreviewScaleBlock(nextScale)
+      scheduleCommitScaleBlock(TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK)
+    }
+
+    target.addEventListener('touchstart', handleTouchStartBlock, { passive: true })
+    target.addEventListener('touchmove', handleTouchMoveBlock, { passive: false })
+    target.addEventListener('touchend', handleTouchEndBlock, { passive: true })
+    target.addEventListener('touchcancel', handleTouchEndBlock, { passive: true })
+    target.addEventListener('wheel', handleWheelBlock, { passive: false })
 
     return () => {
       clearPendingRenderHandlesBlock()
-      selection.on('.zoom', null)
-      zoomBehaviorRef.current = null
-      zoomSelectionRef.current = null
-      suppressZoomEventRef.current = false
+      clearPreviewTransformBlock()
+      pinchTouchActiveRef.current = false
+      pinchStartDistanceRef.current = 0
+      target.removeEventListener('touchstart', handleTouchStartBlock)
+      target.removeEventListener('touchmove', handleTouchMoveBlock)
+      target.removeEventListener('touchend', handleTouchEndBlock)
+      target.removeEventListener('touchcancel', handleTouchEndBlock)
+      target.removeEventListener('wheel', handleWheelBlock)
     }
   }, [])
-
-  useEffect(() => {
-    const selection = zoomSelectionRef.current
-    const zoomBehavior = zoomBehaviorRef.current
-    if (!selection || !zoomBehavior) return
-
-    const targetScale = fitWidth ? 1 : scale
-    suppressZoomEventRef.current = true
-    selection.call(zoomBehavior.transform, zoomIdentity.scale(targetScale))
-    suppressZoomEventRef.current = false
-  }, [fitWidth, scale])
 
   const pageWidth = useMemo(() => {
     if (!fitWidth) return undefined
@@ -306,21 +342,7 @@ export default function PdfDocumentBlock({
 
   const canGoPrev = pageNumber > 1
   const canGoNext = numPages > 0 && pageNumber < numPages
-  const displayedScale = fitWidth ? scale : (gesturePreviewScale ?? scale)
-  const previewScaleMultiplier = (
-    fitWidth
-      || gesturePreviewScale === null
-      || Math.abs(scale) < 0.0001
-  )
-    ? 1
-    : gesturePreviewScale / scale
-  const pagePreviewStyle = previewScaleMultiplier === 1
-    ? undefined
-    : {
-      transform: `scale(${previewScaleMultiplier})`,
-      transformOrigin: 'top center',
-      willChange: 'transform',
-    }
+  const displayedScale = scale
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col bg-card', className)}>
@@ -371,7 +393,7 @@ export default function PdfDocumentBlock({
           disabled={fitWidth}
           onClick={() => {
             pendingScaleRef.current = null
-            setGesturePreviewScale(null)
+            clearPreviewTransformBlock()
             setScale((prev) => normalizeScaleBlock(prev - 0.1))
           }}
           title="Zoom out"
@@ -389,7 +411,7 @@ export default function PdfDocumentBlock({
           disabled={fitWidth}
           onClick={() => {
             pendingScaleRef.current = null
-            setGesturePreviewScale(null)
+            clearPreviewTransformBlock()
             setScale((prev) => normalizeScaleBlock(prev + 0.1))
           }}
           title="Zoom in"
@@ -417,7 +439,7 @@ export default function PdfDocumentBlock({
         )}
 
         {!loading && !error && documentFile && (
-          <div className="mx-auto w-fit origin-top" style={pagePreviewStyle}>
+          <div ref={previewContainerRef} className="mx-auto w-fit origin-top">
             <Document
               key={`${path}:${renderNonce}`}
               file={documentFile}

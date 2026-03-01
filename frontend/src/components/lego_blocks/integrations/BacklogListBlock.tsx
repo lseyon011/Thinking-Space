@@ -64,6 +64,16 @@ function fileNameFromPathBlock(path: string): string {
   return base.toLowerCase().endsWith('.md') ? base.slice(0, -3) : base
 }
 
+function toSentenceCaseLabelBlock(value: string, fallback: string): string {
+  const trimmed = value.trim()
+  return trimmed || fallback
+}
+
+function toTitleCaseLabelBlock(value: string, fallback: string): string {
+  const next = toSentenceCaseLabelBlock(value, fallback)
+  return next.charAt(0).toUpperCase() + next.slice(1)
+}
+
 export interface BacklogListBlockProps {
   programs: NodeRecord[]
   loadEpics: (program: NodeRecord) => Promise<NodeRecord[]>
@@ -117,9 +127,13 @@ export interface BacklogListBlockProps {
   showProgramCopyButton?: boolean
   preferInlineDetailsButton?: boolean
   allowInlineNotesInReadOnly?: boolean
+  allowProgramLayoutEditingInReadOnly?: boolean
   showExpandToggles?: boolean
   showNodeTypeIcons?: boolean
   showPriorityDots?: boolean
+  programLabelSingular?: string
+  programLabelPlural?: string
+  programGroupLabelSingular?: string
 }
 
 
@@ -168,9 +182,13 @@ export default function BacklogListBlock({
   showProgramCopyButton = true,
   preferInlineDetailsButton = false,
   allowInlineNotesInReadOnly = false,
+  allowProgramLayoutEditingInReadOnly = false,
   showExpandToggles = true,
   showNodeTypeIcons = true,
   showPriorityDots = true,
+  programLabelSingular = 'program',
+  programLabelPlural = 'programs',
+  programGroupLabelSingular = 'group',
 }: BacklogListBlockProps) {
   const [childrenByNode, setChildrenByNode] = useState<Record<string, ChildStateBlock>>({})
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({})
@@ -189,7 +207,13 @@ export default function BacklogListBlock({
   const newRowHighlightTimeoutByNodeRef = useRef<Record<string, number>>({})
   const [localError, setLocalError] = useState<string | null>(null)
   const programFingerprint = programs.map(program => `${program.uuid}:${program.updatedAt}`).join('|')
-  const allowProgramLayoutEditing = !readOnly && programLayoutEditMode
+  const allowProgramLayoutModeToggle = !readOnly || allowProgramLayoutEditingInReadOnly
+  const allowProgramLayoutEditing = allowProgramLayoutModeToggle && programLayoutEditMode
+  const programNounSingular = toSentenceCaseLabelBlock(programLabelSingular, 'program')
+  const programNounPlural = toSentenceCaseLabelBlock(programLabelPlural, 'programs')
+  const programNounSingularTitle = toTitleCaseLabelBlock(programLabelSingular, 'program')
+  const programNounPluralTitle = toTitleCaseLabelBlock(programLabelPlural, 'programs')
+  const programGroupNounSingular = toSentenceCaseLabelBlock(programGroupLabelSingular, 'group')
 
   const lookupTagColor = useCallback((node: NodeRecord, tag: string): string | undefined => {
     const projectRoot = normalizePath(node.projectRoot ?? '')
@@ -241,9 +265,9 @@ export default function BacklogListBlock({
   }, [treeRevision])
 
   useEffect(() => {
-    if (!readOnly) return
+    if (allowProgramLayoutModeToggle) return
     setProgramLayoutEditMode(false)
-  }, [readOnly])
+  }, [allowProgramLayoutModeToggle])
 
   useEffect(() => {
     if (rowDetailsRenderer) return
@@ -946,7 +970,7 @@ export default function BacklogListBlock({
 
   return (
     <div className="flex flex-col space-y-3">
-      {!readOnly && (
+      {allowProgramLayoutModeToggle && (
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
@@ -954,17 +978,19 @@ export default function BacklogListBlock({
             variant={allowProgramLayoutEditing ? 'default' : 'outline'}
             onClick={() => setProgramLayoutEditMode(prev => !prev)}
           >
-            {allowProgramLayoutEditing ? 'Done Organizing Programs' : 'Edit Program Layout'}
+            {allowProgramLayoutEditing
+              ? `Done Organizing ${programNounPluralTitle}`
+              : `Edit ${programNounSingularTitle} Layout`}
           </Button>
           {allowProgramLayoutEditing && (
             <p className="text-xs text-muted-foreground">
-              Layout editing is on. Use drag/drop or arrow controls to reorder, assign groups from the right-side dropdown on each program row, and remove groups with the X button on each group header.
+              {`Layout editing is on. Use drag/drop or arrow controls to reorder, assign ${programGroupNounSingular}s from the right-side dropdown on each ${programNounSingular} row, and remove ${programGroupNounSingular}s with the X button on each ${programGroupNounSingular} header.`}
             </p>
           )}
         </div>
       )}
 
-      {!readOnly && renderInlineCreate(null, ROOT_INPUT_KEY, 'Add program...')}
+      {!readOnly && renderInlineCreate(null, ROOT_INPUT_KEY, `Add ${programNounSingular}...`)}
 
       {rowColumns.length > 0 && (
         <div className={cn(
@@ -1013,7 +1039,7 @@ export default function BacklogListBlock({
               event.preventDefault()
               createProgramGroupFromDraft()
             }}
-            placeholder="Add program group (e.g. 2025)"
+            placeholder={`Add ${programNounSingular} ${programGroupNounSingular} (e.g. 2025)`}
             className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
           />
           <Button
@@ -1030,7 +1056,7 @@ export default function BacklogListBlock({
 
       {programs.length === 0 && (
         <div className="px-3 py-4 text-sm text-muted-foreground">
-          No programs yet. Create one above to get started.
+          {`No ${programNounPlural} yet. Create one above to get started.`}
         </div>
       )}
 
@@ -1055,7 +1081,7 @@ export default function BacklogListBlock({
                     </div>
                   ) : (
                     <div className="rounded-md border border-dashed border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
-                      No programs assigned to this group.
+                      {`No ${programNounPlural} assigned to this ${programGroupNounSingular}.`}
                     </div>
                   )
                 )}
@@ -1068,7 +1094,9 @@ export default function BacklogListBlock({
       {groupedProgramsByGroupId.ungrouped.length > 0 && (
         <div className="space-y-2">
           {programGroups.length > 0 && (
-            <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Ungrouped Programs</p>
+            <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              {`Ungrouped ${programNounPluralTitle}`}
+            </p>
           )}
           {groupedProgramsByGroupId.ungrouped.map(program => renderProgramSection(program, programIndexById.get(program.uuid) ?? 0))}
         </div>
