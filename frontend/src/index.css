@@ -753,6 +753,17 @@
       0 2px 8px -6px rgb(0 0 0 / 0.35);
   }
 
+  .ltm-tab-scroll-track {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .ltm-tab-scroll-track::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+
   .ltm-shell-logo,
   .ltm-shell-action,
   .ltm-shell-theme-select {

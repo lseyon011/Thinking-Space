@@ -26,7 +26,7 @@ export default function AppTabsBlock({
   return (
     <div className={cn('ltm-shell-tabs ltm-shell-motion-capsule', className)} style={{ containerType: 'inline-size' }}>
       <div className="ltm-tab-center-row inline-flex min-w-0 max-w-full items-center gap-1.5">
-        <div className="ltm-tab-scroll-track min-w-0 max-w-full overflow-x-auto">
+        <div className="ltm-tab-scroll-track min-w-0 max-w-full flex-1 overflow-x-auto">
           <div className="ltm-tab-scroll-inner inline-flex w-max items-center gap-0.5 pr-1">
             {tabs.map((tab) => {
               const active = tab.id === activeTabId

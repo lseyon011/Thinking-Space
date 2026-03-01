@@ -1,17 +1,21 @@
 import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Bot,
+  ChevronDown,
   CheckSquare2,
   Compass,
   FolderKanban,
   FileText,
   GitBranch,
+  Loader2,
   Menu,
   MessageSquare,
   PanelLeft,
   PanelLeftClose,
   PlusSquare,
+  RefreshCw,
   Search,
   Settings as SettingsIcon,
   Sparkles,
@@ -38,6 +42,7 @@ import Settings from './pages/Settings'
 import F9Page from './personal_extension/pages/F9Page'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import AppTabsBlock, { type AppWorkspaceTabBlockModel } from './components/lego_blocks/units/AppTabsBlock'
+import { Button } from './components/lego_blocks/units/ui/button'
 import {
   EXCALIDRAW_PLUS_ROOT_ROUTE,
   EXCALIDRAW_PLUS_TOOL_ROUTES,
@@ -49,8 +54,9 @@ import { useUILayoutBlock } from './components/lego_blocks/hooks/shared/useUILay
 import { useUIThemeBlock } from './components/lego_blocks/units/UIThemeBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
-import { smartSync } from './services/orchestrators/vaultSyncOrch'
+import { fullSync, getLastSyncTimestamp, setLastSyncTimestamp, smartSync, type SyncResult } from './services/orchestrators/vaultSyncOrch'
 import { listMarkdownEntries } from './services/orchestrators/fileSystemOrch'
+import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import {
   STORAGE_KEYS,
   getJsonStorageItem,
@@ -95,6 +101,23 @@ interface CommandItem {
 interface AppWorkspaceTab {
   id: string
   route: string
+}
+
+interface SyncRunSummary {
+  mode: 'sync' | 'rebuild'
+  finishedAt: number
+  result?: SyncResult
+  error?: string
+}
+
+interface SyncPanelAnchor {
+  top: number
+  right: number
+}
+
+function formatSyncTimestamp(value: number | null): string {
+  if (!value) return 'none yet'
+  return new Date(value).toLocaleString()
 }
 
 const PRIMARY_NAV_ITEMS: NavItem[] = [
@@ -229,7 +252,20 @@ function App() {
   const [commandFileItems, setCommandFileItems] = useState<CommandItem[]>([])
   const [commandFilesLastLoadedAt, setCommandFilesLastLoadedAt] = useState(0)
   const [explorerIconStyle, setExplorerIconStyle] = useState<ExplorerIconStyleBlock>('outline')
+  const [refreshRunning, setRefreshRunning] = useState(false)
+  const [syncPanelOpen, setSyncPanelOpen] = useState(false)
+  const [syncActionRunning, setSyncActionRunning] = useState<'sync' | 'rebuild' | null>(null)
+  const [syncToolsWidth, setSyncToolsWidth] = useState(168)
+  const [topChromeMenuWidth, setTopChromeMenuWidth] = useState(0)
+  const [syncPanelAnchor, setSyncPanelAnchor] = useState<SyncPanelAnchor>({ top: 52, right: 12 })
+  const [lastSyncedAt, setLastSyncedAt] = useState(() => getLastSyncTimestamp())
+  const [lastSyncAttemptAt, setLastSyncAttemptAt] = useState<number | null>(null)
+  const [lastSyncSummary, setLastSyncSummary] = useState<SyncRunSummary | null>(null)
   const commandInputRef = useRef<HTMLInputElement | null>(null)
+  const syncToolsRef = useRef<HTMLDivElement | null>(null)
+  const topChromeMenuRef = useRef<HTMLDivElement | null>(null)
+  const syncPanelRef = useRef<HTMLDivElement | null>(null)
+  const syncToggleButtonRef = useRef<HTMLButtonElement | null>(null)
   const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
   const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerPanelSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -339,6 +375,11 @@ function App() {
   const showBottomNav = false
   const isCapacitorSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
   const showCapacitorTopChromeMenu = compactNav && !drawerOpen && isCapacitorSurface
+  const topChromeSideWidth = Math.max(
+    120,
+    syncToolsWidth,
+    showCapacitorTopChromeMenu ? topChromeMenuWidth : 0,
+  )
   const topInset = shell.topInset
   const rightInset = shell.rightInset
   const bottomInset = shell.bottomInset
@@ -413,6 +454,119 @@ function App() {
     setVaultSwitchHardRefreshPending(true)
     setNeedsVaultSetup(true)
   }, [])
+
+  const handleGlobalRefresh = useCallback(() => {
+    if (refreshRunning) return
+    setRefreshRunning(true)
+    dispatchGlobalSyncRefreshBlock({
+      source: 'topbar',
+      requestedAt: Date.now(),
+      vaultSyncAttempted: false,
+      vaultSyncSucceeded: false,
+    })
+    window.setTimeout(() => setRefreshRunning(false), 500)
+  }, [refreshRunning])
+
+  const updateSyncPanelAnchor = useCallback(() => {
+    const trigger = syncToggleButtonRef.current
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    setSyncPanelAnchor({
+      top: Math.round(rect.bottom + 8),
+      right: Math.max(10, Math.round(window.innerWidth - rect.right)),
+    })
+  }, [])
+
+  useEffect(() => {
+    const syncToolsNode = syncToolsRef.current
+    if (!syncToolsNode) return
+
+    const updateSyncToolsWidth = () => {
+      setSyncToolsWidth(Math.ceil(syncToolsNode.getBoundingClientRect().width))
+    }
+
+    updateSyncToolsWidth()
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => updateSyncToolsWidth())
+      observer.observe(syncToolsNode)
+      return () => observer.disconnect()
+    }
+
+    window.addEventListener('resize', updateSyncToolsWidth)
+    return () => window.removeEventListener('resize', updateSyncToolsWidth)
+  }, [])
+
+  useEffect(() => {
+    if (!showCapacitorTopChromeMenu) {
+      setTopChromeMenuWidth(0)
+      return
+    }
+
+    const menuNode = topChromeMenuRef.current
+    if (!menuNode) return
+
+    const updateMenuWidth = () => {
+      setTopChromeMenuWidth(Math.ceil(menuNode.getBoundingClientRect().width))
+    }
+
+    updateMenuWidth()
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => updateMenuWidth())
+      observer.observe(menuNode)
+      return () => observer.disconnect()
+    }
+
+    window.addEventListener('resize', updateMenuWidth)
+    return () => window.removeEventListener('resize', updateMenuWidth)
+  }, [showCapacitorTopChromeMenu])
+
+  const runSyncAction = useCallback(async (mode: 'sync' | 'rebuild') => {
+    if (needsVaultSetup || syncActionRunning) return
+    setSyncActionRunning(mode)
+
+    let syncSucceeded = false
+    try {
+      const result = mode === 'sync'
+        ? await smartSync()
+        : await fullSync()
+
+      if (mode === 'rebuild') {
+        if (result.errors.length === 0) {
+          setLastSyncTimestamp()
+        } else {
+          setLastSyncTimestamp(0)
+        }
+      }
+
+      setLastSyncedAt(getLastSyncTimestamp())
+      setLastSyncAttemptAt(Date.now())
+      setLastSyncSummary({
+        mode,
+        finishedAt: Date.now(),
+        result,
+      })
+      syncSucceeded = result.errors.length === 0
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Sync failed.'
+      setLastSyncSummary({
+        mode,
+        finishedAt: Date.now(),
+        error: message,
+      })
+      setLastSyncAttemptAt(Date.now())
+      console.error('Vault sync action failed', error)
+    } finally {
+      dispatchGlobalSyncRefreshBlock({
+        source: 'topbar',
+        requestedAt: Date.now(),
+        vaultSyncAttempted: true,
+        vaultSyncSucceeded: syncSucceeded,
+      })
+      setSyncActionRunning(null)
+    }
+  }, [needsVaultSetup, syncActionRunning])
 
   const runCommandItem = useCallback((item: CommandItem) => {
     setCommandPaletteOpen(false)
@@ -664,10 +818,51 @@ function App() {
 
   useEffect(() => {
     if (needsVaultSetup) return
-    smartSync().catch((err) => {
-      console.error('Failed to sync vault to IndexedDB cache', err)
-    })
+    smartSync()
+      .then((result) => {
+        setLastSyncedAt(getLastSyncTimestamp())
+        setLastSyncAttemptAt(Date.now())
+        setLastSyncSummary({
+          mode: 'sync',
+          finishedAt: Date.now(),
+          result,
+        })
+      })
+      .catch((err) => {
+        setLastSyncAttemptAt(Date.now())
+        setLastSyncSummary({
+          mode: 'sync',
+          finishedAt: Date.now(),
+          error: err instanceof Error ? err.message : 'Sync failed.',
+        })
+        console.error('Failed to sync vault to IndexedDB cache', err)
+      })
   }, [needsVaultSetup])
+
+  useEffect(() => {
+    if (!syncPanelOpen) return
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null
+      if (!target) return
+      if (syncToolsRef.current?.contains(target)) return
+      if (syncPanelRef.current?.contains(target)) return
+      setSyncPanelOpen(false)
+    }
+    window.addEventListener('mousedown', onPointerDown)
+    return () => window.removeEventListener('mousedown', onPointerDown)
+  }, [syncPanelOpen])
+
+  useEffect(() => {
+    if (!syncPanelOpen) return
+    updateSyncPanelAnchor()
+    const reposition = () => updateSyncPanelAnchor()
+    window.addEventListener('resize', reposition)
+    window.addEventListener('scroll', reposition, true)
+    return () => {
+      window.removeEventListener('resize', reposition)
+      window.removeEventListener('scroll', reposition, true)
+    }
+  }, [syncPanelOpen, updateSyncPanelAnchor])
 
   useEffect(() => {
     if (needsVaultSetup) return
@@ -799,26 +994,75 @@ function App() {
           style={topInset ? { paddingTop: `calc(${topInset}px + var(--ltm-shell-inset))` } : undefined}
         >
         <section className="ltm-shell-main-stage">
-          <header className={`ltm-shell-top-chrome ltm-shell-motion-chrome ${showCapacitorTopChromeMenu ? 'justify-start gap-2' : ''}`}>
-            {showCapacitorTopChromeMenu && (
+          <header className="ltm-shell-top-chrome ltm-shell-motion-chrome relative">
+            <div
+              className="absolute left-0 top-0 z-20 flex h-full items-center justify-start pl-0.5 [-webkit-app-region:no-drag]"
+              style={{ width: `${topChromeSideWidth}px` }}
+            >
+              {showCapacitorTopChromeMenu && (
+                <div ref={topChromeMenuRef} className="inline-flex">
+                  <button
+                    type="button"
+                    onClick={() => setDrawerOpen(true)}
+                    className="ltm-mobile-drawer-trigger ltm-motion-fast ltm-shell-field-surface inline-flex h-8 min-w-[5.5rem] shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-[10px] font-semibold uppercase tracking-[0.13em] text-foreground shadow-sm"
+                    aria-label="Open navigation"
+                  >
+                    <Menu className="h-3 w-3" />
+                    <span>Menu</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div
+              className="min-w-0 w-full"
+              style={{
+                paddingLeft: `${topChromeSideWidth}px`,
+                paddingRight: `${topChromeSideWidth}px`,
+              }}
+            >
+              <AppTabsBlock
+                tabs={workspaceTabItems}
+                activeTabId={activeWorkspaceTabId}
+                onSelectTab={handleSelectWorkspaceTab}
+                onCreateTab={handleCreateWorkspaceTab}
+                onCloseTab={handleCloseWorkspaceTab}
+                className="ltm-shell-top-tab-capsule"
+              />
+            </div>
+
+            <div
+              ref={syncToolsRef}
+              className="absolute right-0 top-0 z-20 flex h-full items-center justify-end gap-2 [-webkit-app-region:no-drag]"
+              style={{ width: `${topChromeSideWidth}px` }}
+            >
               <button
                 type="button"
-                onClick={() => setDrawerOpen(true)}
-                className="ltm-mobile-drawer-trigger ltm-motion-fast ltm-shell-field-surface inline-flex h-8 min-w-[5.5rem] shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-[10px] font-semibold uppercase tracking-[0.13em] text-foreground shadow-sm"
-                aria-label="Open navigation"
+                onClick={handleGlobalRefresh}
+                disabled={refreshRunning || needsVaultSetup}
+                className="ltm-motion-fast inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-border/60 bg-background/85 px-3 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="Refresh current workspace"
+                title="Refresh current workspace"
               >
-                <Menu className="h-3 w-3" />
-                <span>Menu</span>
+                {refreshRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                <span className="hidden lg:inline">Refresh</span>
               </button>
-            )}
-            <AppTabsBlock
-              tabs={workspaceTabItems}
-              activeTabId={activeWorkspaceTabId}
-              onSelectTab={handleSelectWorkspaceTab}
-              onCreateTab={handleCreateWorkspaceTab}
-              onCloseTab={handleCloseWorkspaceTab}
-              className={showCapacitorTopChromeMenu ? 'min-w-0 flex-1' : 'ltm-shell-top-tab-capsule'}
-            />
+
+              <button
+                type="button"
+                ref={syncToggleButtonRef}
+                onClick={() => {
+                  updateSyncPanelAnchor()
+                  setSyncPanelOpen(prev => !prev)
+                }}
+                className="ltm-motion-fast inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-border/60 bg-background/85 px-3 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                aria-label="Toggle sync tools"
+                title="Toggle sync tools"
+              >
+                <span className="hidden lg:inline">Sync Tools</span>
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${syncPanelOpen ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
           </header>
           <div className="ltm-shell-body-stage">
             {!compactNav && (
@@ -1152,6 +1396,110 @@ function App() {
             </div>
           </aside>
         </>
+      )}
+
+      {syncPanelOpen && createPortal(
+        <div
+          ref={syncPanelRef}
+          className="fixed z-[80] w-[380px] rounded-xl bg-white p-3 text-sm text-slate-900 shadow-lg [-webkit-app-region:no-drag]"
+          style={{
+            top: `${syncPanelAnchor.top}px`,
+            right: `${syncPanelAnchor.right}px`,
+            backgroundColor: '#ffffff',
+            opacity: 1,
+            filter: 'none',
+            backdropFilter: 'none',
+            WebkitBackdropFilter: 'none',
+            mixBlendMode: 'normal',
+          }}
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">Sync Tools</p>
+          <div className="mt-3 space-y-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!!syncActionRunning || needsVaultSetup}
+              className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50 disabled:border-transparent disabled:bg-white disabled:text-slate-500"
+              onClick={() => { void runSyncAction('sync') }}
+            >
+              {syncActionRunning === 'sync' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+              Sync Folder
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!!syncActionRunning || needsVaultSetup}
+              className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50 disabled:border-transparent disabled:bg-white disabled:text-slate-500"
+              onClick={() => { void runSyncAction('rebuild') }}
+            >
+              {syncActionRunning === 'rebuild' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+              Rebuild Index + Cache
+            </Button>
+          </div>
+
+          <div className="mt-3 rounded-lg bg-white p-2 text-[11px]">
+            <p className="text-slate-600">Sync Folder Root</p>
+            <p className="truncate font-mono text-slate-900">
+              {(() => {
+                const root = getStoredVaultRoot() || ''
+                if (!root) return 'Not configured'
+                if (root === 'web-backed') return 'web-backed (browser backend)'
+                return root
+              })()}
+            </p>
+            <p className="mt-1 text-slate-600">
+              Last Successful Sync:{' '}
+              <span className="text-slate-900">
+                {lastSyncedAt
+                  ? new Date(lastSyncedAt * 1000).toLocaleString()
+                  : (lastSyncSummary?.result?.errors.length ?? 0) > 0
+                    ? 'No successful sync yet (latest sync had errors)'
+                    : 'No successful sync yet'}
+              </span>
+            </p>
+            <p className="text-slate-600">
+              Last Sync Attempt: <span className="text-slate-900">{formatSyncTimestamp(lastSyncAttemptAt)}</span>
+            </p>
+            {lastSyncSummary && (
+              <>
+                <p className="mt-1 text-slate-600">
+                  Last Action: <span className="text-slate-900">{lastSyncSummary.mode === 'sync' ? 'Sync Folder' : 'Rebuild Index + Cache'}</span>
+                </p>
+                {lastSyncSummary.error ? (
+                  <p className="text-destructive">{lastSyncSummary.error}</p>
+                ) : lastSyncSummary.result ? (
+                  <>
+                    <p className="text-slate-600">
+                      Files: <span className="text-slate-900">{lastSyncSummary.result.totalFiles}</span> · Parsed:{' '}
+                      <span className="text-slate-900">{lastSyncSummary.result.parsedNodes}</span> · Errors:{' '}
+                      <span className="text-slate-900">{lastSyncSummary.result.errors.length}</span>
+                    </p>
+                    {lastSyncSummary.result.errors.length > 0 && (
+                      <div className="mt-2 rounded-md bg-red-50 p-2 text-[10px] text-red-700">
+                        <p className="font-semibold uppercase tracking-[0.12em]">Sync Errors</p>
+                        <div className="mt-1 space-y-1">
+                          {lastSyncSummary.result.errors.slice(0, 5).map((entry, idx) => (
+                            <p key={`${entry.path}-${idx}`} className="leading-tight">
+                              <span className="font-mono">{entry.path}</span>: {entry.error}
+                            </p>
+                          ))}
+                        </div>
+                        {lastSyncSummary.result.errors.length > 5 && (
+                          <p className="mt-1 text-red-600">
+                            +{lastSyncSummary.result.errors.length - 5} more errors
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : null}
+              </>
+            )}
+          </div>
+        </div>,
+        document.body,
       )}
 
       {commandPaletteOpen && (

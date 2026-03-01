@@ -8,19 +8,12 @@ import {
   type OrganizerIntegrityIssue,
   type OrganizerIntegrityReport,
 } from '@/services/orchestrators/organizerIntegrityOrch'
-import { getLastSyncTimestamp, smartSync } from '@/services/orchestrators/vaultSyncOrch'
+import { smartSync } from '@/services/orchestrators/vaultSyncOrch'
 
 function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
   if (typeof value === 'string' && value.trim()) return value
   return fallback
-}
-
-function formatSyncTime(timestampSeconds: number): string {
-  if (!timestampSeconds) return 'never'
-  const date = new Date(timestampSeconds * 1000)
-  if (Number.isNaN(date.getTime())) return 'unknown'
-  return date.toLocaleString()
 }
 
 function issueSortWeight(issue: OrganizerIntegrityIssue): number {
@@ -34,7 +27,6 @@ export default function OrganizerIntegrityOrch() {
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [applying, setApplying] = useState(false)
-  const [lastSyncedAt, setLastSyncedAt] = useState<number>(() => getLastSyncTimestamp())
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -47,7 +39,6 @@ export default function OrganizerIntegrityOrch() {
       if (syncFirst) {
         setSyncing(true)
         await smartSync()
-        setLastSyncedAt(getLastSyncTimestamp())
       }
 
       const next = await runOrganizerIntegrityCheck()
@@ -124,10 +115,6 @@ export default function OrganizerIntegrityOrch() {
               {applying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Wrench className="mr-1.5 h-3.5 w-3.5" />}
               Apply Status Policy Fixes
             </Button>
-          </div>
-
-          <div className="text-xs text-muted-foreground">
-            Last synced: <span className="font-medium text-foreground">{formatSyncTime(lastSyncedAt)}</span>
           </div>
 
           {(message || error) && (

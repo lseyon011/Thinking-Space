@@ -30,7 +30,7 @@ import {
   invokeCapabilityOrThrow,
 } from '@/services/orchestrators/capabilityRouterOrch'
 import { listInProgressExecutionTasksOrch } from '@/services/orchestrators/executionProgressOrch'
-import { getLastSyncTimestamp, smartSync } from '@/services/orchestrators/vaultSyncOrch'
+import { smartSync } from '@/services/orchestrators/vaultSyncOrch'
 import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 import {
   STORAGE_KEYS,
@@ -50,6 +50,7 @@ import {
   type OrganizerProgramGroupEntryOrch,
   type OrganizerUiStateOrch,
 } from '@/services/orchestrators/organizerUiStateOrch'
+import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 
 interface ProjectEntry {
   name: string
@@ -81,13 +82,6 @@ function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
   if (typeof value === 'string' && value.trim()) return value
   return fallback
-}
-
-function formatSyncTime(timestampSeconds: number): string {
-  if (!timestampSeconds) return 'never'
-  const date = new Date(timestampSeconds * 1000)
-  if (Number.isNaN(date.getTime())) return 'unknown'
-  return date.toLocaleString()
 }
 
 function toDateInputValue(value: string | undefined): string {
@@ -354,7 +348,6 @@ export default function BacklogOrch() {
   const [working, setWorking] = useState(false)
   const [treeRevision, setTreeRevision] = useState(0)
   const [syncing, setSyncing] = useState(false)
-  const [lastSyncedAt, setLastSyncedAt] = useState<number>(() => getLastSyncTimestamp())
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [currentOperation, setCurrentOperation] = useState<string | null>(null)
@@ -556,7 +549,6 @@ export default function BacklogOrch() {
       if (syncVault) {
         setSyncing(true)
         await smartSync()
-        setLastSyncedAt(getLastSyncTimestamp())
       }
       const { nodes: roots } = await invokeCapabilityOrThrow({
         capability: 'organizer.nodes.list_roots',
@@ -577,7 +569,9 @@ export default function BacklogOrch() {
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      await loadPrograms(true)
+      // Avoid implicit vault sync on every remount/reopen.
+      // Global app startup sync + explicit Sync Tools actions handle cache refresh.
+      await loadPrograms(false)
       if (!cancelled) setInitialProjectLoadResolved(true)
     })()
     return () => { cancelled = true }
@@ -980,18 +974,30 @@ export default function BacklogOrch() {
     return () => window.removeEventListener('focus', onFocus)
   }, [loadPrograms, refreshEpicTimeline])
 
-  const syncVaultNow = useCallback(async () => {
-    setMessage(null)
-    setError(null)
-    setCurrentOperation('Syncing vault and refreshing organizer cache')
-    try {
-      const ok = await loadPrograms(true)
-      if (ok) setMessage('Vault synced and organizer cache refreshed.')
-    } finally {
-      setCurrentOperation(null)
-      void refreshExecutionProgress()
-      void refreshEpicTimeline()
-    }
+  useEffect(() => {
+    return addGlobalSyncRefreshListenerBlock((detail) => {
+      setMessage(null)
+      setError(null)
+      setCurrentOperation('Refreshing organizer views')
+      void loadPrograms(false)
+        .then((ok) => {
+          if (!ok) return
+          if (detail.vaultSyncAttempted) {
+            setMessage(
+              detail.vaultSyncSucceeded
+                ? 'Vault synced and organizer cache refreshed.'
+                : 'Organizer cache refreshed (vault sync reported an issue).',
+            )
+          } else {
+            setMessage('Views refreshed.')
+          }
+        })
+        .finally(() => {
+          setCurrentOperation(null)
+          void refreshExecutionProgress()
+          void refreshEpicTimeline()
+        })
+    })
   }, [loadPrograms, refreshEpicTimeline, refreshExecutionProgress])
 
   useEffect(() => {
@@ -1681,7 +1687,6 @@ export default function BacklogOrch() {
         tasks={activeExecutionTasks}
         tasksLoading={activeExecutionTasksLoading}
         tasksError={activeExecutionTasksError}
-        onRefresh={() => { void refreshExecutionProgress() }}
         onSelectTask={(task) => {
           setSelectedNode(task)
           setMessage(`Focused task: ${task.ticket || task.title}`)
@@ -1689,17 +1694,10 @@ export default function BacklogOrch() {
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" onClick={() => { void syncVaultNow() }} disabled={working || syncing}>
-          {syncing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-          Sync Vault Now
-        </Button>
         <Button size="sm" variant="outline" onClick={() => { void exportToExcalidraw() }} disabled={working}>
           <Download className="mr-1 h-3.5 w-3.5" />
           Export Excalidraw
         </Button>
-        <div className="text-xs text-muted-foreground">
-          Last synced: <span className="font-medium text-foreground">{formatSyncTime(lastSyncedAt)}</span>
-        </div>
         {(working || syncing) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
       </div>
 

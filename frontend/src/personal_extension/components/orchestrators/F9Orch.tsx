@@ -24,6 +24,7 @@ import {
 } from '../../services/orchestrators/f9ExecutionOrch'
 import { hasF9WebullConfigBlock } from '../../services/lego_blocks/units/f9WebullConfigBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
+import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 
 type F9SubtabId = 'overall' | 'memory'
 
@@ -89,7 +90,7 @@ export default function F9Orch() {
   const [snapshot, setSnapshot] = useState<F9OverallSnapshotOrch | null>(null)
   const [executionOverview, setExecutionOverview] = useState<F9ExecutionOverviewBlock | null>(null)
   const [executionSync, setExecutionSync] = useState<SyncF9ExecutionResultBlock | null>(null)
-  const [executionOverviewLoading, setExecutionOverviewLoading] = useState(false)
+  const [, setExecutionOverviewLoading] = useState(false)
   const [activeCompanyTicker, setActiveCompanyTicker] = useState<string | null>(null)
   const [activePositionFileName, setActivePositionFileName] = useState<string | null>(null)
   const [activePositionDetail, setActivePositionDetail] = useState<F9PositionDetailBlock | null>(null)
@@ -99,7 +100,7 @@ export default function F9Orch() {
   const [workspaceMessage, setWorkspaceMessage] = useState<string | null>(null)
   const [executionSyncError, setExecutionSyncError] = useState<string | null>(null)
   const [runtime] = useState<F9RuntimeSurfaceOrch>(getF9RuntimeSurfaceOrch())
-  const [loading, setLoading] = useState(false)
+  const [, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const hasConfig = hasF9WebullConfigBlock()
@@ -219,6 +220,12 @@ export default function F9Orch() {
       setActiveCompanyTicker(null)
     }
   }, [activeCompanyTicker, executionOverview])
+
+  useEffect(() => {
+    return addGlobalSyncRefreshListenerBlock(() => {
+      void refreshOverall()
+    })
+  }, [refreshOverall])
 
   useEffect(() => {
     if (!activeCompany) {
@@ -424,7 +431,6 @@ export default function F9Orch() {
       onSelectSubtab={setActiveSubtabId}
       hasConfig={hasConfig}
       liveRefreshAvailable={runtime === 'electron'}
-      loading={loading}
       error={error}
       runtime={runtime}
       lastRefreshRuntime={snapshot?.runtime ?? null}
@@ -453,7 +459,6 @@ export default function F9Orch() {
       executionSyncWarnings={executionSync?.warnings ?? []}
       executionSyncError={executionSyncError}
       executionOverview={executionOverview}
-      executionOverviewLoading={executionOverviewLoading}
       activeCompanyTicker={activeCompanyTicker}
       onSelectCompanyTicker={setActiveCompanyTicker}
       activePositionFileName={activePositionFileName}
@@ -469,7 +474,6 @@ export default function F9Orch() {
       onUpdateCompanyOverlay={onUpdateCompanyOverlay}
       onSavePositionBody={onSavePositionBody}
       onOpenNodeFile={(filePath) => openFile(filePath, { mode: 'edit' })}
-      onRefreshOverall={refreshOverall}
     />
   )
 }

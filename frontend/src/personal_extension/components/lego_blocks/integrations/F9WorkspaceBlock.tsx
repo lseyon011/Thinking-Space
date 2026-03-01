@@ -52,7 +52,6 @@ interface F9WorkspaceBlockProps {
   onSelectSubtab: (id: 'overall' | 'memory') => void
   hasConfig: boolean
   liveRefreshAvailable: boolean
-  loading: boolean
   error: string | null
   runtime: F9RuntimeSurfaceOrch | null
   lastRefreshRuntime: F9RuntimeSurfaceOrch | null
@@ -81,7 +80,6 @@ interface F9WorkspaceBlockProps {
   executionSyncWarnings: string[]
   executionSyncError: string | null
   executionOverview: F9ExecutionOverviewBlock | null
-  executionOverviewLoading: boolean
   activeCompanyTicker: string | null
   onSelectCompanyTicker: (companyTicker: string | null) => void
   activePositionFileName: string | null
@@ -124,7 +122,6 @@ interface F9WorkspaceBlockProps {
   }) => Promise<void>
   onSavePositionBody: (body: string) => Promise<void>
   onOpenNodeFile: (filePath: string) => void
-  onRefreshOverall: () => void
 }
 
 const F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK = 'f9_workspace_side_tabs_collapsed'
@@ -685,7 +682,6 @@ export default function F9WorkspaceBlock({
   onSelectSubtab,
   hasConfig,
   liveRefreshAvailable,
-  loading,
   error,
   runtime,
   lastRefreshRuntime,
@@ -705,7 +701,6 @@ export default function F9WorkspaceBlock({
   executionSyncWarnings,
   executionSyncError,
   executionOverview,
-  executionOverviewLoading,
   activeCompanyTicker,
   onSelectCompanyTicker,
   activePositionFileName,
@@ -721,7 +716,6 @@ export default function F9WorkspaceBlock({
   onUpdateCompanyOverlay,
   onSavePositionBody,
   onOpenNodeFile,
-  onRefreshOverall,
 }: F9WorkspaceBlockProps) {
   const allWarnings = [...warnings, ...executionSyncWarnings]
   const overallRows = asRecordArrayBlock(assetsPositions).length > 0
@@ -1588,12 +1582,6 @@ export default function F9WorkspaceBlock({
   const selectedProjectRememberLabel = selectedProjectRememberPath
     ? (linkOptionsByPath.get(selectedProjectRememberPath)?.label ?? linkLabelFromPathBlock(selectedProjectRememberPath))
     : ''
-  const onRefreshWorkspace = useCallback(() => {
-    onRefreshOverall()
-    setCompanyFileViewerNonce((prev) => prev + 1)
-    setCompanyPdfViewerNonce((prev) => prev + 1)
-  }, [onRefreshOverall])
-
   const memoryTabActive = !showCompanyView && activeSubtabId === 'memory'
   const overallTabActive = !showCompanyView && activeSubtabId === 'overall'
   const workspaceTitle = showCompanyView && selectedCompany
@@ -1733,9 +1721,6 @@ export default function F9WorkspaceBlock({
               onClick={() => setProjectTagsOpen(prev => !prev)}
             >
               {projectTagsOpen ? 'Hide Project Tags' : 'Project Tags'}
-            </Button>
-            <Button type="button" onClick={onRefreshWorkspace} disabled={loading || executionOverviewLoading || (liveRefreshAvailable && !hasConfig)}>
-              {(loading || executionOverviewLoading) ? 'Refreshing...' : 'Refresh'}
             </Button>
           </div>
         </CardHeader>

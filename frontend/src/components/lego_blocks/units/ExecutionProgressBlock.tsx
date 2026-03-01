@@ -9,7 +9,7 @@ interface ExecutionProgressBlockProps {
   tasks: NodeRecord[]
   tasksLoading: boolean
   tasksError: string | null
-  onRefresh: () => void
+  onRefresh?: () => void
   onSelectTask: (node: NodeRecord) => void
 }
 
@@ -43,10 +43,12 @@ export default function ExecutionProgressBlock({
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-sm">Execution Progress</CardTitle>
-          <Button size="sm" variant="outline" onClick={onRefresh} disabled={tasksLoading}>
-            {tasksLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
-            Refresh
-          </Button>
+          {onRefresh && (
+            <Button size="sm" variant="outline" onClick={onRefresh} disabled={tasksLoading}>
+              {tasksLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
+              Refresh
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
