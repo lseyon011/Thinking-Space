@@ -66,6 +66,7 @@ import {
 import { getCapabilityFeatureFlags } from './services/orchestrators/capabilityFeatureFlagsOrch'
 import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from '@/services/lego_blocks/integrations/fsBlock'
 import { getUIShellThemeProfileOrch } from './services/orchestrators/uiThemeOrch'
+import { readUserProfileOrch } from './services/orchestrators/userProfileOrch'
 import {
   readVaultUiPreferencesOrch,
   setExplorerIconStylePreferenceOrch,
@@ -467,6 +468,13 @@ function App() {
     setVaultSwitchHardRefreshPending(true)
     setNeedsVaultSetup(true)
   }, [])
+
+  useEffect(() => {
+    if (needsVaultSetup) return
+    void readUserProfileOrch().catch((error) => {
+      console.warn('[App] Failed to warm user profile cache:', error)
+    })
+  }, [needsVaultSetup])
 
   const handleGlobalRefresh = useCallback(() => {
     if (refreshRunning) return

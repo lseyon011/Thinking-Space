@@ -3,8 +3,11 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import { ArrowRight } from 'lucide-react'
 import Starfield from '@/components/lego_blocks/units/StarfieldBlock'
 import TodayFileActivityOrch from '@/components/orchestrators/TodayFileActivityOrch'
+import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
 
 export default function Home() {
+  const { profile } = useUserProfileBlock()
+
   return (
     <div className="relative isolate ltm-page overflow-hidden">
       <div className="ltm-page-fixed-bg-anchor">
@@ -20,9 +23,14 @@ export default function Home() {
           <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground sm:text-sm">
             Thinking Space
           </p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl md:text-6xl">
-            Welcome, Anurag
-          </h1>
+          <div className="mt-3 flex items-center justify-center gap-3">
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/60 bg-background/80 text-lg font-semibold text-foreground sm:h-12 sm:w-12 sm:text-xl">
+              {profile.symbol}
+            </span>
+            <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl md:text-6xl">
+              Welcome, {profile.name}
+            </h1>
+          </div>
           <p className="mx-auto mt-3 max-w-2xl text-base leading-relaxed text-muted-foreground sm:mt-4 sm:text-lg">
             A calm, focused control panel for your vault. Open the side drawer to pick a tool,
             or jump straight into your most-used workflows.

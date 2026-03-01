@@ -45,6 +45,10 @@ import {
   splitTagInputBlock,
   tagsEqualBlock,
 } from '@/services/lego_blocks/units/tagBlock'
+import {
+  getCommentAuthorSymbolBlock,
+  getUserCommentAuthorBlock,
+} from '@/services/lego_blocks/units/userProfileBlock'
 
 function iconForNodeType(type: NodeType) {
   if (type === 'program') return FolderTree
@@ -92,6 +96,8 @@ function toDateInputValue(value: string | undefined): string {
 }
 
 function initialsForAuthor(value: string | undefined): string {
+  const currentUserSymbol = getCommentAuthorSymbolBlock(value)
+  if (currentUserSymbol) return currentUserSymbol
   const normalized = (value ?? '').trim()
   if (!normalized) return 'NA'
   const tokens = normalized.split(/[\s._-]+/).filter(Boolean)
@@ -389,7 +395,7 @@ export default function NodeDetailPanelBlock({
       {
         text: next,
         added_at: new Date().toISOString(),
-        added_by: 'unknown',
+        added_by: getUserCommentAuthorBlock(),
       },
     ])
     setNewCommentDraft('')
@@ -941,7 +947,7 @@ export default function NodeDetailPanelBlock({
             <div className="rounded-md border border-border/70 bg-card p-2.5">
               <div className="flex items-start gap-2">
                 <div className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-semibold text-white">
-                  {initialsForAuthor('AP')}
+                  {initialsForAuthor(getUserCommentAuthorBlock())}
                 </div>
                 <div className="flex-1 space-y-2">
                   <textarea

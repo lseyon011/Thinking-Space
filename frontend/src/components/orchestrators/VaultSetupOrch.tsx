@@ -12,6 +12,11 @@ import {
 } from '@/services/lego_blocks/integrations/fsBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { probeBackendConnectionBlock } from '@/services/lego_blocks/units/backendConnectionBlock'
+import {
+  deriveUserProfileSymbolBlock,
+  readCachedUserProfileBlock,
+} from '@/services/lego_blocks/units/userProfileBlock'
+import { ensureUserProfileOrch } from '@/services/orchestrators/userProfileOrch'
 import { registerPlugin } from '@capacitor/core'
 
 // Native folder picker plugin (defined in AppDelegate.swift)
@@ -27,8 +32,11 @@ interface Props {
 }
 
 export default function VaultSetup({ onComplete }: Props) {
+  const cachedProfile = readCachedUserProfileBlock()
   const [selecting, setSelecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [profileNameInput, setProfileNameInput] = useState(cachedProfile.name)
+  const [profileSymbolInput, setProfileSymbolInput] = useState(cachedProfile.symbol)
 
   const isElectronApp = isElectron()
   const isCapacitor = isCapacitorNative()
@@ -37,13 +45,30 @@ export default function VaultSetup({ onComplete }: Props) {
   const hasBackendOption = !isNativeApp
   const isBackendReconnect = getStoredVaultRoot() === 'web-backend'
 
+  const profilePreviewSymbol = profileSymbolInput.trim() || deriveUserProfileSymbolBlock(profileNameInput)
+
+  const validateProfile = (): boolean => {
+    if (profileNameInput.trim()) return true
+    setError('Please enter your name before selecting a vault.')
+    return false
+  }
+
+  const seedVaultProfile = async () => {
+    await ensureUserProfileOrch({
+      name: profileNameInput.trim(),
+      symbol: profileSymbolInput.trim(),
+    })
+  }
+
   // Electron: use native folder picker via IPC
   const handleElectronSelect = async () => {
+    if (!validateProfile()) return
     setSelecting(true)
     setError(null)
     try {
       const selected = await selectAndSetVaultRoot()
       if (selected) {
+        await seedVaultProfile()
         onComplete(selected)
       }
     } catch (err) {
@@ -55,6 +80,7 @@ export default function VaultSetup({ onComplete }: Props) {
 
   // Capacitor (iOS): open native folder picker showing local + iCloud
   const handleCapacitorSelect = async () => {
+    if (!validateProfile()) return
     setSelecting(true)
     setError(null)
     try {
@@ -63,6 +89,7 @@ export default function VaultSetup({ onComplete }: Props) {
       // Prefix with cap-picker: so we know it's a picker-selected absolute path
       const vaultMarker = `cap-picker:${result.url}`
       setVaultRoot(vaultMarker)
+      await seedVaultProfile()
       onComplete(vaultMarker)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -76,12 +103,14 @@ export default function VaultSetup({ onComplete }: Props) {
 
   // Browser: use File System Access API
   const handleBrowserFolderPick = async () => {
+    if (!validateProfile()) return
     setSelecting(true)
     setError(null)
     try {
       const browserFS = await pickAndInitBrowserVaultFS()
       setVaultFSInstance(browserFS)
       setVaultRoot('browser-fs')
+      await seedVaultProfile()
       onComplete('browser-fs')
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
@@ -96,6 +125,7 @@ export default function VaultSetup({ onComplete }: Props) {
 
   // Web: connect/refresh FastAPI backend and verify vault access.
   const handleBackendConnect = async () => {
+    if (!validateProfile()) return
     setSelecting(true)
     setError(null)
     try {
@@ -104,6 +134,7 @@ export default function VaultSetup({ onComplete }: Props) {
         throw new Error(probe.error || 'Backend is reachable but vault is unavailable')
       }
       setVaultRoot('web-backend')
+      await seedVaultProfile()
       onComplete('web-backend')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect to backend')
@@ -126,6 +157,44 @@ export default function VaultSetup({ onComplete }: Props) {
             ? 'Select your vault folder to get started. You can pick a local folder or one in iCloud Drive.'
             : 'Choose how to connect to your vault.'}
         </p>
+
+        <div className="mt-6 space-y-3 text-left">
+          <div className="space-y-1.5">
+            <label htmlFor="ltm-vault-setup-profile-name" className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              Your Name
+            </label>
+            <input
+              id="ltm-vault-setup-profile-name"
+              type="text"
+              value={profileNameInput}
+              onChange={(event) => setProfileNameInput(event.target.value)}
+              placeholder="Enter your name"
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="ltm-vault-setup-profile-symbol" className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              Profile Symbol
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id="ltm-vault-setup-profile-symbol"
+                type="text"
+                value={profileSymbolInput}
+                onChange={(event) => setProfileSymbolInput(event.target.value)}
+                placeholder={deriveUserProfileSymbolBlock(profileNameInput)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+              />
+              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/70 bg-muted/25 text-sm font-semibold text-foreground">
+                {profilePreviewSymbol}
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              This will be used for comments and profile displays. Saved in your vault under `.thinking-space/profile.json`.
+            </p>
+          </div>
+        </div>
 
         <div className="mt-6 flex flex-col gap-3">
           {isNativeApp && (

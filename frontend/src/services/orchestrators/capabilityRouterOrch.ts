@@ -37,6 +37,7 @@ import {
 } from '@/services/lego_blocks/integrations/yamlHierarchyBlock'
 import { getVaultFS, type VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
+import { getUserCommentAuthorBlock } from '@/services/lego_blocks/units/userProfileBlock'
 import { createThought } from './thoughtsOrch'
 import { createTodos, toggleTodo } from './todosOrch'
 import { listFiles, listFolders, listPdfFiles } from './fileSystemOrch'
@@ -618,7 +619,7 @@ async function executeCapability<Name extends CapabilityName>(
         {
           text: payload.text.trim(),
           added_at: new Date().toISOString(),
-          added_by: payload.addedBy?.trim() || 'unknown',
+          added_by: payload.addedBy?.trim() || getUserCommentAuthorBlock(),
         },
       ]
 

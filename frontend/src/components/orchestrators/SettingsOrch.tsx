@@ -3,7 +3,9 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import AiSettingsOrch from '@/components/orchestrators/AiSettingsOrch'
+import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
 import { UI_THEME_OPTIONS_BLOCK, useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
+import { USER_PROFILE_FILE_PATH_BLOCK, deriveUserProfileSymbolBlock } from '@/services/lego_blocks/units/userProfileBlock'
 import { clearAppCacheOrch, hardRefreshOrch } from '@/services/orchestrators/appCacheOrch'
 import {
   readMarkdownEditorSettingsOrch,
@@ -20,16 +22,18 @@ import type { ExplorerIconStyleBlock } from '@/services/orchestrators/vaultUiPre
 import type { UIThemeId } from '@/services/orchestrators/uiThemeOrch'
 
 export type SettingsTabId = 'theme' | 'ai' | 'f9' | 'cache' | 'vault'
+export type SettingsTabWithProfileId = SettingsTabId | 'profile'
 
 interface SettingsOrchProps {
   explorerIconStyle: ExplorerIconStyleBlock
   onExplorerIconStyleChange: (nextStyle: ExplorerIconStyleBlock) => void
   onRequestVaultSwitch: () => void
-  initialTab?: SettingsTabId
+  initialTab?: SettingsTabWithProfileId
 }
 
-const TAB_OPTIONS: Array<{ id: SettingsTabId; label: string }> = [
+const TAB_OPTIONS: Array<{ id: SettingsTabWithProfileId; label: string }> = [
   { id: 'theme', label: 'Theme' },
+  { id: 'profile', label: 'Profile' },
   { id: 'ai', label: 'AI' },
   { id: 'f9', label: 'F9' },
   { id: 'cache', label: 'Clear Cache' },
@@ -42,8 +46,9 @@ export default function SettingsOrch({
   onRequestVaultSwitch,
   initialTab = 'theme',
 }: SettingsOrchProps) {
+  const { profile, loading: profileLoading, saveProfile, reloadProfile } = useUserProfileBlock()
   const { themeId, setThemeId } = useUIThemeBlock()
-  const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab)
+  const [activeTab, setActiveTab] = useState<SettingsTabWithProfileId>(initialTab)
   const [markdownEditorSettings, setMarkdownEditorSettings] = useState<MarkdownEditorSettingsBlock>(
     () => readMarkdownEditorSettingsOrch(),
   )
@@ -54,6 +59,11 @@ export default function SettingsOrch({
     () => readF9ExecutionSettingsOrch().executionFolderPath,
   )
   const [busyAction, setBusyAction] = useState<SettingsTabId | null>(null)
+  const [profileNameInput, setProfileNameInput] = useState('')
+  const [profileSymbolInput, setProfileSymbolInput] = useState('')
+  const [profileMemoriesInput, setProfileMemoriesInput] = useState('')
+  const [profileDirty, setProfileDirty] = useState(false)
+  const [busyProfileSave, setBusyProfileSave] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const runtimeLabel = useMemo(() => {
@@ -65,6 +75,56 @@ export default function SettingsOrch({
   useEffect(() => {
     setActiveTab(initialTab)
   }, [initialTab])
+
+  useEffect(() => {
+    setProfileNameInput(profile.name)
+    setProfileSymbolInput(profile.symbol)
+    setProfileMemoriesInput(profile.memories.join('\n'))
+    setProfileDirty(false)
+  }, [profile])
+
+  const onSaveProfile = async () => {
+    const normalizedName = profileNameInput.trim()
+    if (!normalizedName) {
+      setError('Profile name cannot be empty.')
+      return
+    }
+    const memories = profileMemoriesInput
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+    setBusyProfileSave(true)
+    setError(null)
+    setMessage(null)
+    try {
+      await saveProfile({
+        name: normalizedName,
+        symbol: profileSymbolInput.trim(),
+        memories,
+      })
+      setMessage('Profile saved.')
+      setProfileDirty(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save profile')
+    } finally {
+      setBusyProfileSave(false)
+    }
+  }
+
+  const onReloadProfile = async () => {
+    setBusyProfileSave(true)
+    setError(null)
+    setMessage(null)
+    try {
+      await reloadProfile()
+      setMessage('Profile reloaded from vault.')
+      setProfileDirty(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reload profile')
+    } finally {
+      setBusyProfileSave(false)
+    }
+  }
 
   const onClearCache = async () => {
     const confirmed = window.confirm('Clear local cache and hard refresh now?')
@@ -220,6 +280,93 @@ export default function SettingsOrch({
                   aria-label="Preserve new lines in view mode"
                 />
               </label>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'profile' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Profile</CardTitle>
+            <CardDescription>
+              Your profile is stored in your vault at <span className="font-mono">{USER_PROFILE_FILE_PATH_BLOCK}</span>.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="ltm-settings-profile-name" className="text-sm font-medium">
+                Name
+              </label>
+              <input
+                id="ltm-settings-profile-name"
+                type="text"
+                value={profileNameInput}
+                onChange={(event) => {
+                  setProfileNameInput(event.target.value)
+                  setProfileDirty(true)
+                }}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="ltm-settings-profile-symbol" className="text-sm font-medium">
+                Profile Symbol
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="ltm-settings-profile-symbol"
+                  type="text"
+                  value={profileSymbolInput}
+                  onChange={(event) => {
+                    setProfileSymbolInput(event.target.value)
+                    setProfileDirty(true)
+                  }}
+                  placeholder={deriveUserProfileSymbolBlock(profileNameInput)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                />
+                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/70 bg-muted/25 text-sm font-semibold text-foreground">
+                  {profileSymbolInput.trim() || deriveUserProfileSymbolBlock(profileNameInput)}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="ltm-settings-profile-memories" className="text-sm font-medium">
+                AI Memories
+              </label>
+              <textarea
+                id="ltm-settings-profile-memories"
+                value={profileMemoriesInput}
+                onChange={(event) => {
+                  setProfileMemoriesInput(event.target.value)
+                  setProfileDirty(true)
+                }}
+                placeholder="One memory per line. AI can append to these later."
+                className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+              />
+              <p className="text-xs text-muted-foreground">
+                {profileLoading ? 'Loading profile…' : 'Memories are stored as plain text lines in your profile.'}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={onSaveProfile}
+                disabled={busyProfileSave || (!profileDirty && !profileLoading)}
+              >
+                {busyProfileSave ? 'Saving...' : 'Save Profile'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => { void onReloadProfile() }}
+                disabled={busyProfileSave}
+              >
+                Reload from Vault
+              </Button>
             </div>
           </CardContent>
         </Card>

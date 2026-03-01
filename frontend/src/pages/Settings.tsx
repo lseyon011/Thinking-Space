@@ -1,6 +1,6 @@
 import { useSearchParams } from 'react-router-dom'
 import { SlidersHorizontal } from 'lucide-react'
-import SettingsOrch, { type SettingsTabId } from '@/components/orchestrators/SettingsOrch'
+import SettingsOrch, { type SettingsTabWithProfileId } from '@/components/orchestrators/SettingsOrch'
 import type { ExplorerIconStyleBlock } from '@/services/orchestrators/vaultUiPreferencesOrch'
 
 interface SettingsPageProps {
@@ -16,13 +16,18 @@ export default function Settings({
 }: SettingsPageProps) {
   const [searchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
-  const initialTab: SettingsTabId = requestedTab === 'ai'
-    ? 'ai'
-    : (requestedTab === 'f9'
-      ? 'f9'
-    : (requestedTab === 'cache'
-      ? 'cache'
-      : (requestedTab === 'vault' ? 'vault' : 'theme')))
+  const initialTab: SettingsTabWithProfileId =
+    requestedTab === 'profile'
+      ? 'profile'
+      : requestedTab === 'ai'
+        ? 'ai'
+        : requestedTab === 'f9'
+          ? 'f9'
+          : requestedTab === 'cache'
+            ? 'cache'
+            : requestedTab === 'vault'
+              ? 'vault'
+              : 'theme'
 
   return (
     <div className="ltm-page">
@@ -35,7 +40,7 @@ export default function Settings({
             <div>
               <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Settings</h1>
               <p className="text-sm text-muted-foreground">
-                Manage theme, markdown editor behavior, AI configuration, F9 execution storage, cache reset, and vault switching.
+                Manage profile, theme, markdown editor behavior, AI configuration, F9 execution storage, cache reset, and vault switching.
               </p>
             </div>
           </div>

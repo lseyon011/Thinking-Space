@@ -44,6 +44,7 @@ import {
   splitTagInputBlock,
   tagLookupKeyBlock,
 } from '@/services/lego_blocks/units/tagBlock'
+import { getUserCommentAuthorBlock } from '@/services/lego_blocks/units/userProfileBlock'
 import {
   readOrganizerUiStateOrch,
   writeOrganizerUiStateOrch,
@@ -1160,7 +1161,11 @@ export default function BacklogOrch() {
           parentType: parent?.type,
           projectRoot: parent ? undefined : activeProjectRoot,
           description: details?.description,
-          comments: details?.comment ? [details.comment] : undefined,
+          comments: details?.comment ? [{
+            text: details.comment,
+            added_at: new Date().toISOString(),
+            added_by: getUserCommentAuthorBlock(),
+          }] : undefined,
         },
         actor: BACKLOG_ACTOR,
       })

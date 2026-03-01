@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import type { YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { notesSignature } from '@/components/lego_blocks/units/BacklogListDomainBlock'
+import { getUserCommentAuthorBlock } from '@/services/lego_blocks/units/userProfileBlock'
 
 interface UseBacklogInlineNotesBlockParams {
   readOnly: boolean
@@ -86,7 +87,7 @@ export function useBacklogInlineNotesBlock({
       {
         text: next,
         added_at: new Date().toISOString(),
-        added_by: 'unknown',
+        added_by: getUserCommentAuthorBlock(),
       },
     ])
     setInlineNotesCommentDraft('')
