@@ -6,14 +6,12 @@ import {
   Folder,
   FolderOpen,
   Loader2,
-  RefreshCcw,
 } from 'lucide-react'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import {
   buildPathSearchCandidatesBlock,
   UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK,
 } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
-import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
   EXPLORER_PERSISTENCE_PREFIX,
   getLeafName,
@@ -26,6 +24,7 @@ import {
   readPersistedExplorerState,
 } from '@/components/lego_blocks/units/VaultExplorerUtilsBlock'
 import { rankFuzzyItemsBlock } from '@/services/lego_blocks/units/fuzzySearchBlock'
+import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import { cn } from '@/lib/utils'
 
 interface FolderEntries {
@@ -82,6 +81,7 @@ interface VaultExplorerBlockProps {
   draggableFolders?: boolean
   title?: string
   persistenceKey?: string
+  listenToGlobalSyncRefresh?: boolean
   className?: string
 }
 
@@ -113,6 +113,7 @@ export default function VaultExplorerBlock({
   draggableFolders = false,
   title = 'Thinking Space Explorer',
   persistenceKey = 'global',
+  listenToGlobalSyncRefresh = false,
   className,
 }: VaultExplorerBlockProps) {
   const storageKey = `${EXPLORER_PERSISTENCE_PREFIX}:${persistenceKey}`
@@ -317,6 +318,13 @@ export default function VaultExplorerBlock({
     setPendingRename(null)
     void loadPath('', true)
   }, [loadPath])
+
+  useEffect(() => {
+    if (!listenToGlobalSyncRefresh) return undefined
+    return addGlobalSyncRefreshListenerBlock(() => {
+      refreshRoot()
+    })
+  }, [listenToGlobalSyncRefresh, refreshRoot])
 
   const isExpanded = useCallback((path: string) => expandedPaths.includes(path), [expandedPaths])
 
@@ -850,29 +858,18 @@ export default function VaultExplorerBlock({
           </div>
         )}
 
-        <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <UniversalSearchBlock
-              {...UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK}
-              items={[]}
-              query={query}
-              onQueryChange={setQuery}
-              onSelect={() => {}}
-              getItemKey={(value) => value}
-              getItemLabel={(value) => value}
-              placeholder="Filter files..."
-            />
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0"
-            onClick={refreshRoot}
-            title="Refresh explorer"
-            aria-label="Refresh explorer"
-          >
-            <RefreshCcw className="h-3.5 w-3.5" />
-          </Button>
+        <div className="flex w-full items-center">
+          <UniversalSearchBlock
+            {...UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK}
+            items={[]}
+            query={query}
+            onQueryChange={setQuery}
+            onSelect={() => {}}
+            getItemKey={(value) => value}
+            getItemLabel={(value) => value}
+            placeholder="Filter files..."
+            className="w-full"
+          />
         </div>
       </div>
 

@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import { PanelLeft, PanelLeftClose, Sparkles, FileText } from 'lucide-react'
 import VaultExplorerBlock from '@/components/lego_blocks/integrations/VaultExplorerBlock'
 import MarkdownDocumentBlock, { type MarkdownViewerMode } from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
-import ExtensionSlotBlock from '@/components/lego_blocks/integrations/ExtensionSlotBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { cn } from '@/lib/utils'
@@ -33,21 +32,15 @@ const FILE_QUERY_PARAM = 'file'
 const MAX_MOUNTED_INLINE_DOCS = 8
 const EXPLORER_DEFAULT_WIDTH_PX = 320
 const EXPLORER_MIN_WIDTH_PX = 220
-const EXPLORER_MAX_WIDTH_PX = 560
 
 function leafNameOf(path: string): string {
   const idx = path.lastIndexOf('/')
   return idx < 0 ? path : path.slice(idx + 1)
 }
 
-function getExplorerMaxWidthPx(): number {
-  if (typeof window === 'undefined') return EXPLORER_MAX_WIDTH_PX
-  return Math.max(EXPLORER_MIN_WIDTH_PX + 24, Math.min(EXPLORER_MAX_WIDTH_PX, Math.floor(window.innerWidth * 0.56)))
-}
-
 function clampExplorerWidthPx(value: number): number {
   if (!Number.isFinite(value)) return EXPLORER_DEFAULT_WIDTH_PX
-  return Math.max(EXPLORER_MIN_WIDTH_PX, Math.min(getExplorerMaxWidthPx(), Math.round(value)))
+  return Math.max(EXPLORER_MIN_WIDTH_PX, value)
 }
 
 export default function ThinkingSpaceOrch() {
@@ -62,6 +55,7 @@ export default function ThinkingSpaceOrch() {
     () => (inlinePathFromUrl ? { [inlinePathFromUrl]: 'view' } : {}),
   )
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
+  const [isExplorerResizing, setIsExplorerResizing] = useState(false)
   const [explorerCollapsed, setExplorerCollapsed] = useState(
     () => getStorageItem(STORAGE_KEYS.thinkingSpaceExplorerCollapsed) === '1',
   )
@@ -84,8 +78,6 @@ export default function ThinkingSpaceOrch() {
       ? '[&_.ts-md-header]:pl-16 sm:[&_.ts-md-header]:pl-20'
       : '[&_.ts-md-header]:pl-28 sm:[&_.ts-md-header]:pl-44')
     : ''
-  const bottomInset = Math.max(0, Math.round(layout.safeAreaInsets.bottom))
-  const drawerBottomPadding = Math.max(bottomInset, layout.keyboardVisible ? Math.round(layout.keyboardInset) : 0)
 
   const rememberMountedInlinePath = useCallback((path: string, initialMode: MarkdownViewerMode) => {
     setMountedInlinePaths((prev) => {
@@ -295,6 +287,7 @@ export default function ThinkingSpaceOrch() {
 
   const stopExplorerResize = useCallback(() => {
     explorerResizeRef.current = null
+    setIsExplorerResizing(false)
     window.removeEventListener('pointermove', handleExplorerResizeMove)
     window.removeEventListener('pointerup', stopExplorerResize)
     window.removeEventListener('pointercancel', stopExplorerResize)
@@ -305,6 +298,7 @@ export default function ThinkingSpaceOrch() {
   const handleExplorerResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!showCollapsedInlineExplorer) return
     event.preventDefault()
+    setIsExplorerResizing(true)
     explorerResizeRef.current = { startX: event.clientX, startWidth: explorerWidthPx }
     document.body.style.userSelect = 'none'
     document.body.style.cursor = 'col-resize'
@@ -439,6 +433,7 @@ export default function ThinkingSpaceOrch() {
         <VaultExplorerBlock
           loadEntries={listFolderEntries}
           selectedPath={inlinePath}
+          listenToGlobalSyncRefresh
           onOpenFile={setInlinePathAndSyncUrl}
           onCreateFolder={handleExplorerCreateFolder}
           onCreateFile={handleExplorerCreateFile}
@@ -453,12 +448,6 @@ export default function ThinkingSpaceOrch() {
           onDeleteFile={handleExplorerDeleteFile}
           onOpenInFinder={handleExplorerOpenInFinder}
           title=""
-        />
-      </div>
-      <div className="ltm-shell-segment-footer ltm-thinking-space-explorer-chrome p-2">
-        <ExtensionSlotBlock
-          slotId="sidebar-bottom"
-          context={{ inlinePath }}
         />
       </div>
     </>
@@ -502,7 +491,8 @@ export default function ThinkingSpaceOrch() {
         {showInlineSidebar && (
           <aside
             className={cn(
-              'ltm-thinking-space-explorer-surface min-h-0 shrink-0 overflow-hidden transition-[width,opacity] duration-200 md:flex md:flex-col',
+              'ltm-thinking-space-explorer-surface min-h-0 shrink-0 overflow-hidden md:flex md:flex-col',
+              isExplorerResizing ? 'transition-none' : 'transition-[width,opacity] duration-200 ease-out',
               showCollapsedInlineExplorer
                 ? 'opacity-100'
                 : 'opacity-0',
@@ -610,6 +600,7 @@ export default function ThinkingSpaceOrch() {
               <VaultExplorerBlock
                 loadEntries={listFolderEntries}
                 selectedPath={inlinePath}
+                listenToGlobalSyncRefresh
                 onOpenFile={handleDrawerFileOpen}
                 onCreateFolder={handleExplorerCreateFolder}
                 onCreateFile={handleExplorerCreateFile}
@@ -624,15 +615,6 @@ export default function ThinkingSpaceOrch() {
                 onDeleteFile={handleExplorerDeleteFile}
                 onOpenInFinder={handleExplorerOpenInFinder}
                 title=""
-              />
-            </div>
-            <div
-              className="ltm-shell-segment-footer ltm-thinking-space-explorer-chrome p-2"
-              style={drawerBottomPadding ? { paddingBottom: `${drawerBottomPadding + 8}px` } : undefined}
-            >
-              <ExtensionSlotBlock
-                slotId="sidebar-bottom"
-                context={{ inlinePath }}
               />
             </div>
           </aside>
