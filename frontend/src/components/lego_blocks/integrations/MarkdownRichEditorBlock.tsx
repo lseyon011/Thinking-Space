@@ -4,11 +4,17 @@ import { markdown } from '@codemirror/lang-markdown'
 import { redo, undo } from '@codemirror/commands'
 import { type EditorState } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
-import { Bold, Code, Heading1, Italic, Link2, List, ListOrdered, PenLine, Quote, RotateCcw, RotateCw } from 'lucide-react'
+import { Bold, Code, Heading1, Italic, Link2, List, ListOrdered, PenLine, Quote, RotateCcw, RotateCw, Table } from 'lucide-react'
 import {
   getWikilinkSuggestionsOrch,
   toObsidianWikilinkTargetOrch,
 } from '@/services/orchestrators/obsidianLinkOrch'
+import {
+  buildMarkdownTableFromRowsBlock,
+  buildMarkdownTableTemplateBlock,
+  detectAndParseDelimitedTableBlock,
+  formatMarkdownTableAtSelectionBlock,
+} from '@/services/orchestrators/markdownTableOrch'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import { UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
 import {
@@ -83,6 +89,17 @@ function insertWikilink(
     start: start + 2,
     end: start + 2 + target.length,
   }
+}
+
+function insertTextAtSelectionBlock(
+  source: string,
+  start: number,
+  end: number,
+  insert: string,
+): { value: string; start: number; end: number } {
+  const value = `${source.slice(0, start)}${insert}${source.slice(end)}`
+  const next = start + insert.length
+  return { value, start: next, end: next }
 }
 
 function getWikilinkCompletionQueryFromState(
@@ -270,6 +287,22 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       EditorView.lineWrapping,
       cmPlaceholder(placeholder),
       uiTheme,
+      EditorView.domEventHandlers({
+        paste: (event, view) => {
+          const pastedText = event.clipboardData?.getData('text/plain') ?? ''
+          const parsedTable = detectAndParseDelimitedTableBlock(pastedText)
+          if (!parsedTable) return false
+
+          event.preventDefault()
+          const markdownTableText = buildMarkdownTableFromRowsBlock(parsedTable.rows)
+          const { from, to } = view.state.selection.main
+          view.dispatch({
+            changes: { from, to, insert: markdownTableText },
+            selection: { anchor: from + markdownTableText.length },
+          })
+          return true
+        },
+      }),
       EditorView.updateListener.of((update) => {
         const query = getWikilinkCompletionQueryFromState(update.state)
         if (!query) {
@@ -342,6 +375,22 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           </button>
           <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '[', '](https://)', 'link text'))} className={TOOLBAR_BTN} title="Link">
             <Link2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => applyPatch((text, from, to) => insertTextAtSelectionBlock(text, from, to, buildMarkdownTableTemplateBlock(3, 2)))}
+            className={TOOLBAR_BTN}
+            title="Insert table"
+          >
+            <Table className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => applyPatch(formatMarkdownTableAtSelectionBlock)}
+            className="rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Format table"
+          >
+            Fmt Tbl
           </button>
           <button type="button" onClick={() => applyPatch(insertWikilink)} className="rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground" title="Wikilink">
             [[ ]]

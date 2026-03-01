@@ -52,6 +52,7 @@ export interface F9PositionSummaryBlock {
   unrealizedProfitLoss: string | null
   dayProfitLoss: string | null
   linkedIdeaId: string | null
+  relatedNodes: string[]
   tags: string[]
   projectPresetTags: string[]
 }
@@ -62,6 +63,7 @@ export interface F9CompanyOverviewBlock {
   indexId: string
   strategyNotes: string
   relatedIdeaIds: string[]
+  valuationNotePath: string | null
   positions: F9PositionSummaryBlock[]
 }
 
@@ -143,8 +145,18 @@ export interface UpdateF9PositionOverlayInputBlock {
   priority?: NodePriority | null
   description?: string | null
   comments?: YAMLCommentEntry[]
+  relatedNodes?: string[]
   tags?: string[]
   projectPresetTags?: string[]
+  fs?: VaultFS
+}
+
+export interface UpdateF9CompanyOverlayInputBlock {
+  executionFolderPath: string
+  companyTicker: string
+  strategyNotes?: string | null
+  relatedIdeaIds?: string[]
+  valuationNotePath?: string | null
   fs?: VaultFS
 }
 
@@ -344,6 +356,10 @@ export async function readF9ExecutionOverviewBlock(
     const positions = asPositionSummaryListBlock(frontmatter.positions)
     const strategyNotes = readStringFieldBlock(frontmatter.strategy_notes)
     const relatedIdeaIds = readStringArrayFieldBlock(frontmatter.related_idea_ids)
+    const valuationNotePathRaw = readNullableStringFieldBlock(frontmatter.valuation_note_path)
+    const valuationNotePath = valuationNotePathRaw
+      ? normalizeSlashPathBlock(valuationNotePathRaw).replace(/^\/+|\/+$/g, '')
+      : null
     const indexId = readStringFieldBlock(frontmatter.id) || `${ticker}-index`
     companies.push({
       companyTicker: ticker,
@@ -351,6 +367,7 @@ export async function readF9ExecutionOverviewBlock(
       indexId,
       strategyNotes,
       relatedIdeaIds,
+      valuationNotePath,
       positions,
     })
   }
@@ -606,6 +623,14 @@ export async function updateF9PositionOverlayBlock(
     else delete nextFrontmatter.comments
     changedFields.push('comments')
   }
+  if (input.relatedNodes !== undefined) {
+    const normalizedRelatedNodes = readStringArrayFieldBlock(input.relatedNodes)
+      .map(path => normalizeSlashPathBlock(path).replace(/^\/+|\/+$/g, ''))
+      .filter(Boolean)
+    if (normalizedRelatedNodes.length > 0) nextFrontmatter.related_nodes = normalizedRelatedNodes
+    else delete nextFrontmatter.related_nodes
+    changedFields.push('related_nodes')
+  }
   if (input.tags !== undefined) {
     const normalizedTags = normalizeTagListBlock(input.tags)
     if (normalizedTags.length > 0) nextFrontmatter.tags = normalizedTags
@@ -639,6 +664,63 @@ export async function updateF9PositionOverlayBlock(
     summary: buildPositionSummaryFromFrontmatterBlock(nextFrontmatter, detail.summary.fileName, detail.companyTicker),
     frontmatter: nextFrontmatter,
   }
+}
+
+export async function updateF9CompanyOverlayBlock(
+  input: UpdateF9CompanyOverlayInputBlock,
+): Promise<F9CompanyOverviewBlock> {
+  const fs = input.fs ?? getVaultFS()
+  const executionRoot = resolveF9ExecutionRootForVaultBlock(input.executionFolderPath)
+  const ticker = normalizeTickerBlock(input.companyTicker)
+  if (!ticker) throw new Error(`Invalid company ticker: ${input.companyTicker}`)
+
+  const companyDir = joinPathBlock(executionRoot, ticker)
+  const indexFilePath = joinPathBlock(companyDir, `${ticker}-index.md`)
+  if (!(await fs.exists(indexFilePath))) {
+    await createF9CompanyBlock({
+      executionFolderPath: input.executionFolderPath,
+      companyTicker: ticker,
+      fs,
+    })
+  }
+
+  const parsed = parseMarkdownFrontmatterBlock(await fs.read(indexFilePath))
+  const now = new Date().toISOString()
+  const nextFrontmatter: Record<string, unknown> = {
+    ...parsed.frontmatter,
+    id: readStringFieldBlock(parsed.frontmatter.id) || `${ticker}-index`,
+    company_ticker: ticker,
+    updated_at: now,
+  }
+
+  if (input.strategyNotes !== undefined) {
+    const normalizedStrategyNotes = readStringFieldBlock(input.strategyNotes)
+    if (normalizedStrategyNotes) nextFrontmatter.strategy_notes = normalizedStrategyNotes
+    else delete nextFrontmatter.strategy_notes
+  }
+  if (input.relatedIdeaIds !== undefined) {
+    const normalizedRelatedIdeaIds = readStringArrayFieldBlock(input.relatedIdeaIds)
+    if (normalizedRelatedIdeaIds.length > 0) nextFrontmatter.related_idea_ids = normalizedRelatedIdeaIds
+    else delete nextFrontmatter.related_idea_ids
+  }
+  if (input.valuationNotePath !== undefined) {
+    const valuationPath = readStringFieldBlock(input.valuationNotePath)
+    const normalizedValuationPath = valuationPath
+      ? normalizeSlashPathBlock(valuationPath).replace(/^\/+|\/+$/g, '')
+      : ''
+    if (normalizedValuationPath) nextFrontmatter.valuation_note_path = normalizedValuationPath
+    else delete nextFrontmatter.valuation_note_path
+  }
+
+  const body = parsed.body.trim() ? parsed.body : DEFAULT_COMPANY_INDEX_BODY_BLOCK
+  await fs.write(indexFilePath, stringifyMarkdownFrontmatterBlock(nextFrontmatter, body))
+
+  const overview = await readF9ExecutionOverviewBlock(input.executionFolderPath, fs)
+  const company = overview.companies.find((row) => row.companyTicker === ticker)
+  if (!company) {
+    throw new Error(`Failed to update company index for ${ticker}`)
+  }
+  return company
 }
 
 export async function saveF9PositionBodyBlock(
@@ -701,6 +783,11 @@ async function upsertCompanyIndexBlock(input: {
     source: 'f9-execution-sync',
     strategy_notes: readStringFieldBlock(existingFrontmatter.strategy_notes),
     related_idea_ids: readStringArrayFieldBlock(existingFrontmatter.related_idea_ids),
+    valuation_note_path: (() => {
+      const valuationPath = readNullableStringFieldBlock(existingFrontmatter.valuation_note_path)
+      if (!valuationPath) return null
+      return normalizeSlashPathBlock(valuationPath).replace(/^\/+|\/+$/g, '')
+    })(),
     position_count: summaries.length,
     updated_at: now,
     positions: summaries.map((summary) => ({
@@ -719,6 +806,7 @@ async function upsertCompanyIndexBlock(input: {
       unrealized_profit_loss: summary.unrealizedProfitLoss,
       day_profit_loss: summary.dayProfitLoss,
       linked_idea_id: summary.linkedIdeaId,
+      related_nodes: summary.relatedNodes,
       tags: summary.tags,
       project_preset_tags: summary.projectPresetTags,
     })),
@@ -924,6 +1012,9 @@ function buildPositionSummaryFromFrontmatterBlock(
     unrealizedProfitLoss: readNullableStringFieldBlock(frontmatter.unrealized_profit_loss),
     dayProfitLoss: readNullableStringFieldBlock(frontmatter.day_profit_loss),
     linkedIdeaId: readNullableStringFieldBlock(frontmatter.linked_idea_id),
+    relatedNodes: readStringArrayFieldBlock(frontmatter.related_nodes)
+      .map(path => normalizeSlashPathBlock(path).replace(/^\/+|\/+$/g, ''))
+      .filter(Boolean),
     tags: normalizeTagListBlock(readStringArrayFieldBlock(frontmatter.tags)),
     projectPresetTags: normalizeTagListBlock(readStringArrayFieldBlock(frontmatter.project_preset_tags)),
   }
@@ -952,6 +1043,9 @@ function asPositionSummaryListBlock(value: unknown): F9PositionSummaryBlock[] {
       unrealizedProfitLoss: readNullableStringFieldBlock(record.unrealized_profit_loss),
       dayProfitLoss: readNullableStringFieldBlock(record.day_profit_loss),
       linkedIdeaId: readNullableStringFieldBlock(record.linked_idea_id),
+      relatedNodes: readStringArrayFieldBlock(record.related_nodes)
+        .map(path => normalizeSlashPathBlock(path).replace(/^\/+|\/+$/g, ''))
+        .filter(Boolean),
       tags: normalizeTagListBlock(readStringArrayFieldBlock(record.tags)),
       projectPresetTags: normalizeTagListBlock(readStringArrayFieldBlock(record.project_preset_tags)),
     })

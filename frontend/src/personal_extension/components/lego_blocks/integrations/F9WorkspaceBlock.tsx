@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PanelLeft, PanelLeftClose } from 'lucide-react'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
+import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
+import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
+import { buildPathSearchCandidatesBlock, UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
 import { TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
@@ -99,6 +102,11 @@ interface F9WorkspaceBlockProps {
     tags?: string[]
     projectPresetTags?: string[]
   }) => Promise<void>
+  onUpdateCompanyOverlay: (input: {
+    strategyNotes?: string | null
+    relatedIdeaIds?: string[]
+    valuationNotePath?: string | null
+  }) => Promise<void>
   onSavePositionBody: (body: string) => Promise<void>
   onOpenNodeFile: (filePath: string) => void
   onRefreshOverall: () => void
@@ -166,6 +174,21 @@ function formatCurrencyBlock(value: number | null): string {
 
 function formatCurrencyFromUnknownBlock(value: unknown): string {
   return formatCurrencyBlock(firstNumberBlock(value))
+}
+
+function formatCurrencyKBlock(value: number | null): string {
+  if (value === null) return '—'
+  const sign = value < 0 ? '-' : ''
+  const inK = Math.abs(value) / 1000
+  return `${sign}$${inK.toLocaleString(undefined, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })}K`
+}
+
+function formatPercentBlock(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '—'
+  return `${value.toFixed(1)}%`
 }
 
 function formatOverallValueBlock(balanceData: unknown): string {
@@ -335,6 +358,7 @@ function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, u
       indexId: `${ticker}-index`,
       strategyNotes: '',
       relatedIdeaIds: [],
+      valuationNotePath: null,
       positions,
     }))
 }
@@ -414,6 +438,10 @@ function resolveTotalCostBlock(payload: Record<string, unknown> | null | undefin
   return unitCost * quantity * multiplier
 }
 
+function resolveUnrealizedProfitLossBlock(payload: Record<string, unknown> | null | undefined): number | null {
+  return readNumberFromRecordBlock(payload, 'unrealized_profit_loss', 'unrealizedProfitLoss', 'upl')
+}
+
 function positionPayloadFromSummaryBlock(position: F9PositionSummaryBlock): Record<string, unknown> {
   return {
     id: position.id,
@@ -482,6 +510,81 @@ function computeCompanyTotalsBlock(positions: F9PositionSummaryBlock[]): {
   }
 }
 
+function isOptionPositionBlock(position: F9PositionSummaryBlock): boolean {
+  const instrumentType = firstStringBlock(position.instrumentType).toUpperCase()
+  if (instrumentType === 'OPTION') return true
+  if (instrumentType === 'STOCK') return false
+  return Boolean(firstStringBlock(position.optionType) || firstStringBlock(position.optionExpireDate))
+}
+
+function percentOfBlock(part: number | null, total: number | null): number | null {
+  if (part === null || total === null || total === 0) return null
+  return (part / total) * 100
+}
+
+function computeCompanySummaryMetricsBlock(positions: F9PositionSummaryBlock[]): {
+  totalCost: number | null
+  stockCost: number | null
+  optionCost: number | null
+  totalProfitLoss: number | null
+  stockProfitLoss: number | null
+  optionProfitLoss: number | null
+} {
+  let totalCost = 0
+  let stockCost = 0
+  let optionCost = 0
+  let totalProfitLoss = 0
+  let stockProfitLoss = 0
+  let optionProfitLoss = 0
+
+  let hasTotalCost = false
+  let hasStockCost = false
+  let hasOptionCost = false
+  let hasTotalProfitLoss = false
+  let hasStockProfitLoss = false
+  let hasOptionProfitLoss = false
+
+  for (const position of positions) {
+    const payload = positionPayloadFromSummaryBlock(position)
+    const optionPosition = isOptionPositionBlock(position)
+
+    const costValue = resolveTotalCostBlock(payload)
+    if (costValue !== null) {
+      totalCost += costValue
+      hasTotalCost = true
+      if (optionPosition) {
+        optionCost += costValue
+        hasOptionCost = true
+      } else {
+        stockCost += costValue
+        hasStockCost = true
+      }
+    }
+
+    const profitLossValue = resolveUnrealizedProfitLossBlock(payload)
+    if (profitLossValue !== null) {
+      totalProfitLoss += profitLossValue
+      hasTotalProfitLoss = true
+      if (optionPosition) {
+        optionProfitLoss += profitLossValue
+        hasOptionProfitLoss = true
+      } else {
+        stockProfitLoss += profitLossValue
+        hasStockProfitLoss = true
+      }
+    }
+  }
+
+  return {
+    totalCost: hasTotalCost ? totalCost : null,
+    stockCost: hasStockCost ? stockCost : null,
+    optionCost: hasOptionCost ? optionCost : null,
+    totalProfitLoss: hasTotalProfitLoss ? totalProfitLoss : null,
+    stockProfitLoss: hasStockProfitLoss ? stockProfitLoss : null,
+    optionProfitLoss: hasOptionProfitLoss ? optionProfitLoss : null,
+  }
+}
+
 export default function F9WorkspaceBlock({
   subtabs,
   activeSubtabId,
@@ -521,6 +624,7 @@ export default function F9WorkspaceBlock({
   onCreateCompany,
   onCreateManualPosition,
   onUpdatePositionOverlay,
+  onUpdateCompanyOverlay,
   onSavePositionBody,
   onOpenNodeFile,
   onRefreshOverall,
@@ -546,6 +650,22 @@ export default function F9WorkspaceBlock({
     [activeCompanyTicker, executionOverview],
   )
   const showCompanyView = !!selectedCompany && !preserveOverallContext
+  const selectedCompanyMetrics = useMemo(
+    () => (selectedCompany ? computeCompanySummaryMetricsBlock(selectedCompany.positions) : null),
+    [selectedCompany],
+  )
+  const portfolioTotalCost = useMemo(() => {
+    if (!executionOverview) return null
+    let total = 0
+    let hasAny = false
+    for (const company of executionOverview.companies) {
+      const companyTotals = computeCompanyTotalsBlock(company.positions)
+      if (companyTotals.totalCost === null) continue
+      total += companyTotals.totalCost
+      hasAny = true
+    }
+    return hasAny ? total : null
+  }, [executionOverview])
 
   const companiesForTable = useMemo<F9CompanyOverviewBlock[]>(() => {
     if (showCompanyView && selectedCompany) return [selectedCompany]
@@ -659,6 +779,9 @@ export default function F9WorkspaceBlock({
     () => getJsonStorageItem<F9ProjectPresetTagsByRootBlock>(STORAGE_KEYS.f9ProjectPresetTags, {}),
   )
   const [linkOptions, setLinkOptions] = useState<F9LinkOptionBlock[]>([])
+  const [companyFilePickerOpen, setCompanyFilePickerOpen] = useState(false)
+  const [companyFileQuery, setCompanyFileQuery] = useState('')
+  const [companyFileViewerNonce, setCompanyFileViewerNonce] = useState(0)
 
   const selectedBacklogNodeId = useMemo(() => {
     if (!activeCompanyTicker || !activePositionFileName) return null
@@ -778,6 +901,24 @@ export default function F9WorkspaceBlock({
     if (backlogTableModel.nodeByUuid.has(detailPanelNodeId)) return
     setDetailPanelNodeId(null)
   }, [backlogTableModel.nodeByUuid, detailPanelNodeId])
+
+  useEffect(() => {
+    setCompanyFilePickerOpen(false)
+    setCompanyFileQuery('')
+  }, [selectedCompany?.companyTicker])
+
+  const selectCompanyFilePath = useCallback(async (rawPath: string) => {
+    if (!selectedCompany) return
+    const normalizedPath = normalizeRelativePathBlock(rawPath)
+    const currentPath = normalizeRelativePathBlock(selectedCompany.valuationNotePath ?? '')
+    setCompanyFilePickerOpen(false)
+    setCompanyFileQuery('')
+    if (normalizedPath === currentPath) return
+    await onUpdateCompanyOverlay({
+      valuationNotePath: normalizedPath || null,
+    })
+    setCompanyFileViewerNonce((prev) => prev + 1)
+  }, [onUpdateCompanyOverlay, selectedCompany])
 
   const f9RowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
     return [
@@ -1041,6 +1182,22 @@ export default function F9WorkspaceBlock({
     return { [projectRootKey]: allTags }
   }, [availableProjectPresetTags, backlogTableModel.nodeByUuid, projectRootKey])
 
+  const companyPortfolioWeight = percentOfBlock(selectedCompanyMetrics?.totalCost ?? null, portfolioTotalCost)
+  const stockCostWeight = percentOfBlock(selectedCompanyMetrics?.stockCost ?? null, selectedCompanyMetrics?.totalCost ?? null)
+  const optionCostWeight = percentOfBlock(selectedCompanyMetrics?.optionCost ?? null, selectedCompanyMetrics?.totalCost ?? null)
+  const stockProfitLossWeight = percentOfBlock(
+    selectedCompanyMetrics?.stockProfitLoss ?? null,
+    selectedCompanyMetrics?.totalProfitLoss ?? null,
+  )
+  const optionProfitLossWeight = percentOfBlock(
+    selectedCompanyMetrics?.optionProfitLoss ?? null,
+    selectedCompanyMetrics?.totalProfitLoss ?? null,
+  )
+  const selectedCompanyFilePath = normalizeRelativePathBlock(selectedCompany?.valuationNotePath ?? '')
+  const selectedCompanyFileLabel = selectedCompanyFilePath
+    ? (linkOptionsByPath.get(selectedCompanyFilePath)?.label ?? linkLabelFromPathBlock(selectedCompanyFilePath))
+    : ''
+
   return (
     <div className={cn('grid gap-4', sideTabsCollapsed ? 'grid-cols-1' : 'lg:grid-cols-[200px_minmax(0,1fr)]')}>
       {!sideTabsCollapsed && (
@@ -1288,6 +1445,141 @@ export default function F9WorkspaceBlock({
             </div>
           ) : (
             <>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border bg-background p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Total Cost</p>
+                  <p className="mt-1 text-lg font-semibold">{formatCurrencyKBlock(selectedCompanyMetrics?.totalCost ?? null)}</p>
+                  <p className="text-xs text-muted-foreground">{formatCurrencyBlock(selectedCompanyMetrics?.totalCost ?? null)}</p>
+                </div>
+                <div className="rounded-lg border bg-background p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">% Of Portfolio</p>
+                  <p className="mt-1 text-lg font-semibold">{formatPercentBlock(companyPortfolioWeight)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Stock {formatPercentBlock(stockCostWeight)} ({formatCurrencyKBlock(selectedCompanyMetrics?.stockCost ?? null)})
+                    {' · '}
+                    Option {formatPercentBlock(optionCostWeight)} ({formatCurrencyKBlock(selectedCompanyMetrics?.optionCost ?? null)})
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-background p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Current P/L</p>
+                  <p className="mt-1 text-lg font-semibold">{formatCurrencyKBlock(selectedCompanyMetrics?.totalProfitLoss ?? null)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Stock {formatPercentBlock(stockProfitLossWeight)} ({formatCurrencyKBlock(selectedCompanyMetrics?.stockProfitLoss ?? null)})
+                    {' · '}
+                    Option {formatPercentBlock(optionProfitLossWeight)} ({formatCurrencyKBlock(selectedCompanyMetrics?.optionProfitLoss ?? null)})
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border bg-background p-3">
+                <div className="mb-3 flex flex-wrap items-end gap-2">
+                  <div className="min-w-[260px] flex-1">
+                    <p className="mb-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Company File</p>
+                    <p className="text-xs text-muted-foreground">
+                      Your most important notes on company, e.g. valuations, quick things to always remember, etc.
+                    </p>
+                    {selectedCompanyFilePath ? (
+                      <p className="mt-1 text-xs text-foreground/80">
+                        <span className="font-medium">{selectedCompanyFileLabel}</span>
+                        {' · '}
+                        <span className="text-muted-foreground">{selectedCompanyFilePath}</span>
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-muted-foreground">No company file selected.</p>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={workspaceBusy}
+                    onClick={() => setCompanyFilePickerOpen((prev) => !prev)}
+                  >
+                    {companyFilePickerOpen ? 'Close Selection' : 'Select File'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={workspaceBusy || !selectedCompanyFilePath}
+                    onClick={() => {
+                      void onUpdateCompanyOverlay({ valuationNotePath: null })
+                      setCompanyFileViewerNonce((prev) => prev + 1)
+                    }}
+                  >
+                    Clear
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!selectedCompanyFilePath}
+                    onClick={() => {
+                      if (!selectedCompanyFilePath) return
+                      onOpenNodeFile(selectedCompanyFilePath)
+                    }}
+                  >
+                    Open File
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!selectedCompanyFilePath}
+                    onClick={() => setCompanyFileViewerNonce((prev) => prev + 1)}
+                  >
+                    Refresh
+                  </Button>
+                </div>
+
+                {companyFilePickerOpen && (
+                  <div className="mb-3 rounded-lg border bg-muted/10 p-2">
+                    <UniversalSearchBlock<F9LinkOptionBlock>
+                      {...UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK}
+                      items={linkOptions}
+                      query={companyFileQuery}
+                      onQueryChange={setCompanyFileQuery}
+                      onSelect={(item) => { void selectCompanyFilePath(item.path) }}
+                      getItemKey={(item) => item.path}
+                      getItemLabel={(item) => item.label}
+                      getItemDescription={(item) => item.path}
+                      getItemSearchCandidates={(item) => [
+                        item.label,
+                        item.path,
+                        item.summary ?? '',
+                        ...buildPathSearchCandidatesBlock(item.path),
+                      ]}
+                      selectedItemKey={selectedCompanyFilePath || null}
+                      placeholder="Search markdown file"
+                      emptyMessage="No markdown files found"
+                      allowCustomValue
+                      onSelectCustomValue={(value) => { void selectCompanyFilePath(value) }}
+                      open={companyFilePickerOpen}
+                      onOpenChange={setCompanyFilePickerOpen}
+                      inputClassName="h-9 border border-input bg-background pl-10 pr-3 text-sm focus:ring-0 focus:ring-offset-0"
+                      dropdownClassName="z-50 mt-1"
+                      listClassName="max-h-64 overflow-auto p-1"
+                    />
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Select a file to set it as the company file.
+                    </p>
+                  </div>
+                )}
+
+                {selectedCompanyFilePath ? (
+                  <div className="h-[620px] overflow-hidden rounded-lg border">
+                    <MarkdownDocumentBlock
+                      key={`${selectedCompanyFilePath}::${companyFileViewerNonce}`}
+                      path={selectedCompanyFilePath}
+                      initialMode="view"
+                      onOpenPath={(path) => onOpenNodeFile(path)}
+                      onOpenPathForEdit={(path) => onOpenNodeFile(path)}
+                      className="h-full"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Select a company file to display it here with the full markdown viewer.
+                  </p>
+                )}
+              </div>
+
               <div className="rounded-xl border bg-background p-3">
                 <div className="overflow-x-auto">
                   <div className={F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}>

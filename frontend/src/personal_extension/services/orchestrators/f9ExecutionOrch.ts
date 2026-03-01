@@ -6,6 +6,7 @@ import {
   readF9PositionDetailBlock,
   saveF9PositionBodyBlock,
   syncF9ExecutionStorageBlock,
+  updateF9CompanyOverlayBlock,
   updateF9PositionOverlayBlock,
   type F9CompanyOverviewBlock,
   type F9ExecutionOverviewBlock,
@@ -103,11 +104,25 @@ export async function updateF9PositionOverlayOrch(input: {
     added_at?: string
     added_by?: string
   }>
+  relatedNodes?: string[]
   tags?: string[]
   projectPresetTags?: string[]
 }): Promise<F9PositionDetailBlock> {
   const settings = readF9ExecutionSettingsOrch()
   return updateF9PositionOverlayBlock({
+    executionFolderPath: settings.executionFolderPath,
+    ...input,
+  })
+}
+
+export async function updateF9CompanyOverlayOrch(input: {
+  companyTicker: string
+  strategyNotes?: string | null
+  relatedIdeaIds?: string[]
+  valuationNotePath?: string | null
+}): Promise<F9CompanyOverviewBlock> {
+  const settings = readF9ExecutionSettingsOrch()
+  return updateF9CompanyOverlayBlock({
     executionFolderPath: settings.executionFolderPath,
     ...input,
   })

@@ -14,6 +14,7 @@ import {
   loadF9PositionDetailOrch,
   saveF9PositionBodyOrch,
   syncF9ExecutionFromOverallOrch,
+  updateF9CompanyOverlayOrch,
   updateF9PositionOverlayOrch,
   type F9CompanyOverviewBlock,
   type F9ExecutionOverviewBlock,
@@ -352,6 +353,30 @@ export default function F9Orch() {
     }
   }, [activeCompanyTicker, activePositionFileName, loadExecutionOverview])
 
+  const onUpdateCompanyOverlay = useCallback(async (input: {
+    strategyNotes?: string | null
+    relatedIdeaIds?: string[]
+    valuationNotePath?: string | null
+  }) => {
+    if (!activeCompanyTicker) return
+    setWorkspaceBusy(true)
+    setWorkspaceMessage(null)
+    setExecutionSyncError(null)
+    try {
+      const company = await updateF9CompanyOverlayOrch({
+        companyTicker: activeCompanyTicker,
+        ...input,
+      })
+      setActiveCompanyTicker(company.companyTicker)
+      await loadExecutionOverview()
+      setWorkspaceMessage('Company metadata updated.')
+    } catch (err) {
+      setExecutionSyncError(err instanceof Error ? err.message : 'Failed to update company metadata.')
+    } finally {
+      setWorkspaceBusy(false)
+    }
+  }, [activeCompanyTicker, loadExecutionOverview])
+
   const onSavePositionBody = useCallback(async (body: string) => {
     if (!activeCompanyTicker || !activePositionFileName) return
     setWorkspaceBusy(true)
@@ -434,6 +459,7 @@ export default function F9Orch() {
       onCreateCompany={onCreateCompany}
       onCreateManualPosition={onCreateManualPosition}
       onUpdatePositionOverlay={onUpdatePositionOverlay}
+      onUpdateCompanyOverlay={onUpdateCompanyOverlay}
       onSavePositionBody={onSavePositionBody}
       onOpenNodeFile={(filePath) => openFile(filePath, { mode: 'edit' })}
       onRefreshOverall={refreshOverall}
