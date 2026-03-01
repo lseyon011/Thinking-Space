@@ -160,7 +160,7 @@ export function BacklogProgramRowBlock({
               <div
                 key={`${program.uuid}-column-${column.id}`}
                 className={cn(
-                  'truncate text-xs text-muted-foreground',
+                  'shrink-0 truncate text-xs text-muted-foreground',
                   column.widthClassName ?? 'w-24',
                   column.align === 'center' && 'text-center',
                   column.align === 'right' && 'text-right',

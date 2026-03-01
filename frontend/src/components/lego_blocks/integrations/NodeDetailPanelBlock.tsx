@@ -135,10 +135,15 @@ export interface NodeDetailPanelBlockProps {
   onUpdateProjectPresetTags: (tags: string[]) => Promise<void>
   presetTags?: string[]
   projectTagColors?: Record<string, string>
+  allowProjectPresetTagCreation?: boolean
   onUpdateNotes: (description: string, comments: YAMLCommentEntry[]) => Promise<void>
+  noteBody?: string
+  onUpdateNoteBody?: (body: string) => Promise<void>
+  noteBodyLabel?: string
+  noteBodyPlaceholder?: string
   onUpdateEpicCompletedAt?: (completionDate: string | null) => Promise<void>
   onOpenFile: () => void
-  onDelete: () => Promise<void>
+  onDelete?: () => Promise<void>
 }
 
 export default function NodeDetailPanelBlock({
@@ -153,7 +158,12 @@ export default function NodeDetailPanelBlock({
   onUpdateProjectPresetTags,
   presetTags = [],
   projectTagColors = {},
+  allowProjectPresetTagCreation = false,
   onUpdateNotes,
+  noteBody,
+  onUpdateNoteBody,
+  noteBodyLabel = 'Note',
+  noteBodyPlaceholder = 'Add notes...',
   onUpdateEpicCompletedAt,
   onOpenFile,
   onDelete,
@@ -168,7 +178,10 @@ export default function NodeDetailPanelBlock({
   const [epicCompletionDateDraft, setEpicCompletionDateDraft] = useState('')
   const [epicCompletionSaving, setEpicCompletionSaving] = useState(false)
   const [userTagDraft, setUserTagDraft] = useState('')
+  const [projectPresetTagDraft, setProjectPresetTagDraft] = useState('')
   const [tagsSaving, setTagsSaving] = useState(false)
+  const [noteBodyDraft, setNoteBodyDraft] = useState('')
+  const [noteBodySaving, setNoteBodySaving] = useState(false)
   const [activityTab, setActivityTab] = useState<'all' | 'comments' | 'history' | 'worklog'>('comments')
   const [descriptionEditMode, setDescriptionEditMode] = useState(false)
   const notesAutoSaveSignatureRef = useRef<string | null>(null)
@@ -208,6 +221,7 @@ export default function NodeDetailPanelBlock({
     const projectPresetLookup = new Set(sourceProjectPresetTags.map(tag => normalizeTagBlock(tag).toLowerCase()).filter(Boolean))
     return sourceAllTags.filter(tag => !projectPresetLookup.has(normalizeTagBlock(tag).toLowerCase()))
   }, [sourceAllTags, sourceProjectPresetTags])
+  const sourceNoteBody = useMemo(() => noteBody ?? '', [noteBody])
 
   useEffect(() => {
     const nodeChanged = lastNodeUuidRef.current !== node.uuid
@@ -226,8 +240,14 @@ export default function NodeDetailPanelBlock({
 
   useEffect(() => {
     setUserTagDraft('')
+    setProjectPresetTagDraft('')
     setTagsSaving(false)
   }, [node.uuid])
+
+  useEffect(() => {
+    setNoteBodyDraft(sourceNoteBody)
+    setNoteBodySaving(false)
+  }, [node.uuid, sourceNoteBody])
 
   // Close on Escape
   useEffect(() => {
@@ -250,6 +270,7 @@ export default function NodeDetailPanelBlock({
   }, [node.title, onRename, titleDraft])
 
   const handleDelete = useCallback(async () => {
+    if (!onDelete) return
     setBusy(true)
     try {
       await onDelete()
@@ -275,6 +296,7 @@ export default function NodeDetailPanelBlock({
     return false
   }, [commentsDraft, sourceComments])
   const notesDirty = descriptionDraft.trim() !== sourceDescription || commentsDirty
+  const noteBodyDirty = onUpdateNoteBody ? noteBodyDraft !== sourceNoteBody : false
   const notesPayloadSignature = useMemo(() => JSON.stringify({
     description: descriptionDraft.trim(),
     comments: commentsDraft,
@@ -433,6 +455,32 @@ export default function NodeDetailPanelBlock({
     await commitProjectPresetTags(next)
   }, [commitProjectPresetTags, sourceProjectPresetTags])
 
+  const addProjectPresetTags = useCallback(async () => {
+    if (!allowProjectPresetTagCreation) return
+    const additions = splitTagInputBlock(projectPresetTagDraft)
+    if (additions.length === 0) return
+    const next = normalizeTagListBlock([...sourceProjectPresetTags, ...additions])
+    await commitProjectPresetTags(next)
+    setProjectPresetTagDraft('')
+  }, [allowProjectPresetTagCreation, commitProjectPresetTags, projectPresetTagDraft, sourceProjectPresetTags])
+
+  const commitNoteBody = useCallback(async () => {
+    if (!onUpdateNoteBody || !noteBodyDirty || noteBodySaving) return
+    setBusy(true)
+    setNoteBodySaving(true)
+    try {
+      await onUpdateNoteBody(noteBodyDraft)
+    } finally {
+      setNoteBodySaving(false)
+      setBusy(false)
+    }
+  }, [noteBodyDirty, noteBodyDraft, noteBodySaving, onUpdateNoteBody])
+
+  const availableProjectPresetTags = useMemo(
+    () => normalizeTagListBlock([...sourcePresetTags, ...sourceProjectPresetTags]),
+    [sourcePresetTags, sourceProjectPresetTags],
+  )
+
   useEffect(() => {
     if (!notesDirty || busy || notesSaving) return
     if (notesAutoSaveSignatureRef.current === notesPayloadSignature) return
@@ -500,16 +548,18 @@ export default function NodeDetailPanelBlock({
             <Button size="sm" variant="outline" onClick={onOpenFile}>
               Open File
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-destructive hover:bg-destructive/10"
-              onClick={() => { void handleDelete() }}
-              disabled={busy}
-            >
-              <Trash2 className="mr-1 h-3.5 w-3.5" />
-              Delete
-            </Button>
+            {onDelete ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive hover:bg-destructive/10"
+                onClick={() => { void handleDelete() }}
+                disabled={busy}
+              >
+                <Trash2 className="mr-1 h-3.5 w-3.5" />
+                Delete
+              </Button>
+            ) : null}
             <span className="text-[11px] text-muted-foreground">
               {notesAutoSaving ? 'Auto-saving...' : (notesDirty ? 'Unsaved changes' : 'Auto-save on')}
             </span>
@@ -594,6 +644,41 @@ export default function NodeDetailPanelBlock({
             )}
           </div>
 
+          {onUpdateNoteBody ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-semibold text-foreground">{noteBodyLabel}</label>
+                <span className="text-[11px] text-muted-foreground">
+                  {noteBodyDirty ? 'Unsaved note changes' : 'Saved'}
+                </span>
+              </div>
+              <MarkdownRichEditorBlock
+                value={noteBodyDraft}
+                onChange={setNoteBodyDraft}
+                placeholder={noteBodyPlaceholder}
+                className="min-h-[220px] rounded-md border border-input overflow-hidden"
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setNoteBodyDraft(sourceNoteBody)}
+                  disabled={busy || noteBodySaving || !noteBodyDirty}
+                >
+                  Reset
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { void commitNoteBody() }}
+                  disabled={busy || noteBodySaving || !noteBodyDirty}
+                >
+                  {noteBodySaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save Note'}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-sm font-semibold text-foreground">Description</label>
@@ -646,7 +731,7 @@ export default function NodeDetailPanelBlock({
             <TagPresetSelectorBlock
               heading="Project Tags"
               description="Project-scoped presets"
-              tags={sourcePresetTags}
+              tags={availableProjectPresetTags}
               tagColors={projectTagColors}
               selectedTags={sourceProjectPresetTags}
               emptyMessage="No preset tags yet for this project."
@@ -654,6 +739,20 @@ export default function NodeDetailPanelBlock({
               disabled={busy || tagsSaving}
               busy={tagsSaving}
             />
+            {allowProjectPresetTagCreation ? (
+              <TagListEditorBlock
+                heading="Add Project Tags"
+                tags={[]}
+                emptyMessage="Add tags to this node's project-tag list."
+                draftValue={projectPresetTagDraft}
+                onDraftValueChange={setProjectPresetTagDraft}
+                onAddTag={() => { void addProjectPresetTags() }}
+                addPlaceholder="Add project tags (comma separated)"
+                addDisabled={splitTagInputBlock(projectPresetTagDraft).length === 0}
+                disabled={busy || tagsSaving}
+                busy={tagsSaving}
+              />
+            ) : null}
           </div>
 
           <div className="space-y-1">

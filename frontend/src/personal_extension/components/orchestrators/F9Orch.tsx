@@ -22,6 +22,7 @@ import {
   type SyncF9ExecutionResultBlock,
 } from '../../services/orchestrators/f9ExecutionOrch'
 import { hasF9WebullConfigBlock } from '../../services/lego_blocks/units/f9WebullConfigBlock'
+import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 
 type F9SubtabId = 'overall'
 
@@ -81,6 +82,7 @@ function toSnapshotFromCacheBlock(
 }
 
 export default function F9Orch() {
+  const { openFile } = useMarkdownViewer()
   const [activeSubtabId, setActiveSubtabId] = useState<F9SubtabId>('overall')
   const [snapshot, setSnapshot] = useState<F9OverallSnapshotOrch | null>(null)
   const [executionOverview, setExecutionOverview] = useState<F9ExecutionOverviewBlock | null>(null)
@@ -315,6 +317,16 @@ export default function F9Orch() {
     fileName?: string
     status?: 'taken' | 'planned' | 'watchlist'
     linkedIdeaId?: string | null
+    title?: string | null
+    priority?: 'low' | 'medium' | 'high' | 'critical' | null
+    description?: string | null
+    comments?: Array<{
+      text: string
+      added_at?: string
+      added_by?: string
+    }>
+    tags?: string[]
+    projectPresetTags?: string[]
   }) => {
     if (!activeCompanyTicker) return
     const fileName = input.fileName ?? activePositionFileName
@@ -331,7 +343,7 @@ export default function F9Orch() {
       setActivePositionFileName(fileName)
       setActivePositionDetail(detail)
       await loadExecutionOverview()
-      setWorkspaceMessage('Position fields updated.')
+      setWorkspaceMessage('Position metadata updated.')
     } catch (err) {
       setExecutionSyncError(err instanceof Error ? err.message : 'Failed to update position fields.')
     } finally {
@@ -422,6 +434,7 @@ export default function F9Orch() {
       onCreateManualPosition={onCreateManualPosition}
       onUpdatePositionOverlay={onUpdatePositionOverlay}
       onSavePositionBody={onSavePositionBody}
+      onOpenNodeFile={(filePath) => openFile(filePath, { mode: 'edit' })}
       onRefreshExecutionOverview={loadExecutionOverview}
       onRefreshOverall={refreshOverall}
     />

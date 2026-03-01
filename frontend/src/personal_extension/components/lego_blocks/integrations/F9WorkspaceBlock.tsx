@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
+import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import { normalizeTagListBlock } from '@/services/lego_blocks/units/tagBlock'
+import type { NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
 import type { F9RuntimeSurfaceOrch, F9SelectedAccountOrch } from '@/personal_extension/services/orchestrators/f9OverallOrch'
 import type {
   F9CompanyOverviewBlock,
@@ -77,8 +80,15 @@ interface F9WorkspaceBlockProps {
     fileName?: string
     status?: 'taken' | 'planned' | 'watchlist'
     linkedIdeaId?: string | null
+    title?: string | null
+    priority?: NodePriority | null
+    description?: string | null
+    comments?: YAMLCommentEntry[]
+    tags?: string[]
+    projectPresetTags?: string[]
   }) => Promise<void>
   onSavePositionBody: (body: string) => Promise<void>
+  onOpenNodeFile: (filePath: string) => void
   onRefreshExecutionOverview: () => Promise<F9ExecutionOverviewBlock | null>
   onRefreshOverall: () => void
 }
@@ -164,14 +174,6 @@ function formatOverallValueBlock(balanceData: unknown): string {
   return formatCurrencyBlock(value)
 }
 
-function statusChipClassBlock(status: string): string {
-  const normalized = status.trim().toLowerCase()
-  if (normalized === 'taken') return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-  if (normalized === 'planned') return 'border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300'
-  if (normalized === 'watchlist') return 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-  return 'border-border bg-muted/40 text-foreground'
-}
-
 function normalizeKeyFragmentBlock(value: string): string {
   const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
   return normalized || 'item'
@@ -194,6 +196,45 @@ function mapPositionStatusToNodeStatusBlock(status: string | null | undefined): 
   if (normalized === 'watchlist') return 'paused'
   if (normalized === 'planned') return 'incomplete'
   return 'active'
+}
+
+function mapNodeStatusToPositionStatusBlock(status: NodeStatus): 'taken' | 'planned' | 'watchlist' {
+  if (status === 'paused') return 'watchlist'
+  if (status === 'incomplete') return 'planned'
+  return 'taken'
+}
+
+function normalizePriorityFromUnknownBlock(value: unknown): NodePriority | null {
+  const normalized = firstStringBlock(value).toLowerCase()
+  if (normalized === 'low' || normalized === 'medium' || normalized === 'high' || normalized === 'critical') {
+    return normalized
+  }
+  return null
+}
+
+function asStringArrayBlock(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return normalizeTagListBlock(
+    value
+      .map(entry => firstStringBlock(entry))
+      .filter(Boolean),
+  )
+}
+
+function asYamlCommentsBlock(value: unknown): YAMLCommentEntry[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return []
+    const row = entry as Record<string, unknown>
+    const text = firstStringBlock(row.text)
+    if (!text) return []
+    const next: YAMLCommentEntry = { text }
+    const addedAt = firstStringBlock(row.added_at)
+    if (addedAt) next.added_at = addedAt
+    const addedBy = firstStringBlock(row.added_by)
+    if (addedBy) next.added_by = addedBy
+    return [next]
+  })
 }
 
 function positionTitleFromSummaryBlock(position: F9PositionSummaryBlock): string {
@@ -297,6 +338,73 @@ function resolveTotalCostBlock(payload: Record<string, unknown> | null | undefin
   return unitCost * quantity * multiplier
 }
 
+function positionPayloadFromSummaryBlock(position: F9PositionSummaryBlock): Record<string, unknown> {
+  return {
+    id: position.id,
+    file_name: position.fileName,
+    symbol: position.symbol,
+    status: position.status,
+    source: position.source,
+    instrument_type: position.instrumentType,
+    option_type: position.optionType,
+    option_expire_date: position.optionExpireDate,
+    option_exercise_price: position.optionExercisePrice,
+    cost: position.cost,
+    proportion: position.proportion,
+    last_price: position.lastPrice,
+    unrealized_profit_loss: position.unrealizedProfitLoss,
+    day_profit_loss: position.dayProfitLoss,
+    linked_idea_id: position.linkedIdeaId,
+  }
+}
+
+function computeCompanyTotalsBlock(positions: F9PositionSummaryBlock[]): {
+  totalCost: number | null
+  avgUnitCost: number | null
+  totalUnrealizedProfitLoss: number | null
+  totalCurrentPrice: number | null
+} {
+  let totalCost = 0
+  let totalCostCount = 0
+  let totalUnitCost = 0
+  let unitCostCount = 0
+  let totalUnrealized = 0
+  let unrealizedCount = 0
+  let totalCurrentPrice = 0
+  let currentPriceCount = 0
+
+  for (const position of positions) {
+    const payload = positionPayloadFromSummaryBlock(position)
+    const totalCostValue = resolveTotalCostBlock(payload)
+    if (totalCostValue !== null) {
+      totalCost += totalCostValue
+      totalCostCount += 1
+    }
+    const unitCostValue = resolveUnitCostBlock(payload)
+    if (unitCostValue !== null) {
+      totalUnitCost += unitCostValue
+      unitCostCount += 1
+    }
+    const unrealizedValue = firstNumberBlock(payload.unrealized_profit_loss)
+    if (unrealizedValue !== null) {
+      totalUnrealized += unrealizedValue
+      unrealizedCount += 1
+    }
+    const currentPriceValue = firstNumberBlock(payload.last_price)
+    if (currentPriceValue !== null) {
+      totalCurrentPrice += currentPriceValue
+      currentPriceCount += 1
+    }
+  }
+
+  return {
+    totalCost: totalCostCount > 0 ? totalCost : null,
+    avgUnitCost: unitCostCount > 0 ? totalUnitCost / unitCostCount : null,
+    totalUnrealizedProfitLoss: unrealizedCount > 0 ? totalUnrealized : null,
+    totalCurrentPrice: currentPriceCount > 0 ? totalCurrentPrice : null,
+  }
+}
+
 export default function F9WorkspaceBlock({
   subtabs,
   activeSubtabId,
@@ -337,6 +445,7 @@ export default function F9WorkspaceBlock({
   onCreateManualPosition,
   onUpdatePositionOverlay,
   onSavePositionBody,
+  onOpenNodeFile,
   onRefreshExecutionOverview,
   onRefreshOverall,
 }: F9WorkspaceBlockProps) {
@@ -350,11 +459,6 @@ export default function F9WorkspaceBlock({
     [activeCompanyTicker, executionOverview],
   )
 
-  const selectedPositionSummary = useMemo(
-    () => selectedCompany?.positions.find((position) => position.fileName === activePositionFileName) ?? null,
-    [activePositionFileName, selectedCompany],
-  )
-
   const companiesForTable = useMemo<F9CompanyOverviewBlock[]>(() => {
     if (selectedCompany) return [selectedCompany]
     if ((executionOverview?.companies.length ?? 0) > 0) return executionOverview?.companies ?? []
@@ -364,6 +468,7 @@ export default function F9WorkspaceBlock({
   const backlogTableModel = useMemo(() => {
     const now = new Date().toISOString()
     const programs: NodeRecord[] = []
+    const nodeByUuid = new Map<string, NodeRecord>()
     const positionNodesByProgramUuid = new Map<string, NodeRecord[]>()
     const companyTickerByProgramUuid = new Map<string, string>()
     const positionRefByNodeUuid = new Map<string, { companyTicker: string; fileName: string }>()
@@ -372,14 +477,14 @@ export default function F9WorkspaceBlock({
     for (const company of companiesForTable) {
       const companyTicker = company.companyTicker.toUpperCase()
       const programUuid = `f9-company-${normalizeKeyFragmentBlock(companyTicker)}`
+      const companyTotals = computeCompanyTotalsBlock(company.positions)
       companyTickerByProgramUuid.set(programUuid, companyTicker)
-      programs.push({
+      const programNode: NodeRecord = {
         uuid: programUuid,
         key: programUuid,
         title: `${companyTicker} Positions`,
         type: 'program',
         level: 0,
-        ticket: `${companyTicker}-POS`,
         filePath: company.indexFilePath || `f9/${companyTicker}/${companyTicker}-index.md`,
         projectRoot: executionRoot ?? 'f9-execution',
         tags: ['f9', 'execution', companyTicker.toLowerCase()],
@@ -389,16 +494,21 @@ export default function F9WorkspaceBlock({
         metadata: {
           f9_company_ticker: companyTicker,
           f9_position_count: company.positions.length,
+          f9_total_cost: companyTotals.totalCost,
+          f9_avg_unit_cost: companyTotals.avgUnitCost,
+          f9_total_unrealized_profit_loss: companyTotals.totalUnrealizedProfitLoss,
+          f9_total_current_price: companyTotals.totalCurrentPrice,
         },
-      })
+      }
+      programs.push(programNode)
+      nodeByUuid.set(programUuid, programNode)
 
       const nodes = company.positions.map((position, index) => {
         const fileName = position.fileName
         const nodeUuid = `f9-pos-${normalizeKeyFragmentBlock(companyTicker)}-${normalizeKeyFragmentBlock(fileName)}`
         positionRefByNodeUuid.set(nodeUuid, { companyTicker, fileName })
         nodeUuidByCompanyAndFile.set(`${companyTicker}::${fileName}`, nodeUuid)
-        const ticketCandidate = firstStringBlock(position.id).slice(0, 18)
-        return {
+        const nodeRecord: NodeRecord = {
           uuid: nodeUuid,
           key: nodeUuid,
           title: positionTitleFromSummaryBlock(position),
@@ -407,8 +517,9 @@ export default function F9WorkspaceBlock({
           parent: programUuid,
           parentUuid: programUuid,
           parentType: 'program',
-          ticket: ticketCandidate || undefined,
-          filePath: `f9/${companyTicker}/positions/${fileName}`,
+          filePath: executionRoot
+            ? `${executionRoot}/${companyTicker}/positions/${fileName}`
+            : `f9/${companyTicker}/positions/${fileName}`,
           projectRoot: executionRoot ?? 'f9-execution',
           description: [
             `status: ${position.status || 'taken'}`,
@@ -432,25 +543,11 @@ export default function F9WorkspaceBlock({
             f9_position_file_name: fileName,
             f9_position_status: position.status || 'taken',
             f9_linked_idea_id: position.linkedIdeaId ?? '',
-            f9_position_payload: {
-              id: position.id,
-              file_name: position.fileName,
-              symbol: position.symbol,
-              status: position.status,
-              source: position.source,
-              instrument_type: position.instrumentType,
-              option_type: position.optionType,
-              option_expire_date: position.optionExpireDate,
-              option_exercise_price: position.optionExercisePrice,
-              cost: position.cost,
-              proportion: position.proportion,
-              last_price: position.lastPrice,
-              unrealized_profit_loss: position.unrealizedProfitLoss,
-              day_profit_loss: position.dayProfitLoss,
-              linked_idea_id: position.linkedIdeaId,
-            },
+            f9_position_payload: positionPayloadFromSummaryBlock(position),
           },
-        } satisfies NodeRecord
+        }
+        nodeByUuid.set(nodeUuid, nodeRecord)
+        return nodeRecord
       })
 
       positionNodesByProgramUuid.set(programUuid, nodes)
@@ -458,12 +555,16 @@ export default function F9WorkspaceBlock({
 
     return {
       programs,
+      nodeByUuid,
       positionNodesByProgramUuid,
       companyTickerByProgramUuid,
       positionRefByNodeUuid,
       nodeUuidByCompanyAndFile,
     }
   }, [companiesForTable, executionRoot])
+
+  const [detailPanelNodeId, setDetailPanelNodeId] = useState<string | null>(null)
+  const [availableProjectPresetTags, setAvailableProjectPresetTags] = useState<string[]>([])
 
   const selectedBacklogNodeId = useMemo(() => {
     if (!activeCompanyTicker || !activePositionFileName) return null
@@ -480,12 +581,14 @@ export default function F9WorkspaceBlock({
     if (node.type === 'program') {
       const companyTicker = backlogTableModel.companyTickerByProgramUuid.get(node.uuid)
       if (companyTicker) onSelectCompanyTicker(companyTicker)
+      setDetailPanelNodeId(null)
       return
     }
     const positionRef = backlogTableModel.positionRefByNodeUuid.get(node.uuid)
     if (!positionRef) return
     onSelectCompanyTicker(positionRef.companyTicker)
     onSelectPositionFileName(positionRef.fileName)
+    setDetailPanelNodeId(node.uuid)
   }, [
     backlogTableModel.companyTickerByProgramUuid,
     backlogTableModel.positionRefByNodeUuid,
@@ -493,17 +596,28 @@ export default function F9WorkspaceBlock({
     onSelectPositionFileName,
   ])
 
+  const onOpenBacklogNodeDetails = useCallback((node: NodeRecord) => {
+    if (node.type !== 'epic') return
+    onSelectBacklogNode(node)
+  }, [onSelectBacklogNode])
+
+  useEffect(() => {
+    if (!detailPanelNodeId) return
+    if (backlogTableModel.nodeByUuid.has(detailPanelNodeId)) return
+    setDetailPanelNodeId(null)
+  }, [backlogTableModel.nodeByUuid, detailPanelNodeId])
+
   const f9RowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
-    const epicOnly: NodeRecord['type'][] = ['epic']
     return [
       {
         id: 'cost',
         label: 'Cost',
         widthClassName: 'w-24',
         align: 'right',
-        showForTypes: epicOnly,
         render: (node) => {
-          const payload = asMetadataRecordBlock(node).f9_position_payload as Record<string, unknown> | undefined
+          const metadata = asMetadataRecordBlock(node)
+          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.f9_total_cost)
+          const payload = metadata.f9_position_payload as Record<string, unknown> | undefined
           return formatCurrencyBlock(resolveTotalCostBlock(payload))
         },
       },
@@ -512,9 +626,10 @@ export default function F9WorkspaceBlock({
         label: 'Unit Cost',
         widthClassName: 'w-24',
         align: 'right',
-        showForTypes: epicOnly,
         render: (node) => {
-          const payload = asMetadataRecordBlock(node).f9_position_payload as Record<string, unknown> | undefined
+          const metadata = asMetadataRecordBlock(node)
+          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.f9_avg_unit_cost)
+          const payload = metadata.f9_position_payload as Record<string, unknown> | undefined
           return formatCurrencyBlock(resolveUnitCostBlock(payload))
         },
       },
@@ -523,9 +638,10 @@ export default function F9WorkspaceBlock({
         label: 'Current P/L',
         widthClassName: 'w-24',
         align: 'right',
-        showForTypes: epicOnly,
         render: (node) => {
-          const payload = asMetadataRecordBlock(node).f9_position_payload as Record<string, unknown> | undefined
+          const metadata = asMetadataRecordBlock(node)
+          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.f9_total_unrealized_profit_loss)
+          const payload = metadata.f9_position_payload as Record<string, unknown> | undefined
           return formatCurrencyFromUnknownBlock(payload?.unrealized_profit_loss)
         },
       },
@@ -534,47 +650,63 @@ export default function F9WorkspaceBlock({
         label: 'Current Price',
         widthClassName: 'w-24',
         align: 'right',
-        showForTypes: epicOnly,
         render: (node) => {
-          const payload = asMetadataRecordBlock(node).f9_position_payload as Record<string, unknown> | undefined
+          const metadata = asMetadataRecordBlock(node)
+          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.f9_total_current_price)
+          const payload = metadata.f9_position_payload as Record<string, unknown> | undefined
           return formatCurrencyFromUnknownBlock(payload?.last_price)
         },
       },
     ]
   }, [])
 
-  const renderF9RowDetails = useCallback((node: NodeRecord) => {
-    const metadata = asMetadataRecordBlock(node)
-    if (node.type === 'program') {
-      return (
-        <div className="grid gap-1 text-xs">
-          <p><span className="font-medium text-foreground">Company:</span> {firstStringBlock(metadata.f9_company_ticker) || node.title}</p>
-          <p><span className="font-medium text-foreground">Positions:</span> {firstStringBlock(metadata.f9_position_count) || '0'}</p>
-          <p><span className="font-medium text-foreground">Source:</span> Company index + position files</p>
-        </div>
-      )
-    }
+  const detailPanelNodeBase = useMemo(
+    () => (detailPanelNodeId ? backlogTableModel.nodeByUuid.get(detailPanelNodeId) ?? null : null),
+    [backlogTableModel.nodeByUuid, detailPanelNodeId],
+  )
+  const detailPanelPositionRef = useMemo(
+    () => (detailPanelNodeBase?.type === 'epic' ? backlogTableModel.positionRefByNodeUuid.get(detailPanelNodeBase.uuid) ?? null : null),
+    [backlogTableModel.positionRefByNodeUuid, detailPanelNodeBase],
+  )
+  const detailPanelPositionDetail = useMemo(() => {
+    if (!detailPanelPositionRef || !activePositionDetail) return null
+    if (activePositionDetail.companyTicker !== detailPanelPositionRef.companyTicker) return null
+    if (activePositionDetail.summary.fileName !== detailPanelPositionRef.fileName) return null
+    return activePositionDetail
+  }, [activePositionDetail, detailPanelPositionRef])
 
-    const payload = metadata.f9_position_payload
-    const payloadEntries = payload && typeof payload === 'object' && !Array.isArray(payload)
-      ? Object.entries(payload as Record<string, unknown>)
-      : []
+  const detailPanelNode = useMemo(() => {
+    if (!detailPanelNodeBase) return null
+    if (!detailPanelPositionDetail) return detailPanelNodeBase
+    const frontmatter = detailPanelPositionDetail.frontmatter as Record<string, unknown>
+    return {
+      ...detailPanelNodeBase,
+      title: firstStringBlock(frontmatter.title) || detailPanelNodeBase.title,
+      description: firstStringBlock(frontmatter.description) || undefined,
+      comments: asYamlCommentsBlock(frontmatter.comments),
+      tags: asStringArrayBlock(frontmatter.tags),
+      projectPresetTags: asStringArrayBlock(frontmatter.project_preset_tags),
+      priority: normalizePriorityFromUnknownBlock(frontmatter.priority) ?? detailPanelNodeBase.priority,
+      status: mapPositionStatusToNodeStatusBlock(firstStringBlock(frontmatter.status) || detailPanelPositionDetail.summary.status),
+      updatedAt: firstStringBlock(frontmatter.updated_at) || detailPanelNodeBase.updatedAt,
+    } satisfies NodeRecord
+  }, [detailPanelNodeBase, detailPanelPositionDetail])
 
-    if (payloadEntries.length === 0) {
-      return <p className="text-xs text-muted-foreground">No position payload details.</p>
-    }
+  const detailPanelFrontmatter = useMemo(
+    () => (detailPanelPositionDetail?.frontmatter as YAMLFrontmatter | undefined) ?? null,
+    [detailPanelPositionDetail?.frontmatter],
+  )
 
-    return (
-      <div className="grid gap-1 text-xs md:grid-cols-2">
-        {payloadEntries.map(([key, value]) => (
-          <p key={`${node.uuid}-detail-${key}`}>
-            <span className="font-medium text-foreground">{key}:</span>{' '}
-            <span className="text-muted-foreground">{firstStringBlock(value) || '—'}</span>
-          </p>
-        ))}
-      </div>
-    )
-  }, [])
+  useEffect(() => {
+    const fromFrontmatter = asStringArrayBlock(detailPanelPositionDetail?.frontmatter?.project_preset_tags)
+    if (fromFrontmatter.length === 0) return
+    setAvailableProjectPresetTags(prev => normalizeTagListBlock([...prev, ...fromFrontmatter]))
+  }, [detailPanelPositionDetail?.frontmatter?.project_preset_tags])
+
+  const detailPanelPresetTags = useMemo(
+    () => normalizeTagListBlock([...availableProjectPresetTags, ...(detailPanelNode?.projectPresetTags ?? [])]),
+    [availableProjectPresetTags, detailPanelNode?.projectPresetTags],
+  )
 
   const [newCompanyTicker, setNewCompanyTicker] = useState('')
   const [newPositionTitle, setNewPositionTitle] = useState('')
@@ -585,23 +717,9 @@ export default function F9WorkspaceBlock({
   const [newOptionStrike, setNewOptionStrike] = useState('')
   const [newLinkedIdeaId, setNewLinkedIdeaId] = useState('')
   const [newPositionNotes, setNewPositionNotes] = useState('')
-  const [detailBodyDraft, setDetailBodyDraft] = useState('')
-  const [detailStatusDraft, setDetailStatusDraft] = useState<'taken' | 'planned' | 'watchlist'>('planned')
-  const [detailLinkedIdeaDraft, setDetailLinkedIdeaDraft] = useState('')
-
-  useEffect(() => {
-    setDetailBodyDraft(activePositionDetail?.body ?? '')
-  }, [activePositionDetail?.body])
-
-  useEffect(() => {
-    setDetailStatusDraft(
-      (activePositionDetail?.summary.status as 'taken' | 'planned' | 'watchlist' | undefined) ?? 'planned',
-    )
-    setDetailLinkedIdeaDraft(activePositionDetail?.summary.linkedIdeaId ?? '')
-  }, [activePositionDetail?.summary.status, activePositionDetail?.summary.linkedIdeaId])
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+    <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="space-y-3">
         <div className="space-y-2 rounded-xl border bg-background p-3">
           {subtabs.map((subtab) => {
@@ -767,36 +885,46 @@ export default function F9WorkspaceBlock({
 
           {!selectedCompany ? (
             <div className="rounded-xl border bg-background p-3">
-              <BacklogListBlock
-                programs={backlogTableModel.programs}
-                loadEpics={loadBacklogEpics}
-                loadChildren={loadBacklogChildren}
-                selectedNodeId={selectedBacklogNodeId}
-                readOnly
-                onSelectNode={onSelectBacklogNode}
-                rowColumns={f9RowColumns}
-                rowDetailsRenderer={renderF9RowDetails}
-                showNodeTypeIcons={false}
-                showExpandToggles={false}
-                showPriorityDots={false}
-              />
+              <div className="overflow-x-auto">
+                <div className="min-w-[1080px]">
+                  <BacklogListBlock
+                    programs={backlogTableModel.programs}
+                    loadEpics={loadBacklogEpics}
+                    loadChildren={loadBacklogChildren}
+                    selectedNodeId={selectedBacklogNodeId}
+                    readOnly
+                    onSelectNode={onSelectBacklogNode}
+                    onOpenNodeDetails={onOpenBacklogNodeDetails}
+                    canOpenNodeDetails={(node) => node.type === 'epic'}
+                    rowColumns={f9RowColumns}
+                    showNodeTypeIcons={false}
+                    showExpandToggles={false}
+                    showPriorityDots={false}
+                  />
+                </div>
+              </div>
             </div>
           ) : (
             <>
               <div className="rounded-xl border bg-background p-3">
-                <BacklogListBlock
-                  programs={backlogTableModel.programs}
-                  loadEpics={loadBacklogEpics}
-                  loadChildren={loadBacklogChildren}
-                  selectedNodeId={selectedBacklogNodeId}
-                  readOnly
-                  onSelectNode={onSelectBacklogNode}
-                  rowColumns={f9RowColumns}
-                  rowDetailsRenderer={renderF9RowDetails}
-                  showNodeTypeIcons={false}
-                  showExpandToggles={false}
-                  showPriorityDots={false}
-                />
+                <div className="overflow-x-auto">
+                  <div className="min-w-[1080px]">
+                    <BacklogListBlock
+                      programs={backlogTableModel.programs}
+                      loadEpics={loadBacklogEpics}
+                      loadChildren={loadBacklogChildren}
+                      selectedNodeId={selectedBacklogNodeId}
+                      readOnly
+                      onSelectNode={onSelectBacklogNode}
+                      onOpenNodeDetails={onOpenBacklogNodeDetails}
+                      canOpenNodeDetails={(node) => node.type === 'epic'}
+                      rowColumns={f9RowColumns}
+                      showNodeTypeIcons={false}
+                      showExpandToggles={false}
+                      showPriorityDots={false}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="rounded-xl border bg-background p-3">
@@ -897,85 +1025,13 @@ export default function F9WorkspaceBlock({
                 </div>
               </div>
 
-              <div className="rounded-xl border bg-background p-3">
-                <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Position Details</p>
-                {!selectedPositionSummary ? (
-                  <p className="text-sm text-muted-foreground">Select a position row to edit fields and notes.</p>
-                ) : positionDetailLoading ? (
-                  <p className="text-sm text-muted-foreground">Loading position details...</p>
-                ) : positionDetailError ? (
-                  <p className="text-sm text-destructive">{positionDetailError}</p>
-                ) : !activePositionDetail ? (
-                  <p className="text-sm text-muted-foreground">No position details loaded.</p>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="grid gap-2 md:grid-cols-2">
-                      <label className="space-y-1">
-                        <span className="text-xs text-muted-foreground">Status</span>
-                        <select
-                          value={detailStatusDraft}
-                          onChange={(event) => setDetailStatusDraft(event.target.value as 'taken' | 'planned' | 'watchlist')}
-                          className={`h-9 w-full rounded-md border px-2.5 text-sm ${statusChipClassBlock(detailStatusDraft)}`}
-                        >
-                          <option value="taken">taken</option>
-                          <option value="planned">planned</option>
-                          <option value="watchlist">watchlist</option>
-                        </select>
-                      </label>
-                      <label className="space-y-1">
-                        <span className="text-xs text-muted-foreground">Linked Idea UUID</span>
-                        <input
-                          type="text"
-                          value={detailLinkedIdeaDraft}
-                          onChange={(event) => setDetailLinkedIdeaDraft(event.target.value)}
-                          className="h-9 w-full rounded-md border border-input bg-background px-2.5 font-mono text-xs outline-none focus:border-ring"
-                        />
-                      </label>
-                    </div>
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={workspaceBusy}
-                        onClick={() => {
-                          void onUpdatePositionOverlay({
-                            status: detailStatusDraft,
-                            linkedIdeaId: detailLinkedIdeaDraft || null,
-                          })
-                        }}
-                      >
-                        Save Fields
-                      </Button>
-                    </div>
-
-                    <textarea
-                      value={detailBodyDraft}
-                      onChange={(event) => setDetailBodyDraft(event.target.value)}
-                      className="min-h-[180px] w-full rounded-md border border-input bg-background px-2.5 py-2 text-sm outline-none focus:border-ring"
-                    />
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={workspaceBusy}
-                        onClick={() => setDetailBodyDraft(activePositionDetail.body)}
-                      >
-                        Reset
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={workspaceBusy}
-                        onClick={() => { void onSavePositionBody(detailBodyDraft) }}
-                      >
-                        Save Notes
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <p className="rounded-xl border border-border/60 bg-muted/15 px-3 py-2 text-sm text-muted-foreground">
+                {positionDetailError
+                  ? `Detail load warning: ${positionDetailError}`
+                  : (positionDetailLoading
+                    ? 'Loading selected row details...'
+                    : 'Click a position row (or its details icon) to open the shared details panel with note, description, comments, and tags.')}
+              </p>
             </>
           )}
 
@@ -1008,6 +1064,68 @@ export default function F9WorkspaceBlock({
           </details>
         </CardContent>
       </Card>
+
+      {detailPanelNode && (
+        <NodeDetailPanelBlock
+          node={detailPanelNode}
+          frontmatter={detailPanelFrontmatter}
+          onClose={() => setDetailPanelNodeId(null)}
+          onRename={async (newTitle) => {
+            if (!detailPanelPositionRef) return
+            await onUpdatePositionOverlay({
+              fileName: detailPanelPositionRef.fileName,
+              title: newTitle,
+            })
+          }}
+          onUpdateStatus={async (status) => {
+            if (!detailPanelPositionRef) return
+            await onUpdatePositionOverlay({
+              fileName: detailPanelPositionRef.fileName,
+              status: mapNodeStatusToPositionStatusBlock(status as NodeStatus),
+            })
+          }}
+          onUpdateTaskStatus={async () => {}}
+          onUpdatePriority={async (priority) => {
+            if (!detailPanelPositionRef) return
+            await onUpdatePositionOverlay({
+              fileName: detailPanelPositionRef.fileName,
+              priority: normalizePriorityFromUnknownBlock(priority),
+            })
+          }}
+          onUpdateTags={async (tags) => {
+            if (!detailPanelPositionRef) return
+            await onUpdatePositionOverlay({
+              fileName: detailPanelPositionRef.fileName,
+              tags,
+            })
+          }}
+          onUpdateProjectPresetTags={async (tags) => {
+            if (!detailPanelPositionRef) return
+            setAvailableProjectPresetTags(prev => normalizeTagListBlock([...prev, ...tags]))
+            await onUpdatePositionOverlay({
+              fileName: detailPanelPositionRef.fileName,
+              projectPresetTags: tags,
+            })
+          }}
+          presetTags={detailPanelPresetTags}
+          allowProjectPresetTagCreation
+          onUpdateNotes={async (description, comments) => {
+            if (!detailPanelPositionRef) return
+            await onUpdatePositionOverlay({
+              fileName: detailPanelPositionRef.fileName,
+              description,
+              comments,
+            })
+          }}
+          noteBody={detailPanelPositionDetail?.body ?? ''}
+          onUpdateNoteBody={detailPanelPositionDetail
+            ? async (body) => { await onSavePositionBody(body) }
+            : undefined}
+          noteBodyLabel="Position Note"
+          noteBodyPlaceholder="Add the position thesis, updates, and execution notes..."
+          onOpenFile={() => onOpenNodeFile(detailPanelNode.filePath)}
+        />
+      )}
     </div>
   )
 }

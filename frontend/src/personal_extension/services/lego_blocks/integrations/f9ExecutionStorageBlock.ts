@@ -1,6 +1,8 @@
 import yaml from 'js-yaml'
 import { getVaultFS, type VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
+import { normalizeTagListBlock } from '@/services/lego_blocks/units/tagBlock'
+import type { NodePriority, YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
 
 const POSITION_PAYLOAD_KEYS_BLOCK = [
   'holdings',
@@ -129,6 +131,12 @@ export interface UpdateF9PositionOverlayInputBlock {
   fileName: string
   status?: 'taken' | 'planned' | 'watchlist'
   linkedIdeaId?: string | null
+  title?: string | null
+  priority?: NodePriority | null
+  description?: string | null
+  comments?: YAMLCommentEntry[]
+  tags?: string[]
+  projectPresetTags?: string[]
   fs?: VaultFS
 }
 
@@ -539,20 +547,61 @@ export async function updateF9PositionOverlayBlock(
     ...detail.frontmatter,
     updated_at: now,
   }
+  const changedFields: string[] = []
   if (input.status) {
     nextFrontmatter.status = normalizePositionStatusBlock(input.status)
+    changedFields.push('status')
   }
   if (input.linkedIdeaId !== undefined) {
     const normalizedLinkedIdea = readNullableStringFieldBlock(input.linkedIdeaId)
     if (normalizedLinkedIdea) nextFrontmatter.linked_idea_id = normalizedLinkedIdea
     else delete nextFrontmatter.linked_idea_id
+    changedFields.push('linked_idea_id')
+  }
+  if (input.title !== undefined) {
+    const normalizedTitle = readStringFieldBlock(input.title)
+    if (normalizedTitle) nextFrontmatter.title = normalizedTitle
+    else delete nextFrontmatter.title
+    changedFields.push('title')
+  }
+  if (input.priority !== undefined) {
+    const normalizedPriority = normalizePriorityBlock(input.priority)
+    if (normalizedPriority) nextFrontmatter.priority = normalizedPriority
+    else delete nextFrontmatter.priority
+    changedFields.push('priority')
+  }
+  if (input.description !== undefined) {
+    const normalizedDescription = readStringFieldBlock(input.description)
+    if (normalizedDescription) nextFrontmatter.description = normalizedDescription
+    else delete nextFrontmatter.description
+    changedFields.push('description')
+  }
+  if (input.comments !== undefined) {
+    const normalizedComments = normalizeCommentEntriesBlock(input.comments)
+    if (normalizedComments.length > 0) nextFrontmatter.comments = normalizedComments
+    else delete nextFrontmatter.comments
+    changedFields.push('comments')
+  }
+  if (input.tags !== undefined) {
+    const normalizedTags = normalizeTagListBlock(input.tags)
+    if (normalizedTags.length > 0) nextFrontmatter.tags = normalizedTags
+    else delete nextFrontmatter.tags
+    changedFields.push('tags')
+  }
+  if (input.projectPresetTags !== undefined) {
+    const normalizedProjectPresetTags = normalizeTagListBlock(input.projectPresetTags)
+    if (normalizedProjectPresetTags.length > 0) nextFrontmatter.project_preset_tags = normalizedProjectPresetTags
+    else delete nextFrontmatter.project_preset_tags
+    changedFields.push('project_preset_tags')
   }
   const history = asHistoryEntryListBlock(nextFrontmatter.history)
   history.push({
     at: now,
     type: 'overlay_update',
     source: 'manual',
-    note: 'Updated status/idea linkage in F9 workspace.',
+    note: changedFields.length > 0
+      ? `Updated ${changedFields.join(', ')} in F9 workspace.`
+      : 'Updated metadata in F9 workspace.',
   })
   nextFrontmatter.history = history.slice(-80)
   await fs.write(detail.filePath, stringifyMarkdownFrontmatterBlock(nextFrontmatter, detail.body))
@@ -1132,6 +1181,31 @@ function readStringArrayFieldBlock(value: unknown): string[] {
   return value
     .map((item) => readStringFieldBlock(item))
     .filter((item) => !!item)
+}
+
+function normalizeCommentEntriesBlock(value: unknown): YAMLCommentEntry[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .flatMap((entry) => {
+      if (!entry || typeof entry !== 'object') return []
+      const candidate = entry as Record<string, unknown>
+      const text = readStringFieldBlock(candidate.text)
+      if (!text) return []
+      const comment: YAMLCommentEntry = { text }
+      const addedAt = readStringFieldBlock(candidate.added_at)
+      if (addedAt) comment.added_at = addedAt
+      const addedBy = readStringFieldBlock(candidate.added_by)
+      if (addedBy) comment.added_by = addedBy
+      return [comment]
+    })
+}
+
+function normalizePriorityBlock(value: unknown): NodePriority | null {
+  const normalized = readStringFieldBlock(value).toLowerCase()
+  if (normalized === 'low' || normalized === 'medium' || normalized === 'high' || normalized === 'critical') {
+    return normalized
+  }
+  return null
 }
 
 function normalizePositionStatusBlock(value: string): string {

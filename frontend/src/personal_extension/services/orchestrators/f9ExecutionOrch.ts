@@ -95,6 +95,16 @@ export async function updateF9PositionOverlayOrch(input: {
   fileName: string
   status?: 'taken' | 'planned' | 'watchlist'
   linkedIdeaId?: string | null
+  title?: string | null
+  priority?: 'low' | 'medium' | 'high' | 'critical' | null
+  description?: string | null
+  comments?: Array<{
+    text: string
+    added_at?: string
+    added_by?: string
+  }>
+  tags?: string[]
+  projectPresetTags?: string[]
 }): Promise<F9PositionDetailBlock> {
   const settings = readF9ExecutionSettingsOrch()
   return updateF9PositionOverlayBlock({
