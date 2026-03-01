@@ -3,6 +3,8 @@ import { ChevronLeft, ChevronRight, RefreshCw, ScanLine, ZoomIn, ZoomOut } from 
 import { Document, Page, pdfjs } from 'react-pdf'
 import PdfJsWorkerBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
 import pdfWorkerSrcBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { select } from 'd3-selection'
+import { zoom, zoomIdentity } from 'd3-zoom'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import { Button } from '@/components/lego_blocks/units/ui/button'
@@ -18,12 +20,6 @@ const MIN_SCALE_BLOCK = 0.6
 const MAX_SCALE_BLOCK = 2.5
 const TRACKPAD_ZOOM_SENSITIVITY_BLOCK = 0.0015
 const TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK = 120
-
-type PinchGestureStateBlock = {
-  active: boolean
-  startDistance: number
-  startScale: number
-}
 
 function isElectronRuntimeBlock(): boolean {
   if (typeof window === 'undefined') return false
@@ -83,21 +79,15 @@ function normalizeScaleBlock(value: number): number {
   return Number(clampScaleBlock(value).toFixed(2))
 }
 
-function touchDistanceBlock(touchA: Touch, touchB: Touch): number {
-  return Math.hypot(touchA.clientX - touchB.clientX, touchA.clientY - touchB.clientY)
-}
-
 export default function PdfDocumentBlock({
   path,
   className,
 }: PdfDocumentBlockProps) {
   const electronRuntime = isElectronRuntimeBlock()
   const viewportRef = useRef<HTMLDivElement | null>(null)
-  const pinchStateRef = useRef<PinchGestureStateBlock>({
-    active: false,
-    startDistance: 0,
-    startScale: 1,
-  })
+  const zoomBehaviorRef = useRef<any>(null)
+  const zoomSelectionRef = useRef<any>(null)
+  const suppressZoomEventRef = useRef(false)
   const fitWidthRef = useRef(true)
   const scaleRef = useRef(1)
   const pendingScaleRef = useRef<number | null>(null)
@@ -211,91 +201,85 @@ export default function PdfDocumentBlock({
       }, delayMs)
     }
 
-    const clearPinchStateBlock = () => {
-      pinchStateRef.current.active = false
-      pinchStateRef.current.startDistance = 0
-    }
+    const selection = select(target)
+    const zoomBehavior = zoom()
+      .scaleExtent([MIN_SCALE_BLOCK, MAX_SCALE_BLOCK])
+      .wheelDelta((event: WheelEvent) => {
+        if (!event.ctrlKey || !Number.isFinite(event.deltaY)) return 0
+        return -event.deltaY * TRACKPAD_ZOOM_SENSITIVITY_BLOCK * 120
+      })
+      .filter((event: Event) => {
+        if (event.type === 'wheel') {
+          return (event as WheelEvent).ctrlKey
+        }
+        return event.type.startsWith('touch')
+      })
+      .on('start', (event: any) => {
+        if (suppressZoomEventRef.current) return
+        const sourceEventType = String(event?.sourceEvent?.type ?? '')
+        if (!sourceEventType) return
 
-    const handleTouchStartBlock = (event: TouchEvent) => {
-      if (event.touches.length !== 2) {
-        if (event.touches.length < 2) clearPinchStateBlock()
-        return
-      }
-      const startDistance = touchDistanceBlock(event.touches[0], event.touches[1])
-      if (!Number.isFinite(startDistance) || startDistance <= 0) return
-      if (commitTimerRef.current !== null) {
-        window.clearTimeout(commitTimerRef.current)
-        commitTimerRef.current = null
-      }
-      pinchStateRef.current = {
-        active: true,
-        startDistance,
-        startScale: fitWidthRef.current ? 1 : (pendingScaleRef.current ?? scaleRef.current),
-      }
-    }
+        if (commitTimerRef.current !== null) {
+          window.clearTimeout(commitTimerRef.current)
+          commitTimerRef.current = null
+        }
 
-    const handleTouchMoveBlock = (event: TouchEvent) => {
-      if (event.touches.length !== 2 || !pinchStateRef.current.active) return
+        if (fitWidthRef.current) {
+          fitWidthRef.current = false
+          setFitWidth(false)
+        }
+      })
+      .on('zoom', (event: any) => {
+        if (suppressZoomEventRef.current) return
+        const nextScale = normalizeScaleBlock(event?.transform?.k ?? scaleRef.current)
+        if (Math.abs((pendingScaleRef.current ?? scaleRef.current) - nextScale) < 0.01) return
 
-      const currentDistance = touchDistanceBlock(event.touches[0], event.touches[1])
-      if (!Number.isFinite(currentDistance) || currentDistance <= 0) return
+        schedulePreviewScaleBlock(nextScale)
 
-      event.preventDefault()
+        const sourceEventType = String(event?.sourceEvent?.type ?? '')
+        if (sourceEventType === 'wheel') {
+          scheduleCommitScaleBlock(TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK)
+        }
+      })
+      .on('end', (event: any) => {
+        if (suppressZoomEventRef.current) return
+        const sourceEventType = String(event?.sourceEvent?.type ?? '')
+        if (sourceEventType === 'wheel') {
+          scheduleCommitScaleBlock(TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK)
+          return
+        }
+        scheduleCommitScaleBlock(0)
+      })
 
-      if (fitWidthRef.current) {
-        fitWidthRef.current = false
-        setFitWidth(false)
-      }
+    zoomBehaviorRef.current = zoomBehavior
+    zoomSelectionRef.current = selection
 
-      const nextScale = normalizeScaleBlock(
-        pinchStateRef.current.startScale * (currentDistance / pinchStateRef.current.startDistance),
-      )
+    selection.call(zoomBehavior)
+    selection.on('dblclick.zoom', null)
 
-      if (Math.abs((pendingScaleRef.current ?? scaleRef.current) - nextScale) < 0.01) return
-      schedulePreviewScaleBlock(nextScale)
-    }
-
-    const handleTouchEndBlock = (event: TouchEvent) => {
-      if (event.touches.length >= 2) return
-      clearPinchStateBlock()
-      scheduleCommitScaleBlock(0)
-    }
-
-    const handleWheelBlock = (event: WheelEvent) => {
-      if (!event.ctrlKey) return
-      if (!Number.isFinite(event.deltaY) || event.deltaY === 0) return
-
-      event.preventDefault()
-
-      if (fitWidthRef.current) {
-        fitWidthRef.current = false
-        setFitWidth(false)
-      }
-
-      const currentInteractiveScale = pendingScaleRef.current ?? scaleRef.current
-      const zoomMultiplier = Math.exp(-event.deltaY * TRACKPAD_ZOOM_SENSITIVITY_BLOCK)
-      const nextScale = normalizeScaleBlock(currentInteractiveScale * zoomMultiplier)
-      if (Math.abs(currentInteractiveScale - nextScale) < 0.01) return
-
-      schedulePreviewScaleBlock(nextScale)
-      scheduleCommitScaleBlock(TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK)
-    }
-
-    target.addEventListener('touchstart', handleTouchStartBlock, { passive: true })
-    target.addEventListener('touchmove', handleTouchMoveBlock, { passive: false })
-    target.addEventListener('touchend', handleTouchEndBlock, { passive: true })
-    target.addEventListener('touchcancel', handleTouchEndBlock, { passive: true })
-    target.addEventListener('wheel', handleWheelBlock, { passive: false })
+    suppressZoomEventRef.current = true
+    selection.call(zoomBehavior.transform, zoomIdentity.scale(fitWidthRef.current ? 1 : scaleRef.current))
+    suppressZoomEventRef.current = false
 
     return () => {
       clearPendingRenderHandlesBlock()
-      target.removeEventListener('touchstart', handleTouchStartBlock)
-      target.removeEventListener('touchmove', handleTouchMoveBlock)
-      target.removeEventListener('touchend', handleTouchEndBlock)
-      target.removeEventListener('touchcancel', handleTouchEndBlock)
-      target.removeEventListener('wheel', handleWheelBlock)
+      selection.on('.zoom', null)
+      zoomBehaviorRef.current = null
+      zoomSelectionRef.current = null
+      suppressZoomEventRef.current = false
     }
   }, [])
+
+  useEffect(() => {
+    const selection = zoomSelectionRef.current
+    const zoomBehavior = zoomBehaviorRef.current
+    if (!selection || !zoomBehavior) return
+
+    const targetScale = fitWidth ? 1 : scale
+    suppressZoomEventRef.current = true
+    selection.call(zoomBehavior.transform, zoomIdentity.scale(targetScale))
+    suppressZoomEventRef.current = false
+  }, [fitWidth, scale])
 
   const pageWidth = useMemo(() => {
     if (!fitWidth) return undefined
