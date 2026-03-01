@@ -3,6 +3,7 @@ import { PanelLeft, PanelLeftClose } from 'lucide-react'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
+import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import { buildPathSearchCandidatesBlock, UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
 import { TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
@@ -14,7 +15,7 @@ import { getAllNodes, type NodeRecord } from '@/services/lego_blocks/integration
 import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services/orchestrators/storageOrch'
 import { normalizeTagBlock, normalizeTagListBlock, splitTagInputBlock, tagsEqualBlock } from '@/services/lego_blocks/units/tagBlock'
 import type { NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
-import { listMarkdownEntries } from '@/services/orchestrators/fileSystemOrch'
+import { listMarkdownEntries, listPdfFiles } from '@/services/orchestrators/fileSystemOrch'
 import type { F9RuntimeSurfaceOrch, F9SelectedAccountOrch } from '@/personal_extension/services/orchestrators/f9OverallOrch'
 import type {
   F9CompanyOverviewBlock,
@@ -32,6 +33,11 @@ interface F9LinkOptionBlock {
   path: string
   label: string
   summary?: string
+}
+
+interface F9PdfOptionBlock {
+  path: string
+  label: string
 }
 
 interface F9WorkspaceBlockProps {
@@ -106,6 +112,7 @@ interface F9WorkspaceBlockProps {
     strategyNotes?: string | null
     relatedIdeaIds?: string[]
     valuationNotePath?: string | null
+    companyPdfReportPath?: string | null
   }) => Promise<void>
   onSavePositionBody: (body: string) => Promise<void>
   onOpenNodeFile: (filePath: string) => void
@@ -359,6 +366,7 @@ function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, u
       strategyNotes: '',
       relatedIdeaIds: [],
       valuationNotePath: null,
+      companyPdfReportPath: null,
       positions,
     }))
 }
@@ -779,9 +787,13 @@ export default function F9WorkspaceBlock({
     () => getJsonStorageItem<F9ProjectPresetTagsByRootBlock>(STORAGE_KEYS.f9ProjectPresetTags, {}),
   )
   const [linkOptions, setLinkOptions] = useState<F9LinkOptionBlock[]>([])
+  const [pdfOptions, setPdfOptions] = useState<F9PdfOptionBlock[]>([])
   const [companyFilePickerOpen, setCompanyFilePickerOpen] = useState(false)
   const [companyFileQuery, setCompanyFileQuery] = useState('')
   const [companyFileViewerNonce, setCompanyFileViewerNonce] = useState(0)
+  const [companyPdfPickerOpen, setCompanyPdfPickerOpen] = useState(false)
+  const [companyPdfQuery, setCompanyPdfQuery] = useState('')
+  const [companyPdfViewerNonce, setCompanyPdfViewerNonce] = useState(0)
 
   const selectedBacklogNodeId = useMemo(() => {
     if (!activeCompanyTicker || !activePositionFileName) return null
@@ -865,31 +877,56 @@ export default function F9WorkspaceBlock({
 
   useEffect(() => {
     let cancelled = false
-    void Promise.all([
+    void Promise.allSettled([
       listMarkdownEntries(),
+      listPdfFiles(),
       getAllNodes(),
     ])
-      .then(([entries, nodes]) => {
+      .then((results) => {
         if (cancelled) return
+
+        const markdownResult = results[0]
+        const pdfResult = results[1]
+        const nodesResult = results[2]
+
+        const nodes = (nodesResult.status === 'fulfilled') ? nodesResult.value : []
         const nodeByPath = new Map(
           nodes.map(node => [normalizeRelativePathBlock(node.filePath), node] as const),
         )
-        const options: F9LinkOptionBlock[] = []
-        for (const entry of entries) {
-          const path = normalizeRelativePathBlock(entry.path)
-          if (!path || path.toLowerCase().endsWith('.excalidraw.md')) continue
-          const node = nodeByPath.get(path)
-          options.push({
-            path,
-            label: node?.title?.trim() || linkLabelFromPathBlock(path),
-            summary: node?.aiSummary?.trim() || node?.bodyExcerpt?.trim() || node?.description?.trim() || undefined,
-          })
+
+        if (markdownResult.status === 'fulfilled') {
+          const options: F9LinkOptionBlock[] = []
+          for (const entry of markdownResult.value) {
+            const path = normalizeRelativePathBlock(entry.path)
+            if (!path || path.toLowerCase().endsWith('.excalidraw.md')) continue
+            const node = nodeByPath.get(path)
+            options.push({
+              path,
+              label: node?.title?.trim() || linkLabelFromPathBlock(path),
+              summary: node?.aiSummary?.trim() || node?.bodyExcerpt?.trim() || node?.description?.trim() || undefined,
+            })
+          }
+          options.sort((a, b) => a.label.localeCompare(b.label))
+          setLinkOptions(options)
+        } else {
+          setLinkOptions([])
         }
-        options.sort((a, b) => a.label.localeCompare(b.label))
-        setLinkOptions(options)
-      })
-      .catch(() => {
-        if (!cancelled) setLinkOptions([])
+
+        if (pdfResult.status === 'fulfilled') {
+          const pdfFileOptions = pdfResult.value
+            .map((path) => {
+              const normalizedPath = normalizeRelativePathBlock(path)
+              return {
+                path: normalizedPath,
+                label: path.split('/').pop() || normalizedPath,
+              } satisfies F9PdfOptionBlock
+            })
+            .filter((option) => option.path.length > 0)
+            .sort((a, b) => a.label.localeCompare(b.label))
+          setPdfOptions(pdfFileOptions)
+        } else {
+          setPdfOptions([])
+        }
       })
     return () => {
       cancelled = true
@@ -905,6 +942,8 @@ export default function F9WorkspaceBlock({
   useEffect(() => {
     setCompanyFilePickerOpen(false)
     setCompanyFileQuery('')
+    setCompanyPdfPickerOpen(false)
+    setCompanyPdfQuery('')
   }, [selectedCompany?.companyTicker])
 
   const selectCompanyFilePath = useCallback(async (rawPath: string) => {
@@ -918,6 +957,19 @@ export default function F9WorkspaceBlock({
       valuationNotePath: normalizedPath || null,
     })
     setCompanyFileViewerNonce((prev) => prev + 1)
+  }, [onUpdateCompanyOverlay, selectedCompany])
+
+  const selectCompanyPdfPath = useCallback(async (rawPath: string) => {
+    if (!selectedCompany) return
+    const normalizedPath = normalizeRelativePathBlock(rawPath)
+    const currentPath = normalizeRelativePathBlock(selectedCompany.companyPdfReportPath ?? '')
+    setCompanyPdfPickerOpen(false)
+    setCompanyPdfQuery('')
+    if (normalizedPath === currentPath) return
+    await onUpdateCompanyOverlay({
+      companyPdfReportPath: normalizedPath || null,
+    })
+    setCompanyPdfViewerNonce((prev) => prev + 1)
   }, [onUpdateCompanyOverlay, selectedCompany])
 
   const f9RowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
@@ -1197,6 +1249,15 @@ export default function F9WorkspaceBlock({
   const selectedCompanyFileLabel = selectedCompanyFilePath
     ? (linkOptionsByPath.get(selectedCompanyFilePath)?.label ?? linkLabelFromPathBlock(selectedCompanyFilePath))
     : ''
+  const selectedCompanyPdfPath = normalizeRelativePathBlock(selectedCompany?.companyPdfReportPath ?? '')
+  const selectedCompanyPdfLabel = selectedCompanyPdfPath
+    ? (pdfOptions.find((option) => option.path === selectedCompanyPdfPath)?.label ?? selectedCompanyPdfPath.split('/').pop() ?? selectedCompanyPdfPath)
+    : ''
+  const onRefreshWorkspace = useCallback(() => {
+    onRefreshOverall()
+    setCompanyFileViewerNonce((prev) => prev + 1)
+    setCompanyPdfViewerNonce((prev) => prev + 1)
+  }, [onRefreshOverall])
 
   return (
     <div className={cn('grid gap-4', sideTabsCollapsed ? 'grid-cols-1' : 'lg:grid-cols-[200px_minmax(0,1fr)]')}>
@@ -1328,10 +1389,8 @@ export default function F9WorkspaceBlock({
             >
               {projectTagsOpen ? 'Hide Project Tags' : 'Project Tags'}
             </Button>
-            <Button type="button" onClick={onRefreshOverall} disabled={loading || executionOverviewLoading || (liveRefreshAvailable && !hasConfig)}>
-              {(loading || executionOverviewLoading)
-                ? (liveRefreshAvailable ? 'Refreshing overall...' : 'Reloading saved...')
-                : (liveRefreshAvailable ? 'Refresh Overall' : 'Reload Saved Data')}
+            <Button type="button" onClick={onRefreshWorkspace} disabled={loading || executionOverviewLoading || (liveRefreshAvailable && !hasConfig)}>
+              {(loading || executionOverviewLoading) ? 'Refreshing...' : 'Refresh'}
             </Button>
           </div>
         </CardHeader>
@@ -1482,7 +1541,18 @@ export default function F9WorkspaceBlock({
                       <p className="mt-1 text-xs text-foreground/80">
                         <span className="font-medium">{selectedCompanyFileLabel}</span>
                         {' · '}
-                        <span className="text-muted-foreground">{selectedCompanyFilePath}</span>
+                        <button
+                          type="button"
+                          className="text-left text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            onOpenNodeFile(selectedCompanyFilePath)
+                          }}
+                          title="Open in Thinking Space explorer"
+                        >
+                          {selectedCompanyFilePath}
+                        </button>
                       </p>
                     ) : (
                       <p className="mt-1 text-xs text-muted-foreground">No company file selected.</p>
@@ -1518,14 +1588,6 @@ export default function F9WorkspaceBlock({
                   >
                     Open File
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={!selectedCompanyFilePath}
-                    onClick={() => setCompanyFileViewerNonce((prev) => prev + 1)}
-                  >
-                    Refresh
-                  </Button>
                 </div>
 
                 {companyFilePickerOpen && (
@@ -1552,6 +1614,7 @@ export default function F9WorkspaceBlock({
                       onSelectCustomValue={(value) => { void selectCompanyFilePath(value) }}
                       open={companyFilePickerOpen}
                       onOpenChange={setCompanyFilePickerOpen}
+                      dismissOnOutsideClick={false}
                       inputClassName="h-9 border border-input bg-background pl-10 pr-3 text-sm focus:ring-0 focus:ring-offset-0"
                       dropdownClassName="z-50 mt-1"
                       listClassName="max-h-64 overflow-auto p-1"
@@ -1563,7 +1626,7 @@ export default function F9WorkspaceBlock({
                 )}
 
                 {selectedCompanyFilePath ? (
-                  <div className="h-[620px] overflow-hidden rounded-lg border">
+                  <div className="h-[700px] overflow-hidden rounded-lg border">
                     <MarkdownDocumentBlock
                       key={`${selectedCompanyFilePath}::${companyFileViewerNonce}`}
                       path={selectedCompanyFilePath}
@@ -1727,6 +1790,104 @@ export default function F9WorkspaceBlock({
                     ? 'Loading selected row details...'
                     : 'Click a position row (or its details icon) to open the shared details panel with note, description, comments, and tags.')}
               </p>
+
+              <div className="rounded-xl border bg-background p-3">
+                <div className="mb-3 flex flex-wrap items-end gap-2">
+                  <div className="min-w-[260px] flex-1">
+                    <p className="mb-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">ValueLine PDF Report</p>
+                    <p className="text-xs text-muted-foreground">
+                      Keep your core external research report for this company here.
+                    </p>
+                    {selectedCompanyPdfPath ? (
+                      <p className="mt-1 text-xs text-foreground/80">
+                        <span className="font-medium">{selectedCompanyPdfLabel}</span>
+                        {' · '}
+                        <button
+                          type="button"
+                          className="text-left text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            onOpenNodeFile(selectedCompanyPdfPath)
+                          }}
+                          title="Open in Thinking Space explorer"
+                        >
+                          {selectedCompanyPdfPath}
+                        </button>
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-muted-foreground">No PDF report selected.</p>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={workspaceBusy}
+                    onClick={() => setCompanyPdfPickerOpen((prev) => !prev)}
+                  >
+                    {companyPdfPickerOpen ? 'Close Selection' : 'Select PDF'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={workspaceBusy || !selectedCompanyPdfPath}
+                    onClick={() => {
+                      void onUpdateCompanyOverlay({ companyPdfReportPath: null })
+                      setCompanyPdfViewerNonce((prev) => prev + 1)
+                    }}
+                  >
+                    Clear
+                  </Button>
+                </div>
+
+                {companyPdfPickerOpen && (
+                  <div className="mb-3 rounded-lg border bg-muted/10 p-2">
+                    <UniversalSearchBlock<F9PdfOptionBlock>
+                      {...UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK}
+                      items={pdfOptions}
+                      query={companyPdfQuery}
+                      onQueryChange={setCompanyPdfQuery}
+                      onSelect={(item) => { void selectCompanyPdfPath(item.path) }}
+                      getItemKey={(item) => item.path}
+                      getItemLabel={(item) => item.label}
+                      getItemDescription={(item) => item.path}
+                      getItemSearchCandidates={(item) => [
+                        item.label,
+                        item.path,
+                        ...buildPathSearchCandidatesBlock(item.path),
+                      ]}
+                      selectedItemKey={selectedCompanyPdfPath || null}
+                      placeholder="Search PDF report"
+                      emptyMessage="No PDF files found"
+                      allowCustomValue
+                      onSelectCustomValue={(value) => { void selectCompanyPdfPath(value) }}
+                      open={companyPdfPickerOpen}
+                      onOpenChange={setCompanyPdfPickerOpen}
+                      dismissOnOutsideClick={false}
+                      inputClassName="h-9 border border-input bg-background pl-10 pr-3 text-sm focus:ring-0 focus:ring-offset-0"
+                      dropdownClassName="z-50 mt-1"
+                      listClassName="max-h-64 overflow-auto p-1"
+                    />
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Select a PDF report file to view it inline.
+                    </p>
+                  </div>
+                )}
+
+                {selectedCompanyPdfPath ? (
+                  <div className="h-[820px] overflow-hidden rounded-lg border">
+                    <PdfDocumentBlock
+                      key={`${selectedCompanyPdfPath}::${companyPdfViewerNonce}`}
+                      path={selectedCompanyPdfPath}
+                      className="h-full"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Select a PDF report to display it here.
+                  </p>
+                )}
+              </div>
             </>
           )}
 

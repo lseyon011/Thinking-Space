@@ -32,6 +32,7 @@ import {
 import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/integrations/ExcalidrawDocumentBlock'
 import TableDocumentBlock from '@/components/lego_blocks/integrations/TableDocumentBlock'
+import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/MarkdownMiniNavBlock'
 import MarkdownRichEditorBlock, { type MarkdownRichEditorBlockHandle } from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
@@ -65,6 +66,7 @@ import {
   yieldToNextFrame,
 } from '@/components/lego_blocks/units/MarkdownDocumentContentBlock'
 import { isTableDocumentPathBlock } from '@/services/lego_blocks/units/tableDocumentPathBlock'
+import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocumentPathBlock'
 
 export type MarkdownViewerMode = 'view' | 'edit'
 
@@ -1468,6 +1470,58 @@ function MarkdownTextDocumentRuntimeBlock({
   )
 }
 
+function PdfDocumentRuntimeBlock({
+  path,
+  onOpenPath,
+  onClose,
+  showCloseButton = false,
+  className,
+}: MarkdownDocumentBlockProps) {
+  const filename = path.split('/').pop() || path
+  const breadcrumb = path.split('/').slice(0, -1).join(' / ')
+
+  return (
+    <div className={cn('flex h-full min-h-0 flex-col bg-card', className)}>
+      <div className="border-b border-border/50 px-5 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="truncate font-medium">{filename}</span>
+            </div>
+            {breadcrumb && <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {onOpenPath && (
+              <button
+                type="button"
+                onClick={() => onOpenPath(path)}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                title="Open in Thinking Space explorer"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </button>
+            )}
+            {showCloseButton && onClose && (
+              <button
+                onClick={onClose}
+                className="rounded-lg p-1.5 transition-colors hover:bg-muted"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1">
+        <PdfDocumentBlock path={path} className="h-full" />
+      </div>
+    </div>
+  )
+}
+
 function MarkdownDocumentBlock(props: MarkdownDocumentBlockProps) {
   if (isTableDocumentPathBlock(props.path)) {
     return (
@@ -1475,6 +1529,20 @@ function MarkdownDocumentBlock(props: MarkdownDocumentBlockProps) {
         path={props.path}
         initialMode={props.initialMode}
         onSaved={props.onSaved}
+        onClose={props.onClose}
+        showCloseButton={props.showCloseButton}
+        className={props.className}
+      />
+    )
+  }
+  if (isPdfDocumentPathBlock(props.path)) {
+    return (
+      <PdfDocumentRuntimeBlock
+        path={props.path}
+        initialMode={props.initialMode}
+        onSaved={props.onSaved}
+        onOpenPath={props.onOpenPath}
+        onOpenPathForEdit={props.onOpenPathForEdit}
         onClose={props.onClose}
         showCloseButton={props.showCloseButton}
         className={props.className}

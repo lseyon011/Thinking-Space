@@ -120,6 +120,7 @@ export async function updateF9CompanyOverlayOrch(input: {
   strategyNotes?: string | null
   relatedIdeaIds?: string[]
   valuationNotePath?: string | null
+  companyPdfReportPath?: string | null
 }): Promise<F9CompanyOverviewBlock> {
   const settings = readF9ExecutionSettingsOrch()
   return updateF9CompanyOverlayBlock({

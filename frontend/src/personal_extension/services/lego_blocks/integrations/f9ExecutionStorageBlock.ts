@@ -64,6 +64,7 @@ export interface F9CompanyOverviewBlock {
   strategyNotes: string
   relatedIdeaIds: string[]
   valuationNotePath: string | null
+  companyPdfReportPath: string | null
   positions: F9PositionSummaryBlock[]
 }
 
@@ -157,6 +158,7 @@ export interface UpdateF9CompanyOverlayInputBlock {
   strategyNotes?: string | null
   relatedIdeaIds?: string[]
   valuationNotePath?: string | null
+  companyPdfReportPath?: string | null
   fs?: VaultFS
 }
 
@@ -360,6 +362,10 @@ export async function readF9ExecutionOverviewBlock(
     const valuationNotePath = valuationNotePathRaw
       ? normalizeSlashPathBlock(valuationNotePathRaw).replace(/^\/+|\/+$/g, '')
       : null
+    const companyPdfReportPathRaw = readNullableStringFieldBlock(frontmatter.company_pdf_report_path)
+    const companyPdfReportPath = companyPdfReportPathRaw
+      ? normalizeSlashPathBlock(companyPdfReportPathRaw).replace(/^\/+|\/+$/g, '')
+      : null
     const indexId = readStringFieldBlock(frontmatter.id) || `${ticker}-index`
     companies.push({
       companyTicker: ticker,
@@ -368,6 +374,7 @@ export async function readF9ExecutionOverviewBlock(
       strategyNotes,
       relatedIdeaIds,
       valuationNotePath,
+      companyPdfReportPath,
       positions,
     })
   }
@@ -711,6 +718,14 @@ export async function updateF9CompanyOverlayBlock(
     if (normalizedValuationPath) nextFrontmatter.valuation_note_path = normalizedValuationPath
     else delete nextFrontmatter.valuation_note_path
   }
+  if (input.companyPdfReportPath !== undefined) {
+    const pdfReportPath = readStringFieldBlock(input.companyPdfReportPath)
+    const normalizedPdfReportPath = pdfReportPath
+      ? normalizeSlashPathBlock(pdfReportPath).replace(/^\/+|\/+$/g, '')
+      : ''
+    if (normalizedPdfReportPath) nextFrontmatter.company_pdf_report_path = normalizedPdfReportPath
+    else delete nextFrontmatter.company_pdf_report_path
+  }
 
   const body = parsed.body.trim() ? parsed.body : DEFAULT_COMPANY_INDEX_BODY_BLOCK
   await fs.write(indexFilePath, stringifyMarkdownFrontmatterBlock(nextFrontmatter, body))
@@ -787,6 +802,11 @@ async function upsertCompanyIndexBlock(input: {
       const valuationPath = readNullableStringFieldBlock(existingFrontmatter.valuation_note_path)
       if (!valuationPath) return null
       return normalizeSlashPathBlock(valuationPath).replace(/^\/+|\/+$/g, '')
+    })(),
+    company_pdf_report_path: (() => {
+      const pdfReportPath = readNullableStringFieldBlock(existingFrontmatter.company_pdf_report_path)
+      if (!pdfReportPath) return null
+      return normalizeSlashPathBlock(pdfReportPath).replace(/^\/+|\/+$/g, '')
     })(),
     position_count: summaries.length,
     updated_at: now,

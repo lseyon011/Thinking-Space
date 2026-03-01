@@ -357,6 +357,7 @@ export default function F9Orch() {
     strategyNotes?: string | null
     relatedIdeaIds?: string[]
     valuationNotePath?: string | null
+    companyPdfReportPath?: string | null
   }) => {
     if (!activeCompanyTicker) return
     setWorkspaceBusy(true)
