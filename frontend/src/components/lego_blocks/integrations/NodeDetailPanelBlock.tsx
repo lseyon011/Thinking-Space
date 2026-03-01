@@ -29,6 +29,9 @@ import {
 } from '@/components/lego_blocks/units/ui/select'
 import ExtensionSlotBlock from '@/components/lego_blocks/integrations/ExtensionSlotBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
+import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
+import { buildPathSearchCandidatesBlock } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
+import LinkedItemChipsBlock from '@/components/lego_blocks/units/LinkedItemChipsBlock'
 import { NodeStatusSelectBlock } from '@/components/lego_blocks/units/NodeStatusBlock'
 import {
   TagListEditorBlock,
@@ -126,6 +129,21 @@ function taskStatusFromNodeStatus(status: NodeStatus): (typeof TASK_STATUS_OPTIO
   return 'in_progress'
 }
 
+function normalizeRelatedNodePathBlock(value: string): string {
+  return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').trim()
+}
+
+function relatedNodeLabelFromPathBlock(path: string): string {
+  const normalized = normalizeRelatedNodePathBlock(path)
+  const base = normalized.split('/').pop() || normalized
+  return base.toLowerCase().endsWith('.md') ? base.slice(0, -3) : base
+}
+
+function relatedNodesEqualBlock(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false
+  return left.every((value, index) => value === right[index])
+}
+
 export interface NodeDetailPanelBlockProps {
   node: NodeRecord
   frontmatter?: YAMLFrontmatter | null
@@ -139,6 +157,13 @@ export interface NodeDetailPanelBlockProps {
   presetTags?: string[]
   projectTagColors?: Record<string, string>
   allowProjectPresetTagCreation?: boolean
+  relatedNodeOptions?: Array<{
+    path: string
+    label: string
+    summary?: string
+  }>
+  onUpdateRelatedNodes?: (relatedNodes: string[]) => Promise<void>
+  onOpenRelatedNode?: (path: string) => void
   onUpdateNotes: (description: string, comments: YAMLCommentEntry[]) => Promise<void>
   noteBody?: string
   onUpdateNoteBody?: (body: string) => Promise<void>
@@ -162,6 +187,9 @@ export default function NodeDetailPanelBlock({
   presetTags = [],
   projectTagColors = {},
   allowProjectPresetTagCreation = false,
+  relatedNodeOptions = [],
+  onUpdateRelatedNodes,
+  onOpenRelatedNode,
   onUpdateNotes,
   noteBody,
   onUpdateNoteBody,
@@ -183,6 +211,8 @@ export default function NodeDetailPanelBlock({
   const [userTagDraft, setUserTagDraft] = useState('')
   const [projectPresetTagDraft, setProjectPresetTagDraft] = useState('')
   const [tagsSaving, setTagsSaving] = useState(false)
+  const [relatedNodeQuery, setRelatedNodeQuery] = useState('')
+  const [relatedNodesSaving, setRelatedNodesSaving] = useState(false)
   const [noteBodyDraft, setNoteBodyDraft] = useState('')
   const [noteBodySaving, setNoteBodySaving] = useState(false)
   const [noteBodyEditMode, setNoteBodyEditMode] = useState(false)
@@ -225,6 +255,16 @@ export default function NodeDetailPanelBlock({
     const projectPresetLookup = new Set(sourceProjectPresetTags.map(tag => normalizeTagBlock(tag).toLowerCase()).filter(Boolean))
     return sourceAllTags.filter(tag => !projectPresetLookup.has(normalizeTagBlock(tag).toLowerCase()))
   }, [sourceAllTags, sourceProjectPresetTags])
+  const sourceRelatedNodes = useMemo(() => {
+    const fromFrontmatter = Array.isArray(frontmatter?.related_nodes)
+      ? frontmatter.related_nodes.filter((value): value is string => typeof value === 'string')
+      : []
+    const raw = fromFrontmatter.length > 0 ? fromFrontmatter : (node.relatedNodes ?? [])
+    const normalized = raw
+      .map(value => value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').trim())
+      .filter(Boolean)
+    return [...new Set(normalized)]
+  }, [frontmatter?.related_nodes, node.relatedNodes])
   const sourceNoteBody = useMemo(() => noteBody ?? '', [noteBody])
 
   useEffect(() => {
@@ -249,6 +289,8 @@ export default function NodeDetailPanelBlock({
     setUserTagDraft('')
     setProjectPresetTagDraft('')
     setTagsSaving(false)
+    setRelatedNodeQuery('')
+    setRelatedNodesSaving(false)
   }, [node.uuid])
 
   useEffect(() => {
@@ -319,6 +361,7 @@ export default function NodeDetailPanelBlock({
         key !== 'comments' &&
         key !== 'tags' &&
         key !== 'project_preset_tags' &&
+        key !== 'related_nodes' &&
         value !== undefined &&
         value !== null &&
         value !== ''
@@ -441,6 +484,70 @@ export default function NodeDetailPanelBlock({
     await commitProjectPresetTags(next)
     setProjectPresetTagDraft('')
   }, [allowProjectPresetTagCreation, commitProjectPresetTags, projectPresetTagDraft, sourceProjectPresetTags])
+
+  const relatedNodeOptionsByPath = useMemo(() => {
+    const map = new Map<string, { path: string; label: string; summary?: string }>()
+    for (const option of relatedNodeOptions) {
+      const path = normalizeRelatedNodePathBlock(option.path)
+      if (!path || map.has(path)) continue
+      map.set(path, {
+        path,
+        label: option.label?.trim() || relatedNodeLabelFromPathBlock(path),
+        summary: option.summary?.trim() || undefined,
+      })
+    }
+    return map
+  }, [relatedNodeOptions])
+
+  const selectableRelatedNodeOptions = useMemo(() => {
+    const selected = new Set(sourceRelatedNodes)
+    return [...relatedNodeOptionsByPath.values()].filter(option => !selected.has(option.path))
+  }, [relatedNodeOptionsByPath, sourceRelatedNodes])
+
+  const sourceRelatedNodeEntries = useMemo(() => (
+    sourceRelatedNodes.map(path => {
+      const option = relatedNodeOptionsByPath.get(path)
+      return {
+        path,
+        label: option?.label || relatedNodeLabelFromPathBlock(path),
+        summary: option?.summary,
+      }
+    })
+  ), [relatedNodeOptionsByPath, sourceRelatedNodes])
+
+  const commitRelatedNodes = useCallback(async (nextRelatedNodes: string[]) => {
+    if (!onUpdateRelatedNodes) return
+    const normalizedNext = [...new Set(
+      nextRelatedNodes
+        .map(value => normalizeRelatedNodePathBlock(value))
+        .filter(Boolean),
+    )]
+    if (relatedNodesEqualBlock(normalizedNext, sourceRelatedNodes)) return
+    setBusy(true)
+    setRelatedNodesSaving(true)
+    try {
+      await onUpdateRelatedNodes(normalizedNext)
+    } finally {
+      setRelatedNodesSaving(false)
+      setBusy(false)
+    }
+  }, [onUpdateRelatedNodes, sourceRelatedNodes])
+
+  const addRelatedNode = useCallback(async (path: string) => {
+    const nextPath = normalizeRelatedNodePathBlock(path)
+    if (!nextPath || sourceRelatedNodes.includes(nextPath)) {
+      setRelatedNodeQuery('')
+      return
+    }
+    await commitRelatedNodes([...sourceRelatedNodes, nextPath])
+    setRelatedNodeQuery('')
+  }, [commitRelatedNodes, sourceRelatedNodes])
+
+  const removeRelatedNode = useCallback(async (path: string) => {
+    const target = normalizeRelatedNodePathBlock(path)
+    if (!target) return
+    await commitRelatedNodes(sourceRelatedNodes.filter(value => value !== target))
+  }, [commitRelatedNodes, sourceRelatedNodes])
 
   const commitNoteBody = useCallback(async () => {
     if (!onUpdateNoteBody || !noteBodyDirty || noteBodySaving) return
@@ -758,9 +865,48 @@ export default function NodeDetailPanelBlock({
             <p className="text-sm text-muted-foreground">Add subtask</p>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-semibold text-foreground">Linked work items</label>
-            <p className="text-sm text-muted-foreground">Add linked work item</p>
+          <div className="space-y-3 rounded-md border border-border/60 bg-card p-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-semibold text-foreground">Linked items</label>
+              <span className="text-[11px] text-muted-foreground">
+                {relatedNodesSaving ? 'Saving...' : `${sourceRelatedNodes.length} linked`}
+              </span>
+            </div>
+            {onUpdateRelatedNodes ? (
+              <div className="space-y-1">
+                <UniversalSearchBlock
+                  items={selectableRelatedNodeOptions}
+                  query={relatedNodeQuery}
+                  onQueryChange={setRelatedNodeQuery}
+                  onSelect={(item) => { void addRelatedNode(item.path) }}
+                  getItemKey={(item) => item.path}
+                  getItemLabel={(item) => item.label}
+                  getItemDescription={(item) => item.summary}
+                  getItemSearchCandidates={(item) => [
+                    item.label,
+                    item.path,
+                    item.summary ?? '',
+                    ...buildPathSearchCandidatesBlock(item.path),
+                  ]}
+                  placeholder={selectableRelatedNodeOptions.length > 0 ? 'Search note to link' : 'No available notes'}
+                  emptyMessage="No available notes"
+                  inputClassName="h-8 text-xs"
+                  disabled={busy || relatedNodesSaving || selectableRelatedNodeOptions.length === 0}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Select a result to link it.
+                </p>
+              </div>
+            ) : null}
+            <LinkedItemChipsBlock
+              items={sourceRelatedNodeEntries}
+              onOpenItem={onOpenRelatedNode ? (path) => onOpenRelatedNode(path) : undefined}
+              onRemoveItem={onUpdateRelatedNodes
+                ? (path) => { void removeRelatedNode(path) }
+                : undefined}
+              removeDisabled={busy || relatedNodesSaving}
+              emptyMessage="No linked items yet."
+            />
           </div>
 
           <div className="space-y-3">

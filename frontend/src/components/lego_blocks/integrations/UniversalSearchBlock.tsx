@@ -33,6 +33,7 @@ export interface UniversalSearchBlockProps<T> {
   onSelectCustomValue?: (value: string) => void
   onEscapeKeyDown?: () => void
   inputRef?: Ref<HTMLInputElement>
+  disabled?: boolean
   className?: string
   inputWrapperClassName?: string
   inputClassName?: string
@@ -72,6 +73,7 @@ export default function UniversalSearchBlock<T>({
   onSelectCustomValue,
   onEscapeKeyDown,
   inputRef,
+  disabled = false,
   className,
   inputWrapperClassName,
   inputClassName,
@@ -106,6 +108,13 @@ export default function UniversalSearchBlock<T>({
   }, [getItemDescription, getItemLabel, getItemSearchCandidates, items, limit, query])
 
   useEffect(() => {
+    if (disabled) {
+      setOpen(false)
+      return
+    }
+  }, [disabled])
+
+  useEffect(() => {
     if (!isOpen || filteredItems.length === 0) {
       setHighlightIndex(-1)
       return
@@ -117,6 +126,7 @@ export default function UniversalSearchBlock<T>({
   }, [filteredItems.length, isOpen, query])
 
   const selectItem = (item: T) => {
+    if (disabled) return
     onSelect(item)
     if (closeOnSelect) setOpen(false)
   }
@@ -128,13 +138,19 @@ export default function UniversalSearchBlock<T>({
         <input
           ref={inputRef}
           type="text"
+          disabled={disabled}
           value={query}
           onChange={(event) => {
+            if (disabled) return
             onQueryChange(event.target.value)
             if (!isOpen) setOpen(true)
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => {
+            if (disabled) return
+            setOpen(true)
+          }}
           onKeyDown={(event) => {
+            if (disabled) return
             if (event.key === 'Escape') {
               event.preventDefault()
               setOpen(false)
@@ -180,12 +196,13 @@ export default function UniversalSearchBlock<T>({
           placeholder={placeholder}
           className={cn(
             'h-10 w-full rounded-lg border border-input bg-background pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+            disabled && 'cursor-not-allowed opacity-60',
             inputClassName,
           )}
         />
       </div>
 
-      {showDropdown && isOpen && (filteredItems.length > 0 || showEmptyStateWhenOpen) && (
+      {showDropdown && !disabled && isOpen && (filteredItems.length > 0 || showEmptyStateWhenOpen) && (
         <div className={cn('absolute z-50 mt-1 w-full overflow-hidden rounded-lg border bg-background shadow-lg', dropdownClassName)}>
           {filteredItems.length > 0 ? (
             <div className={cn('max-h-64 overflow-auto', listClassName)}>

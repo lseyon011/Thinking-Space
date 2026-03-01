@@ -7,6 +7,7 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import { BacklogInlineCreateBlock } from '@/components/lego_blocks/integrations/BacklogInlineCreateBlock'
 import { BacklogInlineNotesEditorBlock } from '@/components/lego_blocks/integrations/BacklogInlineNotesEditorBlock'
 import { ProgramGroupHeaderBlock } from '@/components/lego_blocks/integrations/ProgramGroupHeaderBlock'
+import LinkedItemChipsBlock from '@/components/lego_blocks/units/LinkedItemChipsBlock'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import { tagLookupKeyBlock } from '@/services/lego_blocks/units/tagBlock'
 import { cn } from '@/lib/utils'
@@ -36,6 +37,31 @@ interface ProgramGroupEntryBlock {
   id: string
   name: string
   collapsed?: boolean
+}
+
+interface BacklogRelatedNodeOptionBlock {
+  path: string
+  label: string
+  summary?: string
+}
+
+function normalizeRelatedNodePathsBlock(paths: string[] | undefined): string[] {
+  if (!paths || paths.length === 0) return []
+  const seen = new Set<string>()
+  const normalized: string[] = []
+  for (const path of paths) {
+    const next = normalizePath(path)
+    if (!next || seen.has(next)) continue
+    seen.add(next)
+    normalized.push(next)
+  }
+  return normalized
+}
+
+function fileNameFromPathBlock(path: string): string {
+  const normalized = normalizePath(path)
+  const base = normalized.split('/').pop() || normalized
+  return base.toLowerCase().endsWith('.md') ? base.slice(0, -3) : base
 }
 
 export interface BacklogListBlockProps {
@@ -68,9 +94,12 @@ export interface BacklogListBlockProps {
   onUpdateNodeStatus?: (node: NodeRecord, status: NodeStatus) => Promise<NodeRecord | void>
   onUpdateTaskStatus?: (node: NodeRecord, taskStatus: TaskStatusOption) => Promise<NodeRecord | void>
   onUpdateNodeNotes?: (node: NodeRecord, description: string, comments: YAMLCommentEntry[]) => Promise<NodeRecord | void>
+  relatedNodeOptions?: BacklogRelatedNodeOptionBlock[]
+  onOpenRelatedNode?: (path: string) => void
   onOpenNodeDetails?: (node: NodeRecord) => void
   canOpenNodeDetails?: (node: NodeRecord) => boolean
   rowColumns?: BacklogRowColumnBlock[]
+  linksColumnLabel?: string
   rowDetailsRenderer?: ((node: NodeRecord) => ReactNode) | null
   titleColumnClassName?: string
   wrapTitleText?: boolean
@@ -107,9 +136,12 @@ export default function BacklogListBlock({
   onUpdateNodeStatus,
   onUpdateTaskStatus,
   onUpdateNodeNotes,
+  relatedNodeOptions = [],
+  onOpenRelatedNode,
   onOpenNodeDetails,
   canOpenNodeDetails,
   rowColumns = [],
+  linksColumnLabel,
   rowDetailsRenderer = null,
   titleColumnClassName,
   wrapTitleText = false,
@@ -423,6 +455,59 @@ export default function BacklogListBlock({
     })
   }, [])
 
+  const relatedNodeOptionsByPath = useMemo(() => {
+    const map = new Map<string, BacklogRelatedNodeOptionBlock>()
+    for (const option of relatedNodeOptions) {
+      const normalizedPath = normalizePath(option.path)
+      if (!normalizedPath) continue
+      if (map.has(normalizedPath)) continue
+      map.set(normalizedPath, {
+        path: normalizedPath,
+        label: option.label?.trim() || fileNameFromPathBlock(normalizedPath),
+        summary: option.summary?.trim() || undefined,
+      })
+    }
+    return map
+  }, [relatedNodeOptions])
+
+  const renderRelatedNodeLinksSlot = useCallback((node: NodeRecord) => {
+    const normalizedLinks = normalizeRelatedNodePathsBlock(node.relatedNodes)
+    const hasLinks = normalizedLinks.length > 0
+    if (!hasLinks) return null
+
+    const linkedItems = normalizedLinks.map((path) => {
+      const option = relatedNodeOptionsByPath.get(path)
+      return {
+        path,
+        label: option?.label || fileNameFromPathBlock(path),
+        summary: option?.summary,
+      }
+    })
+
+    return (
+      <div className={cn(
+        'hidden self-center items-center gap-1 lg:flex',
+        actionsRightEdge ? 'max-w-[24rem] min-w-[10rem]' : 'max-w-[24rem]',
+      )}>
+        <LinkedItemChipsBlock
+          items={linkedItems}
+          className="min-w-0 justify-end gap-1"
+          chipClassName="max-w-[12rem] px-1.5 py-0.5 text-[10px] leading-none"
+          labelClassName="max-w-[12rem]"
+          onOpenItem={(path, event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            onOpenRelatedNode?.(path)
+          }}
+        />
+      </div>
+    )
+  }, [
+    actionsRightEdge,
+    onOpenRelatedNode,
+    relatedNodeOptionsByPath,
+  ])
+
   const handleInlineNodeStatusChange = useCallback(async (node: NodeRecord, nextStatus: NodeStatus) => {
     if (readOnly || !onUpdateNodeStatus) return
     if (node.status === nextStatus) return
@@ -657,6 +742,7 @@ export default function BacklogListBlock({
           canEditTaskStatus={!!onUpdateTaskStatus}
           canEditNodeStatus={!!onUpdateNodeStatus}
           canToggleDetails={canToggleDetails}
+          linksSlot={renderRelatedNodeLinksSlot(node)}
           rowColumns={rowColumns}
           titleColumnClassName={titleColumnClassName}
           wrapTitleText={wrapTitleText}
@@ -719,7 +805,7 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderTicketBadge, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, statusBusyByNode, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
+  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderRelatedNodeLinksSlot, renderTicketBadge, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, statusBusyByNode, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
 
   const renderProgramSection = useCallback((program: NodeRecord, programIndex: number) => {
     void ensureProgramLoaded(program)
@@ -761,6 +847,7 @@ export default function BacklogListBlock({
           statusBusy={!!statusBusyByNode[program.uuid]}
           canEditNodeStatus={!!onUpdateNodeStatus}
           canToggleDetails={canToggleDetails}
+          linksSlot={renderRelatedNodeLinksSlot(program)}
           rowColumns={rowColumns}
           titleColumnClassName={titleColumnClassName}
           wrapTitleText={wrapTitleText}
@@ -812,7 +899,7 @@ export default function BacklogListBlock({
         </div>
       </div>
     )
-  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, showProgramCopyButton, showProgramStatus, statusBusyByNode, titleColumnClassName, toggleRowDetails, wrapTitleText])
+  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderRelatedNodeLinksSlot, renderTicketBadge, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, showProgramCopyButton, showProgramStatus, statusBusyByNode, titleColumnClassName, toggleRowDetails, wrapTitleText])
 
   return (
     <div className="flex flex-col space-y-3">
@@ -854,6 +941,11 @@ export default function BacklogListBlock({
               {column.label}
             </span>
           ))}
+          {linksColumnLabel && (
+            <span className="hidden w-72 shrink-0 truncate text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground lg:block">
+              {linksColumnLabel}
+            </span>
+          )}
         </div>
       )}
 
