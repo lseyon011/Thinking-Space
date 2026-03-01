@@ -69,6 +69,9 @@ export interface BacklogListBlockProps {
   onUpdateNodeNotes?: (node: NodeRecord, description: string, comments: YAMLCommentEntry[]) => Promise<NodeRecord | void>
   rowColumns?: BacklogRowColumnBlock[]
   rowDetailsRenderer?: ((node: NodeRecord) => ReactNode) | null
+  showExpandToggles?: boolean
+  showNodeTypeIcons?: boolean
+  showPriorityDots?: boolean
 }
 
 
@@ -96,6 +99,9 @@ export default function BacklogListBlock({
   onUpdateNodeNotes,
   rowColumns = [],
   rowDetailsRenderer = null,
+  showExpandToggles = true,
+  showNodeTypeIcons = true,
+  showPriorityDots = true,
 }: BacklogListBlockProps) {
   const [childrenByNode, setChildrenByNode] = useState<Record<string, ChildStateBlock>>({})
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({})
@@ -602,6 +608,9 @@ export default function BacklogListBlock({
           canEditNodeStatus={!!onUpdateNodeStatus}
           canToggleDetails={canToggleDetails}
           rowColumns={rowColumns}
+          showExpandToggle={showExpandToggles}
+          showNodeTypeIcon={showNodeTypeIcons}
+          showPriorityDot={showPriorityDots}
           ticketBadge={renderTicketBadge(node)}
           lookupTagColor={lookupTagColor}
           onToggleNode={() => toggleNode(node)}
@@ -693,6 +702,8 @@ export default function BacklogListBlock({
           canEditNodeStatus={!!onUpdateNodeStatus}
           canToggleDetails={canToggleDetails}
           rowColumns={rowColumns}
+          showNodeTypeIcon={showNodeTypeIcons}
+          showPriorityDot={showPriorityDots}
           canAssignToGroup={allowProgramLayoutEditing && !!onAssignProgramToGroup && programGroups.length > 0}
           assignedGroupId={assignedGroupId}
           programGroups={programGroups}

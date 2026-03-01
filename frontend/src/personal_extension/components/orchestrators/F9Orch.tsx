@@ -9,6 +9,7 @@ import {
 import {
   createF9CompanyOrch,
   createF9ManualPositionOrch,
+  loadF9OverallCacheOrch,
   loadF9ExecutionOverviewOrch,
   loadF9PositionDetailOrch,
   saveF9PositionBodyOrch,
@@ -16,6 +17,7 @@ import {
   updateF9PositionOverlayOrch,
   type F9CompanyOverviewBlock,
   type F9ExecutionOverviewBlock,
+  type F9OverallCacheBlock,
   type F9PositionDetailBlock,
   type SyncF9ExecutionResultBlock,
 } from '../../services/orchestrators/f9ExecutionOrch'
@@ -26,6 +28,57 @@ type F9SubtabId = 'overall'
 const F9_SUBTABS: Array<{ id: F9SubtabId; label: string }> = [
   { id: 'overall', label: 'Overall' },
 ]
+
+function toSnapshotFromCacheBlock(
+  cache: F9OverallCacheBlock,
+  runtime: F9RuntimeSurfaceOrch,
+): F9OverallSnapshotOrch {
+  const refreshRuntime = cache.runtime === 'electron' || cache.runtime === 'capacitor' || cache.runtime === 'web'
+    ? cache.runtime
+    : null
+  const runtimeHint = refreshRuntime ?? 'unknown runtime'
+  const warning = runtime === 'electron'
+    ? `Loaded saved F9 data from ${cache.overallPath}.`
+    : `Showing saved F9 data from ${cache.overallPath}. Refresh from Electron app (last refresh runtime: ${runtimeHint}).`
+  const selectedAccountRecord = (cache.selectedAccount && typeof cache.selectedAccount === 'object')
+    ? cache.selectedAccount as Record<string, unknown>
+    : null
+  const selectedAccountId = selectedAccountRecord
+    ? String(selectedAccountRecord.accountId ?? selectedAccountRecord.account_id ?? '')
+    : ''
+  return {
+    runtime: refreshRuntime ?? runtime,
+    fetchedAt: cache.fetchedAt || 'Unknown',
+    endpoints: {
+      accountList: null,
+      accountBalanceLegacy: null,
+      accountPositionsLegacy: null,
+      assetsAccount: null,
+      assetsPositions: null,
+      marketQuotes: null,
+    },
+    selectedAccount: selectedAccountId
+      ? {
+        accountId: selectedAccountId,
+        accountNumber: String(selectedAccountRecord?.accountNumber ?? selectedAccountRecord?.account_number ?? '') || null,
+        subscriptionId: String(selectedAccountRecord?.subscriptionId ?? selectedAccountRecord?.subscription_id ?? '') || null,
+      }
+      : null,
+    accountList: cache.accountList,
+    accountBalanceLegacy: cache.accountBalanceLegacy,
+    accountPositionsLegacy: cache.accountPositionsLegacy,
+    assetsAccount: null,
+    assetsPositions: cache.assetsPositions,
+    marketQuotes: null,
+    attempts: [
+      `Loaded cache file: ${cache.overallPath}`,
+      `Cache source: ${cache.source}`,
+      `Cache fetched_at: ${cache.fetchedAt || 'unknown'}`,
+      `Cache runtime: ${cache.runtime || 'unknown'}`,
+    ],
+    warnings: [warning],
+  }
+}
 
 export default function F9Orch() {
   const [activeSubtabId, setActiveSubtabId] = useState<F9SubtabId>('overall')
@@ -69,11 +122,36 @@ export default function F9Orch() {
     }
   }, [])
 
+  const loadSavedOverallSnapshot = useCallback(async (): Promise<F9OverallSnapshotOrch | null> => {
+    try {
+      const cached = await loadF9OverallCacheOrch()
+      if (!cached) return null
+      const cachedSnapshot = toSnapshotFromCacheBlock(cached, runtime)
+      setSnapshot(cachedSnapshot)
+      return cachedSnapshot
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to read saved F9 overall.json cache.')
+      return null
+    }
+  }, [runtime])
+
   const refreshOverall = useCallback(async () => {
     setLoading(true)
     setError(null)
     setExecutionSyncError(null)
+    setWorkspaceMessage(null)
     try {
+      if (runtime !== 'electron') {
+        const cachedSnapshot = await loadSavedOverallSnapshot()
+        await loadExecutionOverview()
+        if (cachedSnapshot) {
+          setWorkspaceMessage('Loaded saved F9 data. Use the Electron app to refresh live Webull data.')
+        } else {
+          setError('No saved F9 data found. Refresh once from the Electron app to generate overall.json.')
+        }
+        return
+      }
+
       const next = await fetchF9OverallSnapshotOrch()
       setSnapshot(next)
       let syncErrorMessage: string | null = null
@@ -101,14 +179,20 @@ export default function F9Orch() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [loadExecutionOverview, loadSavedOverallSnapshot, runtime])
 
   useEffect(() => {
     let cancelled = false
-    void loadF9ExecutionOverviewOrch()
-      .then((overview) => {
+    void Promise.all([
+      loadF9ExecutionOverviewOrch(),
+      loadF9OverallCacheOrch(),
+    ])
+      .then(([overview, cached]) => {
         if (cancelled) return
         setExecutionOverview(overview)
+        if (cached) {
+          setSnapshot(toSnapshotFromCacheBlock(cached, runtime))
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -118,7 +202,7 @@ export default function F9Orch() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [runtime])
 
   useEffect(() => {
     if (!executionOverview || executionOverview.companies.length === 0) {
@@ -277,9 +361,16 @@ export default function F9Orch() {
 
   useEffect(() => {
     if (activeSubtabId !== 'overall') return
-    if (!hasConfig) return
+    if (runtime !== 'electron') {
+      void refreshOverall()
+      return
+    }
+    if (!hasConfig) {
+      void loadSavedOverallSnapshot()
+      return
+    }
     void refreshOverall()
-  }, [activeSubtabId, hasConfig, refreshOverall])
+  }, [activeSubtabId, hasConfig, loadSavedOverallSnapshot, refreshOverall, runtime])
 
   return (
     <F9WorkspaceBlock
@@ -287,9 +378,11 @@ export default function F9Orch() {
       activeSubtabId={activeSubtabId}
       onSelectSubtab={setActiveSubtabId}
       hasConfig={hasConfig}
+      liveRefreshAvailable={runtime === 'electron'}
       loading={loading}
       error={error}
-      runtime={snapshot?.runtime ?? runtime}
+      runtime={runtime}
+      lastRefreshRuntime={snapshot?.runtime ?? null}
       fetchedAt={snapshot?.fetchedAt ?? null}
       endpoints={snapshot?.endpoints ?? {
         accountList: null,

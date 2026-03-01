@@ -1,6 +1,7 @@
 import {
   createF9CompanyBlock,
   createF9ManualPositionBlock,
+  readF9OverallCacheBlock,
   readF9ExecutionOverviewBlock,
   readF9PositionDetailBlock,
   saveF9PositionBodyBlock,
@@ -8,6 +9,7 @@ import {
   updateF9PositionOverlayBlock,
   type F9CompanyOverviewBlock,
   type F9ExecutionOverviewBlock,
+  type F9OverallCacheBlock,
   type F9PositionDetailBlock,
   type F9PositionSummaryBlock,
   type SyncF9ExecutionResultBlock,
@@ -18,6 +20,7 @@ import type { F9OverallSnapshotOrch } from './f9OverallOrch'
 export type {
   F9CompanyOverviewBlock,
   F9ExecutionOverviewBlock,
+  F9OverallCacheBlock,
   F9PositionDetailBlock,
   F9PositionSummaryBlock,
   SyncF9ExecutionResultBlock,
@@ -42,6 +45,11 @@ export async function syncF9ExecutionFromOverallOrch(
 export async function loadF9ExecutionOverviewOrch(): Promise<F9ExecutionOverviewBlock> {
   const settings = readF9ExecutionSettingsOrch()
   return readF9ExecutionOverviewBlock(settings.executionFolderPath)
+}
+
+export async function loadF9OverallCacheOrch(): Promise<F9OverallCacheBlock | null> {
+  const settings = readF9ExecutionSettingsOrch()
+  return readF9OverallCacheBlock(settings.executionFolderPath)
 }
 
 export async function loadF9PositionDetailOrch(

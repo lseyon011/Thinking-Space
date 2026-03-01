@@ -35,6 +35,8 @@ interface BacklogProgramRowBlockProps {
   canEditNodeStatus: boolean
   canToggleDetails: boolean
   rowColumns: BacklogRowColumnBlock[]
+  showNodeTypeIcon: boolean
+  showPriorityDot: boolean
   canAssignToGroup: boolean
   assignedGroupId: string
   programGroups: ProgramGroupEntryBlock[]
@@ -72,6 +74,8 @@ export function BacklogProgramRowBlock({
   canEditNodeStatus,
   canToggleDetails,
   rowColumns,
+  showNodeTypeIcon,
+  showPriorityDot,
   canAssignToGroup,
   assignedGroupId,
   programGroups,
@@ -141,7 +145,7 @@ export function BacklogProgramRowBlock({
           </button>
         </div>
       )}
-      <FolderTree className="h-4 w-4 shrink-0 text-sky-600" />
+      {showNodeTypeIcon && <FolderTree className="h-4 w-4 shrink-0 text-sky-600" />}
       <div className="min-w-0 flex flex-1 items-center gap-2">
         {ticketBadge}
         <span className="min-w-0 flex-1 truncate text-sm font-bold">
@@ -262,7 +266,7 @@ export function BacklogProgramRowBlock({
       >
         {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
       </button>
-      <PriorityDot priority={program.priority} />
+      {showPriorityDot && <PriorityDot priority={program.priority} />}
     </div>
   )
 }

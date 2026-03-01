@@ -70,6 +70,18 @@ export interface F9PositionDetailBlock {
   body: string
 }
 
+export interface F9OverallCacheBlock {
+  overallPath: string
+  fetchedAt: string
+  runtime: string
+  selectedAccount: unknown
+  accountList: unknown
+  accountBalanceLegacy: unknown | null
+  accountPositionsLegacy: unknown | null
+  assetsPositions: unknown | null
+  source: 'assets_positions' | 'legacy_positions' | 'none'
+}
+
 export interface SyncF9ExecutionInputBlock {
   executionFolderPath: string
   fetchedAt: string
@@ -318,6 +330,52 @@ export async function readF9ExecutionOverviewBlock(
     companyCount: companies.length,
     positionCount,
     companies,
+  }
+}
+
+export async function readF9OverallCacheBlock(
+  executionFolderPath: string,
+  fsParam?: VaultFS,
+): Promise<F9OverallCacheBlock | null> {
+  const fs = fsParam ?? getVaultFS()
+  const executionRoot = resolveF9ExecutionRootForVaultBlock(executionFolderPath)
+  const overallPath = joinPathBlock(executionRoot, 'overall.json')
+  if (!(await fs.exists(overallPath))) return null
+
+  let parsed: Record<string, unknown> = {}
+  try {
+    const raw = await fs.read(overallPath)
+    const candidate = JSON.parse(raw)
+    if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+      parsed = candidate as Record<string, unknown>
+    }
+  } catch (err) {
+    throw new Error(
+      err instanceof Error
+        ? `Failed to parse F9 overall cache at ${overallPath}: ${err.message}`
+        : `Failed to parse F9 overall cache at ${overallPath}.`,
+    )
+  }
+
+  const sourceRaw = readStringFieldBlock(parsed.source)
+  const source: 'assets_positions' | 'legacy_positions' | 'none' = (
+    sourceRaw === 'assets_positions'
+      ? 'assets_positions'
+      : sourceRaw === 'legacy_positions'
+        ? 'legacy_positions'
+        : 'none'
+  )
+
+  return {
+    overallPath,
+    fetchedAt: readStringFieldBlock(parsed.fetched_at),
+    runtime: readStringFieldBlock(parsed.runtime),
+    selectedAccount: parsed.selected_account ?? null,
+    accountList: parsed.account_list ?? null,
+    accountBalanceLegacy: parsed.account_balance_legacy ?? null,
+    accountPositionsLegacy: parsed.account_positions_legacy ?? null,
+    assetsPositions: parsed.assets_positions ?? null,
+    source,
   }
 }
 
@@ -604,24 +662,36 @@ async function upsertPositionRecordBlock(input: {
   existingById: Map<string, ExistingPositionRecordBlock>
 }): Promise<ExistingPositionRecordBlock> {
   const { fs, companyTicker, indexId, positionsDir, row, existingById } = input
-  const positionId = resolvePositionIdBlock(row, companyTicker)
+  const normalizedRow = normalizePositionRowForStorageBlock(row, companyTicker)
+  const positionId = resolvePositionIdBlock(normalizedRow, companyTicker)
   const existing = existingById.get(positionId)
-  const preferredFileName = buildPreferredFileNameBlock(row, companyTicker, positionId)
-  let fileName = existing?.fileName ?? preferredFileName
+  const preferredFileName = buildPreferredFileNameBlock(normalizedRow, companyTicker, positionId)
+  let fileName = preferredFileName
   let filePath = joinPathBlock(positionsDir, fileName)
 
-  if (!existing && (await fs.exists(filePath))) {
-    const suffix = sanitizeFileFragmentBlock(positionId).slice(0, 12) || 'position'
-    fileName = appendFileNameSuffixBlock(preferredFileName, suffix)
-    filePath = joinPathBlock(positionsDir, fileName)
+  if (await fs.exists(filePath)) {
+    const parsedTarget = parseMarkdownFrontmatterBlock(await fs.read(filePath))
+    const targetId = resolvePositionIdBlock(parsedTarget.frontmatter, companyTicker)
+    if (targetId && targetId !== positionId) {
+      const suffix = sanitizeFileFragmentBlock(positionId).slice(0, 12) || 'position'
+      fileName = appendFileNameSuffixBlock(preferredFileName, suffix)
+      filePath = joinPathBlock(positionsDir, fileName)
+    }
   }
 
-  let existingFrontmatter: Record<string, unknown> = existing?.frontmatter ?? {}
-  let existingBody = existing?.body ?? ''
-  if (!existing && (await fs.exists(filePath))) {
+  let existingFrontmatter: Record<string, unknown> = {}
+  let existingBody = ''
+  if (existing && existing.fileName === fileName) {
+    existingFrontmatter = existing.frontmatter
+    existingBody = existing.body
+  } else if (await fs.exists(filePath)) {
     const parsed = parseMarkdownFrontmatterBlock(await fs.read(filePath))
     existingFrontmatter = parsed.frontmatter
     existingBody = parsed.body
+  } else if (existing) {
+    // Existing record uses legacy file name; migrate to canonical name by writing a canonical file.
+    existingFrontmatter = existing.frontmatter
+    existingBody = existing.body
   }
 
   const now = new Date().toISOString()
@@ -635,7 +705,7 @@ async function upsertPositionRecordBlock(input: {
 
   const nextFrontmatter: Record<string, unknown> = {
     ...existingFrontmatter,
-    ...row,
+    ...normalizedRow,
     id: positionId,
     parent_id: indexId,
     title: readStringFieldBlock(existingFrontmatter.title) || removeMdExtensionBlock(fileName),
@@ -652,9 +722,9 @@ async function upsertPositionRecordBlock(input: {
     created_at: readStringFieldBlock(existingFrontmatter.created_at) || now,
     updated_at: now,
     last_synced_at: now,
-    webull_id: readStringFieldBlock(row.leg_id)
-      || readStringFieldBlock(row.position_id)
-      || readStringFieldBlock(row.instrument_id)
+    webull_id: readStringFieldBlock(normalizedRow.leg_id)
+      || readStringFieldBlock(normalizedRow.position_id)
+      || readStringFieldBlock(normalizedRow.instrument_id)
       || positionId,
     history: history.slice(-80),
   }
@@ -693,7 +763,36 @@ async function readExistingPositionRecordsBlock(
       summary,
     })
   }
-  return records
+  const dedupedById = new Map<string, ExistingPositionRecordBlock>()
+  for (const record of records) {
+    const current = dedupedById.get(record.id)
+    if (!current) {
+      dedupedById.set(record.id, record)
+      continue
+    }
+    const preferredFileName = buildPreferredFileNameBlock(
+      normalizePositionRowForStorageBlock(record.frontmatter, record.summary.symbol),
+      record.summary.symbol,
+      record.id,
+    )
+    const currentScore = existingRecordPreferenceScoreBlock(current, preferredFileName)
+    const nextScore = existingRecordPreferenceScoreBlock(record, preferredFileName)
+    if (nextScore > currentScore) {
+      dedupedById.set(record.id, record)
+    }
+  }
+  return [...dedupedById.values()]
+}
+
+function existingRecordPreferenceScoreBlock(
+  record: ExistingPositionRecordBlock,
+  preferredFileName: string,
+): number {
+  let score = 0
+  if (record.fileName === preferredFileName) score += 1000
+  const updatedAt = Date.parse(readStringFieldBlock(record.frontmatter.updated_at))
+  if (Number.isFinite(updatedAt)) score += Math.floor(updatedAt / 1000)
+  return score
 }
 
 async function refreshCompanyIndexFromPositionsBlock(input: {
@@ -837,6 +936,91 @@ function resolveTickerForRowBlock(row: Record<string, unknown>): string | null {
   return normalizeTickerBlock(raw)
 }
 
+function normalizePositionRowForStorageBlock(
+  row: Record<string, unknown>,
+  fallbackTicker: string,
+): Record<string, unknown> {
+  const firstLeg = readFirstLegRecordBlock(row)
+  const symbol = normalizeTickerBlock(
+    readFirstStringFromFieldsBlock(row, firstLeg, ['symbol', 'ticker', 'position_symbol', 'stock_code']),
+  ) ?? fallbackTicker
+  const optionType = normalizeMissingTokenBlock(
+    readFirstStringFromFieldsBlock(row, firstLeg, ['option_type', 'optionType']),
+  ).toUpperCase()
+  const instrumentTypeRaw = normalizeMissingTokenBlock(
+    readFirstStringFromFieldsBlock(row, firstLeg, ['instrument_type', 'instrumentType']),
+  ).toUpperCase()
+  const instrumentType = instrumentTypeRaw
+    || (optionType ? 'OPTION' : 'STOCK')
+
+  return {
+    ...firstLeg,
+    ...row,
+    symbol,
+    cost: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['cost', 'avg_cost', 'average_cost', 'cost_price'])),
+    proportion: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['proportion', 'weight'])),
+    leg_id: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['leg_id', 'legId'])),
+    position_id: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['position_id', 'positionId'])),
+    instrument_id: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['instrument_id', 'instrumentId'])),
+    instrument_type: instrumentType,
+    last_price: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['last_price', 'lastPrice', 'price', 'latest_price'])),
+    unrealized_profit_loss: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['unrealized_profit_loss', 'unrealizedProfitLoss'])),
+    day_profit_loss: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['day_profit_loss', 'dayProfitLoss'])),
+    day_realized_profit_loss: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['day_realized_profit_loss', 'dayRealizedProfitLoss'])),
+    option_type: optionType,
+    option_expire_date: normalizeMissingTokenBlock(
+      readFirstStringFromFieldsBlock(row, firstLeg, ['option_expire_date', 'optionExpireDate', 'expire_date', 'expiry']),
+    ),
+    option_exercise_price: normalizeMissingTokenBlock(
+      readFirstStringFromFieldsBlock(row, firstLeg, ['option_exercise_price', 'optionExercisePrice', 'strike', 'strike_price']),
+    ),
+    option_contract_multiplier: normalizeMissingTokenBlock(
+      readFirstStringFromFieldsBlock(row, firstLeg, ['option_contract_multiplier', 'optionContractMultiplier']),
+    ),
+    option_contract_deliverable: normalizeMissingTokenBlock(
+      readFirstStringFromFieldsBlock(row, firstLeg, ['option_contract_deliverable', 'optionContractDeliverable']),
+    ),
+    expiration_type: normalizeMissingTokenBlock(
+      readFirstStringFromFieldsBlock(row, firstLeg, ['expiration_type', 'expirationType']),
+    ),
+  }
+}
+
+function readFirstLegRecordBlock(row: Record<string, unknown>): Record<string, unknown> | null {
+  const legs = row.legs
+  if (!Array.isArray(legs)) return null
+  const first = legs.find(item => !!item && typeof item === 'object')
+  if (!first || typeof first !== 'object') return null
+  return first as Record<string, unknown>
+}
+
+function readFirstStringFromFieldsBlock(
+  topLevel: Record<string, unknown>,
+  nested: Record<string, unknown> | null,
+  keys: string[],
+): string {
+  for (const key of keys) {
+    const value = readStringFieldBlock(topLevel[key])
+    if (value) return value
+  }
+  if (!nested) return ''
+  for (const key of keys) {
+    const value = readStringFieldBlock(nested[key])
+    if (value) return value
+  }
+  return ''
+}
+
+function normalizeMissingTokenBlock(value: string): string {
+  const normalized = value.trim()
+  if (!normalized) return ''
+  const upper = normalized.toUpperCase()
+  if (upper === '—' || upper === '-' || upper === '--' || upper === 'N/A' || upper === 'NA' || upper === 'NULL') {
+    return ''
+  }
+  return normalized
+}
+
 function resolvePositionIdBlock(row: Record<string, unknown>, ticker: string): string {
   const fromPayload = readStringFieldBlock(row.leg_id)
     || readStringFieldBlock(row.position_id)
@@ -853,9 +1037,9 @@ function buildPreferredFileNameBlock(
   ticker: string,
   positionId: string,
 ): string {
-  const optionType = sanitizeFileFragmentBlock(readStringFieldBlock(row.option_type)?.toUpperCase() ?? '')
-  const optionExpireDate = sanitizeFileFragmentBlock(readStringFieldBlock(row.option_expire_date) ?? '')
-  const strike = normalizeStrikeForFileNameBlock(readStringFieldBlock(row.option_exercise_price) ?? '')
+  const optionType = sanitizeFileFragmentBlock(normalizeMissingTokenBlock(readStringFieldBlock(row.option_type)).toUpperCase())
+  const optionExpireDate = sanitizeFileFragmentBlock(normalizeMissingTokenBlock(readStringFieldBlock(row.option_expire_date)))
+  const strike = normalizeStrikeForFileNameBlock(normalizeMissingTokenBlock(readStringFieldBlock(row.option_exercise_price)))
   if (optionType && optionExpireDate && strike) {
     return `${ticker}${strike}-${optionExpireDate}-${optionType}.md`
   }
@@ -868,8 +1052,9 @@ function buildPreferredFileNameBlock(
 
 function isStockRowBlock(row: Record<string, unknown>): boolean {
   const instrumentType = readStringFieldBlock(row.instrument_type)?.toUpperCase() ?? ''
+  if (instrumentType.includes('OPTION')) return false
   if (instrumentType.includes('STOCK')) return true
-  return !readStringFieldBlock(row.option_type)
+  return !normalizeMissingTokenBlock(readStringFieldBlock(row.option_type))
 }
 
 function normalizeStrikeForFileNameBlock(value: string): string {

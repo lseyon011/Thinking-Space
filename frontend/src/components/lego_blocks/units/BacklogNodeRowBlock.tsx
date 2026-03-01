@@ -56,6 +56,9 @@ interface BacklogNodeRowBlockProps {
   canEditNodeStatus: boolean
   canToggleDetails: boolean
   rowColumns: BacklogRowColumnBlock[]
+  showExpandToggle: boolean
+  showNodeTypeIcon: boolean
+  showPriorityDot: boolean
   ticketBadge: ReactNode
   lookupTagColor: (node: NodeRecord, tag: string) => string | undefined
   onToggleNode: () => void
@@ -97,6 +100,9 @@ export function BacklogNodeRowBlock({
   canEditNodeStatus,
   canToggleDetails,
   rowColumns,
+  showExpandToggle,
+  showNodeTypeIcon,
+  showPriorityDot,
   ticketBadge,
   lookupTagColor,
   onToggleNode,
@@ -143,14 +149,16 @@ export function BacklogNodeRowBlock({
       >
         {formatRowOrdinal(siblingIndex)}
       </sup>
-      <button
-        type="button"
-        onClick={onToggleNode}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-muted-foreground outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0 hover:bg-transparent active:bg-transparent hover:text-foreground"
-      >
-        <ChevronRight className={cn('h-4 w-4 transition-transform', isExpanded && 'rotate-90')} />
-      </button>
-      <Icon className={cn('h-4 w-4 shrink-0', iconColorClass)} />
+      {showExpandToggle && (
+        <button
+          type="button"
+          onClick={onToggleNode}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-muted-foreground outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0 hover:bg-transparent active:bg-transparent hover:text-foreground"
+        >
+          <ChevronRight className={cn('h-4 w-4 transition-transform', isExpanded && 'rotate-90')} />
+        </button>
+      )}
+      {showNodeTypeIcon && <Icon className={cn('h-4 w-4 shrink-0', iconColorClass)} />}
       <button
         type="button"
         onClick={onSelectNode}
@@ -313,7 +321,7 @@ export function BacklogNodeRowBlock({
           {childCount}
         </span>
       )}
-      <PriorityDot priority={node.priority} />
+      {showPriorityDot && <PriorityDot priority={node.priority} />}
     </div>
   )
 }

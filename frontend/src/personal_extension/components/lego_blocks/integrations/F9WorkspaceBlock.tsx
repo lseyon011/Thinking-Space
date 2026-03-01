@@ -22,9 +22,11 @@ interface F9WorkspaceBlockProps {
   activeSubtabId: 'overall'
   onSelectSubtab: (id: 'overall') => void
   hasConfig: boolean
+  liveRefreshAvailable: boolean
   loading: boolean
   error: string | null
   runtime: F9RuntimeSurfaceOrch | null
+  lastRefreshRuntime: F9RuntimeSurfaceOrch | null
   fetchedAt: string | null
   endpoints: {
     accountList: string | null
@@ -175,6 +177,17 @@ function normalizeKeyFragmentBlock(value: string): string {
   return normalized || 'item'
 }
 
+function normalizeStrikeForDisplayBlock(value: string | null | undefined): string {
+  const normalized = firstStringBlock(value)
+  if (!normalized) return ''
+  const numeric = Number(normalized)
+  if (Number.isFinite(numeric)) {
+    if (Number.isInteger(numeric)) return String(numeric)
+    return String(numeric)
+  }
+  return normalized
+}
+
 function mapPositionStatusToNodeStatusBlock(status: string | null | undefined): NodeRecord['status'] {
   const normalized = (status ?? '').trim().toLowerCase()
   if (normalized === 'taken') return 'active'
@@ -187,10 +200,16 @@ function positionTitleFromSummaryBlock(position: F9PositionSummaryBlock): string
   const symbol = firstStringBlock(position.symbol) || 'UNKNOWN'
   const optionType = firstStringBlock(position.optionType).toUpperCase()
   const optionExpireDate = firstStringBlock(position.optionExpireDate)
-  const optionStrike = firstStringBlock(position.optionExercisePrice)
+  const optionStrike = normalizeStrikeForDisplayBlock(position.optionExercisePrice)
   if (optionType && optionExpireDate && optionStrike) {
-    return `${symbol} ${optionStrike} ${optionExpireDate} ${optionType}`
+    return `${symbol}${optionStrike}-${optionExpireDate}-${optionType}`
   }
+  const instrumentType = firstStringBlock(position.instrumentType).toUpperCase()
+  if (instrumentType === 'STOCK') {
+    return `${symbol}STOCK`
+  }
+  const fromFileName = firstStringBlock(position.fileName)
+  if (fromFileName.toLowerCase().endsWith('.md')) return fromFileName.slice(0, -3)
   return symbol
 }
 
@@ -256,14 +275,38 @@ function asMetadataRecordBlock(node: NodeRecord): Record<string, unknown> {
   return metadata as Record<string, unknown>
 }
 
+function readNumberFromRecordBlock(record: Record<string, unknown> | null | undefined, ...keys: string[]): number | null {
+  if (!record) return null
+  for (const key of keys) {
+    const value = firstNumberBlock(record[key])
+    if (value !== null) return value
+  }
+  return null
+}
+
+function resolveUnitCostBlock(payload: Record<string, unknown> | null | undefined): number | null {
+  return readNumberFromRecordBlock(payload, 'cost', 'unit_cost', 'avg_cost', 'average_cost', 'cost_price')
+}
+
+function resolveTotalCostBlock(payload: Record<string, unknown> | null | undefined): number | null {
+  const unitCost = resolveUnitCostBlock(payload)
+  if (unitCost === null) return null
+  const quantity = readNumberFromRecordBlock(payload, 'quantity', 'qty', 'position', 'position_size', 'held', 'amount')
+  const multiplier = readNumberFromRecordBlock(payload, 'option_contract_multiplier') ?? 1
+  if (quantity === null || quantity <= 0) return unitCost
+  return unitCost * quantity * multiplier
+}
+
 export default function F9WorkspaceBlock({
   subtabs,
   activeSubtabId,
   onSelectSubtab,
   hasConfig,
+  liveRefreshAvailable,
   loading,
   error,
   runtime,
+  lastRefreshRuntime,
   fetchedAt,
   endpoints,
   selectedAccount,
@@ -451,61 +494,33 @@ export default function F9WorkspaceBlock({
   ])
 
   const f9RowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
-    const getMetaValue = (node: NodeRecord, key: string): string => {
-      const metadata = asMetadataRecordBlock(node)
-      return firstStringBlock(metadata[key])
-    }
     const epicOnly: NodeRecord['type'][] = ['epic']
     return [
       {
-        id: 'status',
-        label: 'Status',
-        widthClassName: 'w-24',
-        showForTypes: epicOnly,
-        render: (node) => {
-          const status = getMetaValue(node, 'f9_position_status') || '—'
-          return (
-            <span className={`rounded-full border px-2 py-0.5 text-[10px] ${statusChipClassBlock(status)}`}>
-              {status}
-            </span>
-          )
-        },
-      },
-      {
-        id: 'type',
-        label: 'Type',
-        widthClassName: 'w-16',
-        showForTypes: epicOnly,
-        render: (node) => {
-          const payload = asMetadataRecordBlock(node).f9_position_payload as Record<string, unknown> | undefined
-          return firstStringBlock(payload?.instrument_type) || '—'
-        },
-      },
-      {
-        id: 'last',
-        label: 'Last',
-        widthClassName: 'w-20',
-        align: 'right',
-        showForTypes: epicOnly,
-        render: (node) => {
-          const payload = asMetadataRecordBlock(node).f9_position_payload as Record<string, unknown> | undefined
-          return formatCurrencyFromUnknownBlock(payload?.last_price)
-        },
-      },
-      {
         id: 'cost',
         label: 'Cost',
-        widthClassName: 'w-20',
+        widthClassName: 'w-24',
         align: 'right',
         showForTypes: epicOnly,
         render: (node) => {
           const payload = asMetadataRecordBlock(node).f9_position_payload as Record<string, unknown> | undefined
-          return formatCurrencyFromUnknownBlock(payload?.cost)
+          return formatCurrencyBlock(resolveTotalCostBlock(payload))
+        },
+      },
+      {
+        id: 'unit-cost',
+        label: 'Unit Cost',
+        widthClassName: 'w-24',
+        align: 'right',
+        showForTypes: epicOnly,
+        render: (node) => {
+          const payload = asMetadataRecordBlock(node).f9_position_payload as Record<string, unknown> | undefined
+          return formatCurrencyBlock(resolveUnitCostBlock(payload))
         },
       },
       {
         id: 'upl',
-        label: 'U P/L',
+        label: 'Current P/L',
         widthClassName: 'w-24',
         align: 'right',
         showForTypes: epicOnly,
@@ -515,11 +530,15 @@ export default function F9WorkspaceBlock({
         },
       },
       {
-        id: 'idea',
-        label: 'Linked Idea',
-        widthClassName: 'w-28',
+        id: 'current-price',
+        label: 'Current Price',
+        widthClassName: 'w-24',
+        align: 'right',
         showForTypes: epicOnly,
-        render: (node) => getMetaValue(node, 'f9_linked_idea_id') || '—',
+        render: (node) => {
+          const payload = asMetadataRecordBlock(node).f9_position_payload as Record<string, unknown> | undefined
+          return formatCurrencyFromUnknownBlock(payload?.last_price)
+        },
       },
     ]
   }, [])
@@ -675,14 +694,22 @@ export default function F9WorkspaceBlock({
             <Button type="button" variant="outline" onClick={() => { void onRefreshExecutionOverview() }} disabled={workspaceBusy || executionOverviewLoading}>
               {executionOverviewLoading ? 'Refreshing companies...' : 'Refresh Companies'}
             </Button>
-            <Button type="button" onClick={onRefreshOverall} disabled={!hasConfig || loading}>
-              {loading ? 'Refreshing overall...' : 'Refresh Overall'}
+            <Button type="button" onClick={onRefreshOverall} disabled={loading || (liveRefreshAvailable && !hasConfig)}>
+              {loading
+                ? (liveRefreshAvailable ? 'Refreshing overall...' : 'Reloading saved...')
+                : (liveRefreshAvailable ? 'Refresh Overall' : 'Reload Saved Data')}
             </Button>
           </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {!hasConfig && (
+          {!liveRefreshAvailable && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
+              Live Webull refresh is available only in the Electron app. This runtime shows saved F9 data from your last Electron refresh.
+            </div>
+          )}
+
+          {liveRefreshAvailable && !hasConfig && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
               Missing Webull config. Set `VITE_F9_WEBULL_APP_KEY` and `VITE_F9_WEBULL_APP_SECRET` in your frontend env.
             </div>
@@ -722,7 +749,10 @@ export default function F9WorkspaceBlock({
               </div>
               <div className="rounded-lg border bg-background p-3">
                 <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Fetched</p>
-                <p className="mt-1 font-medium">{fetchedAt ?? 'Not requested yet'}</p>
+                <p className="mt-1 font-medium">{fetchedAt ?? 'No saved refresh yet'}</p>
+                <p className="text-xs text-muted-foreground">
+                  via {formatRuntimeLabelBlock(lastRefreshRuntime)}
+                </p>
               </div>
               <div className="rounded-lg border bg-background p-3">
                 <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Overall Value</p>
@@ -746,6 +776,9 @@ export default function F9WorkspaceBlock({
                 onSelectNode={onSelectBacklogNode}
                 rowColumns={f9RowColumns}
                 rowDetailsRenderer={renderF9RowDetails}
+                showNodeTypeIcons={false}
+                showExpandToggles={false}
+                showPriorityDots={false}
               />
             </div>
           ) : (
@@ -760,6 +793,9 @@ export default function F9WorkspaceBlock({
                   onSelectNode={onSelectBacklogNode}
                   rowColumns={f9RowColumns}
                   rowDetailsRenderer={renderF9RowDetails}
+                  showNodeTypeIcons={false}
+                  showExpandToggles={false}
+                  showPriorityDots={false}
                 />
               </div>
 
