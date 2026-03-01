@@ -1074,7 +1074,7 @@ function App() {
 
             <div
               ref={syncToolsRef}
-              className="absolute right-0 top-0 z-20 flex h-full items-center justify-end gap-2 [-webkit-app-region:no-drag]"
+              className="absolute right-1 top-0 z-20 flex h-full items-center justify-end gap-2 [-webkit-app-region:no-drag]"
               style={{ width: `${topChromeSideWidth}px` }}
             >
               <button

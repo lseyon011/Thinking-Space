@@ -6,7 +6,7 @@ import {
 export default function ExcalidrawPlus() {
   return (
     <>
-      <div className="sticky top-[calc(var(--ltm-safe-top,0px)+10px)] z-10 mb-4">
+      <div className="mb-4 pt-2 sm:pt-3">
         <div className="mb-2 text-center text-xl font-semibold tracking-tight sm:text-2xl">
           Excalidraw++
         </div>
