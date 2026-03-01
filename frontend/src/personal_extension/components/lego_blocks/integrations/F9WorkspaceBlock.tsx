@@ -105,7 +105,7 @@ interface F9WorkspaceBlockProps {
 }
 
 const F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK = 'f9_workspace_side_tabs_collapsed'
-const F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK = 'min-w-[1800px]'
+const F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK = 'min-w-[1360px]'
 type F9ProjectPresetTagsByRootBlock = Record<string, string[]>
 
 function formatRuntimeLabelBlock(value: F9RuntimeSurfaceOrch | null): string {
@@ -1264,9 +1264,17 @@ export default function F9WorkspaceBlock({
                     projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
                     canOpenNodeDetails={(node) => node.type === 'epic'}
                     rowColumns={f9RowColumns}
+                    rowPresetTagLimit={5}
+                    rowPresetTagsClassName="ml-auto w-[18rem] justify-end"
+                    reserveTagsSlotWhenEmpty
                     linksColumnLabel="Links"
+                    linksColumnWidthClassName="w-[8rem] mx-6"
+                    linksColumnAlign="left"
+                    linksColumnPaddingClassName="px-0"
+                    linksBeforeTags
+                    statusRightAligned={false}
                     rowDetailsRenderer={renderF9InlineDetails}
-                    titleColumnClassName="w-[24rem]"
+                    titleColumnClassName="w-[20rem]"
                     wrapTitleText
                     actionsRightEdge
                     showProgramStatus={false}
@@ -1299,9 +1307,17 @@ export default function F9WorkspaceBlock({
                       projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
                       canOpenNodeDetails={(node) => node.type === 'epic'}
                       rowColumns={f9RowColumns}
+                      rowPresetTagLimit={5}
+                      rowPresetTagsClassName="ml-auto w-[18rem] justify-end"
+                      reserveTagsSlotWhenEmpty
                       linksColumnLabel="Links"
+                      linksColumnWidthClassName="w-[8rem] mx-6"
+                      linksColumnAlign="left"
+                      linksColumnPaddingClassName="px-0"
+                      linksBeforeTags
+                      statusRightAligned={false}
                       rowDetailsRenderer={renderF9InlineDetails}
-                      titleColumnClassName="w-[24rem]"
+                      titleColumnClassName="w-[20rem]"
                       wrapTitleText
                       actionsRightEdge
                       showProgramStatus={false}

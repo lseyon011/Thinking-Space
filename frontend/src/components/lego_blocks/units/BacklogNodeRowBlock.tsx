@@ -55,7 +55,12 @@ interface BacklogNodeRowBlockProps {
   canEditTaskStatus: boolean
   canEditNodeStatus: boolean
   canToggleDetails: boolean
+  linksSlot?: ReactNode
   rowColumns: BacklogRowColumnBlock[]
+  rowPresetTagsClassName?: string
+  reserveTagsSlotWhenEmpty?: boolean
+  linksBeforeTags?: boolean
+  statusRightAligned?: boolean
   titleColumnClassName?: string
   wrapTitleText?: boolean
   actionsRightEdge?: boolean
@@ -102,7 +107,12 @@ export function BacklogNodeRowBlock({
   canEditTaskStatus,
   canEditNodeStatus,
   canToggleDetails,
+  linksSlot,
   rowColumns,
+  rowPresetTagsClassName,
+  reserveTagsSlotWhenEmpty = false,
+  linksBeforeTags = false,
+  statusRightAligned = true,
   titleColumnClassName,
   wrapTitleText = false,
   actionsRightEdge = false,
@@ -128,6 +138,7 @@ export function BacklogNodeRowBlock({
   const taskNode = isTaskNode(node)
   const taskStatus = getTaskStatusBadge(node)
   const applicableColumns = rowColumns.filter(column => !column.showForTypes || column.showForTypes.includes(node.type))
+  const shouldRenderTagSlot = rowPresetTags.visible.length > 0 || reserveTagsSlotWhenEmpty
 
   return (
     <div
@@ -203,10 +214,12 @@ export function BacklogNodeRowBlock({
           })}
         </div>
       )}
-      {rowPresetTags.visible.length > 0 && (
+      {linksBeforeTags && linksSlot}
+      {shouldRenderTagSlot && (
         <div className={cn(
           'hidden self-center items-center gap-1 overflow-hidden lg:flex',
-          actionsRightEdge ? 'min-w-0 flex-1 justify-end' : 'max-w-[35%]',
+          actionsRightEdge && !statusRightAligned && !linksSlot && 'ml-auto',
+          rowPresetTagsClassName ?? (actionsRightEdge ? 'min-w-0 flex-1 justify-end' : 'max-w-[35%]'),
         )}>
           {rowPresetTags.visible.map(tag => (
             <span
@@ -227,14 +240,21 @@ export function BacklogNodeRowBlock({
           )}
         </div>
       )}
+      {!linksBeforeTags && linksSlot}
       {taskNode ? (
         readOnly || !canEditTaskStatus ? (
-          <div className={cn('shrink-0 self-center', actionsRightEdge && 'ml-auto')}>
+          <div className={cn(
+            'shrink-0 self-center',
+            actionsRightEdge && (statusRightAligned || (!linksSlot && !shouldRenderTagSlot)) && 'ml-auto',
+          )}>
             <TaskStatusBadge taskStatus={taskStatus} />
           </div>
         ) : (
           <div
-            className={cn('flex self-center items-center gap-1', actionsRightEdge && 'ml-auto')}
+            className={cn(
+              'flex self-center items-center gap-1',
+              actionsRightEdge && (statusRightAligned || (!linksSlot && !shouldRenderTagSlot)) && 'ml-auto',
+            )}
             onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
           >
             {statusBusy ? (
@@ -266,12 +286,18 @@ export function BacklogNodeRowBlock({
         )
       ) : (
         readOnly || !canEditNodeStatus ? (
-          <div className={cn('shrink-0 self-center', actionsRightEdge && 'ml-auto')}>
+          <div className={cn(
+            'shrink-0 self-center',
+            actionsRightEdge && (statusRightAligned || (!linksSlot && !shouldRenderTagSlot)) && 'ml-auto',
+          )}>
             <NodeStatusBadgeBlock status={node.status} />
           </div>
         ) : (
           <div
-            className={cn('flex self-center items-center gap-1', actionsRightEdge && 'ml-auto')}
+            className={cn(
+              'flex self-center items-center gap-1',
+              actionsRightEdge && (statusRightAligned || (!linksSlot && !shouldRenderTagSlot)) && 'ml-auto',
+            )}
             onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
           >
             {statusBusy ? (

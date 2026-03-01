@@ -99,7 +99,15 @@ export interface BacklogListBlockProps {
   onOpenNodeDetails?: (node: NodeRecord) => void
   canOpenNodeDetails?: (node: NodeRecord) => boolean
   rowColumns?: BacklogRowColumnBlock[]
+  rowPresetTagLimit?: number
+  rowPresetTagsClassName?: string
+  reserveTagsSlotWhenEmpty?: boolean
   linksColumnLabel?: string
+  linksColumnWidthClassName?: string
+  linksColumnAlign?: 'left' | 'center' | 'right'
+  linksColumnPaddingClassName?: string
+  linksBeforeTags?: boolean
+  statusRightAligned?: boolean
   rowDetailsRenderer?: ((node: NodeRecord) => ReactNode) | null
   titleColumnClassName?: string
   wrapTitleText?: boolean
@@ -141,7 +149,15 @@ export default function BacklogListBlock({
   onOpenNodeDetails,
   canOpenNodeDetails,
   rowColumns = [],
+  rowPresetTagLimit = 3,
+  rowPresetTagsClassName,
+  reserveTagsSlotWhenEmpty = false,
   linksColumnLabel,
+  linksColumnWidthClassName,
+  linksColumnAlign = 'right',
+  linksColumnPaddingClassName = 'px-2',
+  linksBeforeTags = false,
+  statusRightAligned = true,
   rowDetailsRenderer = null,
   titleColumnClassName,
   wrapTitleText = false,
@@ -486,12 +502,21 @@ export default function BacklogListBlock({
 
     return (
       <div className={cn(
-        'hidden self-center items-center gap-1 lg:flex',
-        actionsRightEdge ? 'max-w-[24rem] min-w-[10rem]' : 'max-w-[24rem]',
+        'hidden min-w-0 shrink-0 self-center items-center lg:flex',
+        actionsRightEdge && !statusRightAligned && 'ml-auto',
+        linksColumnPaddingClassName,
+        linksColumnWidthClassName ?? (actionsRightEdge ? 'max-w-[24rem] min-w-[10rem]' : 'max-w-[24rem]'),
       )}>
         <LinkedItemChipsBlock
           items={linkedItems}
-          className="min-w-0 justify-end gap-1"
+          className={cn(
+            'min-w-0 w-full gap-1',
+            linksColumnAlign === 'center'
+              ? 'justify-center'
+              : linksColumnAlign === 'left'
+                ? 'justify-start'
+                : 'justify-end',
+          )}
           chipClassName="max-w-[12rem] px-1.5 py-0.5 text-[10px] leading-none"
           labelClassName="max-w-[12rem]"
           onOpenItem={(path, event) => {
@@ -504,6 +529,10 @@ export default function BacklogListBlock({
     )
   }, [
     actionsRightEdge,
+    linksColumnAlign,
+    linksColumnPaddingClassName,
+    linksColumnWidthClassName,
+    statusRightAligned,
     onOpenRelatedNode,
     relatedNodeOptionsByPath,
   ])
@@ -702,6 +731,7 @@ export default function BacklogListBlock({
     const newlyCreated = !!newlyCreatedNodeIds[node.uuid]
     const rowPresetTags = compactTagList(
       selectedPresetTagsForNode(node, projectPresetTagsByRoot),
+      rowPresetTagLimit,
     )
     const detailsOpen = rowDetailsRenderer
       ? rowDetailsNodeId === node.uuid
@@ -744,6 +774,10 @@ export default function BacklogListBlock({
           canToggleDetails={canToggleDetails}
           linksSlot={renderRelatedNodeLinksSlot(node)}
           rowColumns={rowColumns}
+          rowPresetTagsClassName={rowPresetTagsClassName}
+          reserveTagsSlotWhenEmpty={reserveTagsSlotWhenEmpty}
+          linksBeforeTags={linksBeforeTags}
+          statusRightAligned={statusRightAligned}
           titleColumnClassName={titleColumnClassName}
           wrapTitleText={wrapTitleText}
           actionsRightEdge={actionsRightEdge}
@@ -805,7 +839,7 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderRelatedNodeLinksSlot, renderTicketBadge, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, statusBusyByNode, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
+  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
 
   const renderProgramSection = useCallback((program: NodeRecord, programIndex: number) => {
     void ensureProgramLoaded(program)
@@ -814,6 +848,7 @@ export default function BacklogListBlock({
     const assignedGroupId = resolvedProgramGroupIdByProgram[program.uuid] ?? '__ungrouped__'
     const rowPresetTags = compactTagList(
       selectedPresetTagsForNode(program, projectPresetTagsByRoot),
+      rowPresetTagLimit,
     )
     const detailsOpen = rowDetailsRenderer
       ? rowDetailsNodeId === program.uuid
@@ -849,6 +884,10 @@ export default function BacklogListBlock({
           canToggleDetails={canToggleDetails}
           linksSlot={renderRelatedNodeLinksSlot(program)}
           rowColumns={rowColumns}
+          rowPresetTagsClassName={rowPresetTagsClassName}
+          reserveTagsSlotWhenEmpty={reserveTagsSlotWhenEmpty}
+          linksBeforeTags={linksBeforeTags}
+          statusRightAligned={statusRightAligned}
           titleColumnClassName={titleColumnClassName}
           wrapTitleText={wrapTitleText}
           actionsRightEdge={actionsRightEdge}
@@ -899,7 +938,7 @@ export default function BacklogListBlock({
         </div>
       </div>
     )
-  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderRelatedNodeLinksSlot, renderTicketBadge, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, showProgramCopyButton, showProgramStatus, statusBusyByNode, titleColumnClassName, toggleRowDetails, wrapTitleText])
+  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showProgramCopyButton, showProgramStatus, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleRowDetails, wrapTitleText])
 
   return (
     <div className="flex flex-col space-y-3">
@@ -942,7 +981,15 @@ export default function BacklogListBlock({
             </span>
           ))}
           {linksColumnLabel && (
-            <span className="hidden w-72 shrink-0 truncate text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground lg:block">
+            <span className={cn(
+              'hidden shrink-0 truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground lg:block',
+              linksColumnWidthClassName ?? 'w-72',
+              linksColumnAlign === 'center'
+                ? 'text-center'
+                : linksColumnAlign === 'left'
+                  ? 'text-left'
+                  : 'text-right',
+            )}>
               {linksColumnLabel}
             </span>
           )}
