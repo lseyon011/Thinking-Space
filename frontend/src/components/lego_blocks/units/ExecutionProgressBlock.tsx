@@ -1,10 +1,9 @@
-import { Activity, Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw } from 'lucide-react'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 
 interface ExecutionProgressBlockProps {
-  busy: boolean
   currentOperation: string | null
   tasks: NodeRecord[]
   tasksLoading: boolean
@@ -30,7 +29,6 @@ function taskRowLabel(node: NodeRecord): string {
 }
 
 export default function ExecutionProgressBlock({
-  busy,
   currentOperation,
   tasks,
   tasksLoading,
@@ -52,19 +50,15 @@ export default function ExecutionProgressBlock({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Activity className="h-3.5 w-3.5" />}
-            {busy ? 'Running' : 'Idle'}
+        {currentOperation && (
+          <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-sm text-foreground">
+            {currentOperation}
           </div>
-          <div className="mt-1 text-sm text-foreground">
-            {currentOperation || 'No operation currently executing.'}
-          </div>
-        </div>
+        )}
 
         <div className="space-y-2">
-          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Active Tasks
+          <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            In-Progress Tasks ({tasks.length})
           </div>
           {tasksError && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">

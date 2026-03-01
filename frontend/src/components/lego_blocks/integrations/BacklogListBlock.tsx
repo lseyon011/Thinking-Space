@@ -128,6 +128,12 @@ export interface BacklogListBlockProps {
   preferInlineDetailsButton?: boolean
   allowInlineNotesInReadOnly?: boolean
   allowProgramLayoutEditingInReadOnly?: boolean
+  showProgramLayoutToggle?: boolean
+  programLayoutEditMode?: boolean
+  onProgramLayoutEditModeChange?: (next: boolean) => void
+  focusRootCreateRequestNonce?: number
+  showRootInlineCreate?: boolean
+  onRootInlineCreateCreated?: (created: NodeRecord) => void
   showExpandToggles?: boolean
   showNodeTypeIcons?: boolean
   showPriorityDots?: boolean
@@ -183,6 +189,12 @@ export default function BacklogListBlock({
   preferInlineDetailsButton = false,
   allowInlineNotesInReadOnly = false,
   allowProgramLayoutEditingInReadOnly = false,
+  showProgramLayoutToggle = true,
+  programLayoutEditMode,
+  onProgramLayoutEditModeChange,
+  focusRootCreateRequestNonce = 0,
+  showRootInlineCreate = true,
+  onRootInlineCreateCreated,
   showExpandToggles = true,
   showNodeTypeIcons = true,
   showPriorityDots = true,
@@ -202,18 +214,30 @@ export default function BacklogListBlock({
   const [statusBusyByNode, setStatusBusyByNode] = useState<Record<string, boolean>>({})
   const [newlyCreatedNodeIds, setNewlyCreatedNodeIds] = useState<Record<string, boolean>>({})
   const [rowDetailsNodeId, setRowDetailsNodeId] = useState<string | null>(null)
-  const [programLayoutEditMode, setProgramLayoutEditMode] = useState(false)
+  const [internalProgramLayoutEditMode, setInternalProgramLayoutEditMode] = useState(false)
   const [programGroupDraft, setProgramGroupDraft] = useState('')
   const newRowHighlightTimeoutByNodeRef = useRef<Record<string, number>>({})
+  const rootCreateTitleInputRef = useRef<HTMLInputElement | null>(null)
+  const prevFocusRootCreateRequestNonceRef = useRef(0)
   const [localError, setLocalError] = useState<string | null>(null)
   const programFingerprint = programs.map(program => `${program.uuid}:${program.updatedAt}`).join('|')
+  const controlledProgramLayoutEditMode = typeof programLayoutEditMode === 'boolean'
   const allowProgramLayoutModeToggle = !readOnly || allowProgramLayoutEditingInReadOnly
-  const allowProgramLayoutEditing = allowProgramLayoutModeToggle && programLayoutEditMode
+  const allowProgramLayoutEditing = allowProgramLayoutModeToggle && (
+    controlledProgramLayoutEditMode ? programLayoutEditMode : internalProgramLayoutEditMode
+  )
   const programNounSingular = toSentenceCaseLabelBlock(programLabelSingular, 'program')
   const programNounPlural = toSentenceCaseLabelBlock(programLabelPlural, 'programs')
   const programNounSingularTitle = toTitleCaseLabelBlock(programLabelSingular, 'program')
   const programNounPluralTitle = toTitleCaseLabelBlock(programLabelPlural, 'programs')
   const programGroupNounSingular = toSentenceCaseLabelBlock(programGroupLabelSingular, 'group')
+
+  const setProgramLayoutEditMode = useCallback((next: boolean) => {
+    if (!controlledProgramLayoutEditMode) {
+      setInternalProgramLayoutEditMode(next)
+    }
+    onProgramLayoutEditModeChange?.(next)
+  }, [controlledProgramLayoutEditMode, onProgramLayoutEditModeChange])
 
   const lookupTagColor = useCallback((node: NodeRecord, tag: string): string | undefined => {
     const projectRoot = normalizePath(node.projectRoot ?? '')
@@ -267,7 +291,7 @@ export default function BacklogListBlock({
   useEffect(() => {
     if (allowProgramLayoutModeToggle) return
     setProgramLayoutEditMode(false)
-  }, [allowProgramLayoutModeToggle])
+  }, [allowProgramLayoutModeToggle, setProgramLayoutEditMode])
 
   useEffect(() => {
     if (rowDetailsRenderer) return
@@ -418,13 +442,16 @@ export default function BacklogListBlock({
           }
         })
       }
+      if (!parent) {
+        onRootInlineCreateCreated?.(created)
+      }
       highlightNewlyCreatedRow(created.uuid)
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to create node')
     } finally {
       setBusyCreate(prev => ({ ...prev, [draftKey]: false }))
     }
-  }, [commentDrafts, descriptionDrafts, draftTypeByKey, drafts, highlightNewlyCreatedRow, onCreateChild])
+  }, [commentDrafts, descriptionDrafts, draftTypeByKey, drafts, highlightNewlyCreatedRow, onCreateChild, onRootInlineCreateCreated])
 
   const {
     dragOverNodeId,
@@ -461,6 +488,20 @@ export default function BacklogListBlock({
     }, 1400)
     return () => window.clearTimeout(timeoutId)
   }, [copiedRowNodeId])
+
+  useEffect(() => {
+    if (readOnly) return
+    if (focusRootCreateRequestNonce <= 0) return
+    if (prevFocusRootCreateRequestNonceRef.current === focusRootCreateRequestNonce) return
+    prevFocusRootCreateRequestNonceRef.current = focusRootCreateRequestNonce
+    window.requestAnimationFrame(() => {
+      const input = rootCreateTitleInputRef.current
+      if (!input) return
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      input.focus()
+      input.select()
+    })
+  }, [focusRootCreateRequestNonce, readOnly])
 
   const copyRowLabelForNode = useCallback(async (node: NodeRecord, event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
@@ -718,6 +759,7 @@ export default function BacklogListBlock({
         commentDraft={commentDrafts[draftKey] ?? ''}
         busy={!!busyCreate[draftKey]}
         placeholder={placeholder}
+        titleInputRef={draftKey === ROOT_INPUT_KEY ? rootCreateTitleInputRef : undefined}
         onTypeChange={(nextType) => {
           setDraftTypeByKey(prev => ({ ...prev, [draftKey]: nextType }))
         }}
@@ -972,13 +1014,13 @@ export default function BacklogListBlock({
 
   return (
     <div className="flex flex-col space-y-3">
-      {allowProgramLayoutModeToggle && (
+      {showProgramLayoutToggle && allowProgramLayoutModeToggle && (
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             size="sm"
             variant={allowProgramLayoutEditing ? 'default' : 'outline'}
-            onClick={() => setProgramLayoutEditMode(prev => !prev)}
+            onClick={() => setProgramLayoutEditMode(!allowProgramLayoutEditing)}
           >
             {allowProgramLayoutEditing
               ? `Done Organizing ${programNounPluralTitle}`
@@ -992,7 +1034,7 @@ export default function BacklogListBlock({
         </div>
       )}
 
-      {!readOnly && renderInlineCreate(null, ROOT_INPUT_KEY, `Add ${programNounSingular}...`)}
+      {!readOnly && showRootInlineCreate && renderInlineCreate(null, ROOT_INPUT_KEY, `Add ${programNounSingular}...`)}
 
       {rowColumns.length > 0 && (
         <div className={cn(

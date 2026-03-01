@@ -1,4 +1,5 @@
 import { Loader2, Plus } from 'lucide-react'
+import type { Ref } from 'react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import type { NodeType } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { nodeTypeLabel } from '@/components/lego_blocks/units/BacklogListDomainBlock'
@@ -11,6 +12,7 @@ interface BacklogInlineCreateBlockProps {
   commentDraft: string
   busy: boolean
   placeholder: string
+  titleInputRef?: Ref<HTMLInputElement>
   onTypeChange: (nextType: NodeType) => void
   onTitleChange: (nextTitle: string) => void
   onDescriptionChange: (nextDescription: string) => void
@@ -26,6 +28,7 @@ export function BacklogInlineCreateBlock({
   commentDraft,
   busy,
   placeholder,
+  titleInputRef,
   onTypeChange,
   onTitleChange,
   onDescriptionChange,
@@ -49,6 +52,7 @@ export function BacklogInlineCreateBlock({
           ))}
         </select>
         <input
+          ref={titleInputRef}
           value={titleDraft}
           onChange={event => onTitleChange(event.target.value)}
           onKeyDown={event => {

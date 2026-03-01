@@ -7,7 +7,7 @@ import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDeta
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
 import ProjectMemoryFilesBlock from '@/components/lego_blocks/integrations/ProjectMemoryFilesBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
-import { TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
+import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
@@ -1715,13 +1715,12 @@ export default function F9WorkspaceBlock({
                 Show Side Tabs
               </Button>
             )}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setProjectTagsOpen(prev => !prev)}
-            >
-              {projectTagsOpen ? 'Hide Project Tags' : 'Project Tags'}
-            </Button>
+            <TagDisclosureButtonBlock
+              label="Project Tags"
+              expanded={projectTagsOpen}
+              onToggle={() => setProjectTagsOpen(prev => !prev)}
+              count={availableProjectPresetTags.length}
+            />
           </div>
         </CardHeader>
 

@@ -355,6 +355,9 @@ export default function BacklogOrch() {
   const [activeExecutionTasksLoading, setActiveExecutionTasksLoading] = useState(false)
   const [activeExecutionTasksError, setActiveExecutionTasksError] = useState<string | null>(null)
   const [activeBacklogSubTab, setActiveBacklogSubTab] = useState<BacklogSubTab>('hierarchy')
+  const [programLayoutEditMode, setProgramLayoutEditMode] = useState(false)
+  const [showRootProgramCreate, setShowRootProgramCreate] = useState(false)
+  const [focusRootCreateRequestNonce, setFocusRootCreateRequestNonce] = useState(0)
   const [completedEpicTimeline, setCompletedEpicTimeline] = useState<NodeRecord[]>([])
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [timelineError, setTimelineError] = useState<string | null>(null)
@@ -1636,36 +1639,6 @@ export default function BacklogOrch() {
         )}
       </div>
 
-      {activeProjectRoot && (
-        <div className="space-y-2 rounded-md border border-border/70 bg-card p-3">
-          <div className="flex items-center justify-between gap-2">
-            <TagDisclosureButtonBlock
-              label="Project Tags"
-              expanded={projectTagsExpanded}
-              onToggle={() => setProjectTagsExpanded(prev => !prev)}
-              count={activeProjectPresetTags.length}
-            />
-            <p className="text-[11px] text-muted-foreground">Project-scoped preset tags</p>
-          </div>
-          {projectTagsExpanded && (
-            <TagListEditorBlock
-              heading="Project Tags"
-              tags={activeProjectPresetTags}
-              tagColors={activeProjectTagColors}
-              emptyMessage="No project tags yet."
-              draftValue={projectPresetTagDraft}
-              onDraftValueChange={setProjectPresetTagDraft}
-              onAddTag={addActiveProjectPresetTags}
-              addPlaceholder="Add project tags (comma separated)"
-              addDisabled={splitTagInputBlock(projectPresetTagDraft).length === 0}
-              onRemoveTag={removeActiveProjectPresetTag}
-              onChangeTagColor={setActiveProjectTagColor}
-              chipTone="sky"
-            />
-          )}
-        </div>
-      )}
-
       {(message || error) && (
         <div className="space-y-2">
           {message && (
@@ -1682,7 +1655,6 @@ export default function BacklogOrch() {
       )}
 
       <ExecutionProgressBlock
-        busy={working || syncing || creatingProject}
         currentOperation={currentOperation}
         tasks={activeExecutionTasks}
         tasksLoading={activeExecutionTasksLoading}
@@ -1693,20 +1665,20 @@ export default function BacklogOrch() {
         }}
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" onClick={() => { void exportToExcalidraw() }} disabled={working}>
-          <Download className="mr-1 h-3.5 w-3.5" />
-          Export Excalidraw
-        </Button>
-        {(working || syncing) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-      </div>
-
-      <div className="inline-flex rounded-md border border-border/70 bg-muted/30 p-0.5 text-xs" role="tablist" aria-label="Backlog views">
+      <div
+        className="inline-flex flex-wrap items-center rounded-md border border-border/70 bg-muted/30 p-0.5 text-xs"
+        role="tablist"
+        aria-label="Backlog views"
+      >
         <button
           type="button"
           role="tab"
           aria-selected={activeBacklogSubTab === 'hierarchy'}
-          className={`rounded px-2.5 py-1.5 ${activeBacklogSubTab === 'hierarchy' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          className={`inline-flex h-8 min-w-[9rem] items-center justify-center rounded-md px-3 text-xs font-medium transition-colors ${
+            activeBacklogSubTab === 'hierarchy'
+              ? 'border-black bg-black text-white'
+              : 'border-transparent bg-transparent text-muted-foreground hover:text-foreground'
+          }`}
           onClick={() => setActiveBacklogSubTab('hierarchy')}
         >
           Hierarchy
@@ -1715,7 +1687,11 @@ export default function BacklogOrch() {
           type="button"
           role="tab"
           aria-selected={activeBacklogSubTab === 'timeline'}
-          className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 ${activeBacklogSubTab === 'timeline' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          className={`inline-flex h-8 min-w-[9rem] items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
+            activeBacklogSubTab === 'timeline'
+              ? 'border-black bg-black text-white'
+              : 'border-transparent bg-transparent text-muted-foreground hover:text-foreground'
+          }`}
           onClick={() => setActiveBacklogSubTab('timeline')}
         >
           <CalendarDays className="h-3.5 w-3.5" />
@@ -1725,12 +1701,84 @@ export default function BacklogOrch() {
           type="button"
           role="tab"
           aria-selected={activeBacklogSubTab === 'memory'}
-          className={`rounded px-2.5 py-1.5 ${activeBacklogSubTab === 'memory' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          className={`inline-flex h-8 min-w-[9rem] items-center justify-center rounded-md px-3 text-xs font-medium transition-colors ${
+            activeBacklogSubTab === 'memory'
+              ? 'border-black bg-black text-white'
+              : 'border-transparent bg-transparent text-muted-foreground hover:text-foreground'
+          }`}
           onClick={() => setActiveBacklogSubTab('memory')}
         >
           Quotes + Remember
         </button>
       </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 px-2 text-[11px]"
+          onClick={() => {
+            if (!showRootProgramCreate) {
+              setActiveBacklogSubTab('hierarchy')
+              setFocusRootCreateRequestNonce(prev => prev + 1)
+            }
+            setShowRootProgramCreate(prev => !prev)
+          }}
+          disabled={loading || creatingProject}
+        >
+          Add New Program
+        </Button>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {(working || syncing) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          <Button
+            size="sm"
+            variant={programLayoutEditMode ? 'default' : 'outline'}
+            className="h-7 px-2 text-[11px]"
+            onClick={() => setProgramLayoutEditMode(prev => !prev)}
+            disabled={loading}
+          >
+            {programLayoutEditMode ? 'Done Organizing Programs' : 'Edit Program Layout'}
+          </Button>
+          {activeProjectRoot && (
+            <TagDisclosureButtonBlock
+              label="Project Tags"
+              expanded={projectTagsExpanded}
+              onToggle={() => setProjectTagsExpanded(prev => !prev)}
+              count={activeProjectPresetTags.length}
+              className="h-7 px-2 text-[11px]"
+            />
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-[11px]"
+            onClick={() => { void exportToExcalidraw() }}
+            disabled={working}
+          >
+            <Download className="mr-1 h-3.5 w-3.5" />
+            Export Excalidraw
+          </Button>
+        </div>
+      </div>
+
+      {activeProjectRoot && projectTagsExpanded && (
+        <div className="rounded-md border border-border/70 bg-card p-3">
+          <TagListEditorBlock
+            heading="Project Tags"
+            tags={activeProjectPresetTags}
+            tagColors={activeProjectTagColors}
+            emptyMessage="No project tags yet."
+            draftValue={projectPresetTagDraft}
+            onDraftValueChange={setProjectPresetTagDraft}
+            onAddTag={addActiveProjectPresetTags}
+            addPlaceholder="Add project tags (comma separated)"
+            addDisabled={splitTagInputBlock(projectPresetTagDraft).length === 0}
+            onRemoveTag={removeActiveProjectPresetTag}
+            onChangeTagColor={setActiveProjectTagColor}
+            chipTone="sky"
+          />
+        </div>
+      )}
 
       {activeBacklogSubTab === 'timeline' && (
         <Card>
@@ -1801,11 +1849,11 @@ export default function BacklogOrch() {
           </div>
         ) : (
           <ScrollableZoomSurfaceBlock controlsLabel="Table zoom">
-            <BacklogListBlock
-              programs={visiblePrograms}
-              loadEpics={async program => {
-                const { nodes } = await invokeCapabilityOrThrow({
-                  capability: 'organizer.nodes.list_children',
+              <BacklogListBlock
+                programs={visiblePrograms}
+                loadEpics={async program => {
+                  const { nodes } = await invokeCapabilityOrThrow({
+                    capability: 'organizer.nodes.list_children',
                   input: { parentKey: program.key },
                   actor: BACKLOG_ACTOR,
                 })
@@ -1831,14 +1879,20 @@ export default function BacklogOrch() {
               programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
               onCreateProgramGroup={createActiveProjectProgramGroup}
               onDeleteProgramGroup={deleteActiveProjectProgramGroup}
-              onToggleProgramGroupCollapsed={toggleActiveProjectProgramGroupCollapsed}
-              onAssignProgramToGroup={(program, groupId) => {
-                assignProgramToActiveProjectGroup(program.uuid, groupId)
-              }}
-              onUpdateNodeStatus={updateNodeStatusFor}
-              onUpdateTaskStatus={updateTaskStatusFor}
-              onUpdateNodeNotes={updateNodeNotesFor}
-            />
+                onToggleProgramGroupCollapsed={toggleActiveProjectProgramGroupCollapsed}
+                onAssignProgramToGroup={(program, groupId) => {
+                  assignProgramToActiveProjectGroup(program.uuid, groupId)
+                }}
+                showProgramLayoutToggle={false}
+                programLayoutEditMode={programLayoutEditMode}
+                onProgramLayoutEditModeChange={setProgramLayoutEditMode}
+                focusRootCreateRequestNonce={focusRootCreateRequestNonce}
+                showRootInlineCreate={showRootProgramCreate}
+                onRootInlineCreateCreated={() => setShowRootProgramCreate(false)}
+                onUpdateNodeStatus={updateNodeStatusFor}
+                onUpdateTaskStatus={updateTaskStatusFor}
+                onUpdateNodeNotes={updateNodeNotesFor}
+              />
           </ScrollableZoomSurfaceBlock>
         )
       )}
