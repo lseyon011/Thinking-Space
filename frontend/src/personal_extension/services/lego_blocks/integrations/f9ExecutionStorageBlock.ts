@@ -52,6 +52,8 @@ export interface F9PositionSummaryBlock {
   unrealizedProfitLoss: string | null
   dayProfitLoss: string | null
   linkedIdeaId: string | null
+  tags: string[]
+  projectPresetTags: string[]
 }
 
 export interface F9CompanyOverviewBlock {
@@ -717,6 +719,8 @@ async function upsertCompanyIndexBlock(input: {
       unrealized_profit_loss: summary.unrealizedProfitLoss,
       day_profit_loss: summary.dayProfitLoss,
       linked_idea_id: summary.linkedIdeaId,
+      tags: summary.tags,
+      project_preset_tags: summary.projectPresetTags,
     })),
   }
 
@@ -920,6 +924,8 @@ function buildPositionSummaryFromFrontmatterBlock(
     unrealizedProfitLoss: readNullableStringFieldBlock(frontmatter.unrealized_profit_loss),
     dayProfitLoss: readNullableStringFieldBlock(frontmatter.day_profit_loss),
     linkedIdeaId: readNullableStringFieldBlock(frontmatter.linked_idea_id),
+    tags: normalizeTagListBlock(readStringArrayFieldBlock(frontmatter.tags)),
+    projectPresetTags: normalizeTagListBlock(readStringArrayFieldBlock(frontmatter.project_preset_tags)),
   }
 }
 
@@ -946,6 +952,8 @@ function asPositionSummaryListBlock(value: unknown): F9PositionSummaryBlock[] {
       unrealizedProfitLoss: readNullableStringFieldBlock(record.unrealized_profit_loss),
       dayProfitLoss: readNullableStringFieldBlock(record.day_profit_loss),
       linkedIdeaId: readNullableStringFieldBlock(record.linked_idea_id),
+      tags: normalizeTagListBlock(readStringArrayFieldBlock(record.tags)),
+      projectPresetTags: normalizeTagListBlock(readStringArrayFieldBlock(record.project_preset_tags)),
     })
   }
   return list

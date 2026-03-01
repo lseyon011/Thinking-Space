@@ -171,7 +171,7 @@ export function BacklogNodeRowBlock({
         className={cn(
           'group min-w-0 flex gap-2 text-left text-sm font-medium',
           titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',
-          wrapTitleText ? 'items-start' : 'items-center',
+          'items-center',
         )}
       >
         {ticketBadge}
@@ -205,8 +205,8 @@ export function BacklogNodeRowBlock({
       )}
       {rowPresetTags.visible.length > 0 && (
         <div className={cn(
-          'hidden items-center gap-1 overflow-hidden lg:flex',
-          actionsRightEdge ? 'min-w-0 flex-1' : 'max-w-[35%]',
+          'hidden self-center items-center gap-1 overflow-hidden lg:flex',
+          actionsRightEdge ? 'min-w-0 flex-1 justify-end' : 'max-w-[35%]',
         )}>
           {rowPresetTags.visible.map(tag => (
             <span
@@ -229,12 +229,12 @@ export function BacklogNodeRowBlock({
       )}
       {taskNode ? (
         readOnly || !canEditTaskStatus ? (
-          <div className={cn('shrink-0', actionsRightEdge && 'ml-auto')}>
+          <div className={cn('shrink-0 self-center', actionsRightEdge && 'ml-auto')}>
             <TaskStatusBadge taskStatus={taskStatus} />
           </div>
         ) : (
           <div
-            className={cn('flex items-center gap-1', actionsRightEdge && 'ml-auto')}
+            className={cn('flex self-center items-center gap-1', actionsRightEdge && 'ml-auto')}
             onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
           >
             {statusBusy ? (
@@ -266,12 +266,12 @@ export function BacklogNodeRowBlock({
         )
       ) : (
         readOnly || !canEditNodeStatus ? (
-          <div className={cn('shrink-0', actionsRightEdge && 'ml-auto')}>
+          <div className={cn('shrink-0 self-center', actionsRightEdge && 'ml-auto')}>
             <NodeStatusBadgeBlock status={node.status} />
           </div>
         ) : (
           <div
-            className={cn('flex items-center gap-1', actionsRightEdge && 'ml-auto')}
+            className={cn('flex self-center items-center gap-1', actionsRightEdge && 'ml-auto')}
             onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
           >
             {statusBusy ? (
@@ -296,7 +296,7 @@ export function BacklogNodeRowBlock({
             onToggleInlineNotes()
           }}
           className={cn(
-            'rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+            'self-center rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
             detailsOpen
               ? 'bg-muted text-foreground'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -311,7 +311,7 @@ export function BacklogNodeRowBlock({
         type="button"
         draggable={false}
         onClick={onCopyRowLabel}
-        className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="self-center rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         title={copied ? 'Copied' : 'Copy row label'}
         aria-label={copied ? `Copied row label ${nodeDisplayTitle(node)}` : `Copy row label ${nodeDisplayTitle(node)}`}
       >
@@ -326,7 +326,7 @@ export function BacklogNodeRowBlock({
             onToggleGroupingInfo()
           }}
           className={cn(
-            'rounded-md p-1 transition-colors',
+            'self-center rounded-md p-1 transition-colors',
             groupingInfoOpen
               ? 'bg-muted text-foreground'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -341,7 +341,7 @@ export function BacklogNodeRowBlock({
           {childCount}
         </span>
       )}
-      {showPriorityDot && <PriorityDot priority={node.priority} />}
+      {showPriorityDot && <span className="self-center"><PriorityDot priority={node.priority} /></span>}
     </div>
   )
 }

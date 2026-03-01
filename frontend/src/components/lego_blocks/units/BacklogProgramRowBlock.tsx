@@ -159,7 +159,7 @@ export function BacklogProgramRowBlock({
       <div className={cn(
         'min-w-0 flex gap-2',
         titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',
-        wrapTitleText ? 'items-start' : 'items-center',
+        'items-center',
       )}>
         {ticketBadge}
         <span className={cn(
@@ -192,8 +192,8 @@ export function BacklogProgramRowBlock({
       )}
       {rowPresetTags.visible.length > 0 && (
         <div className={cn(
-          'hidden items-center gap-1 overflow-hidden lg:flex',
-          actionsRightEdge ? 'min-w-0 flex-1' : 'max-w-[35%]',
+          'hidden self-center items-center gap-1 overflow-hidden lg:flex',
+          actionsRightEdge ? 'min-w-0 flex-1 justify-end' : 'max-w-[35%]',
         )}>
           {rowPresetTags.visible.map(tag => (
             <span
@@ -216,12 +216,12 @@ export function BacklogProgramRowBlock({
       )}
       {showProgramStatus && (
         readOnly || !canEditNodeStatus ? (
-          <div className={cn('shrink-0', actionsRightEdge && 'ml-auto')}>
+          <div className={cn('shrink-0 self-center', actionsRightEdge && 'ml-auto')}>
             <NodeStatusBadgeBlock status={program.status} />
           </div>
         ) : (
           <div
-            className={cn('flex items-center gap-1', actionsRightEdge && 'ml-auto')}
+            className={cn('flex self-center items-center gap-1', actionsRightEdge && 'ml-auto')}
             onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
           >
             {statusBusy ? (
@@ -239,7 +239,7 @@ export function BacklogProgramRowBlock({
       )}
       {canAssignToGroup && (
         <div
-          className="hidden items-center md:flex"
+          className="hidden self-center items-center md:flex"
           onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
         >
           <select
@@ -269,7 +269,7 @@ export function BacklogProgramRowBlock({
             onToggleInlineNotes()
           }}
           className={cn(
-            'rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+            'self-center rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
             detailsOpen
               ? 'bg-muted text-foreground'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -285,14 +285,14 @@ export function BacklogProgramRowBlock({
           type="button"
           draggable={false}
           onClick={onCopyRowLabel}
-          className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="self-center rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           title={copied ? 'Copied' : 'Copy row label'}
           aria-label={copied ? `Copied row label ${nodeDisplayTitle(program)}` : `Copy row label ${nodeDisplayTitle(program)}`}
         >
           {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
         </button>
       )}
-      {showPriorityDot && <PriorityDot priority={program.priority} />}
+      {showPriorityDot && <span className="self-center"><PriorityDot priority={program.priority} /></span>}
     </div>
   )
 }

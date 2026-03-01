@@ -185,6 +185,7 @@ export default function NodeDetailPanelBlock({
   const [tagsSaving, setTagsSaving] = useState(false)
   const [noteBodyDraft, setNoteBodyDraft] = useState('')
   const [noteBodySaving, setNoteBodySaving] = useState(false)
+  const [noteBodyEditMode, setNoteBodyEditMode] = useState(false)
   const [activityTab, setActivityTab] = useState<'all' | 'comments' | 'history' | 'worklog'>('comments')
   const [descriptionEditMode, setDescriptionEditMode] = useState(false)
   const notesAutoSaveSignatureRef = useRef<string | null>(null)
@@ -237,7 +238,10 @@ export default function NodeDetailPanelBlock({
     setEpicCompletionDateDraft(sourceEpicCompletionDate)
     setEpicCompletionSaving(false)
     setActivityTab('comments')
-    if (nodeChanged) setDescriptionEditMode(false)
+    if (nodeChanged) {
+      setDescriptionEditMode(false)
+      setNoteBodyEditMode(false)
+    }
     notesAutoSaveSignatureRef.current = null
   }, [node.uuid, sourceComments, sourceDescription, sourceEpicCompletionDate])
 
@@ -322,45 +326,16 @@ export default function NodeDetailPanelBlock({
       .sort(([a], [b]) => a.localeCompare(b))
   }, [frontmatter])
 
-  function renderYamlValue(value: unknown): JSX.Element {
-    if (value === null || value === undefined) {
-      return <span className="font-mono text-xs text-muted-foreground">null</span>
+  function renderYamlInlineValue(value: unknown): string {
+    if (value === null || value === undefined) return 'null'
+    if (typeof value === 'string') return value
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+    if (Array.isArray(value)) return value.map(renderYamlInlineValue).join(', ')
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return String(value)
     }
-
-    if (Array.isArray(value)) {
-      if (value.length === 0) {
-        return <span className="font-mono text-xs text-muted-foreground">[]</span>
-      }
-      return (
-        <ul className="space-y-1">
-          {value.map((item, idx) => (
-            <li key={idx} className="rounded border border-border/50 bg-background/60 px-2 py-1">
-              {renderYamlValue(item)}
-            </li>
-          ))}
-        </ul>
-      )
-    }
-
-    if (typeof value === 'object') {
-      const entries = Object.entries(value as Record<string, unknown>)
-      if (entries.length === 0) {
-        return <span className="font-mono text-xs text-muted-foreground">{'{}'}</span>
-      }
-
-      return (
-        <div className="space-y-1.5 rounded border border-border/50 bg-background/60 p-2">
-          {entries.map(([key, inner]) => (
-            <div key={key} className="space-y-0.5">
-              <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">{key}</p>
-              <div className="pl-2">{renderYamlValue(inner)}</div>
-            </div>
-          ))}
-        </div>
-      )
-    }
-
-    return <span className="break-all font-mono text-xs text-foreground/90">{String(value)}</span>
   }
 
   const addComment = useCallback(() => {
@@ -651,34 +626,54 @@ export default function NodeDetailPanelBlock({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-semibold text-foreground">{noteBodyLabel}</label>
-                <span className="text-[11px] text-muted-foreground">
-                  {noteBodyDirty ? 'Unsaved note changes' : 'Saved'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-muted-foreground">
+                    {noteBodyDirty ? 'Unsaved note changes' : 'Saved'}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setNoteBodyEditMode(prev => !prev)}
+                  >
+                    {noteBodyEditMode ? 'Done' : 'Edit'}
+                  </Button>
+                </div>
               </div>
-              <MarkdownRichEditorBlock
-                value={noteBodyDraft}
-                onChange={setNoteBodyDraft}
-                placeholder={noteBodyPlaceholder}
-                className="min-h-[220px] rounded-md border border-input overflow-hidden"
-              />
-              <div className="flex justify-end gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setNoteBodyDraft(sourceNoteBody)}
-                  disabled={busy || noteBodySaving || !noteBodyDirty}
-                >
-                  Reset
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => { void commitNoteBody() }}
-                  disabled={busy || noteBodySaving || !noteBodyDirty}
-                >
-                  {noteBodySaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save Note'}
-                </Button>
-              </div>
+              {noteBodyEditMode ? (
+                <>
+                  <MarkdownRichEditorBlock
+                    value={noteBodyDraft}
+                    onChange={setNoteBodyDraft}
+                    placeholder={noteBodyPlaceholder}
+                    className="min-h-[220px] rounded-md border border-input overflow-hidden"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setNoteBodyDraft(sourceNoteBody)}
+                      disabled={busy || noteBodySaving || !noteBodyDirty}
+                    >
+                      Reset
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => { void commitNoteBody() }}
+                      disabled={busy || noteBodySaving || !noteBodyDirty}
+                    >
+                      {noteBodySaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save Note'}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="prose prose-sm max-w-none rounded-md border border-border/60 bg-card p-3 leading-relaxed">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {noteBodyDraft || '_No notes yet._'}
+                  </ReactMarkdown>
+                </div>
+              )}
             </div>
           ) : null}
 
@@ -897,13 +892,12 @@ export default function NodeDetailPanelBlock({
               )}
               {yamlFields.length > 0 && (
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">YAML Metadata</label>
-                  <div className="space-y-2 rounded-lg border border-border/70 bg-card p-3">
+                  <label className="text-xs font-medium text-muted-foreground">Metadata</label>
+                  <div className="space-y-1.5">
                     {yamlFields.map(([key, value]) => (
-                      <div key={key} className="space-y-1 rounded-md border border-border/50 bg-muted/20 p-2">
-                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{key}</p>
-                        <div>{renderYamlValue(value)}</div>
-                      </div>
+                      <p key={key} className="break-words text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">{key}:</span> {renderYamlInlineValue(value)}
+                      </p>
                     ))}
                   </div>
                 </div>

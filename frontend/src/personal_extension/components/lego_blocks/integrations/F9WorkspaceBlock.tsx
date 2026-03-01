@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
+import { TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
-import { normalizeTagListBlock } from '@/services/lego_blocks/units/tagBlock'
+import { normalizeTagBlock, normalizeTagListBlock, splitTagInputBlock } from '@/services/lego_blocks/units/tagBlock'
 import type { NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
 import type { F9RuntimeSurfaceOrch, F9SelectedAccountOrch } from '@/personal_extension/services/orchestrators/f9OverallOrch'
 import type {
@@ -291,6 +292,8 @@ function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, u
       unrealizedProfitLoss: firstStringBlock(row.unrealized_profit_loss) || null,
       dayProfitLoss: firstStringBlock(row.day_profit_loss) || null,
       linkedIdeaId: null,
+      tags: [],
+      projectPresetTags: [],
     })
     grouped.set(ticker, list)
   }
@@ -320,6 +323,28 @@ function toOverallPositionTitleBlock(row: Record<string, unknown>): string {
 
 function toJsonBlock(value: unknown): string {
   return JSON.stringify(value ?? {}, null, 2)
+}
+
+function inlineMetadataValueBlock(value: unknown): string {
+  if (value === null || value === undefined) return '—'
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function metadataEntriesFromRecordBlock(record: Record<string, unknown> | null | undefined): Array<[string, unknown]> {
+  if (!record) return []
+  return Object.entries(record)
+    .filter(([, value]) => (
+      value !== undefined
+      && value !== null
+      && !(typeof value === 'string' && value.trim().length === 0)
+    ))
+    .sort(([a], [b]) => a.localeCompare(b))
 }
 
 function asMetadataRecordBlock(node: NodeRecord): Record<string, unknown> {
@@ -465,17 +490,19 @@ export default function F9WorkspaceBlock({
   const overallRows = asRecordArrayBlock(assetsPositions).length > 0
     ? asRecordArrayBlock(assetsPositions)
     : asRecordArrayBlock(accountPositionsLegacy)
+  const [preserveOverallContext, setPreserveOverallContext] = useState(false)
 
   const selectedCompany = useMemo(
     () => executionOverview?.companies.find((company) => company.companyTicker === activeCompanyTicker) ?? null,
     [activeCompanyTicker, executionOverview],
   )
+  const showCompanyView = !!selectedCompany && !preserveOverallContext
 
   const companiesForTable = useMemo<F9CompanyOverviewBlock[]>(() => {
-    if (selectedCompany) return [selectedCompany]
+    if (showCompanyView && selectedCompany) return [selectedCompany]
     if ((executionOverview?.companies.length ?? 0) > 0) return executionOverview?.companies ?? []
     return buildFallbackCompaniesFromOverallRowsBlock(overallRows)
-  }, [executionOverview?.companies, overallRows, selectedCompany])
+  }, [executionOverview?.companies, overallRows, selectedCompany, showCompanyView])
 
   const backlogTableModel = useMemo(() => {
     const now = new Date().toISOString()
@@ -519,6 +546,14 @@ export default function F9WorkspaceBlock({
         const positionStatus = normalizePositionStatusBlock(position.status)
         const fileName = position.fileName
         const nodeUuid = `f9-pos-${normalizeKeyFragmentBlock(companyTicker)}-${normalizeKeyFragmentBlock(fileName)}`
+        const positionProjectPresetTags = normalizeTagListBlock(position.projectPresetTags ?? [])
+        const positionTags = normalizeTagListBlock([
+          'f9',
+          'execution',
+          companyTicker.toLowerCase(),
+          firstStringBlock(position.instrumentType).toLowerCase() || 'position',
+          ...(position.tags ?? []),
+        ])
         positionRefByNodeUuid.set(nodeUuid, { companyTicker, fileName })
         nodeUuidByCompanyAndFile.set(`${companyTicker}::${fileName}`, nodeUuid)
         const nodeRecord: NodeRecord = {
@@ -534,19 +569,9 @@ export default function F9WorkspaceBlock({
             ? `${executionRoot}/${companyTicker}/positions/${fileName}`
             : `f9/${companyTicker}/positions/${fileName}`,
           projectRoot: executionRoot ?? 'f9-execution',
-          description: [
-            `status: ${positionStatus}`,
-            `type: ${position.instrumentType || '—'}`,
-            `last: ${formatCurrencyFromUnknownBlock(position.lastPrice)}`,
-            `cost: ${formatCurrencyFromUnknownBlock(position.cost)}`,
-            `p/l: ${formatCurrencyFromUnknownBlock(position.unrealizedProfitLoss)}`,
-          ].join(' | '),
-          tags: [
-            'f9',
-            'execution',
-            companyTicker.toLowerCase(),
-            firstStringBlock(position.instrumentType).toLowerCase() || 'position',
-          ],
+          description: undefined,
+          tags: positionTags,
+          projectPresetTags: positionProjectPresetTags,
           status: mapPositionStatusToNodeStatusBlock(positionStatus),
           sortOrder: index,
           createdAt: now,
@@ -592,6 +617,7 @@ export default function F9WorkspaceBlock({
 
   const onSelectBacklogNode = useCallback((node: NodeRecord) => {
     if (node.type === 'program') {
+      setPreserveOverallContext(false)
       const companyTicker = backlogTableModel.companyTickerByProgramUuid.get(node.uuid)
       if (companyTicker) onSelectCompanyTicker(companyTicker)
       setDetailPanelNodeId(null)
@@ -599,6 +625,9 @@ export default function F9WorkspaceBlock({
     }
     const positionRef = backlogTableModel.positionRefByNodeUuid.get(node.uuid)
     if (!positionRef) return
+    if (!showCompanyView) {
+      setPreserveOverallContext(true)
+    }
     onSelectCompanyTicker(positionRef.companyTicker)
     onSelectPositionFileName(positionRef.fileName)
     setDetailPanelNodeId(node.uuid)
@@ -607,12 +636,33 @@ export default function F9WorkspaceBlock({
     backlogTableModel.positionRefByNodeUuid,
     onSelectCompanyTicker,
     onSelectPositionFileName,
+    showCompanyView,
   ])
 
   const onOpenBacklogNodeDetails = useCallback((node: NodeRecord) => {
     if (node.type !== 'epic') return
     onSelectBacklogNode(node)
   }, [onSelectBacklogNode])
+
+  const onUpdateBacklogNodeNotes = useCallback(async (
+    node: NodeRecord,
+    description: string,
+    comments: YAMLCommentEntry[],
+  ): Promise<NodeRecord | void> => {
+    if (node.type !== 'epic') return node
+    const positionRef = backlogTableModel.positionRefByNodeUuid.get(node.uuid)
+    if (!positionRef) return node
+    await onUpdatePositionOverlay({
+      fileName: positionRef.fileName,
+      description,
+      comments,
+    })
+    return {
+      ...node,
+      description,
+      comments,
+    }
+  }, [backlogTableModel.positionRefByNodeUuid, onUpdatePositionOverlay])
 
   useEffect(() => {
     if (!detailPanelNodeId) return
@@ -673,6 +723,61 @@ export default function F9WorkspaceBlock({
     ]
   }, [])
 
+  const renderF9InlineDetails = useCallback((node: NodeRecord) => {
+    if (node.type !== 'epic') return null
+    const metadata = asMetadataRecordBlock(node)
+    const payload = metadata.f9_position_payload as Record<string, unknown> | undefined
+    const metadataWithoutPayload = Object.fromEntries(
+      Object.entries(metadata).filter(([key]) => key !== 'f9_position_payload'),
+    ) as Record<string, unknown>
+    const metadataEntries = metadataEntriesFromRecordBlock(metadataWithoutPayload)
+    const payloadEntries = metadataEntriesFromRecordBlock(payload)
+    const status = normalizePositionStatusBlock(firstStringBlock(metadata.f9_position_status, payload?.status))
+    const instrumentType = firstStringBlock(payload?.instrument_type, payload?.type) || '—'
+    const linkedIdeaId = firstStringBlock(metadata.f9_linked_idea_id, payload?.linked_idea_id)
+    const tags = normalizeTagListBlock(node.tags ?? []).filter(tag => tag !== 'f9' && tag !== 'execution')
+
+    return (
+      <div className="space-y-1.5 text-xs text-muted-foreground">
+        <p>
+          <span className="font-medium text-foreground">Status:</span> {status}
+          {' · '}
+          <span className="font-medium text-foreground">Type:</span> {instrumentType}
+        </p>
+        <p>
+          <span className="font-medium text-foreground">Current Price:</span> {formatCurrencyFromUnknownBlock(payload?.last_price)}
+          {' · '}
+          <span className="font-medium text-foreground">Cost:</span> {formatCurrencyBlock(resolveTotalCostBlock(payload))}
+          {' · '}
+          <span className="font-medium text-foreground">P/L:</span> {formatCurrencyFromUnknownBlock(payload?.unrealized_profit_loss)}
+        </p>
+        {linkedIdeaId && (
+          <p>
+            <span className="font-medium text-foreground">Linked Idea:</span> {linkedIdeaId}
+          </p>
+        )}
+        {tags.length > 0 && (
+          <p>
+            <span className="font-medium text-foreground">Tags:</span> {tags.join(', ')}
+          </p>
+        )}
+        {metadataEntries.map(([key, value]) => (
+          <p key={`${node.uuid}-meta-${key}`} className="break-words">
+            <span className="font-medium text-foreground">{key}:</span> {inlineMetadataValueBlock(value)}
+          </p>
+        ))}
+        {payloadEntries.map(([key, value]) => (
+          <p key={`${node.uuid}-payload-${key}`} className="break-words">
+            <span className="font-medium text-foreground">{key}:</span> {inlineMetadataValueBlock(value)}
+          </p>
+        ))}
+        {metadataEntries.length === 0 && payloadEntries.length === 0 && (
+          <p className="text-muted-foreground">No metadata fields.</p>
+        )}
+      </div>
+    )
+  }, [])
+
   const detailPanelNodeBase = useMemo(
     () => (detailPanelNodeId ? backlogTableModel.nodeByUuid.get(detailPanelNodeId) ?? null : null),
     [backlogTableModel.nodeByUuid, detailPanelNodeId],
@@ -730,19 +835,55 @@ export default function F9WorkspaceBlock({
   const [newOptionStrike, setNewOptionStrike] = useState('')
   const [newLinkedIdeaId, setNewLinkedIdeaId] = useState('')
   const [newPositionNotes, setNewPositionNotes] = useState('')
+  const [projectPresetTagDraft, setProjectPresetTagDraft] = useState('')
+
+  const addProjectPresetTags = useCallback(() => {
+    const additions = splitTagInputBlock(projectPresetTagDraft)
+    if (additions.length === 0) return
+    setAvailableProjectPresetTags(prev => normalizeTagListBlock([...prev, ...additions]))
+    setProjectPresetTagDraft('')
+  }, [projectPresetTagDraft])
+
+  const removeProjectPresetTag = useCallback((tag: string) => {
+    const target = normalizeTagBlock(tag).toLowerCase()
+    if (!target) return
+    setAvailableProjectPresetTags(prev => (
+      prev.filter(existing => normalizeTagBlock(existing).toLowerCase() !== target)
+    ))
+  }, [])
+
+  useEffect(() => {
+    const tagsFromOverview = normalizeTagListBlock(
+      (executionOverview?.companies ?? [])
+        .flatMap(company => company.positions)
+        .flatMap(position => position.projectPresetTags ?? []),
+    )
+    if (tagsFromOverview.length === 0) return
+    setAvailableProjectPresetTags(prev => normalizeTagListBlock([...prev, ...tagsFromOverview]))
+  }, [executionOverview])
+
+  const projectRootKey = (executionRoot ?? 'f9-execution').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  const rowProjectPresetTagsByRoot = useMemo<Record<string, string[]>>(() => {
+    if (!projectRootKey) return {}
+    const tagsFromRows = Array.from(backlogTableModel.nodeByUuid.values()).flatMap(node => node.projectPresetTags ?? [])
+    const allTags = normalizeTagListBlock([...availableProjectPresetTags, ...tagsFromRows])
+    if (allTags.length === 0) return {}
+    return { [projectRootKey]: allTags }
+  }, [availableProjectPresetTags, backlogTableModel.nodeByUuid, projectRootKey])
 
   return (
     <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="space-y-3">
         <div className="space-y-2 rounded-xl border bg-background p-3">
           {subtabs.map((subtab) => {
-            const active = activeSubtabId === subtab.id && !activeCompanyTicker
+            const active = activeSubtabId === subtab.id && !showCompanyView
             return (
               <button
                 key={subtab.id}
                 type="button"
                 onClick={() => {
                   onSelectSubtab(subtab.id)
+                  setPreserveOverallContext(false)
                   onSelectCompanyTicker(null)
                 }}
                 className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
@@ -760,12 +901,15 @@ export default function F9WorkspaceBlock({
             <p className="px-1 pb-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Companies</p>
             <div className="space-y-1">
               {(executionOverview?.companies ?? []).map((company) => {
-                const active = activeCompanyTicker === company.companyTicker
+                const active = showCompanyView && activeCompanyTicker === company.companyTicker
                 return (
                   <button
                     key={company.companyTicker}
                     type="button"
-                    onClick={() => onSelectCompanyTicker(company.companyTicker)}
+                    onClick={() => {
+                      setPreserveOverallContext(false)
+                      onSelectCompanyTicker(company.companyTicker)
+                    }}
                     className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                       active
                         ? 'bg-foreground text-background'
@@ -809,14 +953,30 @@ export default function F9WorkspaceBlock({
             </Button>
           </div>
         </div>
+
+        <div className="rounded-xl border bg-background p-3">
+          <TagListEditorBlock
+            heading="Project Tags"
+            tags={availableProjectPresetTags}
+            emptyMessage="No project tags yet."
+            draftValue={projectPresetTagDraft}
+            onDraftValueChange={setProjectPresetTagDraft}
+            onAddTag={addProjectPresetTags}
+            addPlaceholder="Add project tags (comma separated)"
+            addDisabled={splitTagInputBlock(projectPresetTagDraft).length === 0}
+            onRemoveTag={removeProjectPresetTag}
+            chipTone="sky"
+            disabled={workspaceBusy}
+          />
+        </div>
       </aside>
 
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
           <div>
-            <CardTitle>{selectedCompany ? `${selectedCompany.companyTicker} Positions` : 'Overall Positions'}</CardTitle>
+            <CardTitle>{showCompanyView && selectedCompany ? `${selectedCompany.companyTicker} Positions` : 'Overall Positions'}</CardTitle>
             <CardDescription>
-              {selectedCompany
+              {showCompanyView && selectedCompany
                 ? 'Company-specific position rows and overlay edits.'
                 : 'Canonical overall positions from Webull sync.'}
             </CardDescription>
@@ -872,7 +1032,7 @@ export default function F9WorkspaceBlock({
             </div>
           )}
 
-          {!selectedCompany && (
+          {!showCompanyView && (
             <div className="grid gap-3 text-sm sm:grid-cols-4">
               <div className="rounded-lg border bg-background p-3">
                 <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Runtime</p>
@@ -896,7 +1056,7 @@ export default function F9WorkspaceBlock({
             </div>
           )}
 
-          {!selectedCompany ? (
+          {!showCompanyView ? (
             <div className="rounded-xl border bg-background p-3">
               <div className="overflow-x-auto">
                 <div className="min-w-[1080px]">
@@ -908,13 +1068,18 @@ export default function F9WorkspaceBlock({
                     readOnly
                     onSelectNode={onSelectBacklogNode}
                     onOpenNodeDetails={onOpenBacklogNodeDetails}
+                    onUpdateNodeNotes={onUpdateBacklogNodeNotes}
+                    projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
                     canOpenNodeDetails={(node) => node.type === 'epic'}
                     rowColumns={f9RowColumns}
+                    rowDetailsRenderer={renderF9InlineDetails}
                     titleColumnClassName="w-[20rem]"
                     wrapTitleText
                     actionsRightEdge
                     showProgramStatus={false}
                     showProgramCopyButton={false}
+                    preferInlineDetailsButton
+                    allowInlineNotesInReadOnly
                     showNodeTypeIcons={false}
                     showExpandToggles={false}
                     showPriorityDots={false}
@@ -935,13 +1100,18 @@ export default function F9WorkspaceBlock({
                       readOnly
                       onSelectNode={onSelectBacklogNode}
                       onOpenNodeDetails={onOpenBacklogNodeDetails}
+                      onUpdateNodeNotes={onUpdateBacklogNodeNotes}
+                      projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
                       canOpenNodeDetails={(node) => node.type === 'epic'}
                       rowColumns={f9RowColumns}
+                      rowDetailsRenderer={renderF9InlineDetails}
                       titleColumnClassName="w-[20rem]"
                       wrapTitleText
                       actionsRightEdge
                       showProgramStatus={false}
                       showProgramCopyButton={false}
+                      preferInlineDetailsButton
+                      allowInlineNotesInReadOnly
                       showNodeTypeIcons={false}
                       showExpandToggles={false}
                       showPriorityDots={false}
@@ -1131,7 +1301,6 @@ export default function F9WorkspaceBlock({
             })
           }}
           presetTags={detailPanelPresetTags}
-          allowProjectPresetTagCreation
           onUpdateNotes={async (description, comments) => {
             if (!detailPanelPositionRef) return
             await onUpdatePositionOverlay({

@@ -9,6 +9,7 @@ interface BacklogInlineNotesEditorBlockProps {
   depthPadding: number
   isOpen: boolean
   readOnly: boolean
+  allowInReadOnly?: boolean
   canEditNotes: boolean
   descriptionDraft: string
   commentsDraft: YAMLCommentEntry[]
@@ -27,6 +28,7 @@ export function BacklogInlineNotesEditorBlock({
   depthPadding,
   isOpen,
   readOnly,
+  allowInReadOnly = false,
   canEditNotes,
   descriptionDraft,
   commentsDraft,
@@ -39,7 +41,7 @@ export function BacklogInlineNotesEditorBlock({
   onAddComment,
   onRemoveComment,
 }: BacklogInlineNotesEditorBlockProps) {
-  if (readOnly || !canEditNotes || !isOpen) return null
+  if ((readOnly && !allowInReadOnly) || !canEditNotes || !isOpen) return null
   const inlineTags = normalizeTagListBlock(node.tags ?? [])
 
   return (

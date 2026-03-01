@@ -5,6 +5,7 @@ import { notesSignature } from '@/components/lego_blocks/units/BacklogListDomain
 
 interface UseBacklogInlineNotesBlockParams {
   readOnly: boolean
+  allowInReadOnly?: boolean
   onUpdateNodeNotes?: (node: NodeRecord, description: string, comments: YAMLCommentEntry[]) => Promise<NodeRecord | void>
   patchCachedNode: (updatedNode: NodeRecord) => void
   setLocalError: (message: string | null) => void
@@ -26,10 +27,12 @@ interface UseBacklogInlineNotesBlockResult {
 
 export function useBacklogInlineNotesBlock({
   readOnly,
+  allowInReadOnly = false,
   onUpdateNodeNotes,
   patchCachedNode,
   setLocalError,
 }: UseBacklogInlineNotesBlockParams): UseBacklogInlineNotesBlockResult {
+  const notesReadOnly = readOnly && !allowInReadOnly
   const [inlineNotesNode, setInlineNotesNode] = useState<NodeRecord | null>(null)
   const [inlineNotesDescriptionDraft, setInlineNotesDescriptionDraft] = useState('')
   const [inlineNotesCommentsDraft, setInlineNotesCommentsDraft] = useState<YAMLCommentEntry[]>([])
@@ -138,7 +141,7 @@ export function useBacklogInlineNotesBlock({
     : false
 
   useEffect(() => {
-    if (!inlineNotesNode || !onUpdateNodeNotes || readOnly) return
+    if (!inlineNotesNode || !onUpdateNodeNotes || notesReadOnly) return
     if (inlineNotesSaving || !inlineNotesDirty) return
     if (!inlineNotesPayloadSignature) return
     if (inlineNotesAutoSaveSignatureRef.current === inlineNotesPayloadSignature) return
@@ -156,12 +159,12 @@ export function useBacklogInlineNotesBlock({
     inlineNotesNode,
     inlineNotesPayloadSignature,
     inlineNotesSaving,
+    notesReadOnly,
     onUpdateNodeNotes,
-    readOnly,
   ])
 
   const toggleInlineNotes = useCallback(async (node: NodeRecord) => {
-    if (readOnly || !onUpdateNodeNotes || inlineNotesSaving) return
+    if (notesReadOnly || !onUpdateNodeNotes || inlineNotesSaving) return
     setLocalError(null)
 
     const activeNode = inlineNotesNode
@@ -198,7 +201,7 @@ export function useBacklogInlineNotesBlock({
     inlineNotesSaving,
     onUpdateNodeNotes,
     openInlineNotes,
-    readOnly,
+    notesReadOnly,
     saveInlineNotesSnapshot,
     setLocalError,
   ])

@@ -77,6 +77,8 @@ export interface BacklogListBlockProps {
   actionsRightEdge?: boolean
   showProgramStatus?: boolean
   showProgramCopyButton?: boolean
+  preferInlineDetailsButton?: boolean
+  allowInlineNotesInReadOnly?: boolean
   showExpandToggles?: boolean
   showNodeTypeIcons?: boolean
   showPriorityDots?: boolean
@@ -114,6 +116,8 @@ export default function BacklogListBlock({
   actionsRightEdge = false,
   showProgramStatus = true,
   showProgramCopyButton = true,
+  preferInlineDetailsButton = false,
+  allowInlineNotesInReadOnly = false,
   showExpandToggles = true,
   showNodeTypeIcons = true,
   showPriorityDots = true,
@@ -465,6 +469,7 @@ export default function BacklogListBlock({
     removeInlineCommentDraft,
   } = useBacklogInlineNotesBlock({
     readOnly,
+    allowInReadOnly: allowInlineNotesInReadOnly,
     onUpdateNodeNotes,
     patchCachedNode,
     setLocalError,
@@ -487,6 +492,7 @@ export default function BacklogListBlock({
       depthPadding={depthPadding}
       isOpen={inlineNotesNode?.uuid === node.uuid}
       readOnly={readOnly}
+      allowInReadOnly={allowInlineNotesInReadOnly}
       canEditNotes={!!onUpdateNodeNotes}
       descriptionDraft={inlineNotesDescriptionDraft}
       commentsDraft={inlineNotesCommentsDraft}
@@ -501,6 +507,7 @@ export default function BacklogListBlock({
     />
   ), [
     addInlineCommentDraft,
+    allowInlineNotesInReadOnly,
     inlineNotesCommentDraft,
     inlineNotesCommentsDraft,
     inlineNotesDescriptionDraft,
@@ -514,16 +521,33 @@ export default function BacklogListBlock({
   ])
 
   const toggleRowDetails = useCallback((node: NodeRecord) => {
+    const inlineRowDetailsAllowed = !!rowDetailsRenderer && (!canOpenNodeDetails || canOpenNodeDetails(node))
+    const inlineNotesAllowed = (
+      !!onUpdateNodeNotes
+      && (!readOnly || allowInlineNotesInReadOnly)
+      && (!canOpenNodeDetails || canOpenNodeDetails(node))
+    )
+    if (preferInlineDetailsButton) {
+      if (inlineRowDetailsAllowed) {
+        setRowDetailsNodeId(current => (current === node.uuid ? null : node.uuid))
+      }
+      if (inlineNotesAllowed) {
+        void toggleInlineNotes(node)
+      }
+      return
+    }
     if (onOpenNodeDetails && (!canOpenNodeDetails || canOpenNodeDetails(node))) {
       onOpenNodeDetails(node)
       return
     }
-    if (rowDetailsRenderer) {
+    if (inlineRowDetailsAllowed) {
       setRowDetailsNodeId(current => (current === node.uuid ? null : node.uuid))
       return
     }
-    void toggleInlineNotes(node)
-  }, [canOpenNodeDetails, onOpenNodeDetails, rowDetailsRenderer, toggleInlineNotes])
+    if (inlineNotesAllowed) {
+      void toggleInlineNotes(node)
+    }
+  }, [allowInlineNotesInReadOnly, canOpenNodeDetails, onOpenNodeDetails, onUpdateNodeNotes, preferInlineDetailsButton, readOnly, rowDetailsRenderer, toggleInlineNotes])
 
   const renderInlineDetailsPanel = useCallback((node: NodeRecord, depthPadding: number) => {
     if (!rowDetailsRenderer) return null
@@ -598,7 +622,13 @@ export default function BacklogListBlock({
       ? rowDetailsNodeId === node.uuid
       : inlineNotesNode?.uuid === node.uuid
     const externalDetailsAllowed = !!onOpenNodeDetails && (!canOpenNodeDetails || canOpenNodeDetails(node))
-    const canToggleDetails = externalDetailsAllowed || !!rowDetailsRenderer || (!!onUpdateNodeNotes && !readOnly)
+    const inlineRowDetailsAllowed = !!rowDetailsRenderer && (!canOpenNodeDetails || canOpenNodeDetails(node))
+    const inlineNotesAllowed = (
+      !!onUpdateNodeNotes
+      && (!readOnly || allowInlineNotesInReadOnly)
+      && (!canOpenNodeDetails || canOpenNodeDetails(node))
+    )
+    const canToggleDetails = externalDetailsAllowed || inlineRowDetailsAllowed || inlineNotesAllowed
     const detailsBusy = rowDetailsRenderer ? false : inlineNotesSaving
 
     return (
@@ -689,7 +719,7 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [actionsRightEdge, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderTicketBadge, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, statusBusyByNode, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
+  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderTicketBadge, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, statusBusyByNode, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
 
   const renderProgramSection = useCallback((program: NodeRecord, programIndex: number) => {
     void ensureProgramLoaded(program)
@@ -703,7 +733,13 @@ export default function BacklogListBlock({
       ? rowDetailsNodeId === program.uuid
       : inlineNotesNode?.uuid === program.uuid
     const externalDetailsAllowed = !!onOpenNodeDetails && (!canOpenNodeDetails || canOpenNodeDetails(program))
-    const canToggleDetails = externalDetailsAllowed || !!rowDetailsRenderer || (!!onUpdateNodeNotes && !readOnly)
+    const inlineRowDetailsAllowed = !!rowDetailsRenderer && (!canOpenNodeDetails || canOpenNodeDetails(program))
+    const inlineNotesAllowed = (
+      !!onUpdateNodeNotes
+      && (!readOnly || allowInlineNotesInReadOnly)
+      && (!canOpenNodeDetails || canOpenNodeDetails(program))
+    )
+    const canToggleDetails = externalDetailsAllowed || inlineRowDetailsAllowed || inlineNotesAllowed
     const detailsBusy = rowDetailsRenderer ? false : inlineNotesSaving
 
     return (
@@ -776,7 +812,7 @@ export default function BacklogListBlock({
         </div>
       </div>
     )
-  }, [actionsRightEdge, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, showProgramCopyButton, showProgramStatus, statusBusyByNode, titleColumnClassName, toggleRowDetails, wrapTitleText])
+  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, showProgramCopyButton, showProgramStatus, statusBusyByNode, titleColumnClassName, toggleRowDetails, wrapTitleText])
 
   return (
     <div className="flex flex-col space-y-3">
