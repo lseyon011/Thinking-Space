@@ -873,6 +873,10 @@
     @apply max-w-[1500px];
   }
 
+  .ltm-shell-mega {
+    @apply max-w-[1920px];
+  }
+
   .ltm-fill-panel {
     min-height: 360px;
     height: calc(100dvh - 12rem);

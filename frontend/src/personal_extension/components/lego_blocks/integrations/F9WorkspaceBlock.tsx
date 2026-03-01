@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { PanelLeft, PanelLeftClose } from 'lucide-react'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import { TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
-import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import { cn } from '@/lib/utils'
+import { getAllNodes, type NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import { normalizeTagBlock, normalizeTagListBlock, splitTagInputBlock } from '@/services/lego_blocks/units/tagBlock'
 import type { NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
+import { listMarkdownEntries } from '@/services/orchestrators/fileSystemOrch'
 import type { F9RuntimeSurfaceOrch, F9SelectedAccountOrch } from '@/personal_extension/services/orchestrators/f9OverallOrch'
 import type {
   F9CompanyOverviewBlock,
@@ -19,6 +22,12 @@ import type {
 interface F9SubtabBlock {
   id: 'overall'
   label: string
+}
+
+interface F9LinkOptionBlock {
+  path: string
+  label: string
+  summary?: string
 }
 
 interface F9WorkspaceBlockProps {
@@ -85,6 +94,7 @@ interface F9WorkspaceBlockProps {
     priority?: NodePriority | null
     description?: string | null
     comments?: YAMLCommentEntry[]
+    relatedNodes?: string[]
     tags?: string[]
     projectPresetTags?: string[]
   }) => Promise<void>
@@ -93,6 +103,9 @@ interface F9WorkspaceBlockProps {
   onRefreshExecutionOverview: () => Promise<F9ExecutionOverviewBlock | null>
   onRefreshOverall: () => void
 }
+
+const F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK = 'f9_workspace_side_tabs_collapsed'
+const F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK = 'min-w-[1800px]'
 
 function formatRuntimeLabelBlock(value: F9RuntimeSurfaceOrch | null): string {
   if (value === 'electron') return 'Electron'
@@ -292,6 +305,7 @@ function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, u
       unrealizedProfitLoss: firstStringBlock(row.unrealized_profit_loss) || null,
       dayProfitLoss: firstStringBlock(row.day_profit_loss) || null,
       linkedIdeaId: null,
+      relatedNodes: [],
       tags: [],
       projectPresetTags: [],
     })
@@ -323,6 +337,16 @@ function toOverallPositionTitleBlock(row: Record<string, unknown>): string {
 
 function toJsonBlock(value: unknown): string {
   return JSON.stringify(value ?? {}, null, 2)
+}
+
+function normalizeRelativePathBlock(path: string): string {
+  return path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+}
+
+function linkLabelFromPathBlock(path: string): string {
+  const normalized = normalizeRelativePathBlock(path)
+  const fileName = normalized.split('/').pop() || normalized
+  return fileName.toLowerCase().endsWith('.md') ? fileName.slice(0, -3) : fileName
 }
 
 function inlineMetadataValueBlock(value: unknown): string {
@@ -392,6 +416,7 @@ function positionPayloadFromSummaryBlock(position: F9PositionSummaryBlock): Reco
     unrealized_profit_loss: position.unrealizedProfitLoss,
     day_profit_loss: position.dayProfitLoss,
     linked_idea_id: position.linkedIdeaId,
+    related_nodes: position.relatedNodes,
   }
 }
 
@@ -491,6 +516,15 @@ export default function F9WorkspaceBlock({
     ? asRecordArrayBlock(assetsPositions)
     : asRecordArrayBlock(accountPositionsLegacy)
   const [preserveOverallContext, setPreserveOverallContext] = useState(false)
+  const [sideTabsCollapsed, setSideTabsCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem(F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK) === '1'
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK, sideTabsCollapsed ? '1' : '0')
+  }, [sideTabsCollapsed])
 
   const selectedCompany = useMemo(
     () => executionOverview?.companies.find((company) => company.companyTicker === activeCompanyTicker) ?? null,
@@ -547,6 +581,9 @@ export default function F9WorkspaceBlock({
         const fileName = position.fileName
         const nodeUuid = `f9-pos-${normalizeKeyFragmentBlock(companyTicker)}-${normalizeKeyFragmentBlock(fileName)}`
         const positionProjectPresetTags = normalizeTagListBlock(position.projectPresetTags ?? [])
+        const positionRelatedNodes = (position.relatedNodes ?? [])
+          .map(path => path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+          .filter(Boolean)
         const positionTags = normalizeTagListBlock([
           'f9',
           'execution',
@@ -572,6 +609,7 @@ export default function F9WorkspaceBlock({
           description: undefined,
           tags: positionTags,
           projectPresetTags: positionProjectPresetTags,
+          relatedNodes: positionRelatedNodes,
           status: mapPositionStatusToNodeStatusBlock(positionStatus),
           sortOrder: index,
           createdAt: now,
@@ -603,6 +641,7 @@ export default function F9WorkspaceBlock({
 
   const [detailPanelNodeId, setDetailPanelNodeId] = useState<string | null>(null)
   const [availableProjectPresetTags, setAvailableProjectPresetTags] = useState<string[]>([])
+  const [linkOptions, setLinkOptions] = useState<F9LinkOptionBlock[]>([])
 
   const selectedBacklogNodeId = useMemo(() => {
     if (!activeCompanyTicker || !activePositionFileName) return null
@@ -664,6 +703,59 @@ export default function F9WorkspaceBlock({
     }
   }, [backlogTableModel.positionRefByNodeUuid, onUpdatePositionOverlay])
 
+  const onUpdateBacklogNodeRelatedNodes = useCallback(async (
+    node: NodeRecord,
+    relatedNodes: string[],
+  ): Promise<NodeRecord | void> => {
+    if (node.type !== 'epic') return node
+    const positionRef = backlogTableModel.positionRefByNodeUuid.get(node.uuid)
+    if (!positionRef) return node
+    const normalizedRelatedNodes = relatedNodes
+      .map(path => normalizeRelativePathBlock(path))
+      .filter(Boolean)
+    await onUpdatePositionOverlay({
+      fileName: positionRef.fileName,
+      relatedNodes: normalizedRelatedNodes,
+    })
+    return {
+      ...node,
+      relatedNodes: normalizedRelatedNodes,
+    }
+  }, [backlogTableModel.positionRefByNodeUuid, onUpdatePositionOverlay])
+
+  useEffect(() => {
+    let cancelled = false
+    void Promise.all([
+      listMarkdownEntries(),
+      getAllNodes(),
+    ])
+      .then(([entries, nodes]) => {
+        if (cancelled) return
+        const nodeByPath = new Map(
+          nodes.map(node => [normalizeRelativePathBlock(node.filePath), node] as const),
+        )
+        const options: F9LinkOptionBlock[] = []
+        for (const entry of entries) {
+          const path = normalizeRelativePathBlock(entry.path)
+          if (!path || path.toLowerCase().endsWith('.excalidraw.md')) continue
+          const node = nodeByPath.get(path)
+          options.push({
+            path,
+            label: node?.title?.trim() || linkLabelFromPathBlock(path),
+            summary: node?.aiSummary?.trim() || node?.bodyExcerpt?.trim() || node?.description?.trim() || undefined,
+          })
+        }
+        options.sort((a, b) => a.label.localeCompare(b.label))
+        setLinkOptions(options)
+      })
+      .catch(() => {
+        if (!cancelled) setLinkOptions([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   useEffect(() => {
     if (!detailPanelNodeId) return
     if (backlogTableModel.nodeByUuid.has(detailPanelNodeId)) return
@@ -723,6 +815,16 @@ export default function F9WorkspaceBlock({
     ]
   }, [])
 
+  const linkOptionsByPath = useMemo(() => {
+    const map = new Map<string, F9LinkOptionBlock>()
+    for (const option of linkOptions) {
+      const normalizedPath = normalizeRelativePathBlock(option.path)
+      if (!normalizedPath || map.has(normalizedPath)) continue
+      map.set(normalizedPath, option)
+    }
+    return map
+  }, [linkOptions])
+
   const renderF9InlineDetails = useCallback((node: NodeRecord) => {
     if (node.type !== 'epic') return null
     const metadata = asMetadataRecordBlock(node)
@@ -736,6 +838,9 @@ export default function F9WorkspaceBlock({
     const instrumentType = firstStringBlock(payload?.instrument_type, payload?.type) || '—'
     const linkedIdeaId = firstStringBlock(metadata.f9_linked_idea_id, payload?.linked_idea_id)
     const tags = normalizeTagListBlock(node.tags ?? []).filter(tag => tag !== 'f9' && tag !== 'execution')
+    const relatedNodePaths = (node.relatedNodes ?? asStringArrayBlock(payload?.related_nodes))
+      .map(path => normalizeRelativePathBlock(path))
+      .filter(Boolean)
 
     return (
       <div className="space-y-1.5 text-xs text-muted-foreground">
@@ -761,6 +866,32 @@ export default function F9WorkspaceBlock({
             <span className="font-medium text-foreground">Tags:</span> {tags.join(', ')}
           </p>
         )}
+        {relatedNodePaths.length > 0 && (
+          <div className="space-y-1">
+            <p><span className="font-medium text-foreground">Links:</span></p>
+            {relatedNodePaths.map((path) => {
+              const option = linkOptionsByPath.get(path)
+              const label = option?.label || linkLabelFromPathBlock(path)
+              const summary = option?.summary
+              return (
+                <p key={`${node.uuid}-related-${path}`} className="break-words">
+                  <button
+                    type="button"
+                    className="text-blue-700 hover:underline"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      onOpenNodeFile(path)
+                    }}
+                  >
+                    {label}
+                  </button>
+                  {summary ? <span> — {summary}</span> : null}
+                </p>
+              )
+            })}
+          </div>
+        )}
         {metadataEntries.map(([key, value]) => (
           <p key={`${node.uuid}-meta-${key}`} className="break-words">
             <span className="font-medium text-foreground">{key}:</span> {inlineMetadataValueBlock(value)}
@@ -776,7 +907,7 @@ export default function F9WorkspaceBlock({
         )}
       </div>
     )
-  }, [])
+  }, [linkOptionsByPath, onOpenNodeFile])
 
   const detailPanelNodeBase = useMemo(
     () => (detailPanelNodeId ? backlogTableModel.nodeByUuid.get(detailPanelNodeId) ?? null : null),
@@ -804,6 +935,7 @@ export default function F9WorkspaceBlock({
       comments: asYamlCommentsBlock(frontmatter.comments),
       tags: asStringArrayBlock(frontmatter.tags),
       projectPresetTags: asStringArrayBlock(frontmatter.project_preset_tags),
+      relatedNodes: asStringArrayBlock(frontmatter.related_nodes),
       priority: normalizePriorityFromUnknownBlock(frontmatter.priority) ?? detailPanelNodeBase.priority,
       status: mapPositionStatusToNodeStatusBlock(firstStringBlock(frontmatter.status) || detailPanelPositionDetail.summary.status),
       updatedAt: firstStringBlock(frontmatter.updated_at) || detailPanelNodeBase.updatedAt,
@@ -872,8 +1004,24 @@ export default function F9WorkspaceBlock({
   }, [availableProjectPresetTags, backlogTableModel.nodeByUuid, projectRootKey])
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
-      <aside className="space-y-3">
+    <div className={cn('grid gap-4', sideTabsCollapsed ? 'grid-cols-1' : 'lg:grid-cols-[200px_minmax(0,1fr)]')}>
+      {!sideTabsCollapsed && (
+        <aside className="space-y-3">
+          <div className="flex items-center justify-between rounded-xl border bg-background px-3 py-2">
+            <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Side Tabs</p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setSideTabsCollapsed(true)}
+              title="Collapse side tabs"
+              aria-label="Collapse side tabs"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </Button>
+          </div>
+
         <div className="space-y-2 rounded-xl border bg-background p-3">
           {subtabs.map((subtab) => {
             const active = activeSubtabId === subtab.id && !showCompanyView
@@ -969,7 +1117,8 @@ export default function F9WorkspaceBlock({
             disabled={workspaceBusy}
           />
         </div>
-      </aside>
+        </aside>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
@@ -982,6 +1131,16 @@ export default function F9WorkspaceBlock({
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
+            {sideTabsCollapsed && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSideTabsCollapsed(false)}
+              >
+                <PanelLeft className="mr-2 h-4 w-4" />
+                Show Side Tabs
+              </Button>
+            )}
             <Button type="button" variant="outline" onClick={() => { void onRefreshExecutionOverview() }} disabled={workspaceBusy || executionOverviewLoading}>
               {executionOverviewLoading ? 'Refreshing companies...' : 'Refresh Companies'}
             </Button>
@@ -1059,7 +1218,7 @@ export default function F9WorkspaceBlock({
           {!showCompanyView ? (
             <div className="rounded-xl border bg-background p-3">
               <div className="overflow-x-auto">
-                <div className="min-w-[1080px]">
+                <div className={F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}>
                   <BacklogListBlock
                     programs={backlogTableModel.programs}
                     loadEpics={loadBacklogEpics}
@@ -1069,11 +1228,14 @@ export default function F9WorkspaceBlock({
                     onSelectNode={onSelectBacklogNode}
                     onOpenNodeDetails={onOpenBacklogNodeDetails}
                     onUpdateNodeNotes={onUpdateBacklogNodeNotes}
+                    relatedNodeOptions={linkOptions}
+                    onOpenRelatedNode={(path) => onOpenNodeFile(path)}
                     projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
                     canOpenNodeDetails={(node) => node.type === 'epic'}
                     rowColumns={f9RowColumns}
+                    linksColumnLabel="Links"
                     rowDetailsRenderer={renderF9InlineDetails}
-                    titleColumnClassName="w-[20rem]"
+                    titleColumnClassName="w-[24rem]"
                     wrapTitleText
                     actionsRightEdge
                     showProgramStatus={false}
@@ -1091,7 +1253,7 @@ export default function F9WorkspaceBlock({
             <>
               <div className="rounded-xl border bg-background p-3">
                 <div className="overflow-x-auto">
-                  <div className="min-w-[1080px]">
+                  <div className={F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}>
                     <BacklogListBlock
                       programs={backlogTableModel.programs}
                       loadEpics={loadBacklogEpics}
@@ -1101,11 +1263,14 @@ export default function F9WorkspaceBlock({
                       onSelectNode={onSelectBacklogNode}
                       onOpenNodeDetails={onOpenBacklogNodeDetails}
                       onUpdateNodeNotes={onUpdateBacklogNodeNotes}
+                      relatedNodeOptions={linkOptions}
+                      onOpenRelatedNode={(path) => onOpenNodeFile(path)}
                       projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
                       canOpenNodeDetails={(node) => node.type === 'epic'}
                       rowColumns={f9RowColumns}
+                      linksColumnLabel="Links"
                       rowDetailsRenderer={renderF9InlineDetails}
-                      titleColumnClassName="w-[20rem]"
+                      titleColumnClassName="w-[24rem]"
                       wrapTitleText
                       actionsRightEdge
                       showProgramStatus={false}
@@ -1301,6 +1466,11 @@ export default function F9WorkspaceBlock({
             })
           }}
           presetTags={detailPanelPresetTags}
+          relatedNodeOptions={linkOptions}
+          onUpdateRelatedNodes={detailPanelNode
+            ? async (relatedNodes) => { await onUpdateBacklogNodeRelatedNodes(detailPanelNode, relatedNodes) }
+            : undefined}
+          onOpenRelatedNode={(path) => onOpenNodeFile(path)}
           onUpdateNotes={async (description, comments) => {
             if (!detailPanelPositionRef) return
             await onUpdatePositionOverlay({
