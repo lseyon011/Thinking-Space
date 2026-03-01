@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarDays, Download, Loader2, Plus, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
+import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import ExecutionProgressBlock from '@/components/lego_blocks/units/ExecutionProgressBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import {
@@ -1685,44 +1686,46 @@ export default function BacklogOrch() {
             Loading hierarchy...
           </div>
         ) : (
-          <BacklogListBlock
-            programs={visiblePrograms}
-            loadEpics={async program => {
-              const { nodes } = await invokeCapabilityOrThrow({
-                capability: 'organizer.nodes.list_children',
-                input: { parentKey: program.key },
-                actor: BACKLOG_ACTOR,
-              })
-              return nodes
-            }}
-            loadChildren={async node => {
-              const { nodes } = await invokeCapabilityOrThrow({
-                capability: 'organizer.nodes.list_children',
-                input: { parentKey: node.key },
-                actor: BACKLOG_ACTOR,
-              })
-              return nodes
-            }}
-            treeRevision={treeRevision}
-            selectedNodeId={selectedNode?.uuid ?? null}
-            onSelectNode={(node) => setSelectedNode(node)}
-            onCreateChild={createChildNode}
-            onDropNodeToNode={dropNodeToNode}
-            onReorderSiblings={reorderSiblingRows}
-            projectPresetTagsByRoot={projectPresetTagsByRoot}
-            projectTagColorsByRoot={projectTagColorsByRoot}
-            programGroups={activeProjectProgramGroups}
-            programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
-            onCreateProgramGroup={createActiveProjectProgramGroup}
-            onDeleteProgramGroup={deleteActiveProjectProgramGroup}
-            onToggleProgramGroupCollapsed={toggleActiveProjectProgramGroupCollapsed}
-            onAssignProgramToGroup={(program, groupId) => {
-              assignProgramToActiveProjectGroup(program.uuid, groupId)
-            }}
-            onUpdateNodeStatus={updateNodeStatusFor}
-            onUpdateTaskStatus={updateTaskStatusFor}
-            onUpdateNodeNotes={updateNodeNotesFor}
-          />
+          <ScrollableZoomSurfaceBlock controlsLabel="Table zoom">
+            <BacklogListBlock
+              programs={visiblePrograms}
+              loadEpics={async program => {
+                const { nodes } = await invokeCapabilityOrThrow({
+                  capability: 'organizer.nodes.list_children',
+                  input: { parentKey: program.key },
+                  actor: BACKLOG_ACTOR,
+                })
+                return nodes
+              }}
+              loadChildren={async node => {
+                const { nodes } = await invokeCapabilityOrThrow({
+                  capability: 'organizer.nodes.list_children',
+                  input: { parentKey: node.key },
+                  actor: BACKLOG_ACTOR,
+                })
+                return nodes
+              }}
+              treeRevision={treeRevision}
+              selectedNodeId={selectedNode?.uuid ?? null}
+              onSelectNode={(node) => setSelectedNode(node)}
+              onCreateChild={createChildNode}
+              onDropNodeToNode={dropNodeToNode}
+              onReorderSiblings={reorderSiblingRows}
+              projectPresetTagsByRoot={projectPresetTagsByRoot}
+              projectTagColorsByRoot={projectTagColorsByRoot}
+              programGroups={activeProjectProgramGroups}
+              programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
+              onCreateProgramGroup={createActiveProjectProgramGroup}
+              onDeleteProgramGroup={deleteActiveProjectProgramGroup}
+              onToggleProgramGroupCollapsed={toggleActiveProjectProgramGroupCollapsed}
+              onAssignProgramToGroup={(program, groupId) => {
+                assignProgramToActiveProjectGroup(program.uuid, groupId)
+              }}
+              onUpdateNodeStatus={updateNodeStatusFor}
+              onUpdateTaskStatus={updateTaskStatusFor}
+              onUpdateNodeNotes={updateNodeNotesFor}
+            />
+          </ScrollableZoomSurfaceBlock>
         )
       )}
 

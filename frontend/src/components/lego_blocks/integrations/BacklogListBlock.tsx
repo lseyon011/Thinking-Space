@@ -99,6 +99,7 @@ export interface BacklogListBlockProps {
   onOpenNodeDetails?: (node: NodeRecord) => void
   canOpenNodeDetails?: (node: NodeRecord) => boolean
   rowColumns?: BacklogRowColumnBlock[]
+  showRowColumnsOnCompact?: boolean
   rowPresetTagLimit?: number
   rowPresetTagsClassName?: string
   reserveTagsSlotWhenEmpty?: boolean
@@ -149,6 +150,7 @@ export default function BacklogListBlock({
   onOpenNodeDetails,
   canOpenNodeDetails,
   rowColumns = [],
+  showRowColumnsOnCompact = false,
   rowPresetTagLimit = 3,
   rowPresetTagsClassName,
   reserveTagsSlotWhenEmpty = false,
@@ -774,6 +776,7 @@ export default function BacklogListBlock({
           canToggleDetails={canToggleDetails}
           linksSlot={renderRelatedNodeLinksSlot(node)}
           rowColumns={rowColumns}
+          showRowColumnsOnCompact={showRowColumnsOnCompact}
           rowPresetTagsClassName={rowPresetTagsClassName}
           reserveTagsSlotWhenEmpty={reserveTagsSlotWhenEmpty}
           linksBeforeTags={linksBeforeTags}
@@ -839,7 +842,7 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
+  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
 
   const renderProgramSection = useCallback((program: NodeRecord, programIndex: number) => {
     void ensureProgramLoaded(program)
@@ -884,6 +887,7 @@ export default function BacklogListBlock({
           canToggleDetails={canToggleDetails}
           linksSlot={renderRelatedNodeLinksSlot(program)}
           rowColumns={rowColumns}
+          showRowColumnsOnCompact={showRowColumnsOnCompact}
           rowPresetTagsClassName={rowPresetTagsClassName}
           reserveTagsSlotWhenEmpty={reserveTagsSlotWhenEmpty}
           linksBeforeTags={linksBeforeTags}
@@ -938,7 +942,7 @@ export default function BacklogListBlock({
         </div>
       </div>
     )
-  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showProgramCopyButton, showProgramStatus, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleRowDetails, wrapTitleText])
+  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showProgramCopyButton, showProgramStatus, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleRowDetails, wrapTitleText])
 
   return (
     <div className="flex flex-col space-y-3">
@@ -963,7 +967,10 @@ export default function BacklogListBlock({
       {!readOnly && renderInlineCreate(null, ROOT_INPUT_KEY, 'Add program...')}
 
       {rowColumns.length > 0 && (
-        <div className="hidden items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-1 xl:flex">
+        <div className={cn(
+          'items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-1',
+          showRowColumnsOnCompact ? 'flex' : 'hidden xl:flex',
+        )}>
           <span className={cn(
             'text-[10px] font-semibold uppercase tracking-wide text-muted-foreground',
             titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'min-w-0 flex-1',

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
+import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import VaultExplorerBlock from '@/components/lego_blocks/integrations/VaultExplorerBlock'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
@@ -124,28 +125,30 @@ export default function LinkingOrch() {
                 Loading...
               </div>
             ) : (
-              <BacklogListBlock
-                programs={programs}
-                loadEpics={async program => {
-                  const { nodes } = await invokeCapabilityOrThrow({
-                    capability: 'organizer.nodes.list_children',
-                    input: { parentKey: program.key },
-                    actor: LINKING_ACTOR,
-                  })
-                  return nodes
-                }}
-                loadChildren={async node => {
-                  const { nodes } = await invokeCapabilityOrThrow({
-                    capability: 'organizer.nodes.list_children',
-                    input: { parentKey: node.key },
-                    actor: LINKING_ACTOR,
-                  })
-                  return nodes
-                }}
-                selectedNodeId={null}
-                readOnly
-                onSelectNode={() => {}}
-              />
+              <ScrollableZoomSurfaceBlock controlsLabel="Table zoom">
+                <BacklogListBlock
+                  programs={programs}
+                  loadEpics={async program => {
+                    const { nodes } = await invokeCapabilityOrThrow({
+                      capability: 'organizer.nodes.list_children',
+                      input: { parentKey: program.key },
+                      actor: LINKING_ACTOR,
+                    })
+                    return nodes
+                  }}
+                  loadChildren={async node => {
+                    const { nodes } = await invokeCapabilityOrThrow({
+                      capability: 'organizer.nodes.list_children',
+                      input: { parentKey: node.key },
+                      actor: LINKING_ACTOR,
+                    })
+                    return nodes
+                  }}
+                  selectedNodeId={null}
+                  readOnly
+                  onSelectNode={() => {}}
+                />
+              </ScrollableZoomSurfaceBlock>
             )}
           </CardContent>
         </Card>

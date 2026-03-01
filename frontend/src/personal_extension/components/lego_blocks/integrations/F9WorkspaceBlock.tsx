@@ -4,6 +4,7 @@ import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListB
 import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
+import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import { buildPathSearchCandidatesBlock, UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
 import { TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
@@ -325,6 +326,20 @@ function positionTitleFromSummaryBlock(position: F9PositionSummaryBlock): string
   return symbol
 }
 
+function compareF9PositionsAscendingBlock(a: F9PositionSummaryBlock, b: F9PositionSummaryBlock): number {
+  const byTitle = positionTitleFromSummaryBlock(a).localeCompare(
+    positionTitleFromSummaryBlock(b),
+    undefined,
+    { numeric: true, sensitivity: 'base' },
+  )
+  if (byTitle !== 0) return byTitle
+  return a.fileName.localeCompare(b.fileName, undefined, { numeric: true, sensitivity: 'base' })
+}
+
+function sortF9PositionsAscendingBlock(positions: F9PositionSummaryBlock[]): F9PositionSummaryBlock[] {
+  return [...positions].sort(compareF9PositionsAscendingBlock)
+}
+
 function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, unknown>>): F9CompanyOverviewBlock[] {
   const grouped = new Map<string, F9PositionSummaryBlock[]>()
   for (const row of rows) {
@@ -367,7 +382,7 @@ function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, u
       relatedIdeaIds: [],
       valuationNotePath: null,
       companyPdfReportPath: null,
-      positions,
+      positions: sortF9PositionsAscendingBlock(positions),
     }))
 }
 
@@ -676,9 +691,15 @@ export default function F9WorkspaceBlock({
   }, [executionOverview])
 
   const companiesForTable = useMemo<F9CompanyOverviewBlock[]>(() => {
-    if (showCompanyView && selectedCompany) return [selectedCompany]
-    if ((executionOverview?.companies.length ?? 0) > 0) return executionOverview?.companies ?? []
-    return buildFallbackCompaniesFromOverallRowsBlock(overallRows)
+    const sourceCompanies = (() => {
+      if (showCompanyView && selectedCompany) return [selectedCompany]
+      if ((executionOverview?.companies.length ?? 0) > 0) return executionOverview?.companies ?? []
+      return buildFallbackCompaniesFromOverallRowsBlock(overallRows)
+    })()
+    return sourceCompanies.map(company => ({
+      ...company,
+      positions: sortF9PositionsAscendingBlock(company.positions),
+    }))
   }, [executionOverview?.companies, overallRows, selectedCompany, showCompanyView])
 
   const backlogTableModel = useMemo(() => {
@@ -1304,7 +1325,7 @@ export default function F9WorkspaceBlock({
           <div className="pt-2">
             <p className="px-1 pb-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Companies</p>
             <div className="space-y-1">
-              {(executionOverview?.companies ?? []).map((company) => {
+              {(executionOverview?.companies ?? []).map((company, companyIndex) => {
                 const active = showCompanyView && activeCompanyTicker === company.companyTicker
                 return (
                   <button
@@ -1320,6 +1341,9 @@ export default function F9WorkspaceBlock({
                         : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                     }`}
                   >
+                    <sup className="mr-1 inline-flex pt-0.5 align-super text-[9px] font-medium opacity-65 tabular-nums">
+                      {companyIndex + 1}
+                    </sup>
                     {company.companyTicker}
                     <span className="ml-1.5 text-xs opacity-80">({company.positions.length})</span>
                   </button>
@@ -1462,45 +1486,47 @@ export default function F9WorkspaceBlock({
 
           {!showCompanyView ? (
             <div className="rounded-xl border bg-background p-3">
-              <div className="overflow-x-auto">
-                <div className={F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}>
-                  <BacklogListBlock
-                    programs={backlogTableModel.programs}
-                    loadEpics={loadBacklogEpics}
-                    loadChildren={loadBacklogChildren}
-                    selectedNodeId={selectedBacklogNodeId}
-                    readOnly
-                    onSelectNode={onSelectBacklogNode}
-                    onOpenNodeDetails={onOpenBacklogNodeDetails}
-                    onUpdateNodeNotes={onUpdateBacklogNodeNotes}
-                    relatedNodeOptions={linkOptions}
-                    onOpenRelatedNode={(path) => onOpenNodeFile(path)}
-                    projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
-                    canOpenNodeDetails={(node) => node.type === 'epic'}
-                    rowColumns={f9RowColumns}
-                    rowPresetTagLimit={5}
-                    rowPresetTagsClassName="ml-auto w-[18rem] justify-end"
-                    reserveTagsSlotWhenEmpty
-                    linksColumnLabel="Links"
-                    linksColumnWidthClassName="w-[8rem] mx-6"
-                    linksColumnAlign="left"
-                    linksColumnPaddingClassName="px-0"
-                    linksBeforeTags
-                    statusRightAligned={false}
-                    rowDetailsRenderer={renderF9InlineDetails}
-                    titleColumnClassName="w-[20rem]"
-                    wrapTitleText
-                    actionsRightEdge
-                    showProgramStatus={false}
-                    showProgramCopyButton={false}
-                    preferInlineDetailsButton
-                    allowInlineNotesInReadOnly
-                    showNodeTypeIcons={false}
-                    showExpandToggles={false}
-                    showPriorityDots={false}
-                  />
-                </div>
-              </div>
+              <ScrollableZoomSurfaceBlock
+                minWidthClassName={F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
+                controlsLabel="Table zoom"
+              >
+                <BacklogListBlock
+                  programs={backlogTableModel.programs}
+                  loadEpics={loadBacklogEpics}
+                  loadChildren={loadBacklogChildren}
+                  selectedNodeId={selectedBacklogNodeId}
+                  readOnly
+                  onSelectNode={onSelectBacklogNode}
+                  onOpenNodeDetails={onOpenBacklogNodeDetails}
+                  onUpdateNodeNotes={onUpdateBacklogNodeNotes}
+                  relatedNodeOptions={linkOptions}
+                  onOpenRelatedNode={(path) => onOpenNodeFile(path)}
+                  projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
+                  canOpenNodeDetails={(node) => node.type === 'epic'}
+                  rowColumns={f9RowColumns}
+                  showRowColumnsOnCompact
+                  rowPresetTagLimit={5}
+                  rowPresetTagsClassName="ml-auto w-[18rem] justify-end"
+                  reserveTagsSlotWhenEmpty
+                  linksColumnLabel="Links"
+                  linksColumnWidthClassName="w-[8rem] mx-6"
+                  linksColumnAlign="left"
+                  linksColumnPaddingClassName="px-0"
+                  linksBeforeTags
+                  statusRightAligned={false}
+                  rowDetailsRenderer={renderF9InlineDetails}
+                  titleColumnClassName="w-[20rem]"
+                  wrapTitleText
+                  actionsRightEdge
+                  showProgramStatus={false}
+                  showProgramCopyButton={false}
+                  preferInlineDetailsButton
+                  allowInlineNotesInReadOnly
+                  showNodeTypeIcons={false}
+                  showExpandToggles={false}
+                  showPriorityDots={false}
+                />
+              </ScrollableZoomSurfaceBlock>
             </div>
           ) : (
             <>
@@ -1644,45 +1670,47 @@ export default function F9WorkspaceBlock({
               </div>
 
               <div className="rounded-xl border bg-background p-3">
-                <div className="overflow-x-auto">
-                  <div className={F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}>
-                    <BacklogListBlock
-                      programs={backlogTableModel.programs}
-                      loadEpics={loadBacklogEpics}
-                      loadChildren={loadBacklogChildren}
-                      selectedNodeId={selectedBacklogNodeId}
-                      readOnly
-                      onSelectNode={onSelectBacklogNode}
-                      onOpenNodeDetails={onOpenBacklogNodeDetails}
-                      onUpdateNodeNotes={onUpdateBacklogNodeNotes}
-                      relatedNodeOptions={linkOptions}
-                      onOpenRelatedNode={(path) => onOpenNodeFile(path)}
-                      projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
-                      canOpenNodeDetails={(node) => node.type === 'epic'}
-                      rowColumns={f9RowColumns}
-                      rowPresetTagLimit={5}
-                      rowPresetTagsClassName="ml-auto w-[18rem] justify-end"
-                      reserveTagsSlotWhenEmpty
-                      linksColumnLabel="Links"
-                      linksColumnWidthClassName="w-[8rem] mx-6"
-                      linksColumnAlign="left"
-                      linksColumnPaddingClassName="px-0"
-                      linksBeforeTags
-                      statusRightAligned={false}
-                      rowDetailsRenderer={renderF9InlineDetails}
-                      titleColumnClassName="w-[20rem]"
-                      wrapTitleText
-                      actionsRightEdge
-                      showProgramStatus={false}
-                      showProgramCopyButton={false}
-                      preferInlineDetailsButton
-                      allowInlineNotesInReadOnly
-                      showNodeTypeIcons={false}
-                      showExpandToggles={false}
-                      showPriorityDots={false}
-                    />
-                  </div>
-                </div>
+                <ScrollableZoomSurfaceBlock
+                  minWidthClassName={F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
+                  controlsLabel="Table zoom"
+                >
+                  <BacklogListBlock
+                    programs={backlogTableModel.programs}
+                    loadEpics={loadBacklogEpics}
+                    loadChildren={loadBacklogChildren}
+                    selectedNodeId={selectedBacklogNodeId}
+                    readOnly
+                    onSelectNode={onSelectBacklogNode}
+                    onOpenNodeDetails={onOpenBacklogNodeDetails}
+                    onUpdateNodeNotes={onUpdateBacklogNodeNotes}
+                    relatedNodeOptions={linkOptions}
+                    onOpenRelatedNode={(path) => onOpenNodeFile(path)}
+                    projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
+                    canOpenNodeDetails={(node) => node.type === 'epic'}
+                    rowColumns={f9RowColumns}
+                    showRowColumnsOnCompact
+                    rowPresetTagLimit={5}
+                    rowPresetTagsClassName="ml-auto w-[18rem] justify-end"
+                    reserveTagsSlotWhenEmpty
+                    linksColumnLabel="Links"
+                    linksColumnWidthClassName="w-[8rem] mx-6"
+                    linksColumnAlign="left"
+                    linksColumnPaddingClassName="px-0"
+                    linksBeforeTags
+                    statusRightAligned={false}
+                    rowDetailsRenderer={renderF9InlineDetails}
+                    titleColumnClassName="w-[20rem]"
+                    wrapTitleText
+                    actionsRightEdge
+                    showProgramStatus={false}
+                    showProgramCopyButton={false}
+                    preferInlineDetailsButton
+                    allowInlineNotesInReadOnly
+                    showNodeTypeIcons={false}
+                    showExpandToggles={false}
+                    showPriorityDots={false}
+                  />
+                </ScrollableZoomSurfaceBlock>
               </div>
 
               <div className="rounded-xl border bg-background p-3">

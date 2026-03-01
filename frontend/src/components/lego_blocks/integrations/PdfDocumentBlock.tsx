@@ -12,8 +12,23 @@ import { readPdfDocumentOrch } from '@/services/orchestrators/pdfDocumentsOrch'
 let activePdfWorkerBlock: Worker | null = null
 let activePdfWorkerVersionBlock: string | null = null
 
+const ELECTRON_SAFE_MAX_DEVICE_PIXEL_RATIO_BLOCK = 1.25
+const LARGE_PDF_BYTES_THRESHOLD_BLOCK = 24 * 1024 * 1024
+
+function isElectronRuntimeBlock(): boolean {
+  if (typeof window === 'undefined') return false
+  return !!window.electronAPI?.isElectron
+}
+
 function configurePdfWorkerBlock(force = false): void {
   const version = pdfjs.version
+
+  if (isElectronRuntimeBlock()) {
+    // Electron is more stable using workerSrc than module Worker construction.
+    pdfjs.GlobalWorkerOptions.workerPort = null
+    pdfjs.GlobalWorkerOptions.workerSrc = `${pdfWorkerSrcBlock}?pdfjs=${encodeURIComponent(version)}`
+    return
+  }
 
   try {
     if (!force && activePdfWorkerBlock && activePdfWorkerVersionBlock === version) {
@@ -54,8 +69,10 @@ export default function PdfDocumentBlock({
   path,
   className,
 }: PdfDocumentBlockProps) {
+  const electronRuntime = isElectronRuntimeBlock()
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const [fileBytes, setFileBytes] = useState<Uint8Array | null>(null)
+  const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [numPages, setNumPages] = useState(0)
@@ -70,6 +87,7 @@ export default function PdfDocumentBlock({
     setLoading(true)
     setError(null)
     setFileBytes(null)
+    setFileSizeBytes(null)
     setNumPages(0)
     setPageNumber(1)
     setRenderNonce(0)
@@ -77,6 +95,7 @@ export default function PdfDocumentBlock({
       .then((doc) => {
         if (cancelled) return
         setFileBytes(doc.bytes)
+        setFileSizeBytes(doc.size)
       })
       .catch((err) => {
         if (cancelled) return
@@ -109,10 +128,20 @@ export default function PdfDocumentBlock({
 
   const documentFile = useMemo(() => {
     if (!fileBytes) return null
+    const skipCopyForLargeElectronPdf = electronRuntime && fileBytes.byteLength >= LARGE_PDF_BYTES_THRESHOLD_BLOCK
     // pdf.js may transfer/consume ArrayBuffers through worker messaging.
-    // Always provide a fresh copy so retries/rerenders never reuse a detached buffer.
+    // For very large Electron PDFs, avoid extra copy to reduce crash-prone memory spikes.
+    if (skipCopyForLargeElectronPdf) return { data: fileBytes }
+    // Otherwise provide a fresh copy so retries/rerenders never reuse a detached buffer.
     return { data: fileBytes.slice() }
-  }, [fileBytes, renderNonce])
+  }, [electronRuntime, fileBytes, renderNonce])
+
+  const pageDevicePixelRatio = useMemo(() => {
+    if (typeof window === 'undefined') return 1
+    const current = Number.isFinite(window.devicePixelRatio) ? window.devicePixelRatio : 1
+    if (!electronRuntime) return current
+    return Math.max(1, Math.min(current, ELECTRON_SAFE_MAX_DEVICE_PIXEL_RATIO_BLOCK))
+  }, [electronRuntime])
 
   const canGoPrev = pageNumber > 1
   const canGoNext = numPages > 0 && pageNumber < numPages
@@ -232,11 +261,17 @@ export default function PdfDocumentBlock({
               pageNumber={pageNumber}
               width={pageWidth}
               scale={fitWidth ? undefined : scale}
-              renderAnnotationLayer
-              renderTextLayer
+              devicePixelRatio={pageDevicePixelRatio}
+              renderAnnotationLayer={!electronRuntime}
+              renderTextLayer={!electronRuntime}
               className="overflow-hidden rounded-md border bg-background shadow-sm"
             />
           </Document>
+        )}
+        {!loading && !error && electronRuntime && fileSizeBytes !== null && fileSizeBytes >= LARGE_PDF_BYTES_THRESHOLD_BLOCK && (
+          <p className="mx-auto mt-2 max-w-[40rem] text-center text-[11px] text-muted-foreground">
+            Large PDF safety mode is active for Electron to reduce crash risk.
+          </p>
         )}
       </div>
     </div>

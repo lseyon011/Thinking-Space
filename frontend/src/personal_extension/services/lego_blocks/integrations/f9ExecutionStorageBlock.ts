@@ -36,6 +36,18 @@ const DEFAULT_COMPANY_INDEX_BODY_BLOCK = [
   '',
 ].join('\n')
 
+function comparePositionSummariesAscendingBlock(a: F9PositionSummaryBlock, b: F9PositionSummaryBlock): number {
+  const bySymbol = a.symbol.localeCompare(b.symbol, undefined, { numeric: true, sensitivity: 'base' })
+  if (bySymbol !== 0) return bySymbol
+  const byFileName = a.fileName.localeCompare(b.fileName, undefined, { numeric: true, sensitivity: 'base' })
+  if (byFileName !== 0) return byFileName
+  return a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' })
+}
+
+function sortPositionSummariesAscendingBlock(list: F9PositionSummaryBlock[]): F9PositionSummaryBlock[] {
+  return [...list].sort(comparePositionSummariesAscendingBlock)
+}
+
 export interface F9PositionSummaryBlock {
   id: string
   fileName: string
@@ -304,9 +316,9 @@ export async function syncF9ExecutionStorageBlock(
       totalPositions += 1
     }
 
-    const mergedSummaries = [...existingById.values()]
-      .map((record) => record.summary)
-      .sort((a, b) => a.fileName.localeCompare(b.fileName))
+    const mergedSummaries = sortPositionSummariesAscendingBlock(
+      [...existingById.values()].map((record) => record.summary),
+    )
     await upsertCompanyIndexBlock({
       fs,
       companyDir,
@@ -355,7 +367,7 @@ export async function readF9ExecutionOverviewBlock(
 
     const parsed = parseMarkdownFrontmatterBlock(await fs.read(indexFilePath))
     const frontmatter = parsed.frontmatter
-    const positions = asPositionSummaryListBlock(frontmatter.positions)
+    const positions = sortPositionSummariesAscendingBlock(asPositionSummaryListBlock(frontmatter.positions))
     const strategyNotes = readStringFieldBlock(frontmatter.strategy_notes)
     const relatedIdeaIds = readStringArrayFieldBlock(frontmatter.related_idea_ids)
     const valuationNotePathRaw = readNullableStringFieldBlock(frontmatter.valuation_note_path)
@@ -575,7 +587,9 @@ export async function createF9ManualPositionBlock(
     companyDir,
     ticker,
     indexId: company.indexId,
-    summaries: [...existingById.values()].map((record) => record.summary).sort((a, b) => a.fileName.localeCompare(b.fileName)),
+    summaries: sortPositionSummariesAscendingBlock(
+      [...existingById.values()].map((record) => record.summary),
+    ),
   })
   return createdSummary
 }
@@ -778,6 +792,7 @@ async function upsertCompanyIndexBlock(input: {
   summaries: F9PositionSummaryBlock[]
 }): Promise<void> {
   const { fs, companyDir, ticker, indexId, summaries } = input
+  const orderedSummaries = sortPositionSummariesAscendingBlock(summaries)
   const indexFilePath = joinPathBlock(companyDir, `${ticker}-index.md`)
   let existingFrontmatter: Record<string, unknown> = {}
   let existingBody = ''
@@ -808,9 +823,9 @@ async function upsertCompanyIndexBlock(input: {
       if (!pdfReportPath) return null
       return normalizeSlashPathBlock(pdfReportPath).replace(/^\/+|\/+$/g, '')
     })(),
-    position_count: summaries.length,
+    position_count: orderedSummaries.length,
     updated_at: now,
-    positions: summaries.map((summary) => ({
+    positions: orderedSummaries.map((summary) => ({
       id: summary.id,
       file_name: summary.fileName,
       symbol: summary.symbol,
@@ -995,7 +1010,7 @@ async function refreshCompanyIndexFromPositionsBlock(input: {
     companyDir,
     ticker,
     indexId: `${ticker}-index`,
-    summaries: records.map((record) => record.summary).sort((a, b) => a.fileName.localeCompare(b.fileName)),
+    summaries: sortPositionSummariesAscendingBlock(records.map((record) => record.summary)),
   })
 }
 
@@ -1070,7 +1085,7 @@ function asPositionSummaryListBlock(value: unknown): F9PositionSummaryBlock[] {
       projectPresetTags: normalizeTagListBlock(readStringArrayFieldBlock(record.project_preset_tags)),
     })
   }
-  return list
+  return sortPositionSummariesAscendingBlock(list)
 }
 
 function resolvePrimaryPositionsPayloadBlock(

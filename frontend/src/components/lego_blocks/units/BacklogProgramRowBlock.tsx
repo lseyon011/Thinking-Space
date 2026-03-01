@@ -36,6 +36,7 @@ interface BacklogProgramRowBlockProps {
   canToggleDetails: boolean
   linksSlot?: ReactNode
   rowColumns: BacklogRowColumnBlock[]
+  showRowColumnsOnCompact?: boolean
   rowPresetTagsClassName?: string
   reserveTagsSlotWhenEmpty?: boolean
   linksBeforeTags?: boolean
@@ -85,6 +86,7 @@ export function BacklogProgramRowBlock({
   canToggleDetails,
   linksSlot,
   rowColumns,
+  showRowColumnsOnCompact = false,
   rowPresetTagsClassName,
   reserveTagsSlotWhenEmpty = false,
   linksBeforeTags = false,
@@ -181,7 +183,10 @@ export function BacklogProgramRowBlock({
         </span>
       </div>
       {applicableColumns.length > 0 && (
-        <div className="hidden items-center gap-2 xl:flex">
+        <div className={cn(
+          'items-center gap-2',
+          showRowColumnsOnCompact ? 'flex' : 'hidden xl:flex',
+        )}>
           {applicableColumns.map(column => {
             const content = column.render(program)
             return (

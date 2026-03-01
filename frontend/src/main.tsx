@@ -1,3 +1,4 @@
+import './services/lego_blocks/units/promiseWithResolversPolyfillBlock'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { HashRouter, BrowserRouter } from 'react-router-dom'
