@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { PenLine, Loader2, CheckCircle2, LayoutList, Eye, Pencil, Trash2, X, Sparkles } from 'lucide-react'
+import { PenLine, Loader2, CheckCircle2, LayoutList, Eye, CheckSquare, Pencil, Trash2, X, Sparkles, PanelLeft, PanelLeftClose, Plus } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
@@ -16,6 +16,7 @@ import AiPanelToggleButtonBlock from '@/components/lego_blocks/units/AiPanelTogg
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import ThoughtsCalendarOrch from '@/components/orchestrators/ThoughtsCalendarOrch'
+import TodoCalendarOrch from '@/components/orchestrators/TodoCalendarOrch'
 import { deleteVaultPathOrch } from '@/services/orchestrators/fileSystemOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
 import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/integrations/aiBlock'
@@ -23,17 +24,26 @@ import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabi
 
 const DESTINATION_RECENTS_KEY = 'ltm-new-note-destination-recents'
 const CUSTOM_SHORTCUTS_KEY = 'ltm-new-note-custom-shortcuts'
+const QUICK_DESTINATIONS_KEY = 'ltm-new-note-quick-destinations'
 const DESTINATION_USAGE_COUNTS_KEY = 'ltm-new-note-destination-usage-counts'
+const LEFT_PANEL_HIDDEN_KEY = 'ltm-new-note-left-panel-hidden'
 const DEFAULT_BASE_PATH = ['lifeblood_systems', 'sfdl']
 const THOUGHTS_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.new-note' }
+const TODO_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.new-note.todos' }
 
-type Tab = 'create' | 'view'
+type Tab = 'create' | 'view' | 'view_todos'
 
 interface DestinationShortcut {
   id: string
   label: string
   pathSegments: string[]
   builtIn?: boolean
+}
+
+interface QuickDestination {
+  id: string
+  label: string
+  pathSegments: string[]
 }
 
 const BUILT_IN_SHORTCUTS: DestinationShortcut[] = [
@@ -49,6 +59,14 @@ function todayFilename() {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}.md`
+}
+
+function todayDateStr() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 function normalizeSegments(value: unknown): string[] {
@@ -117,6 +135,26 @@ function writeCustomShortcuts(shortcuts: DestinationShortcut[]): void {
   writeJsonStorage(CUSTOM_SHORTCUTS_KEY, stored)
 }
 
+function readQuickDestinations(): QuickDestination[] {
+  const parsed = readJsonStorage<Array<{ id: string; label: string; pathSegments: string[] }>>(QUICK_DESTINATIONS_KEY, [])
+  return parsed
+    .map((destination) => ({
+      id: destination.id,
+      label: destination.label.trim(),
+      pathSegments: normalizeSegments(destination.pathSegments),
+    }))
+    .filter((destination) => destination.id && destination.label && destination.pathSegments.length > 0)
+}
+
+function writeQuickDestinations(destinations: QuickDestination[]): void {
+  const stored = destinations.map(destination => ({
+    id: destination.id,
+    label: destination.label,
+    pathSegments: destination.pathSegments,
+  }))
+  writeJsonStorage(QUICK_DESTINATIONS_KEY, stored)
+}
+
 function readDestinationUsageCounts(): Record<string, number> {
   const parsed = readJsonStorage<Record<string, number>>(DESTINATION_USAGE_COUNTS_KEY, {})
   const normalized: Record<string, number> = {}
@@ -175,14 +213,25 @@ function CreateTab() {
   const [folderBasePath, setFolderBasePath] = useState('')
   const [activeShortcutId, setActiveShortcutId] = useState<string>('thoughts')
   const [customShortcuts, setCustomShortcuts] = useState<DestinationShortcut[]>([])
+  const [quickDestinations, setQuickDestinations] = useState<QuickDestination[]>([])
   const [customShortcutLabel, setCustomShortcutLabel] = useState('')
   const [customShortcutPath, setCustomShortcutPath] = useState('')
+  const [quickDestinationModalOpen, setQuickDestinationModalOpen] = useState(false)
+  const [quickDestinationLabel, setQuickDestinationLabel] = useState('')
+  const [quickDestinationPickerDefaultPath, setQuickDestinationPickerDefaultPath] = useState<string[]>(DEFAULT_BASE_PATH)
+  const [quickDestinationPickerVersion, setQuickDestinationPickerVersion] = useState(0)
+  const [quickDestinationBaseSegments, setQuickDestinationBaseSegments] = useState<string[]>([])
+  const [quickDestinationBasePath, setQuickDestinationBasePath] = useState('')
   const [usageCounts, setUsageCounts] = useState<Record<string, number>>({})
   const [filename, setFilename] = useState(todayFilename())
   const [filenameTouched, setFilenameTouched] = useState(false)
   const [useCustomTitle, setUseCustomTitle] = useState(false)
   const [title, setTitle] = useState('')
   const [dateHeader, setDateHeader] = useState(true)
+  const [makeThisTodo, setMakeThisTodo] = useState(false)
+  const [shortcutBeforeTodoMode, setShortcutBeforeTodoMode] = useState('thoughts')
+  const [todoDateStr, setTodoDateStr] = useState(todayDateStr())
+  const [itemsAdded, setItemsAdded] = useState(0)
   const [content, setContent] = useState('')
   const [emotions, setEmotions] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
@@ -193,6 +242,9 @@ function CreateTab() {
   const [editorPath, setEditorPath] = useState<string | null>(null)
   const [showMetaPanel, setShowMetaPanel] = useState(false)
   const [showAiAssist, setShowAiAssist] = useState(false)
+  const [leftPanelHidden, setLeftPanelHidden] = useState(
+    () => readJsonStorage<boolean>(LEFT_PANEL_HIDDEN_KEY, false),
+  )
   const [relatedThoughts, setRelatedThoughts] = useState<SimilarityMatch[]>([])
   const [relatedLoading, setRelatedLoading] = useState(false)
   const [relatedError, setRelatedError] = useState<string | null>(null)
@@ -214,8 +266,19 @@ function CreateTab() {
 
   useEffect(() => {
     setCustomShortcuts(readCustomShortcuts())
+    setQuickDestinations(readQuickDestinations())
     setUsageCounts(readDestinationUsageCounts())
   }, [])
+
+  useEffect(() => {
+    writeJsonStorage(LEFT_PANEL_HIDDEN_KEY, leftPanelHidden)
+  }, [leftPanelHidden])
+
+  useEffect(() => {
+    if (activeShortcutId !== 'todo') {
+      setShortcutBeforeTodoMode(activeShortcutId)
+    }
+  }, [activeShortcutId])
 
   const allShortcuts = useMemo(
     () => [...BUILT_IN_SHORTCUTS, ...customShortcuts],
@@ -267,6 +330,7 @@ function CreateTab() {
     setFolderBaseSegments(change.baseSegments)
     setFolderBasePath(change.basePath)
     setSavedPath(null)
+    setItemsAdded(0)
     setError(null)
     setMessage(null)
   }
@@ -278,19 +342,37 @@ function CreateTab() {
     rememberDestinationUsage(withSuffix(folderBaseSegments, shortcut.pathSegments))
   }
 
-  const handleApplyDestinationPath = (path: string) => {
-    const nextBaseSegments = normalizeSegments(path)
-    if (nextBaseSegments.length === 0) return
-    setPickerDefaultPath(nextBaseSegments)
+  const handleMakeThisTodoChange = (checked: boolean) => {
+    setMakeThisTodo(checked)
+    if (checked) {
+      if (activeShortcutId !== 'todo') {
+        setShortcutBeforeTodoMode(activeShortcutId)
+        setActiveShortcutId('todo')
+      }
+      return
+    }
+    if (activeShortcutId === 'todo') {
+      setActiveShortcutId(shortcutBeforeTodoMode || 'thoughts')
+    }
+  }
+
+  const applyDestinationSegments = useCallback((segments: string[]) => {
+    const normalized = normalizeSegments(segments)
+    if (normalized.length === 0) return
+    setPickerDefaultPath(normalized)
     setPickerVersion(current => current + 1)
-    setFolderBaseSegments(nextBaseSegments)
-    setFolderBasePath(nextBaseSegments.join('/'))
+    setFolderBaseSegments(normalized)
+    setFolderBasePath(normalized.join('/'))
     setActiveShortcutId('none')
     setSavedPath(null)
     setEditorPath(null)
     setError(null)
     setMessage(null)
-    rememberDestinationUsage(nextBaseSegments)
+    rememberDestinationUsage(normalized)
+  }, [rememberDestinationUsage])
+
+  const handleApplyDestinationPath = (path: string) => {
+    applyDestinationSegments(normalizeSegments(path))
   }
 
   const handleAddCustomShortcut = () => {
@@ -323,6 +405,52 @@ function CreateTab() {
     setMessage('Removed custom shortcut.')
   }
 
+  const openQuickDestinationModal = () => {
+    const seedSegments = destinationSegments.length > 0 ? destinationSegments : folderBaseSegments
+    const nextSeed = seedSegments.length > 0 ? seedSegments : DEFAULT_BASE_PATH
+    setQuickDestinationLabel('')
+    setQuickDestinationPickerDefaultPath(nextSeed)
+    setQuickDestinationPickerVersion(current => current + 1)
+    setQuickDestinationBaseSegments(nextSeed)
+    setQuickDestinationBasePath(nextSeed.join('/'))
+    setQuickDestinationModalOpen(true)
+  }
+
+  const handleQuickDestinationFolderChange = (change: CascadingFolderPickerChange) => {
+    setQuickDestinationBaseSegments(change.baseSegments)
+    setQuickDestinationBasePath(change.basePath)
+  }
+
+  const handleAddQuickDestination = () => {
+    const label = quickDestinationLabel.trim()
+    const pathSegments = normalizeSegments(quickDestinationBaseSegments)
+    if (!label || pathSegments.length === 0) {
+      setError('Quick destination needs both a label and destination folder.')
+      return
+    }
+    const destination: QuickDestination = {
+      id: `quick-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      label,
+      pathSegments,
+    }
+    const next = [...quickDestinations, destination]
+    setQuickDestinations(next)
+    writeQuickDestinations(next)
+    setQuickDestinationModalOpen(false)
+    setQuickDestinationLabel('')
+    setQuickDestinationBaseSegments([])
+    setQuickDestinationBasePath('')
+    setError(null)
+    setMessage(`Added quick destination "${label}".`)
+  }
+
+  const handleDeleteQuickDestination = (id: string) => {
+    const next = quickDestinations.filter(destination => destination.id !== id)
+    setQuickDestinations(next)
+    writeQuickDestinations(next)
+    setMessage('Removed quick destination.')
+  }
+
   const handleCustomTitleToggle = (enabled: boolean) => {
     setUseCustomTitle(enabled)
     if (!enabled) {
@@ -336,14 +464,46 @@ function CreateTab() {
   }
 
   const handleSave = async () => {
-    if (!destinationPath.trim() || !filename.trim() || !content.trim()) return
+    if (makeThisTodo) {
+      const items = content
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+      if (!destinationPath.trim() || !todoDateStr.trim() || items.length === 0) return
+    } else if (!destinationPath.trim() || !filename.trim() || !content.trim()) {
+      return
+    }
 
     setSaving(true)
     setError(null)
     setMessage(null)
     setSavedPath(null)
+    setItemsAdded(0)
 
     try {
+      if (makeThisTodo) {
+        const items = content
+          .split('\n')
+          .map(line => line.trim())
+          .filter(Boolean)
+        const data = await invokeCapabilityOrThrow({
+          capability: 'todos.create',
+          input: {
+            folderPath: destinationPath,
+            date: todoDateStr,
+            items,
+          },
+          actor: TODO_ACTOR,
+        })
+
+        setSavedPath(data.output_path)
+        setEditorPath(data.output_path)
+        setItemsAdded(data.items_added)
+        rememberDestinationUsage(destinationSegments)
+        setMessage(`${data.items_added} task${data.items_added !== 1 ? 's' : ''} saved to ${data.output_path}.`)
+        return
+      }
+
       const data = await invokeCapabilityOrThrow({
         capability: 'thoughts.create',
         input: {
@@ -368,9 +528,17 @@ function CreateTab() {
     }
   }
 
-  const targetPath = destinationPath.trim() && filename.trim()
-    ? `${destinationPath.replace(/\/$/, '')}/${normalizedFilename}`
-    : null
+  const targetPath = makeThisTodo
+    ? (
+      destinationPath.trim() && todoDateStr.trim()
+        ? `${destinationPath.replace(/\/$/, '')}/${todoDateStr.trim()}.md`
+        : null
+    )
+    : (
+      destinationPath.trim() && filename.trim()
+        ? `${destinationPath.replace(/\/$/, '')}/${normalizedFilename}`
+        : null
+    )
   const contentMeta = useMemo(() => {
     const normalized = content.replace(/\r\n/g, '\n')
     const trimmed = normalized.trim()
@@ -459,6 +627,8 @@ function CreateTab() {
     setUseCustomTitle(false)
     setFilename(todayFilename())
     setFilenameTouched(false)
+    setTodoDateStr(todayDateStr())
+    setItemsAdded(0)
     setEditorPath(null)
     setSavedPath(null)
     setError(null)
@@ -485,12 +655,31 @@ function CreateTab() {
     }
   }
 
-  const canSave = destinationPath.trim() && filename.trim() && content.trim() && !saving
+  const todoItemCount = useMemo(
+    () => content.split('\n').map(line => line.trim()).filter(Boolean).length,
+    [content],
+  )
+  const canSave = makeThisTodo
+    ? Boolean(destinationPath.trim() && todoDateStr.trim() && todoItemCount > 0 && !saving)
+    : Boolean(destinationPath.trim() && filename.trim() && content.trim() && !saving)
   const mostUsedDestinations = useMemo(() => topUsedDestinations(usageCounts, 5), [usageCounts])
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[clamp(240px,27vw,340px)_minmax(0,1fr)]">
-      <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setLeftPanelHidden(prev => !prev)}
+        >
+          {leftPanelHidden ? <PanelLeft className="mr-1.5 h-3.5 w-3.5" /> : <PanelLeftClose className="mr-1.5 h-3.5 w-3.5" />}
+          {leftPanelHidden ? 'Show Left Panel' : 'Hide Left Panel'}
+        </Button>
+      </div>
+
+      <div className={leftPanelHidden ? 'space-y-6' : 'grid gap-6 lg:grid-cols-[clamp(240px,27vw,340px)_minmax(0,1fr)]'}>
+      {!leftPanelHidden && (
+        <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Destination</CardTitle>
@@ -604,42 +793,46 @@ function CreateTab() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Emotions</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <EmotionTagger selected={emotions} onChange={setEmotions} />
-          </CardContent>
-        </Card>
+        {!makeThisTodo && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Emotions</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <EmotionTagger selected={emotions} onChange={setEmotions} />
+            </CardContent>
+          </Card>
+        )}
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Note Settings</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 pt-0">
-            <div className="flex items-center gap-3">
-              <Switch
-                checked={dateHeader}
-                onCheckedChange={setDateHeader}
-                id="date-header"
-              />
-              <label htmlFor="date-header" className="text-sm text-muted-foreground cursor-pointer">
-                Add date header
-              </label>
-            </div>
-            <div className="flex items-center gap-3">
-              <Switch
-                checked={useCustomTitle}
-                onCheckedChange={handleCustomTitleToggle}
-                id="custom-title"
-              />
-              <label htmlFor="custom-title" className="text-sm text-muted-foreground cursor-pointer">
-                Use custom title
-              </label>
-            </div>
-          </CardContent>
-        </Card>
+        {!makeThisTodo && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Note Settings</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={dateHeader}
+                  onCheckedChange={setDateHeader}
+                  id="date-header"
+                />
+                <label htmlFor="date-header" className="text-sm text-muted-foreground cursor-pointer">
+                  Add date header
+                </label>
+              </div>
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={useCustomTitle}
+                  onCheckedChange={handleCustomTitleToggle}
+                  id="custom-title"
+                />
+                <label htmlFor="custom-title" className="text-sm text-muted-foreground cursor-pointer">
+                  Use custom title
+                </label>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {(message || error) && (
           <div className="space-y-2">
@@ -656,89 +849,197 @@ function CreateTab() {
           </div>
         )}
       </div>
+      )}
 
-      {editorPath ? (
+      <div className="space-y-4">
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-sm">Edit Note</CardTitle>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setEditorPath(null)}>
-                  Close Editor
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleCreateAnother}>
-                  Create Another
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                  onClick={() => { void handleDeleteCurrent() }}
-                  disabled={deleting}
-                >
-                  {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                  Delete
-                </Button>
-              </div>
+              <CardTitle className="text-sm">Quick Destinations</CardTitle>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={openQuickDestinationModal}
+              >
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Add Destination
+              </Button>
             </div>
-            <p className="text-xs text-muted-foreground break-all">{editorPath}</p>
           </CardHeader>
-          <CardContent className="p-0">
-            <MarkdownDocumentBlock
-              path={editorPath}
-              initialMode="edit"
-              onSaved={({ output_path }) => {
-                setSavedPath(output_path)
-                setMessage(`Saved ${output_path}.`)
-              }}
-              className="h-[calc(100dvh-18rem)] min-h-[520px] rounded-b-xl"
-            />
+          <CardContent className="pt-0">
+            {quickDestinations.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No quick destinations yet.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {quickDestinations.map((destination) => {
+                  const destinationPathValue = destination.pathSegments.join('/')
+                  const active = destinationPathValue === destinationPath
+                  return (
+                    <div
+                      key={destination.id}
+                      className={`inline-flex items-center rounded-full border px-1 py-1 ${
+                        active
+                          ? 'border-primary/80 bg-primary text-primary-foreground'
+                          : 'border-border/60 bg-background text-foreground'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        className="rounded-full px-2.5 py-1 text-xs font-medium transition-colors hover:opacity-90"
+                        title={destinationPathValue}
+                        onClick={() => applyDestinationSegments(destination.pathSegments)}
+                      >
+                        {destination.label}
+                      </button>
+                      <button
+                        type="button"
+                        className={`rounded-full p-1 transition-colors ${
+                          active
+                            ? 'text-primary-foreground/90 hover:bg-primary-foreground/20'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        }`}
+                        title={`Remove quick destination ${destination.label}`}
+                        onClick={() => handleDeleteQuickDestination(destination.id)}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
-      ) : (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Compose Note</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-0">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-xs text-muted-foreground">Filename</label>
-                <input
-                  value={filename}
-                  onChange={(event) => {
-                    setFilename(event.target.value)
-                    setFilenameTouched(true)
-                  }}
-                  placeholder="2026-02-26.md"
-                  className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                />
-                <p className="text-[11px] text-muted-foreground/70">
-                  Saved as: {normalizedFilename}
-                </p>
-              </div>
 
-              {useCustomTitle && (
-                <div className="space-y-2">
-                  <label className="text-xs text-muted-foreground">Custom title</label>
+        {editorPath ? (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle className="text-sm">Edit Note</CardTitle>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => setEditorPath(null)}>
+                    Close Editor
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleCreateAnother}>
+                    Create Another
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                    onClick={() => { void handleDeleteCurrent() }}
+                    disabled={deleting}
+                  >
+                    {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    Delete
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground break-all">{editorPath}</p>
+            </CardHeader>
+            <CardContent className="p-0">
+              <MarkdownDocumentBlock
+                path={editorPath}
+                initialMode="edit"
+                onSaved={({ output_path }) => {
+                  setSavedPath(output_path)
+                  setMessage(`Saved ${output_path}.`)
+                }}
+                className="h-[calc(100dvh-18rem)] min-h-[520px] rounded-b-xl"
+              />
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">{makeThisTodo ? 'Compose To Dos' : 'Compose Note'}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-0">
+            <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">{makeThisTodo ? 'Date' : 'Filename'}</label>
+                {makeThisTodo ? (
                   <input
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
-                    placeholder="Becomes the note title + heading"
+                    type="date"
+                    value={todoDateStr}
+                    onChange={(event) => setTodoDateStr(event.target.value)}
                     className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                   />
-                </div>
-              )}
+                ) : (
+                  <input
+                    value={filename}
+                    onChange={(event) => {
+                      setFilename(event.target.value)
+                      setFilenameTouched(true)
+                    }}
+                    placeholder="2026-02-26.md"
+                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  />
+                )}
+              </div>
+
+              <div className="sm:justify-self-end sm:self-end">
+                <label
+                  htmlFor="compose-make-this-todo"
+                  className="inline-flex h-10 cursor-pointer select-none items-center gap-2 text-sm text-muted-foreground"
+                >
+                  <input
+                    id="compose-make-this-todo"
+                    type="checkbox"
+                    checked={makeThisTodo}
+                    onChange={(event) => handleMakeThisTodoChange(event.target.checked)}
+                    className="h-4 w-4 rounded border-input accent-primary focus:ring-2 focus:ring-ring"
+                  />
+                  <span>Make this a todo</span>
+                </label>
+              </div>
             </div>
+            {!makeThisTodo && (
+              <p className="text-[11px] text-muted-foreground/70">
+                Saved as: {normalizedFilename}
+              </p>
+            )}
+
+            {makeThisTodo ? (
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Detected items</label>
+                <div className="h-10 rounded-lg border border-input bg-background px-3 text-sm flex items-center">
+                  {todoItemCount} item{todoItemCount !== 1 ? 's' : ''}
+                </div>
+              </div>
+            ) : (
+              <>
+                {useCustomTitle && (
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground">Custom title</label>
+                    <input
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                      placeholder="Becomes the note title + heading"
+                      className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    />
+                  </div>
+                )}
+              </>
+            )}
 
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <label className="text-xs text-muted-foreground">Content</label>
+                <label className="text-xs text-muted-foreground">{makeThisTodo ? 'Tasks' : 'Content'}</label>
                 <div className="flex items-center gap-1">
                   <InfoPanelToggleButtonBlock active={showMetaPanel} onToggle={() => setShowMetaPanel(v => !v)} />
                   <AiPanelToggleButtonBlock active={showAiAssist} onToggle={() => setShowAiAssist(v => !v)} />
                 </div>
               </div>
+
+              {makeThisTodo && (
+                <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                  Each non-empty line is saved as a checklist item in the selected todo note.
+                </div>
+              )}
 
               {showMetaPanel && (
                 <div className="space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3">
@@ -850,19 +1151,22 @@ function CreateTab() {
                   setContent(next)
                   if (assistSuggestion || assistError) clearAssistState()
                 }}
-                placeholder="What's on your mind?"
+                placeholder={makeThisTodo ? 'One task per line...' : "What's on your mind?"}
                 toolbarAlwaysVisible
                 className="min-h-[400px] rounded-lg border border-input overflow-hidden"
               />
             </div>
 
             <div className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
-              Destination file: <span className="font-mono text-foreground break-all">{targetPath ?? '(select destination + filename)'}</span>
+              {makeThisTodo ? 'Destination todo file' : 'Destination file'}:{' '}
+              <span className="font-mono text-foreground break-all">
+                {targetPath ?? (makeThisTodo ? '(select destination + date)' : '(select destination + filename)')}
+              </span>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
               <Button onClick={handleSave} disabled={!canSave}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create Note'}
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : (makeThisTodo ? 'Save To Dos' : 'Create Note')}
               </Button>
 
               <Button
@@ -885,12 +1189,92 @@ function CreateTab() {
               <div className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm">
                 <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
                 <span>
-                  Saved to <span className="font-medium text-foreground">{savedPath}</span>
+                  {makeThisTodo
+                    ? (
+                      <>
+                        {itemsAdded} task{itemsAdded !== 1 ? 's' : ''} saved to <span className="font-medium text-foreground">{savedPath}</span>
+                      </>
+                    )
+                    : (
+                      <>
+                        Saved to <span className="font-medium text-foreground">{savedPath}</span>
+                      </>
+                    )}
                 </span>
               </div>
             )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+      </div>
+
+      {quickDestinationModalOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-background/50 backdrop-blur-sm"
+            onClick={() => setQuickDestinationModalOpen(false)}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <Card className="w-full max-w-2xl border-border/80 shadow-2xl">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle>Add Quick Destination</CardTitle>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Create a top-panel destination button (for example, F9 Thoughts).
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+                    onClick={() => setQuickDestinationModalOpen(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs text-muted-foreground">Button label</label>
+                  <input
+                    value={quickDestinationLabel}
+                    onChange={(event) => setQuickDestinationLabel(event.target.value)}
+                    placeholder="F9 Thoughts"
+                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs text-muted-foreground">Destination folder</label>
+                  <p className="text-[11px] text-muted-foreground/70 break-all">
+                    {quickDestinationBasePath || '(choose a folder)'}
+                  </p>
+                  <CascadingFolderPicker
+                    key={`quick-destination-picker-${quickDestinationPickerVersion}`}
+                    defaultPath={quickDestinationPickerDefaultPath}
+                    onChange={handleQuickDestinationFolderChange}
+                    previewLabel="Destination preview"
+                    storageKey={DESTINATION_RECENTS_KEY}
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={() => setQuickDestinationModalOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleAddQuickDestination}
+                    disabled={!quickDestinationLabel.trim() || quickDestinationBaseSegments.length === 0}
+                  >
+                    Add Destination
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </>
       )}
     </div>
   )
@@ -945,13 +1329,22 @@ export default function NewThought() {
               onClick={() => setTab('view')}
             >
               <Eye className="h-3.5 w-3.5 mr-1.5" />
-              View
+              View Notes
+            </Button>
+            <Button
+              variant={tab === 'view_todos' ? 'default' : 'secondary'}
+              size="sm"
+              onClick={() => setTab('view_todos')}
+            >
+              <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
+              View To Dos
             </Button>
           </div>
         </header>
 
         {tab === 'create' && <CreateTab />}
         {tab === 'view' && <ThoughtsCalendarOrch />}
+        {tab === 'view_todos' && <TodoCalendarOrch />}
       </div>
     </div>
   )
