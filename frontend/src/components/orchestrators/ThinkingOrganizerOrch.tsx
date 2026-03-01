@@ -21,6 +21,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 type TabMode = 'backlog' | 'view' | 'link' | 'steward' | 'integrity'
 const TAB_QUERY_PARAM = 'tab'
+const THINKING_ORGANIZER_TABS: Array<{ id: TabMode; label: string }> = [
+  { id: 'backlog', label: 'Create' },
+  { id: 'view', label: 'View' },
+  { id: 'link', label: 'Link' },
+  { id: 'steward', label: 'Steward' },
+  { id: 'integrity', label: 'Integrity' },
+]
 
 function nodeIcon(type: NodeType) {
   if (type === 'program') return FolderTree
@@ -312,41 +319,17 @@ export default function ThinkingOrganizerOrch() {
       </div>
 
       <div className="mb-4 flex items-center gap-2">
-        <Button
-          variant={tab === 'backlog' ? 'default' : 'secondary'}
-          size="sm"
-          onClick={() => setTab('backlog')}
-        >
-          Create
-        </Button>
-        <Button
-          variant={tab === 'view' ? 'default' : 'secondary'}
-          size="sm"
-          onClick={() => setTab('view')}
-        >
-          View
-        </Button>
-        <Button
-          variant={tab === 'link' ? 'default' : 'secondary'}
-          size="sm"
-          onClick={() => setTab('link')}
-        >
-          Link
-        </Button>
-        <Button
-          variant={tab === 'steward' ? 'default' : 'secondary'}
-          size="sm"
-          onClick={() => setTab('steward')}
-        >
-          Steward
-        </Button>
-        <Button
-          variant={tab === 'integrity' ? 'default' : 'secondary'}
-          size="sm"
-          onClick={() => setTab('integrity')}
-        >
-          Integrity
-        </Button>
+        {THINKING_ORGANIZER_TABS.map((item) => (
+          <Button
+            key={item.id}
+            variant={tab === item.id ? 'default' : 'ghost'}
+            size="sm"
+            className="w-[7.5rem] justify-center"
+            onClick={() => setTab(item.id)}
+          >
+            {item.label}
+          </Button>
+        ))}
       </div>
 
       <section hidden={tab !== 'backlog'} aria-hidden={tab !== 'backlog'}>

@@ -1600,24 +1600,27 @@ export default function BacklogOrch() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => setProjectModalOpen(true)}>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          {availableProjects.map(project => {
+            const isActive = project.root === activeProjectRoot
+            return (
+              <Button
+                key={project.root}
+                size="sm"
+                variant={isActive ? 'default' : 'ghost'}
+                className="w-[9rem] justify-center"
+                onClick={() => selectProject(project.root)}
+                title={project.name}
+              >
+                <span className="truncate">{project.name}</span>
+              </Button>
+            )
+          })}
+        </div>
+        <Button size="sm" className="ml-auto shrink-0" onClick={() => setProjectModalOpen(true)}>
           <Plus className="mr-1.5 h-4 w-4" />
           Create Project
         </Button>
-
-        {availableProjects.map(project => {
-          const isActive = project.root === activeProjectRoot
-          return (
-            <Button
-              key={project.root}
-              size="sm"
-              variant={isActive ? 'default' : 'secondary'}
-              onClick={() => selectProject(project.root)}
-            >
-              {project.name}
-            </Button>
-          )
-        })}
 
         {activeProjectRoot && (
           <div className="basis-full text-xs text-muted-foreground">
