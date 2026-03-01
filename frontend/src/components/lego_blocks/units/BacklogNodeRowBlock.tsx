@@ -56,6 +56,9 @@ interface BacklogNodeRowBlockProps {
   canEditNodeStatus: boolean
   canToggleDetails: boolean
   rowColumns: BacklogRowColumnBlock[]
+  titleColumnClassName?: string
+  wrapTitleText?: boolean
+  actionsRightEdge?: boolean
   showExpandToggle: boolean
   showNodeTypeIcon: boolean
   showPriorityDot: boolean
@@ -100,6 +103,9 @@ export function BacklogNodeRowBlock({
   canEditNodeStatus,
   canToggleDetails,
   rowColumns,
+  titleColumnClassName,
+  wrapTitleText = false,
+  actionsRightEdge = false,
   showExpandToggle,
   showNodeTypeIcon,
   showPriorityDot,
@@ -162,10 +168,17 @@ export function BacklogNodeRowBlock({
       <button
         type="button"
         onClick={onSelectNode}
-        className="group min-w-0 flex flex-1 items-center gap-2 text-left text-sm font-medium"
+        className={cn(
+          'group min-w-0 flex gap-2 text-left text-sm font-medium',
+          titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',
+          wrapTitleText ? 'items-start' : 'items-center',
+        )}
       >
         {ticketBadge}
-        <span className="min-w-0 flex-1 truncate">
+        <span className={cn(
+          'min-w-0',
+          wrapTitleText ? 'break-words whitespace-normal leading-snug' : 'flex-1 truncate',
+        )}>
           {nodeTitleWithoutTicket(node) || nodeDisplayTitle(node) || 'Untitled'}
         </span>
       </button>
@@ -191,7 +204,10 @@ export function BacklogNodeRowBlock({
         </div>
       )}
       {rowPresetTags.visible.length > 0 && (
-        <div className="hidden max-w-[35%] items-center gap-1 overflow-hidden lg:flex">
+        <div className={cn(
+          'hidden items-center gap-1 overflow-hidden lg:flex',
+          actionsRightEdge ? 'min-w-0 flex-1' : 'max-w-[35%]',
+        )}>
           {rowPresetTags.visible.map(tag => (
             <span
               key={`${node.uuid}-preset-row-tag-${tag}`}
@@ -213,10 +229,12 @@ export function BacklogNodeRowBlock({
       )}
       {taskNode ? (
         readOnly || !canEditTaskStatus ? (
-          <TaskStatusBadge taskStatus={taskStatus} />
+          <div className={cn('shrink-0', actionsRightEdge && 'ml-auto')}>
+            <TaskStatusBadge taskStatus={taskStatus} />
+          </div>
         ) : (
           <div
-            className="flex items-center gap-1"
+            className={cn('flex items-center gap-1', actionsRightEdge && 'ml-auto')}
             onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
           >
             {statusBusy ? (
@@ -248,10 +266,12 @@ export function BacklogNodeRowBlock({
         )
       ) : (
         readOnly || !canEditNodeStatus ? (
-          <NodeStatusBadgeBlock status={node.status} />
+          <div className={cn('shrink-0', actionsRightEdge && 'ml-auto')}>
+            <NodeStatusBadgeBlock status={node.status} />
+          </div>
         ) : (
           <div
-            className="flex items-center gap-1"
+            className={cn('flex items-center gap-1', actionsRightEdge && 'ml-auto')}
             onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
           >
             {statusBusy ? (

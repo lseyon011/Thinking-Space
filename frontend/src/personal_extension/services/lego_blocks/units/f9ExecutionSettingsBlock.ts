@@ -4,13 +4,44 @@ export interface F9ExecutionSettingsBlock {
   executionFolderPath: string
 }
 
-export const DEFAULT_F9_EXECUTION_FOLDER_PATH_BLOCK = '/Users/patila06/Library/Mobile Documents/iCloud~md~obsidian/Documents/Long Term Memory iCloud/acceleration_core/F9/F9-execution'
+export const DEFAULT_F9_EXECUTION_FOLDER_PATH_BLOCK = 'acceleration_core/F9/F9-execution'
+
+const F9_RELATIVE_ROOT_HINTS_BLOCK = [
+  'acceleration_core/',
+  'coding-projects/',
+  'operations/',
+] as const
+
+function normalizeSlashPathBlock(value: string): string {
+  return value.replace(/\\/g, '/')
+}
+
+function trimSlashesBlock(value: string): string {
+  return value.replace(/^\/+/, '').replace(/\/+$/, '')
+}
+
+function deriveRelativeExecutionPathBlock(value: string): string | null {
+  const normalized = normalizeSlashPathBlock(value)
+  const lowered = normalized.toLowerCase()
+  for (const hint of F9_RELATIVE_ROOT_HINTS_BLOCK) {
+    const idx = lowered.indexOf(`/${hint}`)
+    if (idx >= 0) {
+      const rel = trimSlashesBlock(normalized.slice(idx + 1))
+      if (rel) return rel
+    }
+  }
+  return null
+}
 
 function sanitizeExecutionFolderPathBlock(value: unknown): string {
   if (typeof value !== 'string') return DEFAULT_F9_EXECUTION_FOLDER_PATH_BLOCK
   const normalized = value.trim()
   if (!normalized) return DEFAULT_F9_EXECUTION_FOLDER_PATH_BLOCK
-  return normalized.replace(/[\\/]+$/, '')
+  const withoutTrailing = normalizeSlashPathBlock(normalized).replace(/\/+$/, '')
+  if (withoutTrailing.startsWith('/')) {
+    return deriveRelativeExecutionPathBlock(withoutTrailing) ?? withoutTrailing
+  }
+  return withoutTrailing
 }
 
 function sanitizeSettingsBlock(
@@ -42,4 +73,3 @@ export function writeF9ExecutionSettingsBlock(
   setJsonStorageItem(STORAGE_KEYS.f9ExecutionSettings, sanitized)
   return sanitized
 }
-

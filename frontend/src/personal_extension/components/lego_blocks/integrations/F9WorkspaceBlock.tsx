@@ -192,15 +192,27 @@ function normalizeStrikeForDisplayBlock(value: string | null | undefined): strin
 
 function mapPositionStatusToNodeStatusBlock(status: string | null | undefined): NodeRecord['status'] {
   const normalized = (status ?? '').trim().toLowerCase()
-  if (normalized === 'taken') return 'active'
-  if (normalized === 'watchlist') return 'paused'
-  if (normalized === 'planned') return 'incomplete'
-  return 'active'
+  if (normalized === 'taken' || normalized === 'planned' || normalized === 'watchlist') {
+    return normalized
+  }
+  if (normalized === 'active' || normalized === 'completed') return 'taken'
+  if (normalized === 'paused') return 'watchlist'
+  if (normalized === 'incomplete') return 'planned'
+  if (normalized === 'cancelled') return 'cancelled'
+  if (normalized === 'archived') return 'archived'
+  return 'taken'
 }
 
 function mapNodeStatusToPositionStatusBlock(status: NodeStatus): 'taken' | 'planned' | 'watchlist' {
-  if (status === 'paused') return 'watchlist'
+  if (status === 'watchlist' || status === 'planned' || status === 'taken') return status
+  if (status === 'paused' || status === 'cancelled' || status === 'archived') return 'watchlist'
   if (status === 'incomplete') return 'planned'
+  return 'taken'
+}
+
+function normalizePositionStatusBlock(status: string | null | undefined): 'taken' | 'planned' | 'watchlist' {
+  const normalized = (status ?? '').trim().toLowerCase()
+  if (normalized === 'planned' || normalized === 'watchlist' || normalized === 'taken') return normalized
   return 'taken'
 }
 
@@ -261,13 +273,13 @@ function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, u
     if (!ticker) continue
     const legId = firstStringBlock(row.leg_id, row.id) || `${ticker}-${grouped.get(ticker)?.length ?? 0}`
     const fileName = `${toOverallPositionTitleBlock(row).replace(/\s+/g, '-')}.md`
-    const status = (firstStringBlock(row.status, row.position_status) || 'taken').toLowerCase()
+    const status = normalizePositionStatusBlock(firstStringBlock(row.status, row.position_status))
     const list = grouped.get(ticker) ?? []
     list.push({
       id: legId,
       fileName,
       symbol: ticker,
-      status: status || 'taken',
+      status,
       source: 'overall_payload',
       instrumentType: firstStringBlock(row.instrument_type, row.type) || null,
       optionType: firstStringBlock(row.option_type) || null,
@@ -504,6 +516,7 @@ export default function F9WorkspaceBlock({
       nodeByUuid.set(programUuid, programNode)
 
       const nodes = company.positions.map((position, index) => {
+        const positionStatus = normalizePositionStatusBlock(position.status)
         const fileName = position.fileName
         const nodeUuid = `f9-pos-${normalizeKeyFragmentBlock(companyTicker)}-${normalizeKeyFragmentBlock(fileName)}`
         positionRefByNodeUuid.set(nodeUuid, { companyTicker, fileName })
@@ -522,7 +535,7 @@ export default function F9WorkspaceBlock({
             : `f9/${companyTicker}/positions/${fileName}`,
           projectRoot: executionRoot ?? 'f9-execution',
           description: [
-            `status: ${position.status || 'taken'}`,
+            `status: ${positionStatus}`,
             `type: ${position.instrumentType || '—'}`,
             `last: ${formatCurrencyFromUnknownBlock(position.lastPrice)}`,
             `cost: ${formatCurrencyFromUnknownBlock(position.cost)}`,
@@ -534,14 +547,14 @@ export default function F9WorkspaceBlock({
             companyTicker.toLowerCase(),
             firstStringBlock(position.instrumentType).toLowerCase() || 'position',
           ],
-          status: mapPositionStatusToNodeStatusBlock(position.status),
+          status: mapPositionStatusToNodeStatusBlock(positionStatus),
           sortOrder: index,
           createdAt: now,
           updatedAt: now,
           metadata: {
             f9_company_ticker: companyTicker,
             f9_position_file_name: fileName,
-            f9_position_status: position.status || 'taken',
+            f9_position_status: positionStatus,
             f9_linked_idea_id: position.linkedIdeaId ?? '',
             f9_position_payload: positionPayloadFromSummaryBlock(position),
           },
@@ -897,6 +910,11 @@ export default function F9WorkspaceBlock({
                     onOpenNodeDetails={onOpenBacklogNodeDetails}
                     canOpenNodeDetails={(node) => node.type === 'epic'}
                     rowColumns={f9RowColumns}
+                    titleColumnClassName="w-[20rem]"
+                    wrapTitleText
+                    actionsRightEdge
+                    showProgramStatus={false}
+                    showProgramCopyButton={false}
                     showNodeTypeIcons={false}
                     showExpandToggles={false}
                     showPriorityDots={false}
@@ -919,6 +937,11 @@ export default function F9WorkspaceBlock({
                       onOpenNodeDetails={onOpenBacklogNodeDetails}
                       canOpenNodeDetails={(node) => node.type === 'epic'}
                       rowColumns={f9RowColumns}
+                      titleColumnClassName="w-[20rem]"
+                      wrapTitleText
+                      actionsRightEdge
+                      showProgramStatus={false}
+                      showProgramCopyButton={false}
                       showNodeTypeIcons={false}
                       showExpandToggles={false}
                       showPriorityDots={false}

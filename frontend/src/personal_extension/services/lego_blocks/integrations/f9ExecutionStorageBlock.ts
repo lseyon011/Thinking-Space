@@ -14,6 +14,12 @@ const POSITION_PAYLOAD_KEYS_BLOCK = [
   'result',
 ] as const
 
+const F9_RELATIVE_ROOT_HINTS_BLOCK = [
+  'acceleration_core/',
+  'coding-projects/',
+  'operations/',
+] as const
+
 const DEFAULT_POSITION_BODY_BLOCK = [
   '## Notes',
   '',
@@ -172,13 +178,17 @@ export function resolveF9ExecutionRootForVaultBlock(executionFolderPath: string)
     return trimSlashesBlock(normalizedInput)
   }
 
+  const inferredRelativePath = deriveRelativeExecutionPathFromAbsoluteBlock(normalizedInput)
+
   const storedVaultRoot = getStoredVaultRoot()
   if (!storedVaultRoot) {
-    throw new Error('Vault root is not selected yet. Set a vault root before using an absolute F9 execution folder.')
+    if (inferredRelativePath) return inferredRelativePath
+    throw new Error('Vault root is not selected yet. Set a vault root or configure a relative F9 execution folder path.')
   }
 
   const normalizedVaultRoot = normalizeSlashPathBlock(removeFileSchemeBlock(storedVaultRoot).trim())
   if (!normalizedVaultRoot.startsWith('/')) {
+    if (inferredRelativePath) return inferredRelativePath
     throw new Error('Absolute F9 execution folder requires an absolute vault root.')
   }
 
@@ -187,9 +197,21 @@ export function resolveF9ExecutionRootForVaultBlock(executionFolderPath: string)
   }
   const vaultPrefix = `${normalizedVaultRoot}/`
   if (!normalizedInput.startsWith(vaultPrefix)) {
+    if (inferredRelativePath) return inferredRelativePath
     throw new Error(`F9 execution folder must be inside the selected vault root: ${normalizedVaultRoot}`)
   }
   return normalizedInput.slice(vaultPrefix.length)
+}
+
+function deriveRelativeExecutionPathFromAbsoluteBlock(absolutePath: string): string | null {
+  const lowered = absolutePath.toLowerCase()
+  for (const hint of F9_RELATIVE_ROOT_HINTS_BLOCK) {
+    const idx = lowered.indexOf(`/${hint}`)
+    if (idx < 0) continue
+    const candidate = trimSlashesBlock(absolutePath.slice(idx + 1))
+    if (candidate) return candidate
+  }
+  return null
 }
 
 export async function syncF9ExecutionStorageBlock(

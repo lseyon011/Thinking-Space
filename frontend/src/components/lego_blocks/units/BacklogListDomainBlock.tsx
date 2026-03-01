@@ -249,6 +249,9 @@ function normalizeTaskStatus(value: string | undefined): keyof typeof TASK_STATU
 function taskStatusFromNodeStatus(status: NodeStatus): TaskStatusOption {
   if (status === 'completed') return 'done'
   if (status === 'archived' || status === 'cancelled') return 'cancelled'
+  if (status === 'taken') return 'in_progress'
+  if (status === 'planned') return 'ready'
+  if (status === 'watchlist') return 'blocked'
   if (status === 'incomplete') return 'ready'
   if (status === 'paused') return 'blocked'
   return 'in_progress'

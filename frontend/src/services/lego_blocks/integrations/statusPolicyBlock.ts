@@ -57,6 +57,9 @@ export function nodeStatusFromTaskStatus(taskStatus: string | undefined): NodeSt
 export function taskStatusFromNodeStatus(status: NodeStatus): string {
   if (status === 'completed') return 'done'
   if (status === 'archived' || status === 'cancelled') return 'cancelled'
+  if (status === 'taken') return 'in_progress'
+  if (status === 'planned') return 'ready'
+  if (status === 'watchlist') return 'blocked'
   if (status === 'incomplete') return 'ready'
   if (status === 'paused') return 'blocked'
   return 'in_progress'

@@ -9,6 +9,7 @@ import { BacklogInlineNotesEditorBlock } from '@/components/lego_blocks/integrat
 import { ProgramGroupHeaderBlock } from '@/components/lego_blocks/integrations/ProgramGroupHeaderBlock'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import { tagLookupKeyBlock } from '@/services/lego_blocks/units/tagBlock'
+import { cn } from '@/lib/utils'
 import type { NodeStatus, NodeType, YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
 import {
   allowedCreateTypes,
@@ -71,6 +72,11 @@ export interface BacklogListBlockProps {
   canOpenNodeDetails?: (node: NodeRecord) => boolean
   rowColumns?: BacklogRowColumnBlock[]
   rowDetailsRenderer?: ((node: NodeRecord) => ReactNode) | null
+  titleColumnClassName?: string
+  wrapTitleText?: boolean
+  actionsRightEdge?: boolean
+  showProgramStatus?: boolean
+  showProgramCopyButton?: boolean
   showExpandToggles?: boolean
   showNodeTypeIcons?: boolean
   showPriorityDots?: boolean
@@ -103,6 +109,11 @@ export default function BacklogListBlock({
   canOpenNodeDetails,
   rowColumns = [],
   rowDetailsRenderer = null,
+  titleColumnClassName,
+  wrapTitleText = false,
+  actionsRightEdge = false,
+  showProgramStatus = true,
+  showProgramCopyButton = true,
   showExpandToggles = true,
   showNodeTypeIcons = true,
   showPriorityDots = true,
@@ -617,6 +628,9 @@ export default function BacklogListBlock({
           canEditNodeStatus={!!onUpdateNodeStatus}
           canToggleDetails={canToggleDetails}
           rowColumns={rowColumns}
+          titleColumnClassName={titleColumnClassName}
+          wrapTitleText={wrapTitleText}
+          actionsRightEdge={actionsRightEdge}
           showExpandToggle={showExpandToggles}
           showNodeTypeIcon={showNodeTypeIcons}
           showPriorityDot={showPriorityDots}
@@ -675,7 +689,7 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderTicketBadge, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, statusBusyByNode, toggleNode, toggleRowDetails])
+  }, [actionsRightEdge, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderTicketBadge, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, statusBusyByNode, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
 
   const renderProgramSection = useCallback((program: NodeRecord, programIndex: number) => {
     void ensureProgramLoaded(program)
@@ -712,6 +726,11 @@ export default function BacklogListBlock({
           canEditNodeStatus={!!onUpdateNodeStatus}
           canToggleDetails={canToggleDetails}
           rowColumns={rowColumns}
+          titleColumnClassName={titleColumnClassName}
+          wrapTitleText={wrapTitleText}
+          actionsRightEdge={actionsRightEdge}
+          showProgramStatus={showProgramStatus}
+          showProgramCopyButton={showProgramCopyButton}
           showNodeTypeIcon={showNodeTypeIcons}
           showPriorityDot={showPriorityDots}
           canAssignToGroup={allowProgramLayoutEditing && !!onAssignProgramToGroup && programGroups.length > 0}
@@ -757,7 +776,7 @@ export default function BacklogListBlock({
         </div>
       </div>
     )
-  }, [allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, statusBusyByNode, toggleRowDetails])
+  }, [actionsRightEdge, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderTicketBadge, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, selectedNodeId, showProgramCopyButton, showProgramStatus, statusBusyByNode, titleColumnClassName, toggleRowDetails, wrapTitleText])
 
   return (
     <div className="flex flex-col space-y-3">
@@ -783,7 +802,10 @@ export default function BacklogListBlock({
 
       {rowColumns.length > 0 && (
         <div className="hidden items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-1 xl:flex">
-          <span className="min-w-0 flex-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className={cn(
+            'text-[10px] font-semibold uppercase tracking-wide text-muted-foreground',
+            titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'min-w-0 flex-1',
+          )}>
             Title
           </span>
           {rowColumns.map(column => (

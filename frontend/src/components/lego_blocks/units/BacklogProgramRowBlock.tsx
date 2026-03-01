@@ -35,6 +35,11 @@ interface BacklogProgramRowBlockProps {
   canEditNodeStatus: boolean
   canToggleDetails: boolean
   rowColumns: BacklogRowColumnBlock[]
+  titleColumnClassName?: string
+  wrapTitleText?: boolean
+  actionsRightEdge?: boolean
+  showProgramStatus?: boolean
+  showProgramCopyButton?: boolean
   showNodeTypeIcon: boolean
   showPriorityDot: boolean
   canAssignToGroup: boolean
@@ -74,6 +79,11 @@ export function BacklogProgramRowBlock({
   canEditNodeStatus,
   canToggleDetails,
   rowColumns,
+  titleColumnClassName,
+  wrapTitleText = false,
+  actionsRightEdge = false,
+  showProgramStatus = true,
+  showProgramCopyButton = true,
   showNodeTypeIcon,
   showPriorityDot,
   canAssignToGroup,
@@ -146,9 +156,16 @@ export function BacklogProgramRowBlock({
         </div>
       )}
       {showNodeTypeIcon && <FolderTree className="h-4 w-4 shrink-0 text-sky-600" />}
-      <div className="min-w-0 flex flex-1 items-center gap-2">
+      <div className={cn(
+        'min-w-0 flex gap-2',
+        titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',
+        wrapTitleText ? 'items-start' : 'items-center',
+      )}>
         {ticketBadge}
-        <span className="min-w-0 flex-1 truncate text-sm font-bold">
+        <span className={cn(
+          'min-w-0 text-sm font-bold',
+          wrapTitleText ? 'break-words whitespace-normal leading-snug' : 'flex-1 truncate',
+        )}>
           {nodeTitleWithoutTicket(program) || nodeDisplayTitle(program) || 'Untitled'}
         </span>
       </div>
@@ -174,7 +191,10 @@ export function BacklogProgramRowBlock({
         </div>
       )}
       {rowPresetTags.visible.length > 0 && (
-        <div className="hidden max-w-[35%] items-center gap-1 overflow-hidden lg:flex">
+        <div className={cn(
+          'hidden items-center gap-1 overflow-hidden lg:flex',
+          actionsRightEdge ? 'min-w-0 flex-1' : 'max-w-[35%]',
+        )}>
           {rowPresetTags.visible.map(tag => (
             <span
               key={`${program.uuid}-preset-row-tag-${tag}`}
@@ -194,24 +214,28 @@ export function BacklogProgramRowBlock({
           )}
         </div>
       )}
-      {readOnly || !canEditNodeStatus ? (
-        <NodeStatusBadgeBlock status={program.status} />
-      ) : (
-        <div
-          className="flex items-center gap-1"
-          onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
-        >
-          {statusBusy ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-          ) : (
-            <NodeStatusSelectBlock
-              status={program.status}
-              onChange={onNodeStatusChange}
-              variant="pill"
-              title="Change status"
-            />
-          )}
-        </div>
+      {showProgramStatus && (
+        readOnly || !canEditNodeStatus ? (
+          <div className={cn('shrink-0', actionsRightEdge && 'ml-auto')}>
+            <NodeStatusBadgeBlock status={program.status} />
+          </div>
+        ) : (
+          <div
+            className={cn('flex items-center gap-1', actionsRightEdge && 'ml-auto')}
+            onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+          >
+            {statusBusy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            ) : (
+              <NodeStatusSelectBlock
+                status={program.status}
+                onChange={onNodeStatusChange}
+                variant="pill"
+                title="Change status"
+              />
+            )}
+          </div>
+        )
       )}
       {canAssignToGroup && (
         <div
@@ -256,16 +280,18 @@ export function BacklogProgramRowBlock({
           <Info className="h-3.5 w-3.5" />
         </button>
       )}
-      <button
-        type="button"
-        draggable={false}
-        onClick={onCopyRowLabel}
-        className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        title={copied ? 'Copied' : 'Copy row label'}
-        aria-label={copied ? `Copied row label ${nodeDisplayTitle(program)}` : `Copy row label ${nodeDisplayTitle(program)}`}
-      >
-        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-      </button>
+      {showProgramCopyButton && (
+        <button
+          type="button"
+          draggable={false}
+          onClick={onCopyRowLabel}
+          className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          title={copied ? 'Copied' : 'Copy row label'}
+          aria-label={copied ? `Copied row label ${nodeDisplayTitle(program)}` : `Copy row label ${nodeDisplayTitle(program)}`}
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+      )}
       {showPriorityDot && <PriorityDot priority={program.priority} />}
     </div>
   )
