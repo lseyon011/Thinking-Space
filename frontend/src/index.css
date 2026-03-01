@@ -205,7 +205,7 @@
     --ltm-safe-right: var(--safe-area-inset-right);
     --ltm-safe-bottom: var(--safe-area-inset-bottom);
     --ltm-safe-left: var(--safe-area-inset-left);
-    --ltm-shell-inset: clamp(0.22rem, 0.58vw, 0.5rem);
+    --ltm-shell-inset: clamp(0.16rem, 0.46vw, 0.38rem);
     --ltm-shell-gap: clamp(0.5rem, 0.9vw, 0.85rem);
     --ltm-shell-surface-radius: calc(var(--radius) + 0.45rem);
     --ltm-shell-main-panel-radius: calc(var(--radius) + 0.45rem);
@@ -229,6 +229,51 @@
     --ltm-shell-motion-modal-duration: var(--ltm-anim-moderate);
     --ltm-shell-motion-capsule-duration: var(--ltm-anim-fast);
     --ltm-shell-motion-tab-duration: var(--ltm-anim-fast);
+  }
+
+  .ltm-app-shell * {
+    scrollbar-color: transparent transparent;
+  }
+
+  .ltm-app-shell *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    background: transparent;
+  }
+
+  .ltm-app-shell *::-webkit-scrollbar-track {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .ltm-app-shell *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  .ltm-app-shell *::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+    transition: background-color 120ms var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1));
+  }
+
+  .ltm-app-shell *:hover {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.42) transparent;
+  }
+
+  .ltm-app-shell.ltm-scrollbar-scrolling * {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.46) transparent;
+  }
+
+  .ltm-app-shell *:hover::-webkit-scrollbar-thumb,
+  .ltm-app-shell *:focus-within::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.42);
+  }
+
+  .ltm-app-shell.ltm-scrollbar-scrolling *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.46);
   }
 
   .ltm-app-shell[data-ltm-surface='electron'][data-ltm-mode='desktop'] {

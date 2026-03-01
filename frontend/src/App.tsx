@@ -277,6 +277,8 @@ function App() {
   const topChromeMenuRef = useRef<HTMLDivElement | null>(null)
   const syncPanelRef = useRef<HTMLDivElement | null>(null)
   const syncToggleButtonRef = useRef<HTMLButtonElement | null>(null)
+  const appShellRef = useRef<HTMLDivElement | null>(null)
+  const scrollbarActivityTimeoutRef = useRef<number | null>(null)
   const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
   const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerPanelSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -972,6 +974,33 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    const appShellNode = appShellRef.current
+    if (!appShellNode) return
+
+    const clearScrollbarActivityTimeout = () => {
+      if (scrollbarActivityTimeoutRef.current === null) return
+      window.clearTimeout(scrollbarActivityTimeoutRef.current)
+      scrollbarActivityTimeoutRef.current = null
+    }
+
+    const markScrollActivity = () => {
+      appShellNode.classList.add('ltm-scrollbar-scrolling')
+      clearScrollbarActivityTimeout()
+      scrollbarActivityTimeoutRef.current = window.setTimeout(() => {
+        appShellNode.classList.remove('ltm-scrollbar-scrolling')
+        scrollbarActivityTimeoutRef.current = null
+      }, 340)
+    }
+
+    appShellNode.addEventListener('scroll', markScrollActivity, { capture: true, passive: true })
+    return () => {
+      clearScrollbarActivityTimeout()
+      appShellNode.classList.remove('ltm-scrollbar-scrolling')
+      appShellNode.removeEventListener('scroll', markScrollActivity, true)
+    }
+  }, [])
+
   if (needsVaultSetup) {
     return (
       <VaultSetup
@@ -989,6 +1018,7 @@ function App() {
 
   return (
     <div
+      ref={appShellRef}
       className="ltm-app-shell"
       style={shellSafeAreaVars}
       data-ltm-mode={layout.mode}
