@@ -189,6 +189,20 @@ function formatOverallValueBlock(balanceData: unknown): string {
   return formatCurrencyBlock(value)
 }
 
+function formatFetchedTimestampBlock(value: string | null): string {
+  if (!value) return 'No saved refresh yet'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  })
+}
+
 function normalizeKeyFragmentBlock(value: string): string {
   const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
   return normalized || 'item'
@@ -1184,18 +1198,6 @@ export default function F9WorkspaceBlock({
             </div>
           )}
 
-          {!liveRefreshAvailable && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
-              Live Webull refresh is available only in the Electron app. This runtime shows saved F9 data from your last Electron refresh.
-            </div>
-          )}
-
-          {liveRefreshAvailable && !hasConfig && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
-              Missing Webull config. Set `VITE_F9_WEBULL_APP_KEY` and `VITE_F9_WEBULL_APP_SECRET` in your frontend env.
-            </div>
-          )}
-
           {error && (
             <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
               {error}
@@ -1223,14 +1225,10 @@ export default function F9WorkspaceBlock({
           )}
 
           {!showCompanyView && (
-            <div className="grid gap-3 text-sm sm:grid-cols-4">
-              <div className="rounded-lg border bg-background p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Runtime</p>
-                <p className="mt-1 font-medium">{formatRuntimeLabelBlock(runtime)}</p>
-              </div>
+            <div className="grid gap-3 text-sm sm:grid-cols-3">
               <div className="rounded-lg border bg-background p-3">
                 <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Fetched</p>
-                <p className="mt-1 font-medium">{fetchedAt ?? 'No saved refresh yet'}</p>
+                <p className="mt-1 font-medium">{formatFetchedTimestampBlock(fetchedAt)}</p>
                 <p className="text-xs text-muted-foreground">
                   via {formatRuntimeLabelBlock(lastRefreshRuntime)}
                 </p>
@@ -1445,6 +1443,19 @@ export default function F9WorkspaceBlock({
               Diagnostics
             </summary>
             <div className="space-y-2 p-3 text-xs text-muted-foreground">
+              {!liveRefreshAvailable && (
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
+                  Live Webull refresh is available only in the Electron app. This runtime shows saved F9 data from your last Electron refresh.
+                </div>
+              )}
+              {liveRefreshAvailable && !hasConfig && (
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
+                  Missing Webull config. Set `VITE_F9_WEBULL_APP_KEY` and `VITE_F9_WEBULL_APP_SECRET` in your frontend env.
+                </div>
+              )}
+              <p><span className="font-medium text-foreground">Runtime:</span> {formatRuntimeLabelBlock(runtime)}</p>
+              <p><span className="font-medium text-foreground">Fetched:</span> {formatFetchedTimestampBlock(fetchedAt)}</p>
+              <p><span className="font-medium text-foreground">Fetched Runtime:</span> {formatRuntimeLabelBlock(lastRefreshRuntime)}</p>
               <p><span className="font-medium text-foreground">Execution Root:</span> {executionRoot ?? 'Not configured'}</p>
               <p><span className="font-medium text-foreground">Execution Companies:</span> {executionCompanyCount}</p>
               <p><span className="font-medium text-foreground">Execution Positions:</span> {executionPositionCount}</p>
