@@ -134,7 +134,21 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
 
 function ExcalidrawPlusIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
-    <img src={excalidrawLogo} alt="" aria-hidden="true" className={className} />
+    <span
+      aria-hidden="true"
+      className={`${className} inline-block`}
+      style={{
+        backgroundColor: 'currentColor',
+        maskImage: `url(${excalidrawLogo})`,
+        maskRepeat: 'no-repeat',
+        maskPosition: 'center',
+        maskSize: 'contain',
+        WebkitMaskImage: `url(${excalidrawLogo})`,
+        WebkitMaskRepeat: 'no-repeat',
+        WebkitMaskPosition: 'center',
+        WebkitMaskSize: 'contain',
+      }}
+    />
   )
 }
 
