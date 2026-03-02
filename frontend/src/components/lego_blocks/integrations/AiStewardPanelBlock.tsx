@@ -157,21 +157,19 @@ export default function AiStewardPanelBlock({
           </div>
 
           <div className="flex items-center gap-2">
-            {onApplySuggestion && (
-              <button
-                type="button"
-                onClick={() => { void acceptProposal() }}
-                className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-95"
-              >
-                Accept
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => { void acceptProposal() }}
+              className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-95"
+            >
+              Accept
+            </button>
             <button
               type="button"
               onClick={dismissProposal}
               className="rounded-md border border-border/70 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted"
             >
-              {onApplySuggestion ? 'Reject' : 'Dismiss'}
+              Reject
             </button>
           </div>
         </div>
