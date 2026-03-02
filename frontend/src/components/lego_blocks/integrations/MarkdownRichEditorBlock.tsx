@@ -182,6 +182,101 @@ interface InlineDiffWidgetActionsBlock {
   onUpdateAfterLines: (hunkId: string, nextAfterLines: string[]) => void
 }
 
+type InlineDiffWordOpBlock = { kind: 'equal' | 'added' | 'removed'; text: string }
+
+function tokenizeInlineDiffWordOpsBlock(value: string): string[] {
+  if (!value) return []
+  return value.split(/(\s+)/).filter((token) => token.length > 0)
+}
+
+function buildInlineDiffWordOpsBlock(before: string, after: string): InlineDiffWordOpBlock[] {
+  const a = tokenizeInlineDiffWordOpsBlock(before)
+  const b = tokenizeInlineDiffWordOpsBlock(after)
+  const n = a.length
+  const m = b.length
+  if (n === 0 && m === 0) return []
+
+  const matrixCellLimit = 12_000
+  if (n * m > matrixCellLimit) {
+    return [
+      ...(before ? [{ kind: 'removed' as const, text: before }] : []),
+      ...(after ? [{ kind: 'added' as const, text: after }] : []),
+    ]
+  }
+
+  const width = m + 1
+  const lcs = new Uint16Array((n + 1) * (m + 1))
+  const idx = (i: number, j: number) => i * width + j
+
+  for (let i = n - 1; i >= 0; i -= 1) {
+    for (let j = m - 1; j >= 0; j -= 1) {
+      if (a[i] === b[j]) {
+        lcs[idx(i, j)] = lcs[idx(i + 1, j + 1)] + 1
+      } else {
+        const down = lcs[idx(i + 1, j)]
+        const right = lcs[idx(i, j + 1)]
+        lcs[idx(i, j)] = down >= right ? down : right
+      }
+    }
+  }
+
+  const ops: InlineDiffWordOpBlock[] = []
+  let i = 0
+  let j = 0
+  while (i < n && j < m) {
+    if (a[i] === b[j]) {
+      ops.push({ kind: 'equal', text: a[i] })
+      i += 1
+      j += 1
+      continue
+    }
+    const down = lcs[idx(i + 1, j)]
+    const right = lcs[idx(i, j + 1)]
+    if (down >= right) {
+      ops.push({ kind: 'removed', text: a[i] })
+      i += 1
+    } else {
+      ops.push({ kind: 'added', text: b[j] })
+      j += 1
+    }
+  }
+  while (i < n) {
+    ops.push({ kind: 'removed', text: a[i] })
+    i += 1
+  }
+  while (j < m) {
+    ops.push({ kind: 'added', text: b[j] })
+    j += 1
+  }
+  return ops
+}
+
+function appendInlineDiffWordPreviewBlock(
+  container: HTMLElement,
+  ops: InlineDiffWordOpBlock[],
+  side: 'before' | 'after',
+): void {
+  const visible = ops.filter((op) => (
+    op.kind === 'equal'
+    || (side === 'before' && op.kind === 'removed')
+    || (side === 'after' && op.kind === 'added')
+  ))
+  if (visible.length === 0) {
+    container.textContent = '\u00a0'
+    return
+  }
+  for (const op of visible) {
+    const span = document.createElement('span')
+    span.textContent = op.text
+    if (side === 'before' && op.kind === 'removed') {
+      span.className = 'ts-ai-inline-diff-word-removed'
+    } else if (side === 'after' && op.kind === 'added') {
+      span.className = 'ts-ai-inline-diff-word-added'
+    }
+    container.append(span)
+  }
+}
+
 function buildLineStartOffsetsBlock(content: string): number[] {
   const offsets = [0]
   for (let index = 0; index < content.length; index += 1) {
@@ -227,29 +322,50 @@ class InlineDiffWidgetBlock extends WidgetType {
     heading.textContent = `${hunkLabelBlock(this.hunk)} • ${this.hunk.decision}`
     root.append(heading)
 
-    const preview = document.createElement('div')
-    preview.className = 'ts-ai-inline-diff-widget-preview'
-    const before = document.createElement('div')
-    before.className = 'ts-ai-inline-diff-widget-before'
-    before.textContent = this.hunk.beforeLines.length > 0 ? this.hunk.beforeLines.join('\n') : '(empty)'
-    const afterInput = document.createElement('textarea')
-    afterInput.className = 'ts-ai-inline-diff-widget-after-input'
-    afterInput.value = this.hunk.afterLines.join('\n')
-    afterInput.rows = Math.min(Math.max(this.hunk.afterLines.length || 1, 2), 8)
-    afterInput.placeholder = '(empty)'
-    const stopBubbling = (event: Event) => {
-      event.stopPropagation()
+    if (this.hunk.decision === 'pending') {
+      const preview = document.createElement('div')
+      preview.className = 'ts-ai-inline-diff-widget-preview'
+
+      if (this.hunk.kind === 'changed' && this.hunk.beforeLines.length === 1 && this.hunk.afterLines.length === 1) {
+        const wordDiffPreview = document.createElement('div')
+        wordDiffPreview.className = 'ts-ai-inline-diff-widget-word-preview'
+        const beforeWordLine = document.createElement('div')
+        beforeWordLine.className = 'ts-ai-inline-diff-widget-word-before'
+        const afterWordLine = document.createElement('div')
+        afterWordLine.className = 'ts-ai-inline-diff-widget-word-after'
+        const wordOps = buildInlineDiffWordOpsBlock(this.hunk.beforeLines[0], this.hunk.afterLines[0])
+        appendInlineDiffWordPreviewBlock(beforeWordLine, wordOps, 'before')
+        appendInlineDiffWordPreviewBlock(afterWordLine, wordOps, 'after')
+        wordDiffPreview.append(beforeWordLine, afterWordLine)
+        preview.append(wordDiffPreview)
+      }
+
+      const afterInput = document.createElement('textarea')
+      afterInput.className = 'ts-ai-inline-diff-widget-after-input'
+      afterInput.value = this.hunk.afterLines.join('\n')
+      afterInput.rows = Math.min(Math.max(this.hunk.afterLines.length || 1, 2), 8)
+      afterInput.placeholder = '(empty)'
+      const stopBubbling = (event: Event) => {
+        event.stopPropagation()
+      }
+      afterInput.addEventListener('click', stopBubbling)
+      afterInput.addEventListener('mousedown', stopBubbling)
+      afterInput.addEventListener('keydown', stopBubbling)
+      afterInput.addEventListener('input', () => {
+        const nextValue = afterInput.value
+        const nextAfterLines = nextValue.length === 0 ? [] : nextValue.split('\n')
+        this.actions.onUpdateAfterLines(this.hunk.id, nextAfterLines)
+      })
+      preview.append(afterInput)
+      root.append(preview)
+    } else {
+      const note = document.createElement('div')
+      note.className = 'ts-ai-inline-diff-widget-note'
+      note.textContent = this.hunk.decision === 'accepted'
+        ? 'Accepted. Editor body shows applied text.'
+        : 'Rejected. Editor body keeps original text.'
+      root.append(note)
     }
-    afterInput.addEventListener('click', stopBubbling)
-    afterInput.addEventListener('mousedown', stopBubbling)
-    afterInput.addEventListener('keydown', stopBubbling)
-    afterInput.addEventListener('input', () => {
-      const nextValue = afterInput.value
-      const nextAfterLines = nextValue.length === 0 ? [] : nextValue.split('\n')
-      this.actions.onUpdateAfterLines(this.hunk.id, nextAfterLines)
-    })
-    preview.append(before, afterInput)
-    root.append(preview)
 
     const actions = document.createElement('div')
     actions.className = 'ts-ai-inline-diff-widget-actions'
@@ -583,7 +699,8 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     const offsets = buildLineStartOffsetsBlock(value)
     const ranges: any[] = []
     for (const hunk of inlineDiffRender.hunks) {
-      const anchor = lineStartFromOffsetsBlock(offsets, hunk.startLine, value.length)
+      // Anchor widgets at the end of the affected range so they render below the current line block.
+      const anchor = lineStartFromOffsetsBlock(offsets, hunk.endLine, value.length)
       ranges.push(Decoration.widget({
         widget: new InlineDiffWidgetBlock(hunk, {
           onAccept: acceptInlineDiffHunk,
@@ -591,7 +708,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           onReset: resetInlineDiffHunk,
           onUpdateAfterLines: updateInlineDiffHunkAfterLines,
         }),
-        side: -1,
+        side: 1,
         block: true,
       }).range(anchor))
 
@@ -670,6 +787,40 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       '.ts-ai-inline-diff-widget-preview': {
         display: 'grid',
         gap: '0.25rem',
+      },
+      '.ts-ai-inline-diff-widget-word-preview': {
+        display: 'grid',
+        gap: '0.2rem',
+      },
+      '.ts-ai-inline-diff-widget-word-before': {
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        whiteSpace: 'pre-wrap',
+        backgroundColor: 'hsl(var(--destructive) / 0.08)',
+        borderRadius: '0.35rem',
+        padding: '0.3rem 0.4rem',
+      },
+      '.ts-ai-inline-diff-widget-word-after': {
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        whiteSpace: 'pre-wrap',
+        backgroundColor: 'hsl(142 76% 36% / 0.12)',
+        borderRadius: '0.35rem',
+        padding: '0.3rem 0.4rem',
+      },
+      '.ts-ai-inline-diff-word-removed': {
+        textDecoration: 'line-through',
+        borderRadius: '0.2rem',
+        backgroundColor: 'hsl(var(--destructive) / 0.25)',
+        paddingInline: '0.1rem',
+      },
+      '.ts-ai-inline-diff-word-added': {
+        borderRadius: '0.2rem',
+        backgroundColor: 'hsl(142 76% 36% / 0.25)',
+        paddingInline: '0.1rem',
+      },
+      '.ts-ai-inline-diff-widget-note': {
+        fontSize: '0.72rem',
+        lineHeight: '1rem',
+        color: 'hsl(var(--muted-foreground))',
       },
       '.ts-ai-inline-diff-widget-before': {
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',

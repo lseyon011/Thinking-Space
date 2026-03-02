@@ -78,12 +78,12 @@ export function buildInlineTextDiffSessionBlock(originalContent: string, suggest
       })
     }
 
-    for (let index = paired; index < removedRun.length; index += 1) {
+    if (paired < removedRun.length) {
       hunks.push({
         id: nextHunkId(),
         kind: 'removed',
-        beforeStart: removedRun[index].beforeIndex,
-        beforeLines: [removedRun[index].line],
+        beforeStart: removedRun[paired].beforeIndex,
+        beforeLines: removedRun.slice(paired).map(op => op.line),
         afterLines: [],
       })
     }
@@ -91,13 +91,13 @@ export function buildInlineTextDiffSessionBlock(originalContent: string, suggest
     const addedBeforeStart = removedRun.length > 0
       ? (removedRun[removedRun.length - 1].beforeIndex + 1)
       : beforeStartFallback
-    for (let index = paired; index < addedRun.length; index += 1) {
+    if (paired < addedRun.length) {
       hunks.push({
         id: nextHunkId(),
         kind: 'added',
         beforeStart: addedBeforeStart,
         beforeLines: [],
-        afterLines: [addedRun[index].line],
+        afterLines: addedRun.slice(paired).map(op => op.line),
       })
     }
   }
@@ -131,8 +131,9 @@ export function renderInlineTextDiffBlock(
     if (decision === 'rejected') rejected += 1
 
     const startLine = renderedLines.length
-    const useSuggestedLines = decision === 'accepted'
-    const nextLines = useSuggestedLines ? hunk.afterLines : hunk.beforeLines
+    const nextLines = decision === 'accepted'
+      ? hunk.afterLines
+      : hunk.beforeLines
     renderedLines.push(...nextLines)
     const endLine = renderedLines.length
 
