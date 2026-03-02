@@ -212,6 +212,7 @@ export default function NodeDetailPanelBlock({
   const [newCommentDraft, setNewCommentDraft] = useState('')
   const [notesSaving, setNotesSaving] = useState(false)
   const [notesAutoSaving, setNotesAutoSaving] = useState(false)
+  const [manualSaveFeedbackVisible, setManualSaveFeedbackVisible] = useState(false)
   const [epicCompletionDateDraft, setEpicCompletionDateDraft] = useState('')
   const [epicCompletionSaving, setEpicCompletionSaving] = useState(false)
   const [userTagDraft, setUserTagDraft] = useState('')
@@ -225,6 +226,7 @@ export default function NodeDetailPanelBlock({
   const [activityTab, setActivityTab] = useState<'all' | 'comments' | 'history' | 'worklog'>('comments')
   const [descriptionEditMode, setDescriptionEditMode] = useState(false)
   const notesAutoSaveSignatureRef = useRef<string | null>(null)
+  const manualSaveFeedbackTimeoutRef = useRef<number | null>(null)
   const lastNodeUuidRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -281,6 +283,7 @@ export default function NodeDetailPanelBlock({
     setNewCommentDraft('')
     setNotesSaving(false)
     setNotesAutoSaving(false)
+    setManualSaveFeedbackVisible(false)
     setEpicCompletionDateDraft(sourceEpicCompletionDate)
     setEpicCompletionSaving(false)
     setActivityTab('comments')
@@ -290,6 +293,14 @@ export default function NodeDetailPanelBlock({
     }
     notesAutoSaveSignatureRef.current = null
   }, [node.uuid, sourceComments, sourceDescription, sourceEpicCompletionDate])
+
+  useEffect(() => {
+    return () => {
+      if (manualSaveFeedbackTimeoutRef.current !== null) {
+        window.clearTimeout(manualSaveFeedbackTimeoutRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     setUserTagDraft('')
@@ -405,17 +416,46 @@ export default function NodeDetailPanelBlock({
     setCommentsDraft(prev => prev.filter((_, idx) => idx !== index))
   }, [])
 
+  const triggerManualSaveFeedback = useCallback(() => {
+    if (manualSaveFeedbackTimeoutRef.current !== null) {
+      window.clearTimeout(manualSaveFeedbackTimeoutRef.current)
+    }
+    setManualSaveFeedbackVisible(true)
+    manualSaveFeedbackTimeoutRef.current = window.setTimeout(() => {
+      setManualSaveFeedbackVisible(false)
+      manualSaveFeedbackTimeoutRef.current = null
+    }, 1600)
+  }, [])
+
   const commitNotes = useCallback(async (mode: 'auto' | 'manual' = 'manual') => {
     if (!notesDirty || notesSaving) return
     setNotesSaving(true)
     setNotesAutoSaving(mode === 'auto')
     try {
       await onUpdateNotes(descriptionDraft.trim(), commentsDraft)
+      if (mode === 'manual') {
+        triggerManualSaveFeedback()
+      }
     } finally {
       setNotesAutoSaving(false)
       setNotesSaving(false)
     }
-  }, [commentsDraft, descriptionDraft, notesDirty, notesSaving, onUpdateNotes])
+  }, [commentsDraft, descriptionDraft, notesDirty, notesSaving, onUpdateNotes, triggerManualSaveFeedback])
+
+  const handleManualSaveClick = useCallback(() => {
+    if (notesSaving) return
+    if (!notesDirty) {
+      triggerManualSaveFeedback()
+      return
+    }
+    notesAutoSaveSignatureRef.current = notesPayloadSignature
+    void commitNotes('manual')
+  }, [commitNotes, notesDirty, notesPayloadSignature, notesSaving, triggerManualSaveFeedback])
+
+  const handleOpenFile = useCallback(() => {
+    onOpenFile()
+    onClose()
+  }, [onClose, onOpenFile])
 
   const commitEpicCompletionDate = useCallback(async () => {
     if (node.type !== 'epic' || !onUpdateEpicCompletedAt) return
@@ -628,15 +668,13 @@ export default function NodeDetailPanelBlock({
             <Button
               size="sm"
               variant="outline"
-              onClick={() => {
-                notesAutoSaveSignatureRef.current = notesPayloadSignature
-                void commitNotes('manual')
-              }}
+              onClick={handleManualSaveClick}
               disabled={notesSaving}
+              className={manualSaveFeedbackVisible && !notesSaving ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15' : undefined}
             >
-              {notesSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
+              {notesSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : manualSaveFeedbackVisible ? 'Saved' : 'Save'}
             </Button>
-            <Button size="sm" variant="outline" onClick={onOpenFile}>
+            <Button size="sm" variant="outline" onClick={handleOpenFile}>
               Open File
             </Button>
             {onDelete ? (

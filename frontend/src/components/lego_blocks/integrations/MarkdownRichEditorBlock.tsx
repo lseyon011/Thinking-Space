@@ -434,7 +434,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   }, [assistError, assistSuggestion, clearAssistState, onChange])
 
   return (
-    <div className={cn('ltm-markdown-rich-editor relative flex min-h-0 flex-col bg-transparent', className)}>
+    <div className={cn('ltm-markdown-rich-editor relative flex min-h-0 flex-col bg-white', className)}>
       {/* Toolbar toggle button (only when not always visible) */}
       {enableFormattingToolbar && !toolbarAlwaysVisible && (
         <div className="flex items-center justify-end gap-1 px-2 pt-1.5">
@@ -630,11 +630,11 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
         </div>
       )}
 
-      <div className={cn('ltm-markdown-rich-editor-surface flex min-h-0 flex-1 flex-col overflow-hidden', editorClassName)}>
+      <div className={cn('ltm-markdown-rich-editor-surface flex min-h-0 flex-1 flex-col overflow-hidden bg-white', editorClassName)}>
         <CodeMirror
           value={value}
           height="100%"
-          className="h-full bg-transparent"
+          className="h-full bg-white"
           basicSetup={{
             lineNumbers: true,
             highlightActiveLine: false,
