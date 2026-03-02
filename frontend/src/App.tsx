@@ -481,6 +481,24 @@ function App() {
     [explorerFolderColorRules],
   )
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const viewportMeta = document.querySelector('meta[name="viewport"]')
+    if (!(viewportMeta instanceof HTMLMetaElement)) return
+    const defaultViewport = 'width=device-width, initial-scale=1.0, viewport-fit=cover'
+    if (!iPhoneMode) {
+      viewportMeta.setAttribute('content', defaultViewport)
+      return
+    }
+    viewportMeta.setAttribute(
+      'content',
+      'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover',
+    )
+    return () => {
+      viewportMeta.setAttribute('content', defaultViewport)
+    }
+  }, [iPhoneMode])
+
   const openCommandPalette = useCallback(() => {
     setCommandQuery('')
     setCommandPaletteOpen(true)

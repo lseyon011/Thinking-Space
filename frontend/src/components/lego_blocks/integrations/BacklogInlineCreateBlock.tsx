@@ -1,5 +1,5 @@
 import { Loader2, Plus } from 'lucide-react'
-import { useEffect, useRef, type Ref } from 'react'
+import type { Ref } from 'react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import type { NodeType } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { nodeTypeLabel } from '@/components/lego_blocks/units/BacklogListDomainBlock'
@@ -36,54 +36,9 @@ export function BacklogInlineCreateBlock({
   onSubmit,
 }: BacklogInlineCreateBlockProps) {
   const selectedTypeLabel = nodeTypeLabel(selectedType)
-  const rootRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    const root = rootRef.current
-    if (!root || typeof document === 'undefined') return
-    const ua = navigator.userAgent || ''
-    const isIPhone = /iPhone/i.test(ua)
-    if (!isIPhone) return
-
-    const viewport = document.querySelector('meta[name="viewport"]')
-    if (!viewport) return
-    const baseViewport = viewport.getAttribute('content') || 'width=device-width, initial-scale=1.0, viewport-fit=cover'
-
-    const lockViewport = () => {
-      viewport.setAttribute(
-        'content',
-        'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover',
-      )
-    }
-    const unlockViewport = () => {
-      viewport.setAttribute('content', baseViewport)
-    }
-
-    const handleFocusIn = (event: FocusEvent) => {
-      const target = event.target
-      if (!(target instanceof HTMLElement)) return
-      if (!root.contains(target)) return
-      lockViewport()
-    }
-    const handleFocusOut = () => {
-      window.setTimeout(() => {
-        const active = document.activeElement
-        if (active instanceof HTMLElement && root.contains(active)) return
-        unlockViewport()
-      }, 0)
-    }
-
-    document.addEventListener('focusin', handleFocusIn)
-    document.addEventListener('focusout', handleFocusOut)
-    return () => {
-      document.removeEventListener('focusin', handleFocusIn)
-      document.removeEventListener('focusout', handleFocusOut)
-      unlockViewport()
-    }
-  }, [])
 
   return (
-    <div ref={rootRef} className="ltm-backlog-inline-create space-y-2 border-t border-border/70 bg-background px-3 py-2">
+    <div className="ltm-backlog-inline-create space-y-2 border-t border-border/70 bg-background px-3 py-2">
       <div className="ltm-backlog-inline-create-top-row flex items-center gap-2">
         <select
           value={selectedType}
