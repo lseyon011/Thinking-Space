@@ -258,6 +258,33 @@ function MarkdownTextDocumentRuntimeBlock({
     }
   }, [content, isExcalidrawDoc, isIosSurface, layout.keyboardVisible, mode, path, topBarHiddenInViewMode])
 
+  useEffect(() => {
+    if (isExcalidrawDoc || mode === 'edit') return
+    const chromeContainer = chromeContainerRef.current
+    const scroller = contentScrollRef.current
+    if (!chromeContainer || !scroller) return
+
+    const forwardWheelToScroller = (event: WheelEvent) => {
+      if (event.defaultPrevented) return
+      if (Math.abs(event.deltaY) < 0.5 && Math.abs(event.deltaX) < 0.5) return
+      if (scroller.scrollHeight <= scroller.clientHeight + 1) return
+
+      const prevTop = scroller.scrollTop
+      const prevLeft = scroller.scrollLeft
+      scroller.scrollTop += event.deltaY
+      scroller.scrollLeft += event.deltaX
+
+      if (scroller.scrollTop !== prevTop || scroller.scrollLeft !== prevLeft) {
+        event.preventDefault()
+      }
+    }
+
+    chromeContainer.addEventListener('wheel', forwardWheelToScroller, { passive: false })
+    return () => {
+      chromeContainer.removeEventListener('wheel', forwardWheelToScroller)
+    }
+  }, [isExcalidrawDoc, mode, path])
+
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const obsidianUrl = buildObsidianOpenUrlOrch(path)
