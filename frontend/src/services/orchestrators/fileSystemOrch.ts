@@ -1,5 +1,10 @@
 import type { FileStat } from '@/services/lego_blocks/units/typesBlock'
 import { getVaultFS, type VaultEntry } from '@/services/lego_blocks/integrations/fsBlock'
+import {
+  parseWikilinkTargetBlock,
+  resolveWikilinkPathBlock,
+  splitTextByWikilinksBlock,
+} from '@/services/lego_blocks/integrations/obsidianWikilinkBlock'
 import { getStoredVaultRoot } from './storageOrch'
 import { isElectron } from './runtimeOrch'
 
@@ -59,6 +64,475 @@ function joinRel(parent: string, child: string): string {
 function isSameOrChildPath(path: string, maybeParent: string): boolean {
   if (!path || !maybeParent) return false
   return path === maybeParent || path.startsWith(`${maybeParent}/`)
+}
+
+function normalizeLinkPath(path: string): string {
+  const sanitized = path.replace(/\\/g, '/').trim()
+  if (!sanitized) return ''
+  const parts = sanitized.split('/').filter(Boolean)
+  const stack: string[] = []
+  for (const part of parts) {
+    if (part === '.') continue
+    if (part === '..') {
+      if (stack.length > 0) stack.pop()
+      continue
+    }
+    stack.push(part)
+  }
+  return stack.join('/')
+}
+
+function dirnameLinkPath(path: string): string {
+  const normalized = normalizeLinkPath(path)
+  const idx = normalized.lastIndexOf('/')
+  if (idx < 0) return ''
+  return normalized.slice(0, idx)
+}
+
+function leafLinkPath(path: string): string {
+  const normalized = normalizeLinkPath(path)
+  const idx = normalized.lastIndexOf('/')
+  if (idx < 0) return normalized
+  return normalized.slice(idx + 1)
+}
+
+function joinLinkPath(parent: string, child: string): string {
+  const base = normalizeLinkPath(parent)
+  const relRaw = child.replace(/\\/g, '/').trim()
+  if (!base) return normalizeLinkPath(relRaw)
+  if (!relRaw) return base
+  return normalizeLinkPath(`${base}/${relRaw}`)
+}
+
+function relativeLinkPath(fromDir: string, toPath: string): string {
+  const fromParts = normalizeLinkPath(fromDir).split('/').filter(Boolean)
+  const toParts = normalizeLinkPath(toPath).split('/').filter(Boolean)
+  let i = 0
+  while (
+    i < fromParts.length
+    && i < toParts.length
+    && fromParts[i].toLowerCase() === toParts[i].toLowerCase()
+  ) {
+    i += 1
+  }
+  const up = new Array(Math.max(0, fromParts.length - i)).fill('..')
+  const down = toParts.slice(i)
+  return [...up, ...down].join('/')
+}
+
+function hasExplicitExtensionLinkPath(path: string): boolean {
+  const leaf = leafLinkPath(path)
+  const idx = leaf.lastIndexOf('.')
+  return idx > 0
+}
+
+function hasUriScheme(value: string): boolean {
+  return /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value)
+}
+
+function remapMovedPath(path: string, sourcePath: string, targetPath: string): string {
+  if (path === sourcePath) return targetPath
+  if (!path.startsWith(`${sourcePath}/`)) return path
+  const suffix = path.slice(sourcePath.length + 1)
+  return suffix ? `${targetPath}/${suffix}` : targetPath
+}
+
+function reverseRemapMovedPath(path: string, sourcePath: string, targetPath: string): string {
+  if (path === targetPath) return sourcePath
+  if (!path.startsWith(`${targetPath}/`)) return path
+  const suffix = path.slice(targetPath.length + 1)
+  return suffix ? `${sourcePath}/${suffix}` : sourcePath
+}
+
+function formatWikilinkPathLikeOriginal(
+  originalPath: string,
+  currentPath: string,
+  nextAbsolutePath: string,
+): string {
+  const raw = originalPath.replace(/\\/g, '/').trim()
+  const hadLeadingSlash = raw.startsWith('/')
+  const hadRelativePrefix = raw.startsWith('./') || raw.startsWith('../')
+  const hadSlash = raw.includes('/')
+  const hadExplicitExtension = hasExplicitExtensionLinkPath(raw)
+  const currentDir = dirnameLinkPath(currentPath)
+
+  let rewritten: string
+  if (hadLeadingSlash || (hadSlash && !hadRelativePrefix)) {
+    rewritten = normalizeLinkPath(nextAbsolutePath)
+  } else if (hadRelativePrefix) {
+    rewritten = relativeLinkPath(currentDir, nextAbsolutePath)
+    if (!rewritten) rewritten = leafLinkPath(nextAbsolutePath)
+    if (!rewritten.startsWith('../') && !rewritten.startsWith('./')) {
+      rewritten = `./${rewritten}`
+    }
+  } else {
+    rewritten = leafLinkPath(nextAbsolutePath)
+  }
+
+  if (!hadExplicitExtension && rewritten.toLowerCase().endsWith('.md')) {
+    rewritten = rewritten.slice(0, -3)
+  }
+  if (hadLeadingSlash) rewritten = `/${rewritten}`
+  return rewritten
+}
+
+function formatMarkdownLinkPathLikeOriginal(
+  originalPath: string,
+  currentPath: string,
+  nextAbsolutePath: string,
+): string {
+  const raw = originalPath.replace(/\\/g, '/').trim()
+  const hadLeadingSlash = raw.startsWith('/')
+  const hadExplicitExtension = hasExplicitExtensionLinkPath(raw)
+  const currentDir = dirnameLinkPath(currentPath)
+
+  let rewritten: string
+  if (hadLeadingSlash) {
+    rewritten = `/${normalizeLinkPath(nextAbsolutePath)}`
+  } else {
+    rewritten = relativeLinkPath(currentDir, nextAbsolutePath)
+    if (!rewritten) rewritten = leafLinkPath(nextAbsolutePath)
+    if (raw.startsWith('./') && !rewritten.startsWith('../') && !rewritten.startsWith('./')) {
+      rewritten = `./${rewritten}`
+    }
+  }
+
+  if (!hadExplicitExtension && rewritten.toLowerCase().endsWith('.md')) {
+    rewritten = rewritten.slice(0, -3)
+  }
+  return rewritten
+}
+
+function splitFrontmatterDocumentBlock(content: string): { frontmatter: string; body: string } {
+  const openMatch = content.match(/^---(\r?\n)/)
+  if (!openMatch) return { frontmatter: '', body: content }
+
+  const lineBreak = openMatch[1]
+  const start = openMatch[0].length
+  const closeToken = `${lineBreak}---`
+  const closeIndex = content.indexOf(closeToken, start)
+  if (closeIndex < 0) return { frontmatter: '', body: content }
+
+  let frontmatterEnd = closeIndex + closeToken.length
+  if (content.startsWith(lineBreak, frontmatterEnd)) {
+    frontmatterEnd += lineBreak.length
+  }
+  return {
+    frontmatter: content.slice(0, frontmatterEnd),
+    body: content.slice(frontmatterEnd),
+  }
+}
+
+function isLikelyYamlPathScalarBlock(value: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  if (/^(true|false|null|~|yes|no|on|off)$/i.test(trimmed)) return false
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return false
+  if (trimmed.startsWith('|') || trimmed.startsWith('>')) return false
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return false
+  if (trimmed.startsWith('&') || trimmed.startsWith('*') || trimmed.startsWith('!')) return false
+  if (trimmed.includes('[[') || trimmed.includes('](') || trimmed.includes('{{')) return false
+
+  return (
+    trimmed.startsWith('./')
+    || trimmed.startsWith('../')
+    || trimmed.startsWith('/')
+    || trimmed.includes('/')
+    || /\.[A-Za-z0-9]{1,8}$/i.test(trimmed)
+  )
+}
+
+function findYamlCommentStartIndexBlock(value: string): number {
+  let inSingle = false
+  let inDouble = false
+
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i]
+    if (ch === '\'' && !inDouble) {
+      const next = value[i + 1]
+      if (inSingle && next === '\'') {
+        i += 1
+        continue
+      }
+      inSingle = !inSingle
+      continue
+    }
+    if (ch === '"' && !inSingle) {
+      const prev = value[i - 1]
+      if (prev !== '\\') inDouble = !inDouble
+      continue
+    }
+    if (ch === '#' && !inSingle && !inDouble) {
+      if (i === 0 || /\s/.test(value[i - 1] ?? '')) return i
+    }
+  }
+
+  return -1
+}
+
+function resolveYamlScalarAbsolutePathBlock(
+  rawValue: string,
+  currentPath: string,
+  sourcePath: string,
+  candidatePathsBeforeMove: string[],
+): string | null {
+  const value = rawValue.trim()
+  if (!isLikelyYamlPathScalarBlock(value)) return null
+  if (value.startsWith('#') || hasUriScheme(value)) return null
+
+  const normalizedCurrentPath = normalizeLinkPath(currentPath)
+  const normalizedSourcePath = normalizeLinkPath(sourcePath)
+  const currentDir = dirnameLinkPath(normalizedCurrentPath)
+  const candidates: string[] = []
+  const pushCandidate = (candidate: string) => {
+    const normalized = normalizeLinkPath(candidate)
+    if (!normalized) return
+    if (!candidates.includes(normalized)) candidates.push(normalized)
+  }
+
+  const resolved = resolveWikilinkPathBlock({
+    currentPath: normalizedCurrentPath,
+    target: value,
+    candidatePaths: candidatePathsBeforeMove,
+  }).path
+  if (resolved) pushCandidate(resolved)
+
+  if (value.startsWith('/')) {
+    pushCandidate(value.slice(1))
+  } else if (value.startsWith('./') || value.startsWith('../')) {
+    pushCandidate(joinLinkPath(currentDir, value))
+  } else if (value.includes('/')) {
+    pushCandidate(value)
+    pushCandidate(joinLinkPath(currentDir, value))
+  } else {
+    pushCandidate(joinLinkPath(currentDir, value))
+    pushCandidate(value)
+  }
+
+  for (const candidate of candidates) {
+    if (isSameOrChildPath(candidate, normalizedSourcePath)) return candidate
+  }
+  return null
+}
+
+function rewriteYamlScalarValueBlock(
+  scalar: string,
+  currentPath: string,
+  sourcePath: string,
+  targetPath: string,
+  candidatePathsBeforeMove: string[],
+): string {
+  const trimmed = scalar.trim()
+  if (!trimmed) return scalar
+
+  const quote = (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    ? '"'
+    : (trimmed.startsWith('\'') && trimmed.endsWith('\''))
+      ? '\''
+      : ''
+  const unquoted = quote ? trimmed.slice(1, -1) : trimmed
+  const absolutePath = resolveYamlScalarAbsolutePathBlock(unquoted, currentPath, sourcePath, candidatePathsBeforeMove)
+  if (!absolutePath) return scalar
+
+  const movedAbsolutePath = remapMovedPath(
+    absolutePath,
+    normalizeLinkPath(sourcePath),
+    normalizeLinkPath(targetPath),
+  )
+  const rewrittenPath = formatWikilinkPathLikeOriginal(unquoted, currentPath, movedAbsolutePath)
+  if (!rewrittenPath || rewrittenPath === unquoted) return scalar
+
+  const rewrittenUnquoted = quote === '\''
+    ? rewrittenPath.replace(/'/g, '\'\'')
+    : quote === '"'
+      ? rewrittenPath.replace(/"/g, '\\"')
+      : rewrittenPath
+  return quote ? `${quote}${rewrittenUnquoted}${quote}` : rewrittenUnquoted
+}
+
+function rewriteYamlFrontmatterPathScalarsBlock(
+  frontmatterBlock: string,
+  currentPath: string,
+  sourcePath: string,
+  targetPath: string,
+  candidatePathsBeforeMove: string[],
+): string {
+  if (!frontmatterBlock) return frontmatterBlock
+  const lineBreak = frontmatterBlock.includes('\r\n') ? '\r\n' : '\n'
+  const lines = frontmatterBlock.split(/\r?\n/)
+  if (lines.length < 3 || lines[0] !== '---') return frontmatterBlock
+
+  const closeIndex = lines.findIndex((line, index) => index > 0 && line === '---')
+  if (closeIndex < 0) return frontmatterBlock
+
+  const rewrittenLines = [...lines]
+  for (let i = 1; i < closeIndex; i += 1) {
+    const line = lines[i]
+    if (!line || /^\s*#/.test(line)) continue
+
+    const mappingMatch = /^(\s*[^:#\n][^:\n]*:\s*)(.+)$/.exec(line)
+    const listMatch = mappingMatch ? null : /^(\s*-\s+)(.+)$/.exec(line)
+    const prefix = mappingMatch?.[1] ?? listMatch?.[1]
+    const valuePart = mappingMatch?.[2] ?? listMatch?.[2]
+    if (!prefix || !valuePart) continue
+    if (valuePart.trimStart().startsWith('|') || valuePart.trimStart().startsWith('>')) continue
+    if (/^[^"'#\s][^:]*:\s+/.test(valuePart.trimStart())) continue
+
+    const leadingValueWhitespace = (valuePart.match(/^\s*/) ?? [''])[0]
+    const trimmedValue = valuePart.trimStart()
+    const commentStart = findYamlCommentStartIndexBlock(trimmedValue)
+    const scalarSegment = (commentStart >= 0 ? trimmedValue.slice(0, commentStart) : trimmedValue).trimEnd()
+    const commentSegment = commentStart >= 0 ? trimmedValue.slice(commentStart) : ''
+    if (!scalarSegment) continue
+
+    const rewrittenScalar = rewriteYamlScalarValueBlock(
+      scalarSegment,
+      currentPath,
+      sourcePath,
+      targetPath,
+      candidatePathsBeforeMove,
+    )
+    if (rewrittenScalar === scalarSegment) continue
+
+    rewrittenLines[i] = `${prefix}${leadingValueWhitespace}${rewrittenScalar}${commentSegment ? ` ${commentSegment}` : ''}`
+  }
+
+  const rebuilt = rewrittenLines.join(lineBreak)
+  if (frontmatterBlock.endsWith('\n') || frontmatterBlock.endsWith('\r\n')) {
+    return rebuilt.endsWith(lineBreak) ? rebuilt : `${rebuilt}${lineBreak}`
+  }
+  return rebuilt
+}
+
+function rewriteMovedPathReferencesInMarkdown(
+  content: string,
+  currentPath: string,
+  sourcePath: string,
+  targetPath: string,
+  candidatePathsBeforeMove: string[],
+): string {
+  const normalizedCurrentPath = normalizeLinkPath(currentPath)
+  const normalizedSourcePath = normalizeLinkPath(sourcePath)
+  const normalizedTargetPath = normalizeLinkPath(targetPath)
+
+  const wikilinkTokens = splitTextByWikilinksBlock(content)
+  const rewrittenWikilinks = wikilinkTokens.map((token) => {
+    if (token.kind !== 'wikilink' || !token.target) return token.text
+    const parsedTarget = parseWikilinkTargetBlock(token.target)
+    if (!parsedTarget.path) return token.text
+
+    const resolved = resolveWikilinkPathBlock({
+      currentPath: normalizedCurrentPath,
+      target: token.target,
+      candidatePaths: candidatePathsBeforeMove,
+    })
+    if (!resolved.path || !isSameOrChildPath(resolved.path, normalizedSourcePath)) return token.text
+
+    const movedResolvedPath = remapMovedPath(resolved.path, normalizedSourcePath, normalizedTargetPath)
+    const rewrittenPath = formatWikilinkPathLikeOriginal(parsedTarget.path, normalizedCurrentPath, movedResolvedPath)
+    const suffix = parsedTarget.blockRef
+      ? `#^${parsedTarget.blockRef}`
+      : parsedTarget.heading
+        ? `#${parsedTarget.heading}`
+        : ''
+    const aliasPart = token.alias?.trim() ? `|${token.alias.trim()}` : ''
+    const embedPrefix = token.embed ? '!' : ''
+    return `${embedPrefix}[[${rewrittenPath}${suffix}${aliasPart}]]`
+  }).join('')
+
+  const rewrittenLinks = rewrittenWikilinks.replace(
+    /(!?)\[([^\]]*?)\]\(([^)\n]+)\)/g,
+    (full: string, bang: string, label: string, destination: string) => {
+      const rawDestination = destination.trim()
+      if (!rawDestination) return full
+
+      const wrapped = rawDestination.startsWith('<') && rawDestination.endsWith('>')
+      const unwrappedDestination = wrapped ? rawDestination.slice(1, -1).trim() : rawDestination
+      const destinationMatch = /^(\S+)([\s\S]*)$/.exec(unwrappedDestination)
+      if (!destinationMatch) return full
+
+      const linkPathWithSuffix = destinationMatch[1] ?? ''
+      const trailing = destinationMatch[2] ?? ''
+      if (!linkPathWithSuffix || linkPathWithSuffix.startsWith('#') || hasUriScheme(linkPathWithSuffix)) {
+        return full
+      }
+
+      const hashIdx = linkPathWithSuffix.indexOf('#')
+      const pathPart = (hashIdx >= 0 ? linkPathWithSuffix.slice(0, hashIdx) : linkPathWithSuffix).trim()
+      const hashSuffix = hashIdx >= 0 ? linkPathWithSuffix.slice(hashIdx) : ''
+      if (!pathPart) return full
+
+      const absoluteLinkPath = pathPart.startsWith('/')
+        ? normalizeLinkPath(pathPart.slice(1))
+        : normalizeLinkPath(joinLinkPath(dirnameLinkPath(normalizedCurrentPath), pathPart))
+      if (!absoluteLinkPath || !isSameOrChildPath(absoluteLinkPath, normalizedSourcePath)) return full
+
+      const movedAbsolutePath = remapMovedPath(absoluteLinkPath, normalizedSourcePath, normalizedTargetPath)
+      const rewrittenPath = formatMarkdownLinkPathLikeOriginal(pathPart, normalizedCurrentPath, movedAbsolutePath)
+      const rewrittenDestinationCore = `${rewrittenPath}${hashSuffix}${trailing}`
+      const rewrittenDestination = wrapped ? `<${rewrittenDestinationCore}>` : rewrittenDestinationCore
+      return `${bang}[${label}](${rewrittenDestination})`
+    },
+  )
+
+  const { frontmatter, body } = splitFrontmatterDocumentBlock(rewrittenLinks)
+  if (!frontmatter) return rewrittenLinks
+  const rewrittenFrontmatter = rewriteYamlFrontmatterPathScalarsBlock(
+    frontmatter,
+    normalizedCurrentPath,
+    normalizedSourcePath,
+    normalizedTargetPath,
+    candidatePathsBeforeMove,
+  )
+  if (rewrittenFrontmatter === frontmatter) return rewrittenLinks
+  return `${rewrittenFrontmatter}${body}`
+}
+
+export async function rewriteMovedPathReferencesOrch(
+  sourcePath: string,
+  targetPath: string,
+): Promise<{ updatedFiles: number }> {
+  const normalizedSourcePath = normalizeLinkPath(sourcePath)
+  const normalizedTargetPath = normalizeLinkPath(targetPath)
+  if (!normalizedSourcePath || !normalizedTargetPath || normalizedSourcePath === normalizedTargetPath) {
+    return { updatedFiles: 0 }
+  }
+
+  const fs = getVaultFS()
+  const markdownEntries = await listMarkdownEntries()
+  const markdownPathsAfterMove = markdownEntries
+    .map((entry) => normalizeLinkPath(entry.path))
+    .filter(Boolean)
+  const candidatePathsBeforeMove = [...new Set(markdownPathsAfterMove.map(
+    (path) => reverseRemapMovedPath(path, normalizedSourcePath, normalizedTargetPath),
+  ))]
+
+  let updatedFiles = 0
+  for (const entry of markdownEntries) {
+    const markdownPath = normalizeLinkPath(entry.path)
+    if (!markdownPath) continue
+
+    let content: string
+    try {
+      content = await fs.read(markdownPath)
+    } catch {
+      continue
+    }
+
+    const rewritten = rewriteMovedPathReferencesInMarkdown(
+      content,
+      markdownPath,
+      normalizedSourcePath,
+      normalizedTargetPath,
+      candidatePathsBeforeMove,
+    )
+    if (rewritten === content) continue
+
+    await fs.write(markdownPath, rewritten)
+    updatedFiles += 1
+  }
+
+  return { updatedFiles }
 }
 
 function splitExtension(name: string): { stem: string; ext: string } {
@@ -370,10 +844,12 @@ export async function renameVaultPathOrch(path: string, nextName: string): Promi
     const api = window.electronAPI
     if (!api?.rename) throw new Error('Rename is unavailable in this desktop build')
     await api.rename(getElectronVaultRoot(), currentPath, targetPath)
+    await rewriteMovedPathReferencesOrch(currentPath, targetPath)
     return targetPath
   }
 
   await postVaultApi('/api/tools/vault/rename', { from_path: currentPath, to_path: targetPath })
+  await rewriteMovedPathReferencesOrch(currentPath, targetPath)
   return targetPath
 }
 
@@ -405,10 +881,12 @@ export async function moveVaultPathOrch(sourcePath: string, targetFolderPath: st
     const api = window.electronAPI
     if (!api?.rename) throw new Error('Move is unavailable in this desktop build')
     await api.rename(getElectronVaultRoot(), currentPath, targetPath)
+    await rewriteMovedPathReferencesOrch(currentPath, targetPath)
     return targetPath
   }
 
   await postVaultApi('/api/tools/vault/rename', { from_path: currentPath, to_path: targetPath })
+  await rewriteMovedPathReferencesOrch(currentPath, targetPath)
   return targetPath
 }
 
