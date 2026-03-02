@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { PenLine, Loader2, CheckCircle2, LayoutList, Eye, CheckSquare, Pencil, Trash2, X, PanelLeft, PanelLeftClose, Plus } from 'lucide-react'
+import { PenLine, Loader2, CheckCircle2, LayoutList, Eye, CheckSquare, X, PanelLeft, PanelLeftClose, Plus } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
@@ -10,11 +10,16 @@ import CascadingFolderPicker, {
 import EmotionTagger from '@/components/lego_blocks/integrations/EmotionTaggerBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
-import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import ThoughtsCalendarOrch from '@/components/orchestrators/ThoughtsCalendarOrch'
 import TodoCalendarOrch from '@/components/orchestrators/TodoCalendarOrch'
-import { deleteVaultPathOrch } from '@/services/orchestrators/fileSystemOrch'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
+import {
+  getThoughtForEdit,
+  saveThoughtEdit,
+  ThoughtConflictError,
+} from '@/services/orchestrators/thoughtsOrch'
 import {
   readNewThoughtQuickDestinationsPreferenceOrch,
   setNewThoughtQuickDestinationsPreferenceOrch,
@@ -201,6 +206,13 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`
 }
 
+interface TargetFileState {
+  path: string
+  exists: boolean
+  baseMtime: number | null
+  baseHash: string | null
+}
+
 function CreateTab() {
   const [pickerDefaultPath, setPickerDefaultPath] = useState<string[]>(DEFAULT_BASE_PATH)
   const [pickerVersion, setPickerVersion] = useState(0)
@@ -230,15 +242,17 @@ function CreateTab() {
   const [content, setContent] = useState('')
   const [emotions, setEmotions] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState(false)
+  const [loadingTargetContent, setLoadingTargetContent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [savedPath, setSavedPath] = useState<string | null>(null)
-  const [editorPath, setEditorPath] = useState<string | null>(null)
   const [showMetaPanel, setShowMetaPanel] = useState(false)
   const [showAiAssist, setShowAiAssist] = useState(false)
   const [saveFeedbackVisible, setSaveFeedbackVisible] = useState(false)
+  const [loadedTargetPath, setLoadedTargetPath] = useState<string | null>(null)
+  const [targetFileState, setTargetFileState] = useState<TargetFileState | null>(null)
   const saveFeedbackTimeoutRef = useRef<number | null>(null)
+  const loadTargetRequestRef = useRef(0)
   const [leftPanelHidden, setLeftPanelHidden] = useState(
     () => readJsonStorage<boolean>(LEFT_PANEL_HIDDEN_KEY, false),
   )
@@ -399,7 +413,6 @@ function CreateTab() {
     setFolderBasePath(normalized.join('/'))
     setActiveShortcutId('none')
     setSavedPath(null)
-    setEditorPath(null)
     setError(null)
     setMessage(null)
     rememberDestinationUsage(normalized)
@@ -495,7 +508,20 @@ function CreateTab() {
     setFilename(filenameFromTitle(title))
   }
 
+  const targetPath = makeThisTodo
+    ? (
+      destinationPath.trim() && todoDateStr.trim()
+        ? `${destinationPath.replace(/\/$/, '')}/${todoDateStr.trim()}.md`
+        : null
+    )
+    : (
+      destinationPath.trim() && filename.trim()
+        ? `${destinationPath.replace(/\/$/, '')}/${normalizedFilename}`
+        : null
+    )
+
   const handleSave = useCallback(async () => {
+    if (!makeThisTodo && loadingTargetContent) return
     if (makeThisTodo) {
       const items = content
         .split('\n')
@@ -529,10 +555,40 @@ function CreateTab() {
         })
 
         setSavedPath(data.output_path)
-        setEditorPath(data.output_path)
         setItemsAdded(data.items_added)
         rememberDestinationUsage(destinationSegments)
         setMessage(`${data.items_added} task${data.items_added !== 1 ? 's' : ''} saved to ${data.output_path}.`)
+        triggerSaveFeedback()
+        return
+      }
+
+      const canSaveExistingFile = Boolean(
+        targetPath
+        && targetFileState?.path === targetPath
+        && targetFileState.exists
+        && targetFileState.baseMtime !== null
+        && targetFileState.baseHash,
+      )
+
+      if (canSaveExistingFile) {
+        const data = await saveThoughtEdit({
+          path: targetPath!,
+          content,
+          baseMtime: targetFileState!.baseMtime!,
+          baseHash: targetFileState!.baseHash!,
+        })
+        const refreshed = await getThoughtForEdit(targetPath!)
+        setContent(refreshed.content)
+        setLoadedTargetPath(targetPath!)
+        setTargetFileState({
+          path: targetPath!,
+          exists: true,
+          baseMtime: refreshed.mtime,
+          baseHash: refreshed.hash,
+        })
+        setSavedPath(data.output_path)
+        rememberDestinationUsage(destinationSegments)
+        setMessage(`Saved ${data.output_path}.`)
         triggerSaveFeedback()
         return
       }
@@ -550,12 +606,30 @@ function CreateTab() {
         actor: THOUGHTS_ACTOR,
       })
 
+      const refreshed = await getThoughtForEdit(data.output_path)
+      setContent(refreshed.content)
+      setLoadedTargetPath(data.output_path)
+      setTargetFileState({
+        path: data.output_path,
+        exists: true,
+        baseMtime: refreshed.mtime,
+        baseHash: refreshed.hash,
+      })
       setSavedPath(data.output_path)
-      setEditorPath(data.output_path)
       rememberDestinationUsage(destinationSegments)
       setMessage(`Saved ${data.output_path}.`)
       triggerSaveFeedback()
     } catch (err) {
+      if (!makeThisTodo && err instanceof ThoughtConflictError && targetPath) {
+        setContent(err.currentContent)
+        setLoadedTargetPath(targetPath)
+        setTargetFileState({
+          path: targetPath,
+          exists: true,
+          baseMtime: err.currentMtime,
+          baseHash: err.currentHash,
+        })
+      }
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
       setSaving(false)
@@ -567,26 +641,84 @@ function CreateTab() {
     destinationSegments,
     emotions,
     filename,
+    loadingTargetContent,
     makeThisTodo,
     normalizedFilename,
     rememberDestinationUsage,
+    targetFileState,
+    targetPath,
     title,
     todoDateStr,
     triggerSaveFeedback,
     useCustomTitle,
   ])
 
-  const targetPath = makeThisTodo
-    ? (
-      destinationPath.trim() && todoDateStr.trim()
-        ? `${destinationPath.replace(/\/$/, '')}/${todoDateStr.trim()}.md`
-        : null
-    )
-    : (
-      destinationPath.trim() && filename.trim()
-        ? `${destinationPath.replace(/\/$/, '')}/${normalizedFilename}`
-        : null
-    )
+  useEffect(() => {
+    if (makeThisTodo) {
+      setLoadingTargetContent(false)
+      setLoadedTargetPath(null)
+      setTargetFileState(null)
+      setSavedPath(null)
+      setContent('')
+      return
+    }
+    if (!targetPath) {
+      setLoadedTargetPath(null)
+      setTargetFileState(null)
+      setContent('')
+      setSavedPath(null)
+      return
+    }
+    if (targetPath === loadedTargetPath) return
+
+    const requestId = loadTargetRequestRef.current + 1
+    loadTargetRequestRef.current = requestId
+    let cancelled = false
+    setLoadingTargetContent(true)
+    setSavedPath(null)
+    setError(null)
+    setContent('')
+
+    void (async () => {
+      try {
+        const fs = getVaultFS()
+        const exists = await fs.exists(targetPath)
+        if (cancelled || requestId !== loadTargetRequestRef.current) return
+        if (!exists) {
+          setContent('')
+          setLoadedTargetPath(targetPath)
+          setTargetFileState({
+            path: targetPath,
+            exists: false,
+            baseMtime: null,
+            baseHash: null,
+          })
+          return
+        }
+        const existing = await getThoughtForEdit(targetPath)
+        if (cancelled || requestId !== loadTargetRequestRef.current) return
+        setContent(existing.content)
+        setLoadedTargetPath(targetPath)
+        setTargetFileState({
+          path: targetPath,
+          exists: true,
+          baseMtime: existing.mtime,
+          baseHash: existing.hash,
+        })
+      } catch (err) {
+        if (cancelled || requestId !== loadTargetRequestRef.current) return
+        setError(err instanceof Error ? err.message : 'Failed to load destination note')
+      } finally {
+        if (cancelled || requestId !== loadTargetRequestRef.current) return
+        setLoadingTargetContent(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [loadedTargetPath, makeThisTodo, targetPath])
+
   const contentMeta = useMemo(() => {
     const normalized = content.replace(/\r\n/g, '\n')
     const trimmed = normalized.trim()
@@ -616,52 +748,13 @@ function CreateTab() {
     return lines.join('\n')
   }, [emotions, titleForPreview])
 
-  const handleEditExisting = () => {
-    if (!targetPath) return
-    setEditorPath(targetPath)
-    setMessage(`Opened ${targetPath} in editor.`)
-  }
-
-  const handleCreateAnother = () => {
-    setContent('')
-    setTitle('')
-    setUseCustomTitle(false)
-    setFilename(todayFilename())
-    setFilenameTouched(false)
-    setTodoDateStr(todayDateStr())
-    setItemsAdded(0)
-    setEditorPath(null)
-    setSavedPath(null)
-    setError(null)
-    setMessage(null)
-  }
-
-  const handleDeleteCurrent = async () => {
-    if (!editorPath) return
-    if (!window.confirm(`Delete note?\n\n${editorPath}`)) return
-    setDeleting(true)
-    setError(null)
-    setMessage(null)
-    try {
-      await deleteVaultPathOrch(editorPath)
-      setMessage(`Deleted ${editorPath}.`)
-      if (savedPath === editorPath) setSavedPath(null)
-      setEditorPath(null)
-      setContent('')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete note')
-    } finally {
-      setDeleting(false)
-    }
-  }
-
   const todoItemCount = useMemo(
     () => content.split('\n').map(line => line.trim()).filter(Boolean).length,
     [content],
   )
   const canSave = makeThisTodo
     ? Boolean(destinationPath.trim() && todoDateStr.trim() && todoItemCount > 0 && !saving)
-    : Boolean(destinationPath.trim() && filename.trim() && content.trim() && !saving)
+    : Boolean(destinationPath.trim() && filename.trim() && content.trim() && !saving && !loadingTargetContent)
   const mostUsedDestinations = useMemo(() => topUsedDestinations(usageCounts, 5), [usageCounts])
 
   return (
@@ -914,46 +1007,7 @@ function CreateTab() {
           </CardContent>
         </Card>
 
-        {editorPath ? (
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle className="text-sm">Edit Note</CardTitle>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => setEditorPath(null)}>
-                    Close Editor
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={handleCreateAnother}>
-                    Create Another
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                    onClick={() => { void handleDeleteCurrent() }}
-                    disabled={deleting}
-                  >
-                    {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    Delete
-                  </Button>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground break-all">{editorPath}</p>
-            </CardHeader>
-            <CardContent className="p-0">
-              <MarkdownDocumentBlock
-                path={editorPath}
-                initialMode="edit"
-                onSaved={({ output_path }) => {
-                  setSavedPath(output_path)
-                  setMessage(`Saved ${output_path}.`)
-                }}
-                className="h-[calc(100dvh-18rem)] min-h-[520px] rounded-b-xl"
-              />
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
+        <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">{makeThisTodo ? 'Compose To Dos' : 'Compose Note'}</CardTitle>
             </CardHeader>
@@ -1076,22 +1130,39 @@ function CreateTab() {
                 onAiPanelOpenChange={setShowAiAssist}
                 aiAssistScope="new_thought"
                 aiAssistUseCase="new_thought.assist"
-                aiAssistDisabled={saving}
+                aiAssistDisabled={saving || loadingTargetContent}
                 aiAssistHelperText="Suggestions apply inline. Configure provider/model in AI Settings."
                 onRelatedThoughtOpenPath={(relatedPath) => {
-                  setEditorPath(relatedPath)
-                  setMessage(`Opened ${relatedPath} in editor.`)
+                  openFileInNewTabOrch(relatedPath)
+                  setMessage(`Opened ${relatedPath} in a new tab.`)
                 }}
-                className="min-h-[400px] rounded-lg border border-input overflow-hidden"
+                className="min-h-[520px] md:min-h-[620px] rounded-lg border border-input overflow-hidden"
               />
             </div>
 
             <div className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
               {makeThisTodo ? 'Destination todo file' : 'Destination file'}:{' '}
-              <span className="font-mono text-foreground break-all">
-                {targetPath ?? (makeThisTodo ? '(select destination + date)' : '(select destination + filename)')}
-              </span>
+              {targetPath ? (
+                <button
+                  type="button"
+                  onClick={() => openFileInNewTabOrch(targetPath)}
+                  className="font-mono text-foreground break-all underline decoration-dotted underline-offset-2 hover:text-primary"
+                  title="Open in Thinking Space explorer (new tab)"
+                >
+                  {targetPath}
+                </button>
+              ) : (
+                <span className="font-mono text-foreground break-all">
+                  {makeThisTodo ? '(select destination + date)' : '(select destination + filename)'}
+                </span>
+              )}
             </div>
+
+            {!makeThisTodo && loadingTargetContent && (
+              <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                Loading destination note...
+              </div>
+            )}
 
             <div className="flex flex-wrap items-center gap-3">
               <Button
@@ -1103,23 +1174,8 @@ function CreateTab() {
               >
                 {saving
                   ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : (saveFeedbackVisible ? 'Saved' : (makeThisTodo ? 'Save To Dos' : 'Create Note'))}
+                  : (saveFeedbackVisible ? 'Saved' : 'Save')}
               </Button>
-
-              <Button
-                variant="secondary"
-                onClick={handleEditExisting}
-                disabled={!targetPath || saving}
-              >
-                <Pencil className="h-4 w-4 mr-1.5" />
-                Open Existing
-              </Button>
-
-              {(savedPath || content.trim()) && (
-                <Button variant="outline" onClick={handleCreateAnother}>
-                  Reset Draft
-                </Button>
-              )}
             </div>
 
             {savedPath && (
@@ -1142,7 +1198,6 @@ function CreateTab() {
             )}
             </CardContent>
           </Card>
-        )}
       </div>
       </div>
 

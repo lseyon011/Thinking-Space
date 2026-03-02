@@ -237,7 +237,8 @@ function MarkdownTextDocumentRuntimeBlock({
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
   const saveButtonLabel = saving ? 'Saving...' : manualSaveFeedbackVisible ? 'Saved' : 'Save'
   const saveButtonClassName = cn(
-    'inline-flex items-center gap-1 rounded-lg border border-border/70 px-2.5 py-1 text-xs font-medium text-foreground transition-colors duration-200 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50',
+    'inline-flex items-center gap-1 border border-border/70 font-medium text-foreground transition-colors duration-200 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50',
+    isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2.5 py-1 text-xs',
     manualSaveFeedbackVisible && !saving
       ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-600'
       : 'bg-transparent',
@@ -851,9 +852,9 @@ function MarkdownTextDocumentRuntimeBlock({
           <div ref={chromeContainerRef} className={cn(hideTopBarInView && 'hidden')}>
             <div className={cn(
               'ts-md-header ts-doc-header flex items-start justify-between gap-3 border-b border-border/50',
-              isIosPhone ? 'px-4 py-3.5' : 'px-6 py-5',
+              isIosPhone ? 'flex-col items-stretch px-4 py-3.5' : 'px-6 py-5',
             )}>
-              <div className="min-w-0 flex-1">
+              <div className={cn('min-w-0 flex-1', isIosPhone && 'w-full')}>
                 <div className="flex w-full min-w-0 items-center gap-2">
                   <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                   {isEditing && canRenameInHeader && isHeaderRenameActive ? (
@@ -904,12 +905,18 @@ function MarkdownTextDocumentRuntimeBlock({
                 )}
               </div>
 
-              <div className="flex shrink-0 items-center gap-1">
+              <div className={cn(
+                'flex shrink-0 items-center gap-1',
+                isIosPhone && 'w-full min-w-0 flex-wrap justify-start gap-1.5',
+              )}>
                 {!isEditing && (
                   <button
                     type="button"
                     onClick={toggleTopBarHiddenInViewMode}
-                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    className={cn(
+                      'text-muted-foreground hover:bg-muted hover:text-foreground',
+                      isIosPhone ? 'rounded-md p-1.5' : 'rounded-lg p-1.5',
+                    )}
                     title="Hide top bar"
                   >
                     <EyeOff className="h-4 w-4" />
@@ -934,7 +941,11 @@ function MarkdownTextDocumentRuntimeBlock({
                     <button
                       type="button"
                       onClick={() => setAutoSaveEnabled(v => !v)}
-                      className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                      className={cn(
+                        'font-medium transition-colors',
+                        isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2 py-1 text-xs',
+                        autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                      )}
                       title="Toggle auto save"
                     >
                       {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
@@ -942,7 +953,10 @@ function MarkdownTextDocumentRuntimeBlock({
                     <button
                       type="button"
                       onClick={cancelEditing}
-                      className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+                      className={cn(
+                        'border border-border font-medium hover:bg-muted',
+                        isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2.5 py-1 text-xs',
+                      )}
                     >
                       Cancel
                     </button>
@@ -991,7 +1005,10 @@ function MarkdownTextDocumentRuntimeBlock({
 
                 <a
                   href={obsidianUrl}
-                  className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  className={cn(
+                    'inline-flex items-center gap-1 border border-border font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+                    isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2.5 py-1 text-xs',
+                  )}
                   title="Open file in Obsidian"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
@@ -1001,7 +1018,10 @@ function MarkdownTextDocumentRuntimeBlock({
                   type="button"
                   onClick={handleOpenInSystem}
                   disabled={!canOpenInSystem}
-                  className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  className={cn(
+                    'inline-flex items-center gap-1 border border-border font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-muted-foreground',
+                    isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2.5 py-1 text-xs',
+                  )}
                   title={canOpenInSystem ? `Open file in ${openInSystemButtonLabel}` : 'Open in system file manager is unavailable on web'}
                 >
                   <FolderOpen className="h-3.5 w-3.5" />
@@ -1011,7 +1031,10 @@ function MarkdownTextDocumentRuntimeBlock({
                 {showCloseButton && onClose && (
                   <button
                     onClick={onClose}
-                    className="rounded-lg p-1.5 transition-colors hover:bg-muted"
+                    className={cn(
+                      'transition-colors hover:bg-muted',
+                      isIosPhone ? 'rounded-md p-1.5' : 'rounded-lg p-1.5',
+                    )}
                     title="Close"
                   >
                     <X className="h-4 w-4" />
