@@ -326,7 +326,7 @@ export default function NodeDetailPanelBlock({
   }, [onClose])
 
   const commitRename = useCallback(async () => {
-    const next = titleDraft.trim()
+    const next = titleDraft.replace(/\s+/g, ' ').trim()
     if (!next || next === node.title) return
     setBusy(true)
     try {
@@ -656,14 +656,18 @@ export default function NodeDetailPanelBlock({
           </div>
 
           {/* Title input */}
-          <input
+          <textarea
             value={titleDraft}
             onChange={e => setTitleDraft(e.target.value)}
             onBlur={() => { void commitRename() }}
             onKeyDown={e => {
-              if (e.key === 'Enter') { e.preventDefault(); void commitRename() }
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                void commitRename()
+              }
             }}
-            className="w-full border-b border-border bg-transparent pb-1 text-lg font-semibold outline-none transition-colors focus:border-primary"
+            rows={2}
+            className="w-full resize-none border-b border-border bg-transparent pb-1 text-lg font-semibold leading-snug outline-none transition-colors focus:border-primary"
             disabled={busy}
           />
 
