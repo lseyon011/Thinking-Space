@@ -75,8 +75,8 @@ export default function ThinkingSpaceOrch() {
   const isIosSurface = layout.surface === 'capacitor-ios'
   const headerOffsetClass = showExplorerTrigger
     ? (isIosSurface
-      ? '[&_.ts-md-header]:pl-16 sm:[&_.ts-md-header]:pl-20'
-      : '[&_.ts-md-header]:pl-28 sm:[&_.ts-md-header]:pl-44')
+      ? '[&_.ts-doc-header]:pl-20 sm:[&_.ts-doc-header]:pl-24'
+      : '[&_.ts-doc-header]:pl-40 sm:[&_.ts-doc-header]:pl-44')
     : ''
 
   const rememberMountedInlinePath = useCallback((path: string, initialMode: MarkdownViewerMode) => {
@@ -529,7 +529,7 @@ export default function ThinkingSpaceOrch() {
             variant="outline"
             size="sm"
             className={cn(
-              'ltm-shell-action ltm-motion-fast ltm-touch-target absolute left-3 top-3 z-20 h-11 items-center gap-1.5',
+              'ltm-shell-action ltm-motion-fast ltm-touch-target absolute left-6 top-6 z-20 h-11 items-center gap-1.5',
               isIosSurface ? 'w-11 justify-center px-0' : 'px-3',
               showExplorerTrigger ? 'inline-flex' : 'hidden',
             )}

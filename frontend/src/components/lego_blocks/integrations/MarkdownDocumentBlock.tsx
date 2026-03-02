@@ -771,7 +771,7 @@ function MarkdownTextDocumentRuntimeBlock({
         >
           <div ref={chromeContainerRef} className={cn(hideTopBarInView && 'hidden')}>
             <div className={cn(
-              'ts-md-header flex items-start justify-between gap-3 border-b border-border/50',
+              'ts-md-header ts-doc-header flex items-start justify-between gap-3 border-b border-border/50',
               isIosPhone ? 'px-4 py-3.5' : 'px-6 py-5',
             )}>
               <div className="min-w-0">
@@ -1178,7 +1178,7 @@ function PdfDocumentRuntimeBlock({
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col bg-card p-2', className)}>
-      <div className="border-b border-border/50 px-6 py-5">
+      <div className="ts-doc-header border-b border-border/50 px-6 py-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
