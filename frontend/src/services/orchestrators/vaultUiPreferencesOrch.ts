@@ -1,10 +1,13 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
-  DEFAULT_VAULT_UI_PREFERENCES_BLOCK,
+  createDefaultVaultUiPreferencesBlock,
+  DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK,
+  normalizeExplorerFolderColorPreferencesBlock,
   normalizeExplorerIconStyleBlock,
   normalizeNewThoughtQuickDestinationsBlock,
   normalizeVaultUiPreferencesBlock,
   serializeVaultUiPreferencesBlock,
+  type ExplorerFolderColorPreferenceBlock,
   type ExplorerIconStyleBlock,
   type NewThoughtQuickDestinationPreferenceBlock,
   type VaultUiPreferencesBlock,
@@ -15,10 +18,12 @@ const UI_PREFERENCES_DIR_ORCH = `${THINK_SPACE_DIR_ORCH}/preferences`
 const UI_PREFERENCES_FILE_ORCH = `${UI_PREFERENCES_DIR_ORCH}/ui.json`
 
 export type {
+  ExplorerFolderColorPreferenceBlock,
   ExplorerIconStyleBlock,
   NewThoughtQuickDestinationPreferenceBlock,
   VaultUiPreferencesBlock,
 }
+export { DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK }
 
 async function ensurePreferencesDirOrch(): Promise<void> {
   const fs = getVaultFS()
@@ -38,13 +43,13 @@ export async function readVaultUiPreferencesOrch(): Promise<VaultUiPreferencesBl
   const fs = getVaultFS()
   try {
     if (!(await fs.exists(UI_PREFERENCES_FILE_ORCH))) {
-      return { ...DEFAULT_VAULT_UI_PREFERENCES_BLOCK }
+      return createDefaultVaultUiPreferencesBlock()
     }
     const raw = await fs.read(UI_PREFERENCES_FILE_ORCH)
-    if (!raw.trim()) return { ...DEFAULT_VAULT_UI_PREFERENCES_BLOCK }
+    if (!raw.trim()) return createDefaultVaultUiPreferencesBlock()
     return normalizeVaultUiPreferencesBlock(JSON.parse(raw))
   } catch {
-    return { ...DEFAULT_VAULT_UI_PREFERENCES_BLOCK }
+    return createDefaultVaultUiPreferencesBlock()
   }
 }
 
@@ -88,5 +93,20 @@ export async function setNewThoughtQuickDestinationsPreferenceOrch(
 ): Promise<VaultUiPreferencesBlock> {
   return updateVaultUiPreferencesOrch({
     newThoughtQuickDestinations: normalizeNewThoughtQuickDestinationsBlock(destinations),
+  })
+}
+
+export async function readExplorerFolderColorPreferencesOrch(): Promise<
+  ExplorerFolderColorPreferenceBlock[]
+> {
+  const preferences = await readVaultUiPreferencesOrch()
+  return preferences.explorerFolderColorRules
+}
+
+export async function setExplorerFolderColorPreferencesOrch(
+  rules: ExplorerFolderColorPreferenceBlock[],
+): Promise<VaultUiPreferencesBlock> {
+  return updateVaultUiPreferencesOrch({
+    explorerFolderColorRules: normalizeExplorerFolderColorPreferencesBlock(rules),
   })
 }

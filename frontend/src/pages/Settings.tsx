@@ -1,17 +1,24 @@
 import { useSearchParams } from 'react-router-dom'
 import { SlidersHorizontal } from 'lucide-react'
 import SettingsOrch, { type SettingsTabWithProfileId } from '@/components/orchestrators/SettingsOrch'
-import type { ExplorerIconStyleBlock } from '@/services/orchestrators/vaultUiPreferencesOrch'
+import type {
+  ExplorerFolderColorPreferenceBlock,
+  ExplorerIconStyleBlock,
+} from '@/services/orchestrators/vaultUiPreferencesOrch'
 
 interface SettingsPageProps {
   explorerIconStyle: ExplorerIconStyleBlock
   onExplorerIconStyleChange: (nextStyle: ExplorerIconStyleBlock) => void
+  explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
+  onExplorerFolderColorRulesChange: (nextRules: ExplorerFolderColorPreferenceBlock[]) => Promise<void> | void
   onRequestVaultSwitch: () => void
 }
 
 export default function Settings({
   explorerIconStyle,
   onExplorerIconStyleChange,
+  explorerFolderColorRules,
+  onExplorerFolderColorRulesChange,
   onRequestVaultSwitch,
 }: SettingsPageProps) {
   const [searchParams] = useSearchParams()
@@ -23,6 +30,8 @@ export default function Settings({
         ? 'ai'
         : requestedTab === 'f9'
           ? 'f9'
+          : requestedTab === 'explorer'
+            ? 'explorer'
           : requestedTab === 'cache'
             ? 'cache'
             : requestedTab === 'vault'
@@ -48,6 +57,8 @@ export default function Settings({
         <SettingsOrch
           explorerIconStyle={explorerIconStyle}
           onExplorerIconStyleChange={onExplorerIconStyleChange}
+          explorerFolderColorRules={explorerFolderColorRules}
+          onExplorerFolderColorRulesChange={onExplorerFolderColorRulesChange}
           onRequestVaultSwitch={onRequestVaultSwitch}
           initialTab={initialTab}
         />

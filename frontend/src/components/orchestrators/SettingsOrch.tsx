@@ -23,21 +23,40 @@ import {
   readF9WebullCredentialStatusBlock,
   saveF9WebullCredentialsBlock,
 } from '@/personal_extension/services/lego_blocks/units/f9WebullConfigBlock'
-import type { ExplorerIconStyleBlock } from '@/services/orchestrators/vaultUiPreferencesOrch'
+import {
+  DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK,
+  type ExplorerFolderColorPreferenceBlock,
+  type ExplorerIconStyleBlock,
+} from '@/services/orchestrators/vaultUiPreferencesOrch'
 import type { UIThemeId } from '@/services/orchestrators/uiThemeOrch'
 
-export type SettingsTabId = 'theme' | 'ai' | 'f9' | 'cache' | 'vault'
+export type SettingsTabId = 'theme' | 'explorer' | 'ai' | 'f9' | 'cache' | 'vault'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
 
 interface SettingsOrchProps {
   explorerIconStyle: ExplorerIconStyleBlock
   onExplorerIconStyleChange: (nextStyle: ExplorerIconStyleBlock) => void
+  explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
+  onExplorerFolderColorRulesChange: (nextRules: ExplorerFolderColorPreferenceBlock[]) => Promise<void> | void
   onRequestVaultSwitch: () => void
   initialTab?: SettingsTabWithProfileId
 }
 
+function createExplorerColorRuleId(): string {
+  return `explorer-color-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function normalizeExplorerFolderPathInput(value: string): string {
+  return value.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+}
+
+function createExplorerRuleKey(rule: Pick<ExplorerFolderColorPreferenceBlock, 'folderPath' | 'includeDescendants'>): string {
+  return `${normalizeExplorerFolderPathInput(rule.folderPath)}::${rule.includeDescendants ? 'all' : 'single'}`
+}
+
 const TAB_OPTIONS: Array<{ id: SettingsTabWithProfileId; label: string }> = [
   { id: 'theme', label: 'Theme' },
+  { id: 'explorer', label: 'Explorer' },
   { id: 'profile', label: 'Profile' },
   { id: 'ai', label: 'AI' },
   { id: 'f9', label: 'F9' },
@@ -48,6 +67,8 @@ const TAB_OPTIONS: Array<{ id: SettingsTabWithProfileId; label: string }> = [
 export default function SettingsOrch({
   explorerIconStyle,
   onExplorerIconStyleChange,
+  explorerFolderColorRules,
+  onExplorerFolderColorRulesChange,
   onRequestVaultSwitch,
   initialTab = 'theme',
 }: SettingsOrchProps) {
@@ -69,6 +90,10 @@ export default function SettingsOrch({
   const [f9WebullAppKeyHint, setF9WebullAppKeyHint] = useState<string | null>(null)
   const [f9WebullSecureStorageAvailable, setF9WebullSecureStorageAvailable] = useState(false)
   const [busyAction, setBusyAction] = useState<SettingsTabId | null>(null)
+  const [explorerFolderColorRulesDraft, setExplorerFolderColorRulesDraft] = useState<ExplorerFolderColorPreferenceBlock[]>(
+    () => explorerFolderColorRules,
+  )
+  const [explorerRulesDirty, setExplorerRulesDirty] = useState(false)
   const [profileNameInput, setProfileNameInput] = useState('')
   const [profileSymbolInput, setProfileSymbolInput] = useState('')
   const [profileMemoriesInput, setProfileMemoriesInput] = useState('')
@@ -114,6 +139,11 @@ export default function SettingsOrch({
     setProfileMemoriesInput(profile.memories.join('\n'))
     setProfileDirty(false)
   }, [profile])
+
+  useEffect(() => {
+    setExplorerFolderColorRulesDraft(explorerFolderColorRules)
+    setExplorerRulesDirty(false)
+  }, [explorerFolderColorRules])
 
   const onSaveProfile = async () => {
     const normalizedName = profileNameInput.trim()
@@ -280,15 +310,108 @@ export default function SettingsOrch({
     }
   }
 
+  const onAddExplorerColorRule = () => {
+    setExplorerFolderColorRulesDraft((prev) => [
+      ...prev,
+      {
+        id: createExplorerColorRuleId(),
+        folderPath: '',
+        color: '#6aaafa',
+        includeDescendants: true,
+      },
+    ])
+    setExplorerRulesDirty(true)
+    setMessage(null)
+    setError(null)
+  }
+
+  const onUpdateExplorerColorRule = (
+    ruleId: string,
+    patch: Partial<ExplorerFolderColorPreferenceBlock>,
+  ) => {
+    setExplorerFolderColorRulesDraft((prev) => prev.map((rule) => {
+      if (rule.id !== ruleId) return rule
+      return { ...rule, ...patch }
+    }))
+    setExplorerRulesDirty(true)
+    setMessage(null)
+    setError(null)
+  }
+
+  const onRemoveExplorerColorRule = (ruleId: string) => {
+    setExplorerFolderColorRulesDraft((prev) => prev.filter((rule) => rule.id !== ruleId))
+    setExplorerRulesDirty(true)
+    setMessage(null)
+    setError(null)
+  }
+
+  const onResetExplorerColorRules = () => {
+    setExplorerFolderColorRulesDraft(explorerFolderColorRules)
+    setExplorerRulesDirty(false)
+    setMessage('Explorer color rules reset to saved values.')
+    setError(null)
+  }
+
+  const onLoadLegacyExplorerColorRules = () => {
+    setExplorerFolderColorRulesDraft((prev) => {
+      const merged = [...prev]
+      const indexByKey = new Map<string, number>()
+      merged.forEach((rule, index) => {
+        indexByKey.set(createExplorerRuleKey(rule), index)
+      })
+      DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK.forEach((preset) => {
+        const key = createExplorerRuleKey(preset)
+        const foundIndex = indexByKey.get(key)
+        if (foundIndex == null) {
+          merged.push({
+            ...preset,
+          })
+          indexByKey.set(key, merged.length - 1)
+          return
+        }
+        merged[foundIndex] = {
+          ...merged[foundIndex],
+          color: preset.color,
+        }
+      })
+      return merged
+    })
+    setExplorerRulesDirty(true)
+    setMessage('Legacy explorer color preset loaded. Save Explorer Settings to persist.')
+    setError(null)
+  }
+
+  const onSaveExplorerColorRules = async () => {
+    const sanitized = explorerFolderColorRulesDraft
+      .map((rule) => ({
+        ...rule,
+        folderPath: normalizeExplorerFolderPathInput(rule.folderPath),
+      }))
+      .filter((rule) => rule.folderPath.length > 0)
+    setBusyAction('explorer')
+    setMessage(null)
+    setError(null)
+    try {
+      await onExplorerFolderColorRulesChange(sanitized)
+      setExplorerRulesDirty(false)
+      setMessage('Explorer settings saved.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save explorer settings')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="mb-4 flex items-center gap-2">
         {TAB_OPTIONS.map(tab => (
           <Button
             key={tab.id}
             type="button"
-            variant={activeTab === tab.id ? 'default' : 'outline'}
+            variant={activeTab === tab.id ? 'default' : 'ghost'}
             size="sm"
+            className="w-[7.5rem] justify-center"
             onClick={() => setActiveTab(tab.id)}
           >
             {tab.label}
@@ -300,7 +423,7 @@ export default function SettingsOrch({
         <Card>
           <CardHeader>
             <CardTitle>Theme</CardTitle>
-            <CardDescription>Personalize the interface look and explorer icon style.</CardDescription>
+            <CardDescription>Personalize the interface look.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -318,20 +441,6 @@ export default function SettingsOrch({
                     {option.label}
                   </option>
                 ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="ltm-settings-explorer-icon-style-select" className="text-sm font-medium">
-                Explorer Icon Style
-              </label>
-              <select
-                id="ltm-settings-explorer-icon-style-select"
-                value={explorerIconStyle}
-                onChange={(event) => onExplorerIconStyleChange(event.target.value as ExplorerIconStyleBlock)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-              >
-                <option value="outline">Outline</option>
-                <option value="filled">Filled</option>
               </select>
             </div>
             <div className="space-y-2 border-t border-border/50 pt-4">
@@ -367,6 +476,118 @@ export default function SettingsOrch({
                   aria-label="Preserve new lines in view mode"
                 />
               </label>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'explorer' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Explorer</CardTitle>
+            <CardDescription>
+              Configure explorer icon style and custom folder color rules (saved in vault UI preferences).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="ltm-settings-explorer-icon-style-select" className="text-sm font-medium">
+                Explorer Icon Style
+              </label>
+              <select
+                id="ltm-settings-explorer-icon-style-select"
+                value={explorerIconStyle}
+                onChange={(event) => onExplorerIconStyleChange(event.target.value as ExplorerIconStyleBlock)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+              >
+                <option value="outline">Outline</option>
+                <option value="filled">Filled</option>
+              </select>
+            </div>
+
+            <div className="space-y-2 border-t border-border/60 pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium text-foreground">Folder Color Rules</h3>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={onLoadLegacyExplorerColorRules}>
+                    Load Legacy Preset
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={onAddExplorerColorRule}>
+                    Add Rule
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Each rule colors a folder icon by relative path. Enable descendants to apply the color to nested folders.
+              </p>
+
+              <div className="space-y-2">
+                {explorerFolderColorRulesDraft.length === 0 && (
+                  <div className="rounded-md border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
+                    No custom rules yet. Add one to color explorer folders.
+                  </div>
+                )}
+                {explorerFolderColorRulesDraft.map((rule) => (
+                  <div key={rule.id} className="grid gap-2 rounded-md border border-border/60 p-2 md:grid-cols-[1fr_auto_auto_auto] md:items-end">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-medium text-muted-foreground">Folder Path</label>
+                      <input
+                        type="text"
+                        value={rule.folderPath}
+                        onChange={(event) => onUpdateExplorerColorRule(rule.id, { folderPath: event.target.value })}
+                        placeholder="example/folder/path"
+                        className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-ring"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-medium text-muted-foreground">Color</label>
+                      <input
+                        type="color"
+                        value={rule.color}
+                        onChange={(event) => onUpdateExplorerColorRule(rule.id, { color: event.target.value })}
+                        className="h-9 w-12 cursor-pointer rounded border border-input bg-background p-1"
+                        aria-label={`Color for ${rule.folderPath || 'new rule'}`}
+                      />
+                    </div>
+                    <label className="inline-flex h-9 items-center gap-2 text-xs text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={rule.includeDescendants}
+                        onChange={(event) => onUpdateExplorerColorRule(rule.id, { includeDescendants: event.target.checked })}
+                        className="h-4 w-4"
+                      />
+                      Descendants
+                    </label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9"
+                      onClick={() => onRemoveExplorerColorRule(rule.id)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={() => { void onSaveExplorerColorRules() }}
+                disabled={busyAction === 'explorer' || !explorerRulesDirty}
+              >
+                {busyAction === 'explorer' ? 'Saving...' : 'Save Explorer Settings'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onResetExplorerColorRules}
+                disabled={busyAction === 'explorer' || !explorerRulesDirty}
+              >
+                Reset
+              </Button>
             </div>
           </CardContent>
         </Card>

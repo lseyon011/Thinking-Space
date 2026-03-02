@@ -74,6 +74,8 @@ import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from '@/ser
 import { getUIShellThemeProfileOrch } from './services/orchestrators/uiThemeOrch'
 import { readUserProfileOrch } from './services/orchestrators/userProfileOrch'
 import {
+  setExplorerFolderColorPreferencesOrch,
+  type ExplorerFolderColorPreferenceBlock,
   readVaultUiPreferencesOrch,
   setExplorerIconStylePreferenceOrch,
   type ExplorerIconStyleBlock,
@@ -243,6 +245,33 @@ function buildThinkingSpaceFileRoute(path: string): string {
   return `/thinking-space?file=${encodeURIComponent(path)}`
 }
 
+function escapeCssAttrValueBlock(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+}
+
+function buildExplorerFolderColorCssBlock(rules: ExplorerFolderColorPreferenceBlock[]): string {
+  if (!Array.isArray(rules) || rules.length === 0) return ''
+  const blocks: string[] = []
+  for (const rule of rules) {
+    const path = rule.folderPath.trim()
+    const color = rule.color.trim()
+    if (!path || !color) continue
+    const escapedPath = escapeCssAttrValueBlock(path)
+    const selectors = [
+      `.ltm-app-shell .ltm-explorer-folder-row[data-path="${escapedPath}"] .ltm-explorer-folder-icon`,
+    ]
+    if (rule.includeDescendants) {
+      selectors.push(
+        `.ltm-app-shell .ltm-explorer-folder-row[data-path^="${escapedPath}/"] .ltm-explorer-folder-icon`,
+      )
+    }
+    blocks.push(`${selectors.join(',\n')} { color: ${color}; }`)
+  }
+  return blocks.join('\n')
+}
+
 function AppBrandGlyph({ className = 'h-[14px] w-[14px]' }: { className?: string }) {
   return (
     <img
@@ -278,6 +307,7 @@ function App() {
   const [commandFileItems, setCommandFileItems] = useState<CommandItem[]>([])
   const [commandFilesLastLoadedAt, setCommandFilesLastLoadedAt] = useState(0)
   const [explorerIconStyle, setExplorerIconStyle] = useState<ExplorerIconStyleBlock>('outline')
+  const [explorerFolderColorRules, setExplorerFolderColorRules] = useState<ExplorerFolderColorPreferenceBlock[]>([])
   const [refreshRunning, setRefreshRunning] = useState(false)
   const [syncPanelOpen, setSyncPanelOpen] = useState(false)
   const [syncActionRunning, setSyncActionRunning] = useState<'sync' | 'rebuild' | null>(null)
@@ -442,6 +472,10 @@ function App() {
     '--ltm-safe-bottom': `${bottomInset}px`,
     '--ltm-safe-left': `${leftInset}px`,
   }) as CSSProperties, [bottomInset, leftInset, rightInset, topInset])
+  const explorerFolderColorCss = useMemo(
+    () => buildExplorerFolderColorCssBlock(explorerFolderColorRules),
+    [explorerFolderColorRules],
+  )
 
   const openCommandPalette = useCallback(() => {
     setCommandQuery('')
@@ -481,6 +515,18 @@ function App() {
     void setExplorerIconStylePreferenceOrch(nextStyle).catch((error) => {
       console.warn('[App] Failed to persist explorer icon style preference:', error)
     })
+  }, [])
+
+  const handleExplorerFolderColorRulesChange = useCallback(async (
+    nextRules: ExplorerFolderColorPreferenceBlock[],
+  ) => {
+    setExplorerFolderColorRules(nextRules)
+    try {
+      await setExplorerFolderColorPreferencesOrch(nextRules)
+    } catch (error) {
+      console.warn('[App] Failed to persist explorer folder color rules:', error)
+      throw error
+    }
   }, [])
 
   const handleRequestVaultSwitch = useCallback(() => {
@@ -1009,6 +1055,7 @@ function App() {
       .then((preferences) => {
         if (cancelled) return
         setExplorerIconStyle(preferences.explorerIconStyle)
+        setExplorerFolderColorRules(preferences.explorerFolderColorRules)
       })
       .catch((error) => {
         if (!cancelled) {
@@ -1154,6 +1201,7 @@ function App() {
       data-ltm-theme={themeId}
       data-ltm-explorer-icon-style={explorerIconStyle}
     >
+      {explorerFolderColorCss && <style>{explorerFolderColorCss}</style>}
       <div className="ltm-shell-layer-base">
         <div
           className="ltm-shell-stage"
@@ -1404,6 +1452,8 @@ function App() {
                   <Settings
                     explorerIconStyle={explorerIconStyle}
                     onExplorerIconStyleChange={handleExplorerIconStyleChange}
+                    explorerFolderColorRules={explorerFolderColorRules}
+                    onExplorerFolderColorRulesChange={handleExplorerFolderColorRulesChange}
                     onRequestVaultSwitch={handleRequestVaultSwitch}
                   />
                 }
