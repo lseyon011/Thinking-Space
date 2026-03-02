@@ -6,7 +6,7 @@ import {
   textColumn,
 } from 'react-datasheet-grid'
 import 'react-datasheet-grid/dist/style.css'
-import { CloudDownload, CloudUpload, FileSpreadsheet, Pencil, Plus, Save, X } from 'lucide-react'
+import { CloudDownload, CloudUpload, FileSpreadsheet, FolderOpen, Pencil, Plus, Save, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   pullGoogleSheetDocumentBlock,
@@ -23,7 +23,11 @@ import {
   readTableDocument,
   saveTableDocument,
 } from '@/services/orchestrators/tableDocumentsOrch'
-import { renameVaultPathOrch } from '@/services/orchestrators/fileSystemOrch'
+import {
+  getOpenInSystemLabelOrch,
+  openVaultPathInSystemOrch,
+  renameVaultPathOrch,
+} from '@/services/orchestrators/fileSystemOrch'
 
 type ViewerMode = 'view' | 'edit'
 type GridRowBlock = Record<string, string | null>
@@ -76,6 +80,7 @@ function TableDocumentBlock({
   const [error, setError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [renameError, setRenameError] = useState<string | null>(null)
+  const [openInSystemError, setOpenInSystemError] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const [isHeaderRenameActive, setIsHeaderRenameActive] = useState(false)
   const [renaming, setRenaming] = useState(false)
@@ -136,6 +141,9 @@ function TableDocumentBlock({
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const canRenameInHeader = !!(onOpenPathForEdit || onOpenPath)
+  const openInSystemLabel = getOpenInSystemLabelOrch()
+  const canOpenInSystem = openInSystemLabel !== null
+  const openInSystemButtonLabel = openInSystemLabel ?? 'System'
 
   useEffect(() => {
     setRenameDraft(filename)
@@ -187,6 +195,14 @@ function TableDocumentBlock({
     setRenameError(null)
     setIsHeaderRenameActive(true)
   }, [canRenameInHeader, filename, isEditing, renaming])
+
+  const handleOpenInSystem = useCallback(() => {
+    if (!canOpenInSystem) return
+    setOpenInSystemError(null)
+    void openVaultPathInSystemOrch(path).catch((err) => {
+      setOpenInSystemError(err instanceof Error ? err.message : 'Failed to open file in system file manager')
+    })
+  }, [canOpenInSystem, path])
 
   const columnCount = useMemo(() => {
     if (!activeSheet) return 1
@@ -545,8 +561,19 @@ function TableDocumentBlock({
             </div>
             {breadcrumb && <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>}
             {renameError && <div className="mt-1 truncate text-xs text-destructive">{renameError}</div>}
+            {openInSystemError && <div className="mt-1 truncate text-xs text-destructive">{openInSystemError}</div>}
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={handleOpenInSystem}
+              disabled={!canOpenInSystem}
+              className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+              title={canOpenInSystem ? `Open file in ${openInSystemButtonLabel}` : 'Open in system file manager is unavailable on web'}
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{openInSystemButtonLabel}</span>
+            </button>
             {!isEditing && (
               <button
                 onClick={startEditing}

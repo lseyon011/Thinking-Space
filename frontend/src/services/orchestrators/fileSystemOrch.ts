@@ -1,12 +1,16 @@
 import type { FileStat } from '@/services/lego_blocks/units/typesBlock'
-import { getVaultFS, type VaultEntry } from '@/services/lego_blocks/integrations/fsBlock'
+import {
+  getVaultFS,
+  normalizeCapacitorStoredVaultRoot,
+  type VaultEntry,
+} from '@/services/lego_blocks/integrations/fsBlock'
 import {
   parseWikilinkTargetBlock,
   resolveWikilinkPathBlock,
   splitTextByWikilinksBlock,
 } from '@/services/lego_blocks/integrations/obsidianWikilinkBlock'
 import { getStoredVaultRoot } from './storageOrch'
-import { isElectron } from './runtimeOrch'
+import { isCapacitorNative, isElectron } from './runtimeOrch'
 
 export interface FolderEntries {
   folders: string[]
@@ -44,6 +48,14 @@ tags: [excalidraw]
 
 function normalizeRelPath(path: string): string {
   return path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+}
+
+function joinVaultPath(basePath: string, relPath: string): string {
+  const base = basePath.replace(/\/+$/g, '')
+  const rel = relPath.replace(/^\/+/g, '')
+  if (!base) return rel
+  if (!rel) return base
+  return `${base}/${rel}`
 }
 
 function splitParent(path: string): { parent: string; name: string } {
@@ -936,6 +948,49 @@ export async function revealVaultPathOrch(path: string): Promise<void> {
   const api = window.electronAPI
   if (!api?.revealPath) throw new Error('Open in Finder is unavailable in this desktop build')
   await api.revealPath(getElectronVaultRoot(), normalizeRelPath(path))
+}
+
+export function getOpenInSystemLabelOrch(): 'Finder' | 'Files' | null {
+  if (isElectron()) return 'Finder'
+  if (isCapacitorNative()) return 'Files'
+  return null
+}
+
+async function openVaultPathInFilesOrch(path: string): Promise<void> {
+  const normalizedPath = normalizeRelPath(path)
+  if (!normalizedPath) throw new Error('Invalid path')
+
+  const { vaultRoot } = normalizeCapacitorStoredVaultRoot(getStoredVaultRoot())
+  const targetPath = joinVaultPath(vaultRoot, normalizedPath)
+  const isAbsolute = vaultRoot.startsWith('/')
+  const { Filesystem, Directory } = await import('@capacitor/filesystem')
+  const { Capacitor } = await import('@capacitor/core')
+  // Capacitor absolute mode uses file:// URIs without a directory value.
+  // The runtime supports this, but GetUriOptions typing currently requires directory.
+  const absoluteGetUriOptions = { path: `file://${targetPath}` } as unknown as Parameters<typeof Filesystem.getUri>[0]
+  const uriResult = isAbsolute
+    ? await Filesystem.getUri(absoluteGetUriOptions)
+    : await Filesystem.getUri({ path: targetPath, directory: Directory.Documents })
+
+  const launchUri = uriResult.uri.startsWith('file://')
+    ? Capacitor.convertFileSrc(uriResult.uri)
+    : uriResult.uri
+
+  const opened = window.open(launchUri, '_blank')
+  if (opened) return
+  window.location.assign(launchUri)
+}
+
+export async function openVaultPathInSystemOrch(path: string): Promise<'finder' | 'files'> {
+  if (isElectron()) {
+    await revealVaultPathOrch(path)
+    return 'finder'
+  }
+  if (isCapacitorNative()) {
+    await openVaultPathInFilesOrch(path)
+    return 'files'
+  }
+  throw new Error('Open in system file manager is available only on Electron and Capacitor')
 }
 
 export function buildThinkingSpaceFileUrlOrch(path: string): string {

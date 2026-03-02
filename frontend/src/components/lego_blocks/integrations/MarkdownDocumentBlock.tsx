@@ -10,7 +10,7 @@ import {
 } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X, FileText, ExternalLink, Pencil, Save, Eye, EyeOff } from 'lucide-react'
+import { X, FileText, ExternalLink, Pencil, Save, Eye, EyeOff, FolderOpen } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -29,7 +29,12 @@ import {
   remarkObsidianWikilinksOrch,
   resolveWikilinkTargetOrch,
 } from '@/services/orchestrators/obsidianLinkOrch'
-import { openFileInNewTabOrch, renameVaultPathOrch } from '@/services/orchestrators/fileSystemOrch'
+import {
+  getOpenInSystemLabelOrch,
+  openFileInNewTabOrch,
+  openVaultPathInSystemOrch,
+  renameVaultPathOrch,
+} from '@/services/orchestrators/fileSystemOrch'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/integrations/ExcalidrawDocumentBlock'
 import TableDocumentBlock from '@/components/lego_blocks/integrations/TableDocumentBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
@@ -213,6 +218,9 @@ function MarkdownTextDocumentRuntimeBlock({
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const canRenameInHeader = !!(onOpenPathForEdit || onOpenPath)
   const obsidianUrl = buildObsidianOpenUrlOrch(path)
+  const openInSystemLabel = getOpenInSystemLabelOrch()
+  const canOpenInSystem = openInSystemLabel !== null
+  const openInSystemButtonLabel = openInSystemLabel ?? 'System'
   const openLinkedPath = onOpenPath ?? onOpenPathForEdit
   const openRelatedThoughtPath = onOpenPathForEdit ?? onOpenPath
   const normalizePathForCompare = useCallback((candidate: string): string => (
@@ -807,6 +815,14 @@ function MarkdownTextDocumentRuntimeBlock({
     })
   }, [])
 
+  const handleOpenInSystem = useCallback(() => {
+    if (!canOpenInSystem) return
+    setNavigationError(null)
+    void openVaultPathInSystemOrch(path).catch((err) => {
+      setNavigationError(err instanceof Error ? err.message : 'Failed to open file in system file manager')
+    })
+  }, [canOpenInSystem, path])
+
   return (
     <div
       className={cn('flex h-full min-h-0 flex-col bg-card p-2', className)}
@@ -981,6 +997,16 @@ function MarkdownTextDocumentRuntimeBlock({
                   <ExternalLink className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Obsidian</span>
                 </a>
+                <button
+                  type="button"
+                  onClick={handleOpenInSystem}
+                  disabled={!canOpenInSystem}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  title={canOpenInSystem ? `Open file in ${openInSystemButtonLabel}` : 'Open in system file manager is unavailable on web'}
+                >
+                  <FolderOpen className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{openInSystemButtonLabel}</span>
+                </button>
 
                 {showCloseButton && onClose && (
                   <button
@@ -1279,6 +1305,18 @@ function PdfDocumentRuntimeBlock({
 }: MarkdownDocumentBlockProps) {
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
+  const openInSystemLabel = getOpenInSystemLabelOrch()
+  const canOpenInSystem = openInSystemLabel !== null
+  const openInSystemButtonLabel = openInSystemLabel ?? 'System'
+  const [openInSystemError, setOpenInSystemError] = useState<string | null>(null)
+
+  const handleOpenInSystem = useCallback(() => {
+    if (!canOpenInSystem) return
+    setOpenInSystemError(null)
+    void openVaultPathInSystemOrch(path).catch((err) => {
+      setOpenInSystemError(err instanceof Error ? err.message : 'Failed to open file in system file manager')
+    })
+  }, [canOpenInSystem, path])
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col bg-card p-2', className)}>
@@ -1292,6 +1330,16 @@ function PdfDocumentRuntimeBlock({
             {breadcrumb && <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>}
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={handleOpenInSystem}
+              disabled={!canOpenInSystem}
+              className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+              title={canOpenInSystem ? `Open file in ${openInSystemButtonLabel}` : 'Open in system file manager is unavailable on web'}
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{openInSystemButtonLabel}</span>
+            </button>
             {onOpenPath && (
               <button
                 type="button"
@@ -1314,6 +1362,11 @@ function PdfDocumentRuntimeBlock({
           </div>
         </div>
       </div>
+      {openInSystemError && (
+        <div className="mx-6 mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {openInSystemError}
+        </div>
+      )}
 
       <div className="min-h-0 flex-1">
         <PdfDocumentBlock path={path} className="h-full" />
