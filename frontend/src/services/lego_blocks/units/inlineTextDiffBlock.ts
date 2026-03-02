@@ -40,18 +40,13 @@ export interface InlineTextDiffRenderBlockResult {
   }
 }
 
-function classifyHunkKindBlock(removedRun: LineDiffOpRemovedBlock[], addedRun: LineDiffOpAddedBlock[]): InlineTextDiffHunkKindBlock {
-  if (removedRun.length > 0 && addedRun.length > 0) return 'changed'
-  if (addedRun.length > 0) return 'added'
-  return 'removed'
-}
-
 export function buildInlineTextDiffSessionBlock(originalContent: string, suggestedContent: string): InlineTextDiffSessionBlock {
   const originalLines = toNormalizedLinesBlock(originalContent)
   const suggestedLines = toNormalizedLinesBlock(suggestedContent)
   const ops = buildLineDiffOpsBlock(originalLines, suggestedLines)
 
   const hunks: InlineTextDiffHunkBlock[] = []
+  const nextHunkId = () => `hunk-${hunks.length + 1}`
   let cursor = 0
   while (cursor < ops.length) {
     if (ops[cursor].type === 'equal') {
@@ -69,15 +64,42 @@ export function buildInlineTextDiffSessionBlock(originalContent: string, suggest
     }
 
     const nextOp = ops[cursor]
-    const beforeStart = removedRun[0]?.beforeIndex
+    const beforeStartFallback = removedRun[0]?.beforeIndex
       ?? ((nextOp && nextOp.type === 'equal') ? nextOp.beforeIndex : originalLines.length)
-    hunks.push({
-      id: `hunk-${hunks.length + 1}`,
-      kind: classifyHunkKindBlock(removedRun, addedRun),
-      beforeStart,
-      beforeLines: removedRun.map(op => op.line),
-      afterLines: addedRun.map(op => op.line),
-    })
+    const paired = Math.min(removedRun.length, addedRun.length)
+
+    for (let index = 0; index < paired; index += 1) {
+      hunks.push({
+        id: nextHunkId(),
+        kind: 'changed',
+        beforeStart: removedRun[index].beforeIndex,
+        beforeLines: [removedRun[index].line],
+        afterLines: [addedRun[index].line],
+      })
+    }
+
+    for (let index = paired; index < removedRun.length; index += 1) {
+      hunks.push({
+        id: nextHunkId(),
+        kind: 'removed',
+        beforeStart: removedRun[index].beforeIndex,
+        beforeLines: [removedRun[index].line],
+        afterLines: [],
+      })
+    }
+
+    const addedBeforeStart = removedRun.length > 0
+      ? (removedRun[removedRun.length - 1].beforeIndex + 1)
+      : beforeStartFallback
+    for (let index = paired; index < addedRun.length; index += 1) {
+      hunks.push({
+        id: nextHunkId(),
+        kind: 'added',
+        beforeStart: addedBeforeStart,
+        beforeLines: [],
+        afterLines: [addedRun[index].line],
+      })
+    }
   }
 
   return {
