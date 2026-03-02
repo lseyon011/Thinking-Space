@@ -2,6 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import type { AiProvider } from '@/services/orchestrators/chatOrch'
 import { runAiAssistOrch, type AiAssistAction, type RunAiAssistResult } from '@/services/orchestrators/aiAssistOrch'
 import { resolveAiSelectionOrch } from '@/services/orchestrators/aiSettingsOrch'
+import {
+  listAiAssistPromptHistoryOrch,
+  recordAiAssistPromptHistoryOrch,
+  type AiAssistPromptHistoryEntryBlock,
+} from '@/services/orchestrators/aiAssistPromptHistoryOrch'
 import type { AiSettingsScope } from '@/services/lego_blocks/integrations/aiSettingsBlock'
 
 export interface AiAssistResultPill {
@@ -17,6 +22,7 @@ export interface AiAssistRuntimeBlockState {
   assistError: string | null
   assistResultPill: AiAssistResultPill | null
   assistSuggestion: RunAiAssistResult | null
+  customPromptHistory: AiAssistPromptHistoryEntryBlock[]
   runAssistAction: (action: AiAssistAction, content: string, customPrompt?: string) => Promise<RunAiAssistResult | null>
   applyAssistSuggestion: (onApply: (nextContent: string) => void, overrideContent?: string) => boolean
   dismissAssistSuggestion: () => void
@@ -42,6 +48,7 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
   const [assistError, setAssistError] = useState<string | null>(null)
   const [assistResultPill, setAssistResultPill] = useState<AiAssistResultPill | null>(null)
   const [assistSuggestion, setAssistSuggestion] = useState<RunAiAssistResult | null>(null)
+  const [customPromptHistory, setCustomPromptHistory] = useState<AiAssistPromptHistoryEntryBlock[]>([])
 
   const syncSelection = useCallback(async () => {
     const selection = await resolveAiSelectionOrch({ scope: options.scope })
@@ -67,15 +74,32 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     }
   }, [syncSelection])
 
+  useEffect(() => {
+    let cancelled = false
+    listAiAssistPromptHistoryOrch(40)
+      .then((entries) => {
+        if (!cancelled) setCustomPromptHistory(entries)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        console.warn('[useAiAssistRuntimeBlock] Failed to load custom prompt history:', error)
+        setCustomPromptHistory([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const runAssistAction = useCallback(async (action: AiAssistAction, content: string, customPrompt?: string) => {
     if (assistRunningAction) return null
+    const normalizedCustomPrompt = (customPrompt ?? '').trim()
     if (!content.trim()) {
       setAssistError('Add some text before running AI assist.')
       setAssistResultPill({ tone: 'error', text: 'Add some text first' })
       setAssistSuggestion(null)
       return null
     }
-    if (action === 'custom' && !(customPrompt ?? '').trim()) {
+    if (action === 'custom' && !normalizedCustomPrompt) {
       setAssistError('Add a prompt before running AI assist.')
       setAssistResultPill({ tone: 'error', text: 'Prompt is required' })
       setAssistSuggestion(null)
@@ -88,6 +112,14 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     setAssistSuggestion(null)
 
     try {
+      if (action === 'custom') {
+        try {
+          const nextPromptHistory = await recordAiAssistPromptHistoryOrch(normalizedCustomPrompt)
+          setCustomPromptHistory(nextPromptHistory.slice(0, 40))
+        } catch (historyError) {
+          console.warn('[useAiAssistRuntimeBlock] Failed to persist custom prompt history:', historyError)
+        }
+      }
       const selection = await syncSelection()
       if (!selection) {
         throw new Error('No AI provider available. Configure one in AI Settings.')
@@ -99,7 +131,7 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
         useCase: options.useCase,
         action,
         content,
-        customPrompt,
+        customPrompt: normalizedCustomPrompt,
       })
       if (!result.changed) {
         setAssistError(null)
@@ -157,6 +189,7 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     assistError,
     assistResultPill,
     assistSuggestion,
+    customPromptHistory,
     runAssistAction,
     applyAssistSuggestion,
     dismissAssistSuggestion,

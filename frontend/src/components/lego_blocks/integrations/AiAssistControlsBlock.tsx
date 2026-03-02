@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import type { AiAssistAction } from '@/services/orchestrators/aiAssistOrch'
+import type { AiAssistPromptHistoryEntryBlock } from '@/services/orchestrators/aiAssistPromptHistoryOrch'
+import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import { cn } from '@/lib/utils'
 
 const AI_ASSIST_ACTIONS: Array<{ action: AiAssistAction; label: string }> = [
@@ -18,8 +20,19 @@ interface AiAssistControlsBlockProps {
   disabled?: boolean
   onRun: (action: AiAssistAction) => void
   onRunCustomPrompt: (prompt: string) => void
+  promptHistory?: AiAssistPromptHistoryEntryBlock[]
   statusPill?: { tone: 'neutral' | 'success' | 'error'; text: string } | null
   helperText?: string
+}
+
+function formatPromptHistoryLastUsedBlock(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'recently'
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
 }
 
 export default function AiAssistControlsBlock({
@@ -30,11 +43,17 @@ export default function AiAssistControlsBlock({
   disabled = false,
   onRun,
   onRunCustomPrompt,
+  promptHistory = [],
   statusPill = null,
   helperText = 'Preview-first only. Suggestions never auto-save until you explicitly apply and save.',
 }: AiAssistControlsBlockProps) {
   const [customPrompt, setCustomPrompt] = useState('')
   const [selectedPreset, setSelectedPreset] = useState<AiAssistAction>('clarity')
+  const [promptHistoryOpen, setPromptHistoryOpen] = useState(false)
+  const searchablePromptHistory = useMemo(
+    () => promptHistory.filter((entry) => entry.prompt.trim().length > 0),
+    [promptHistory],
+  )
   const unavailable = !selectedProvider || !selectedModel
   const actionDisabled = disabled || loading || unavailable || !!runningAction
   const canRunPrompt = !actionDisabled && customPrompt.trim().length > 0
@@ -62,13 +81,33 @@ export default function AiAssistControlsBlock({
           Prompt
         </label>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <input
-            type="text"
-            value={customPrompt}
-            onChange={(event) => setCustomPrompt(event.target.value)}
+          <UniversalSearchBlock<AiAssistPromptHistoryEntryBlock>
+            items={searchablePromptHistory}
+            query={customPrompt}
+            onQueryChange={setCustomPrompt}
+            onSelect={(entry) => setCustomPrompt(entry.prompt)}
+            getItemKey={(entry) => entry.id}
+            getItemLabel={(entry) => entry.prompt}
+            getItemDescription={(entry) => `Used ${entry.useCount}x • ${formatPromptHistoryLastUsedBlock(entry.lastUsedAt)}`}
+            getItemSearchCandidates={(entry) => [entry.prompt]}
             placeholder="Ask AI what to change in this note. Example: tighten this into crisp action items."
-            className="h-8 w-full rounded-md border border-border/60 bg-background px-2.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
+            limit={20}
+            showEmptyStateWhenOpen={false}
+            dismissOnOutsideClick={false}
+            open={promptHistoryOpen}
+            onOpenChange={(open) => {
+              if (open) setPromptHistoryOpen(true)
+            }}
+            allowCustomValue
+            onSelectCustomValue={setCustomPrompt}
+            closeOnSelect={false}
+            onEscapeKeyDown={() => setPromptHistoryOpen(false)}
             disabled={actionDisabled}
+            className="w-full"
+            inputClassName="h-8 rounded-md border border-border/60 bg-background pl-8 pr-2.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring focus:ring-offset-0"
+            dropdownClassName="z-50 mt-1 rounded-md border border-border/70 bg-background shadow-lg"
+            listClassName="max-h-52 overflow-auto p-1"
+            itemClassName="rounded-sm"
           />
           <button
             type="button"
@@ -77,7 +116,7 @@ export default function AiAssistControlsBlock({
             className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            {runningAction === 'custom' ? 'Applying...' : 'Apply Prompt'}
+            {runningAction === 'custom' ? 'Applying...' : 'Apply'}
           </button>
         </div>
       </div>

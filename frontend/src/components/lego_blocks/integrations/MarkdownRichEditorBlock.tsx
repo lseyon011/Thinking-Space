@@ -332,6 +332,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   const [wikilinkQuery, setWikilinkQuery] = useState('')
   const [wikilinkSuggestions, setWikilinkSuggestions] = useState<WikilinkSuggestionBlock[]>([])
   const [wikilinkLoading, setWikilinkLoading] = useState(false)
+  const [relatedThoughtsOpen, setRelatedThoughtsOpen] = useState(false)
   const pendingInlineWidgetScrollRestoreRef = useRef<{ top: number; left: number } | null>(null)
   const [inlineDiffSession, setInlineDiffSession] = useState<InlineTextDiffSessionBlock | null>(null)
   const [inlineDiffDecisions, setInlineDiffDecisions] = useState<Record<string, InlineTextDiffDecisionBlock>>({})
@@ -343,6 +344,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     assistError,
     assistResultPill,
     assistSuggestion,
+    customPromptHistory,
     runAssistAction,
     applyAssistSuggestion,
     dismissAssistSuggestion,
@@ -364,6 +366,10 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     () => inlineDiffSession?.hunks.map(hunk => hunk.id) ?? [],
     [inlineDiffSession],
   )
+
+  useEffect(() => {
+    if (!aiPanelOpen) setRelatedThoughtsOpen(false)
+  }, [aiPanelOpen])
 
   useLayoutEffect(() => {
     const pending = pendingInlineWidgetScrollRestoreRef.current
@@ -936,16 +942,34 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           {relatedThoughtsEnabled && (
             <>
               <div className="h-px bg-border/50" />
-              <RelatedThoughtsPanelBlock
-                text={value}
-                enabled={enableAiAssist && aiPanelOpen}
-                disabled={aiAssistDisabled}
-                sourceFilePath={relatedSourceFilePath || undefined}
-                limit={relatedThoughtsLimit}
-                minChars={relatedThoughtsMinChars}
-                onOpenPath={onRelatedThoughtOpenPath}
-                onOpenPathInNewTab={onRelatedThoughtOpenPathInNewTab}
-              />
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-medium text-foreground">
+                  AI suggested related thoughts
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRelatedThoughtsOpen((prev) => !prev)}
+                  className="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground hover:bg-muted"
+                >
+                  {relatedThoughtsOpen ? 'Hide related thoughts' : 'Show related thoughts'}
+                </button>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Related thoughts are surfaced via lexical similarity from your thought cache.
+              </div>
+              {relatedThoughtsOpen && (
+                <RelatedThoughtsPanelBlock
+                  text={value}
+                  enabled={enableAiAssist && aiPanelOpen}
+                  disabled={aiAssistDisabled}
+                  sourceFilePath={relatedSourceFilePath || undefined}
+                  limit={relatedThoughtsLimit}
+                  minChars={relatedThoughtsMinChars}
+                  showTitle={false}
+                  onOpenPath={onRelatedThoughtOpenPath}
+                  onOpenPathInNewTab={onRelatedThoughtOpenPathInNewTab}
+                />
+              )}
             </>
           )}
 
@@ -1019,6 +1043,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
                 })
               })()
             }}
+            promptHistory={customPromptHistory}
             statusPill={assistResultPill}
             helperText={aiAssistHelperText}
           />

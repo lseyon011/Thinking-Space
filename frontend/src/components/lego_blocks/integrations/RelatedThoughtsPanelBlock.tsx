@@ -9,6 +9,7 @@ interface RelatedThoughtsPanelBlockProps {
   sourceFilePath?: string
   limit?: number
   minChars?: number
+  showTitle?: boolean
   className?: string
   onOpenPath?: (path: string) => void
   onOpenPathInNewTab?: (path: string) => void
@@ -21,6 +22,7 @@ export default function RelatedThoughtsPanelBlock({
   sourceFilePath,
   limit = 6,
   minChars = 24,
+  showTitle = true,
   className,
   onOpenPath,
   onOpenPathInNewTab,
@@ -85,9 +87,11 @@ export default function RelatedThoughtsPanelBlock({
 
   return (
     <div className={cn('space-y-2', className)}>
-      <div className="text-sm font-medium text-foreground">
-        AI suggested related thoughts
-      </div>
+      {showTitle && (
+        <div className="text-sm font-medium text-foreground">
+          AI suggested related thoughts
+        </div>
+      )}
       {loading && (
         <div className="text-xs text-muted-foreground">Finding related notes...</div>
       )}
