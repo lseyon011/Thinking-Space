@@ -15,11 +15,16 @@ import ThoughtsCalendarOrch from '@/components/orchestrators/ThoughtsCalendarOrc
 import TodoCalendarOrch from '@/components/orchestrators/TodoCalendarOrch'
 import { deleteVaultPathOrch } from '@/services/orchestrators/fileSystemOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
+import {
+  readNewThoughtQuickDestinationsPreferenceOrch,
+  setNewThoughtQuickDestinationsPreferenceOrch,
+  type NewThoughtQuickDestinationPreferenceBlock,
+} from '@/services/orchestrators/vaultUiPreferencesOrch'
 import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 
 const DESTINATION_RECENTS_KEY = 'ltm-new-note-destination-recents'
 const CUSTOM_SHORTCUTS_KEY = 'ltm-new-note-custom-shortcuts'
-const QUICK_DESTINATIONS_KEY = 'ltm-new-note-quick-destinations'
+const LEGACY_QUICK_DESTINATIONS_KEY = 'ltm-new-note-quick-destinations'
 const DESTINATION_USAGE_COUNTS_KEY = 'ltm-new-note-destination-usage-counts'
 const LEFT_PANEL_HIDDEN_KEY = 'ltm-new-note-left-panel-hidden'
 const DEFAULT_BASE_PATH = ['lifeblood_systems', 'sfdl']
@@ -35,11 +40,7 @@ interface DestinationShortcut {
   builtIn?: boolean
 }
 
-interface QuickDestination {
-  id: string
-  label: string
-  pathSegments: string[]
-}
+type QuickDestination = NewThoughtQuickDestinationPreferenceBlock
 
 const BUILT_IN_SHORTCUTS: DestinationShortcut[] = [
   { id: 'thoughts', label: 'Thoughts', pathSegments: ['thoughts'], builtIn: true },
@@ -130,8 +131,8 @@ function writeCustomShortcuts(shortcuts: DestinationShortcut[]): void {
   writeJsonStorage(CUSTOM_SHORTCUTS_KEY, stored)
 }
 
-function readQuickDestinations(): QuickDestination[] {
-  const parsed = readJsonStorage<Array<{ id: string; label: string; pathSegments: string[] }>>(QUICK_DESTINATIONS_KEY, [])
+function readLegacyQuickDestinations(): QuickDestination[] {
+  const parsed = readJsonStorage<Array<{ id: string; label: string; pathSegments: string[] }>>(LEGACY_QUICK_DESTINATIONS_KEY, [])
   return parsed
     .map((destination) => ({
       id: destination.id,
@@ -141,13 +142,12 @@ function readQuickDestinations(): QuickDestination[] {
     .filter((destination) => destination.id && destination.label && destination.pathSegments.length > 0)
 }
 
-function writeQuickDestinations(destinations: QuickDestination[]): void {
-  const stored = destinations.map(destination => ({
-    id: destination.id,
-    label: destination.label,
-    pathSegments: destination.pathSegments,
-  }))
-  writeJsonStorage(QUICK_DESTINATIONS_KEY, stored)
+function clearLegacyQuickDestinations(): void {
+  try {
+    localStorage.removeItem(LEGACY_QUICK_DESTINATIONS_KEY)
+  } catch {
+    // Ignore storage failures in restricted runtimes.
+  }
 }
 
 function readDestinationUsageCounts(): Record<string, number> {
@@ -243,8 +243,40 @@ function CreateTab() {
 
   useEffect(() => {
     setCustomShortcuts(readCustomShortcuts())
-    setQuickDestinations(readQuickDestinations())
     setUsageCounts(readDestinationUsageCounts())
+
+    let cancelled = false
+    const loadQuickDestinations = async () => {
+      try {
+        const persisted = await readNewThoughtQuickDestinationsPreferenceOrch()
+        if (cancelled) return
+        if (persisted.length > 0) {
+          setQuickDestinations(persisted)
+          clearLegacyQuickDestinations()
+          return
+        }
+      } catch {
+        // Fall back to legacy storage.
+      }
+
+      const legacy = readLegacyQuickDestinations()
+      if (cancelled) return
+      setQuickDestinations(legacy)
+
+      if (legacy.length === 0) return
+      try {
+        await setNewThoughtQuickDestinationsPreferenceOrch(legacy)
+        if (cancelled) return
+        clearLegacyQuickDestinations()
+      } catch {
+        // Keep legacy storage as fallback if vault preference write fails.
+      }
+    }
+
+    void loadQuickDestinations()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -289,6 +321,16 @@ function CreateTab() {
       writeDestinationUsageCounts(next)
       return next
     })
+  }, [])
+
+  const persistQuickDestinations = useCallback(async (next: QuickDestination[]) => {
+    setQuickDestinations(next)
+    try {
+      await setNewThoughtQuickDestinationsPreferenceOrch(next)
+      clearLegacyQuickDestinations()
+    } catch {
+      writeJsonStorage(LEGACY_QUICK_DESTINATIONS_KEY, next)
+    }
   }, [])
 
   useEffect(() => {
@@ -405,8 +447,7 @@ function CreateTab() {
       pathSegments,
     }
     const next = [...quickDestinations, destination]
-    setQuickDestinations(next)
-    writeQuickDestinations(next)
+    void persistQuickDestinations(next)
     setQuickDestinationModalOpen(false)
     setQuickDestinationLabel('')
     setQuickDestinationBaseSegments([])
@@ -417,8 +458,7 @@ function CreateTab() {
 
   const handleDeleteQuickDestination = (id: string) => {
     const next = quickDestinations.filter(destination => destination.id !== id)
-    setQuickDestinations(next)
-    writeQuickDestinations(next)
+    void persistQuickDestinations(next)
     setMessage('Removed quick destination.')
   }
 

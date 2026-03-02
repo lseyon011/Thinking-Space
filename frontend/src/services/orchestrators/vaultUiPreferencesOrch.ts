@@ -2,9 +2,11 @@ import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   DEFAULT_VAULT_UI_PREFERENCES_BLOCK,
   normalizeExplorerIconStyleBlock,
+  normalizeNewThoughtQuickDestinationsBlock,
   normalizeVaultUiPreferencesBlock,
   serializeVaultUiPreferencesBlock,
   type ExplorerIconStyleBlock,
+  type NewThoughtQuickDestinationPreferenceBlock,
   type VaultUiPreferencesBlock,
 } from '@/services/lego_blocks/units/vaultUiPreferencesBlock'
 
@@ -12,7 +14,11 @@ const THINK_SPACE_DIR_ORCH = '.think-space'
 const UI_PREFERENCES_DIR_ORCH = `${THINK_SPACE_DIR_ORCH}/preferences`
 const UI_PREFERENCES_FILE_ORCH = `${UI_PREFERENCES_DIR_ORCH}/ui.json`
 
-export type { ExplorerIconStyleBlock, VaultUiPreferencesBlock }
+export type {
+  ExplorerIconStyleBlock,
+  NewThoughtQuickDestinationPreferenceBlock,
+  VaultUiPreferencesBlock,
+}
 
 async function ensurePreferencesDirOrch(): Promise<void> {
   const fs = getVaultFS()
@@ -42,14 +48,45 @@ export async function readVaultUiPreferencesOrch(): Promise<VaultUiPreferencesBl
   }
 }
 
+async function writeVaultUiPreferencesOrch(
+  preferences: VaultUiPreferencesBlock,
+): Promise<VaultUiPreferencesBlock> {
+  const normalized = normalizeVaultUiPreferencesBlock(preferences)
+  const fs = getVaultFS()
+  await ensurePreferencesDirOrch()
+  await fs.write(UI_PREFERENCES_FILE_ORCH, serializeVaultUiPreferencesBlock(normalized))
+  return normalized
+}
+
+async function updateVaultUiPreferencesOrch(
+  partial: Partial<VaultUiPreferencesBlock>,
+): Promise<VaultUiPreferencesBlock> {
+  const current = await readVaultUiPreferencesOrch()
+  return writeVaultUiPreferencesOrch({
+    ...current,
+    ...partial,
+  })
+}
+
 export async function setExplorerIconStylePreferenceOrch(
   style: ExplorerIconStyleBlock,
 ): Promise<VaultUiPreferencesBlock> {
-  const next: VaultUiPreferencesBlock = {
+  return updateVaultUiPreferencesOrch({
     explorerIconStyle: normalizeExplorerIconStyleBlock(style),
-  }
-  const fs = getVaultFS()
-  await ensurePreferencesDirOrch()
-  await fs.write(UI_PREFERENCES_FILE_ORCH, serializeVaultUiPreferencesBlock(next))
-  return next
+  })
+}
+
+export async function readNewThoughtQuickDestinationsPreferenceOrch(): Promise<
+  NewThoughtQuickDestinationPreferenceBlock[]
+> {
+  const preferences = await readVaultUiPreferencesOrch()
+  return preferences.newThoughtQuickDestinations
+}
+
+export async function setNewThoughtQuickDestinationsPreferenceOrch(
+  destinations: NewThoughtQuickDestinationPreferenceBlock[],
+): Promise<VaultUiPreferencesBlock> {
+  return updateVaultUiPreferencesOrch({
+    newThoughtQuickDestinations: normalizeNewThoughtQuickDestinationsBlock(destinations),
+  })
 }
