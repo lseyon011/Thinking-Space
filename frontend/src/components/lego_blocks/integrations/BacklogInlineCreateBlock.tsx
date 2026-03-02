@@ -38,12 +38,12 @@ export function BacklogInlineCreateBlock({
   const selectedTypeLabel = nodeTypeLabel(selectedType)
 
   return (
-    <div className="space-y-2 border-t border-border/70 bg-background px-3 py-2">
+    <div className="ltm-backlog-inline-create space-y-2 border-t border-border/70 bg-background px-3 py-2">
       <div className="flex items-center gap-2">
         <select
           value={selectedType}
           onChange={event => onTypeChange(event.target.value as NodeType)}
-          className="h-7 shrink-0 rounded-md border border-input bg-background px-2 text-[11px] text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          className="ltm-backlog-inline-create-field h-7 shrink-0 rounded-md border border-input bg-background px-2 text-[11px] text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         >
           {allowedTypes.map(type => (
             <option key={`inline-create-${type}`} value={type}>
@@ -61,7 +61,7 @@ export function BacklogInlineCreateBlock({
             onSubmit()
           }}
           placeholder={`${placeholder} (${selectedTypeLabel})`}
-          className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          className="ltm-backlog-inline-create-field h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <Button
           size="sm"
@@ -79,14 +79,14 @@ export function BacklogInlineCreateBlock({
           onChange={event => onDescriptionChange(event.target.value)}
           rows={2}
           placeholder="Description (optional)"
-          className="min-h-[64px] w-full resize-y rounded-md border border-input bg-background px-2 py-1.5 text-xs leading-snug focus:outline-none focus:ring-2 focus:ring-ring"
+          className="ltm-backlog-inline-create-field min-h-[64px] w-full resize-y rounded-md border border-input bg-background px-2 py-1.5 text-xs leading-snug focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <textarea
           value={commentDraft}
           onChange={event => onCommentChange(event.target.value)}
           rows={2}
           placeholder="Comment (optional)"
-          className="min-h-[64px] w-full resize-y rounded-md border border-input bg-background px-2 py-1.5 text-xs leading-snug focus:outline-none focus:ring-2 focus:ring-ring"
+          className="ltm-backlog-inline-create-field min-h-[64px] w-full resize-y rounded-md border border-input bg-background px-2 py-1.5 text-xs leading-snug focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
     </div>
