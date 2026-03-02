@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PenLine, Loader2, CheckCircle2, LayoutList, Eye, CheckSquare, Pencil, Trash2, X, PanelLeft, PanelLeftClose, Plus } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { Button } from '@/components/lego_blocks/units/ui/button'
@@ -237,9 +237,22 @@ function CreateTab() {
   const [editorPath, setEditorPath] = useState<string | null>(null)
   const [showMetaPanel, setShowMetaPanel] = useState(false)
   const [showAiAssist, setShowAiAssist] = useState(false)
+  const [saveFeedbackVisible, setSaveFeedbackVisible] = useState(false)
+  const saveFeedbackTimeoutRef = useRef<number | null>(null)
   const [leftPanelHidden, setLeftPanelHidden] = useState(
     () => readJsonStorage<boolean>(LEFT_PANEL_HIDDEN_KEY, false),
   )
+
+  const triggerSaveFeedback = useCallback(() => {
+    if (saveFeedbackTimeoutRef.current !== null) {
+      window.clearTimeout(saveFeedbackTimeoutRef.current)
+    }
+    setSaveFeedbackVisible(true)
+    saveFeedbackTimeoutRef.current = window.setTimeout(() => {
+      setSaveFeedbackVisible(false)
+      saveFeedbackTimeoutRef.current = null
+    }, 1600)
+  }, [])
 
   useEffect(() => {
     setCustomShortcuts(readCustomShortcuts())
@@ -282,6 +295,14 @@ function CreateTab() {
   useEffect(() => {
     writeJsonStorage(LEFT_PANEL_HIDDEN_KEY, leftPanelHidden)
   }, [leftPanelHidden])
+
+  useEffect(() => {
+    return () => {
+      if (saveFeedbackTimeoutRef.current !== null) {
+        window.clearTimeout(saveFeedbackTimeoutRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (activeShortcutId !== 'todo') {
@@ -474,7 +495,7 @@ function CreateTab() {
     setFilename(filenameFromTitle(title))
   }
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (makeThisTodo) {
       const items = content
         .split('\n')
@@ -512,6 +533,7 @@ function CreateTab() {
         setItemsAdded(data.items_added)
         rememberDestinationUsage(destinationSegments)
         setMessage(`${data.items_added} task${data.items_added !== 1 ? 's' : ''} saved to ${data.output_path}.`)
+        triggerSaveFeedback()
         return
       }
 
@@ -532,12 +554,27 @@ function CreateTab() {
       setEditorPath(data.output_path)
       rememberDestinationUsage(destinationSegments)
       setMessage(`Saved ${data.output_path}.`)
+      triggerSaveFeedback()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
       setSaving(false)
     }
-  }
+  }, [
+    content,
+    dateHeader,
+    destinationPath,
+    destinationSegments,
+    emotions,
+    filename,
+    makeThisTodo,
+    normalizedFilename,
+    rememberDestinationUsage,
+    title,
+    todoDateStr,
+    triggerSaveFeedback,
+    useCustomTitle,
+  ])
 
   const targetPath = makeThisTodo
     ? (
@@ -1057,8 +1094,16 @@ function CreateTab() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={handleSave} disabled={!canSave}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : (makeThisTodo ? 'Save To Dos' : 'Create Note')}
+              <Button
+                onClick={handleSave}
+                disabled={!canSave}
+                className={saveFeedbackVisible && !saving
+                  ? 'ltm-animate-fade-in bg-emerald-600 text-white hover:bg-emerald-600'
+                  : undefined}
+              >
+                {saving
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : (saveFeedbackVisible ? 'Saved' : (makeThisTodo ? 'Save To Dos' : 'Create Note'))}
               </Button>
 
               <Button
