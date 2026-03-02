@@ -22,7 +22,7 @@ import {
   type F9PositionDetailBlock,
   type SyncF9ExecutionResultBlock,
 } from '../../services/orchestrators/f9ExecutionOrch'
-import { hasF9WebullConfigBlock } from '../../services/lego_blocks/units/f9WebullConfigBlock'
+import { readF9WebullCredentialStatusBlock } from '../../services/lego_blocks/units/f9WebullConfigBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 
@@ -100,10 +100,9 @@ export default function F9Orch() {
   const [workspaceMessage, setWorkspaceMessage] = useState<string | null>(null)
   const [executionSyncError, setExecutionSyncError] = useState<string | null>(null)
   const [runtime] = useState<F9RuntimeSurfaceOrch>(getF9RuntimeSurfaceOrch())
+  const [hasConfig, setHasConfig] = useState(false)
   const [, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const hasConfig = hasF9WebullConfigBlock()
 
   const activeCompany: F9CompanyOverviewBlock | null = executionOverview?.companies.find(
     (company) => company.companyTicker === activeCompanyTicker,
@@ -191,16 +190,19 @@ export default function F9Orch() {
     void Promise.all([
       loadF9ExecutionOverviewOrch(),
       loadF9OverallCacheOrch(),
+      readF9WebullCredentialStatusBlock(),
     ])
-      .then(([overview, cached]) => {
+      .then(([overview, cached, credentialStatus]) => {
         if (cancelled) return
         setExecutionOverview(overview)
+        setHasConfig(credentialStatus.configured)
         if (cached) {
           setSnapshot(toSnapshotFromCacheBlock(cached, runtime))
         }
       })
       .catch(() => {
         if (!cancelled) {
+          setHasConfig(false)
           // Ignore initial load failures; refresh flow surfaces actionable errors.
         }
       })
@@ -208,6 +210,25 @@ export default function F9Orch() {
       cancelled = true
     }
   }, [runtime])
+
+  useEffect(() => {
+    if (activeSubtabId !== 'overall') return
+    let cancelled = false
+    void readF9WebullCredentialStatusBlock()
+      .then((status) => {
+        if (!cancelled) {
+          setHasConfig(status.configured)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHasConfig(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeSubtabId])
 
   useEffect(() => {
     if (!executionOverview || executionOverview.companies.length === 0) {

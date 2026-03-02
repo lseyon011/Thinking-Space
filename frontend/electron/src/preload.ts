@@ -170,10 +170,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   f9WebullSignedRequest: (payload: {
     method: 'GET' | 'POST'
     url: string
-    appKey: string
-    appSecret: string
     version?: string
     accessToken?: string
     body?: string
   }) => ipcRenderer.invoke('f9:webull:signedRequest', payload),
+  f9WebullCredentialStatus: () =>
+    ipcRenderer.invoke('f9:webull:credentials:status'),
+  f9WebullCredentialSet: (payload: {
+    appKey: string
+    appSecret: string
+  }) => ipcRenderer.invoke('f9:webull:credentials:set', payload),
+  f9WebullCredentialClear: () =>
+    ipcRenderer.invoke('f9:webull:credentials:clear'),
+  f9WebullTokenGet: () =>
+    ipcRenderer.invoke('f9:webull:token:get'),
+  f9WebullTokenSet: (payload: {
+    token: string
+    expires: number | null
+    status: string | null
+  } | null) => ipcRenderer.invoke('f9:webull:token:set', payload),
 });

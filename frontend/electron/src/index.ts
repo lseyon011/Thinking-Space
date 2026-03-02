@@ -23,6 +23,15 @@ import {
   readAzureTokenBlock,
 } from './lego_blocks/aiCredentialBlock';
 import {
+  clearF9WebullCredentialsBlock,
+  readF9WebullAccessTokenBlock,
+  readF9WebullCredentialStatusBlock,
+  readF9WebullCredentialsBlock,
+  saveF9WebullAccessTokenBlock,
+  saveF9WebullCredentialsBlock,
+  type F9WebullStoredAccessTokenBlock,
+} from './lego_blocks/f9WebullCredentialStoreBlock';
+import {
   createHierarchyEdgeOrch,
   createHierarchyNodeOrch,
   createHierarchyThoughtLinkOrch,
@@ -299,11 +308,20 @@ interface F9WebullGetResponse {
 interface F9WebullSignedRequestPayload {
   method: 'GET' | 'POST';
   url: string;
-  appKey: string;
-  appSecret: string;
   version?: string;
   accessToken?: string;
   body?: string;
+}
+
+interface F9WebullSetCredentialsPayload {
+  appKey: string;
+  appSecret: string;
+}
+
+interface F9WebullTokenPayload {
+  token: string;
+  expires: number | null;
+  status: string | null;
 }
 
 interface CapabilityRunnerLocation {
@@ -487,14 +505,17 @@ function encodeWebullSignatureSourceBlock(value: string): string {
   ));
 }
 
-function buildWebullSignedHeadersBlock(payload: F9WebullSignedRequestPayload): Record<string, string> {
+function buildWebullSignedHeadersBlock(
+  payload: F9WebullSignedRequestPayload,
+  credentials: { appKey: string; appSecret: string },
+): Record<string, string> {
   const parsed = assertAllowedF9WebullUrl(payload.url);
   const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
   const nonce = randomUUID();
 
   const signParams = new Map<string, string>();
   signParams.set('host', parsed.host);
-  signParams.set('x-app-key', payload.appKey);
+  signParams.set('x-app-key', credentials.appKey);
   signParams.set('x-signature-algorithm', 'HMAC-SHA1');
   signParams.set('x-signature-nonce', nonce);
   signParams.set('x-signature-version', '1.0');
@@ -523,11 +544,11 @@ function buildWebullSignedHeadersBlock(payload: F9WebullSignedRequestPayload): R
     stringToSign = `${stringToSign}&${bodyMd5UpperHex}`;
   }
   const encodedToSign = encodeWebullSignatureSourceBlock(stringToSign);
-  const signature = createHmac('sha1', `${payload.appSecret}&`).update(encodedToSign, 'utf8').digest('base64');
+  const signature = createHmac('sha1', `${credentials.appSecret}&`).update(encodedToSign, 'utf8').digest('base64');
 
   return {
     ...(payload.version ? { 'x-version': payload.version } : {}),
-    'x-app-key': payload.appKey,
+    'x-app-key': credentials.appKey,
     'x-timestamp': timestamp,
     'x-signature-version': '1.0',
     'x-signature-algorithm': 'HMAC-SHA1',
@@ -813,6 +834,56 @@ ipcMain.handle('f9:webull:accountList', async (_event, payload: F9WebullGetPaylo
   return requestTextOverHttps(method, payload.url, payload.headers, body);
 });
 
+ipcMain.handle('f9:webull:credentials:status', async () => {
+  return readF9WebullCredentialStatusBlock();
+});
+
+ipcMain.handle('f9:webull:credentials:set', async (_event, payload: F9WebullSetCredentialsPayload) => {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('F9 Webull credentials payload must be an object.');
+  }
+  if (typeof payload.appKey !== 'string' || payload.appKey.trim().length === 0) {
+    throw new Error('F9 Webull credentials payload requires a non-empty "appKey".');
+  }
+  if (typeof payload.appSecret !== 'string' || payload.appSecret.trim().length === 0) {
+    throw new Error('F9 Webull credentials payload requires a non-empty "appSecret".');
+  }
+  return saveF9WebullCredentialsBlock(payload.appKey, payload.appSecret);
+});
+
+ipcMain.handle('f9:webull:credentials:clear', async () => {
+  return clearF9WebullCredentialsBlock();
+});
+
+ipcMain.handle('f9:webull:token:get', async () => {
+  return readF9WebullAccessTokenBlock();
+});
+
+ipcMain.handle('f9:webull:token:set', async (_event, payload: F9WebullTokenPayload | null) => {
+  if (payload === null) {
+    await saveF9WebullAccessTokenBlock(null);
+    return;
+  }
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('F9 Webull token payload must be an object or null.');
+  }
+  if (typeof payload.token !== 'string' || payload.token.trim().length === 0) {
+    throw new Error('F9 Webull token payload requires a non-empty "token".');
+  }
+  if (payload.expires !== null && (typeof payload.expires !== 'number' || !Number.isFinite(payload.expires))) {
+    throw new Error('F9 Webull token payload "expires" must be a number or null.');
+  }
+  if (payload.status !== null && typeof payload.status !== 'string') {
+    throw new Error('F9 Webull token payload "status" must be a string or null.');
+  }
+  const normalized: F9WebullStoredAccessTokenBlock = {
+    token: payload.token.trim(),
+    expires: payload.expires,
+    status: payload.status ? payload.status.trim() : null,
+  };
+  await saveF9WebullAccessTokenBlock(normalized);
+});
+
 // SDK-style signed request helper for v2 APIs (token + account_v2 parity).
 ipcMain.handle('f9:webull:signedRequest', async (_event, payload: F9WebullSignedRequestPayload) => {
   if (!payload || typeof payload !== 'object') {
@@ -824,17 +895,15 @@ ipcMain.handle('f9:webull:signedRequest', async (_event, payload: F9WebullSigned
   if (payload.method !== 'GET' && payload.method !== 'POST') {
     throw new Error('F9 Webull signed payload requires method GET or POST.');
   }
-  if (typeof payload.appKey !== 'string' || payload.appKey.trim().length === 0) {
-    throw new Error('F9 Webull signed payload requires a non-empty "appKey".');
-  }
-  if (typeof payload.appSecret !== 'string' || payload.appSecret.trim().length === 0) {
-    throw new Error('F9 Webull signed payload requires a non-empty "appSecret".');
-  }
   if (payload.body !== undefined && typeof payload.body !== 'string') {
     throw new Error('F9 Webull signed payload body must be a string when provided.');
   }
+  const credentials = await readF9WebullCredentialsBlock();
+  if (!credentials) {
+    throw new Error('Webull credentials are not configured. Open Settings > F9 and save your app key/secret.');
+  }
 
-  const headers = buildWebullSignedHeadersBlock(payload);
+  const headers = buildWebullSignedHeadersBlock(payload, credentials);
   const body = typeof payload.body === 'string' ? payload.body : '';
   return requestTextOverHttps(payload.method, payload.url, headers, body);
 });

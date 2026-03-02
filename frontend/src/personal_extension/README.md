@@ -24,10 +24,8 @@ without mixing directly into shared product folders.
 
 ## Environment
 
-Set these in your frontend env file (for example `frontend/.env.local`):
+Set these optional route/runtime values in your frontend env file (for example `frontend/.env.local`):
 
-- `VITE_F9_WEBULL_APP_KEY`
-- `VITE_F9_WEBULL_APP_SECRET`
 - `VITE_F9_WEBULL_BASE_URL` (optional, defaults to `https://api.webull.com`)
 - `VITE_F9_WEBULL_OPENAPI_BASE_URL` (optional, defaults to `https://us-openapi-alb.uat.webullbroker.com`)
 - `VITE_F9_WEBULL_ACCOUNT_LIST_PATH` (optional, override account-list route if your account uses a non-default path)
@@ -37,7 +35,7 @@ Set these in your frontend env file (for example `frontend/.env.local`):
 - `VITE_F9_WEBULL_MARKET_QUOTES_PATH` (optional)
 - `VITE_F9_WEBULL_QUOTE_SYMBOLS` (optional CSV, default: `SPY,QQQ,AAPL,TSLA,NVDA`)
 
-Do not commit real credentials.
+Webull app key/secret are no longer read from env. Enter them in `Settings > F9`; Electron stores them in encrypted device storage.
 
 ## Notes
 

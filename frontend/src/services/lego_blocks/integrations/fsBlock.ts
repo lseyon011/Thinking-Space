@@ -164,12 +164,38 @@ interface ElectronAPI {
   f9WebullSignedRequest?(payload: {
     method: 'GET' | 'POST'
     url: string
-    appKey: string
-    appSecret: string
     version?: string
     accessToken?: string
     body?: string
   }): Promise<{ status: number; body: string }>
+  f9WebullCredentialStatus?(): Promise<{
+    secureStorageAvailable: boolean
+    configured: boolean
+    appKeyHint: string | null
+  }>
+  f9WebullCredentialSet?(payload: {
+    appKey: string
+    appSecret: string
+  }): Promise<{
+    secureStorageAvailable: boolean
+    configured: boolean
+    appKeyHint: string | null
+  }>
+  f9WebullCredentialClear?(): Promise<{
+    secureStorageAvailable: boolean
+    configured: boolean
+    appKeyHint: string | null
+  }>
+  f9WebullTokenGet?(): Promise<{
+    token: string
+    expires: number | null
+    status: string | null
+  } | null>
+  f9WebullTokenSet?(payload: {
+    token: string
+    expires: number | null
+    status: string | null
+  } | null): Promise<void>
 }
 
 declare global {

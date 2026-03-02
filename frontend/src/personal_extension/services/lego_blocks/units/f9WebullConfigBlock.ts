@@ -1,6 +1,4 @@
 export interface F9WebullConfigBlock {
-  appKey: string
-  appSecret: string
   baseUrl: string
   openApiBaseUrl: string
   accountListPath?: string
@@ -11,6 +9,18 @@ export interface F9WebullConfigBlock {
   quoteSymbols: string[]
 }
 
+export interface F9WebullCredentialStatusBlock {
+  secureStorageAvailable: boolean
+  configured: boolean
+  appKeyHint: string | null
+}
+
+export interface F9WebullAccessTokenBlock {
+  token: string
+  expires: number | null
+  status: string | null
+}
+
 const DEFAULT_WEBULL_BASE_URL_BLOCK = 'https://api.webull.com'
 const DEFAULT_WEBULL_OPENAPI_BASE_URL_BLOCK = 'https://us-openapi-alb.uat.webullbroker.com'
 const DEFAULT_QUOTE_SYMBOLS_BLOCK = ['SPY', 'QQQ', 'AAPL', 'TSLA', 'NVDA']
@@ -19,9 +29,14 @@ function normalizeValueBlock(value: string | undefined): string {
   return value?.trim() ?? ''
 }
 
+function assertElectronF9BridgeBlock(): NonNullable<Window['electronAPI']> {
+  if (!window.electronAPI?.isElectron) {
+    throw new Error('Webull secure credential storage is currently available only in Electron runtime.')
+  }
+  return window.electronAPI
+}
+
 function readConfigBlock(): F9WebullConfigBlock {
-  const appKey = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_APP_KEY)
-  const appSecret = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_APP_SECRET)
   const baseUrl = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_BASE_URL) || DEFAULT_WEBULL_BASE_URL_BLOCK
   const openApiBaseUrl = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_OPENAPI_BASE_URL) || DEFAULT_WEBULL_OPENAPI_BASE_URL_BLOCK
   const accountListPath = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_ACCOUNT_LIST_PATH)
@@ -38,8 +53,6 @@ function readConfigBlock(): F9WebullConfigBlock {
     : DEFAULT_QUOTE_SYMBOLS_BLOCK
 
   return {
-    appKey,
-    appSecret,
     baseUrl,
     openApiBaseUrl,
     accountListPath: accountListPath || undefined,
@@ -51,21 +64,75 @@ function readConfigBlock(): F9WebullConfigBlock {
   }
 }
 
-export function hasF9WebullConfigBlock(): boolean {
-  const config = readConfigBlock()
-  return config.appKey.length > 0 && config.appSecret.length > 0
+export async function readF9WebullCredentialStatusBlock(): Promise<F9WebullCredentialStatusBlock> {
+  if (!window.electronAPI?.isElectron || !window.electronAPI.f9WebullCredentialStatus) {
+    return {
+      secureStorageAvailable: false,
+      configured: false,
+      appKeyHint: null,
+    }
+  }
+  return window.electronAPI.f9WebullCredentialStatus()
+}
+
+export async function saveF9WebullCredentialsBlock(input: {
+  appKey: string
+  appSecret: string
+}): Promise<F9WebullCredentialStatusBlock> {
+  const api = assertElectronF9BridgeBlock()
+  if (!api.f9WebullCredentialSet) {
+    throw new Error('Webull secure credential bridge is unavailable in this Electron build.')
+  }
+  return api.f9WebullCredentialSet({
+    appKey: input.appKey,
+    appSecret: input.appSecret,
+  })
+}
+
+export async function clearF9WebullCredentialsBlock(): Promise<F9WebullCredentialStatusBlock> {
+  const api = assertElectronF9BridgeBlock()
+  if (!api.f9WebullCredentialClear) {
+    throw new Error('Webull secure credential bridge is unavailable in this Electron build.')
+  }
+  return api.f9WebullCredentialClear()
+}
+
+export async function readStoredF9WebullAccessTokenBlock(): Promise<F9WebullAccessTokenBlock | null> {
+  const api = assertElectronF9BridgeBlock()
+  if (!api.f9WebullTokenGet) {
+    throw new Error('Webull secure token bridge is unavailable in this Electron build.')
+  }
+  const token = await api.f9WebullTokenGet()
+  if (!token || typeof token !== 'object') return null
+  const normalizedToken = typeof token.token === 'string' ? token.token.trim() : ''
+  if (!normalizedToken) return null
+  return {
+    token: normalizedToken,
+    expires: typeof token.expires === 'number' && Number.isFinite(token.expires) ? token.expires : null,
+    status: typeof token.status === 'string' ? token.status.trim() : null,
+  }
+}
+
+export async function writeStoredF9WebullAccessTokenBlock(
+  token: F9WebullAccessTokenBlock | null,
+): Promise<void> {
+  const api = assertElectronF9BridgeBlock()
+  if (!api.f9WebullTokenSet) {
+    throw new Error('Webull secure token bridge is unavailable in this Electron build.')
+  }
+  if (!token) {
+    await api.f9WebullTokenSet(null)
+    return
+  }
+  await api.f9WebullTokenSet({
+    token: token.token,
+    expires: token.expires,
+    status: token.status,
+  })
 }
 
 export function getF9WebullConfigBlock(): F9WebullConfigBlock {
   const config = readConfigBlock()
-  const missing: string[] = []
-
-  if (!config.appKey) missing.push('VITE_F9_WEBULL_APP_KEY')
-  if (!config.appSecret) missing.push('VITE_F9_WEBULL_APP_SECRET')
-
-  if (missing.length > 0) {
-    throw new Error(`Missing F9 Webull configuration: ${missing.join(', ')}`)
-  }
 
   try {
     // Validate URL early so error handling in the UI is clearer.

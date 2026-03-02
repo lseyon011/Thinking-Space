@@ -1,8 +1,10 @@
 import { isElectron } from '@/services/orchestrators/runtimeOrch'
-import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
-import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
-import { getF9WebullConfigBlock, type F9WebullConfigBlock } from '../units/f9WebullConfigBlock'
-import { buildF9WebullHeadersBlock } from '../units/f9WebullSigningBlock'
+import {
+  getF9WebullConfigBlock,
+  readStoredF9WebullAccessTokenBlock,
+  writeStoredF9WebullAccessTokenBlock,
+  type F9WebullConfigBlock,
+} from '../units/f9WebullConfigBlock'
 
 export interface F9WebullApiResultBlock {
   endpoint: string
@@ -78,10 +80,9 @@ interface F9WebullAccessTokenBlock {
 const WEBULL_TOKEN_EXPIRY_SAFETY_MS_BLOCK = 60_000
 const WEBULL_TOKEN_CHECK_DURATION_MS_BLOCK = 300_000
 const WEBULL_TOKEN_CHECK_INTERVAL_MS_BLOCK = 5_000
-const WEBULL_TOKEN_CACHE_DIR_BLOCK = '.thinking-space/f9'
 let cachedWebullAccessTokenBlock: F9WebullAccessTokenBlock | null = null
 let pendingWebullTokenInitPromiseBlock: Promise<string> | null = null
-let loadedWebullTokenCachePathBlock: string | null = null
+let hydratedWebullAccessTokenCacheBlock = false
 
 function parseJsonSafelyBlock(raw: string): unknown {
   if (!raw.trim()) return null
@@ -142,39 +143,11 @@ function withOpenApiBaseUrlBlock(config: F9WebullConfigBlock): F9WebullConfigBlo
   }
 }
 
-async function requestViaElectronBridgeBlock(
-  endpoint: string,
-  headers: Record<string, string>,
-  method: 'GET' | 'POST' = 'GET',
-  body = '',
-): Promise<{ status: number; body: string }> {
-  if (!window.electronAPI?.isElectron) {
-    throw new Error('F9 Webull bridge is unavailable in this runtime.')
-  }
-  if (window.electronAPI.f9WebullGet) {
-    return window.electronAPI.f9WebullGet({
-      url: endpoint,
-      headers,
-      method,
-      body,
-    })
-  }
-  if (window.electronAPI.f9WebullAccountList) {
-    return window.electronAPI.f9WebullAccountList({
-      url: endpoint,
-      headers,
-      method,
-      body,
-    })
-  }
-  throw new Error('F9 Webull bridge is unavailable in this Electron build.')
-}
-
-async function signedV2RequestBlock(
+async function signedRequestBlock(
   method: 'GET' | 'POST',
   endpoint: string,
-  config: F9WebullConfigBlock,
   options?: {
+    version?: string
     accessToken?: string
     body?: string
   },
@@ -185,9 +158,7 @@ async function signedV2RequestBlock(
   const response = await window.electronAPI.f9WebullSignedRequest({
     method,
     url: endpoint,
-    appKey: config.appKey,
-    appSecret: config.appSecret,
-    version: 'v2',
+    version: options?.version,
     accessToken: options?.accessToken,
     body: options?.body,
   })
@@ -195,6 +166,21 @@ async function signedV2RequestBlock(
     status: response.status,
     data: parseJsonSafelyBlock(response.body),
   }
+}
+
+async function signedV2RequestBlock(
+  method: 'GET' | 'POST',
+  endpoint: string,
+  options?: {
+    accessToken?: string
+    body?: string
+  },
+): Promise<{ status: number; data: unknown }> {
+  return signedRequestBlock(method, endpoint, {
+    version: 'v2',
+    accessToken: options?.accessToken,
+    body: options?.body,
+  })
 }
 
 function parseAccessTokenBlock(value: unknown): F9WebullAccessTokenBlock | null {
@@ -245,70 +231,27 @@ function isCachedPendingAccessTokenBlock(token: F9WebullAccessTokenBlock | null)
   return normalizeAccessTokenStatusBlock(token) === 'PENDING'
 }
 
-function buildWebullTokenCachePathBlock(config: F9WebullConfigBlock): string {
-  const hostSegment = new URL(config.baseUrl).hostname
-    .toLowerCase()
-    .replace(/[^a-z0-9.-]/g, '-')
-  const appKeySegment = config.appKey
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '')
-  const normalizedAppKeySegment = appKeySegment || 'default'
-  return `${WEBULL_TOKEN_CACHE_DIR_BLOCK}/webull-token-${hostSegment}-${normalizedAppKeySegment}.json`
-}
-
-function hasVaultRootForWebullTokenCacheBlock(): boolean {
-  const vaultRoot = getStoredVaultRoot()
-  return typeof vaultRoot === 'string' && vaultRoot.trim().length > 0
-}
-
-async function persistCachedWebullAccessTokenToVaultBlock(
-  config: F9WebullConfigBlock,
-  token: F9WebullAccessTokenBlock | null,
-): Promise<void> {
-  if (!hasVaultRootForWebullTokenCacheBlock()) return
-  const path = buildWebullTokenCachePathBlock(config)
-  const payload = token
-    ? {
-      token: token.token,
-      expires: token.expires,
-      status: token.status,
-      updated_at: new Date().toISOString(),
-    }
-    : {}
-
-  try {
-    const vaultFs = getVaultFS()
-    await vaultFs.write(path, JSON.stringify(payload, null, 2))
-  } catch {
-    // Token persistence is best-effort; auth flow should continue even when vault writes fail.
-  }
-}
-
 async function setCachedWebullAccessTokenBlock(
-  config: F9WebullConfigBlock,
   token: F9WebullAccessTokenBlock | null,
 ): Promise<void> {
   cachedWebullAccessTokenBlock = token
-  await persistCachedWebullAccessTokenToVaultBlock(config, token)
+  try {
+    await writeStoredF9WebullAccessTokenBlock(token)
+  } catch {
+    // Token persistence is best-effort; auth flow should continue when secure storage writes fail.
+  }
 }
 
-async function hydrateCachedWebullAccessTokenFromVaultBlock(config: F9WebullConfigBlock): Promise<void> {
-  if (!hasVaultRootForWebullTokenCacheBlock()) return
-  const path = buildWebullTokenCachePathBlock(config)
-  if (loadedWebullTokenCachePathBlock === path) return
-  loadedWebullTokenCachePathBlock = path
-
+async function hydrateCachedWebullAccessTokenFromSecureStoreBlock(): Promise<void> {
+  if (hydratedWebullAccessTokenCacheBlock) return
+  hydratedWebullAccessTokenCacheBlock = true
   try {
-    const vaultFs = getVaultFS()
-    if (!(await vaultFs.exists(path))) return
-    const raw = await vaultFs.read(path)
-    const parsed = parseAccessTokenBlock(parseJsonSafelyBlock(raw))
+    const parsed = await readStoredF9WebullAccessTokenBlock()
     if (!parsed) return
     if (isAccessTokenExpiredBlock(parsed)) return
     cachedWebullAccessTokenBlock = parsed
   } catch {
-    // Best-effort hydration from vault cache.
+    // Best-effort hydration from secure token cache.
   }
 }
 
@@ -335,7 +278,6 @@ async function pollWebullTokenUntilNormalBlock(
     const checkResponse = await signedV2RequestBlock(
       'POST',
       checkEndpoint,
-      config,
       { body: JSON.stringify({ token: tokenToCheck }) },
     )
     if (checkResponse.status < 200 || checkResponse.status >= 300) {
@@ -346,7 +288,7 @@ async function pollWebullTokenUntilNormalBlock(
     if (!parsed) {
       throw new Error(`Webull token check returned malformed payload: ${buildErrorPreviewBlock(checkResponse.data)}`)
     }
-    await setCachedWebullAccessTokenBlock(config, parsed)
+    await setCachedWebullAccessTokenBlock(parsed)
 
     const normalizedStatus = normalizeAccessTokenStatusBlock(parsed)
     if (normalizedStatus === 'NORMAL') {
@@ -366,7 +308,7 @@ async function pollWebullTokenUntilNormalBlock(
 }
 
 async function ensureWebullAccessTokenInnerBlock(config: F9WebullConfigBlock): Promise<string> {
-  await hydrateCachedWebullAccessTokenFromVaultBlock(config)
+  await hydrateCachedWebullAccessTokenFromSecureStoreBlock()
 
   if (isCachedAccessTokenUsableBlock(cachedWebullAccessTokenBlock)) {
     return cachedWebullAccessTokenBlock!.token
@@ -379,7 +321,7 @@ async function ensureWebullAccessTokenInnerBlock(config: F9WebullConfigBlock): P
   const createBody = cachedWebullAccessTokenBlock?.token
     ? JSON.stringify({ token: cachedWebullAccessTokenBlock.token })
     : '{}'
-  const createResponse = await signedV2RequestBlock('POST', createEndpoint, config, { body: createBody })
+  const createResponse = await signedV2RequestBlock('POST', createEndpoint, { body: createBody })
   if (createResponse.status < 200 || createResponse.status >= 300) {
     throw new Error(`Webull token create failed (HTTP ${createResponse.status}): ${buildErrorPreviewBlock(createResponse.data)}`)
   }
@@ -388,7 +330,7 @@ async function ensureWebullAccessTokenInnerBlock(config: F9WebullConfigBlock): P
   if (!parsed) {
     throw new Error(`Webull token create returned malformed payload: ${buildErrorPreviewBlock(createResponse.data)}`)
   }
-  await setCachedWebullAccessTokenBlock(config, parsed)
+  await setCachedWebullAccessTokenBlock(parsed)
 
   const normalizedStatus = normalizeAccessTokenStatusBlock(parsed)
   if (normalizedStatus === 'NORMAL') {
@@ -418,27 +360,9 @@ async function ensureWebullAccessTokenBlock(config: F9WebullConfigBlock): Promis
 
 async function signedGetBlock(
   endpoint: string,
-  config: F9WebullConfigBlock,
-  options?: {
-    version?: string
-    accessToken?: string
-  },
+  options?: { accessToken?: string },
 ): Promise<{ status: number; data: unknown }> {
-  const signed = await buildF9WebullHeadersBlock({
-    method: 'GET',
-    url: endpoint,
-    appKey: config.appKey,
-    appSecret: config.appSecret,
-    body: '',
-    version: options?.version,
-    accessToken: options?.accessToken,
-  })
-
-  const response = await requestViaElectronBridgeBlock(endpoint, signed.headers)
-  return {
-    status: response.status,
-    data: parseJsonSafelyBlock(response.body),
-  }
+  return signedRequestBlock('GET', endpoint, { accessToken: options?.accessToken })
 }
 
 function resolveQuoteQueryVariantsBlock(symbols: string[]): Array<Record<string, string>> {
@@ -569,7 +493,7 @@ async function fetchPaginatedPositionsByCandidatePathsBlock(
         page_size: DEFAULT_POSITIONS_PAGE_SIZE_BLOCK,
         last_instrument_id: pageCursor,
       })
-      const response = await signedGetBlock(endpoint, config)
+      const response = await signedGetBlock(endpoint)
       const queryString = new URL(endpoint).searchParams.toString()
       attempts.push(`${path}?${queryString} -> HTTP ${response.status}`)
 
@@ -667,7 +591,7 @@ async function fetchInstrumentByTickerIdsBlock(
     for (const path of candidatePaths) {
       for (const queryFactory of INSTRUMENT_QUERY_VARIANTS_BLOCK) {
         const endpoint = buildEndpointBlock(config.baseUrl, path, queryFactory(idsCsv))
-        const response = await signedGetBlock(endpoint, config)
+        const response = await signedGetBlock(endpoint)
         const queryString = new URL(endpoint).searchParams.toString()
         attempts.push(`${path}?${queryString} -> HTTP ${response.status}`)
 
@@ -721,7 +645,7 @@ async function fetchByPathCandidatesBlock(
 
   for (const path of candidatePaths) {
     const endpoint = buildEndpointBlock(config.baseUrl, path, options?.query)
-    const response = await signedGetBlock(endpoint, config)
+    const response = await signedGetBlock(endpoint)
 
     if (response.status >= 200 && response.status < 300) {
       attempts.push(`${path} -> HTTP ${response.status}`)
@@ -754,7 +678,7 @@ export async function fetchF9WebullAccountListBlock(): Promise<F9WebullApiResult
   const requestedAt = new Date().toISOString()
   const path = '/openapi/account/list'
   const endpoint = buildEndpointBlock(config.baseUrl, path)
-  const response = await signedV2RequestBlock('GET', endpoint, config, { accessToken })
+  const response = await signedV2RequestBlock('GET', endpoint, { accessToken })
   const attempts = [`${path} -> HTTP ${response.status}`]
 
   if (response.status < 200 || response.status >= 300) {
@@ -781,7 +705,7 @@ export async function fetchF9WebullAccountBalanceBlock(accountId: string): Promi
   const requestedAt = new Date().toISOString()
   const path = '/openapi/assets/balance'
   const endpoint = buildEndpointBlock(config.baseUrl, path, { account_id: normalizedAccountId })
-  const response = await signedV2RequestBlock('GET', endpoint, config, { accessToken })
+  const response = await signedV2RequestBlock('GET', endpoint, { accessToken })
   const attempts = [`${path}?${new URL(endpoint).searchParams.toString()} -> HTTP ${response.status}`]
 
   if (response.status < 200 || response.status >= 300) {
@@ -852,7 +776,7 @@ export async function fetchF9WebullAssetsPositionsBlock(accountId: string): Prom
   const endpoint = buildEndpointBlock(config.baseUrl, path, {
     account_id: normalizedAccountId,
   })
-  const response = await signedV2RequestBlock('GET', endpoint, config, { accessToken })
+  const response = await signedV2RequestBlock('GET', endpoint, { accessToken })
   const attempts = [`${path}?${new URL(endpoint).searchParams.toString()} -> HTTP ${response.status}`]
 
   if (response.status < 200 || response.status >= 300) {
@@ -914,7 +838,7 @@ export async function fetchF9WebullTradeInstrumentsByIdsBlock(
     for (const path of candidatePaths) {
       for (const queryFactory of TRADE_INSTRUMENT_QUERY_VARIANTS_BLOCK) {
         const endpoint = buildEndpointBlock(config.baseUrl, path, queryFactory(instrumentId))
-        const response = await signedGetBlock(endpoint, config)
+        const response = await signedGetBlock(endpoint)
         const queryString = new URL(endpoint).searchParams.toString()
         attempts.push(`${path}?${queryString} -> HTTP ${response.status}`)
 
@@ -1017,7 +941,7 @@ export async function fetchF9WebullMarketQuotesBlock(symbols: string[]): Promise
   for (const path of candidatePaths) {
     for (const query of queryVariants) {
       const endpoint = buildEndpointBlock(config.baseUrl, path, query)
-      const response = await signedGetBlock(endpoint, config)
+      const response = await signedGetBlock(endpoint)
 
       if (response.status >= 200 && response.status < 300) {
         attempts.push(`${path}?${new URL(endpoint).searchParams.toString()} -> HTTP ${response.status}`)

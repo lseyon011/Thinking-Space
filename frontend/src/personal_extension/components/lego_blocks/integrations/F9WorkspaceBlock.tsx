@@ -2173,7 +2173,7 @@ export default function F9WorkspaceBlock({
               )}
               {liveRefreshAvailable && !hasConfig && (
                 <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
-                  Missing Webull config. Set `VITE_F9_WEBULL_APP_KEY` and `VITE_F9_WEBULL_APP_SECRET` in your frontend env.
+                  Missing Webull credentials. Open Settings {'>'} F9 and save your Webull app key + app secret to secure device storage.
                 </div>
               )}
               <p><span className="font-medium text-foreground">Runtime:</span> {formatRuntimeLabelBlock(runtime)}</p>
