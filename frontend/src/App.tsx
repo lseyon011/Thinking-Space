@@ -498,6 +498,14 @@ function App() {
   }, [needsVaultSetup])
 
   useEffect(() => {
+    if (!needsVaultSetup || !isElectron()) return
+    const persistedRoot = getStoredVaultRoot()?.trim()
+    if (!persistedRoot) return
+    setVaultRoot(persistedRoot)
+    setNeedsVaultSetup(false)
+  }, [needsVaultSetup])
+
+  useEffect(() => {
     if (needsVaultSetup) {
       setLastGitCommitAt(null)
       setLastGitPushAt(null)

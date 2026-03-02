@@ -21,6 +21,15 @@ function readPersistedVaultRootSyncBlock(): string | null {
 
 let persistedVaultRootBlock: string | null = readPersistedVaultRootSyncBlock()
 
+function getPersistedVaultRootBlock(): string | null {
+  const nextValue = readPersistedVaultRootSyncBlock()
+  if (nextValue) {
+    persistedVaultRootBlock = nextValue
+    return nextValue
+  }
+  return persistedVaultRootBlock
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
 
@@ -58,7 +67,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Vault folder picker dialog
   selectVaultFolder: () => ipcRenderer.invoke('vault:selectFolder'),
-  vaultRootGetPersisted: () => persistedVaultRootBlock,
+  vaultRootGetPersisted: () => getPersistedVaultRootBlock(),
   vaultRootSetPersisted: async (vaultRoot: string | null) => {
     const normalized = normalizePersistedVaultRootBlock(vaultRoot)
     await ipcRenderer.invoke('vault:root:setPersisted', normalized)
