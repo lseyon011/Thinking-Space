@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import {
+  applyStewardMetadataToFileOrch,
   generateStewardMetadataSuggestionForFileOrch,
   type StewardMetadataSuggestion,
 } from '@/services/orchestrators/stewardMetadataOrch'
+import { getVaultFS } from '@/services/orchestrators/runtimeOrch'
 import { cn } from '@/lib/utils'
 
 interface AiStewardPanelBlockProps {
@@ -27,20 +29,50 @@ export default function AiStewardPanelBlock({
   showMissingFileMessage = true,
 }: AiStewardPanelBlockProps) {
   const resolvedFilePath = (filePath ?? '').trim()
+  const [fileCheckLoading, setFileCheckLoading] = useState(false)
+  const [fileAvailable, setFileAvailable] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [proposal, setProposal] = useState<PurposeProposalState | null>(null)
 
   useEffect(() => {
+    if (!resolvedFilePath) {
+      setFileCheckLoading(false)
+      setFileAvailable(false)
+      return
+    }
+
+    let cancelled = false
+    setFileCheckLoading(true)
+    void (async () => {
+      try {
+        const fs = getVaultFS()
+        const exists = await fs.exists(resolvedFilePath)
+        if (cancelled) return
+        setFileAvailable(Boolean(exists))
+      } catch {
+        if (cancelled) return
+        setFileAvailable(false)
+      } finally {
+        if (!cancelled) setFileCheckLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [resolvedFilePath])
+
+  useEffect(() => {
     setLoading(false)
     setError(null)
     setMessage(null)
     setProposal(null)
-  }, [resolvedFilePath])
+  }, [resolvedFilePath, fileAvailable])
 
   const generateProposal = useCallback(async () => {
-    if (!resolvedFilePath) return
+    if (!resolvedFilePath || !fileAvailable) return
     setLoading(true)
     setError(null)
     setMessage(null)
@@ -59,25 +91,31 @@ export default function AiStewardPanelBlock({
     } finally {
       setLoading(false)
     }
-  }, [resolvedFilePath])
+  }, [fileAvailable, resolvedFilePath])
 
   const acceptProposal = useCallback(async () => {
     if (!proposal) return
-    if (!onApplySuggestion) {
-      setProposal(null)
-      setError(null)
-      setMessage('No apply handler is configured for this editor.')
-      return
-    }
     try {
-      await onApplySuggestion(proposal.suggestion)
+      if (onApplySuggestion) {
+        await onApplySuggestion(proposal.suggestion)
+      } else if (resolvedFilePath && fileAvailable) {
+        await applyStewardMetadataToFileOrch({
+          filePath: resolvedFilePath,
+          summary: proposal.suggestion.summary,
+          tags: proposal.suggestion.tags,
+          suggestedEpicKey: proposal.suggestion.suggestedEpicKey,
+          suggestedIdeaKey: proposal.suggestion.suggestedIdeaKey,
+        })
+      } else {
+        throw new Error('Cannot apply steward proposal without a saved file.')
+      }
       setProposal(null)
       setError(null)
       setMessage('Applied purpose proposal.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to apply purpose proposal')
     }
-  }, [onApplySuggestion, proposal])
+  }, [fileAvailable, onApplySuggestion, proposal, resolvedFilePath])
 
   const dismissProposal = useCallback(() => {
     if (!proposal) return
@@ -86,11 +124,19 @@ export default function AiStewardPanelBlock({
     setMessage(onApplySuggestion ? 'Rejected purpose proposal.' : 'Dismissed purpose proposal.')
   }, [onApplySuggestion, proposal])
 
-  if (!resolvedFilePath) {
+  if (!resolvedFilePath || (!fileCheckLoading && !fileAvailable)) {
     if (!showMissingFileMessage) return null
     return (
       <div className={cn('rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground', className)}>
-        AI Steward is hidden for raw content. Save or open a file path to enable steward proposals.
+        AI Steward is hidden for raw content. Save or open an existing file path to enable steward proposals.
+      </div>
+    )
+  }
+
+  if (fileCheckLoading) {
+    return (
+      <div className={cn('rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground', className)}>
+        Checking file context for AI Steward...
       </div>
     )
   }
