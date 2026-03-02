@@ -93,11 +93,9 @@ export default function AiAssistControlsBlock({
             placeholder="Ask AI what to change in this note. Example: tighten this into crisp action items."
             limit={20}
             showEmptyStateWhenOpen={false}
-            dismissOnOutsideClick={false}
+            dismissOnOutsideClick
             open={promptHistoryOpen}
-            onOpenChange={(open) => {
-              if (open) setPromptHistoryOpen(true)
-            }}
+            onOpenChange={setPromptHistoryOpen}
             allowCustomValue
             onSelectCustomValue={setCustomPrompt}
             closeOnSelect={false}

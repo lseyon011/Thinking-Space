@@ -1162,7 +1162,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
                   <button
                     type="button"
                     onClick={discardRejectedAndAcceptRemainingInlineDiffHunks}
-                    className="inline-flex h-8 items-center rounded-md border border-primary/50 bg-primary/10 px-3 text-xs text-primary"
+                    className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs text-foreground hover:bg-muted"
                   >
                     Discard rejected + accept remaining
                   </button>
