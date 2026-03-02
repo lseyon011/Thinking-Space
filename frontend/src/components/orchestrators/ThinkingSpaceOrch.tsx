@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { PanelLeft, PanelLeftClose, Sparkles, FileText } from 'lucide-react'
+import { PanelLeft, PanelLeftClose, FileText } from 'lucide-react'
 import VaultExplorerBlock from '@/components/lego_blocks/integrations/VaultExplorerBlock'
 import MarkdownDocumentBlock, { type MarkdownViewerMode } from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
@@ -557,13 +557,8 @@ export default function ThinkingSpaceOrch() {
               </div>
               <h2 className="text-lg font-semibold tracking-tight">Open a File to Start</h2>
               <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-                Pick a file from the explorer. It opens inline here using the same markdown
-                viewer/editor component used in side popup flows.
+                Pick a file from the explorer.
               </p>
-              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-border/70 bg-background px-3 py-1 text-xs text-muted-foreground">
-                <Sparkles className="h-3.5 w-3.5" />
-                Obsidian-style sidebar flow, tuned for responsiveness
-              </div>
             </div>
           )}
         </section>
