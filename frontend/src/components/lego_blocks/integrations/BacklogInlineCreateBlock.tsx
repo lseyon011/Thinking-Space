@@ -64,6 +64,7 @@ export function BacklogInlineCreateBlock({
           className="ltm-backlog-inline-create-field ltm-backlog-inline-create-title h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <Button
+          type="button"
           size="sm"
           variant="outline"
           className="ltm-backlog-inline-create-submit h-7 px-2 text-xs"

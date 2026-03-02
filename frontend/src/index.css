@@ -324,17 +324,20 @@
     border-radius: clamp(0.85rem, 2.8vw, 1.08rem);
   }
 
-  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-backlog-inline-create .ltm-backlog-inline-create-top-row {
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-backlog-inline-create .ltm-backlog-inline-create-top-row,
+  .ltm-app-shell[data-ltm-ios-phone='true'] .ltm-backlog-inline-create .ltm-backlog-inline-create-top-row {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
   }
 
-  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-backlog-inline-create .ltm-backlog-inline-create-title {
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-backlog-inline-create .ltm-backlog-inline-create-title,
+  .ltm-app-shell[data-ltm-ios-phone='true'] .ltm-backlog-inline-create .ltm-backlog-inline-create-title {
     min-width: 0;
   }
 
-  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-backlog-inline-create .ltm-backlog-inline-create-submit {
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-backlog-inline-create .ltm-backlog-inline-create-submit,
+  .ltm-app-shell[data-ltm-ios-phone='true'] .ltm-backlog-inline-create .ltm-backlog-inline-create-submit {
     flex-shrink: 0;
   }
 

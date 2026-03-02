@@ -440,6 +440,8 @@ function App() {
   const showBottomNav = false
   const phoneMode = layout.mode === 'phone'
   const iPhoneMode = layout.surface === 'capacitor-ios' && phoneMode
+  const iPhoneUserAgent = typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent || '')
+  const iPhoneHandsetMode = phoneMode && (iPhoneMode || iPhoneUserAgent)
   const isCapacitorSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
   const showCapacitorTopChromeMenu = compactNav && !drawerOpen && isCapacitorSurface
   const topChromeLeftWidth = showCapacitorTopChromeMenu
@@ -486,7 +488,7 @@ function App() {
     const viewportMeta = document.querySelector('meta[name="viewport"]')
     if (!(viewportMeta instanceof HTMLMetaElement)) return
     const defaultViewport = 'width=device-width, initial-scale=1.0, viewport-fit=cover'
-    if (!iPhoneMode) {
+    if (!iPhoneHandsetMode) {
       viewportMeta.setAttribute('content', defaultViewport)
       return
     }
@@ -497,7 +499,7 @@ function App() {
     return () => {
       viewportMeta.setAttribute('content', defaultViewport)
     }
-  }, [iPhoneMode])
+  }, [iPhoneHandsetMode])
 
   const openCommandPalette = useCallback(() => {
     setCommandQuery('')
@@ -1222,6 +1224,7 @@ function App() {
       data-ltm-shell-motion={shellThemeProfile.motion}
       data-ltm-theme={themeId}
       data-ltm-explorer-icon-style={explorerIconStyle}
+      data-ltm-ios-phone={iPhoneHandsetMode ? 'true' : 'false'}
     >
       {explorerFolderColorCss && <style>{explorerFolderColorCss}</style>}
       <div className="ltm-shell-layer-base">
