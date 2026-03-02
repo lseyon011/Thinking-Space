@@ -6,7 +6,18 @@ export interface PersistedExplorerState {
   selectedFilePath?: string | null
 }
 
+export type ExplorerPathKindBlock = 'file' | 'folder'
+
+export interface DroppedPathPayloadBlock {
+  path: string
+  kind: ExplorerPathKindBlock
+}
+
 export const EXPLORER_PERSISTENCE_PREFIX = 'ltm.vaultExplorer.state.v1'
+
+function normalizeDroppedPathBlock(path: string): string {
+  return path.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+}
 
 export function normalizePersistedExpandedPaths(value: unknown): string[] {
   const list = Array.isArray(value)
@@ -54,6 +65,26 @@ export function getLeafName(path: string): string {
 export function hasNodeDragType(event: DragEvent): boolean {
   const types = Array.from(event.dataTransfer.types)
   return types.includes('application/x-ltm-node-id') || types.includes('text/ltm-node-id')
+}
+
+export function hasPathDragType(event: DragEvent): boolean {
+  const types = Array.from(event.dataTransfer.types)
+  return types.includes('application/x-ltm-path') || types.includes('text/ltm-file-path')
+}
+
+export function readDroppedPath(event: DragEvent): DroppedPathPayloadBlock | null {
+  const explicitRaw = event.dataTransfer.getData('application/x-ltm-path').trim()
+  const textFallbackRaw = event.dataTransfer.getData('text/ltm-file-path').trim()
+  const plainRaw = event.dataTransfer.getData('text/plain').trim()
+  const raw = explicitRaw || textFallbackRaw || plainRaw
+  if (!raw) return null
+
+  const kindRaw = event.dataTransfer.getData('application/x-ltm-path-kind').trim()
+  const kind = kindRaw === 'folder' ? 'folder' : 'file'
+  const path = normalizeDroppedPathBlock(raw.startsWith('ltm-path:') ? raw.slice('ltm-path:'.length) : raw)
+  if (!path) return null
+
+  return { path, kind }
 }
 
 export function readDroppedNodeId(event: DragEvent): string | null {

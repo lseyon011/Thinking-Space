@@ -15,6 +15,7 @@ import {
   getAbsolutePathForClipboardOrch,
   getRelativePathForClipboardOrch,
   listFolderEntries,
+  moveVaultPathOrch,
   openFileInNewTabOrch,
   openFileInNewWindowOrch,
   renameVaultPathOrch,
@@ -36,6 +37,13 @@ const EXPLORER_MIN_WIDTH_PX = 220
 function leafNameOf(path: string): string {
   const idx = path.lastIndexOf('/')
   return idx < 0 ? path : path.slice(idx + 1)
+}
+
+function remapPathAfterMove(path: string, sourcePath: string, targetPath: string): string {
+  if (path === sourcePath) return targetPath
+  if (!path.startsWith(`${sourcePath}/`)) return path
+  const suffix = path.slice(sourcePath.length + 1)
+  return suffix ? `${targetPath}/${suffix}` : targetPath
 }
 
 function clampExplorerWidthPx(value: number): number {
@@ -277,6 +285,43 @@ export default function ThinkingSpaceOrch() {
     return true
   }, [])
 
+  const handleExplorerMovePath = useCallback(async (
+    sourcePath: string,
+    sourceKind: 'file' | 'folder',
+    targetFolderPath: string,
+  ): Promise<string> => {
+    const nextPath = await moveVaultPathOrch(sourcePath, targetFolderPath)
+    if (nextPath === sourcePath) return sourcePath
+
+    setMountedInlinePaths((prev) => {
+      const remapped = prev.map(path => remapPathAfterMove(path, sourcePath, nextPath))
+      const deduped: string[] = []
+      for (const path of remapped) {
+        if (!deduped.includes(path)) deduped.push(path)
+      }
+      return deduped
+    })
+    setInlineInitialModeByPath((prev) => {
+      const next: Record<string, MarkdownViewerMode> = {}
+      for (const [path, mode] of Object.entries(prev)) {
+        const remappedPath = remapPathAfterMove(path, sourcePath, nextPath)
+        if (!(remappedPath in next)) next[remappedPath] = mode
+      }
+      return next
+    })
+
+    if (inlinePath) {
+      const remappedInlinePath = remapPathAfterMove(inlinePath, sourcePath, nextPath)
+      if (remappedInlinePath !== inlinePath) {
+        setInlinePathAndSyncUrl(remappedInlinePath)
+      }
+    }
+
+    // Preserve existing file-only behavior while also supporting folder moves.
+    if (sourceKind === 'file') return nextPath
+    return nextPath
+  }, [inlinePath, setInlinePathAndSyncUrl])
+
   const handleExplorerResizeMove = useCallback((event: PointerEvent) => {
     const state = explorerResizeRef.current
     if (!state) return
@@ -447,6 +492,8 @@ export default function ThinkingSpaceOrch() {
           onRenamePath={handleExplorerRenamePath}
           onDeleteFile={handleExplorerDeleteFile}
           onOpenInFinder={handleExplorerOpenInFinder}
+          onMovePath={handleExplorerMovePath}
+          draggableFiles
           title=""
         />
       </div>
@@ -609,6 +656,8 @@ export default function ThinkingSpaceOrch() {
                 onRenamePath={handleExplorerRenamePath}
                 onDeleteFile={handleExplorerDeleteFile}
                 onOpenInFinder={handleExplorerOpenInFinder}
+                onMovePath={handleExplorerMovePath}
+                draggableFiles
                 title=""
               />
             </div>

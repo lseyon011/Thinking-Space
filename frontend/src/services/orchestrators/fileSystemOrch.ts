@@ -56,6 +56,11 @@ function joinRel(parent: string, child: string): string {
   return base ? `${base}/${child}` : child
 }
 
+function isSameOrChildPath(path: string, maybeParent: string): boolean {
+  if (!path || !maybeParent) return false
+  return path === maybeParent || path.startsWith(`${maybeParent}/`)
+}
+
 function splitExtension(name: string): { stem: string; ext: string } {
   const idx = name.lastIndexOf('.')
   if (idx <= 0) return { stem: name, ext: '' }
@@ -364,6 +369,41 @@ export async function renameVaultPathOrch(path: string, nextName: string): Promi
   if (isElectron()) {
     const api = window.electronAPI
     if (!api?.rename) throw new Error('Rename is unavailable in this desktop build')
+    await api.rename(getElectronVaultRoot(), currentPath, targetPath)
+    return targetPath
+  }
+
+  await postVaultApi('/api/tools/vault/rename', { from_path: currentPath, to_path: targetPath })
+  return targetPath
+}
+
+export async function moveVaultPathOrch(sourcePath: string, targetFolderPath: string): Promise<string> {
+  const currentPath = normalizeRelPath(sourcePath)
+  const targetFolder = normalizeRelPath(targetFolderPath)
+  if (!currentPath) throw new Error('Cannot move vault root')
+
+  const sourceKind = await getVaultPathKind(currentPath)
+  if (sourceKind === 'missing') throw new Error(`Path does not exist: "${currentPath}"`)
+  if (sourceKind === 'folder' && isSameOrChildPath(targetFolder, currentPath)) {
+    throw new Error('Cannot move a folder into itself or its subfolder')
+  }
+  if (targetFolder && await getVaultPathKind(targetFolder) !== 'folder') {
+    throw new Error(`Target folder does not exist: "${targetFolder}"`)
+  }
+
+  const { name } = splitParent(currentPath)
+  if (!name) throw new Error('Invalid source path')
+  const targetPath = joinRel(targetFolder, name)
+  if (targetPath === currentPath) return currentPath
+
+  const fs = getVaultFS()
+  if (await fs.exists(targetPath)) {
+    throw new Error(`A file or folder already exists at "${targetPath}"`)
+  }
+
+  if (isElectron()) {
+    const api = window.electronAPI
+    if (!api?.rename) throw new Error('Move is unavailable in this desktop build')
     await api.rename(getElectronVaultRoot(), currentPath, targetPath)
     return targetPath
   }

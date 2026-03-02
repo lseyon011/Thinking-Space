@@ -17,9 +17,11 @@ import {
   getLeafName,
   getParentPath,
   hasNodeDragType,
+  hasPathDragType,
   joinPath,
   normalizePersistedExpandedPaths,
   type PersistedExplorerState,
+  readDroppedPath,
   readDroppedNodeId,
   readPersistedExplorerState,
 } from '@/components/lego_blocks/units/VaultExplorerUtilsBlock'
@@ -77,6 +79,7 @@ interface VaultExplorerBlockProps {
   selectedPath?: string | null
   onSelectFile?: (path: string) => void
   onDropNode?: (nodeUuid: string, targetPath: string) => Promise<void>
+  onMovePath?: (sourcePath: string, sourceKind: ExplorerPathKind, targetFolderPath: string) => ExplorerActionResult
   draggableFiles?: boolean
   draggableFolders?: boolean
   title?: string
@@ -89,6 +92,13 @@ function getFileIcon(name: string) {
   const lower = name.toLowerCase()
   if (lower.endsWith('.md')) return FileText
   return File
+}
+
+function remapPathAfterMove(path: string, sourcePath: string, targetPath: string): string {
+  if (path === sourcePath) return targetPath
+  if (!path.startsWith(`${sourcePath}/`)) return path
+  const suffix = path.slice(sourcePath.length + 1)
+  return suffix ? `${targetPath}/${suffix}` : targetPath
 }
 
 export default function VaultExplorerBlock({
@@ -109,6 +119,7 @@ export default function VaultExplorerBlock({
   selectedPath = null,
   onSelectFile,
   onDropNode,
+  onMovePath,
   draggableFiles = false,
   draggableFolders = false,
   title = 'Thinking Space Explorer',
@@ -326,6 +337,72 @@ export default function VaultExplorerBlock({
     })
   }, [listenToGlobalSyncRefresh, refreshRoot])
 
+  const canDropNodes = !!onDropNode
+  const canDropPaths = !!onMovePath
+  const canDropOnRows = canDropNodes || canDropPaths
+  const canDragFiles = draggableFiles || canDropPaths
+  const canDragFolders = draggableFolders
+
+  const handleDragOverTarget = useCallback((event: React.DragEvent, dropTargetPath: string): boolean => {
+    const nodeDrop = canDropNodes && hasNodeDragType(event)
+    const pathDrop = canDropPaths && hasPathDragType(event)
+    if (!nodeDrop && !pathDrop) return false
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = pathDrop ? 'move' : 'link'
+    setDropOverPath(dropTargetPath)
+    return true
+  }, [canDropNodes, canDropPaths])
+
+  const handleDropOnTarget = useCallback(async (
+    event: React.DragEvent,
+    moveTargetFolderPath: string,
+    nodeDropTargetPath: string = moveTargetFolderPath,
+  ): Promise<void> => {
+    event.preventDefault()
+    event.stopPropagation()
+    setDropOverPath(null)
+
+    const droppedPath = canDropPaths ? readDroppedPath(event) : null
+    if (droppedPath && onMovePath) {
+      const sourcePath = droppedPath.path
+      const sourceKind = droppedPath.kind
+      if (sourceKind === 'folder' && sourcePath === moveTargetFolderPath) return
+      const sourceParentPath = getParentPath(sourcePath)
+      try {
+        const result = await onMovePath(sourcePath, sourceKind, moveTargetFolderPath)
+        const movedPath = typeof result === 'string' ? result : sourcePath
+
+        if (sourceKind === 'folder' && movedPath !== sourcePath) {
+          setExpandedPaths(prev => normalizePersistedExpandedPaths(prev.map(path => remapPathAfterMove(path, sourcePath, movedPath))))
+          setSelectedFolderPath(prev => (prev ? remapPathAfterMove(prev, sourcePath, movedPath) : prev))
+          setSelectedFilePath(prev => (prev ? remapPathAfterMove(prev, sourcePath, movedPath) : prev))
+        } else if (sourceKind === 'file') {
+          setSelectedFilePath(prev => (prev === sourcePath ? movedPath : prev))
+          setSelectedFolderPath(prev => {
+            if (prev === sourceParentPath) return getParentPath(movedPath)
+            return prev
+          })
+        }
+
+        const pathsToRefresh = new Set<string>(['', sourceParentPath, moveTargetFolderPath])
+        for (const refreshPath of pathsToRefresh) {
+          void loadPath(refreshPath, true)
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Move failed'
+        window.alert(message)
+      }
+      return
+    }
+
+    if (!canDropNodes || !onDropNode) return
+    const nodeId = readDroppedNodeId(event)
+    if (nodeId) {
+      void onDropNode(nodeId, nodeDropTargetPath)
+    }
+  }, [canDropNodes, canDropPaths, loadPath, onDropNode, onMovePath])
+
   const isExpanded = useCallback((path: string) => expandedPaths.includes(path), [expandedPaths])
 
   const rowRefKey = useCallback((kind: ExplorerPathKind, path: string) => `${kind}:${path}`, [])
@@ -538,7 +615,7 @@ export default function VaultExplorerBlock({
               key={`folder-${folderPath}`}
               className={cn(
                 'ltm-explorer-row ltm-explorer-folder-row flex w-full items-center gap-1 rounded-md border border-border/60 bg-muted/85 px-2 py-1.5 text-[13px] text-foreground',
-                onDropNode && dropOverPath === folderPath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
+                canDropOnRows && dropOverPath === folderPath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
               )}
               style={{ paddingLeft: `${8 + depth * 14}px` }}
               data-path={folderPath}
@@ -579,30 +656,23 @@ export default function VaultExplorerBlock({
             <button
               key={`folder-${folderPath}`}
               type="button"
-              draggable={draggableFolders}
+              draggable={canDragFolders}
               onDragStart={event => {
-                if (!draggableFolders) return
+                if (!canDragFolders) return
                 event.dataTransfer.setData('application/x-ltm-path', `ltm-path:${folderPath}`)
+                event.dataTransfer.setData('application/x-ltm-path-kind', 'folder')
                 event.dataTransfer.setData('text/ltm-file-path', folderPath)
                 event.dataTransfer.setData('text/plain', folderPath)
-                event.dataTransfer.effectAllowed = 'copy'
+                event.dataTransfer.effectAllowed = 'move'
               }}
-              onDragOver={onDropNode ? (event => {
-                if (!hasNodeDragType(event)) return
-                event.preventDefault()
-                event.stopPropagation()
-                event.dataTransfer.dropEffect = 'link'
-                setDropOverPath(folderPath)
+              onDragOver={canDropOnRows ? (event => {
+                void handleDragOverTarget(event, folderPath)
               }) : undefined}
-              onDragLeave={onDropNode ? (() => {
+              onDragLeave={canDropOnRows ? (() => {
                 setDropOverPath(prev => prev === folderPath ? null : prev)
               }) : undefined}
-              onDrop={onDropNode ? (event => {
-                event.preventDefault()
-                event.stopPropagation()
-                setDropOverPath(null)
-                const nodeId = readDroppedNodeId(event)
-                if (nodeId) void onDropNode(nodeId, folderPath)
+              onDrop={canDropOnRows ? (event => {
+                void handleDropOnTarget(event, folderPath)
               }) : undefined}
               onKeyDown={event => {
                 if (event.key === 'Enter' && selectedFolderPath === folderPath) {
@@ -624,7 +694,7 @@ export default function VaultExplorerBlock({
                 'ltm-explorer-row ltm-explorer-folder-row ltm-touch-row group flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/90 transition-colors hover:bg-muted/70',
                 inSelectionTrail && 'border border-border/60 bg-muted/85 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_2px_8px_-6px_rgba(0,0,0,0.35)] hover:bg-muted/90',
                 expanded && !inSelectionTrail && 'bg-muted/50',
-                onDropNode && dropOverPath === folderPath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
+                canDropOnRows && dropOverPath === folderPath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
               )}
               style={{ paddingLeft: `${8 + depth * 14}px` }}
               data-path={folderPath}
@@ -691,7 +761,7 @@ export default function VaultExplorerBlock({
               key={`file-${filePath}`}
               className={cn(
                 'ltm-explorer-row ltm-explorer-file-row flex w-full items-center gap-2 rounded-md border border-[#c73773]/95 bg-[#c73773] px-2 py-1.5 text-[13px] text-white',
-                onDropNode && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/10',
+                canDropOnRows && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/10',
               )}
               style={{ paddingLeft: `${26 + depth * 14}px` }}
               data-path={filePath}
@@ -722,30 +792,23 @@ export default function VaultExplorerBlock({
             <button
               key={`file-${filePath}`}
               type="button"
-              draggable={draggableFiles}
+              draggable={canDragFiles}
               onDragStart={event => {
-                if (!draggableFiles) return
+                if (!canDragFiles) return
                 event.dataTransfer.setData('application/x-ltm-path', `ltm-path:${filePath}`)
+                event.dataTransfer.setData('application/x-ltm-path-kind', 'file')
                 event.dataTransfer.setData('text/ltm-file-path', filePath)
                 event.dataTransfer.setData('text/plain', filePath)
-                event.dataTransfer.effectAllowed = 'copy'
+                event.dataTransfer.effectAllowed = 'move'
               }}
-              onDragOver={onDropNode ? (event => {
-                if (!hasNodeDragType(event)) return
-                event.preventDefault()
-                event.stopPropagation()
-                event.dataTransfer.dropEffect = 'link'
-                setDropOverPath(filePath)
+              onDragOver={canDropOnRows ? (event => {
+                void handleDragOverTarget(event, filePath)
               }) : undefined}
-              onDragLeave={onDropNode ? (() => {
+              onDragLeave={canDropOnRows ? (() => {
                 setDropOverPath(prev => prev === filePath ? null : prev)
               }) : undefined}
-              onDrop={onDropNode ? (event => {
-                event.preventDefault()
-                event.stopPropagation()
-                setDropOverPath(null)
-                const nodeId = readDroppedNodeId(event)
-                if (nodeId) void onDropNode(nodeId, filePath)
+              onDrop={canDropOnRows ? (event => {
+                void handleDropOnTarget(event, getParentPath(filePath), filePath)
               }) : undefined}
               onKeyDown={event => {
                 if (event.key === 'Enter' && selectedFilePath === filePath) {
@@ -772,7 +835,7 @@ export default function VaultExplorerBlock({
               className={cn(
                 'ltm-explorer-row ltm-explorer-file-row ltm-touch-row group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/80 transition-colors hover:bg-muted/70',
                 selectedFilePath === filePath && 'border border-[#c73773]/95 bg-[#c73773] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_2px_8px_-6px_rgba(0,0,0,0.45)] hover:bg-[#c73773]',
-                onDropNode && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
+                canDropOnRows && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
               )}
               style={{ paddingLeft: `${26 + depth * 14}px` }}
               data-path={filePath}
@@ -790,14 +853,18 @@ export default function VaultExplorerBlock({
     [
       beginInlineRename,
       bindRowRef,
+      canDragFiles,
+      canDragFolders,
+      canDropOnRows,
       cancelInlineRename,
       commitInlineRename,
       dropOverPath,
       getNode,
+      handleDragOverTarget,
+      handleDropOnTarget,
       inlineRename,
       isExpanded,
       normalizedQuery,
-      onDropNode,
       onOpenFile,
       onOpenInNewTab,
       onSelectFile,
@@ -873,7 +940,23 @@ export default function VaultExplorerBlock({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto px-1.5 py-2">{content}</div>
+      <div
+        className={cn(
+          'min-h-0 flex-1 overflow-auto px-1.5 py-2',
+          canDropOnRows && dropOverPath === '' && 'ring-2 ring-blue-500/60 bg-blue-500/5',
+        )}
+        onDragOver={canDropOnRows ? (event) => {
+          void handleDragOverTarget(event, '')
+        } : undefined}
+        onDragLeave={canDropOnRows ? (() => {
+          setDropOverPath(prev => prev === '' ? null : prev)
+        }) : undefined}
+        onDrop={canDropOnRows ? (event) => {
+          void handleDropOnTarget(event, '')
+        } : undefined}
+      >
+        {content}
+      </div>
       {contextMenu && (
         <div
           ref={contextMenuRef}
