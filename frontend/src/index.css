@@ -328,7 +328,10 @@
   .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] :is(
     input:not([type='checkbox']):not([type='radio']),
     textarea,
-    select
+    select,
+    [contenteditable='true'],
+    [role='textbox'],
+    .ProseMirror
   ) {
     font-size: 16px !important;
   }
