@@ -4,7 +4,11 @@ import { markdown } from '@codemirror/lang-markdown'
 import { redo, undo } from '@codemirror/commands'
 import { type EditorState } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
-import { Bold, Code, Heading1, Italic, Link2, List, ListOrdered, PenLine, Quote, RotateCcw, RotateCw, Table } from 'lucide-react'
+import { Bold, Code, Heading1, Italic, Link2, List, ListOrdered, PenLine, Quote, RotateCcw, RotateCw, Sparkles, Table } from 'lucide-react'
+import type { AiSettingsScope } from '@/services/lego_blocks/integrations/aiSettingsBlock'
+import AiAssistControlsBlock from '@/components/lego_blocks/integrations/AiAssistControlsBlock'
+import AiAssistReviewBlock from '@/components/lego_blocks/integrations/AiAssistReviewBlock'
+import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/hooks/integrations/useAiAssistRuntimeBlock'
 import {
   getWikilinkSuggestionsOrch,
   toObsidianWikilinkTargetOrch,
@@ -35,6 +39,22 @@ interface MarkdownRichEditorBlockProps {
   toolbarAlwaysVisible?: boolean
   /** When false, hide formatting toolbar controls entirely (useful for non-markdown text editing). Default: true. */
   enableFormattingToolbar?: boolean
+  /** Enables built-in AI assist controls in the editor toolbar and panel. Default: true. */
+  enableAiAssist?: boolean
+  /** Optional controlled AI panel state. */
+  aiPanelOpen?: boolean
+  /** Initial AI panel open state for uncontrolled mode. Default: false. */
+  defaultAiPanelOpen?: boolean
+  /** Called whenever the AI panel open state changes. */
+  onAiPanelOpenChange?: (open: boolean) => void
+  /** AI settings scope used to resolve provider/model. Default: markdown_editor. */
+  aiAssistScope?: AiSettingsScope
+  /** AI telemetry/use-case identifier. Default: markdown.assist. */
+  aiAssistUseCase?: string
+  /** Optional helper text shown under AI assist actions. */
+  aiAssistHelperText?: string
+  /** Disables AI action buttons when true. */
+  aiAssistDisabled?: boolean
 }
 
 export interface MarkdownRichEditorBlockHandle {
@@ -137,15 +157,51 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   compactMobile = false,
   toolbarAlwaysVisible = false,
   enableFormattingToolbar = true,
+  enableAiAssist = true,
+  aiPanelOpen: controlledAiPanelOpen,
+  defaultAiPanelOpen = false,
+  onAiPanelOpenChange,
+  aiAssistScope = 'markdown_editor',
+  aiAssistUseCase = 'markdown.assist',
+  aiAssistHelperText,
+  aiAssistDisabled = false,
 }, ref) {
   const editorViewRef = useRef<EditorView | null>(null)
   const [toolbarOpen, setToolbarOpen] = useState(false)
+  const [internalAiPanelOpen, setInternalAiPanelOpen] = useState(defaultAiPanelOpen)
   const [wikilinkPickerOpen, setWikilinkPickerOpen] = useState(false)
   const [wikilinkQuery, setWikilinkQuery] = useState('')
   const [wikilinkSuggestions, setWikilinkSuggestions] = useState<WikilinkSuggestionBlock[]>([])
   const [wikilinkLoading, setWikilinkLoading] = useState(false)
+  const {
+    aiSelectionLoading,
+    selectedProvider,
+    selectedModel,
+    assistRunningAction,
+    assistError,
+    assistSuggestion,
+    runAssistAction,
+    applyAssistSuggestion,
+    dismissAssistSuggestion,
+    clearAssistState,
+  } = useAiAssistRuntimeBlock({
+    scope: aiAssistScope,
+    useCase: aiAssistUseCase,
+  })
 
+  const aiPanelOpen = controlledAiPanelOpen ?? internalAiPanelOpen
   const showToolbar = enableFormattingToolbar && (toolbarAlwaysVisible || toolbarOpen)
+
+  const setAiPanelOpen = useCallback((open: boolean) => {
+    if (controlledAiPanelOpen === undefined) {
+      setInternalAiPanelOpen(open)
+    }
+    onAiPanelOpenChange?.(open)
+  }, [controlledAiPanelOpen, onAiPanelOpenChange])
+
+  const toggleAiPanel = useCallback(() => {
+    setAiPanelOpen(!aiPanelOpen)
+  }, [aiPanelOpen, setAiPanelOpen])
 
   const undoEditor = () => {
     const view = editorViewRef.current
@@ -339,11 +395,30 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     view.focus()
   }
 
+  const handleEditorChange = useCallback((next: string) => {
+    onChange(next)
+    if (assistSuggestion || assistError) clearAssistState()
+  }, [assistError, assistSuggestion, clearAssistState, onChange])
+
   return (
     <div className={cn('ltm-markdown-rich-editor relative flex min-h-0 flex-col bg-transparent', className)}>
       {/* Toolbar toggle button (only when not always visible) */}
       {enableFormattingToolbar && !toolbarAlwaysVisible && (
-        <div className="flex items-center justify-end px-2 pt-1.5">
+        <div className="flex items-center justify-end gap-1 px-2 pt-1.5">
+          {enableAiAssist && !showToolbar && (
+            <button
+              type="button"
+              onClick={toggleAiPanel}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground',
+                aiPanelOpen && 'bg-muted text-foreground',
+              )}
+              title={aiPanelOpen ? 'Hide AI tools' : 'Show AI tools'}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              AI
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setToolbarOpen(prev => !prev)}
@@ -410,6 +485,55 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           <button type="button" onClick={redoEditor} className={TOOLBAR_BTN} title="Redo">
             <RotateCw className="h-4 w-4" />
           </button>
+          {enableAiAssist && (
+            <>
+              <span className="mx-1 h-4 w-px bg-border/60" aria-hidden="true" />
+              <button
+                type="button"
+                onClick={toggleAiPanel}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground',
+                  aiPanelOpen && 'bg-muted text-foreground',
+                )}
+                title={aiPanelOpen ? 'Hide AI tools' : 'Show AI tools'}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                AI
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {enableAiAssist && aiPanelOpen && (
+        <div className="space-y-2 border-b border-border/30 bg-muted/10 p-2">
+          <AiAssistControlsBlock
+            selectedProvider={selectedProvider}
+            selectedModel={selectedModel}
+            runningAction={assistRunningAction}
+            loading={aiSelectionLoading}
+            disabled={aiAssistDisabled}
+            onRun={(action) => { void runAssistAction(action, value) }}
+            helperText={aiAssistHelperText}
+          />
+
+          {assistSuggestion && (
+            <AiAssistReviewBlock
+              suggestion={assistSuggestion}
+              onApply={() => {
+                applyAssistSuggestion((next) => {
+                  onChange(next)
+                })
+              }}
+              onDiscard={dismissAssistSuggestion}
+            />
+          )}
+
+          {assistError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {assistError}
+            </div>
+          )}
         </div>
       )}
 
@@ -435,7 +559,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           onCreateEditor={(view) => {
             editorViewRef.current = view
           }}
-          onChange={(next) => onChange(next)}
+          onChange={handleEditorChange}
         />
       </div>
 

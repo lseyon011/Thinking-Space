@@ -8,11 +8,7 @@ import CascadingFolderPicker, {
   type CascadingFolderPickerChange,
 } from '@/components/lego_blocks/integrations/CascadingFolderPickerBlock'
 import EmotionTagger from '@/components/lego_blocks/integrations/EmotionTaggerBlock'
-import AiAssistControlsBlock from '@/components/lego_blocks/integrations/AiAssistControlsBlock'
-import AiAssistReviewBlock from '@/components/lego_blocks/integrations/AiAssistReviewBlock'
-import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/hooks/integrations/useAiAssistRuntimeBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
-import AiPanelToggleButtonBlock from '@/components/lego_blocks/units/AiPanelToggleButtonBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import ThoughtsCalendarOrch from '@/components/orchestrators/ThoughtsCalendarOrch'
@@ -248,21 +244,6 @@ function CreateTab() {
   const [relatedThoughts, setRelatedThoughts] = useState<SimilarityMatch[]>([])
   const [relatedLoading, setRelatedLoading] = useState(false)
   const [relatedError, setRelatedError] = useState<string | null>(null)
-  const {
-    aiSelectionLoading,
-    selectedProvider,
-    selectedModel,
-    assistRunningAction,
-    assistError,
-    assistSuggestion,
-    runAssistAction,
-    applyAssistSuggestion,
-    dismissAssistSuggestion,
-    clearAssistState,
-  } = useAiAssistRuntimeBlock({
-    scope: 'new_thought',
-    useCase: 'new_thought.assist',
-  })
 
   useEffect(() => {
     setCustomShortcuts(readCustomShortcuts())
@@ -319,12 +300,6 @@ function CreateTab() {
     if (filenameTouched) return
     setFilename(filenameFromTitle(title))
   }, [filenameTouched, title, useCustomTitle])
-
-  useEffect(() => {
-    if (assistRunningAction || assistSuggestion || assistError) {
-      setShowAiAssist(true)
-    }
-  }, [assistError, assistRunningAction, assistSuggestion])
 
   const handleFolderChange = (change: CascadingFolderPickerChange) => {
     setFolderBaseSegments(change.baseSegments)
@@ -633,7 +608,6 @@ function CreateTab() {
     setSavedPath(null)
     setError(null)
     setMessage(null)
-    clearAssistState()
   }
 
   const handleDeleteCurrent = async () => {
@@ -1031,7 +1005,6 @@ function CreateTab() {
                 <label className="text-xs text-muted-foreground">{makeThisTodo ? 'Tasks' : 'Content'}</label>
                 <div className="flex items-center gap-1">
                   <InfoPanelToggleButtonBlock active={showMetaPanel} onToggle={() => setShowMetaPanel(v => !v)} />
-                  <AiPanelToggleButtonBlock active={showAiAssist} onToggle={() => setShowAiAssist(v => !v)} />
                 </div>
               </div>
 
@@ -1081,16 +1054,6 @@ function CreateTab() {
                     </div>
                   </div>
 
-                  <AiAssistControlsBlock
-                    selectedProvider={selectedProvider}
-                    selectedModel={selectedModel}
-                    runningAction={assistRunningAction}
-                    loading={aiSelectionLoading}
-                    disabled={saving}
-                    onRun={(action) => { void runAssistAction(action, content) }}
-                    helperText="Suggestions apply inline. Auto-save is enabled by default; use Save for immediate commit. Configure provider/model in AI Settings."
-                  />
-
                   <div className="space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3">
                     <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                       Related Thoughts
@@ -1127,32 +1090,17 @@ function CreateTab() {
                 </div>
               )}
 
-              {assistSuggestion && (
-                <AiAssistReviewBlock
-                  suggestion={assistSuggestion}
-                  onApply={() => {
-                    applyAssistSuggestion((next) => {
-                      setContent(next)
-                    })
-                  }}
-                  onDiscard={dismissAssistSuggestion}
-                />
-              )}
-
-              {assistError && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  {assistError}
-                </div>
-              )}
-
               <MarkdownRichEditorBlock
                 value={content}
-                onChange={(next) => {
-                  setContent(next)
-                  if (assistSuggestion || assistError) clearAssistState()
-                }}
+                onChange={setContent}
                 placeholder={makeThisTodo ? 'One task per line...' : "What's on your mind?"}
                 toolbarAlwaysVisible
+                aiPanelOpen={showAiAssist}
+                onAiPanelOpenChange={setShowAiAssist}
+                aiAssistScope="new_thought"
+                aiAssistUseCase="new_thought.assist"
+                aiAssistDisabled={saving}
+                aiAssistHelperText="Suggestions apply inline. Configure provider/model in AI Settings."
                 className="min-h-[400px] rounded-lg border border-input overflow-hidden"
               />
             </div>

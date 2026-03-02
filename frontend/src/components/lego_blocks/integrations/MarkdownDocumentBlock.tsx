@@ -36,11 +36,7 @@ import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentB
 import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/MarkdownMiniNavBlock'
 import MarkdownRichEditorBlock, { type MarkdownRichEditorBlockHandle } from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
-import AiPanelToggleButtonBlock from '@/components/lego_blocks/units/AiPanelToggleButtonBlock'
 import { cn } from '@/lib/utils'
-import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/hooks/integrations/useAiAssistRuntimeBlock'
-import AiAssistControlsBlock from '@/components/lego_blocks/integrations/AiAssistControlsBlock'
-import AiAssistReviewBlock from '@/components/lego_blocks/integrations/AiAssistReviewBlock'
 import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/integrations/aiBlock'
 import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/integrations/markdownUrlTransformBlock'
 import {
@@ -140,21 +136,6 @@ function MarkdownTextDocumentRuntimeBlock({
   const [meta, setMeta] = useState<MarkdownMeta | null>(null)
   const [viewMarkdown, setViewMarkdown] = useState('')
   const [pendingFullRender, setPendingFullRender] = useState(false)
-  const {
-    aiSelectionLoading,
-    selectedProvider,
-    selectedModel,
-    assistRunningAction,
-    assistError,
-    assistSuggestion,
-    runAssistAction,
-    applyAssistSuggestion,
-    dismissAssistSuggestion,
-    clearAssistState,
-  } = useAiAssistRuntimeBlock({
-    scope: 'markdown_editor',
-    useCase: 'markdown.assist',
-  })
   const isExcalidrawDoc = /\.(excalidraw|excalidraw\.md)$/i.test(path)
   const chromeContainerRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
@@ -191,7 +172,6 @@ function MarkdownTextDocumentRuntimeBlock({
     excalidrawSceneRef.current = null
     excalidrawApiRef.current = null
     ignoreInitialExcalidrawChangeRef.current = true
-    clearAssistState()
     try {
       const data = await readMarkdownDocument(path, { includeHash: false })
       setContent(data.content)
@@ -211,7 +191,7 @@ function MarkdownTextDocumentRuntimeBlock({
     } finally {
       setLoading(false)
     }
-  }, [clearAssistState, isExcalidrawDoc, path])
+  }, [isExcalidrawDoc, path])
 
   useEffect(() => {
     setMode(initialMode)
@@ -331,17 +311,13 @@ function MarkdownTextDocumentRuntimeBlock({
     () => (draft || content || ''),
     [content, draft],
   )
-  const setDraftBody = useCallback((nextBody: string) => {
-    setDraft((current) => `${splitFrontmatter(current).frontmatter}${nextBody}`)
-  }, [])
   const setDraftFrontmatterYaml = useCallback((nextYamlText: string) => {
     setDraft((current) => {
       const { body } = splitFrontmatter(current)
       const nextFrontmatter = yamlTextToFrontmatterBlock(nextYamlText)
       return `${nextFrontmatter}${body}`
     })
-    if (assistSuggestion || assistError) clearAssistState()
-  }, [assistError, assistSuggestion, clearAssistState])
+  }, [])
   const applyStewardSuggestionToDraft = useCallback((suggestion: StewardMetadataSuggestion) => {
     setDraft((current) => {
       const { frontmatter, body } = splitFrontmatter(current)
@@ -447,15 +423,11 @@ function MarkdownTextDocumentRuntimeBlock({
       return
     }
     applyStewardSuggestionToDraft(purposeProposal.suggestion)
-    if (assistSuggestion || assistError) clearAssistState()
     setPurposeProposal(null)
     setPurposeError(null)
     setPurposeMessage('Applied purpose proposal to YAML metadata.')
   }, [
     applyStewardSuggestionToDraft,
-    assistError,
-    assistSuggestion,
-    clearAssistState,
     frontmatterMeta.parseError,
     purposeProposal,
   ])
@@ -746,7 +718,6 @@ function MarkdownTextDocumentRuntimeBlock({
     setExcalidrawImmersive(isExcalidrawDoc)
     excalidrawSceneRef.current = null
     ignoreInitialExcalidrawChangeRef.current = true
-    clearAssistState()
   }
 
   const cancelEditing = () => {
@@ -767,10 +738,6 @@ function MarkdownTextDocumentRuntimeBlock({
     if (!isExcalidrawDoc) {
       void revertMarkdownToEditBaseline()
     }
-    // Keep cancel interaction instant on very large drafts; clear assist state off the click path.
-    window.requestAnimationFrame(() => {
-      clearAssistState()
-    })
   }
 
   const useLatestConflictVersion = () => {
@@ -884,7 +851,6 @@ function MarkdownTextDocumentRuntimeBlock({
       setExcalidrawImmersive(false)
       excalidrawSceneRef.current = null
       ignoreInitialExcalidrawChangeRef.current = true
-      clearAssistState()
       onSaved?.(result)
     } catch (err) {
       if (err instanceof MarkdownDocumentConflictError) {
@@ -1007,7 +973,6 @@ function MarkdownTextDocumentRuntimeBlock({
                   >
                     {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
                   </button>
-                  <AiPanelToggleButtonBlock active={showAiPanel} onToggle={() => setShowAiPanel(v => !v)} />
                   <button
                     type="button"
                     onClick={cancelEditing}
@@ -1387,34 +1352,6 @@ function MarkdownTextDocumentRuntimeBlock({
                   </div>
                 )}
 
-                <AiAssistControlsBlock
-                  selectedProvider={selectedProvider}
-                  selectedModel={selectedModel}
-                  runningAction={assistRunningAction}
-                  loading={aiSelectionLoading}
-                  disabled={loading || isExcalidrawDoc}
-                  onRun={(action) => { void runAssistAction(action, displayDraft) }}
-                  helperText="Suggestions apply inline. Auto-save is enabled by default; use Save for immediate commit. Configure provider/model in AI Settings."
-                />
-
-                {assistSuggestion && (
-                  <AiAssistReviewBlock
-                    suggestion={assistSuggestion}
-                    onApply={() => {
-                      applyAssistSuggestion((next) => {
-                        setDraftBody(next)
-                      })
-                    }}
-                    onDiscard={dismissAssistSuggestion}
-                  />
-                )}
-
-                {assistError && (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {assistError}
-                  </div>
-                )}
-
                 <div className="space-y-2">
                   <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Related Thoughts
@@ -1458,9 +1395,14 @@ function MarkdownTextDocumentRuntimeBlock({
                 currentPath={path}
                 compactMobile={isIosPhone}
                 toolbarAlwaysVisible
+                aiPanelOpen={showAiPanel}
+                onAiPanelOpenChange={setShowAiPanel}
+                aiAssistDisabled={loading || isExcalidrawDoc}
+                aiAssistScope="markdown_editor"
+                aiAssistUseCase="markdown.assist"
+                aiAssistHelperText="Suggestions apply inline. Auto-save is enabled by default; use Save for immediate commit. Configure provider/model in AI Settings."
                 onChange={(next) => {
                   setDraft(`${draftFrontmatter}${next}`)
-                  if (assistSuggestion || assistError) clearAssistState()
                 }}
                 className={cn(
                   'min-h-[44vh] sm:min-h-[52vh] lg:min-h-[62vh]',
