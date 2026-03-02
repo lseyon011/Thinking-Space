@@ -26,6 +26,7 @@ export const STORAGE_KEYS = {
   markdownEditorSettings: 'ltm-markdown-editor-settings',
   markdownDocumentTopBarHidden: 'ltm-markdown-document-top-bar-hidden',
   userProfileCache: 'ltm-user-profile-cache',
+  gitSyncActionsByVault: 'ltm-git-sync-actions-by-vault',
   f9ExecutionSettings: 'ltm-f9-execution-settings',
   f9ProjectPresetTags: 'ltm-f9-project-preset-tags',
   f9OverallRememberByProjectRoot: 'ltm-f9-overall-remember-by-project-root',

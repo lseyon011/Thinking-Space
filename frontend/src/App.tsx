@@ -56,6 +56,12 @@ import { fullSync, getLastSyncTimestamp, setLastSyncTimestamp, smartSync, type S
 import { listMarkdownEntries } from './services/orchestrators/fileSystemOrch'
 import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import {
+  gitCommitAllOrch,
+  gitPushOrch,
+  isGitSyncToolsSupportedOrch,
+  readGitSyncStatusOrch,
+} from '@/services/orchestrators/gitSyncToolsOrch'
+import {
   STORAGE_KEYS,
   getJsonStorageItem,
   getStoredVaultRoot,
@@ -106,6 +112,13 @@ interface SyncRunSummary {
   mode: 'sync' | 'rebuild'
   finishedAt: number
   result?: SyncResult
+  error?: string
+}
+
+interface GitActionSummary {
+  mode: 'commit' | 'push'
+  finishedAt: number
+  message?: string
   error?: string
 }
 
@@ -252,6 +265,7 @@ function App() {
 
   const featureFlags = getCapabilityFeatureFlags()
   const extensionBuilderEnabled = featureFlags.extension_host_enabled && featureFlags.extension_builder_enabled
+  const gitSyncToolsSupported = useMemo(() => isGitSyncToolsSupportedOrch(), [])
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -267,12 +281,16 @@ function App() {
   const [refreshRunning, setRefreshRunning] = useState(false)
   const [syncPanelOpen, setSyncPanelOpen] = useState(false)
   const [syncActionRunning, setSyncActionRunning] = useState<'sync' | 'rebuild' | null>(null)
+  const [gitActionRunning, setGitActionRunning] = useState<'commit' | 'push' | null>(null)
   const [syncToolsWidth, setSyncToolsWidth] = useState(168)
   const [topChromeMenuWidth, setTopChromeMenuWidth] = useState(0)
   const [syncPanelAnchor, setSyncPanelAnchor] = useState<SyncPanelAnchor>({ top: 52, right: 12 })
   const [lastSyncedAt, setLastSyncedAt] = useState(() => getLastSyncTimestamp())
   const [lastSyncAttemptAt, setLastSyncAttemptAt] = useState<number | null>(null)
   const [lastSyncSummary, setLastSyncSummary] = useState<SyncRunSummary | null>(null)
+  const [lastGitCommitAt, setLastGitCommitAt] = useState<number | null>(null)
+  const [lastGitPushAt, setLastGitPushAt] = useState<number | null>(null)
+  const [lastGitActionSummary, setLastGitActionSummary] = useState<GitActionSummary | null>(null)
   const commandInputRef = useRef<HTMLInputElement | null>(null)
   const syncToolsRef = useRef<HTMLDivElement | null>(null)
   const topChromeMenuRef = useRef<HTMLDivElement | null>(null)
@@ -476,6 +494,19 @@ function App() {
     })
   }, [needsVaultSetup])
 
+  useEffect(() => {
+    if (needsVaultSetup) {
+      setLastGitCommitAt(null)
+      setLastGitPushAt(null)
+      return
+    }
+
+    const root = getStoredVaultRoot()
+    const status = readGitSyncStatusOrch(root)
+    setLastGitCommitAt(status.lastCommitAt)
+    setLastGitPushAt(status.lastPushAt)
+  }, [needsVaultSetup])
+
   const handleGlobalRefresh = useCallback(() => {
     if (refreshRunning) return
     setRefreshRunning(true)
@@ -588,6 +619,65 @@ function App() {
       setSyncActionRunning(null)
     }
   }, [needsVaultSetup, syncActionRunning])
+
+  const runGitAction = useCallback(async (mode: 'commit' | 'push') => {
+    if (needsVaultSetup || gitActionRunning || !gitSyncToolsSupported) return
+
+    let commitMessage: string | null = null
+    if (mode === 'commit') {
+      const defaultCommitMessage = `chore: sync checkpoint ${new Date().toLocaleString()}`
+      const promptValue = window.prompt('Commit message', defaultCommitMessage)
+      if (promptValue === null) return
+      const trimmed = promptValue.trim()
+      if (!trimmed) {
+        setLastGitActionSummary({
+          mode,
+          finishedAt: Date.now(),
+          error: 'Commit message cannot be empty.',
+        })
+        return
+      }
+      commitMessage = trimmed
+    }
+
+    setGitActionRunning(mode)
+    setLastGitActionSummary(null)
+    try {
+      if (mode === 'commit') {
+        if (!commitMessage) {
+          throw new Error('Commit message cannot be empty.')
+        }
+        const result = await gitCommitAllOrch(commitMessage)
+        if (result.committed) {
+          setLastGitCommitAt(result.finishedAt)
+        }
+        setLastGitActionSummary({
+          mode,
+          finishedAt: result.finishedAt,
+          message: result.message,
+        })
+        return
+      }
+
+      const result = await gitPushOrch()
+      setLastGitPushAt(result.finishedAt)
+      setLastGitActionSummary({
+        mode,
+        finishedAt: result.finishedAt,
+        message: result.message,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `Git ${mode} failed.`
+      setLastGitActionSummary({
+        mode,
+        finishedAt: Date.now(),
+        error: message,
+      })
+      console.error(`Git ${mode} failed`, error)
+    } finally {
+      setGitActionRunning(null)
+    }
+  }, [gitActionRunning, gitSyncToolsSupported, needsVaultSetup])
 
   const runCommandItem = useCallback((item: CommandItem) => {
     setCommandPaletteOpen(false)
@@ -1462,89 +1552,166 @@ function App() {
           }}
         >
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">Sync Tools</p>
-          <div className="mt-3 space-y-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={!!syncActionRunning || needsVaultSetup}
-              className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50 disabled:border-transparent disabled:bg-white disabled:text-slate-500"
-              onClick={() => { void runSyncAction('sync') }}
-            >
-              {syncActionRunning === 'sync' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
-              Sync Folder
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={!!syncActionRunning || needsVaultSetup}
-              className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50 disabled:border-transparent disabled:bg-white disabled:text-slate-500"
-              onClick={() => { void runSyncAction('rebuild') }}
-            >
-              {syncActionRunning === 'rebuild' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
-              Rebuild Index + Cache
-            </Button>
-          </div>
+          <div className="mt-3 space-y-3">
+            <div className="space-y-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!!syncActionRunning || !!gitActionRunning || needsVaultSetup}
+                className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50 disabled:border-transparent disabled:bg-white disabled:text-slate-500"
+                onClick={() => { void runSyncAction('sync') }}
+              >
+                {syncActionRunning === 'sync' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                Sync Folder
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!!syncActionRunning || !!gitActionRunning || needsVaultSetup}
+                className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50 disabled:border-transparent disabled:bg-white disabled:text-slate-500"
+                onClick={() => { void runSyncAction('rebuild') }}
+              >
+                {syncActionRunning === 'rebuild' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                Rebuild Index + Cache
+              </Button>
 
-          <div className="mt-3 rounded-lg bg-white p-2 text-[11px]">
-            <p className="text-slate-600">Sync Folder Root</p>
-            <p className="truncate font-mono text-slate-900">
-              {(() => {
-                const root = getStoredVaultRoot() || ''
-                if (!root) return 'Not configured'
-                if (root === 'web-backed') return 'web-backed (browser backend)'
-                return root
-              })()}
-            </p>
-            <p className="mt-1 text-slate-600">
-              Last Successful Sync:{' '}
-              <span className="text-slate-900">
-                {lastSyncedAt
-                  ? new Date(lastSyncedAt * 1000).toLocaleString()
-                  : (lastSyncSummary?.result?.errors.length ?? 0) > 0
-                    ? 'No successful sync yet (latest sync had errors)'
-                    : 'No successful sync yet'}
-              </span>
-            </p>
-            <p className="text-slate-600">
-              Last Sync Attempt: <span className="text-slate-900">{formatSyncTimestamp(lastSyncAttemptAt)}</span>
-            </p>
-            {lastSyncSummary && (
-              <>
-                <p className="mt-1 text-slate-600">
-                  Last Action: <span className="text-slate-900">{lastSyncSummary.mode === 'sync' ? 'Sync Folder' : 'Rebuild Index + Cache'}</span>
+              <div className="rounded-lg bg-white p-2 text-[11px]">
+                <p className="text-slate-600">Sync Folder Root</p>
+                <p className="truncate font-mono text-slate-900">
+                  {(() => {
+                    const root = getStoredVaultRoot() || ''
+                    if (!root) return 'Not configured'
+                    if (root === 'web-backend') return 'web-backend (browser backend)'
+                    return root
+                  })()}
                 </p>
-                {lastSyncSummary.error ? (
-                  <p className="text-destructive">{lastSyncSummary.error}</p>
-                ) : lastSyncSummary.result ? (
+                <p className="mt-1 text-slate-600">
+                  Last Successful Sync:{' '}
+                  <span className="text-slate-900">
+                    {lastSyncedAt
+                      ? new Date(lastSyncedAt * 1000).toLocaleString()
+                      : (lastSyncSummary?.result?.errors.length ?? 0) > 0
+                        ? 'No successful sync yet (latest sync had errors)'
+                        : 'No successful sync yet'}
+                  </span>
+                </p>
+                <p className="text-slate-600">
+                  Last Sync Attempt: <span className="text-slate-900">{formatSyncTimestamp(lastSyncAttemptAt)}</span>
+                </p>
+                {lastSyncSummary && (
                   <>
-                    <p className="text-slate-600">
-                      Files: <span className="text-slate-900">{lastSyncSummary.result.totalFiles}</span> · Parsed:{' '}
-                      <span className="text-slate-900">{lastSyncSummary.result.parsedNodes}</span> · Errors:{' '}
-                      <span className="text-slate-900">{lastSyncSummary.result.errors.length}</span>
+                    <p className="mt-1 text-slate-600">
+                      Last Action: <span className="text-slate-900">{lastSyncSummary.mode === 'sync' ? 'Sync Folder' : 'Rebuild Index + Cache'}</span>
                     </p>
-                    {lastSyncSummary.result.errors.length > 0 && (
-                      <div className="mt-2 rounded-md bg-red-50 p-2 text-[10px] text-red-700">
-                        <p className="font-semibold uppercase tracking-[0.12em]">Sync Errors</p>
-                        <div className="mt-1 space-y-1">
-                          {lastSyncSummary.result.errors.slice(0, 5).map((entry, idx) => (
-                            <p key={`${entry.path}-${idx}`} className="leading-tight">
-                              <span className="font-mono">{entry.path}</span>: {entry.error}
-                            </p>
-                          ))}
-                        </div>
-                        {lastSyncSummary.result.errors.length > 5 && (
-                          <p className="mt-1 text-red-600">
-                            +{lastSyncSummary.result.errors.length - 5} more errors
-                          </p>
-                        )}
-                      </div>
-                    )}
+                    {lastSyncSummary.result ? (
+                      <>
+                        <p className="text-slate-600">
+                          Files: <span className="text-slate-900">{lastSyncSummary.result.totalFiles}</span> · Parsed:{' '}
+                          <span className="text-slate-900">{lastSyncSummary.result.parsedNodes}</span> · Errors:{' '}
+                          <span className="text-slate-900">{lastSyncSummary.result.errors.length}</span>
+                        </p>
+                      </>
+                    ) : null}
                   </>
-                ) : null}
-              </>
-            )}
+                )}
+              </div>
+            </div>
+
+            <div className="my-1 h-px bg-slate-200" />
+
+            <div className="space-y-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!!syncActionRunning || !!gitActionRunning || needsVaultSetup || !gitSyncToolsSupported}
+                className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50 disabled:border-transparent disabled:bg-white disabled:text-slate-500"
+                onClick={() => { void runGitAction('commit') }}
+              >
+                {gitActionRunning === 'commit' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                Git Commit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!!syncActionRunning || !!gitActionRunning || needsVaultSetup || !gitSyncToolsSupported}
+                className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50 disabled:border-transparent disabled:bg-white disabled:text-slate-500"
+                onClick={() => { void runGitAction('push') }}
+              >
+                {gitActionRunning === 'push' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                Git Push
+              </Button>
+              {!gitSyncToolsSupported && (
+                <p className="px-1 text-[11px] text-slate-600">Git only supported in Electron desktop app.</p>
+              )}
+
+              <div className="rounded-lg bg-white p-2 text-[11px]">
+                <p className="text-slate-600">
+                  Last Git Commit: <span className="text-slate-900">{formatSyncTimestamp(lastGitCommitAt)}</span>
+                </p>
+                <p className="text-slate-600">
+                  Last Git Push: <span className="text-slate-900">{formatSyncTimestamp(lastGitPushAt)}</span>
+                </p>
+                {lastGitActionSummary && (
+                  <p className="mt-1 text-slate-600">
+                    Last Git Action:{' '}
+                    <span className="text-slate-900">
+                      {lastGitActionSummary.mode === 'commit' ? 'Commit' : 'Push'}
+                    </span>
+                    {' · '}
+                    <span className="text-slate-900">
+                      {formatSyncTimestamp(lastGitActionSummary.finishedAt)}
+                    </span>
+                    {lastGitActionSummary.message ? (
+                      <>
+                        {' · '}
+                        <span>{lastGitActionSummary.message}</span>
+                      </>
+                    ) : null}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {(() => {
+              const syncActionError = lastSyncSummary?.error?.trim()
+              const syncEntryErrors = lastSyncSummary?.result?.errors ?? []
+              const gitError = lastGitActionSummary?.error?.trim()
+              const hasAnyError = Boolean(syncActionError || gitError || syncEntryErrors.length > 0)
+              if (!hasAnyError) return null
+
+              return (
+                <div className="rounded-md bg-red-50 p-2 text-[10px] text-red-700">
+                  {(syncActionError || syncEntryErrors.length > 0) && (
+                    <div>
+                      <p className="font-semibold uppercase tracking-[0.12em]">Sync Errors</p>
+                      <div className="mt-1 space-y-1">
+                        {syncActionError ? <p>{syncActionError}</p> : null}
+                        {syncEntryErrors.slice(0, 5).map((entry, idx) => (
+                          <p key={`${entry.path}-${idx}`} className="leading-tight">
+                            <span className="font-mono">{entry.path}</span>: {entry.error}
+                          </p>
+                        ))}
+                        {syncEntryErrors.length > 5 ? (
+                          <p>+{syncEntryErrors.length - 5} more sync errors</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+                  {gitError && (
+                    <div className="mt-2">
+                      <p className="font-semibold uppercase tracking-[0.12em]">Git Errors</p>
+                      <div className="mt-1 space-y-1">
+                        <p>{gitError}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         </div>,
         document.body,
