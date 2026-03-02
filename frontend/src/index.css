@@ -260,20 +260,20 @@
   }
 
   .ltm-app-shell *:hover {
-    scrollbar-color: hsl(var(--muted-foreground) / 0.42) transparent;
+    scrollbar-color: rgb(224 224 224 / 0.72) transparent;
   }
 
   .ltm-app-shell.ltm-scrollbar-scrolling * {
-    scrollbar-color: hsl(var(--muted-foreground) / 0.46) transparent;
+    scrollbar-color: rgb(212 212 212 / 0.78) transparent;
   }
 
   .ltm-app-shell *:hover::-webkit-scrollbar-thumb,
   .ltm-app-shell *:focus-within::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--muted-foreground) / 0.42);
+    background-color: rgb(224 224 224 / 0.72);
   }
 
   .ltm-app-shell.ltm-scrollbar-scrolling *::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--muted-foreground) / 0.46);
+    background-color: rgb(212 212 212 / 0.78);
   }
 
   .ltm-app-shell[data-ltm-surface='electron'][data-ltm-mode='desktop'] {
