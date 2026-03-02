@@ -758,6 +758,7 @@ export default function NodeDetailPanelBlock({
                   <MarkdownRichEditorBlock
                     value={noteBodyDraft}
                     onChange={setNoteBodyDraft}
+                    currentPath={node.filePath}
                     placeholder={noteBodyPlaceholder}
                     className="min-h-[220px] rounded-md border border-input overflow-hidden"
                   />
@@ -806,6 +807,7 @@ export default function NodeDetailPanelBlock({
               <MarkdownRichEditorBlock
                 value={descriptionDraft}
                 onChange={setDescriptionDraft}
+                currentPath={node.filePath}
                 placeholder="Add description..."
                 className="min-h-[120px] rounded-md border border-input overflow-hidden"
               />

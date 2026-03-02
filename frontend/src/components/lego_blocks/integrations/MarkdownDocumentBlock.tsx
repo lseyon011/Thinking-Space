@@ -10,7 +10,7 @@ import {
 } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X, FileText, ExternalLink, Pencil, Save, Sparkles, Loader2, RotateCcw, RotateCw, Eye, EyeOff } from 'lucide-react'
+import { X, FileText, ExternalLink, Pencil, Save, RotateCcw, RotateCw, Eye, EyeOff } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -37,14 +37,13 @@ import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/Markdown
 import MarkdownRichEditorBlock, { type MarkdownRichEditorBlockHandle } from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
 import { cn } from '@/lib/utils'
-import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/integrations/aiBlock'
 import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/integrations/markdownUrlTransformBlock'
 import {
   readMarkdownEditorSettingsOrch,
   type MarkdownEditorSettingsBlock,
 } from '@/services/orchestrators/markdownEditorSettingsOrch'
 import { STORAGE_KEYS, getStorageItem, setStorageItem } from '@/services/orchestrators/storageOrch'
-import { generateStewardMetadataSuggestionForFileOrch, type StewardMetadataSuggestion } from '@/services/orchestrators/stewardMetadataOrch'
+import { type StewardMetadataSuggestion } from '@/services/orchestrators/stewardMetadataOrch'
 import {
   DEFERRED_RENDER_CHARS,
   buildFrontmatterMetaState,
@@ -76,11 +75,6 @@ interface MarkdownDocumentBlockProps {
   onClose?: () => void
   showCloseButton?: boolean
   className?: string
-}
-
-interface PurposeProposalState {
-  suggestion: StewardMetadataSuggestion
-  generatedAt: string
 }
 
 interface MarkdownEditBaselineState {
@@ -116,19 +110,11 @@ function MarkdownTextDocumentRuntimeBlock({
   const [saveError, setSaveError] = useState<string | null>(null)
   const [navigationError, setNavigationError] = useState<string | null>(null)
   const [conflict, setConflict] = useState<MarkdownDocumentConflictError | null>(null)
-  const [relatedThoughts, setRelatedThoughts] = useState<SimilarityMatch[]>([])
-  const [relatedLoading, setRelatedLoading] = useState(false)
-  const [relatedError, setRelatedError] = useState<string | null>(null)
-
   const [showMeta, setShowMeta] = useState(true)
   const [topBarHiddenInViewMode, setTopBarHiddenInViewMode] = useState<boolean>(
     () => getStorageItem(STORAGE_KEYS.markdownDocumentTopBarHidden) === '1',
   )
   const [showAiPanel, setShowAiPanel] = useState(false)
-  const [purposeLoading, setPurposeLoading] = useState(false)
-  const [purposeError, setPurposeError] = useState<string | null>(null)
-  const [purposeMessage, setPurposeMessage] = useState<string | null>(null)
-  const [purposeProposal, setPurposeProposal] = useState<PurposeProposalState | null>(null)
   const [editorSettings] = useState<MarkdownEditorSettingsBlock>(
     () => readMarkdownEditorSettingsOrch(),
   )
@@ -158,13 +144,6 @@ function MarkdownTextDocumentRuntimeBlock({
     setSaveError(null)
     setNavigationError(null)
     setConflict(null)
-    setRelatedThoughts([])
-    setRelatedError(null)
-    setRelatedLoading(false)
-    setPurposeError(null)
-    setPurposeMessage(null)
-    setPurposeLoading(false)
-    setPurposeProposal(null)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(false)
     markdownEditBaselineRef.current = null
@@ -384,59 +363,12 @@ function MarkdownTextDocumentRuntimeBlock({
       return `${frontmatterObjectToBlock(next)}${body}`
     })
   }, [])
-  const generatePurposeForFile = useCallback(async () => {
-    if (isExcalidrawDoc || !isEditing) return
+  const handleApplyStewardSuggestion = useCallback(async (suggestion: StewardMetadataSuggestion) => {
     if (frontmatterMeta.parseError) {
-      setPurposeError('Fix YAML parse errors before generating purpose metadata proposals.')
-      setPurposeMessage(null)
-      return
+      throw new Error('Fix YAML parse errors before accepting this purpose proposal.')
     }
-
-    setPurposeLoading(true)
-    setPurposeError(null)
-    setPurposeMessage(null)
-    try {
-      const suggestion = await generateStewardMetadataSuggestionForFileOrch(path)
-      setPurposeProposal({
-        suggestion,
-        generatedAt: new Date().toISOString(),
-      })
-      const source = suggestion.usedAi
-        ? `AI (${suggestion.provider}${suggestion.model ? `/${suggestion.model}` : ''})`
-        : 'heuristics'
-      setPurposeMessage(`Generated purpose proposal from ${source}. Review and accept or reject.`)
-    } catch (err) {
-      setPurposeError(err instanceof Error ? err.message : 'Failed to generate purpose metadata')
-    } finally {
-      setPurposeLoading(false)
-    }
-  }, [
-    frontmatterMeta.parseError,
-    isEditing,
-    isExcalidrawDoc,
-    path,
-  ])
-  const acceptPurposeProposal = useCallback(() => {
-    if (!purposeProposal) return
-    if (frontmatterMeta.parseError) {
-      setPurposeError('Fix YAML parse errors before accepting this purpose proposal.')
-      return
-    }
-    applyStewardSuggestionToDraft(purposeProposal.suggestion)
-    setPurposeProposal(null)
-    setPurposeError(null)
-    setPurposeMessage('Applied purpose proposal to YAML metadata.')
-  }, [
-    applyStewardSuggestionToDraft,
-    frontmatterMeta.parseError,
-    purposeProposal,
-  ])
-  const rejectPurposeProposal = useCallback(() => {
-    if (!purposeProposal) return
-    setPurposeProposal(null)
-    setPurposeError(null)
-    setPurposeMessage('Rejected purpose proposal.')
-  }, [purposeProposal])
+    applyStewardSuggestionToDraft(suggestion)
+  }, [applyStewardSuggestionToDraft, frontmatterMeta.parseError])
   const markdownRemarkPlugins = useMemo(() => [remarkGfm, remarkObsidianWikilinksOrch], [])
   const renderedViewMarkdown = useMemo(
     () => (
@@ -584,52 +516,6 @@ function MarkdownTextDocumentRuntimeBlock({
     }
   }, [content, displayContent, isEditing, isExcalidrawDoc, path])
 
-  useEffect(() => {
-    if (!isEditing || isExcalidrawDoc || loading || error || content === null || !showAiPanel) {
-      setRelatedThoughts([])
-      setRelatedError(null)
-      setRelatedLoading(false)
-      return
-    }
-
-    const source = displayDraft.trim()
-    if (source.length < 24) {
-      setRelatedThoughts([])
-      setRelatedError(null)
-      setRelatedLoading(false)
-      return
-    }
-
-    let cancelled = false
-    setRelatedLoading(true)
-    setRelatedError(null)
-    const timeoutId = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const matches = await findRelated({
-            text: source,
-            sourceFilePath: path,
-            preferredTypes: ['thought'],
-            limit: 6,
-          })
-          if (cancelled) return
-          setRelatedThoughts(matches)
-        } catch (err) {
-          if (cancelled) return
-          setRelatedError(err instanceof Error ? err.message : 'Failed to load related thoughts')
-          setRelatedThoughts([])
-        } finally {
-          if (!cancelled) setRelatedLoading(false)
-        }
-      })()
-    }, 320)
-
-    return () => {
-      cancelled = true
-      window.clearTimeout(timeoutId)
-    }
-  }, [content, displayDraft, error, isEditing, isExcalidrawDoc, loading, path, showAiPanel])
-
   const handleExcalidrawSceneChange = useCallback((scene: ParsedExcalidrawScene) => {
     if (!isIosSurface) {
       excalidrawSceneRef.current = scene
@@ -710,10 +596,6 @@ function MarkdownTextDocumentRuntimeBlock({
     setSaveError(null)
     setNavigationError(null)
     setConflict(null)
-    setPurposeError(null)
-    setPurposeMessage(null)
-    setPurposeLoading(false)
-    setPurposeProposal(null)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(isExcalidrawDoc)
     excalidrawSceneRef.current = null
@@ -727,10 +609,6 @@ function MarkdownTextDocumentRuntimeBlock({
     setShowAiPanel(false)
     setAutoSaving(false)
     setNavigationError(null)
-    setPurposeError(null)
-    setPurposeMessage(null)
-    setPurposeLoading(false)
-    setPurposeProposal(null)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(false)
     excalidrawSceneRef.current = null
@@ -900,122 +778,6 @@ function MarkdownTextDocumentRuntimeBlock({
       return next
     })
   }, [])
-
-  const markdownAiPanelExtraContent = (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2">
-        <button
-          type="button"
-          onClick={() => { void generatePurposeForFile() }}
-          disabled={purposeLoading || loading}
-          className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-          title="Generate steward purpose metadata for this file"
-        >
-          {purposeLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-          Purpose for This File
-        </button>
-        <span className="text-[11px] text-muted-foreground">
-          Uses steward metadata generation to create a proposal for YAML frontmatter.
-        </span>
-      </div>
-
-      {purposeMessage && (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
-          {purposeMessage}
-        </div>
-      )}
-
-      {purposeError && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {purposeError}
-        </div>
-      )}
-
-      {purposeProposal && (
-        <div className="space-y-2 rounded-lg border border-border/70 bg-background px-3 py-2.5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Purpose Proposal
-            </div>
-            <div className="text-[11px] text-muted-foreground">
-              {new Date(purposeProposal.generatedAt).toLocaleString()}
-            </div>
-          </div>
-
-          <p className="text-xs text-foreground">{purposeProposal.suggestion.summary}</p>
-
-          {(purposeProposal.suggestion.tags?.length ?? 0) > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {purposeProposal.suggestion.tags.map((tag) => (
-                <span key={tag} className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
-
-          <div className="text-[11px] text-muted-foreground">
-            Suggested epic: {purposeProposal.suggestion.suggestedEpicKey || 'none'} | Suggested idea: {purposeProposal.suggestion.suggestedIdeaKey || 'none'}
-          </div>
-
-          <div className="text-[11px] text-muted-foreground">
-            {purposeProposal.suggestion.rationale}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={acceptPurposeProposal}
-              className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-95"
-            >
-              Accept
-            </button>
-            <button
-              type="button"
-              onClick={rejectPurposeProposal}
-              className="rounded-md border border-border/70 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted"
-            >
-              Reject
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-2">
-        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          Related Thoughts
-        </div>
-        {relatedLoading && (
-          <div className="text-xs text-muted-foreground">Finding related notes...</div>
-        )}
-        {relatedError && (
-          <div className="text-xs text-destructive">{relatedError}</div>
-        )}
-        {!relatedLoading && !relatedError && relatedThoughts.length === 0 && (
-          <div className="text-xs text-muted-foreground">
-            Keep typing to see lexical matches from your thought cache.
-          </div>
-        )}
-        {relatedThoughts.map(match => (
-          <button
-            key={match.node.uuid}
-            type="button"
-            className="w-full rounded-md border border-border/70 bg-background px-2.5 py-2 text-left transition-colors hover:bg-muted/40"
-            onClick={() => {
-              if (!onOpenPathForEdit || match.node.filePath === path) return
-              onOpenPathForEdit(match.node.filePath)
-            }}
-          >
-            <div className="truncate text-xs font-medium text-foreground">{match.node.title}</div>
-            <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{match.node.filePath}</div>
-            <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-              Score {Math.round(match.normalizedScore * 100)}% · {match.reasons.join(', ') || 'lexical'}
-            </div>
-          </button>
-        ))}
-      </div>
-    </div>
-  )
 
   return (
     <div
@@ -1401,7 +1163,11 @@ function MarkdownTextDocumentRuntimeBlock({
                 aiAssistScope="markdown_editor"
                 aiAssistUseCase="markdown.assist"
                 aiAssistHelperText="Suggestions apply inline. Auto-save is enabled by default; use Save for immediate commit. Configure provider/model in AI Settings."
-                aiPanelExtraContent={markdownAiPanelExtraContent}
+                onAiStewardApplySuggestion={handleApplyStewardSuggestion}
+                onRelatedThoughtOpenPath={(relatedPath) => {
+                  if (!onOpenPathForEdit || relatedPath === path) return
+                  onOpenPathForEdit(relatedPath)
+                }}
                 onChange={(next) => {
                   setDraft(`${draftFrontmatter}${next}`)
                 }}

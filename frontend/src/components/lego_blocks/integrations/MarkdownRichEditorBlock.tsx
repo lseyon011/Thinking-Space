@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import { redo, undo } from '@codemirror/commands'
@@ -8,7 +8,10 @@ import { Bold, Code, Heading1, Italic, Link2, List, ListOrdered, PenLine, Quote,
 import type { AiSettingsScope } from '@/services/lego_blocks/integrations/aiSettingsBlock'
 import AiAssistControlsBlock from '@/components/lego_blocks/integrations/AiAssistControlsBlock'
 import AiAssistReviewBlock from '@/components/lego_blocks/integrations/AiAssistReviewBlock'
+import AiStewardPanelBlock from '@/components/lego_blocks/integrations/AiStewardPanelBlock'
+import RelatedThoughtsPanelBlock from '@/components/lego_blocks/integrations/RelatedThoughtsPanelBlock'
 import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/hooks/integrations/useAiAssistRuntimeBlock'
+import type { StewardMetadataSuggestion } from '@/services/orchestrators/stewardMetadataOrch'
 import {
   getWikilinkSuggestionsOrch,
   toObsidianWikilinkTargetOrch,
@@ -55,8 +58,22 @@ interface MarkdownRichEditorBlockProps {
   aiAssistHelperText?: string
   /** Disables AI action buttons when true. */
   aiAssistDisabled?: boolean
-  /** Optional additional UI rendered inside the AI panel. */
-  aiPanelExtraContent?: ReactNode
+  /** Enables AI steward section in AI panel. Default: true. */
+  aiStewardEnabled?: boolean
+  /** Source file path for steward proposal generation. Defaults to currentPath. */
+  aiStewardFilePath?: string
+  /** Optional apply handler used by AI steward Accept action. */
+  onAiStewardApplySuggestion?: (suggestion: StewardMetadataSuggestion) => void | Promise<void>
+  /** Enables related thoughts section in AI panel. Default: true. */
+  relatedThoughtsEnabled?: boolean
+  /** Optional source file path for related-thought matching. Defaults to aiStewardFilePath/currentPath. */
+  relatedThoughtsSourceFilePath?: string
+  /** Related-thought result limit. Default: 6. */
+  relatedThoughtsLimit?: number
+  /** Minimum characters before related-thought lookup runs. Default: 24. */
+  relatedThoughtsMinChars?: number
+  /** Called when user opens a related-thought result. */
+  onRelatedThoughtOpenPath?: (path: string) => void
 }
 
 export interface MarkdownRichEditorBlockHandle {
@@ -167,7 +184,14 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   aiAssistUseCase = 'markdown.assist',
   aiAssistHelperText,
   aiAssistDisabled = false,
-  aiPanelExtraContent,
+  aiStewardEnabled = true,
+  aiStewardFilePath,
+  onAiStewardApplySuggestion,
+  relatedThoughtsEnabled = true,
+  relatedThoughtsSourceFilePath,
+  relatedThoughtsLimit = 6,
+  relatedThoughtsMinChars = 24,
+  onRelatedThoughtOpenPath,
 }, ref) {
   const editorViewRef = useRef<EditorView | null>(null)
   const [toolbarOpen, setToolbarOpen] = useState(false)
@@ -194,6 +218,8 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
 
   const aiPanelOpen = controlledAiPanelOpen ?? internalAiPanelOpen
   const showToolbar = enableFormattingToolbar && (toolbarAlwaysVisible || toolbarOpen)
+  const stewardFilePath = (aiStewardFilePath ?? currentPath ?? '').trim()
+  const relatedSourceFilePath = (relatedThoughtsSourceFilePath ?? stewardFilePath).trim()
 
   const setAiPanelOpen = useCallback((open: boolean) => {
     if (controlledAiPanelOpen === undefined) {
@@ -510,7 +536,25 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
 
       {enableAiAssist && aiPanelOpen && (
         <div className="space-y-2 border-b border-border/30 bg-muted/10 p-2">
-          {aiPanelExtraContent}
+          {aiStewardEnabled && (
+            <AiStewardPanelBlock
+              filePath={stewardFilePath}
+              disabled={aiAssistDisabled}
+              onApplySuggestion={onAiStewardApplySuggestion}
+            />
+          )}
+
+          {relatedThoughtsEnabled && (
+            <RelatedThoughtsPanelBlock
+              text={value}
+              enabled={enableAiAssist && aiPanelOpen}
+              disabled={aiAssistDisabled}
+              sourceFilePath={relatedSourceFilePath || undefined}
+              limit={relatedThoughtsLimit}
+              minChars={relatedThoughtsMinChars}
+              onOpenPath={onRelatedThoughtOpenPath}
+            />
+          )}
 
           <AiAssistControlsBlock
             selectedProvider={selectedProvider}

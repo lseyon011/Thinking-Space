@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { PenLine, Loader2, CheckCircle2, LayoutList, Eye, CheckSquare, Pencil, Trash2, X, Sparkles, PanelLeft, PanelLeftClose, Plus } from 'lucide-react'
+import { PenLine, Loader2, CheckCircle2, LayoutList, Eye, CheckSquare, Pencil, Trash2, X, PanelLeft, PanelLeftClose, Plus } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
@@ -15,7 +15,6 @@ import ThoughtsCalendarOrch from '@/components/orchestrators/ThoughtsCalendarOrc
 import TodoCalendarOrch from '@/components/orchestrators/TodoCalendarOrch'
 import { deleteVaultPathOrch } from '@/services/orchestrators/fileSystemOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
-import { findRelated, type SimilarityMatch } from '@/services/lego_blocks/integrations/aiBlock'
 import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 
 const DESTINATION_RECENTS_KEY = 'ltm-new-note-destination-recents'
@@ -241,9 +240,6 @@ function CreateTab() {
   const [leftPanelHidden, setLeftPanelHidden] = useState(
     () => readJsonStorage<boolean>(LEFT_PANEL_HIDDEN_KEY, false),
   )
-  const [relatedThoughts, setRelatedThoughts] = useState<SimilarityMatch[]>([])
-  const [relatedLoading, setRelatedLoading] = useState(false)
-  const [relatedError, setRelatedError] = useState<string | null>(null)
 
   useEffect(() => {
     setCustomShortcuts(readCustomShortcuts())
@@ -542,53 +538,6 @@ function CreateTab() {
     lines.push('updated_at: <generated on save>')
     return lines.join('\n')
   }, [emotions, titleForPreview])
-
-  useEffect(() => {
-    if (!showAiAssist || saving) {
-      setRelatedThoughts([])
-      setRelatedError(null)
-      setRelatedLoading(false)
-      return
-    }
-
-    const source = content.trim()
-    if (source.length < 24) {
-      setRelatedThoughts([])
-      setRelatedError(null)
-      setRelatedLoading(false)
-      return
-    }
-
-    let cancelled = false
-    setRelatedLoading(true)
-    setRelatedError(null)
-
-    const timeoutId = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const matches = await findRelated({
-            text: source,
-            sourceFilePath: targetPath ?? undefined,
-            preferredTypes: ['thought'],
-            limit: 6,
-          })
-          if (cancelled) return
-          setRelatedThoughts(matches)
-        } catch (err) {
-          if (cancelled) return
-          setRelatedError(err instanceof Error ? err.message : 'Failed to load related thoughts')
-          setRelatedThoughts([])
-        } finally {
-          if (!cancelled) setRelatedLoading(false)
-        }
-      })()
-    }, 320)
-
-    return () => {
-      cancelled = true
-      window.clearTimeout(timeoutId)
-    }
-  }, [content, saving, showAiAssist, targetPath])
 
   const handleEditExisting = () => {
     if (!targetPath) return
@@ -1040,59 +989,10 @@ function CreateTab() {
                 </div>
               )}
 
-              {showAiAssist && (
-                <div className="space-y-2">
-                  <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2.5 py-1 text-xs font-medium text-foreground">
-                        <Sparkles className="h-3.5 w-3.5" />
-                        Purpose for This File
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        Uses steward metadata generation to create a proposal for YAML frontmatter.
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Related Thoughts
-                    </div>
-                    {relatedLoading && (
-                      <div className="text-xs text-muted-foreground">Finding related notes...</div>
-                    )}
-                    {relatedError && (
-                      <div className="text-xs text-destructive">{relatedError}</div>
-                    )}
-                    {!relatedLoading && !relatedError && relatedThoughts.length === 0 && (
-                      <div className="text-xs text-muted-foreground">
-                        Keep typing to see lexical matches from your thought cache.
-                      </div>
-                    )}
-                    {relatedThoughts.map(match => (
-                      <button
-                        key={match.node.uuid}
-                        type="button"
-                        className="w-full rounded-md border border-border/70 bg-background px-2.5 py-2 text-left transition-colors hover:bg-muted/40"
-                        onClick={() => {
-                          setEditorPath(match.node.filePath)
-                          setMessage(`Opened ${match.node.filePath} in editor.`)
-                        }}
-                      >
-                        <div className="truncate text-xs font-medium text-foreground">{match.node.title}</div>
-                        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{match.node.filePath}</div>
-                        <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                          Score {Math.round(match.normalizedScore * 100)}% · {match.reasons.join(', ') || 'lexical'}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               <MarkdownRichEditorBlock
                 value={content}
                 onChange={setContent}
+                currentPath={targetPath ?? ''}
                 placeholder={makeThisTodo ? 'One task per line...' : "What's on your mind?"}
                 toolbarAlwaysVisible
                 aiPanelOpen={showAiAssist}
@@ -1101,6 +1001,10 @@ function CreateTab() {
                 aiAssistUseCase="new_thought.assist"
                 aiAssistDisabled={saving}
                 aiAssistHelperText="Suggestions apply inline. Configure provider/model in AI Settings."
+                onRelatedThoughtOpenPath={(relatedPath) => {
+                  setEditorPath(relatedPath)
+                  setMessage(`Opened ${relatedPath} in editor.`)
+                }}
                 className="min-h-[400px] rounded-lg border border-input overflow-hidden"
               />
             </div>
