@@ -291,7 +291,10 @@ function App() {
   const [lastGitCommitAt, setLastGitCommitAt] = useState<number | null>(null)
   const [lastGitPushAt, setLastGitPushAt] = useState<number | null>(null)
   const [lastGitActionSummary, setLastGitActionSummary] = useState<GitActionSummary | null>(null)
+  const [gitCommitDialogOpen, setGitCommitDialogOpen] = useState(false)
+  const [gitCommitMessageDraft, setGitCommitMessageDraft] = useState('')
   const commandInputRef = useRef<HTMLInputElement | null>(null)
+  const gitCommitMessageInputRef = useRef<HTMLInputElement | null>(null)
   const syncToolsRef = useRef<HTMLDivElement | null>(null)
   const topChromeMenuRef = useRef<HTMLDivElement | null>(null)
   const syncPanelRef = useRef<HTMLDivElement | null>(null)
@@ -620,15 +623,30 @@ function App() {
     }
   }, [needsVaultSetup, syncActionRunning])
 
-  const runGitAction = useCallback(async (mode: 'commit' | 'push') => {
+  const openGitCommitDialog = useCallback(() => {
+    if (needsVaultSetup || gitActionRunning || !gitSyncToolsSupported) return
+    setGitCommitMessageDraft(`chore: sync checkpoint ${new Date().toLocaleString()}`)
+    setGitCommitDialogOpen(true)
+  }, [gitActionRunning, gitSyncToolsSupported, needsVaultSetup])
+
+  useEffect(() => {
+    if (!gitCommitDialogOpen) return
+    const timeout = window.setTimeout(() => {
+      gitCommitMessageInputRef.current?.focus()
+      gitCommitMessageInputRef.current?.select()
+    }, 0)
+    return () => window.clearTimeout(timeout)
+  }, [gitCommitDialogOpen])
+
+  const runGitAction = useCallback(async (
+    mode: 'commit' | 'push',
+    commitMessageInput?: string | null,
+  ) => {
     if (needsVaultSetup || gitActionRunning || !gitSyncToolsSupported) return
 
     let commitMessage: string | null = null
     if (mode === 'commit') {
-      const defaultCommitMessage = `chore: sync checkpoint ${new Date().toLocaleString()}`
-      const promptValue = window.prompt('Commit message', defaultCommitMessage)
-      if (promptValue === null) return
-      const trimmed = promptValue.trim()
+      const trimmed = (commitMessageInput ?? '').trim()
       if (!trimmed) {
         setLastGitActionSummary({
           mode,
@@ -656,6 +674,7 @@ function App() {
           finishedAt: result.finishedAt,
           message: result.message,
         })
+        setGitCommitDialogOpen(false)
         return
       }
 
@@ -1628,7 +1647,7 @@ function App() {
                 variant="outline"
                 disabled={!!syncActionRunning || !!gitActionRunning || needsVaultSetup || !gitSyncToolsSupported}
                 className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50 disabled:border-transparent disabled:bg-white disabled:text-slate-500"
-                onClick={() => { void runGitAction('commit') }}
+                onClick={openGitCommitDialog}
               >
                 {gitActionRunning === 'commit' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
                 Git Commit
@@ -1791,6 +1810,64 @@ function App() {
                 Enter to open first result · Esc to close · Cmd/Ctrl+K to reopen
               </div>
             </div>
+          </div>
+        </>
+      )}
+
+      {gitCommitDialogOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-50 bg-background/60"
+            onClick={() => {
+              if (gitActionRunning) return
+              setGitCommitDialogOpen(false)
+            }}
+          />
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <form
+              className="w-full max-w-lg rounded-2xl border border-border/70 bg-background p-4 shadow-xl"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void runGitAction('commit', gitCommitMessageDraft)
+              }}
+            >
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-foreground">Git Commit</h3>
+                <p className="text-xs text-muted-foreground">
+                  Enter a commit message for all pending changes in the current vault.
+                </p>
+              </div>
+              <div className="mt-3">
+                <input
+                  ref={gitCommitMessageInputRef}
+                  type="text"
+                  value={gitCommitMessageDraft}
+                  onChange={(event) => setGitCommitMessageDraft(event.target.value)}
+                  disabled={gitActionRunning === 'commit'}
+                  placeholder="Commit message"
+                  className="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-300/60 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={gitActionRunning === 'commit'}
+                  onClick={() => setGitCommitDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={gitActionRunning === 'commit'}
+                >
+                  {gitActionRunning === 'commit' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                  Commit
+                </Button>
+              </div>
+            </form>
           </div>
         </>
       )}
