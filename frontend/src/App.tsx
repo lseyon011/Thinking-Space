@@ -1728,7 +1728,7 @@ function App() {
             data-ltm-shell-region="command-stage"
             style={{ paddingTop: `${commandPaletteTopPadding}px`, paddingBottom: `${commandPaletteBottomPadding}px` }}
           >
-            <div className="ltm-cmd-card ltm-shell-command-card ltm-shell-command-surface ltm-shell-motion-modal max-h-full w-full max-w-2xl overflow-hidden rounded-2xl">
+            <div className="ltm-cmd-card ltm-shell-command-card ltm-shell-command-surface ltm-shell-motion-modal max-h-full w-full max-w-3xl overflow-hidden rounded-2xl">
               <div className="p-3">
                 <UniversalSearchBlock
                   {...UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK}
@@ -1757,7 +1757,9 @@ function App() {
                       icon: Sparkles,
                       activePaths: item.activePaths,
                     })
-                    return active ? '!bg-foreground !text-background' : 'hover:bg-muted'
+                    return active
+                      ? 'rounded-lg !bg-foreground !text-background'
+                      : 'rounded-lg hover:bg-muted'
                   }}
                   renderItem={(item) => {
                     const active = isNavItemActive(location.pathname, {

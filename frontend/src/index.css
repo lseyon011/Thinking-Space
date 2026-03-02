@@ -584,6 +584,8 @@
   .ltm-thinking-space-shell .ltm-thinking-space-document-stage {
     border-left: 0;
     border-radius: calc(var(--ltm-shell-main-panel-radius) - 0.22rem);
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
     overflow: hidden;
     background:
       radial-gradient(circle at top left, rgb(255 255 255 / 0.08), transparent 48%),
@@ -591,7 +593,7 @@
   }
 
   .ltm-thinking-space-shell[data-ltm-explorer-open='true'] .ltm-thinking-space-document-stage {
-    margin-left: clamp(0.18rem, 0.42vw, 0.36rem);
+    margin-left: clamp(0.24rem, 0.52vw, 0.42rem);
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
   }
@@ -695,7 +697,9 @@
   }
 
   .ltm-shell-command-surface {
-    background: var(--ltm-shell-surface-muted-bg);
+    background: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .ltm-app-shell[data-ltm-surface='capacitor-ios'] .ltm-explorer-row {

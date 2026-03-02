@@ -892,8 +892,8 @@ function MarkdownTextDocumentRuntimeBlock({
 
             {showMeta && meta && (
               <div className={cn(
-                'space-y-2 border-b border-border/30 bg-muted/30 py-2.5 text-xs text-muted-foreground',
-                isIosPhone ? 'px-3' : 'px-5',
+                'space-y-2 border-b border-border/30 bg-muted/30 py-4 text-xs text-muted-foreground',
+                isIosPhone ? 'px-5' : 'px-7',
               )}>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                   <span><strong className="text-foreground/70">{meta.lines ?? '…'}</strong> lines</span>
@@ -988,7 +988,7 @@ function MarkdownTextDocumentRuntimeBlock({
           )}
 
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && (
-            <div className={cn('space-y-2', isIosPhone ? 'px-3 py-3' : 'px-6 py-5')}>
+            <div className={cn('space-y-2', isIosPhone ? 'px-5 py-5' : 'px-8 py-7')}>
               {pendingFullRender && (
                 <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                   Rendering full document...

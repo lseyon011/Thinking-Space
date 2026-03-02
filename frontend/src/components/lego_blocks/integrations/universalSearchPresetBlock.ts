@@ -20,8 +20,8 @@ export const UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK: UniversalSearchPresetK
   closeOnSelect: false,
   inputWrapperClassName: 'ltm-shell-field-surface flex items-center gap-2 rounded-lg px-2.5',
   inputClassName: 'h-10 border-0 bg-transparent text-sm placeholder:text-muted-foreground focus:ring-0 focus:ring-offset-0',
-  dropdownClassName: 'static z-auto mt-2 max-h-[min(58vh,520px)] overflow-y-auto border-0 bg-transparent shadow-none',
-  listClassName: 'space-y-0 p-2',
+  dropdownClassName: 'static z-auto mt-2 max-h-[min(96vh,1040px)] overflow-y-auto border-0 bg-transparent shadow-none',
+  listClassName: '!max-h-none h-[min(84vh,44rem)] overflow-auto space-y-0 p-2',
   emptyClassName: 'rounded-lg px-3 py-4 text-sm text-muted-foreground',
   emptyMessage: 'No matches. Try another keyword.',
 }
