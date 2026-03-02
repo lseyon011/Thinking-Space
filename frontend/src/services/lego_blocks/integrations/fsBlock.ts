@@ -69,6 +69,8 @@ interface ElectronAPI {
     dryRun?: boolean
   }): Promise<unknown>
   selectVaultFolder(): Promise<string | null>
+  vaultRootGetPersisted?(): string | null
+  vaultRootSetPersisted?(vaultRoot: string | null): Promise<void>
   newWindow?(route?: string): Promise<void>
   read(vaultRoot: string, relPath: string): Promise<string>
   write(vaultRoot: string, relPath: string, data: string): Promise<void>

@@ -32,6 +32,10 @@ import {
   type F9WebullStoredAccessTokenBlock,
 } from './lego_blocks/f9WebullCredentialStoreBlock';
 import {
+  readPersistedVaultRootBlock,
+  writePersistedVaultRootBlock,
+} from './lego_blocks/vaultRootPersistenceBlock';
+import {
   createHierarchyEdgeOrch,
   createHierarchyNodeOrch,
   createHierarchyThoughtLinkOrch,
@@ -916,6 +920,18 @@ ipcMain.handle('vault:selectFolder', async () => {
   });
   if (result.canceled || result.filePaths.length === 0) return null;
   return result.filePaths[0];
+});
+
+// -- Persisted vault root (main-process storage) --
+ipcMain.on('vault:root:getPersistedSync', (event) => {
+  event.returnValue = readPersistedVaultRootBlock();
+});
+
+ipcMain.handle('vault:root:setPersisted', async (_event, vaultRoot: string | null) => {
+  if (vaultRoot !== null && typeof vaultRoot !== 'string') {
+    throw new Error('Persisted vault root must be a string or null.');
+  }
+  writePersistedVaultRootBlock(vaultRoot);
 });
 
 // -- Read file --

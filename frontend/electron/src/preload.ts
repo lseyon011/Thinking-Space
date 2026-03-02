@@ -4,6 +4,23 @@ require('./rt/electron-rt');
 
 import { contextBridge, ipcRenderer } from 'electron';
 
+function normalizePersistedVaultRootBlock(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : null
+}
+
+function readPersistedVaultRootSyncBlock(): string | null {
+  try {
+    const value = ipcRenderer.sendSync('vault:root:getPersistedSync')
+    return normalizePersistedVaultRootBlock(value)
+  } catch {
+    return null
+  }
+}
+
+let persistedVaultRootBlock: string | null = readPersistedVaultRootSyncBlock()
+
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
 
@@ -41,6 +58,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Vault folder picker dialog
   selectVaultFolder: () => ipcRenderer.invoke('vault:selectFolder'),
+  vaultRootGetPersisted: () => persistedVaultRootBlock,
+  vaultRootSetPersisted: async (vaultRoot: string | null) => {
+    const normalized = normalizePersistedVaultRootBlock(vaultRoot)
+    await ipcRenderer.invoke('vault:root:setPersisted', normalized)
+    persistedVaultRootBlock = normalized
+  },
 
   // Filesystem operations (all take vaultRoot as first arg)
   read: (vaultRoot: string, relPath: string) =>

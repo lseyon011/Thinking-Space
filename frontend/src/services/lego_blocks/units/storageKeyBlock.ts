@@ -36,7 +36,7 @@ export const STORAGE_KEYS = {
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]
 
-export function getStorageItem(key: StorageKey): string | null {
+function getLocalStorageItemBlock(key: StorageKey): string | null {
   try {
     if (typeof localStorage === 'undefined') return null
     return localStorage.getItem(key)
@@ -45,13 +45,63 @@ export function getStorageItem(key: StorageKey): string | null {
   }
 }
 
-export function setStorageItem(key: StorageKey, value: string): void {
+function setLocalStorageItemBlock(key: StorageKey, value: string): void {
   try {
     if (typeof localStorage === 'undefined') return
     localStorage.setItem(key, value)
   } catch {
     // Ignore storage write failures in restricted runtimes.
   }
+}
+
+function isElectronVaultRootBridgeAvailableBlock(): boolean {
+  return typeof window !== 'undefined'
+    && !!window.electronAPI?.isElectron
+    && typeof window.electronAPI.vaultRootGetPersisted === 'function'
+}
+
+function normalizeVaultRootValueBlock(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : null
+}
+
+function readElectronPersistedVaultRootBlock(): string | null {
+  if (!isElectronVaultRootBridgeAvailableBlock()) return null
+  const persisted = normalizeVaultRootValueBlock(window.electronAPI?.vaultRootGetPersisted?.())
+  if (persisted) return persisted
+
+  // One-time migration from legacy localStorage key into main-process persistence.
+  const legacy = normalizeVaultRootValueBlock(getLocalStorageItemBlock(STORAGE_KEYS.vaultRoot))
+  if (!legacy) return null
+  void window.electronAPI?.vaultRootSetPersisted?.(legacy)
+  try {
+    localStorage.removeItem(STORAGE_KEYS.vaultRoot)
+  } catch {
+    // Ignore cleanup failures.
+  }
+  return legacy
+}
+
+function writeElectronPersistedVaultRootBlock(value: string): void {
+  const normalized = normalizeVaultRootValueBlock(value)
+  void window.electronAPI?.vaultRootSetPersisted?.(normalized)
+}
+
+export function getStorageItem(key: StorageKey): string | null {
+  if (key === STORAGE_KEYS.vaultRoot) {
+    const electronPersisted = readElectronPersistedVaultRootBlock()
+    if (electronPersisted) return electronPersisted
+  }
+  return getLocalStorageItemBlock(key)
+}
+
+export function setStorageItem(key: StorageKey, value: string): void {
+  if (key === STORAGE_KEYS.vaultRoot && isElectronVaultRootBridgeAvailableBlock()) {
+    writeElectronPersistedVaultRootBlock(value)
+    return
+  }
+  setLocalStorageItemBlock(key, value)
 }
 
 export function getJsonStorageItem<T>(key: StorageKey, fallback: T): T {
