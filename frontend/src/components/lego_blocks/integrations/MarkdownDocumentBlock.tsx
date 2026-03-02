@@ -126,8 +126,6 @@ function MarkdownTextDocumentRuntimeBlock({
   const chromeContainerRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
   const markdownEditorRef = useRef<MarkdownRichEditorBlockHandle | null>(null)
-  const lastScrollTopRef = useRef(0)
-  const chromeCollapsedRef = useRef(false)
   const excalidrawSceneRef = useRef<ParsedExcalidrawScene | null>(null)
   const excalidrawApiRef = useRef<ExcalidrawCanvasApiOrch | null>(null)
   const ignoreInitialExcalidrawChangeRef = useRef(true)
@@ -185,105 +183,6 @@ function MarkdownTextDocumentRuntimeBlock({
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [excalidrawImmersive])
-
-  useEffect(() => {
-    if (isExcalidrawDoc || mode === 'edit' || isIosSurface || layout.keyboardVisible || topBarHiddenInViewMode) return
-    const chromeContainer = chromeContainerRef.current
-    const scroller = contentScrollRef.current
-    if (!chromeContainer || !scroller) return
-
-    const TOP_RESET_THRESHOLD = 12
-    let touchY: number | null = null
-
-    const setChromeHidden = (hidden: boolean) => {
-      if (chromeCollapsedRef.current === hidden) return
-      chromeCollapsedRef.current = hidden
-      if (hidden) chromeContainer.classList.add('hidden')
-      else chromeContainer.classList.remove('hidden')
-    }
-
-    lastScrollTopRef.current = scroller.scrollTop
-    chromeCollapsedRef.current = false
-    chromeContainer.classList.remove('hidden')
-
-    const onScroll = () => {
-      const nextTop = scroller.scrollTop
-      const delta = nextTop - lastScrollTopRef.current
-      lastScrollTopRef.current = nextTop
-
-      if (nextTop <= TOP_RESET_THRESHOLD) {
-        setChromeHidden(false)
-        return
-      }
-      if (delta > 0) {
-        setChromeHidden(true)
-      } else if (delta < 0) {
-        setChromeHidden(false)
-      }
-    }
-
-    const onWheel = (event: WheelEvent) => {
-      if (event.deltaY > 0 && scroller.scrollTop > TOP_RESET_THRESHOLD) {
-        setChromeHidden(true)
-      } else if (event.deltaY < 0) {
-        setChromeHidden(false)
-      }
-    }
-
-    const onTouchStart = (event: TouchEvent) => {
-      touchY = event.touches[0]?.clientY ?? null
-    }
-
-    const onTouchMove = (event: TouchEvent) => {
-      const nextY = event.touches[0]?.clientY
-      if (nextY === undefined || touchY === null) return
-      const deltaY = touchY - nextY
-      touchY = nextY
-      if (deltaY > 0 && scroller.scrollTop > TOP_RESET_THRESHOLD) {
-        setChromeHidden(true)
-      } else if (deltaY < 0) {
-        setChromeHidden(false)
-      }
-    }
-
-    scroller.addEventListener('scroll', onScroll, { passive: true })
-    scroller.addEventListener('wheel', onWheel, { passive: true })
-    scroller.addEventListener('touchstart', onTouchStart, { passive: true })
-    scroller.addEventListener('touchmove', onTouchMove, { passive: true })
-    return () => {
-      scroller.removeEventListener('scroll', onScroll)
-      scroller.removeEventListener('wheel', onWheel)
-      scroller.removeEventListener('touchstart', onTouchStart)
-      scroller.removeEventListener('touchmove', onTouchMove)
-    }
-  }, [content, isExcalidrawDoc, isIosSurface, layout.keyboardVisible, mode, path, topBarHiddenInViewMode])
-
-  useEffect(() => {
-    if (isExcalidrawDoc || mode === 'edit') return
-    const chromeContainer = chromeContainerRef.current
-    const scroller = contentScrollRef.current
-    if (!chromeContainer || !scroller) return
-
-    const forwardWheelToScroller = (event: WheelEvent) => {
-      if (event.defaultPrevented) return
-      if (Math.abs(event.deltaY) < 0.5 && Math.abs(event.deltaX) < 0.5) return
-      if (scroller.scrollHeight <= scroller.clientHeight + 1) return
-
-      const prevTop = scroller.scrollTop
-      const prevLeft = scroller.scrollLeft
-      scroller.scrollTop += event.deltaY
-      scroller.scrollLeft += event.deltaX
-
-      if (scroller.scrollTop !== prevTop || scroller.scrollLeft !== prevLeft) {
-        event.preventDefault()
-      }
-    }
-
-    chromeContainer.addEventListener('wheel', forwardWheelToScroller, { passive: false })
-    return () => {
-      chromeContainer.removeEventListener('wheel', forwardWheelToScroller)
-    }
-  }, [isExcalidrawDoc, mode, path])
 
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
@@ -811,218 +710,6 @@ function MarkdownTextDocumentRuntimeBlock({
       className={cn('flex h-full min-h-0 flex-col bg-card', className)}
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
-      <div ref={chromeContainerRef} className={cn('min-h-0 overflow-hidden', hideTopBarInView && 'hidden')}>
-        <div className="min-h-0 overflow-hidden">
-          <div className={cn(
-            'ts-md-header flex items-start justify-between gap-3 border-b border-border/50',
-            isIosPhone ? 'px-3 py-2.5' : 'px-5 py-4',
-          )}>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="truncate font-medium">{filename}</span>
-              </div>
-              {breadcrumb && (
-                <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>
-              )}
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1">
-              {!isEditing && (
-                <button
-                  type="button"
-                  onClick={toggleTopBarHiddenInViewMode}
-                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  title="Hide top bar"
-                >
-                  <EyeOff className="h-4 w-4" />
-                </button>
-              )}
-
-              <InfoPanelToggleButtonBlock active={showMeta} onToggle={() => setShowMeta(v => !v)} />
-
-              {!isEditing && (
-                <button
-                  onClick={startEditing}
-                  disabled={loading || !!error}
-                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Edit file"
-                >
-                  <Pencil className="h-4 w-4" />
-                </button>
-              )}
-
-              {isEditing && !isExcalidrawDoc && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => markdownEditorRef.current?.undo()}
-                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                    title="Undo"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => markdownEditorRef.current?.redo()}
-                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                    title="Redo"
-                  >
-                    <RotateCw className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAutoSaveEnabled(v => !v)}
-                    className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                    title="Toggle auto save"
-                  >
-                    {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cancelEditing}
-                    className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { void handleSave() }}
-                    disabled={saving || baseMtime === null}
-                    className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Save className="h-3.5 w-3.5" />
-                    {saving ? 'Saving...' : 'Save'}
-                  </button>
-                </>
-              )}
-
-              {isEditing && isExcalidrawDoc && (
-                <>
-                  <span className="hidden px-1 text-xs text-muted-foreground md:inline">
-                    {hasChanges ? 'Unsaved changes' : 'No changes'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setExcalidrawImmersive(v => !v)}
-                    className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
-                  >
-                    {excalidrawImmersive ? 'Exit Focus' : 'Focus Canvas'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cancelEditing}
-                    className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { void handleSave() }}
-                    disabled={!hasChanges || saving || baseMtime === null}
-                    className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Save className="h-3.5 w-3.5" />
-                    {saving ? 'Saving...' : 'Save'}
-                  </button>
-                </>
-              )}
-
-              <a
-                href={obsidianUrl}
-                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                title="Open in Obsidian"
-              >
-                <ExternalLink className="h-4 w-4" />
-              </a>
-
-              {showCloseButton && onClose && (
-                <button
-                  onClick={onClose}
-                  className="rounded-lg p-1.5 transition-colors hover:bg-muted"
-                  title="Close"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {showMeta && meta && (
-            <div className={cn(
-              'max-h-[42vh] space-y-2 overflow-y-auto overscroll-contain border-b border-border/30 bg-muted/30 py-2.5 text-xs text-muted-foreground',
-              isIosPhone ? 'px-3' : 'px-5',
-            )}>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                <span><strong className="text-foreground/70">{meta.lines ?? '…'}</strong> lines</span>
-                <span><strong className="text-foreground/70">{meta.words ?? '…'}</strong> words</span>
-                <span><strong className="text-foreground/70">{meta.headings ?? '…'}</strong> headings</span>
-                <span>{meta.size}</span>
-                <span>Created: <strong className="text-foreground/70">{meta.createdAt ?? '—'}</strong></span>
-                <span>Updated: <strong className="text-foreground/70">{meta.updatedAt ?? '—'}</strong></span>
-              </div>
-
-              {!isExcalidrawDoc && (
-                <div className="space-y-1.5 border-t border-border/30 pt-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                    YAML Metadata
-                  </div>
-
-                  {isEditing ? (
-                    <div className="space-y-1.5">
-                      <MarkdownRichEditorBlock
-                        value={frontmatterMeta.yamlText}
-                        onChange={setDraftFrontmatterYaml}
-                        currentPath={path}
-                        enableFormattingToolbar={false}
-                        className="h-44 w-full"
-                        editorClassName="rounded-md border border-border/60 bg-background"
-                        placeholder={'title: My note\ntype: thought\nparent: project-root'}
-                        compactMobile={isIosPhone}
-                      />
-                      {frontmatterMeta.parseError ? (
-                        <div className="text-[11px] text-destructive">
-                          YAML parse error: {frontmatterMeta.parseError}
-                        </div>
-                      ) : (
-                        <div className="text-[11px] text-muted-foreground">
-                          {frontmatterMeta.hasFrontmatter ? 'Frontmatter is valid YAML.' : 'Add YAML above to create frontmatter.'}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      {frontmatterMeta.parseError && (
-                        <div className="text-[11px] text-destructive">
-                          YAML parse error: {frontmatterMeta.parseError}
-                        </div>
-                      )}
-                      {!frontmatterMeta.hasFrontmatter && (
-                        <div className="text-[11px] text-muted-foreground">No YAML frontmatter.</div>
-                      )}
-                      {frontmatterMeta.hasFrontmatter && !frontmatterMeta.parseError && frontmatterMeta.entries.length === 0 && (
-                        <div className="text-[11px] text-muted-foreground">YAML frontmatter is empty.</div>
-                      )}
-                      {frontmatterMeta.entries.length > 0 && (
-                        <dl className="grid grid-cols-[minmax(6rem,auto)_1fr] gap-x-3 gap-y-1 text-[11px]">
-                          {frontmatterMeta.entries.map((entry) => (
-                            <div key={entry.key} className="contents">
-                              <dt className="font-medium text-foreground/80">{entry.key}</dt>
-                              <dd className="break-all text-muted-foreground">{entry.value}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-        </div>
-      </div>
-
       <div className="relative min-h-0 flex-1">
         {hideTopBarInView && (
           <div className="absolute right-3 top-3 z-40">
@@ -1043,6 +730,215 @@ function MarkdownTextDocumentRuntimeBlock({
             isExcalidrawDoc ? 'overflow-hidden' : 'overflow-y-auto',
           )}
         >
+          <div ref={chromeContainerRef} className={cn(hideTopBarInView && 'hidden')}>
+            <div className={cn(
+              'ts-md-header flex items-start justify-between gap-3 border-b border-border/50',
+              isIosPhone ? 'px-3 py-2.5' : 'px-5 py-4',
+            )}>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate font-medium">{filename}</span>
+                </div>
+                {breadcrumb && (
+                  <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>
+                )}
+              </div>
+
+              <div className="flex shrink-0 items-center gap-1">
+                {!isEditing && (
+                  <button
+                    type="button"
+                    onClick={toggleTopBarHiddenInViewMode}
+                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    title="Hide top bar"
+                  >
+                    <EyeOff className="h-4 w-4" />
+                  </button>
+                )}
+
+                <InfoPanelToggleButtonBlock active={showMeta} onToggle={() => setShowMeta(v => !v)} />
+
+                {!isEditing && (
+                  <button
+                    onClick={startEditing}
+                    disabled={loading || !!error}
+                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Edit file"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                )}
+
+                {isEditing && !isExcalidrawDoc && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => markdownEditorRef.current?.undo()}
+                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      title="Undo"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => markdownEditorRef.current?.redo()}
+                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      title="Redo"
+                    >
+                      <RotateCw className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAutoSaveEnabled(v => !v)}
+                      className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                      title="Toggle auto save"
+                    >
+                      {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelEditing}
+                      className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { void handleSave() }}
+                      disabled={saving || baseMtime === null}
+                      className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {saving ? 'Saving...' : 'Save'}
+                    </button>
+                  </>
+                )}
+
+                {isEditing && isExcalidrawDoc && (
+                  <>
+                    <span className="hidden px-1 text-xs text-muted-foreground md:inline">
+                      {hasChanges ? 'Unsaved changes' : 'No changes'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setExcalidrawImmersive(v => !v)}
+                      className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+                    >
+                      {excalidrawImmersive ? 'Exit Focus' : 'Focus Canvas'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelEditing}
+                      className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { void handleSave() }}
+                      disabled={!hasChanges || saving || baseMtime === null}
+                      className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {saving ? 'Saving...' : 'Save'}
+                    </button>
+                  </>
+                )}
+
+                <a
+                  href={obsidianUrl}
+                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  title="Open in Obsidian"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+
+                {showCloseButton && onClose && (
+                  <button
+                    onClick={onClose}
+                    className="rounded-lg p-1.5 transition-colors hover:bg-muted"
+                    title="Close"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {showMeta && meta && (
+              <div className={cn(
+                'space-y-2 border-b border-border/30 bg-muted/30 py-2.5 text-xs text-muted-foreground',
+                isIosPhone ? 'px-3' : 'px-5',
+              )}>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <span><strong className="text-foreground/70">{meta.lines ?? '…'}</strong> lines</span>
+                  <span><strong className="text-foreground/70">{meta.words ?? '…'}</strong> words</span>
+                  <span><strong className="text-foreground/70">{meta.headings ?? '…'}</strong> headings</span>
+                  <span>{meta.size}</span>
+                  <span>Created: <strong className="text-foreground/70">{meta.createdAt ?? '—'}</strong></span>
+                  <span>Updated: <strong className="text-foreground/70">{meta.updatedAt ?? '—'}</strong></span>
+                </div>
+
+                {!isExcalidrawDoc && (
+                  <div className="space-y-1.5 border-t border-border/30 pt-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      YAML Metadata
+                    </div>
+
+                    {isEditing ? (
+                      <div className="space-y-1.5">
+                        <MarkdownRichEditorBlock
+                          value={frontmatterMeta.yamlText}
+                          onChange={setDraftFrontmatterYaml}
+                          currentPath={path}
+                          enableFormattingToolbar={false}
+                          className="h-44 w-full"
+                          editorClassName="rounded-md border border-border/60 bg-background"
+                          placeholder={'title: My note\ntype: thought\nparent: project-root'}
+                          compactMobile={isIosPhone}
+                        />
+                        {frontmatterMeta.parseError ? (
+                          <div className="text-[11px] text-destructive">
+                            YAML parse error: {frontmatterMeta.parseError}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-muted-foreground">
+                            {frontmatterMeta.hasFrontmatter ? 'Frontmatter is valid YAML.' : 'Add YAML above to create frontmatter.'}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {frontmatterMeta.parseError && (
+                          <div className="text-[11px] text-destructive">
+                            YAML parse error: {frontmatterMeta.parseError}
+                          </div>
+                        )}
+                        {!frontmatterMeta.hasFrontmatter && (
+                          <div className="text-[11px] text-muted-foreground">No YAML frontmatter.</div>
+                        )}
+                        {frontmatterMeta.hasFrontmatter && !frontmatterMeta.parseError && frontmatterMeta.entries.length === 0 && (
+                          <div className="text-[11px] text-muted-foreground">YAML frontmatter is empty.</div>
+                        )}
+                        {frontmatterMeta.entries.length > 0 && (
+                          <dl className="grid grid-cols-[minmax(6rem,auto)_1fr] gap-x-3 gap-y-1 text-[11px]">
+                            {frontmatterMeta.entries.map((entry) => (
+                              <div key={entry.key} className="contents">
+                                <dt className="font-medium text-foreground/80">{entry.key}</dt>
+                                <dd className="break-all text-muted-foreground">{entry.value}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {loading && (
             <div className={cn('space-y-3', shouldPadViewerContent && 'px-6 py-5')}>
               {Array.from({ length: 8 }).map((_, i) => (
