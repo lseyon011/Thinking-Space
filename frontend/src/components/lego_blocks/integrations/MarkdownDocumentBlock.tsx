@@ -772,7 +772,7 @@ function MarkdownTextDocumentRuntimeBlock({
           <div ref={chromeContainerRef} className={cn(hideTopBarInView && 'hidden')}>
             <div className={cn(
               'ts-md-header flex items-start justify-between gap-3 border-b border-border/50',
-              isIosPhone ? 'px-3 py-2.5' : 'px-5 py-4',
+              isIosPhone ? 'pl-4 pr-3 py-2.5' : 'pl-6 pr-5 py-4',
             )}>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
