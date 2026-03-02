@@ -569,7 +569,7 @@ export default function BacklogListBlock({
 
     return (
       <div className={cn(
-        'hidden min-w-0 shrink-0 self-center items-center lg:flex',
+        'flex min-w-0 shrink-0 self-center items-center overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
         actionsRightEdge && !statusRightAligned && 'ml-auto',
         linksColumnPaddingClassName,
         linksColumnWidthClassName ?? (actionsRightEdge ? 'max-w-[24rem] min-w-[10rem]' : 'max-w-[24rem]'),
@@ -579,7 +579,7 @@ export default function BacklogListBlock({
         <LinkedItemChipsBlock
           items={linkedItems}
           className={cn(
-            'min-w-0 w-full gap-1',
+            'min-w-0 w-full gap-1 flex-nowrap',
             linksColumnAlign === 'center'
               ? 'justify-center'
               : linksColumnAlign === 'left'
@@ -663,7 +663,7 @@ export default function BacklogListBlock({
     if (!ticket) return null
 
     return (
-      <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
+      <span className="hidden shrink-0 items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wide text-muted-foreground sm:inline-flex">
         {ticket}
       </span>
     )

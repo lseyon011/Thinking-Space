@@ -151,7 +151,8 @@ export function BacklogNodeRowBlock({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       className={cn(
-        'flex cursor-pointer items-center gap-2 border-l-[3px] px-3 py-2 transition-colors',
+        'cursor-pointer overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
+        'border-l-[3px] px-3 py-2 transition-colors',
         'bg-card hover:bg-zinc-50',
         borderColorClass,
         selected && 'bg-accent/40',
@@ -162,6 +163,7 @@ export function BacklogNodeRowBlock({
       )}
       style={{ paddingLeft: `${12 + (depth * 16)}px` }}
     >
+      <div className="flex min-w-max items-center gap-2">
       <sup
         aria-hidden="true"
         className="-ml-1.5 mr-0.5 mt-0.5 self-start font-mono text-[8px] leading-none tabular-nums text-muted-foreground/45"
@@ -224,7 +226,7 @@ export function BacklogNodeRowBlock({
       {linksBeforeTags && linksSlot}
       {shouldRenderTagSlot && (
         <div className={cn(
-          'hidden self-center items-center gap-1 overflow-hidden lg:flex',
+          'flex self-center items-center gap-1 overflow-x-auto overflow-y-hidden whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
           actionsRightEdge && !statusRightAligned && !linksSlot && 'ml-auto',
           rowPresetTagsClassName ?? (actionsRightEdge ? 'min-w-0 flex-1 justify-end' : 'max-w-[35%]'),
         )} style={scaledWidthStyleFromClassBlock(
@@ -377,6 +379,7 @@ export function BacklogNodeRowBlock({
         </span>
       )}
       {showPriorityDot && <span className="self-center"><PriorityDot priority={node.priority} /></span>}
+      </div>
     </div>
   )
 }

@@ -1614,7 +1614,7 @@ export default function BacklogOrch() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {availableProjects.map(project => {
             const isActive = project.root === activeProjectRoot
             return (
@@ -1622,7 +1622,7 @@ export default function BacklogOrch() {
                 key={project.root}
                 size="sm"
                 variant={isActive ? 'default' : 'ghost'}
-                className="w-[9rem] justify-center"
+                className="h-8 shrink-0 justify-center px-3 text-xs min-w-[6.5rem] sm:min-w-[9rem]"
                 onClick={() => selectProject(project.root)}
                 title={project.name}
               >
@@ -1671,7 +1671,7 @@ export default function BacklogOrch() {
       />
 
       <div
-        className="inline-flex flex-wrap items-center rounded-md border border-border/70 bg-muted/30 p-0.5 text-xs"
+        className="flex w-full items-center overflow-x-auto rounded-md border border-border/70 bg-muted/30 p-0.5 text-xs whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
         role="tablist"
         aria-label="Backlog views"
       >
@@ -1679,7 +1679,7 @@ export default function BacklogOrch() {
           type="button"
           role="tab"
           aria-selected={activeBacklogSubTab === 'hierarchy'}
-          className={`inline-flex h-8 min-w-[9rem] items-center justify-center rounded-md px-3 text-xs font-medium transition-colors ${
+          className={`inline-flex h-8 shrink-0 min-w-[7.25rem] items-center justify-center rounded-md px-3 text-xs font-medium transition-colors sm:min-w-[9rem] ${
             activeBacklogSubTab === 'hierarchy'
               ? 'border-black bg-black text-white'
               : 'border-transparent bg-transparent text-muted-foreground hover:text-foreground'
@@ -1692,7 +1692,7 @@ export default function BacklogOrch() {
           type="button"
           role="tab"
           aria-selected={activeBacklogSubTab === 'timeline'}
-          className={`inline-flex h-8 min-w-[9rem] items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
+          className={`inline-flex h-8 shrink-0 min-w-[7.25rem] items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors sm:min-w-[9rem] ${
             activeBacklogSubTab === 'timeline'
               ? 'border-black bg-black text-white'
               : 'border-transparent bg-transparent text-muted-foreground hover:text-foreground'
@@ -1706,7 +1706,7 @@ export default function BacklogOrch() {
           type="button"
           role="tab"
           aria-selected={activeBacklogSubTab === 'memory'}
-          className={`inline-flex h-8 min-w-[9rem] items-center justify-center rounded-md px-3 text-xs font-medium transition-colors ${
+          className={`inline-flex h-8 shrink-0 min-w-[7.25rem] items-center justify-center rounded-md px-3 text-xs font-medium transition-colors sm:min-w-[9rem] ${
             activeBacklogSubTab === 'memory'
               ? 'border-black bg-black text-white'
               : 'border-transparent bg-transparent text-muted-foreground hover:text-foreground'
@@ -1721,7 +1721,7 @@ export default function BacklogOrch() {
         <Button
           size="sm"
           variant="outline"
-          className="h-7 px-2 text-[11px]"
+          className="h-7 shrink-0 px-2 text-[11px]"
           onClick={() => {
             if (!showRootProgramCreate) {
               setActiveBacklogSubTab('hierarchy')
@@ -1733,7 +1733,7 @@ export default function BacklogOrch() {
         >
           Add New Program
         </Button>
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+        <div className="ml-auto flex max-w-full items-center justify-start gap-2 overflow-x-auto pb-1 whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:justify-end">
           {(working || syncing) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
           <Button
             size="sm"

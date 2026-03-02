@@ -128,7 +128,8 @@ export function BacklogProgramRowBlock({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       className={cn(
-        'flex cursor-pointer items-center gap-2 border-b border-border/70 bg-card px-3 py-2 transition-colors hover:bg-zinc-50',
+        'cursor-pointer overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
+        'border-b border-border/70 bg-card px-3 py-2 transition-colors hover:bg-zinc-50',
         selected && 'bg-accent/40',
         dragOver && 'ring-2 ring-primary/40 bg-primary/5',
         dragOver && dragOverEdge === 'before' && 'shadow-[inset_0_2px_0_rgba(59,130,246,0.7)]',
@@ -137,6 +138,7 @@ export function BacklogProgramRowBlock({
       )}
       onClick={onSelectProgram}
     >
+      <div className="flex min-w-max items-center gap-2">
       <sup
         aria-hidden="true"
         className="-ml-1.5 mr-0.5 mt-0.5 self-start font-mono text-[8px] leading-none tabular-nums text-muted-foreground/45"
@@ -210,7 +212,7 @@ export function BacklogProgramRowBlock({
       {linksBeforeTags && linksSlot}
       {shouldRenderTagSlot && (
         <div className={cn(
-          'hidden self-center items-center gap-1 overflow-hidden lg:flex',
+          'flex self-center items-center gap-1 overflow-x-auto overflow-y-hidden whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
           actionsRightEdge && !statusRightAligned && !linksSlot && 'ml-auto',
           rowPresetTagsClassName ?? (actionsRightEdge ? 'min-w-0 flex-1 justify-end' : 'max-w-[35%]'),
         )} style={scaledWidthStyleFromClassBlock(
@@ -321,6 +323,7 @@ export function BacklogProgramRowBlock({
         </button>
       )}
       {showPriorityDot && <span className="self-center"><PriorityDot priority={program.priority} /></span>}
+      </div>
     </div>
   )
 }

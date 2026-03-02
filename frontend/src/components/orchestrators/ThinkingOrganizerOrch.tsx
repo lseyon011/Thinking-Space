@@ -318,13 +318,13 @@ export default function ThinkingOrganizerOrch() {
         </p>
       </div>
 
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {THINKING_ORGANIZER_TABS.map((item) => (
           <Button
             key={item.id}
             variant={tab === item.id ? 'default' : 'ghost'}
             size="sm"
-            className="w-[7.5rem] justify-center"
+            className="h-8 shrink-0 justify-center px-3 text-xs min-w-[5.75rem] sm:min-w-[7.5rem]"
             onClick={() => setTab(item.id)}
           >
             {item.label}

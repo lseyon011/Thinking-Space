@@ -630,12 +630,12 @@ export default function NodeDetailPanelBlock({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-50 bg-background/60 backdrop-blur-sm"
+        className="fixed inset-0 z-[120] bg-background/60 backdrop-blur-sm"
         onClick={onClose}
       />
 
       {/* Panel */}
-      <div className="fixed inset-y-0 right-0 z-50 w-[min(96vw,58rem)] border-l border-border bg-background shadow-2xl animate-slide-in overflow-auto">
+      <div className="fixed inset-y-0 right-0 z-[121] w-[min(96vw,58rem)] overflow-auto border-l border-border bg-background pt-[max(env(safe-area-inset-top),3.5rem)] shadow-2xl animate-slide-in sm:pt-0">
         <div className="flex flex-col gap-5 p-5">
           {/* Header */}
           <div className="flex items-start justify-between gap-3">
