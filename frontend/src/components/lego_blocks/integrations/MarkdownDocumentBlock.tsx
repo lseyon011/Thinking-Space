@@ -950,7 +950,7 @@ function MarkdownTextDocumentRuntimeBlock({
 
           {showMeta && meta && (
             <div className={cn(
-              'space-y-2 border-b border-border/30 bg-muted/30 py-2.5 text-xs text-muted-foreground',
+              'max-h-[42vh] space-y-2 overflow-y-auto overscroll-contain border-b border-border/30 bg-muted/30 py-2.5 text-xs text-muted-foreground',
               isIosPhone ? 'px-3' : 'px-5',
             )}>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
