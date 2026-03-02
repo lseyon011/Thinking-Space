@@ -192,14 +192,14 @@ export default function ScrollableZoomSurfaceBlock({
           {children}
         </div>
       </div>
-      <div className="flex items-center justify-end gap-1.5 text-xs">
-        <span className="text-muted-foreground">{controlsLabel}</span>
+      <div className="flex w-full flex-wrap items-center justify-end gap-1.5 text-xs sm:flex-nowrap">
+        <span className="hidden text-muted-foreground sm:inline">{controlsLabel}</span>
         {showFitColumnsToWidthButton && (
           <Button
             type="button"
             variant={fitColumnsLocked ? 'default' : 'outline'}
             size="sm"
-            className="h-7 px-2"
+            className="h-6 px-1.5 text-[11px] sm:h-7 sm:px-2 sm:text-xs"
             onClick={toggleFitColumnsToWidth}
           >
             {fitColumnsToWidthLabel}
@@ -209,7 +209,7 @@ export default function ScrollableZoomSurfaceBlock({
           type="button"
           variant="outline"
           size="sm"
-          className="h-7 px-2"
+          className="h-6 px-1.5 text-[11px] sm:h-7 sm:px-2 sm:text-xs"
           onClick={fitToWidth}
         >
           {fitToWidthLabel}
@@ -218,7 +218,7 @@ export default function ScrollableZoomSurfaceBlock({
           type="button"
           variant="outline"
           size="sm"
-          className="h-7 px-2"
+          className="h-6 px-1.5 text-[11px] sm:h-7 sm:px-2 sm:text-xs"
           onClick={resetView}
           disabled={!canReset}
         >
@@ -228,7 +228,7 @@ export default function ScrollableZoomSurfaceBlock({
           type="button"
           variant="outline"
           size="icon"
-          className="h-7 w-7"
+          className="h-6 w-6 sm:h-7 sm:w-7"
           disabled={!canZoomOut}
           onClick={() => setZoom((current) => clampZoomBlock(Number((current - zoomStep).toFixed(2)), minZoom, maxZoom))}
           aria-label="Zoom out"
@@ -236,14 +236,14 @@ export default function ScrollableZoomSurfaceBlock({
         >
           <Minus className="h-3.5 w-3.5" />
         </Button>
-        <span className="min-w-[3rem] text-center font-medium tabular-nums text-muted-foreground">
+        <span className="min-w-[2.5rem] text-center font-medium tabular-nums text-muted-foreground sm:min-w-[3rem]">
           {zoomPercent}
         </span>
         <Button
           type="button"
           variant="outline"
           size="icon"
-          className="h-7 w-7"
+          className="h-6 w-6 sm:h-7 sm:w-7"
           disabled={!canZoomIn}
           onClick={() => setZoom((current) => clampZoomBlock(Number((current + zoomStep).toFixed(2)), minZoom, maxZoom))}
           aria-label="Zoom in"

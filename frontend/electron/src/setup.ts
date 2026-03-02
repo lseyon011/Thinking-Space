@@ -114,6 +114,23 @@ export class ElectronCapacitorApp {
     };
   }
 
+  /**
+   * Preserve rounded-corner window chrome by avoiding restored maximized/fullscreen states.
+   */
+  private enforceRoundedRectangleWindow(targetWindow: BrowserWindow): void {
+    if (targetWindow.isMaximized()) {
+      targetWindow.unmaximize();
+    }
+
+    if (targetWindow.isFullScreen()) {
+      targetWindow.setFullScreen(false);
+    }
+
+    if (process.platform === 'darwin' && targetWindow.isSimpleFullScreen()) {
+      targetWindow.setSimpleFullScreen(false);
+    }
+  }
+
   private normalizeInAppRoute(route?: string): string | null {
     const trimmed = route?.trim();
     if (!trimmed) return null;
@@ -215,6 +232,7 @@ export class ElectronCapacitorApp {
       },
     });
     winState.manage(newWindow);
+    this.enforceRoundedRectangleWindow(newWindow);
     this.attachNativeContextMenu(newWindow);
 
     if (this.CapacitorFileConfig.backgroundColor) {
@@ -280,6 +298,7 @@ export class ElectronCapacitorApp {
       },
     });
     this.mainWindowState.manage(mainWindow);
+    this.enforceRoundedRectangleWindow(mainWindow);
     this.windows = [mainWindow];
     this.attachNativeContextMenu(mainWindow);
 

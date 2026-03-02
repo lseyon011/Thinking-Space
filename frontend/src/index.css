@@ -306,6 +306,20 @@
     --ltm-shell-main-panel-radius: clamp(1.05rem, 4.2vw, 1.48rem);
   }
 
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] :is(
+    .ltm-page-shell,
+    .ltm-shell-narrow,
+    .ltm-shell-medium,
+    .ltm-shell-wide,
+    .ltm-shell-xwide,
+    .ltm-shell-ultra,
+    .ltm-shell-mega,
+    .container
+  ) {
+    width: 100%;
+    max-width: 100% !important;
+  }
+
   .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-shell-content-stage {
     border-radius: clamp(0.85rem, 2.8vw, 1.08rem);
   }

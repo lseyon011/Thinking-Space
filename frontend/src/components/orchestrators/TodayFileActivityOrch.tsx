@@ -60,8 +60,8 @@ export default function TodayFileActivityOrch() {
   }, [data])
 
   return (
-    <div className="space-y-4">
-      <Card>
+    <div className="min-w-0 w-full space-y-4 overflow-x-hidden">
+      <Card className="min-w-0 w-full">
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Day Summary</CardTitle>
           <div className="text-sm text-muted-foreground">
@@ -72,7 +72,7 @@ export default function TodayFileActivityOrch() {
           {error && (
             <div className="text-sm text-destructive">{error}</div>
           )}
-          <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
+          <div className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-4">
             <MetricBlock label="Total files" value={total} />
             <MetricBlock label="Created" value={data?.created_count ?? 0} className="text-emerald-600" />
             <MetricBlock label="Modified" value={data?.modified_count ?? 0} className="text-blue-600" />
@@ -82,9 +82,9 @@ export default function TodayFileActivityOrch() {
       </Card>
 
       {loading && (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid min-w-0 gap-4 md:grid-cols-2">
           {Array.from({ length: 2 }).map((_, i) => (
-            <Card key={i}>
+            <Card key={i} className="min-w-0 w-full">
               <CardContent className="pt-5 space-y-2">
                 <div className="h-5 w-28 animate-pulse rounded bg-muted/40" />
                 <div className="h-4 w-full animate-pulse rounded bg-muted/30" />
@@ -96,9 +96,9 @@ export default function TodayFileActivityOrch() {
       )}
 
       {!loading && data && sections.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid min-w-0 gap-4 md:grid-cols-2">
           {sections.map(section => (
-            <Card key={section.name}>
+            <Card key={section.name} className="min-w-0 w-full">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold">{section.name}</CardTitle>
               </CardHeader>
@@ -108,10 +108,10 @@ export default function TodayFileActivityOrch() {
                     <div className="text-xs font-medium text-muted-foreground mb-1">Created</div>
                     <div className="space-y-0.5 text-sm">
                       {section.created.map(f => (
-                        <div key={`c:${f.path}`} className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 min-w-0">
+                        <div key={`c:${f.path}`} className="flex min-w-0 items-center justify-between gap-2">
+                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
                             <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                            <ClickablePath path={f.path} className="truncate text-foreground/80">
+                            <ClickablePath path={f.path} className="block min-w-0 flex-1 truncate text-foreground/80">
                               {fileName(f.path)}
                             </ClickablePath>
                           </div>
@@ -128,10 +128,10 @@ export default function TodayFileActivityOrch() {
                     <div className="text-xs font-medium text-muted-foreground mb-1">Modified</div>
                     <div className="space-y-0.5 text-sm">
                       {section.modified.map(f => (
-                        <div key={`m:${f.path}`} className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 min-w-0">
+                        <div key={`m:${f.path}`} className="flex min-w-0 items-center justify-between gap-2">
+                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
                             <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
-                            <ClickablePath path={f.path} className="truncate text-foreground/80">
+                            <ClickablePath path={f.path} className="block min-w-0 flex-1 truncate text-foreground/80">
                               {fileName(f.path)}
                             </ClickablePath>
                           </div>

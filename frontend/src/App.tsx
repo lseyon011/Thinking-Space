@@ -312,7 +312,7 @@ function App() {
   const [syncPanelOpen, setSyncPanelOpen] = useState(false)
   const [syncActionRunning, setSyncActionRunning] = useState<'sync' | 'rebuild' | null>(null)
   const [gitActionRunning, setGitActionRunning] = useState<'commit' | 'push' | null>(null)
-  const [syncToolsWidth, setSyncToolsWidth] = useState(168)
+  const [syncToolsWidth, setSyncToolsWidth] = useState(96)
   const [topChromeMenuWidth, setTopChromeMenuWidth] = useState(0)
   const [syncPanelAnchor, setSyncPanelAnchor] = useState<SyncPanelAnchor>({ top: 52, right: 12 })
   const [lastSyncedAt, setLastSyncedAt] = useState(() => getLastSyncTimestamp())
@@ -438,13 +438,17 @@ function App() {
   const forceCompactNavForIosKeyboard = layout.surface === 'capacitor-ios' && keyboardVisible
   const compactNav = shell.compactNav || forceCompactNavForIosKeyboard
   const showBottomNav = false
+  const phoneMode = layout.mode === 'phone'
+  const iPhoneMode = layout.surface === 'capacitor-ios' && phoneMode
   const isCapacitorSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
   const showCapacitorTopChromeMenu = compactNav && !drawerOpen && isCapacitorSurface
-  const topChromeSideWidth = Math.max(
-    120,
-    syncToolsWidth,
-    showCapacitorTopChromeMenu ? topChromeMenuWidth : 0,
-  )
+  const topChromeLeftWidth = showCapacitorTopChromeMenu
+    ? Math.max(phoneMode ? 42 : 96, topChromeMenuWidth)
+    : 0
+  const topChromeRightWidth = Math.max(phoneMode ? 86 : 120, syncToolsWidth)
+  const topChromeBalancedWidth = Math.max(120, topChromeLeftWidth, topChromeRightWidth)
+  const topChromePaddingLeft = phoneMode ? topChromeLeftWidth : topChromeBalancedWidth
+  const topChromePaddingRight = phoneMode ? topChromeRightWidth : topChromeBalancedWidth
   const topInset = shell.topInset
   const rightInset = shell.rightInset
   const bottomInset = shell.bottomInset
@@ -1210,19 +1214,23 @@ function App() {
         <section className="ltm-shell-main-stage">
           <header className="ltm-shell-top-chrome ltm-shell-motion-chrome relative">
             <div
-              className="absolute left-0 top-0 z-20 flex h-full items-center justify-start pl-0.5 [-webkit-app-region:no-drag]"
-              style={{ width: `${topChromeSideWidth}px` }}
+              className={`absolute left-0 top-0 z-20 flex h-full items-center justify-start [-webkit-app-region:no-drag] ${
+                iPhoneMode ? 'pl-2' : 'pl-0.5'
+              }`}
+              style={{ width: `${phoneMode ? topChromeLeftWidth : topChromeBalancedWidth}px` }}
             >
               {showCapacitorTopChromeMenu && (
                 <div ref={topChromeMenuRef} className="inline-flex">
                   <button
                     type="button"
                     onClick={() => setDrawerOpen(true)}
-                    className="ltm-mobile-drawer-trigger ltm-motion-fast ltm-shell-field-surface inline-flex h-8 min-w-[5.5rem] shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-[10px] font-semibold uppercase tracking-[0.13em] text-foreground shadow-sm"
+                    className={`ltm-mobile-drawer-trigger ltm-motion-fast ltm-shell-field-surface inline-flex h-8 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold uppercase tracking-[0.13em] text-foreground shadow-sm ${
+                      phoneMode ? 'w-8 px-0' : 'min-w-[5.5rem] gap-1.5 px-3'
+                    }`}
                     aria-label="Open navigation"
                   >
                     <Menu className="h-3 w-3" />
-                    <span>Menu</span>
+                    {!phoneMode && <span>Menu</span>}
                   </button>
                 </div>
               )}
@@ -1231,8 +1239,8 @@ function App() {
             <div
               className="min-w-0 w-full"
               style={{
-                paddingLeft: `${topChromeSideWidth}px`,
-                paddingRight: `${topChromeSideWidth}px`,
+                paddingLeft: `${topChromePaddingLeft}px`,
+                paddingRight: `${topChromePaddingRight}px`,
               }}
             >
               <AppTabsBlock
@@ -1246,36 +1254,41 @@ function App() {
             </div>
 
             <div
-              ref={syncToolsRef}
               className="absolute right-1 top-0 z-20 flex h-full items-center justify-end gap-2 [-webkit-app-region:no-drag]"
-              style={{ width: `${topChromeSideWidth}px` }}
+              style={{ width: `${phoneMode ? topChromeRightWidth : topChromeBalancedWidth}px` }}
             >
-              <button
-                type="button"
-                onClick={handleGlobalRefresh}
-                disabled={refreshRunning || needsVaultSetup}
-                className="ltm-motion-fast inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-border/60 bg-background/85 px-3 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                aria-label="Refresh current workspace"
-                title="Refresh current workspace"
-              >
-                {refreshRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                <span className="hidden lg:inline">Refresh</span>
-              </button>
+              <div ref={syncToolsRef} className="inline-flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleGlobalRefresh}
+                  disabled={refreshRunning || needsVaultSetup}
+                  className={`ltm-motion-fast inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-border/60 bg-background/85 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 ${
+                    phoneMode ? 'w-8 px-0' : 'px-3'
+                  }`}
+                  aria-label="Refresh current workspace"
+                  title="Refresh current workspace"
+                >
+                  {refreshRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  {!phoneMode && <span className="hidden lg:inline">Refresh</span>}
+                </button>
 
-              <button
-                type="button"
-                ref={syncToggleButtonRef}
-                onClick={() => {
-                  updateSyncPanelAnchor()
-                  setSyncPanelOpen(prev => !prev)
-                }}
-                className="ltm-motion-fast inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-border/60 bg-background/85 px-3 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-                aria-label="Toggle sync tools"
-                title="Toggle sync tools"
-              >
-                <span className="hidden lg:inline">Sync Tools</span>
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${syncPanelOpen ? 'rotate-180' : ''}`} />
-              </button>
+                <button
+                  type="button"
+                  ref={syncToggleButtonRef}
+                  onClick={() => {
+                    updateSyncPanelAnchor()
+                    setSyncPanelOpen(prev => !prev)
+                  }}
+                  className={`ltm-motion-fast inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-border/60 bg-background/85 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground ${
+                    phoneMode ? 'w-8 px-0' : 'px-3'
+                  }`}
+                  aria-label="Toggle sync tools"
+                  title="Toggle sync tools"
+                >
+                  {!phoneMode && <span className="hidden lg:inline">Sync Tools</span>}
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${syncPanelOpen ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
             </div>
           </header>
           <div className="ltm-shell-body-stage">
@@ -1404,7 +1417,7 @@ function App() {
                     to="/"
                     title={sidebarCollapsed ? 'Home' : undefined}
                     aria-label="Home"
-                    className={`ltm-shell-logo ltm-shell-field-surface ltm-motion-fast mt-2 inline-flex items-center rounded-lg ${
+                    className={`ltm-shell-logo ltm-motion-fast mt-2 inline-flex items-center rounded-lg ${
                       sidebarCollapsed
                         ? 'h-10 w-full justify-center'
                         : 'gap-2 px-2.5 py-2 text-sm font-semibold tracking-tight'
@@ -1413,7 +1426,7 @@ function App() {
                     <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full">
                       <AppBrandGlyph className="h-full w-full" />
                     </span>
-                    {!sidebarCollapsed && <span>Think Space</span>}
+                    {!sidebarCollapsed && <span>Home</span>}
                   </Link>
                 </div>
                 </div>
@@ -1505,7 +1518,7 @@ function App() {
                 <span className="inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full">
                   <AppBrandGlyph />
                 </span>
-                Think Space
+                Home
               </Link>
               <button
                 type="button"
