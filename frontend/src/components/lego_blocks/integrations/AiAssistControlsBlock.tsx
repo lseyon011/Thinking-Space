@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import type { AiAssistAction } from '@/services/orchestrators/aiAssistOrch'
 
@@ -15,6 +16,7 @@ interface AiAssistControlsBlockProps {
   loading?: boolean
   disabled?: boolean
   onRun: (action: AiAssistAction) => void
+  onRunCustomPrompt: (prompt: string) => void
   helperText?: string
 }
 
@@ -25,10 +27,13 @@ export default function AiAssistControlsBlock({
   loading = false,
   disabled = false,
   onRun,
+  onRunCustomPrompt,
   helperText = 'Preview-first only. Suggestions never auto-save until you explicitly apply and save.',
 }: AiAssistControlsBlockProps) {
+  const [customPrompt, setCustomPrompt] = useState('')
   const unavailable = !selectedProvider || !selectedModel
   const actionDisabled = disabled || loading || unavailable || !!runningAction
+  const canRunPrompt = !actionDisabled && customPrompt.trim().length > 0
 
   return (
     <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
@@ -58,6 +63,29 @@ export default function AiAssistControlsBlock({
             {runningAction === item.action ? `${item.label}...` : item.label}
           </button>
         ))}
+      </div>
+      <div className="mt-2 space-y-2">
+        <label className="text-xs font-medium text-muted-foreground">
+          Prompt
+        </label>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <textarea
+            value={customPrompt}
+            onChange={(event) => setCustomPrompt(event.target.value)}
+            rows={2}
+            placeholder="Ask AI what to change in this note. Example: tighten this into crisp action items."
+            className="w-full rounded-md border border-border/60 bg-background px-2.5 py-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
+            disabled={actionDisabled}
+          />
+          <button
+            type="button"
+            onClick={() => onRunCustomPrompt(customPrompt.trim())}
+            disabled={!canRunPrompt}
+            className="rounded-lg border border-border bg-background px-2.5 py-2 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {runningAction === 'custom' ? 'Applying...' : 'Apply Prompt'}
+          </button>
+        </div>
       </div>
       <div className="mt-2 text-xs text-muted-foreground">
         {helperText}

@@ -167,7 +167,10 @@ export default function AiStewardPanelBlock({
 
   return (
     <div className={cn('space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3', className)}>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          AI Steward
+        </div>
         <button
           type="button"
           onClick={() => { void generateProposal() }}
@@ -178,9 +181,9 @@ export default function AiStewardPanelBlock({
           <Sparkles className="h-3.5 w-3.5" />
           {loading ? 'Generating...' : 'Purpose for This File'}
         </button>
-        <span className="text-xs text-muted-foreground">
-          Uses steward metadata generation to create a proposal.
-        </span>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        Steward generates metadata proposal for the file based on its understanding.
       </div>
 
       {message && (

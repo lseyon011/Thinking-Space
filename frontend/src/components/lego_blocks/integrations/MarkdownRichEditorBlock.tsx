@@ -563,6 +563,15 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
             loading={aiSelectionLoading}
             disabled={aiAssistDisabled}
             onRun={(action) => { void runAssistAction(action, value) }}
+            onRunCustomPrompt={(prompt) => {
+              void (async () => {
+                const result = await runAssistAction('custom', value, prompt)
+                if (!result || !result.changed) return
+                applyAssistSuggestion((next) => {
+                  onChange(next)
+                })
+              })()
+            }}
             helperText={aiAssistHelperText}
           />
 

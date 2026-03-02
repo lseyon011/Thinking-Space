@@ -4,7 +4,7 @@ import { resolveAiSelectionOrch } from './aiSettingsOrch'
 import { sendChatWithTelemetryOrch } from './chatOrch'
 import type { AiTelemetryEvent } from './aiTelemetryOrch'
 
-export type AiAssistAction = 'grammar' | 'clarity' | 'structure' | 'tone'
+export type AiAssistAction = 'grammar' | 'clarity' | 'structure' | 'tone' | 'custom'
 
 export interface RunAiAssistInput {
   provider?: AiProvider
@@ -13,6 +13,7 @@ export interface RunAiAssistInput {
   useCase?: string
   action: AiAssistAction
   content: string
+  customPrompt?: string
 }
 
 export interface RunAiAssistResult {
@@ -31,7 +32,7 @@ export interface RunAiAssistResult {
   telemetry?: AiTelemetryEvent
 }
 
-const ACTION_GUIDANCE: Record<AiAssistAction, string> = {
+const ACTION_GUIDANCE: Record<Exclude<AiAssistAction, 'custom'>, string> = {
   grammar: 'Fix grammar, spelling, punctuation, and small usage issues without changing meaning.',
   clarity: 'Improve clarity and readability with minimal edits while preserving intent.',
   structure: 'Improve flow and structure using existing markdown style while keeping meaning intact.',
@@ -53,10 +54,19 @@ function stripMarkdownCodeFence(content: string): string {
   return fenced ? fenced[1] : content
 }
 
-function buildAssistPrompt(action: AiAssistAction, body: string): string {
+function buildAssistPrompt(action: AiAssistAction, body: string, customPrompt?: string): string {
+  const normalizedCustomPrompt = (customPrompt ?? '').trim()
+  const taskLine = action === 'custom'
+    ? normalizedCustomPrompt
+    : ACTION_GUIDANCE[action]
+
+  if (!taskLine) {
+    throw new Error('Add a prompt before running custom AI assist.')
+  }
+
   return [
     'You are a writing assistant for markdown notes.',
-    `Task: ${ACTION_GUIDANCE[action]}`,
+    `Task: ${taskLine}`,
     'Rules:',
     '- Return only the revised markdown body text.',
     '- Do not include explanations, labels, or code fences.',
@@ -72,7 +82,7 @@ function buildAssistPrompt(action: AiAssistAction, body: string): string {
 export async function runAiAssistOrch(input: RunAiAssistInput): Promise<RunAiAssistResult> {
   const source = input.content.replace(/\r\n/g, '\n')
   const { frontmatter, body } = splitFrontmatter(source)
-  const prompt = buildAssistPrompt(input.action, body)
+  const prompt = buildAssistPrompt(input.action, body, input.customPrompt)
   const selection = await resolveAiSelectionOrch({
     provider: input.provider ?? null,
     model: input.model ?? null,
@@ -90,6 +100,7 @@ export async function runAiAssistOrch(input: RunAiAssistInput): Promise<RunAiAss
       useCase: input.useCase || 'markdown.assist',
       metadata: {
         action: input.action,
+        custom_prompt: input.action === 'custom' ? (input.customPrompt ?? '').trim() : null,
         scope: input.scope || null,
       },
     },

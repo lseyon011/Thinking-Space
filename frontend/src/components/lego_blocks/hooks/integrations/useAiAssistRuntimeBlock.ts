@@ -11,7 +11,7 @@ export interface AiAssistRuntimeBlockState {
   assistRunningAction: AiAssistAction | null
   assistError: string | null
   assistSuggestion: RunAiAssistResult | null
-  runAssistAction: (action: AiAssistAction, content: string) => Promise<RunAiAssistResult | null>
+  runAssistAction: (action: AiAssistAction, content: string, customPrompt?: string) => Promise<RunAiAssistResult | null>
   applyAssistSuggestion: (onApply: (nextContent: string) => void) => boolean
   dismissAssistSuggestion: () => void
   clearAssistState: () => void
@@ -60,10 +60,15 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     }
   }, [syncSelection])
 
-  const runAssistAction = useCallback(async (action: AiAssistAction, content: string) => {
+  const runAssistAction = useCallback(async (action: AiAssistAction, content: string, customPrompt?: string) => {
     if (assistRunningAction) return null
     if (!content.trim()) {
       setAssistError('Add some text before running AI assist.')
+      setAssistSuggestion(null)
+      return null
+    }
+    if (action === 'custom' && !(customPrompt ?? '').trim()) {
+      setAssistError('Add a prompt before running AI assist.')
       setAssistSuggestion(null)
       return null
     }
@@ -84,6 +89,7 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
         useCase: options.useCase,
         action,
         content,
+        customPrompt,
       })
       if (!result.changed) {
         setAssistError(`No ${action} changes suggested.`)
