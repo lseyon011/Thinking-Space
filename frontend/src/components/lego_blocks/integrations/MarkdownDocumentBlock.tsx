@@ -10,7 +10,7 @@ import {
 } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X, FileText, ExternalLink, Pencil, Save, RotateCcw, RotateCw, Eye, EyeOff } from 'lucide-react'
+import { X, FileText, ExternalLink, Pencil, Save, Eye, EyeOff } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -34,7 +34,7 @@ import ExcalidrawDocumentBlock from '@/components/lego_blocks/integrations/Excal
 import TableDocumentBlock from '@/components/lego_blocks/integrations/TableDocumentBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/MarkdownMiniNavBlock'
-import MarkdownRichEditorBlock, { type MarkdownRichEditorBlockHandle } from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
+import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
 import { cn } from '@/lib/utils'
 import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/integrations/markdownUrlTransformBlock'
@@ -107,6 +107,7 @@ function MarkdownTextDocumentRuntimeBlock({
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [autoSaving, setAutoSaving] = useState(false)
+  const [manualSaveFeedbackVisible, setManualSaveFeedbackVisible] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [navigationError, setNavigationError] = useState<string | null>(null)
   const [conflict, setConflict] = useState<MarkdownDocumentConflictError | null>(null)
@@ -125,7 +126,7 @@ function MarkdownTextDocumentRuntimeBlock({
   const isExcalidrawDoc = /\.(excalidraw|excalidraw\.md)$/i.test(path)
   const chromeContainerRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
-  const markdownEditorRef = useRef<MarkdownRichEditorBlockHandle | null>(null)
+  const manualSaveFeedbackTimeoutRef = useRef<number | null>(null)
   const excalidrawSceneRef = useRef<ParsedExcalidrawScene | null>(null)
   const excalidrawApiRef = useRef<ExcalidrawCanvasApiOrch | null>(null)
   const ignoreInitialExcalidrawChangeRef = useRef(true)
@@ -184,6 +185,25 @@ function MarkdownTextDocumentRuntimeBlock({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [excalidrawImmersive])
 
+  const triggerManualSaveFeedback = useCallback(() => {
+    if (manualSaveFeedbackTimeoutRef.current !== null) {
+      window.clearTimeout(manualSaveFeedbackTimeoutRef.current)
+    }
+    setManualSaveFeedbackVisible(true)
+    manualSaveFeedbackTimeoutRef.current = window.setTimeout(() => {
+      setManualSaveFeedbackVisible(false)
+      manualSaveFeedbackTimeoutRef.current = null
+    }, 1600)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (manualSaveFeedbackTimeoutRef.current !== null) {
+        window.clearTimeout(manualSaveFeedbackTimeoutRef.current)
+      }
+    }
+  }, [])
+
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const obsidianUrl = buildObsidianOpenUrlOrch(path)
@@ -193,6 +213,11 @@ function MarkdownTextDocumentRuntimeBlock({
   const hideTopBarInView = !isEditing && topBarHiddenInViewMode
   const hasTextChanges = isEditing && content !== null && draft !== content
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
+  const saveButtonLabel = saving ? 'Saving...' : manualSaveFeedbackVisible ? 'Saved' : 'Save'
+  const saveButtonClassName = cn(
+    'inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50',
+    manualSaveFeedbackVisible && !saving ? 'bg-emerald-600 text-white' : 'bg-primary text-primary-foreground',
+  )
   const shouldPadViewerContent = !isEditing && !isExcalidrawDoc
   const showMiniNavRail = layout.mode === 'desktop' && !layout.isCapacitorNative
   const displayContent = useMemo(
@@ -377,6 +402,11 @@ function MarkdownTextDocumentRuntimeBlock({
       return <p {...props}>{children}</p>
     },
   }), [openLinkedPath, path])
+
+  useEffect(() => {
+    if (!hasChanges || !manualSaveFeedbackVisible) return
+    setManualSaveFeedbackVisible(false)
+  }, [hasChanges, manualSaveFeedbackVisible])
 
   useEffect(() => {
     if (content === null) {
@@ -607,12 +637,14 @@ function MarkdownTextDocumentRuntimeBlock({
     if (baseMtime === null) return
     if (!isExcalidrawDoc) {
       setSaving(true)
-      await saveMarkdownDraft('manual')
+      const didSave = await saveMarkdownDraft('manual')
       setSaving(false)
+      if (didSave) triggerManualSaveFeedback()
       return
     }
     if (!hasChanges) return
 
+    let didSave = false
     setSaving(true)
     setSaveError(null)
     setConflict(null)
@@ -656,6 +688,7 @@ function MarkdownTextDocumentRuntimeBlock({
       excalidrawSceneRef.current = null
       ignoreInitialExcalidrawChangeRef.current = true
       onSaved?.(result)
+      didSave = true
     } catch (err) {
       if (err instanceof MarkdownDocumentConflictError) {
         setConflict(err)
@@ -666,6 +699,7 @@ function MarkdownTextDocumentRuntimeBlock({
     } finally {
       setSaving(false)
     }
+    if (didSave) triggerManualSaveFeedback()
   }
 
   useEffect(() => {
@@ -774,22 +808,6 @@ function MarkdownTextDocumentRuntimeBlock({
                   <>
                     <button
                       type="button"
-                      onClick={() => markdownEditorRef.current?.undo()}
-                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      title="Undo"
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => markdownEditorRef.current?.redo()}
-                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      title="Redo"
-                    >
-                      <RotateCw className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setAutoSaveEnabled(v => !v)}
                       className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
                       title="Toggle auto save"
@@ -807,10 +825,10 @@ function MarkdownTextDocumentRuntimeBlock({
                       type="button"
                       onClick={() => { void handleSave() }}
                       disabled={saving || baseMtime === null}
-                      className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                      className={saveButtonClassName}
                     >
                       <Save className="h-3.5 w-3.5" />
-                      {saving ? 'Saving...' : 'Save'}
+                      {saveButtonLabel}
                     </button>
                   </>
                 )}
@@ -838,20 +856,21 @@ function MarkdownTextDocumentRuntimeBlock({
                       type="button"
                       onClick={() => { void handleSave() }}
                       disabled={!hasChanges || saving || baseMtime === null}
-                      className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                      className={saveButtonClassName}
                     >
                       <Save className="h-3.5 w-3.5" />
-                      {saving ? 'Saving...' : 'Save'}
+                      {saveButtonLabel}
                     </button>
                   </>
                 )}
 
                 <a
                   href={obsidianUrl}
-                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  title="Open in Obsidian"
+                  className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  title="Open file in Obsidian"
                 >
-                  <ExternalLink className="h-4 w-4" />
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Obsidian</span>
                 </a>
 
                 {showCloseButton && onClose && (
@@ -1051,9 +1070,12 @@ function MarkdownTextDocumentRuntimeBlock({
                   type="button"
                   onClick={() => { void handleSave() }}
                   disabled={!hasChanges || saving || baseMtime === null}
-                  className="rounded-md bg-primary px-2.5 py-1 text-xs text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  className={cn(
+                    'rounded-md px-2.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50',
+                    manualSaveFeedbackVisible && !saving ? 'bg-emerald-600 text-white' : 'bg-primary text-primary-foreground',
+                  )}
                 >
-                  {saving ? 'Saving...' : 'Save'}
+                  {saveButtonLabel}
                 </button>
               </div>
             </div>
@@ -1075,7 +1097,6 @@ function MarkdownTextDocumentRuntimeBlock({
           <div className={cn('space-y-4', isIosPhone && 'px-3 pb-[calc(var(--ltm-safe-bottom,0px)+0.4rem)]')}>
             <div data-ltm-edge-swipe-ignore="true">
               <MarkdownRichEditorBlock
-                ref={markdownEditorRef}
                 value={displayDraft}
                 currentPath={path}
                 compactMobile={isIosPhone}
