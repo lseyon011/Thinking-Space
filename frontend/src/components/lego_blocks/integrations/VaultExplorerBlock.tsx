@@ -6,7 +6,6 @@ import {
   Folder,
   FolderOpen,
   Loader2,
-  Plus,
 } from 'lucide-react'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import {
@@ -152,10 +151,6 @@ export default function VaultExplorerBlock({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [pendingRename, setPendingRename] = useState<PendingRenameState | null>(null)
   const [inlineRename, setInlineRename] = useState<InlineRenameState | null>(null)
-  const iPhoneHandset = useMemo(
-    () => typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent || ''),
-    [],
-  )
   const contextMenuRef = useRef<HTMLDivElement | null>(null)
   const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
   const renameInputRef = useRef<HTMLInputElement | null>(null)
@@ -944,43 +939,6 @@ export default function VaultExplorerBlock({
           />
         </div>
       </div>
-
-      {iPhoneHandset && (onCreateFile || onCreateFolder) && (
-        <div className="flex items-center gap-2 px-3 pb-2">
-          {onCreateFile && (
-            <button
-              type="button"
-              className="ltm-touch-target inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2 text-xs font-medium text-foreground"
-              onClick={() => {
-                const parentPath = selectedFolderPath ?? (selectedFilePath ? getParentPath(selectedFilePath) : '')
-                void runContextAction(() => onCreateFile(parentPath), {
-                  refreshPath: parentPath,
-                  armRenameOnEnterKind: 'file',
-                })
-              }}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              New Note
-            </button>
-          )}
-          {onCreateFolder && (
-            <button
-              type="button"
-              className="ltm-touch-target inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2 text-xs font-medium text-foreground"
-              onClick={() => {
-                const parentPath = selectedFolderPath ?? (selectedFilePath ? getParentPath(selectedFilePath) : '')
-                void runContextAction(() => onCreateFolder(parentPath), {
-                  refreshPath: parentPath,
-                  armRenameOnEnterKind: 'folder',
-                })
-              }}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              New Folder
-            </button>
-          )}
-        </div>
-      )}
 
       <div
         className={cn(
