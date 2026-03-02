@@ -35,6 +35,21 @@ export interface VaultStat {
   isDirectory?: boolean
 }
 
+function isAlreadyExistsFilesystemErrorBlock(error: unknown): boolean {
+  const maybeRecord = typeof error === 'object' && error !== null ? error as Record<string, unknown> : null
+  const code = typeof maybeRecord?.code === 'string' ? maybeRecord.code : ''
+  const message = error instanceof Error
+    ? error.message
+    : typeof maybeRecord?.message === 'string'
+      ? maybeRecord.message
+      : String(error)
+  const normalized = message.toLowerCase()
+  return code === 'OS-PLUG-FILE-0010'
+    || normalized.includes('already exists')
+    || normalized.includes('cannot be overwritten')
+    || normalized.includes('eexist')
+}
+
 // ── Electron API type declaration ──
 
 interface ElectronAPI {
@@ -585,7 +600,14 @@ class CapacitorVaultFS implements VaultFS {
   async mkdir(path: string): Promise<void> {
     const { Filesystem } = await import('@capacitor/filesystem')
     const opts = await this.fsOpts(path)
-    await Filesystem.mkdir({ ...opts, recursive: true })
+    const exists = await this.exists(path).catch(() => false)
+    if (exists) return
+    try {
+      await Filesystem.mkdir({ ...opts, recursive: true })
+    } catch (error) {
+      if (isAlreadyExistsFilesystemErrorBlock(error)) return
+      throw error
+    }
   }
 
   async process(path: string, fn: (data: string) => string): Promise<void> {
