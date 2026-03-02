@@ -4,15 +4,21 @@ import { runAiAssistOrch, type AiAssistAction, type RunAiAssistResult } from '@/
 import { resolveAiSelectionOrch } from '@/services/orchestrators/aiSettingsOrch'
 import type { AiSettingsScope } from '@/services/lego_blocks/integrations/aiSettingsBlock'
 
+export interface AiAssistResultPill {
+  tone: 'neutral' | 'success' | 'error'
+  text: string
+}
+
 export interface AiAssistRuntimeBlockState {
   aiSelectionLoading: boolean
   selectedProvider: AiProvider | null
   selectedModel: string | null
   assistRunningAction: AiAssistAction | null
   assistError: string | null
+  assistResultPill: AiAssistResultPill | null
   assistSuggestion: RunAiAssistResult | null
   runAssistAction: (action: AiAssistAction, content: string, customPrompt?: string) => Promise<RunAiAssistResult | null>
-  applyAssistSuggestion: (onApply: (nextContent: string) => void) => boolean
+  applyAssistSuggestion: (onApply: (nextContent: string) => void, overrideContent?: string) => boolean
   dismissAssistSuggestion: () => void
   clearAssistState: () => void
 }
@@ -34,6 +40,7 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
   const [assistRunningAction, setAssistRunningAction] = useState<AiAssistAction | null>(null)
   const [assistError, setAssistError] = useState<string | null>(null)
+  const [assistResultPill, setAssistResultPill] = useState<AiAssistResultPill | null>(null)
   const [assistSuggestion, setAssistSuggestion] = useState<RunAiAssistResult | null>(null)
 
   const syncSelection = useCallback(async () => {
@@ -64,17 +71,20 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     if (assistRunningAction) return null
     if (!content.trim()) {
       setAssistError('Add some text before running AI assist.')
+      setAssistResultPill({ tone: 'error', text: 'Add some text first' })
       setAssistSuggestion(null)
       return null
     }
     if (action === 'custom' && !(customPrompt ?? '').trim()) {
       setAssistError('Add a prompt before running AI assist.')
+      setAssistResultPill({ tone: 'error', text: 'Prompt is required' })
       setAssistSuggestion(null)
       return null
     }
 
     setAssistRunningAction(action)
     setAssistError(null)
+    setAssistResultPill(null)
     setAssistSuggestion(null)
 
     try {
@@ -92,24 +102,29 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
         customPrompt,
       })
       if (!result.changed) {
-        setAssistError(`No ${action} changes suggested.`)
+        setAssistError(null)
+        setAssistResultPill({ tone: 'neutral', text: `No ${action} changes suggested` })
         return null
       }
       setAssistSuggestion(result)
+      setAssistResultPill({ tone: 'success', text: `${action} suggestion ready` })
       return result
     } catch (err) {
-      setAssistError(errorMessage(err, 'AI assist failed'))
+      const nextError = errorMessage(err, 'AI assist failed')
+      setAssistError(nextError)
+      setAssistResultPill({ tone: 'error', text: 'AI assist failed' })
       return null
     } finally {
       setAssistRunningAction(null)
     }
   }, [assistRunningAction, options.scope, options.useCase, syncSelection])
 
-  const applyAssistSuggestion = useCallback((onApply: (nextContent: string) => void): boolean => {
+  const applyAssistSuggestion = useCallback((onApply: (nextContent: string) => void, overrideContent?: string): boolean => {
     if (!assistSuggestion) return false
-    onApply(assistSuggestion.suggestedContent)
+    onApply(overrideContent ?? assistSuggestion.suggestedContent)
     setAssistSuggestion(null)
     setAssistError(null)
+    setAssistResultPill({ tone: 'success', text: 'Applied inline' })
     return true
   }, [assistSuggestion])
 
@@ -121,7 +136,18 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     setAssistError(null)
     setAssistSuggestion(null)
     setAssistRunningAction(null)
+    setAssistResultPill(null)
   }, [])
+
+  useEffect(() => {
+    if (!assistResultPill) return
+    const timeoutId = window.setTimeout(() => {
+      setAssistResultPill(null)
+    }, 3200)
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [assistResultPill])
 
   return {
     aiSelectionLoading,
@@ -129,6 +155,7 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     selectedModel,
     assistRunningAction,
     assistError,
+    assistResultPill,
     assistSuggestion,
     runAssistAction,
     applyAssistSuggestion,

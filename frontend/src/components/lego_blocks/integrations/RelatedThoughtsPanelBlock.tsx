@@ -11,6 +11,7 @@ interface RelatedThoughtsPanelBlockProps {
   minChars?: number
   className?: string
   onOpenPath?: (path: string) => void
+  onOpenPathInNewTab?: (path: string) => void
 }
 
 export default function RelatedThoughtsPanelBlock({
@@ -22,9 +23,17 @@ export default function RelatedThoughtsPanelBlock({
   minChars = 24,
   className,
   onOpenPath,
+  onOpenPathInNewTab,
 }: RelatedThoughtsPanelBlockProps) {
   const resolvedText = text.trim()
   const resolvedSourcePath = (sourceFilePath ?? '').trim()
+  const normalizePathForCompare = (candidate: string): string => (
+    candidate
+      .trim()
+      .replace(/\\/g, '/')
+      .replace(/^\.?\//, '')
+      .toLowerCase()
+  )
   const [matches, setMatches] = useState<SimilarityMatch[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -75,9 +84,9 @@ export default function RelatedThoughtsPanelBlock({
   }, [disabled, enabled, limit, minChars, resolvedSourcePath, resolvedText])
 
   return (
-    <div className={cn('space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3', className)}>
-      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        AI Suggested Related Thoughts
+    <div className={cn('space-y-2', className)}>
+      <div className="text-sm font-medium text-foreground">
+        AI suggested related thoughts
       </div>
       {loading && (
         <div className="text-xs text-muted-foreground">Finding related notes...</div>
@@ -91,9 +100,9 @@ export default function RelatedThoughtsPanelBlock({
         </div>
       )}
       {!loading && !error && matches.length > 0 && (
-        <div className="overflow-x-auto rounded-md border border-border/70 bg-background">
+        <div className="overflow-x-auto rounded-md border border-border/60 bg-background/80">
           <table className="w-full min-w-[640px] table-fixed text-left text-xs">
-            <thead className="border-b border-border/60 bg-muted/30 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            <thead className="border-b border-border/50 bg-muted/20 text-[11px] text-muted-foreground">
               <tr>
                 <th className="px-2.5 py-2 font-medium">Thought</th>
                 <th className="px-2.5 py-2 font-medium">Path</th>
@@ -103,37 +112,47 @@ export default function RelatedThoughtsPanelBlock({
               </tr>
             </thead>
             <tbody>
-              {matches.map((match) => (
-                <tr key={match.node.uuid} className="border-b border-border/40 last:border-b-0">
-                  <td className="px-2.5 py-2 align-top text-foreground">
+              {matches.map((match) => {
+                const isCurrentFile = Boolean(resolvedSourcePath)
+                  && normalizePathForCompare(match.node.filePath) === normalizePathForCompare(resolvedSourcePath)
+                const openDisabled = !onOpenPath || isCurrentFile
+                return (
+                  <tr key={match.node.uuid} className="border-b border-border/40 last:border-b-0">
+                    <td className="px-2.5 py-2 align-top text-foreground">
                     <div className="truncate font-medium" title={match.node.title}>{match.node.title}</div>
-                  </td>
-                  <td className="px-2.5 py-2 align-top text-muted-foreground">
+                    </td>
+                    <td className="px-2.5 py-2 align-top text-muted-foreground">
                     <div className="truncate" title={match.node.filePath}>{match.node.filePath}</div>
-                  </td>
-                  <td className="px-2.5 py-2 align-top text-muted-foreground">
+                    </td>
+                    <td className="px-2.5 py-2 align-top text-muted-foreground">
                     {Math.round(match.normalizedScore * 100)}%
-                  </td>
-                  <td className="px-2.5 py-2 align-top text-muted-foreground">
+                    </td>
+                    <td className="px-2.5 py-2 align-top text-muted-foreground">
                     <div className="line-clamp-2" title={match.reasons.join(', ') || 'lexical'}>
                       {match.reasons.join(', ') || 'lexical'}
                     </div>
-                  </td>
-                  <td className="px-2.5 py-2 align-top">
-                    <button
-                      type="button"
-                      className="rounded-md border border-border/70 px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => {
-                        if (!onOpenPath) return
-                        onOpenPath(match.node.filePath)
-                      }}
-                      disabled={!onOpenPath}
-                    >
-                      Open
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-2.5 py-2 align-top">
+                      <button
+                        type="button"
+                        className="rounded-md border border-border/70 px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={(event) => {
+                          if (openDisabled || !onOpenPath) return
+                          if ((event.metaKey || event.ctrlKey) && onOpenPathInNewTab) {
+                            onOpenPathInNewTab(match.node.filePath)
+                            return
+                          }
+                          onOpenPath(match.node.filePath)
+                        }}
+                        disabled={openDisabled}
+                        title={isCurrentFile ? 'Already open' : undefined}
+                      >
+                        {isCurrentFile ? 'Current file' : 'Open'}
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

@@ -26,6 +26,25 @@ describe('aiAssistDiffBlock', () => {
     expect(removed.rows.some(row => row.kind === 'removed')).toBe(true)
   })
 
+  it('does not mark downstream lines as changed after a single insertion', () => {
+    const result = buildAiAssistDiffBlock(
+      'line 1\nline 2\nline 3\nline 4',
+      'line 1\ninserted\nline 2\nline 3\nline 4',
+    )
+    expect(result.summary).toEqual({ changed: 0, added: 1, removed: 0, total: 1 })
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0]).toMatchObject({ lineNumber: 2, kind: 'added', after: 'inserted' })
+  })
+
+  it('keeps independent edits isolated to their own lines', () => {
+    const result = buildAiAssistDiffBlock(
+      'alpha\nbeta\ngamma\ndelta',
+      'alpha\nbeta updated\ngamma\ndelta updated',
+    )
+    expect(result.summary).toEqual({ changed: 2, added: 0, removed: 0, total: 2 })
+    expect(result.rows.map(row => row.lineNumber)).toEqual([2, 4])
+  })
+
   it('truncates diff rows when maxRows is hit', () => {
     const before = Array.from({ length: 20 }, (_, i) => `before-${i}`).join('\n')
     const after = Array.from({ length: 20 }, (_, i) => `after-${i}`).join('\n')

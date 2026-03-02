@@ -80,6 +80,16 @@ export default function AiStewardPanelBlock({
     setProposalEditMode(false)
   }, [resolvedFilePath, fileAvailable])
 
+  useEffect(() => {
+    if (!message) return
+    const timeoutId = window.setTimeout(() => {
+      setMessage(null)
+    }, 2800)
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [message])
+
   const generateProposal = useCallback(async () => {
     if (!resolvedFilePath || !fileAvailable) return
     setLoading(true)
@@ -166,16 +176,16 @@ export default function AiStewardPanelBlock({
   }
 
   return (
-    <div className={cn('space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3', className)}>
+    <div className={cn('space-y-2', className)}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        <div className="text-sm font-medium text-foreground">
           AI Steward
         </div>
         <button
           type="button"
           onClick={() => { void generateProposal() }}
           disabled={disabled || loading}
-          className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-border/70 bg-background px-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           title="Generate steward purpose metadata for this file"
         >
           <Sparkles className="h-3.5 w-3.5" />
@@ -187,7 +197,7 @@ export default function AiStewardPanelBlock({
       </div>
 
       {message && (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
+        <div className="inline-flex h-8 items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 text-xs text-emerald-700">
           {message}
         </div>
       )}

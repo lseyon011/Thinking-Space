@@ -208,16 +208,21 @@ function MarkdownTextDocumentRuntimeBlock({
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const obsidianUrl = buildObsidianOpenUrlOrch(path)
   const openLinkedPath = onOpenPath ?? onOpenPathForEdit
+  const openRelatedThoughtPath = onOpenPathForEdit ?? onOpenPath
+  const normalizePathForCompare = useCallback((candidate: string): string => (
+    candidate
+      .trim()
+      .replace(/\\/g, '/')
+      .replace(/^\.?\//, '')
+      .toLowerCase()
+  ), [])
 
   const isEditing = mode === 'edit'
   const hideTopBarInView = !isEditing && topBarHiddenInViewMode
   const hasTextChanges = isEditing && content !== null && draft !== content
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
   const saveButtonLabel = saving ? 'Saving...' : manualSaveFeedbackVisible ? 'Saved' : 'Save'
-  const saveButtonClassName = cn(
-    'inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50',
-    manualSaveFeedbackVisible && !saving ? 'bg-emerald-600 text-white' : 'bg-primary text-primary-foreground',
-  )
+  const saveButtonClassName = 'inline-flex items-center gap-1 rounded-lg border border-border/70 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50'
   const shouldPadViewerContent = !isEditing && !isExcalidrawDoc
   const showMiniNavRail = layout.mode === 'desktop' && !layout.isCapacitorNative
   const displayContent = useMemo(
@@ -1070,10 +1075,7 @@ function MarkdownTextDocumentRuntimeBlock({
                   type="button"
                   onClick={() => { void handleSave() }}
                   disabled={!hasChanges || saving || baseMtime === null}
-                  className={cn(
-                    'rounded-md px-2.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50',
-                    manualSaveFeedbackVisible && !saving ? 'bg-emerald-600 text-white' : 'bg-primary text-primary-foreground',
-                  )}
+                  className="rounded-md border border-border/70 px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saveButtonLabel}
                 </button>
@@ -1109,8 +1111,13 @@ function MarkdownTextDocumentRuntimeBlock({
                 aiAssistHelperText="Suggestions apply inline. Auto-save is enabled by default; use Save for immediate commit. Configure provider/model in AI Settings."
                 onAiStewardApplySuggestion={handleApplyStewardSuggestion}
                 onRelatedThoughtOpenPath={(relatedPath) => {
-                  if (!onOpenPathForEdit || relatedPath === path) return
-                  onOpenPathForEdit(relatedPath)
+                  if (!openRelatedThoughtPath) return
+                  if (normalizePathForCompare(relatedPath) === normalizePathForCompare(path)) return
+                  openRelatedThoughtPath(relatedPath)
+                }}
+                onRelatedThoughtOpenPathInNewTab={(relatedPath) => {
+                  if (normalizePathForCompare(relatedPath) === normalizePathForCompare(path)) return
+                  openFileInNewTabOrch(relatedPath)
                 }}
                 onChange={(next) => {
                   setDraft(`${draftFrontmatter}${next}`)

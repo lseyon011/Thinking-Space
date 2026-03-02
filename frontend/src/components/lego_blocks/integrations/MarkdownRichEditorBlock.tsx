@@ -74,6 +74,8 @@ interface MarkdownRichEditorBlockProps {
   relatedThoughtsMinChars?: number
   /** Called when user opens a related-thought result. */
   onRelatedThoughtOpenPath?: (path: string) => void
+  /** Called when user opens a related-thought result in a new app tab. */
+  onRelatedThoughtOpenPathInNewTab?: (path: string) => void
 }
 
 export interface MarkdownRichEditorBlockHandle {
@@ -192,6 +194,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   relatedThoughtsLimit = 6,
   relatedThoughtsMinChars = 24,
   onRelatedThoughtOpenPath,
+  onRelatedThoughtOpenPathInNewTab,
 }, ref) {
   const editorViewRef = useRef<EditorView | null>(null)
   const [toolbarOpen, setToolbarOpen] = useState(false)
@@ -206,6 +209,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     selectedModel,
     assistRunningAction,
     assistError,
+    assistResultPill,
     assistSuggestion,
     runAssistAction,
     applyAssistSuggestion,
@@ -535,27 +539,57 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       )}
 
       {enableAiAssist && aiPanelOpen && (
-        <div className="space-y-2 border-b border-border/30 bg-muted/10 p-2">
+        <div className="space-y-3 border-b border-border/30 bg-muted/[0.08] px-5 py-4 sm:px-6">
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/50 bg-background/70 px-2 py-2">
+            <span className="text-xs text-foreground">
+              {selectedProvider && selectedModel ? `${selectedProvider} / ${selectedModel}` : 'No AI provider'}
+            </span>
+            <span className={cn(
+              'text-xs',
+              assistRunningAction ? 'text-amber-700' : 'text-muted-foreground',
+            )}>
+              {assistRunningAction ? `Assist running: ${assistRunningAction}` : 'Assist idle'}
+            </span>
+            {assistResultPill && (
+              <span className={cn(
+                'inline-flex h-8 items-center rounded-md border px-2 text-xs',
+                assistResultPill.tone === 'success' && 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700',
+                assistResultPill.tone === 'error' && 'border-destructive/40 bg-destructive/10 text-destructive',
+                assistResultPill.tone === 'neutral' && 'border-border/60 bg-background text-muted-foreground',
+              )}>
+                {assistResultPill.text}
+              </span>
+            )}
+          </div>
+
           {aiStewardEnabled && (
-            <AiStewardPanelBlock
-              filePath={stewardFilePath}
-              disabled={aiAssistDisabled}
-              onApplySuggestion={onAiStewardApplySuggestion}
-            />
+            <>
+              <div className="h-px bg-border/50" />
+              <AiStewardPanelBlock
+                filePath={stewardFilePath}
+                disabled={aiAssistDisabled}
+                onApplySuggestion={onAiStewardApplySuggestion}
+              />
+            </>
           )}
 
           {relatedThoughtsEnabled && (
-            <RelatedThoughtsPanelBlock
-              text={value}
-              enabled={enableAiAssist && aiPanelOpen}
-              disabled={aiAssistDisabled}
-              sourceFilePath={relatedSourceFilePath || undefined}
-              limit={relatedThoughtsLimit}
-              minChars={relatedThoughtsMinChars}
-              onOpenPath={onRelatedThoughtOpenPath}
-            />
+            <>
+              <div className="h-px bg-border/50" />
+              <RelatedThoughtsPanelBlock
+                text={value}
+                enabled={enableAiAssist && aiPanelOpen}
+                disabled={aiAssistDisabled}
+                sourceFilePath={relatedSourceFilePath || undefined}
+                limit={relatedThoughtsLimit}
+                minChars={relatedThoughtsMinChars}
+                onOpenPath={onRelatedThoughtOpenPath}
+                onOpenPathInNewTab={onRelatedThoughtOpenPathInNewTab}
+              />
+            </>
           )}
 
+          <div className="h-px bg-border/50" />
           <AiAssistControlsBlock
             selectedProvider={selectedProvider}
             selectedModel={selectedModel}
@@ -572,16 +606,17 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
                 })
               })()
             }}
+            statusPill={assistResultPill}
             helperText={aiAssistHelperText}
           />
 
           {assistSuggestion && (
             <AiAssistReviewBlock
               suggestion={assistSuggestion}
-              onApply={() => {
+              onApply={(nextContent) => {
                 applyAssistSuggestion((next) => {
                   onChange(next)
-                })
+                }, nextContent)
               }}
               onDiscard={dismissAssistSuggestion}
             />
