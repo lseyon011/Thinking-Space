@@ -435,8 +435,8 @@ function TableDocumentBlock({
   }, [gridRows.length])
 
   return (
-    <div className={cn('flex h-full min-h-0 flex-col bg-card', className)}>
-      <div className="border-b border-border/50 px-5 py-4">
+    <div className={cn('flex h-full min-h-0 flex-col bg-card p-2', className)}>
+      <div className="border-b border-border/50 px-6 py-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">

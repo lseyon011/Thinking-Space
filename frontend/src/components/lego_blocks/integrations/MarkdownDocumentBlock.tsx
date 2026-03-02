@@ -746,7 +746,7 @@ function MarkdownTextDocumentRuntimeBlock({
 
   return (
     <div
-      className={cn('flex h-full min-h-0 flex-col bg-card', className)}
+      className={cn('flex h-full min-h-0 flex-col bg-card p-2', className)}
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
       <div className="relative min-h-0 flex-1">
@@ -772,7 +772,7 @@ function MarkdownTextDocumentRuntimeBlock({
           <div ref={chromeContainerRef} className={cn(hideTopBarInView && 'hidden')}>
             <div className={cn(
               'ts-md-header flex items-start justify-between gap-3 border-b border-border/50',
-              isIosPhone ? 'pl-4 pr-3 py-2.5' : 'pl-6 pr-5 py-4',
+              isIosPhone ? 'px-4 py-3.5' : 'px-6 py-5',
             )}>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -1177,8 +1177,8 @@ function PdfDocumentRuntimeBlock({
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
 
   return (
-    <div className={cn('flex h-full min-h-0 flex-col bg-card', className)}>
-      <div className="border-b border-border/50 px-5 py-4">
+    <div className={cn('flex h-full min-h-0 flex-col bg-card p-2', className)}>
+      <div className="border-b border-border/50 px-6 py-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
