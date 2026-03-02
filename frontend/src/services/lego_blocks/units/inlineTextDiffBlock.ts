@@ -91,13 +91,13 @@ export function buildInlineTextDiffSessionBlock(originalContent: string, suggest
     const addedBeforeStart = removedRun.length > 0
       ? (removedRun[removedRun.length - 1].beforeIndex + 1)
       : beforeStartFallback
-    for (let index = paired; index < addedRun.length; index += 1) {
+    if (paired < addedRun.length) {
       hunks.push({
         id: nextHunkId(),
         kind: 'added',
         beforeStart: addedBeforeStart,
         beforeLines: [],
-        afterLines: [addedRun[index].line],
+        afterLines: addedRun.slice(paired).map(op => op.line),
       })
     }
   }

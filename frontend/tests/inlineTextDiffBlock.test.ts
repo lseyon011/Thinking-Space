@@ -92,12 +92,13 @@ describe('inlineTextDiffBlock', () => {
     expect(rejectedAll.content).toBe(original)
   })
 
-  it('keeps insertion order for multiple added lines at the same anchor', () => {
+  it('keeps insertion order for grouped added lines at the same anchor', () => {
     const session = buildInlineTextDiffSessionBlock(
       'line 1\nline 2',
       'line 1\ninserted a\ninserted b\nline 2',
     )
-    expect(session.hunks.map(hunk => hunk.kind)).toEqual(['added', 'added'])
+    expect(session.hunks.map(hunk => hunk.kind)).toEqual(['added'])
+    expect(session.hunks[0].afterLines).toEqual(['inserted a', 'inserted b'])
 
     const accepted = renderInlineTextDiffBlock(
       session,
@@ -111,7 +112,7 @@ describe('inlineTextDiffBlock', () => {
       'line 1\nline 2\nline 3',
       'line one\nline 3\nline 4\nline 5',
     )
-    expect(session.hunks.map(hunk => hunk.kind)).toEqual(['changed', 'removed', 'added', 'added'])
+    expect(session.hunks.map(hunk => hunk.kind)).toEqual(['changed', 'removed', 'added'])
     const accepted = renderInlineTextDiffBlock(
       session,
       Object.fromEntries(session.hunks.map(hunk => [hunk.id, 'accepted' as const])),

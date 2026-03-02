@@ -343,8 +343,15 @@ class InlineDiffWidgetBlock extends WidgetType {
       const afterInput = document.createElement('textarea')
       afterInput.className = 'ts-ai-inline-diff-widget-after-input'
       afterInput.value = this.hunk.afterLines.join('\n')
-      afterInput.rows = Math.min(Math.max(this.hunk.afterLines.length || 1, 2), 8)
+      afterInput.rows = 1
       afterInput.placeholder = '(empty)'
+      const maxHeightPx = 448
+      const autoResizeAfterInput = () => {
+        afterInput.style.height = '0px'
+        const nextHeight = Math.min(afterInput.scrollHeight, maxHeightPx)
+        afterInput.style.height = `${nextHeight}px`
+        afterInput.style.overflowY = afterInput.scrollHeight > maxHeightPx ? 'auto' : 'hidden'
+      }
       const stopBubbling = (event: Event) => {
         event.stopPropagation()
       }
@@ -355,7 +362,9 @@ class InlineDiffWidgetBlock extends WidgetType {
         const nextValue = afterInput.value
         const nextAfterLines = nextValue.length === 0 ? [] : nextValue.split('\n')
         this.actions.onUpdateAfterLines(this.hunk.id, nextAfterLines)
+        autoResizeAfterInput()
       })
+      requestAnimationFrame(autoResizeAfterInput)
       preview.append(afterInput)
       root.append(preview)
     } else {
@@ -840,8 +849,10 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       },
       '.ts-ai-inline-diff-widget-after-input': {
         width: '100%',
-        resize: 'vertical',
+        resize: 'none',
         minHeight: '2.2rem',
+        maxHeight: '28rem',
+        overflowY: 'hidden',
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
         whiteSpace: 'pre-wrap',
         backgroundColor: 'hsl(142 76% 36% / 0.12)',
