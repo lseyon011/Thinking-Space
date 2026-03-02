@@ -591,12 +591,13 @@
   }
 
   .ltm-thinking-space-shell[data-ltm-explorer-open='true'] .ltm-thinking-space-document-stage {
+    margin-left: clamp(0.18rem, 0.42vw, 0.36rem);
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
   }
 
   .ltm-thinking-space-shell[data-ltm-explorer-open='true'] .ltm-thinking-space-explorer-surface {
-    border-right: 1px solid var(--ltm-shell-divider-soft);
+    border-right: 0;
   }
 
   .ltm-shell-drawer-surface {

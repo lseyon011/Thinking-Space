@@ -520,7 +520,7 @@ export default function ThinkingSpaceOrch() {
             onKeyDown={handleExplorerResizeKeyDown}
             className="ltm-thinking-space-explorer-resizer group relative hidden w-2 shrink-0 cursor-col-resize items-stretch md:flex"
           >
-            <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70 transition-colors group-hover:bg-primary/70 group-focus-visible:bg-primary/80" />
+            <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent" />
           </div>
         )}
 
