@@ -77,9 +77,11 @@ export default function ExecutionProgressBlock({
               className="w-full rounded-md border border-border/70 px-3 py-2 text-left transition-colors hover:bg-muted/30"
               onClick={() => onSelectTask(task)}
             >
-              <div className="text-sm font-medium text-foreground">{taskRowLabel(task)}</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">
-                Owner: {task.owner || 'unassigned'} • Updated: {formatTimestamp(task.updatedAt)}
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="text-sm font-medium text-foreground">{taskRowLabel(task)}</span>
+                <span className="text-xs text-muted-foreground">
+                  Owner: {task.owner || 'unassigned'} • Updated: {formatTimestamp(task.updatedAt)}
+                </span>
               </div>
             </button>
           ))}
