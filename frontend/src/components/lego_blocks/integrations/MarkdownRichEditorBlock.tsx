@@ -1,9 +1,9 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import { redo, undo } from '@codemirror/commands'
-import { type EditorState } from '@codemirror/state'
-import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
+import { EditorState, type Extension } from '@codemirror/state'
+import { Decoration, EditorView, WidgetType, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
 import { Bold, Code, Heading1, Italic, Link2, List, ListOrdered, PenLine, Quote, RotateCcw, RotateCw, Sparkles, Table } from 'lucide-react'
 import type { AiSettingsScope } from '@/services/lego_blocks/integrations/aiSettingsBlock'
 import AiAssistControlsBlock from '@/components/lego_blocks/integrations/AiAssistControlsBlock'
@@ -28,6 +28,13 @@ import {
   deriveWikilinkLabelBlock,
   type WikilinkSuggestionBlock,
 } from '@/services/lego_blocks/integrations/obsidianWikilinkBlock'
+import {
+  buildInlineTextDiffSessionBlock,
+  renderInlineTextDiffBlock,
+  type InlineTextDiffDecisionBlock,
+  type InlineTextDiffRenderedHunkBlock,
+  type InlineTextDiffSessionBlock,
+} from '@/services/lego_blocks/units/inlineTextDiffBlock'
 import { cn } from '@/lib/utils'
 
 interface MarkdownRichEditorBlockProps {
@@ -168,6 +175,128 @@ function getWikilinkCompletionQueryFromState(
 
 const TOOLBAR_BTN = 'rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground'
 
+interface InlineDiffWidgetActionsBlock {
+  onAccept: (hunkId: string) => void
+  onReject: (hunkId: string) => void
+  onReset: (hunkId: string) => void
+  onUpdateAfterLines: (hunkId: string, nextAfterLines: string[]) => void
+}
+
+function buildLineStartOffsetsBlock(content: string): number[] {
+  const offsets = [0]
+  for (let index = 0; index < content.length; index += 1) {
+    if (content[index] === '\n') offsets.push(index + 1)
+  }
+  return offsets
+}
+
+function lineStartFromOffsetsBlock(offsets: number[], line: number, fallback: number): number {
+  if (line <= 0) return 0
+  if (line >= offsets.length) return fallback
+  return offsets[line]
+}
+
+function hunkLabelBlock(hunk: InlineTextDiffRenderedHunkBlock): string {
+  if (hunk.kind === 'added') return 'Insert suggestion'
+  if (hunk.kind === 'removed') return 'Delete suggestion'
+  return 'Change suggestion'
+}
+
+class InlineDiffWidgetBlock extends WidgetType {
+  constructor(
+    private readonly hunk: InlineTextDiffRenderedHunkBlock,
+    private readonly actions: InlineDiffWidgetActionsBlock,
+  ) {
+    super()
+  }
+
+  eq(other: InlineDiffWidgetBlock): boolean {
+    return other.hunk.id === this.hunk.id
+      && other.hunk.decision === this.hunk.decision
+      && other.hunk.startLine === this.hunk.startLine
+      && other.hunk.endLine === this.hunk.endLine
+      && other.hunk.afterLines.join('\n') === this.hunk.afterLines.join('\n')
+  }
+
+  toDOM(): HTMLElement {
+    const root = document.createElement('div')
+    root.className = 'ts-ai-inline-diff-widget'
+
+    const heading = document.createElement('div')
+    heading.className = 'ts-ai-inline-diff-widget-heading'
+    heading.textContent = `${hunkLabelBlock(this.hunk)} • ${this.hunk.decision}`
+    root.append(heading)
+
+    const preview = document.createElement('div')
+    preview.className = 'ts-ai-inline-diff-widget-preview'
+    const before = document.createElement('div')
+    before.className = 'ts-ai-inline-diff-widget-before'
+    before.textContent = this.hunk.beforeLines.length > 0 ? this.hunk.beforeLines.join('\n') : '(empty)'
+    const afterInput = document.createElement('textarea')
+    afterInput.className = 'ts-ai-inline-diff-widget-after-input'
+    afterInput.value = this.hunk.afterLines.join('\n')
+    afterInput.rows = Math.min(Math.max(this.hunk.afterLines.length || 1, 2), 8)
+    afterInput.placeholder = '(empty)'
+    const stopBubbling = (event: Event) => {
+      event.stopPropagation()
+    }
+    afterInput.addEventListener('click', stopBubbling)
+    afterInput.addEventListener('mousedown', stopBubbling)
+    afterInput.addEventListener('keydown', stopBubbling)
+    afterInput.addEventListener('input', () => {
+      const nextValue = afterInput.value
+      const nextAfterLines = nextValue.length === 0 ? [] : nextValue.split('\n')
+      this.actions.onUpdateAfterLines(this.hunk.id, nextAfterLines)
+    })
+    preview.append(before, afterInput)
+    root.append(preview)
+
+    const actions = document.createElement('div')
+    actions.className = 'ts-ai-inline-diff-widget-actions'
+
+    if (this.hunk.decision === 'pending') {
+      const acceptButton = document.createElement('button')
+      acceptButton.type = 'button'
+      acceptButton.textContent = 'Accept'
+      acceptButton.className = 'ts-ai-inline-diff-widget-btn ts-ai-inline-diff-widget-btn-accept'
+      acceptButton.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        this.actions.onAccept(this.hunk.id)
+      })
+
+      const rejectButton = document.createElement('button')
+      rejectButton.type = 'button'
+      rejectButton.textContent = 'Reject'
+      rejectButton.className = 'ts-ai-inline-diff-widget-btn ts-ai-inline-diff-widget-btn-reject'
+      rejectButton.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        this.actions.onReject(this.hunk.id)
+      })
+      actions.append(acceptButton, rejectButton)
+    } else {
+      const resetButton = document.createElement('button')
+      resetButton.type = 'button'
+      resetButton.textContent = 'Reset'
+      resetButton.className = 'ts-ai-inline-diff-widget-btn ts-ai-inline-diff-widget-btn-reset'
+      resetButton.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        this.actions.onReset(this.hunk.id)
+      })
+      actions.append(resetButton)
+    }
+
+    root.append(actions)
+    return root
+  }
+
+  ignoreEvent(): boolean {
+    return false
+  }
+}
+
 const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, MarkdownRichEditorBlockProps>(function MarkdownRichEditorBlock({
   value,
   onChange,
@@ -203,6 +332,9 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   const [wikilinkQuery, setWikilinkQuery] = useState('')
   const [wikilinkSuggestions, setWikilinkSuggestions] = useState<WikilinkSuggestionBlock[]>([])
   const [wikilinkLoading, setWikilinkLoading] = useState(false)
+  const pendingInlineWidgetScrollRestoreRef = useRef<{ top: number; left: number } | null>(null)
+  const [inlineDiffSession, setInlineDiffSession] = useState<InlineTextDiffSessionBlock | null>(null)
+  const [inlineDiffDecisions, setInlineDiffDecisions] = useState<Record<string, InlineTextDiffDecisionBlock>>({})
   const {
     aiSelectionLoading,
     selectedProvider,
@@ -224,6 +356,25 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   const showToolbar = enableFormattingToolbar && (toolbarAlwaysVisible || toolbarOpen)
   const stewardFilePath = (aiStewardFilePath ?? currentPath ?? '').trim()
   const relatedSourceFilePath = (relatedThoughtsSourceFilePath ?? stewardFilePath).trim()
+  const inlineDiffRender = useMemo(() => {
+    if (!inlineDiffSession) return null
+    return renderInlineTextDiffBlock(inlineDiffSession, inlineDiffDecisions)
+  }, [inlineDiffDecisions, inlineDiffSession])
+  const inlineDiffHunkIds = useMemo(
+    () => inlineDiffSession?.hunks.map(hunk => hunk.id) ?? [],
+    [inlineDiffSession],
+  )
+
+  useLayoutEffect(() => {
+    const pending = pendingInlineWidgetScrollRestoreRef.current
+    if (!pending) return
+    const view = editorViewRef.current
+    if (view) {
+      view.scrollDOM.scrollTop = pending.top
+      view.scrollDOM.scrollLeft = pending.left
+    }
+    pendingInlineWidgetScrollRestoreRef.current = null
+  }, [inlineDiffSession])
 
   const setAiPanelOpen = useCallback((open: boolean) => {
     if (controlledAiPanelOpen === undefined) {
@@ -235,6 +386,98 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   const toggleAiPanel = useCallback(() => {
     setAiPanelOpen(!aiPanelOpen)
   }, [aiPanelOpen, setAiPanelOpen])
+
+  const acceptInlineDiffHunk = useCallback((hunkId: string) => {
+    setInlineDiffDecisions(prev => ({ ...prev, [hunkId]: 'accepted' }))
+  }, [])
+
+  const rejectInlineDiffHunk = useCallback((hunkId: string) => {
+    setInlineDiffDecisions(prev => ({ ...prev, [hunkId]: 'rejected' }))
+  }, [])
+
+  const resetInlineDiffHunk = useCallback((hunkId: string) => {
+    setInlineDiffDecisions(prev => ({ ...prev, [hunkId]: 'pending' }))
+  }, [])
+
+  const updateInlineDiffHunkAfterLines = useCallback((hunkId: string, nextAfterLines: string[]) => {
+    const currentSession = inlineDiffSession
+    if (!currentSession) return
+    const currentHunk = currentSession.hunks.find(hunk => hunk.id === hunkId)
+    if (!currentHunk) return
+    if (currentHunk.afterLines.join('\n') === nextAfterLines.join('\n')) return
+
+    const view = editorViewRef.current
+    if (view) {
+      pendingInlineWidgetScrollRestoreRef.current = {
+        top: view.scrollDOM.scrollTop,
+        left: view.scrollDOM.scrollLeft,
+      }
+    }
+
+    setInlineDiffSession((prev) => {
+      if (!prev) return prev
+      const nextHunks = prev.hunks.map((hunk) => {
+        if (hunk.id !== hunkId) return hunk
+        return { ...hunk, afterLines: nextAfterLines }
+      })
+      return { ...prev, hunks: nextHunks }
+    })
+  }, [inlineDiffSession])
+
+  const startInlineDiffReview = useCallback((suggestedContentOverride?: string) => {
+    if (!assistSuggestion) return
+    const nextSuggestedContent = suggestedContentOverride ?? assistSuggestion.suggestedContent
+    const session = buildInlineTextDiffSessionBlock(
+      assistSuggestion.originalContent,
+      nextSuggestedContent,
+    )
+    if (session.hunks.length === 0) {
+      dismissAssistSuggestion()
+      if (value !== nextSuggestedContent) onChange(nextSuggestedContent)
+      return
+    }
+    setInlineDiffSession(session)
+    setInlineDiffDecisions({})
+    dismissAssistSuggestion()
+    if (value !== assistSuggestion.originalContent) onChange(assistSuggestion.originalContent)
+  }, [assistSuggestion, dismissAssistSuggestion, onChange, value])
+
+  const acceptAllInlineDiffHunks = useCallback(() => {
+    if (inlineDiffHunkIds.length === 0) return
+    setInlineDiffDecisions(Object.fromEntries(inlineDiffHunkIds.map(id => [id, 'accepted' as const])))
+  }, [inlineDiffHunkIds])
+
+  const rejectAllInlineDiffHunks = useCallback(() => {
+    if (inlineDiffHunkIds.length === 0) return
+    setInlineDiffDecisions(Object.fromEntries(inlineDiffHunkIds.map(id => [id, 'rejected' as const])))
+  }, [inlineDiffHunkIds])
+
+  const discardRejectedAndAcceptRemainingInlineDiffHunks = useCallback(() => {
+    if (!inlineDiffSession) return
+    const finalDecisions = Object.fromEntries(
+      inlineDiffSession.hunks.map((hunk) => [
+        hunk.id,
+        inlineDiffDecisions[hunk.id] === 'rejected' ? 'rejected' as const : 'accepted' as const,
+      ]),
+    )
+    const next = renderInlineTextDiffBlock(inlineDiffSession, finalDecisions)
+    if (value !== next.content) onChange(next.content)
+    setInlineDiffSession(null)
+    setInlineDiffDecisions({})
+  }, [inlineDiffDecisions, inlineDiffSession, onChange, value])
+
+  const finishInlineDiffReview = useCallback(() => {
+    setInlineDiffSession(null)
+    setInlineDiffDecisions({})
+  }, [])
+
+  const cancelInlineDiffReview = useCallback(() => {
+    if (inlineDiffSession && value !== inlineDiffSession.originalContent) {
+      onChange(inlineDiffSession.originalContent)
+    }
+    setInlineDiffSession(null)
+    setInlineDiffDecisions({})
+  }, [inlineDiffSession, onChange, value])
 
   const undoEditor = () => {
     const view = editorViewRef.current
@@ -323,6 +566,41 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     }
   }, [currentPath, wikilinkPickerOpen, wikilinkQuery])
 
+  useEffect(() => {
+    if (!inlineDiffRender) return
+    if (value === inlineDiffRender.content) return
+    onChange(inlineDiffRender.content)
+  }, [inlineDiffRender, onChange, value])
+
+  const inlineDiffDecorations = useMemo(() => {
+    if (!inlineDiffRender) return null
+    const offsets = buildLineStartOffsetsBlock(value)
+    const ranges: any[] = []
+    for (const hunk of inlineDiffRender.hunks) {
+      const anchor = lineStartFromOffsetsBlock(offsets, hunk.startLine, value.length)
+      ranges.push(Decoration.widget({
+        widget: new InlineDiffWidgetBlock(hunk, {
+          onAccept: acceptInlineDiffHunk,
+          onReject: rejectInlineDiffHunk,
+          onReset: resetInlineDiffHunk,
+          onUpdateAfterLines: updateInlineDiffHunkAfterLines,
+        }),
+        side: -1,
+        block: true,
+      }).range(anchor))
+
+      const lineClass = hunk.decision === 'accepted'
+        ? 'ts-ai-inline-diff-line-accepted'
+        : (hunk.decision === 'pending' ? `ts-ai-inline-diff-line-pending-${hunk.kind}` : '')
+      if (!lineClass) continue
+      for (let lineIndex = hunk.startLine; lineIndex < hunk.endLine; lineIndex += 1) {
+        const lineStart = lineStartFromOffsetsBlock(offsets, lineIndex, value.length)
+        ranges.push(Decoration.line({ class: lineClass }).range(lineStart))
+      }
+    }
+    return Decoration.set(ranges, true)
+  }, [acceptInlineDiffHunk, inlineDiffRender, rejectInlineDiffHunk, resetInlineDiffHunk, updateInlineDiffHunkAfterLines, value])
+
   const extensions = useMemo(() => {
     const uiTheme = EditorView.theme({
       '&': {
@@ -369,13 +647,94 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       '.cm-focused': {
         outline: 'none',
       },
+      '.ts-ai-inline-diff-widget': {
+        margin: compactMobile ? '0.2rem 0.2rem 0.35rem 0' : '0.25rem 0.3rem 0.4rem 0',
+        border: '1px solid hsl(var(--border) / 0.8)',
+        borderRadius: '0.45rem',
+        backgroundColor: 'hsl(var(--background))',
+        padding: compactMobile ? '0.35rem' : '0.45rem',
+        display: 'grid',
+        gap: '0.3rem',
+      },
+      '.ts-ai-inline-diff-widget-heading': {
+        fontSize: '0.72rem',
+        lineHeight: '1rem',
+        color: 'hsl(var(--muted-foreground))',
+      },
+      '.ts-ai-inline-diff-widget-preview': {
+        display: 'grid',
+        gap: '0.25rem',
+      },
+      '.ts-ai-inline-diff-widget-before': {
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        whiteSpace: 'pre-wrap',
+        backgroundColor: 'hsl(var(--destructive) / 0.08)',
+        borderRadius: '0.35rem',
+        padding: '0.3rem 0.4rem',
+      },
+      '.ts-ai-inline-diff-widget-after': {
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        whiteSpace: 'pre-wrap',
+        backgroundColor: 'hsl(142 76% 36% / 0.12)',
+        borderRadius: '0.35rem',
+        padding: '0.3rem 0.4rem',
+      },
+      '.ts-ai-inline-diff-widget-after-input': {
+        width: '100%',
+        resize: 'vertical',
+        minHeight: '2.2rem',
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        whiteSpace: 'pre-wrap',
+        backgroundColor: 'hsl(142 76% 36% / 0.12)',
+        borderRadius: '0.35rem',
+        border: '1px solid hsl(142 76% 36% / 0.28)',
+        padding: '0.3rem 0.4rem',
+      },
+      '.ts-ai-inline-diff-widget-actions': {
+        display: 'flex',
+        gap: '0.35rem',
+      },
+      '.ts-ai-inline-diff-widget-btn': {
+        border: '1px solid hsl(var(--border) / 0.9)',
+        borderRadius: '0.35rem',
+        backgroundColor: 'hsl(var(--background))',
+        fontSize: '0.72rem',
+        lineHeight: '1rem',
+        padding: '0.2rem 0.45rem',
+        cursor: 'pointer',
+      },
+      '.ts-ai-inline-diff-widget-btn-accept': {
+        borderColor: 'hsl(142 76% 36% / 0.45)',
+        color: 'hsl(142 76% 28%)',
+      },
+      '.ts-ai-inline-diff-widget-btn-reject': {
+        borderColor: 'hsl(var(--destructive) / 0.45)',
+        color: 'hsl(var(--destructive))',
+      },
+      '.ts-ai-inline-diff-widget-btn-reset': {
+        color: 'hsl(var(--foreground))',
+      },
+      '.cm-line.ts-ai-inline-diff-line-accepted': {
+        backgroundColor: 'hsl(142 76% 36% / 0.12)',
+      },
+      '.cm-line.ts-ai-inline-diff-line-pending-added': {
+        backgroundColor: 'hsl(142 76% 36% / 0.08)',
+      },
+      '.cm-line.ts-ai-inline-diff-line-pending-removed': {
+        backgroundColor: 'hsl(var(--destructive) / 0.08)',
+      },
+      '.cm-line.ts-ai-inline-diff-line-pending-changed': {
+        backgroundColor: 'hsl(38 92% 50% / 0.09)',
+      },
     })
 
-    return [
+    const nextExtensions: Extension[] = [
       markdown(),
       EditorView.lineWrapping,
       cmPlaceholder(placeholder),
       uiTheme,
+      ...(inlineDiffRender ? [EditorState.readOnly.of(true)] : []),
+      ...(inlineDiffDecorations ? [EditorView.decorations.of(inlineDiffDecorations)] : []),
       EditorView.domEventHandlers({
         paste: (event, view) => {
           const pastedText = event.clipboardData?.getData('text/plain') ?? ''
@@ -405,7 +764,8 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       }),
       keymap.of([]),
     ]
-  }, [compactMobile, placeholder])
+    return nextExtensions
+  }, [compactMobile, inlineDiffDecorations, inlineDiffRender, placeholder])
 
   const applyPatch = (patchFactory: (text: string, from: number, to: number) => { value: string; start: number; end: number }) => {
     const view = editorViewRef.current
@@ -590,12 +950,65 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           )}
 
           <div className="h-px bg-border/50" />
+          {inlineDiffRender && (
+            <>
+              <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                <div className="text-xs text-muted-foreground">
+                  Inline review active in editor:
+                  {' '}
+                  <span className="text-foreground">pending {inlineDiffRender.summary.pending}</span>
+                  {' • '}
+                  <span className="text-foreground">accepted {inlineDiffRender.summary.accepted}</span>
+                  {' • '}
+                  <span className="text-foreground">rejected {inlineDiffRender.summary.rejected}</span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={acceptAllInlineDiffHunks}
+                    className="inline-flex h-8 items-center rounded-md border border-emerald-500/50 bg-emerald-500/10 px-3 text-xs text-emerald-700"
+                  >
+                    Accept all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={rejectAllInlineDiffHunks}
+                    className="inline-flex h-8 items-center rounded-md border border-destructive/50 bg-destructive/10 px-3 text-xs text-destructive"
+                  >
+                    Reject all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={discardRejectedAndAcceptRemainingInlineDiffHunks}
+                    className="inline-flex h-8 items-center rounded-md border border-primary/50 bg-primary/10 px-3 text-xs text-primary"
+                  >
+                    Discard rejected + accept remaining
+                  </button>
+                  <button
+                    type="button"
+                    onClick={finishInlineDiffReview}
+                    className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs text-foreground hover:bg-muted"
+                  >
+                    Finish review
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelInlineDiffReview}
+                    className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs text-foreground hover:bg-muted"
+                  >
+                    Cancel and restore original
+                  </button>
+                </div>
+              </div>
+              <div className="h-px bg-border/50" />
+            </>
+          )}
           <AiAssistControlsBlock
             selectedProvider={selectedProvider}
             selectedModel={selectedModel}
             runningAction={assistRunningAction}
             loading={aiSelectionLoading}
-            disabled={aiAssistDisabled}
+            disabled={aiAssistDisabled || inlineDiffSession != null}
             onRun={(action) => { void runAssistAction(action, value) }}
             onRunCustomPrompt={(prompt) => {
               void (async () => {
@@ -613,6 +1026,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           {assistSuggestion && (
             <AiAssistReviewBlock
               suggestion={assistSuggestion}
+              onStartInlineApply={startInlineDiffReview}
               onApply={(nextContent) => {
                 applyAssistSuggestion((next) => {
                   onChange(next)
