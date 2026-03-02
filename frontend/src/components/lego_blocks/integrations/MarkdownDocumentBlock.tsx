@@ -901,6 +901,122 @@ function MarkdownTextDocumentRuntimeBlock({
     })
   }, [])
 
+  const markdownAiPanelExtraContent = (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2">
+        <button
+          type="button"
+          onClick={() => { void generatePurposeForFile() }}
+          disabled={purposeLoading || loading}
+          className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          title="Generate steward purpose metadata for this file"
+        >
+          {purposeLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          Purpose for This File
+        </button>
+        <span className="text-[11px] text-muted-foreground">
+          Uses steward metadata generation to create a proposal for YAML frontmatter.
+        </span>
+      </div>
+
+      {purposeMessage && (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
+          {purposeMessage}
+        </div>
+      )}
+
+      {purposeError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {purposeError}
+        </div>
+      )}
+
+      {purposeProposal && (
+        <div className="space-y-2 rounded-lg border border-border/70 bg-background px-3 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Purpose Proposal
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              {new Date(purposeProposal.generatedAt).toLocaleString()}
+            </div>
+          </div>
+
+          <p className="text-xs text-foreground">{purposeProposal.suggestion.summary}</p>
+
+          {(purposeProposal.suggestion.tags?.length ?? 0) > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {purposeProposal.suggestion.tags.map((tag) => (
+                <span key={tag} className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="text-[11px] text-muted-foreground">
+            Suggested epic: {purposeProposal.suggestion.suggestedEpicKey || 'none'} | Suggested idea: {purposeProposal.suggestion.suggestedIdeaKey || 'none'}
+          </div>
+
+          <div className="text-[11px] text-muted-foreground">
+            {purposeProposal.suggestion.rationale}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={acceptPurposeProposal}
+              className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-95"
+            >
+              Accept
+            </button>
+            <button
+              type="button"
+              onClick={rejectPurposeProposal}
+              className="rounded-md border border-border/70 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted"
+            >
+              Reject
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Related Thoughts
+        </div>
+        {relatedLoading && (
+          <div className="text-xs text-muted-foreground">Finding related notes...</div>
+        )}
+        {relatedError && (
+          <div className="text-xs text-destructive">{relatedError}</div>
+        )}
+        {!relatedLoading && !relatedError && relatedThoughts.length === 0 && (
+          <div className="text-xs text-muted-foreground">
+            Keep typing to see lexical matches from your thought cache.
+          </div>
+        )}
+        {relatedThoughts.map(match => (
+          <button
+            key={match.node.uuid}
+            type="button"
+            className="w-full rounded-md border border-border/70 bg-background px-2.5 py-2 text-left transition-colors hover:bg-muted/40"
+            onClick={() => {
+              if (!onOpenPathForEdit || match.node.filePath === path) return
+              onOpenPathForEdit(match.node.filePath)
+            }}
+          >
+            <div className="truncate text-xs font-medium text-foreground">{match.node.title}</div>
+            <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{match.node.filePath}</div>
+            <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+              Score {Math.round(match.normalizedScore * 100)}% · {match.reasons.join(', ') || 'lexical'}
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+
   return (
     <div
       className={cn('flex h-full min-h-0 flex-col bg-card', className)}
@@ -1272,122 +1388,6 @@ function MarkdownTextDocumentRuntimeBlock({
 
         {!loading && !error && content !== null && isEditing && !isExcalidrawDoc && (
           <div className={cn('space-y-4', isIosPhone && 'px-3 pb-[calc(var(--ltm-safe-bottom,0px)+0.4rem)]')}>
-            {showAiPanel && (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2">
-                  <button
-                    type="button"
-                    onClick={() => { void generatePurposeForFile() }}
-                    disabled={purposeLoading || loading}
-                    className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Generate steward purpose metadata for this file"
-                  >
-                    {purposeLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                    Purpose for This File
-                  </button>
-                  <span className="text-[11px] text-muted-foreground">
-                    Uses steward metadata generation to create a proposal for YAML frontmatter.
-                  </span>
-                </div>
-
-                {purposeMessage && (
-                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
-                    {purposeMessage}
-                  </div>
-                )}
-
-                {purposeError && (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                    {purposeError}
-                  </div>
-                )}
-
-                {purposeProposal && (
-                  <div className="space-y-2 rounded-lg border border-border/70 bg-background px-3 py-2.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                        Purpose Proposal
-                      </div>
-                      <div className="text-[11px] text-muted-foreground">
-                        {new Date(purposeProposal.generatedAt).toLocaleString()}
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-foreground">{purposeProposal.suggestion.summary}</p>
-
-                    {(purposeProposal.suggestion.tags?.length ?? 0) > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {purposeProposal.suggestion.tags.map((tag) => (
-                          <span key={tag} className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="text-[11px] text-muted-foreground">
-                      Suggested epic: {purposeProposal.suggestion.suggestedEpicKey || 'none'} | Suggested idea: {purposeProposal.suggestion.suggestedIdeaKey || 'none'}
-                    </div>
-
-                    <div className="text-[11px] text-muted-foreground">
-                      {purposeProposal.suggestion.rationale}
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={acceptPurposeProposal}
-                        className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-95"
-                      >
-                        Accept
-                      </button>
-                      <button
-                        type="button"
-                        onClick={rejectPurposeProposal}
-                        className="rounded-md border border-border/70 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted"
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Related Thoughts
-                  </div>
-                  {relatedLoading && (
-                    <div className="text-xs text-muted-foreground">Finding related notes...</div>
-                  )}
-                  {relatedError && (
-                    <div className="text-xs text-destructive">{relatedError}</div>
-                  )}
-                  {!relatedLoading && !relatedError && relatedThoughts.length === 0 && (
-                    <div className="text-xs text-muted-foreground">
-                      Keep typing to see lexical matches from your thought cache.
-                    </div>
-                  )}
-                  {relatedThoughts.map(match => (
-                    <button
-                      key={match.node.uuid}
-                      type="button"
-                      className="w-full rounded-md border border-border/70 bg-background px-2.5 py-2 text-left transition-colors hover:bg-muted/40"
-                      onClick={() => {
-                        if (!onOpenPathForEdit || match.node.filePath === path) return
-                        onOpenPathForEdit(match.node.filePath)
-                      }}
-                    >
-                      <div className="truncate text-xs font-medium text-foreground">{match.node.title}</div>
-                      <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{match.node.filePath}</div>
-                      <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                        Score {Math.round(match.normalizedScore * 100)}% · {match.reasons.join(', ') || 'lexical'}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             <div data-ltm-edge-swipe-ignore="true">
               <MarkdownRichEditorBlock
                 ref={markdownEditorRef}
@@ -1401,6 +1401,7 @@ function MarkdownTextDocumentRuntimeBlock({
                 aiAssistScope="markdown_editor"
                 aiAssistUseCase="markdown.assist"
                 aiAssistHelperText="Suggestions apply inline. Auto-save is enabled by default; use Save for immediate commit. Configure provider/model in AI Settings."
+                aiPanelExtraContent={markdownAiPanelExtraContent}
                 onChange={(next) => {
                   setDraft(`${draftFrontmatter}${next}`)
                 }}

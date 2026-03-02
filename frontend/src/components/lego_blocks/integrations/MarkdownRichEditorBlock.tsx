@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import { redo, undo } from '@codemirror/commands'
@@ -55,6 +55,8 @@ interface MarkdownRichEditorBlockProps {
   aiAssistHelperText?: string
   /** Disables AI action buttons when true. */
   aiAssistDisabled?: boolean
+  /** Optional additional UI rendered inside the AI panel. */
+  aiPanelExtraContent?: ReactNode
 }
 
 export interface MarkdownRichEditorBlockHandle {
@@ -165,6 +167,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   aiAssistUseCase = 'markdown.assist',
   aiAssistHelperText,
   aiAssistDisabled = false,
+  aiPanelExtraContent,
 }, ref) {
   const editorViewRef = useRef<EditorView | null>(null)
   const [toolbarOpen, setToolbarOpen] = useState(false)
@@ -507,6 +510,8 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
 
       {enableAiAssist && aiPanelOpen && (
         <div className="space-y-2 border-b border-border/30 bg-muted/10 p-2">
+          {aiPanelExtraContent}
+
           <AiAssistControlsBlock
             selectedProvider={selectedProvider}
             selectedModel={selectedModel}
