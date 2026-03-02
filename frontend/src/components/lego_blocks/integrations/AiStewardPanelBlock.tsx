@@ -21,6 +21,13 @@ interface PurposeProposalState {
   generatedAt: string
 }
 
+function parseTagsInput(raw: string): string[] {
+  return raw
+    .split(',')
+    .map(tag => tag.trim())
+    .filter(Boolean)
+}
+
 export default function AiStewardPanelBlock({
   filePath,
   disabled = false,
@@ -35,6 +42,7 @@ export default function AiStewardPanelBlock({
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [proposal, setProposal] = useState<PurposeProposalState | null>(null)
+  const [proposalEditMode, setProposalEditMode] = useState(false)
 
   useEffect(() => {
     if (!resolvedFilePath) {
@@ -69,6 +77,7 @@ export default function AiStewardPanelBlock({
     setError(null)
     setMessage(null)
     setProposal(null)
+    setProposalEditMode(false)
   }, [resolvedFilePath, fileAvailable])
 
   const generateProposal = useCallback(async () => {
@@ -82,6 +91,7 @@ export default function AiStewardPanelBlock({
         suggestion,
         generatedAt: new Date().toISOString(),
       })
+      setProposalEditMode(false)
       const source = suggestion.usedAi
         ? `AI (${suggestion.provider}${suggestion.model ? `/${suggestion.model}` : ''})`
         : 'heuristics'
@@ -120,9 +130,23 @@ export default function AiStewardPanelBlock({
   const dismissProposal = useCallback(() => {
     if (!proposal) return
     setProposal(null)
+    setProposalEditMode(false)
     setError(null)
     setMessage(onApplySuggestion ? 'Rejected purpose proposal.' : 'Dismissed purpose proposal.')
   }, [onApplySuggestion, proposal])
+
+  const updateProposalSuggestion = useCallback((patch: Partial<StewardMetadataSuggestion>) => {
+    setProposal((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        suggestion: {
+          ...current.suggestion,
+          ...patch,
+        },
+      }
+    })
+  }, [])
 
   if (!resolvedFilePath || (!fileCheckLoading && !fileAvailable)) {
     if (!showMissingFileMessage) return null
@@ -177,43 +201,153 @@ export default function AiStewardPanelBlock({
             <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Purpose Proposal
             </div>
-            <div className="text-[11px] text-muted-foreground">
-              {new Date(proposal.generatedAt).toLocaleString()}
+            <div className="flex items-center gap-2">
+              <div className="text-[11px] text-muted-foreground">
+                {new Date(proposal.generatedAt).toLocaleString()}
+              </div>
+              <button
+                type="button"
+                onClick={() => setProposalEditMode(prev => !prev)}
+                className="rounded-md border border-border/70 px-2 py-1 text-[11px] text-foreground hover:bg-muted disabled:opacity-60"
+                disabled={disabled}
+              >
+                {proposalEditMode ? 'Done' : 'Edit'}
+              </button>
             </div>
           </div>
 
-          <p className="text-xs text-foreground">{proposal.suggestion.summary}</p>
+          {proposalEditMode ? (
+            <>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  Summary
+                </label>
+                <textarea
+                  value={proposal.suggestion.summary}
+                  onChange={(event) => updateProposalSuggestion({ summary: event.target.value })}
+                  rows={3}
+                  className="w-full rounded-md border border-border/60 bg-background px-2.5 py-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
+                  disabled={disabled}
+                />
+              </div>
 
-          {(proposal.suggestion.tags?.length ?? 0) > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {proposal.suggestion.tags.map((tag) => (
-                <span key={tag} className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                  {tag}
-                </span>
-              ))}
-            </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  Tags (comma separated)
+                </label>
+                <input
+                  value={proposal.suggestion.tags.join(', ')}
+                  onChange={(event) => updateProposalSuggestion({ tags: parseTagsInput(event.target.value) })}
+                  className="h-8 w-full rounded-md border border-border/60 bg-background px-2.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
+                  disabled={disabled}
+                />
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    Suggested Epic Key
+                  </label>
+                  <input
+                    value={proposal.suggestion.suggestedEpicKey ?? ''}
+                    onChange={(event) => updateProposalSuggestion({ suggestedEpicKey: event.target.value.trim() || undefined })}
+                    className="h-8 w-full rounded-md border border-border/60 bg-background px-2.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
+                    disabled={disabled}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    Suggested Idea Key
+                  </label>
+                  <input
+                    value={proposal.suggestion.suggestedIdeaKey ?? ''}
+                    onChange={(event) => updateProposalSuggestion({ suggestedIdeaKey: event.target.value.trim() || undefined })}
+                    className="h-8 w-full rounded-md border border-border/60 bg-background px-2.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
+                    disabled={disabled}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  Rationale
+                </label>
+                <textarea
+                  value={proposal.suggestion.rationale}
+                  onChange={(event) => updateProposalSuggestion({ rationale: event.target.value })}
+                  rows={3}
+                  className="w-full rounded-md border border-border/60 bg-background px-2.5 py-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
+                  disabled={disabled}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-foreground">{proposal.suggestion.summary}</p>
+
+              {(proposal.suggestion.tags?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {proposal.suggestion.tags.map((tag) => (
+                    <span key={tag} className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="text-[11px] text-muted-foreground">
+                Suggested epic: {proposal.suggestion.suggestedEpicKey || 'none'} | Suggested idea: {proposal.suggestion.suggestedIdeaKey || 'none'}
+              </div>
+
+              <div className="text-[11px] text-muted-foreground">
+                {proposal.suggestion.rationale}
+              </div>
+            </>
           )}
 
-          <div className="text-[11px] text-muted-foreground">
-            Suggested epic: {proposal.suggestion.suggestedEpicKey || 'none'} | Suggested idea: {proposal.suggestion.suggestedIdeaKey || 'none'}
-          </div>
-
-          <div className="text-[11px] text-muted-foreground">
-            {proposal.suggestion.rationale}
-          </div>
+          {proposalEditMode && (
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] text-muted-foreground">
+                Edit before applying.
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setProposal((current) => {
+                    if (!current) return current
+                    return {
+                      ...current,
+                      suggestion: {
+                        ...current.suggestion,
+                        summary: current.suggestion.summary.trim(),
+                        rationale: current.suggestion.rationale.trim(),
+                        tags: current.suggestion.tags.map(tag => tag.trim()).filter(Boolean),
+                      },
+                    }
+                  })
+                }}
+                className="rounded-md border border-border/70 px-2 py-1 text-[11px] text-foreground hover:bg-muted"
+                disabled={disabled}
+              >
+                Normalize Fields
+              </button>
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => { void acceptProposal() }}
-              className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-95"
+              className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-95 disabled:opacity-60"
+              disabled={disabled}
             >
               Accept
             </button>
             <button
               type="button"
               onClick={dismissProposal}
-              className="rounded-md border border-border/70 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted"
+              className="rounded-md border border-border/70 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-60"
+              disabled={disabled}
             >
               Reject
             </button>
