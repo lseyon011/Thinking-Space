@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   BookOpen,
   Folder,
@@ -626,7 +627,9 @@ export default function NodeDetailPanelBlock({
     }
   }, [busy, commitNotes, notesDirty, notesPayloadSignature, notesSaving])
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -1099,6 +1102,7 @@ export default function NodeDetailPanelBlock({
 
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   )
 }
