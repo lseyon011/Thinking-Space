@@ -714,7 +714,9 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
 
       const lineClass = hunk.decision === 'accepted'
         ? 'ts-ai-inline-diff-line-accepted'
-        : (hunk.decision === 'pending' ? `ts-ai-inline-diff-line-pending-${hunk.kind}` : '')
+        : (hunk.decision === 'pending' && hunk.kind === 'added'
+            ? 'ts-ai-inline-diff-line-pending-added'
+            : '')
       if (!lineClass) continue
       for (let lineIndex = hunk.startLine; lineIndex < hunk.endLine; lineIndex += 1) {
         const lineStart = lineStartFromOffsetsBlock(offsets, lineIndex, value.length)
@@ -795,7 +797,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       '.ts-ai-inline-diff-widget-word-before': {
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
         whiteSpace: 'pre-wrap',
-        backgroundColor: 'hsl(var(--destructive) / 0.08)',
+        backgroundColor: 'hsl(38 92% 50% / 0.09)',
         borderRadius: '0.35rem',
         padding: '0.3rem 0.4rem',
       },
@@ -825,7 +827,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       '.ts-ai-inline-diff-widget-before': {
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
         whiteSpace: 'pre-wrap',
-        backgroundColor: 'hsl(var(--destructive) / 0.08)',
+        backgroundColor: 'hsl(38 92% 50% / 0.09)',
         borderRadius: '0.35rem',
         padding: '0.3rem 0.4rem',
       },
@@ -876,12 +878,6 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       },
       '.cm-line.ts-ai-inline-diff-line-pending-added': {
         backgroundColor: 'hsl(142 76% 36% / 0.08)',
-      },
-      '.cm-line.ts-ai-inline-diff-line-pending-removed': {
-        backgroundColor: 'hsl(var(--destructive) / 0.08)',
-      },
-      '.cm-line.ts-ai-inline-diff-line-pending-changed': {
-        backgroundColor: 'hsl(38 92% 50% / 0.09)',
       },
     })
 

@@ -78,12 +78,12 @@ export function buildInlineTextDiffSessionBlock(originalContent: string, suggest
       })
     }
 
-    if (paired < removedRun.length) {
+    for (let index = paired; index < removedRun.length; index += 1) {
       hunks.push({
         id: nextHunkId(),
         kind: 'removed',
-        beforeStart: removedRun[paired].beforeIndex,
-        beforeLines: removedRun.slice(paired).map(op => op.line),
+        beforeStart: removedRun[index].beforeIndex,
+        beforeLines: [removedRun[index].line],
         afterLines: [],
       })
     }
@@ -91,13 +91,13 @@ export function buildInlineTextDiffSessionBlock(originalContent: string, suggest
     const addedBeforeStart = removedRun.length > 0
       ? (removedRun[removedRun.length - 1].beforeIndex + 1)
       : beforeStartFallback
-    if (paired < addedRun.length) {
+    for (let index = paired; index < addedRun.length; index += 1) {
       hunks.push({
         id: nextHunkId(),
         kind: 'added',
         beforeStart: addedBeforeStart,
         beforeLines: [],
-        afterLines: addedRun.slice(paired).map(op => op.line),
+        afterLines: [addedRun[index].line],
       })
     }
   }

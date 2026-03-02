@@ -61,7 +61,7 @@ describe('inlineTextDiffBlock', () => {
     })
   })
 
-  it('groups mixed-run tails into block hunks and preserves exact suggested output when accepted', () => {
+  it('splits mixed runs into line-level hunks and preserves exact suggested output when accepted', () => {
     const original = [
       'alpha',
       'beta',
@@ -97,8 +97,7 @@ describe('inlineTextDiffBlock', () => {
       'line 1\nline 2',
       'line 1\ninserted a\ninserted b\nline 2',
     )
-    expect(session.hunks.map(hunk => hunk.kind)).toEqual(['added'])
-    expect(session.hunks[0].afterLines).toEqual(['inserted a', 'inserted b'])
+    expect(session.hunks.map(hunk => hunk.kind)).toEqual(['added', 'added'])
 
     const accepted = renderInlineTextDiffBlock(
       session,
@@ -112,7 +111,7 @@ describe('inlineTextDiffBlock', () => {
       'line 1\nline 2\nline 3',
       'line one\nline 3\nline 4\nline 5',
     )
-    expect(session.hunks.map(hunk => hunk.kind)).toEqual(['changed', 'removed', 'added'])
+    expect(session.hunks.map(hunk => hunk.kind)).toEqual(['changed', 'removed', 'added', 'added'])
     const accepted = renderInlineTextDiffBlock(
       session,
       Object.fromEntries(session.hunks.map(hunk => [hunk.id, 'accepted' as const])),
