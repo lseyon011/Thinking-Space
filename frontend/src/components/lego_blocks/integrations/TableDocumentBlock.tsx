@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import * as Toolbar from '@radix-ui/react-toolbar'
 import {
   DataSheetGrid,
@@ -23,6 +23,7 @@ import {
   readTableDocument,
   saveTableDocument,
 } from '@/services/orchestrators/tableDocumentsOrch'
+import { renameVaultPathOrch } from '@/services/orchestrators/fileSystemOrch'
 
 type ViewerMode = 'view' | 'edit'
 type GridRowBlock = Record<string, string | null>
@@ -31,6 +32,8 @@ interface TableDocumentBlockProps {
   path: string
   initialMode?: ViewerMode
   onSaved?: (result: { output_path: string; revision_path: string | null }) => void
+  onOpenPath?: (path: string) => void
+  onOpenPathForEdit?: (path: string) => void
   onClose?: () => void
   showCloseButton?: boolean
   className?: string
@@ -55,6 +58,8 @@ function TableDocumentBlock({
   path,
   initialMode = 'view',
   onSaved,
+  onOpenPath,
+  onOpenPathForEdit,
   onClose,
   showCloseButton = false,
   className,
@@ -70,10 +75,15 @@ function TableDocumentBlock({
   const [syncingPush, setSyncingPush] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [renameError, setRenameError] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+  const [isHeaderRenameActive, setIsHeaderRenameActive] = useState(false)
+  const [renaming, setRenaming] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [conflict, setConflict] = useState<TableDocumentConflictError | null>(null)
   const [activeCell, setActiveCell] = useState<GridCellWithIdBlock | null>(null)
   const [selection, setSelection] = useState<GridSelectionWithIdBlock | null>(null)
+  const headerRenameInputRef = useRef<HTMLInputElement | null>(null)
   const scopeId = useId()
 
   const gridScopeClass = useMemo(() => {
@@ -125,6 +135,58 @@ function TableDocumentBlock({
 
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
+  const canRenameInHeader = !!(onOpenPathForEdit || onOpenPath)
+
+  useEffect(() => {
+    setRenameDraft(filename)
+    setRenameError(null)
+    setRenaming(false)
+    setIsHeaderRenameActive(false)
+  }, [filename])
+
+  useEffect(() => {
+    if (isEditing) return
+    setIsHeaderRenameActive(false)
+  }, [isEditing])
+
+  useEffect(() => {
+    if (!isHeaderRenameActive) return
+    const input = headerRenameInputRef.current
+    if (!input) return
+    input.focus()
+    input.select()
+  }, [isHeaderRenameActive])
+
+  const commitHeaderRename = useCallback(async () => {
+    if (!isEditing || !canRenameInHeader || renaming) return
+    const nextName = renameDraft.trim()
+    if (!nextName || nextName === filename) {
+      setRenameDraft(filename)
+      setIsHeaderRenameActive(false)
+      return
+    }
+    setRenaming(true)
+    setRenameError(null)
+    try {
+      const nextPath = await renameVaultPathOrch(path, nextName)
+      setRenameDraft(nextPath.split('/').pop() || nextPath)
+      setIsHeaderRenameActive(false)
+      if (onOpenPathForEdit) onOpenPathForEdit(nextPath)
+      else if (onOpenPath) onOpenPath(nextPath)
+    } catch (err) {
+      setRenameDraft(filename)
+      setRenameError(err instanceof Error ? err.message : 'Failed to rename file')
+    } finally {
+      setRenaming(false)
+    }
+  }, [canRenameInHeader, filename, isEditing, onOpenPath, onOpenPathForEdit, path, renameDraft, renaming])
+
+  const startHeaderRename = useCallback(() => {
+    if (!isEditing || !canRenameInHeader || renaming) return
+    setRenameDraft(filename)
+    setRenameError(null)
+    setIsHeaderRenameActive(true)
+  }, [canRenameInHeader, filename, isEditing, renaming])
 
   const columnCount = useMemo(() => {
     if (!activeSheet) return 1
@@ -438,12 +500,51 @@ function TableDocumentBlock({
     <div className={cn('flex h-full min-h-0 flex-col bg-card p-2', className)}>
       <div className="ts-doc-header border-b border-border/50 px-6 py-5">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex w-full min-w-0 items-center gap-2">
               <FileSpreadsheet className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="truncate font-medium">{filename}</span>
+              {isEditing && canRenameInHeader && isHeaderRenameActive ? (
+                <input
+                  ref={headerRenameInputRef}
+                  type="text"
+                  value={renameDraft}
+                  onChange={(event) => {
+                    setRenameDraft(event.target.value)
+                    if (renameError) setRenameError(null)
+                  }}
+                  onBlur={() => { void commitHeaderRename() }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      void commitHeaderRename()
+                      return
+                    }
+                    if (event.key === 'Escape') {
+                      event.preventDefault()
+                      setRenameDraft(filename)
+                      setRenameError(null)
+                      setIsHeaderRenameActive(false)
+                    }
+                  }}
+                  disabled={renaming || saving || syncingPull || syncingPush}
+                  className="h-8 min-w-0 flex-1 border-0 bg-transparent px-0 text-sm font-medium outline-none focus:outline-none disabled:opacity-60"
+                  aria-label="File name"
+                />
+              ) : isEditing && canRenameInHeader ? (
+                <button
+                  type="button"
+                  onClick={startHeaderRename}
+                  className="min-w-0 flex-1 truncate text-left font-medium"
+                  title="Rename file"
+                >
+                  {filename}
+                </button>
+              ) : (
+                <span className="truncate font-medium">{filename}</span>
+              )}
             </div>
             {breadcrumb && <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>}
+            {renameError && <div className="mt-1 truncate text-xs text-destructive">{renameError}</div>}
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {!isEditing && (

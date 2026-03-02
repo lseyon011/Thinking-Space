@@ -29,7 +29,7 @@ import {
   remarkObsidianWikilinksOrch,
   resolveWikilinkTargetOrch,
 } from '@/services/orchestrators/obsidianLinkOrch'
-import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
+import { openFileInNewTabOrch, renameVaultPathOrch } from '@/services/orchestrators/fileSystemOrch'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/integrations/ExcalidrawDocumentBlock'
 import TableDocumentBlock from '@/components/lego_blocks/integrations/TableDocumentBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
@@ -123,9 +123,14 @@ function MarkdownTextDocumentRuntimeBlock({
   const [meta, setMeta] = useState<MarkdownMeta | null>(null)
   const [viewMarkdown, setViewMarkdown] = useState('')
   const [pendingFullRender, setPendingFullRender] = useState(false)
+  const [filenameDraft, setFilenameDraft] = useState('')
+  const [isHeaderRenameActive, setIsHeaderRenameActive] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [renameError, setRenameError] = useState<string | null>(null)
   const isExcalidrawDoc = /\.(excalidraw|excalidraw\.md)$/i.test(path)
   const chromeContainerRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
+  const headerRenameInputRef = useRef<HTMLInputElement | null>(null)
   const manualSaveFeedbackTimeoutRef = useRef<number | null>(null)
   const excalidrawSceneRef = useRef<ParsedExcalidrawScene | null>(null)
   const excalidrawApiRef = useRef<ExcalidrawCanvasApiOrch | null>(null)
@@ -206,6 +211,7 @@ function MarkdownTextDocumentRuntimeBlock({
 
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
+  const canRenameInHeader = !!(onOpenPathForEdit || onOpenPath)
   const obsidianUrl = buildObsidianOpenUrlOrch(path)
   const openLinkedPath = onOpenPath ?? onOpenPathForEdit
   const openRelatedThoughtPath = onOpenPathForEdit ?? onOpenPath
@@ -222,7 +228,12 @@ function MarkdownTextDocumentRuntimeBlock({
   const hasTextChanges = isEditing && content !== null && draft !== content
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
   const saveButtonLabel = saving ? 'Saving...' : manualSaveFeedbackVisible ? 'Saved' : 'Save'
-  const saveButtonClassName = 'inline-flex items-center gap-1 rounded-lg border border-border/70 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50'
+  const saveButtonClassName = cn(
+    'inline-flex items-center gap-1 rounded-lg border border-border/70 px-2.5 py-1 text-xs font-medium text-foreground transition-colors duration-200 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50',
+    manualSaveFeedbackVisible && !saving
+      ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-600'
+      : 'bg-transparent',
+  )
   const shouldPadViewerContent = !isEditing && !isExcalidrawDoc
   const showMiniNavRail = layout.mode === 'desktop' && !layout.isCapacitorNative
   const displayContent = useMemo(
@@ -253,6 +264,26 @@ function MarkdownTextDocumentRuntimeBlock({
       return `${nextFrontmatter}${body}`
     })
   }, [])
+
+  useEffect(() => {
+    setFilenameDraft(filename)
+    setRenameError(null)
+    setRenaming(false)
+    setIsHeaderRenameActive(false)
+  }, [filename])
+
+  useEffect(() => {
+    if (isEditing) return
+    setIsHeaderRenameActive(false)
+  }, [isEditing])
+
+  useEffect(() => {
+    if (!isHeaderRenameActive) return
+    const input = headerRenameInputRef.current
+    if (!input) return
+    input.focus()
+    input.select()
+  }, [isHeaderRenameActive])
   const applyStewardSuggestionToDraft = useCallback((suggestion: StewardMetadataSuggestion) => {
     setDraft((current) => {
       const { frontmatter, body } = splitFrontmatter(current)
@@ -707,6 +738,38 @@ function MarkdownTextDocumentRuntimeBlock({
     if (didSave) triggerManualSaveFeedback()
   }
 
+  const commitHeaderRename = useCallback(async () => {
+    if (!isEditing || !canRenameInHeader || renaming) return
+    const nextName = filenameDraft.trim()
+    if (!nextName || nextName === filename) {
+      setFilenameDraft(filename)
+      setIsHeaderRenameActive(false)
+      return
+    }
+
+    setRenaming(true)
+    setRenameError(null)
+    try {
+      const nextPath = await renameVaultPathOrch(path, nextName)
+      setFilenameDraft(nextPath.split('/').pop() || nextPath)
+      setIsHeaderRenameActive(false)
+      if (onOpenPathForEdit) onOpenPathForEdit(nextPath)
+      else if (onOpenPath) onOpenPath(nextPath)
+    } catch (err) {
+      setFilenameDraft(filename)
+      setRenameError(err instanceof Error ? err.message : 'Failed to rename file')
+    } finally {
+      setRenaming(false)
+    }
+  }, [canRenameInHeader, filename, filenameDraft, isEditing, onOpenPath, onOpenPathForEdit, path, renaming])
+
+  const startHeaderRename = useCallback(() => {
+    if (!isEditing || !canRenameInHeader || renaming) return
+    setFilenameDraft(filename)
+    setRenameError(null)
+    setIsHeaderRenameActive(true)
+  }, [canRenameInHeader, filename, isEditing, renaming])
+
   useEffect(() => {
     if (!autoSaveEnabled) return
     if (!isEditing || isExcalidrawDoc || loading || error || baseMtime === null) return
@@ -774,13 +837,54 @@ function MarkdownTextDocumentRuntimeBlock({
               'ts-md-header ts-doc-header flex items-start justify-between gap-3 border-b border-border/50',
               isIosPhone ? 'px-4 py-3.5' : 'px-6 py-5',
             )}>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex w-full min-w-0 items-center gap-2">
                   <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="truncate font-medium">{filename}</span>
+                  {isEditing && canRenameInHeader && isHeaderRenameActive ? (
+                    <input
+                      ref={headerRenameInputRef}
+                      type="text"
+                      value={filenameDraft}
+                      onChange={(event) => {
+                        setFilenameDraft(event.target.value)
+                        if (renameError) setRenameError(null)
+                      }}
+                      onBlur={() => { void commitHeaderRename() }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          void commitHeaderRename()
+                          return
+                        }
+                        if (event.key === 'Escape') {
+                          event.preventDefault()
+                          setFilenameDraft(filename)
+                          setRenameError(null)
+                          setIsHeaderRenameActive(false)
+                        }
+                      }}
+                      disabled={renaming || saving}
+                      className="h-8 min-w-0 flex-1 border-0 bg-transparent px-0 text-sm font-medium outline-none focus:outline-none disabled:opacity-60"
+                      aria-label="File name"
+                    />
+                  ) : isEditing && canRenameInHeader ? (
+                    <button
+                      type="button"
+                      onClick={startHeaderRename}
+                      className="min-w-0 flex-1 truncate text-left font-medium"
+                      title="Rename file"
+                    >
+                      {filename}
+                    </button>
+                  ) : (
+                    <span className="truncate font-medium">{filename}</span>
+                  )}
                 </div>
                 {breadcrumb && (
                   <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>
+                )}
+                {renameError && (
+                  <div className="mt-1 truncate text-xs text-destructive">{renameError}</div>
                 )}
               </div>
 
@@ -1225,6 +1329,8 @@ function MarkdownDocumentBlock(props: MarkdownDocumentBlockProps) {
         path={props.path}
         initialMode={props.initialMode}
         onSaved={props.onSaved}
+        onOpenPath={props.onOpenPath}
+        onOpenPathForEdit={props.onOpenPathForEdit}
         onClose={props.onClose}
         showCloseButton={props.showCloseButton}
         className={props.className}
