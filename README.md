@@ -12,6 +12,8 @@
 
 Thinking Space helps you turn a folder of notes into a practical, compounding long-term memory.
 
+Most note-taking tools force you into rigid plugin systems and disconnected AI workflows. Thinking Space is different — it's built from the ground up as three things at once:
+
 Your notes folder is the source of truth, and Thinking Space is the helpful layer on top that makes creation, management, and use easier with AI of your choice.
 
 You can use an existing folder with your notes or create a new one. A cloud-synced folder is recommended so your notes are available across devices.
