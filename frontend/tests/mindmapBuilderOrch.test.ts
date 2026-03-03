@@ -98,4 +98,33 @@ describe('mindmapBuilderOrch', () => {
     expect(result.timingMs.total).toBeGreaterThanOrEqual(result.timingMs.write)
     expect(fakeFs.writes.some((entry) => entry.path === 'notes/ship (mindmap).excalidraw.md')).toBe(true)
   })
+
+  it('builds preview directly from in-memory markdown content', async () => {
+    const mod = await import('@/services/orchestrators/mindmapBuilderOrch')
+    const preview = mod.buildMindmapPreviewFromContentOrch({
+      inputPath: 'notes/from-editor.md',
+      content: '# Root\n\n## Child\nText',
+      options: mod.getDefaultMindmapBuildOptionsOrch(),
+    })
+
+    expect(preview.inputPath).toBe('notes/from-editor.md')
+    expect(preview.nodeCount).toBeGreaterThan(0)
+    expect(preview.sceneMarkdown.length).toBeGreaterThan(0)
+    expect(preview.timingMs.read).toBe(0)
+    expect(preview.timingMs.total).toBeGreaterThanOrEqual(preview.timingMs.build)
+  })
+
+  it('saves mindmap from in-memory markdown content', async () => {
+    const mod = await import('@/services/orchestrators/mindmapBuilderOrch')
+    const result = await mod.saveMindmapSceneFromContentOrch({
+      inputPath: 'notes/editor-save.md',
+      content: '# Editor Save\n\n## Section\nPayload',
+      options: mod.getDefaultMindmapBuildOptionsOrch(),
+      outputPath: 'notes/editor-save (mindmap).excalidraw.md',
+    })
+
+    expect(result.outputPath).toBe('notes/editor-save (mindmap).excalidraw.md')
+    expect(result.timingMs.write).toBeGreaterThanOrEqual(0)
+    expect(fakeFs.writes.some((entry) => entry.path === 'notes/editor-save (mindmap).excalidraw.md')).toBe(true)
+  })
 })
