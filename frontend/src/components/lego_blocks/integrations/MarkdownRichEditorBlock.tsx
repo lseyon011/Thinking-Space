@@ -47,6 +47,14 @@ import {
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import { UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/lego_blocks/units/ui/select'
+import { Switch } from '@/components/lego_blocks/units/ui/switch'
+import {
   deriveWikilinkLabelBlock,
   type WikilinkSuggestionBlock,
 } from '@/services/lego_blocks/integrations/obsidianWikilinkBlock'
@@ -521,6 +529,8 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     aiSelectionLoading,
     selectedProvider,
     selectedModel,
+    selectedModelOptions,
+    setSelectedModel,
     showThinkToggle,
     thinkEnabled,
     setThinkEnabled,
@@ -536,6 +546,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   } = useAiAssistRuntimeBlock({
     scope: aiAssistScope,
     useCase: aiAssistUseCase,
+    syncedModelScopes: aiStewardEnabled ? ['steward_metadata'] : undefined,
   })
 
   const aiPanelOpen = controlledAiPanelOpen ?? internalAiPanelOpen
@@ -1561,15 +1572,45 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       {enableAiAssist && aiPanelOpen && (
         <div className="space-y-3 border-b border-border/30 bg-muted/[0.08] px-5 py-4 sm:px-6">
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/50 bg-background/70 px-2 py-2">
-            <span className="text-xs text-foreground">
-              {selectedProvider && selectedModel ? `${selectedProvider} / ${selectedModel}` : 'No AI provider'}
-            </span>
+            {selectedProvider && selectedModel ? (
+              <div className="inline-flex min-w-0 items-center gap-1">
+                <span className="text-xs text-foreground">{selectedProvider} /</span>
+                <Select
+                  value={selectedModel}
+                  onValueChange={setSelectedModel}
+                  disabled={aiSelectionLoading || aiAssistDisabled}
+                >
+                  <SelectTrigger className="h-8 min-w-[14rem] border-border/60 bg-background px-2 py-1 text-xs ring-offset-0 focus:ring-2 focus:ring-ring focus:ring-offset-0">
+                    <SelectValue placeholder={selectedModel} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectedModelOptions.map((modelOption) => (
+                      <SelectItem key={modelOption} value={modelOption} className="text-xs">
+                        {modelOption}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <span className="text-xs text-foreground">No AI provider</span>
+            )}
             <span className={cn(
               'text-xs',
               assistRunningAction ? 'text-amber-700' : 'text-muted-foreground',
             )}>
               {assistRunningAction ? `Assist running: ${assistRunningAction}` : 'Assist idle'}
             </span>
+            {showThinkToggle && (
+              <label className="ml-auto inline-flex items-center gap-2 rounded-md border border-border/60 bg-background px-2 py-1">
+                <span className="text-xs text-muted-foreground">Think</span>
+                <Switch
+                  checked={!!thinkEnabled}
+                  onCheckedChange={(checked) => setThinkEnabled(checked)}
+                  disabled={aiSelectionLoading || aiAssistDisabled}
+                />
+              </label>
+            )}
             {assistResultPill && (
               <span className={cn(
                 'inline-flex h-8 items-center rounded-md border px-2 text-xs',
@@ -1628,8 +1669,26 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           )}
 
           <div className="h-px bg-border/50" />
-          {inlineDiffRender && (
-            <>
+          <AiAssistControlsBlock
+            selectedProvider={selectedProvider}
+            selectedModel={selectedModel}
+            runningAction={assistRunningAction}
+            loading={aiSelectionLoading}
+            disabled={aiAssistDisabled || inlineDiffSession != null}
+            onRun={(action) => { void runAssistAction(action, value) }}
+            onRunCustomPrompt={(prompt) => {
+              void (async () => {
+                const result = await runAssistAction('custom', value, prompt)
+                if (!result || !result.changed) return
+                applyAssistSuggestion((next) => {
+                  onChange(next)
+                })
+              })()
+            }}
+            promptHistory={customPromptHistory}
+            statusPill={assistResultPill}
+            helperText={aiAssistHelperText}
+            inlineReviewActionsSlot={inlineDiffRender ? (
               <div className="rounded-md border border-border/60 bg-background px-3 py-2">
                 <div className="text-xs text-muted-foreground">
                   Inline review active in editor:
@@ -1678,31 +1737,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
                   </button>
                 </div>
               </div>
-              <div className="h-px bg-border/50" />
-            </>
-          )}
-          <AiAssistControlsBlock
-            selectedProvider={selectedProvider}
-            selectedModel={selectedModel}
-            showThinkToggle={showThinkToggle}
-            thinkEnabled={thinkEnabled}
-            onThinkEnabledChange={setThinkEnabled}
-            runningAction={assistRunningAction}
-            loading={aiSelectionLoading}
-            disabled={aiAssistDisabled || inlineDiffSession != null}
-            onRun={(action) => { void runAssistAction(action, value) }}
-            onRunCustomPrompt={(prompt) => {
-              void (async () => {
-                const result = await runAssistAction('custom', value, prompt)
-                if (!result || !result.changed) return
-                applyAssistSuggestion((next) => {
-                  onChange(next)
-                })
-              })()
-            }}
-            promptHistory={customPromptHistory}
-            statusPill={assistResultPill}
-            helperText={aiAssistHelperText}
+            ) : null}
           />
 
           {assistSuggestion && (

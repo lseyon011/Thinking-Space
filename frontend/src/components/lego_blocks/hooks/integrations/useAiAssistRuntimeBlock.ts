@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import type { AiProvider } from '@/services/orchestrators/chatOrch'
 import { runAiAssistOrch, type AiAssistAction, type RunAiAssistResult } from '@/services/orchestrators/aiAssistOrch'
 import {
+  listAiModelOptionsOrch,
   resolveAiSelectionOrch,
   resolveAiThinkingForScopeProviderOrch,
+  setAiScopeProviderModelOrch,
   setAiScopeProviderThinkingOrch,
 } from '@/services/orchestrators/aiSettingsOrch'
 import {
@@ -22,6 +24,8 @@ export interface AiAssistRuntimeBlockState {
   aiSelectionLoading: boolean
   selectedProvider: AiProvider | null
   selectedModel: string | null
+  selectedModelOptions: string[]
+  setSelectedModel: (model: string) => void
   showThinkToggle: boolean
   thinkEnabled: boolean
   setThinkEnabled: (enabled: boolean) => void
@@ -39,6 +43,7 @@ export interface AiAssistRuntimeBlockState {
 export interface UseAiAssistRuntimeBlockOptions {
   scope: AiSettingsScope
   useCase: string
+  syncedModelScopes?: AiSettingsScope[]
 }
 
 function errorMessage(value: unknown, fallback: string): string {
@@ -50,7 +55,8 @@ function errorMessage(value: unknown, fallback: string): string {
 export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions): AiAssistRuntimeBlockState {
   const [aiSelectionLoading, setAiSelectionLoading] = useState(true)
   const [selectedProvider, setSelectedProvider] = useState<AiProvider | null>(null)
-  const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  const [selectedModel, setSelectedModelState] = useState<string | null>(null)
+  const [selectedModelOptions, setSelectedModelOptions] = useState<string[]>([])
   const [thinkEnabled, setThinkEnabledState] = useState(true)
   const [assistRunningAction, setAssistRunningAction] = useState<AiAssistAction | null>(null)
   const [assistError, setAssistError] = useState<string | null>(null)
@@ -61,7 +67,17 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
   const syncSelection = useCallback(async () => {
     const selection = await resolveAiSelectionOrch({ scope: options.scope })
     setSelectedProvider(selection?.provider ?? null)
-    setSelectedModel(selection?.model ?? null)
+    setSelectedModelState(selection?.model ?? null)
+    if (selection?.provider) {
+      const providerKnownModels = listAiModelOptionsOrch(selection.provider)
+      const providerResolvedModel = selection.providers.find(item => item.provider === selection.provider)?.model?.trim() ?? ''
+      const resolvedSelectionModel = selection.model.trim()
+      const ordered = [resolvedSelectionModel, providerResolvedModel, ...providerKnownModels]
+      const deduped = Array.from(new Set(ordered.filter(model => model.length > 0)))
+      setSelectedModelOptions(deduped)
+    } else {
+      setSelectedModelOptions([])
+    }
     const nextThinkEnabled = selection?.provider === 'opensource-ai'
       ? resolveAiThinkingForScopeProviderOrch(options.scope, 'opensource-ai')
       : true
@@ -76,7 +92,8 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
       .catch(() => {
         if (cancelled) return
         setSelectedProvider(null)
-        setSelectedModel(null)
+        setSelectedModelState(null)
+        setSelectedModelOptions([])
       })
       .finally(() => {
         if (!cancelled) setAiSelectionLoading(false)
@@ -106,6 +123,25 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     setThinkEnabledState(enabled)
     setAiScopeProviderThinkingOrch(options.scope, 'opensource-ai', enabled)
   }, [options.scope])
+
+  const setSelectedModel = useCallback((model: string) => {
+    if (!selectedProvider) return
+    const normalizedModel = model.trim()
+    if (!normalizedModel) return
+    const scopesToUpdate = Array.from(new Set<AiSettingsScope>([
+      options.scope,
+      ...(options.syncedModelScopes ?? []),
+    ]))
+    for (const scope of scopesToUpdate) {
+      setAiScopeProviderModelOrch(scope, selectedProvider, normalizedModel)
+    }
+    setSelectedModelState(normalizedModel)
+    setSelectedModelOptions((current) => (
+      current.includes(normalizedModel)
+        ? current
+        : [normalizedModel, ...current]
+    ))
+  }, [options.scope, options.syncedModelScopes, selectedProvider])
 
   const runAssistAction = useCallback(async (action: AiAssistAction, content: string, customPrompt?: string) => {
     if (assistRunningAction) return null
@@ -203,6 +239,8 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     aiSelectionLoading,
     selectedProvider,
     selectedModel,
+    selectedModelOptions,
+    setSelectedModel,
     showThinkToggle: selectedProvider === 'opensource-ai',
     thinkEnabled,
     setThinkEnabled,

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Sparkles } from 'lucide-react'
 import type { AiAssistAction } from '@/services/orchestrators/aiAssistOrch'
 import type { AiAssistPromptHistoryEntryBlock } from '@/services/orchestrators/aiAssistPromptHistoryOrch'
@@ -27,6 +27,7 @@ interface AiAssistControlsBlockProps {
   promptHistory?: AiAssistPromptHistoryEntryBlock[]
   statusPill?: { tone: 'neutral' | 'success' | 'error'; text: string } | null
   helperText?: string
+  inlineReviewActionsSlot?: ReactNode
 }
 
 function formatPromptHistoryLastUsedBlock(value: string): string {
@@ -53,6 +54,7 @@ export default function AiAssistControlsBlock({
   promptHistory = [],
   statusPill = null,
   helperText = 'Preview-first only. Suggestions never auto-save until you explicitly apply and save.',
+  inlineReviewActionsSlot = null,
 }: AiAssistControlsBlockProps) {
   const [customPrompt, setCustomPrompt] = useState('')
   const [selectedPreset, setSelectedPreset] = useState<AiAssistAction>('clarity')
@@ -169,6 +171,8 @@ export default function AiAssistControlsBlock({
           />
         </label>
       )}
+
+      {inlineReviewActionsSlot}
 
       <div className="text-xs text-muted-foreground">
         {helperText}
