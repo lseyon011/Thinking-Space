@@ -15,15 +15,22 @@ export interface ManualAzureCredentials {
   apiVersion: string
 }
 
+export interface ManualOpenSourceAiCredentials {
+  baseUrl: string
+  apiKey?: string
+}
+
 export interface AiManualCredentials {
   claude?: ManualClaudeCredentials
   openaiCodex?: ManualOpenAiCredentials
   azure?: ManualAzureCredentials
+  opensourceAi?: ManualOpenSourceAiCredentials
 }
 
 export const DEFAULT_AZURE_OPENAI_ENDPOINT = 'https://fuchs-lab-openai.openai.azure.com'
 export const DEFAULT_AZURE_OPENAI_DEPLOYMENT = 'gpt-5'
 export const DEFAULT_AZURE_OPENAI_API_VERSION = '2024-12-01-preview'
+export const DEFAULT_OPENSOURCE_AI_BASE_URL = 'http://127.0.0.1:1234/v1'
 
 const DEFAULT_MANUAL_CREDENTIALS: AiManualCredentials = {}
 
@@ -60,16 +67,29 @@ function sanitizeAzure(raw: unknown): ManualAzureCredentials | undefined {
   }
 }
 
+function sanitizeOpenSourceAi(raw: unknown): ManualOpenSourceAiCredentials | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const record = raw as Record<string, unknown>
+  const baseUrl = sanitizeValue(record.baseUrl) || DEFAULT_OPENSOURCE_AI_BASE_URL
+  const apiKey = sanitizeValue(record.apiKey) || undefined
+  return {
+    baseUrl,
+    ...(apiKey ? { apiKey } : {}),
+  }
+}
+
 function sanitizeManualCredentials(raw: unknown): AiManualCredentials {
   if (!raw || typeof raw !== 'object') return {}
   const record = raw as Record<string, unknown>
   const claude = sanitizeClaude(record.claude)
   const openaiCodex = sanitizeOpenAi(record.openaiCodex)
   const azure = sanitizeAzure(record.azure)
+  const opensourceAi = sanitizeOpenSourceAi(record.opensourceAi)
   return {
     ...(claude ? { claude } : {}),
     ...(openaiCodex ? { openaiCodex } : {}),
     ...(azure ? { azure } : {}),
+    ...(opensourceAi ? { opensourceAi } : {}),
   }
 }
 
@@ -153,4 +173,24 @@ export function getManualOpenAiApiKeyBlock(): string | null {
 
 export function getManualAzureCredentialsBlock(): ManualAzureCredentials | null {
   return readAiManualCredentialsBlock().azure ?? null
+}
+
+export function setManualOpenSourceAiCredentialsBlock(input: {
+  baseUrl?: string
+  apiKey?: string
+}): AiManualCredentials {
+  const current = readAiManualCredentialsBlock()
+  const baseUrl = sanitizeValue(input.baseUrl) || DEFAULT_OPENSOURCE_AI_BASE_URL
+  const apiKey = sanitizeValue(input.apiKey) || undefined
+  return writeAiManualCredentialsBlock({
+    ...current,
+    opensourceAi: {
+      baseUrl,
+      ...(apiKey ? { apiKey } : {}),
+    },
+  })
+}
+
+export function getManualOpenSourceAiCredentialsBlock(): ManualOpenSourceAiCredentials | null {
+  return readAiManualCredentialsBlock().opensourceAi ?? null
 }

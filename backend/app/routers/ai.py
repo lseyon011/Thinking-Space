@@ -13,7 +13,12 @@ from app.services.orchestrators.ai_chat_orch import (
 
 router = APIRouter()
 
-Provider = Literal["claude", "openai-codex", "codex-cli", "azure-gpt"]
+Provider = Literal["opensource-ai", "claude", "openai-codex", "codex-cli", "azure-gpt"]
+
+
+class OpenSourceAiConfig(BaseModel):
+    base_url: str | None = None
+    api_key: str | None = None
 
 
 class ChatMessageIn(BaseModel):
@@ -25,6 +30,7 @@ class ChatRequest(BaseModel):
     provider: Provider
     messages: list[ChatMessageIn]
     model: str | None = None
+    opensource_ai: OpenSourceAiConfig | None = None
 
 
 class TestProviderRequest(BaseModel):
@@ -72,6 +78,7 @@ async def chat(req: ChatRequest):
             req.provider,
             [m.model_dump() for m in req.messages],
             model=req.model,
+            opensource_ai=req.opensource_ai.model_dump() if req.opensource_ai else None,
         )
         return result
     except RuntimeError as e:

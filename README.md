@@ -54,7 +54,7 @@ Most note-taking tools force you into rigid plugin systems and disconnected AI w
 ### AI Integration
 - [x] Interactive AI chat with streaming responses
 - [x] Writing assistance: grammar, clarity, structure, tone — with diff preview
-- [x] Multi-provider support: OpenAI, Anthropic Claude, Ollama (local), Codex CLI
+- [x] Multi-provider support: OpenAI, Anthropic Claude, Open Source AI (LM Studio/OpenAI-compatible local), Codex CLI
 - [x] Per-scope provider/model defaults and overrides
 - [x] AI telemetry panel (tokens, latency, model info)
 - [x] Native credential management for Electron and iOS
@@ -95,7 +95,7 @@ Most note-taking tools force you into rigid plugin systems and disconnected AI w
 - Extension JS/TS runtime is Electron-only; web and iOS are declarative-only
 - No end-to-end test harness (coverage is unit/service-level)
 - AI text actions are available on key surfaces but not yet unified across every text input
-- Local AI (Ollama/WASM) path works but isn't fully polished yet
+- Local AI (OpenAI-compatible local endpoints/WASM) path works but isn't fully polished yet
 
 ---
 
@@ -147,7 +147,7 @@ Opens at `http://localhost:5173` — pick a local folder as your vault and you'r
 | Mobile | Capacitor (iOS) |
 | Storage | YAML frontmatter in Markdown files (source of truth) |
 | Cache | IndexedDB via Dexie.js (rebuildable) |
-| AI | OpenAI, Anthropic, Ollama, Codex CLI |
+| AI | OpenAI, Anthropic, Open Source AI (LM Studio/OpenAI-compatible local), Codex CLI |
 | Drawing | Excalidraw |
 | Editor | CodeMirror |
 | Backend | FastAPI + Python (optional, thin proxy) |

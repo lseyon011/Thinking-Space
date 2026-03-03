@@ -10,6 +10,7 @@ import { isCapacitorNative, isElectron } from '@/services/lego_blocks/integratio
 import {
   getManualAzureCredentialsBlock,
   getManualClaudeApiKeyBlock,
+  getManualOpenSourceAiCredentialsBlock,
   getManualOpenAiApiKeyBlock,
 } from '@/services/lego_blocks/integrations/aiCredentialStoreBlock'
 import {
@@ -20,7 +21,7 @@ import { aiDebugBlock, aiDebugErrorMessageBlock, aiDebugWarnBlock } from '@/serv
 
 // ── Types ──
 
-export type AiProvider = 'claude' | 'openai-codex' | 'codex-cli' | 'azure-gpt'
+export type AiProvider = 'opensource-ai' | 'claude' | 'openai-codex' | 'codex-cli' | 'azure-gpt'
 
 export interface AiProviderStatus {
   provider: AiProvider
@@ -30,9 +31,10 @@ export interface AiProviderStatus {
   models: string[]
 }
 
-export const AI_PROVIDER_ORDER: AiProvider[] = ['codex-cli', 'claude', 'openai-codex', 'azure-gpt']
+export const AI_PROVIDER_ORDER: AiProvider[] = ['opensource-ai', 'codex-cli', 'claude', 'openai-codex', 'azure-gpt']
 
 const PROVIDER_LABELS: Record<AiProvider, string> = {
+  'opensource-ai': 'Open Source AI',
   claude: 'Claude',
   'openai-codex': 'Codex',
   'codex-cli': 'Codex CLI',
@@ -40,6 +42,7 @@ const PROVIDER_LABELS: Record<AiProvider, string> = {
 }
 
 const PROVIDER_MODELS: Record<AiProvider, string[]> = {
+  'opensource-ai': ['local-model'],
   claude: ['claude-sonnet-4-5-20250929'],
   'openai-codex': ['gpt-5.3-codex', 'gpt-5-codex'],
   'codex-cli': ['gpt-5.3-codex', 'gpt-5-codex'],
@@ -82,7 +85,11 @@ export interface AzureCredentials {
 }
 
 export function isAiProvider(value: unknown): value is AiProvider {
-  return value === 'claude' || value === 'openai-codex' || value === 'codex-cli' || value === 'azure-gpt'
+  return value === 'opensource-ai'
+    || value === 'claude'
+    || value === 'openai-codex'
+    || value === 'codex-cli'
+    || value === 'azure-gpt'
 }
 
 export function listProviderModelsBlock(provider: AiProvider): string[] {
@@ -114,6 +121,7 @@ function toProviderStatusRows(
 }
 
 function readLocalCredentialAvailabilityBlock(): ProviderAvailabilityMap {
+  const manualOpenSourceAi = !!getManualOpenSourceAiCredentialsBlock()?.baseUrl
   const manualClaude = !!getManualClaudeApiKeyBlock()
   const manualCodex = !!getManualOpenAiApiKeyBlock()
   const manualAzure = !!getManualAzureCredentialsBlock()
@@ -121,6 +129,7 @@ function readLocalCredentialAvailabilityBlock(): ProviderAvailabilityMap {
   const oauthCodex = !!getNativeCodexOauthCredentialsBlock()
 
   return {
+    'opensource-ai': manualOpenSourceAi,
     claude: manualClaude || oauthClaude,
     'openai-codex': manualCodex || oauthCodex,
     'azure-gpt': manualAzure,
@@ -383,6 +392,7 @@ export async function listProvidersBlock(options?: ListProvidersBlockOptions): P
   if (nativeRuntime) {
     const electronAvailability = await readElectronCredentialAvailabilityBlock()
     const rows = toProviderStatusRows({
+      'opensource-ai': !!localAvailability['opensource-ai'] || !!backend.availability['opensource-ai'],
       'codex-cli': isElectron() ? !!backend.availability['codex-cli'] : false,
       claude: !!localAvailability.claude || !!electronAvailability.claude || !!backend.availability.claude,
       'openai-codex':
@@ -420,6 +430,7 @@ export async function listProvidersBlock(options?: ListProvidersBlockOptions): P
     return backendRows
   }
   const fallbackRows = toProviderStatusRows({
+    'opensource-ai': !!localAvailability['opensource-ai'],
     'codex-cli': false,
     claude: !!localAvailability.claude,
     'openai-codex': !!localAvailability['openai-codex'],

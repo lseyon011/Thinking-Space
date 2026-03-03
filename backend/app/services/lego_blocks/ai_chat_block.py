@@ -1,5 +1,5 @@
 """
-AI chat blocks — send messages to Claude, OpenAI Codex, Codex CLI, or Azure GPT.
+AI chat blocks — send messages to Open Source AI, Claude, OpenAI Codex, Codex CLI, or Azure GPT.
 
 Each block handles credential sourcing, client construction, and API call.
 """
@@ -28,6 +28,9 @@ CLAUDE_MAX_OUTPUT_TOKENS = 64000
 CODEX_CLI_MODEL = "gpt-5.3-codex"
 CODEX_CLI_RUNNER_TIMEOUT_MS = 180000
 AI_WORKSPACE_DIR_NAME = "ai-thinking-space"
+OPENSOURCE_AI_DEFAULT_BASE_URL = (os.getenv("OPEN_SOURCE_AI_BASE_URL") or "http://127.0.0.1:1234/v1").strip()
+OPENSOURCE_AI_DEFAULT_MODEL = (os.getenv("OPEN_SOURCE_AI_MODEL") or "local-model").strip()
+OPENSOURCE_AI_PROBE_TIMEOUT_SECONDS = 1.0
 
 
 # ── Types ──
@@ -99,6 +102,18 @@ def is_codex_cli_available_block() -> bool:
     runner_script = _codex_cli_runner_script_block(frontend_root)
     codex_bin = shutil.which("codex")
     return bool(codex_bin and vite_node.exists() and runner_script.exists())
+
+
+def _normalize_opensource_ai_base_url_block(value: str | None) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        raw = OPENSOURCE_AI_DEFAULT_BASE_URL
+    normalized = raw.rstrip("/")
+    if not normalized:
+        normalized = OPENSOURCE_AI_DEFAULT_BASE_URL
+    if not normalized.endswith("/v1"):
+        normalized = f"{normalized}/v1"
+    return normalized
 
 
 # ── Claude ──
@@ -433,6 +448,67 @@ def chat_codex_cli_block(
         "output_tokens": output_tokens,
         "total_tokens": total_tokens,
         "thread_id": response_thread_id,
+    }
+
+
+# ── Open Source AI ──
+
+
+def is_opensource_ai_available_block(base_url: str | None = None, api_key: str | None = None) -> bool:
+    normalized_base_url = _normalize_opensource_ai_base_url_block(base_url)
+    headers = {}
+    token = (api_key or "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        response = httpx.get(
+            f"{normalized_base_url}/models",
+            headers=headers,
+            timeout=OPENSOURCE_AI_PROBE_TIMEOUT_SECONDS,
+        )
+        return 200 <= response.status_code < 300
+    except Exception:
+        return False
+
+
+def chat_opensource_ai_block(messages: list[dict], model: str | None = None, config: dict | None = None) -> dict:
+    """Send messages to an OpenAI-compatible local endpoint (LM Studio by default)."""
+    config = config or {}
+    base_url = _normalize_opensource_ai_base_url_block(config.get("base_url") if isinstance(config, dict) else None)
+    api_key = (config.get("api_key") if isinstance(config, dict) else None) or os.getenv("OPEN_SOURCE_AI_API_KEY") or ""
+    model = model.strip() if isinstance(model, str) and model.strip() else OPENSOURCE_AI_DEFAULT_MODEL
+    requested_at = datetime.now(timezone.utc).isoformat()
+    started = time.perf_counter()
+
+    client = openai.OpenAI(
+        api_key=api_key or "local-not-required",
+        base_url=base_url,
+    )
+    payload = {
+        "model": model,
+        "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
+    }
+    response = client.chat.completions.create(**payload)
+
+    text = response.choices[0].message.content or ""
+    responded_at = datetime.now(timezone.utc).isoformat()
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    usage = getattr(response, "usage", None)
+    input_tokens = getattr(usage, "prompt_tokens", None) if usage is not None else None
+    output_tokens = getattr(usage, "completion_tokens", None) if usage is not None else None
+    total_tokens = getattr(usage, "total_tokens", None) if usage is not None else None
+
+    return {
+        "role": "assistant",
+        "content": text,
+        "provider": "opensource-ai",
+        "model": getattr(response, "model", None) or model,
+        "requested_at": requested_at,
+        "responded_at": responded_at,
+        "latency_ms": latency_ms,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
     }
 
 

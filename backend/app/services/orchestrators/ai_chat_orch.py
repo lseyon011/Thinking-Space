@@ -3,10 +3,12 @@ AI chat orchestrator — routes to correct provider block and checks availabilit
 """
 
 from app.services.lego_blocks.ai_chat_block import (
+    chat_opensource_ai_block,
     chat_azure_block,
     chat_codex_cli_block,
     chat_claude_block,
     chat_codex_block,
+    is_opensource_ai_available_block,
     is_codex_cli_available_block,
 )
 from app.services.lego_blocks.ai_credential_block import (
@@ -21,9 +23,12 @@ def send_chat_orch(
     messages: list[dict],
     thread_id: str | None = None,
     model: str | None = None,
+    opensource_ai: dict | None = None,
 ) -> dict:
     """Route a chat request to the appropriate provider block."""
-    if provider == "claude":
+    if provider == "opensource-ai":
+        return chat_opensource_ai_block(messages, model=model, config=opensource_ai)
+    elif provider == "claude":
         return chat_claude_block(messages, model=model)
     elif provider == "openai-codex":
         return chat_codex_block(messages, model=model)
@@ -38,6 +43,18 @@ def send_chat_orch(
 def list_providers_orch() -> list[dict]:
     """Check which AI providers have valid credentials available."""
     providers = []
+
+    # Open Source AI (OpenAI-compatible local endpoints such as LM Studio)
+    try:
+        opensource_available = is_opensource_ai_available_block()
+    except Exception:
+        opensource_available = False
+    providers.append({
+        "provider": "opensource-ai",
+        "available": opensource_available,
+        "label": "Open Source AI",
+        "model": "local-model",
+    })
 
     # Claude
     try:

@@ -14,8 +14,10 @@ import {
   getAzureCredentialsBlock,
 } from '@/services/lego_blocks/integrations/aiProviderBlock'
 import {
+  DEFAULT_OPENSOURCE_AI_BASE_URL,
   getManualAzureCredentialsBlock,
   getManualClaudeApiKeyBlock,
+  getManualOpenSourceAiCredentialsBlock,
   getManualOpenAiApiKeyBlock,
 } from '@/services/lego_blocks/integrations/aiCredentialStoreBlock'
 import {
@@ -50,6 +52,10 @@ export interface ChatResponse {
 export interface ChatSendOptions {
   threadId?: string
   model?: string
+  opensourceAi?: {
+    baseUrl?: string
+    apiKey?: string
+  }
 }
 
 // ── Electron: direct API calls ──
@@ -57,6 +63,19 @@ export interface ChatSendOptions {
 function resolveRequestedModel(provider: AiProvider, requested?: string): string {
   const normalized = typeof requested === 'string' ? requested.trim() : ''
   return normalized || defaultProviderModelBlock(provider)
+}
+
+function normalizeOpenSourceAiBaseUrlBlock(raw: string | null | undefined): string {
+  const trimmed = typeof raw === 'string' ? raw.trim() : ''
+  const normalized = (trimmed || DEFAULT_OPENSOURCE_AI_BASE_URL).replace(/\/+$/, '')
+  return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
+}
+
+function resolveOpenSourceAiConfigBlock(options?: ChatSendOptions): { baseUrl: string; apiKey?: string } {
+  const manual = getManualOpenSourceAiCredentialsBlock()
+  const baseUrl = normalizeOpenSourceAiBaseUrlBlock(options?.opensourceAi?.baseUrl || manual?.baseUrl)
+  const apiKey = (options?.opensourceAi?.apiKey || manual?.apiKey || '').trim() || undefined
+  return { baseUrl, ...(apiKey ? { apiKey } : {}) }
 }
 
 async function sendClaudeDirectBlock(messages: ChatMessage[], model?: string): Promise<ChatResponse> {
@@ -162,6 +181,43 @@ async function sendAzureDirectBlock(messages: ChatMessage[], model?: string): Pr
     content: text,
     provider: 'azure-gpt',
     model: requestedModel,
+    requested_at: requestedAt,
+    responded_at: respondedAt,
+    latency_ms: latencyMs,
+    input_tokens: response.usage?.prompt_tokens ?? undefined,
+    output_tokens: response.usage?.completion_tokens ?? undefined,
+    total_tokens: response.usage?.total_tokens ?? undefined,
+  }
+}
+
+async function sendOpenSourceAiDirectBlock(
+  messages: ChatMessage[],
+  model?: string,
+  options?: ChatSendOptions,
+): Promise<ChatResponse> {
+  const { default: OpenAI } = await import('openai')
+  const requestedModel = resolveRequestedModel('opensource-ai', model)
+  const config = resolveOpenSourceAiConfigBlock(options)
+  const client = new OpenAI({
+    apiKey: config.apiKey || 'local-not-required',
+    baseURL: config.baseUrl,
+    dangerouslyAllowBrowser: true,
+  })
+  const requestedAt = new Date().toISOString()
+  const started = performance.now()
+  const response = await client.chat.completions.create({
+    model: requestedModel,
+    messages: messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+  })
+
+  const text = response.choices[0]?.message?.content ?? ''
+  const respondedAt = new Date().toISOString()
+  const latencyMs = Math.round(performance.now() - started)
+  return {
+    role: 'assistant',
+    content: text,
+    provider: 'opensource-ai',
+    model: response.model || requestedModel,
     requested_at: requestedAt,
     responded_at: respondedAt,
     latency_ms: latencyMs,
@@ -371,6 +427,15 @@ async function sendViaBackendBlock(
       provider,
       messages,
       model: options?.model || null,
+      opensource_ai: provider === 'opensource-ai'
+        ? (() => {
+          const config = resolveOpenSourceAiConfigBlock(options)
+          return {
+            base_url: config.baseUrl,
+            api_key: config.apiKey || null,
+          }
+        })()
+        : null,
     }),
   })
   if (!res.ok) {
@@ -400,6 +465,7 @@ export async function sendChatBlock(
   try {
     if (provider === 'codex-cli') return sendCodexCliViaBackendBlock(messages, options)
     if (runtime === 'electron' || runtime === 'capacitor') {
+      if (provider === 'opensource-ai') return sendOpenSourceAiDirectBlock(messages, options?.model, options)
       if (provider === 'claude') return sendClaudeDirectBlock(messages, options?.model)
       if (provider === 'openai-codex') return sendCodexDirectBlock(messages, options?.model)
       if (provider === 'azure-gpt') return sendAzureDirectBlock(messages, options?.model)

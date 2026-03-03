@@ -2,7 +2,9 @@ import {
   clearAiManualCredentialsBlock,
   getManualAzureCredentialsBlock,
   getManualClaudeApiKeyBlock,
+  getManualOpenSourceAiCredentialsBlock,
   getManualOpenAiApiKeyBlock,
+  setManualOpenSourceAiCredentialsBlock,
   setManualAzureCredentialsBlock,
   setManualClaudeCredentialsBlock,
   setManualOpenAiCredentialsBlock,
@@ -15,10 +17,13 @@ export interface NativeAiLoginState {
   azureEndpoint: string
   azureDeployment: string
   azureApiVersion: string
+  openSourceAiBaseUrl: string
+  openSourceAiApiKey: string
 }
 
 export function getNativeAiLoginStateOrch(): NativeAiLoginState {
   const azure = getManualAzureCredentialsBlock()
+  const openSourceAi = getManualOpenSourceAiCredentialsBlock()
   return {
     claudeApiKey: getManualClaudeApiKeyBlock() ?? '',
     openAiApiKey: getManualOpenAiApiKeyBlock() ?? '',
@@ -26,6 +31,8 @@ export function getNativeAiLoginStateOrch(): NativeAiLoginState {
     azureEndpoint: azure?.endpoint ?? '',
     azureDeployment: azure?.deployment ?? '',
     azureApiVersion: azure?.apiVersion ?? '',
+    openSourceAiBaseUrl: openSourceAi?.baseUrl ?? '',
+    openSourceAiApiKey: openSourceAi?.apiKey ?? '',
   }
 }
 
@@ -46,6 +53,14 @@ export function setNativeAzureLoginOrch(input: {
   apiVersion?: string
 }): NativeAiLoginState {
   setManualAzureCredentialsBlock(input)
+  return getNativeAiLoginStateOrch()
+}
+
+export function setNativeOpenSourceAiLoginOrch(input: {
+  baseUrl?: string
+  apiKey?: string
+}): NativeAiLoginState {
+  setManualOpenSourceAiCredentialsBlock(input)
   return getNativeAiLoginStateOrch()
 }
 

@@ -8,6 +8,7 @@ import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeO
 import {
   clearNativeAiLoginsOrch,
   getNativeAiLoginStateOrch,
+  setNativeOpenSourceAiLoginOrch,
   setNativeAzureLoginOrch,
   setNativeClaudeLoginOrch,
   setNativeOpenAiLoginOrch,
@@ -58,6 +59,8 @@ export default function AiSettingsOrch() {
   const [azureEndpointInput, setAzureEndpointInput] = useState('')
   const [azureDeploymentInput, setAzureDeploymentInput] = useState('')
   const [azureApiVersionInput, setAzureApiVersionInput] = useState('')
+  const [openSourceAiBaseUrlInput, setOpenSourceAiBaseUrlInput] = useState('')
+  const [openSourceAiApiKeyInput, setOpenSourceAiApiKeyInput] = useState('')
   const [transferCodeInput, setTransferCodeInput] = useState('')
   const [generatingTransferCode, setGeneratingTransferCode] = useState(false)
   const [telemetryEvents, setTelemetryEvents] = useState<AiTelemetryEvent[]>([])
@@ -105,6 +108,8 @@ export default function AiSettingsOrch() {
     setAzureEndpointInput(state.azureEndpoint)
     setAzureDeploymentInput(state.azureDeployment)
     setAzureApiVersionInput(state.azureApiVersion)
+    setOpenSourceAiBaseUrlInput(state.openSourceAiBaseUrl)
+    setOpenSourceAiApiKeyInput(state.openSourceAiApiKey)
   }, [])
 
   const loadProviders = useCallback(async (options?: { forceBackendRefresh?: boolean }): Promise<boolean> => {
@@ -226,6 +231,10 @@ export default function AiSettingsOrch() {
         endpoint: azureEndpointInput,
         deployment: azureDeploymentInput,
         apiVersion: azureApiVersionInput,
+      })
+      setNativeOpenSourceAiLoginOrch({
+        baseUrl: openSourceAiBaseUrlInput,
+        apiKey: openSourceAiApiKeyInput,
       })
       hydrateNativeLoginInputs()
       await loadProviders()
@@ -373,6 +382,26 @@ export default function AiSettingsOrch() {
                 className="rounded-md border border-input bg-background px-3 py-2 text-sm"
                 placeholder="API version"
               />
+            </div>
+            <div className="space-y-2">
+              <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                Open Source AI (LM Studio/OpenAI-Compatible)
+              </div>
+              <div className="grid gap-2 md:grid-cols-2">
+                <input
+                  value={openSourceAiBaseUrlInput}
+                  onChange={(event) => setOpenSourceAiBaseUrlInput(event.target.value)}
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="http://127.0.0.1:1234/v1"
+                />
+                <input
+                  value={openSourceAiApiKeyInput}
+                  onChange={(event) => setOpenSourceAiApiKeyInput(event.target.value)}
+                  type="password"
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="Optional API key"
+                />
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" onClick={() => { void onSaveNativeLogins() }}>
