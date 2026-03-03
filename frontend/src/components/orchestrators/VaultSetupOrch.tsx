@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FolderOpen, Check, Globe, Server } from 'lucide-react'
+import { FolderOpen, Check, Server } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { selectAndSetVaultRoot } from '@/services/orchestrators/runtimeOrch'
 import {
@@ -49,7 +49,7 @@ export default function VaultSetup({ onComplete }: Props) {
 
   const validateProfile = (): boolean => {
     if (profileNameInput.trim()) return true
-    setError('Please enter your name before selecting a vault.')
+    setError('Please enter your name before selecting a Thinking Space folder.')
     return false
   }
 
@@ -131,7 +131,7 @@ export default function VaultSetup({ onComplete }: Props) {
     try {
       const probe = await probeBackendConnectionBlock(true)
       if (!probe.connected) {
-        throw new Error(probe.error || 'Backend is reachable but vault is unavailable')
+        throw new Error(probe.error || 'Backend is reachable but Thinking Space folder is unavailable')
       }
       setVaultRoot('web-backend')
       await seedVaultProfile()
@@ -151,11 +151,14 @@ export default function VaultSetup({ onComplete }: Props) {
         <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
           <FolderOpen className="h-8 w-8 text-primary" />
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome to Thinking Space</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Select Thinking Space</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {isNativeApp
-            ? 'Select your vault folder to get started. You can pick a local folder or one in iCloud Drive.'
-            : 'Choose how to connect to your vault.'}
+            ? 'Choose your existing notes folder, or create a new folder where you want to store your notes.'
+            : 'Choose how to connect to your Thinking Space folder.'}
+        </p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Recommended: select a cloud-synced folder so your notes stay available across your devices.
         </p>
 
         <div className="mt-6 space-y-3 text-left">
@@ -191,7 +194,7 @@ export default function VaultSetup({ onComplete }: Props) {
               </span>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              This will be used for comments and profile displays. Saved in your vault under `.thinking-space/profile.json`.
+              This will be used for comments and profile displays. Saved in your Thinking Space folder under `.thinking-space/profile.json`.
             </p>
           </div>
         </div>
@@ -202,7 +205,7 @@ export default function VaultSetup({ onComplete }: Props) {
               {selecting ? 'Selecting...' : (
                 <>
                   <FolderOpen className="mr-2 h-4 w-4" />
-                  Select Vault Folder
+                  Select Thinking Space
                 </>
               )}
             </Button>
@@ -213,7 +216,7 @@ export default function VaultSetup({ onComplete }: Props) {
               {selecting ? 'Opening...' : (
                 <>
                   <FolderOpen className="mr-2 h-4 w-4" />
-                  Open Local Folder
+                  Select Thinking Space Folder
                 </>
               )}
             </Button>
@@ -234,7 +237,7 @@ export default function VaultSetup({ onComplete }: Props) {
                   : (isBackendReconnect ? 'Refresh Backend Connection' : 'Connect to Backend')}
               </Button>
               <p className="text-xs text-muted-foreground">
-                Backend mode does not use a browser folder picker. The vault path is configured on the backend via
+                Backend mode does not use a browser folder picker. The Thinking Space folder path is configured on the backend via
                 `LTM_VAULT_ROOT` or `THINK_SPACE_VAULT_ROOT`.
               </p>
             </div>
@@ -245,25 +248,77 @@ export default function VaultSetup({ onComplete }: Props) {
           <p className="mt-4 text-sm text-destructive">{error}</p>
         )}
 
-        <div className="mt-8 space-y-2 text-left text-xs text-muted-foreground">
-          <div className="flex items-start gap-2">
-            <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
-            <span>All data stays on your machine — nothing is uploaded</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
-            <span>Works alongside Obsidian — no conflicts</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
-            <span>You can change the vault folder later in settings</span>
-          </div>
-          {hasBrowserFS && (
-            <div className="flex items-start gap-2">
-              <Globe className="mt-0.5 h-3 w-3 shrink-0 text-blue-500" />
-              <span>Open Local Folder works without any server — your browser reads files directly</span>
+        <div className="mt-8 rounded-md border border-border/60 bg-muted/20 px-3 py-3 text-left">
+          <p className="text-xs text-muted-foreground">
+            This is your existing folder where your notes are stored, or a new folder where you want to store your notes.
+          </p>
+
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs font-medium text-foreground">
+              Learn more
+            </summary>
+            <div className="mt-2 space-y-2 text-xs text-muted-foreground">
+              <p>
+                Think of your notes folder as a database, with Thinking Space as the helpful layer on top that makes
+                creation, management, and usage easier with AI of your choice. It aims to remove boring, tedious,
+                and repetitive parts of knowledge-base creation so your notes become your long-term memory.
+                All your thoughts compound.
+              </p>
+              <p>
+                Thinking Space does not impose any way of thinking or organization. It stays yours. It provides
+                helpful tools out of the box.
+              </p>
+              <p>
+                Thinking Space was designed to be extendable with AI and is open source. You are encouraged to
+                download the source, use AI to add features, and tinker with it to make it your own.
+              </p>
+
+              <div className="flex items-start gap-2">
+                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                <span>Works alongside Obsidian — no conflicts</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                <span>All data stays on your machine — nothing is uploaded</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                <span>You can change the Thinking Space folder later in settings</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                <span>Changing folder does not delete notes from your previous folder</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                <span>When you switch folders, Thinking Space reloads and rebuilds its local cache from the selected folder</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                <span>Clear Cache only removes local app cache/settings cache. It does not delete your notes</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                <span>Switching Thinking Space folders does not delete API keys or credentials</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                <span>Clear Cache removes local API/OAuth credentials stored in app cache, so sign-in may be required again</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                <span>Electron F9 secure credentials are kept unless you clear them from F9 settings</span>
+              </div>
+              {hasBrowserFS && (
+                <div className="flex items-start gap-2">
+                  <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                  <span>Select Thinking Space Folder works without any server — your browser reads files directly</span>
+                </div>
+              )}
+
+              <p className="pt-1 text-foreground/80">Humans are beautiful.</p>
             </div>
-          )}
+          </details>
         </div>
       </div>
     </div>

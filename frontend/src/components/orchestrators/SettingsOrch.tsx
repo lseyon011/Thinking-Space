@@ -61,7 +61,7 @@ const TAB_OPTIONS: Array<{ id: SettingsTabWithProfileId; label: string }> = [
   { id: 'ai', label: 'AI' },
   { id: 'f9', label: 'F9' },
   { id: 'cache', label: 'Clear Cache' },
-  { id: 'vault', label: 'Select Vault' },
+  { id: 'vault', label: 'Select Thinking Space' },
 ]
 
 export default function SettingsOrch({
@@ -179,7 +179,7 @@ export default function SettingsOrch({
     setMessage(null)
     try {
       await reloadProfile()
-      setMessage('Profile reloaded from vault.')
+      setMessage('Profile reloaded from Thinking Space.')
       setProfileDirty(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reload profile')
@@ -189,7 +189,7 @@ export default function SettingsOrch({
   }
 
   const onClearCache = async () => {
-    const confirmed = window.confirm('Clear local cache and hard refresh now?')
+    const confirmed = window.confirm('Clear local cache and reload the app now?')
     if (!confirmed) return
     setBusyAction('cache')
     setError(null)
@@ -205,10 +205,10 @@ export default function SettingsOrch({
   }
 
   const onSwitchVault = () => {
-    const confirmed = window.confirm('Open vault selector and hard refresh after selecting a vault?')
+    const confirmed = window.confirm('Open Thinking Space folder selector and reload after selection?')
     if (!confirmed) return
     setError(null)
-    setMessage('Opening vault selector...')
+    setMessage('Opening Thinking Space selector...')
     onRequestVaultSwitch()
   }
 
@@ -486,7 +486,7 @@ export default function SettingsOrch({
           <CardHeader>
             <CardTitle>Explorer</CardTitle>
             <CardDescription>
-              Configure explorer icon style and custom folder color rules (saved in vault UI preferences).
+              Configure explorer icon style and custom folder color rules (saved in Thinking Space UI preferences).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -598,7 +598,7 @@ export default function SettingsOrch({
           <CardHeader>
             <CardTitle>Profile</CardTitle>
             <CardDescription>
-              Your profile is stored in your vault at <span className="font-mono">{USER_PROFILE_FILE_PATH_BLOCK}</span>.
+              Your profile is stored in your Thinking Space folder at <span className="font-mono">{USER_PROFILE_FILE_PATH_BLOCK}</span>.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -673,7 +673,7 @@ export default function SettingsOrch({
                 onClick={() => { void onReloadProfile() }}
                 disabled={busyProfileSave}
               >
-                Reload from Vault
+                Reload from Thinking Space
               </Button>
             </div>
           </CardContent>
@@ -770,7 +770,7 @@ export default function SettingsOrch({
                 type="text"
                 value={f9ExecutionFolderPathInput}
                 onChange={(event) => setF9ExecutionFolderPathInput(event.target.value)}
-                placeholder="Absolute or vault-relative path"
+                placeholder="Absolute or Thinking Space-relative path"
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
               />
             </div>
@@ -808,10 +808,14 @@ export default function SettingsOrch({
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Vault selection is preserved, but local caches will be rebuilt after refresh.
+              Thinking Space selection is preserved, but local caches will be rebuilt after refresh.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Clear Cache removes local API/OAuth credentials stored in app cache (for example AI and Google Drive),
+              so you may need to sign in again.
             </p>
             <Button type="button" onClick={onClearCache} disabled={busyAction === 'cache'}>
-              {busyAction === 'cache' ? 'Clearing cache...' : 'Clear Cache + Hard Refresh'}
+              {busyAction === 'cache' ? 'Clearing cache...' : 'Clear Cache'}
             </Button>
           </CardContent>
         </Card>
@@ -820,17 +824,20 @@ export default function SettingsOrch({
       {activeTab === 'vault' && (
         <Card>
           <CardHeader>
-            <CardTitle>Select Vault</CardTitle>
+            <CardTitle>Select Thinking Space</CardTitle>
             <CardDescription>
-              Open the vault selector for this {runtimeLabel} runtime and hard refresh after selection.
+              Open the folder selector for this {runtimeLabel} runtime. The app reloads after selection.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Use this if you want to switch to a different vault or recover from stale vault context.
+              Use this if you want to switch to a different Thinking Space folder or recover from stale folder context.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Switching Thinking Space folders does not delete API keys or credentials.
             </p>
             <Button type="button" onClick={onSwitchVault}>
-              Open Vault Selector
+              Open Thinking Space Selector
             </Button>
           </CardContent>
         </Card>
