@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import type { AiSettingsScope } from '@/services/lego_blocks/integrations/aiSettingsBlock'
+import type { AiProvider } from '@/services/orchestrators/chatOrch'
 import AiAssistControlsBlock from '@/components/lego_blocks/integrations/AiAssistControlsBlock'
 import AiAssistReviewBlock from '@/components/lego_blocks/integrations/AiAssistReviewBlock'
 import AiStewardPanelBlock from '@/components/lego_blocks/integrations/AiStewardPanelBlock'
@@ -510,6 +511,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   const [wikilinkSuggestions, setWikilinkSuggestions] = useState<WikilinkSuggestionBlock[]>([])
   const [wikilinkLoading, setWikilinkLoading] = useState(false)
   const [relatedThoughtsOpen, setRelatedThoughtsOpen] = useState(false)
+  const [stewardRunning, setStewardRunning] = useState(false)
   const [mindmapPanelOpen, setMindmapPanelOpen] = useState(false)
   const [mindmapImmersiveOpen, setMindmapImmersiveOpen] = useState(false)
   const [mindmapSettingsOpen, setMindmapSettingsOpen] = useState(false)
@@ -529,8 +531,8 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     aiSelectionLoading,
     selectedProvider,
     selectedModel,
-    selectedModelOptions,
-    setSelectedModel,
+    providerOptions,
+    setSelectedProvider,
     showThinkToggle,
     thinkEnabled,
     setThinkEnabled,
@@ -547,6 +549,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     scope: aiAssistScope,
     useCase: aiAssistUseCase,
     syncedModelScopes: aiStewardEnabled ? ['steward_metadata'] : undefined,
+    syncedProviderScopes: aiStewardEnabled ? ['steward_metadata'] : undefined,
   })
 
   const aiPanelOpen = controlledAiPanelOpen ?? internalAiPanelOpen
@@ -569,6 +572,13 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     if (!mindmapPreview) return null
     return `${mindmapPreview.sourceLines} lines • ${mindmapPreview.headingCount} headings • ${mindmapPreview.nodeCount} nodes • ${mindmapPreview.connectionCount} links • build ${Math.round(mindmapPreview.timingMs.build)} ms`
   }, [mindmapPreview])
+  const aiStateLabel = useMemo(() => {
+    if (aiSelectionLoading) return 'resolving model'
+    if (stewardRunning) return 'steward running'
+    if (assistRunningAction) return `assist running: ${assistRunningAction}`
+    return 'idle'
+  }, [aiSelectionLoading, assistRunningAction, stewardRunning])
+  const aiStateBusy = aiSelectionLoading || stewardRunning || !!assistRunningAction
   const mindmapPreviewCanvas = (
     <>
       {mindmapPreview && (
@@ -594,6 +604,10 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   useEffect(() => {
     if (!aiPanelOpen) setRelatedThoughtsOpen(false)
   }, [aiPanelOpen])
+
+  useEffect(() => {
+    if (!aiStewardEnabled) setStewardRunning(false)
+  }, [aiStewardEnabled])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1571,43 +1585,50 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
 
       {enableAiAssist && aiPanelOpen && (
         <div className="space-y-3 border-b border-border/30 bg-muted/[0.08] px-5 py-4 sm:px-6">
-          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/50 bg-background/70 px-2 py-2">
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/50 bg-background/70 px-2 py-1">
             {selectedProvider && selectedModel ? (
               <div className="inline-flex min-w-0 items-center gap-1">
-                <span className="text-xs text-foreground">{selectedProvider} /</span>
                 <Select
-                  value={selectedModel}
-                  onValueChange={setSelectedModel}
+                  value={selectedProvider}
+                  onValueChange={(value) => setSelectedProvider(value as AiProvider)}
                   disabled={aiSelectionLoading || aiAssistDisabled}
                 >
-                  <SelectTrigger className="h-8 min-w-[14rem] border-border/60 bg-background px-2 py-1 text-xs ring-offset-0 focus:ring-2 focus:ring-ring focus:ring-offset-0">
-                    <SelectValue placeholder={selectedModel} />
+                  <SelectTrigger className="h-6 min-w-0 w-auto max-w-[12rem] border-0 bg-transparent px-0 py-0 text-xs shadow-none ring-offset-0 focus:ring-0 focus:ring-offset-0">
+                    <SelectValue placeholder={selectedProvider} />
                   </SelectTrigger>
                   <SelectContent>
-                    {selectedModelOptions.map((modelOption) => (
-                      <SelectItem key={modelOption} value={modelOption} className="text-xs">
-                        {modelOption}
+                    {providerOptions.map((providerOption) => (
+                      <SelectItem
+                        key={providerOption.provider}
+                        value={providerOption.provider}
+                        className="text-xs"
+                        disabled={!providerOption.available}
+                      >
+                        {providerOption.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <span className="text-xs text-foreground">/</span>
+                <span className="max-w-[12rem] truncate text-xs text-foreground">{selectedModel}</span>
               </div>
             ) : (
               <span className="text-xs text-foreground">No AI provider</span>
             )}
             <span className={cn(
               'text-xs',
-              assistRunningAction ? 'text-amber-700' : 'text-muted-foreground',
+              aiStateBusy ? 'text-amber-700' : 'text-muted-foreground',
             )}>
-              {assistRunningAction ? `Assist running: ${assistRunningAction}` : 'Assist idle'}
+              {`State: ${aiStateLabel}`}
             </span>
             {showThinkToggle && (
-              <label className="ml-auto inline-flex items-center gap-2 rounded-md border border-border/60 bg-background px-2 py-1">
+              <label className="ml-auto inline-flex items-center gap-1.5">
                 <span className="text-xs text-muted-foreground">Think</span>
                 <Switch
                   checked={!!thinkEnabled}
                   onCheckedChange={(checked) => setThinkEnabled(checked)}
                   disabled={aiSelectionLoading || aiAssistDisabled}
+                  className="h-5 w-9 [&>span]:h-4 [&>span]:w-4 [&>span[data-state=checked]]:translate-x-4"
                 />
               </label>
             )}
@@ -1630,6 +1651,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
                 filePath={stewardFilePath}
                 disabled={aiAssistDisabled}
                 onApplySuggestion={onAiStewardApplySuggestion}
+                onRunningChange={setStewardRunning}
               />
             </>
           )}

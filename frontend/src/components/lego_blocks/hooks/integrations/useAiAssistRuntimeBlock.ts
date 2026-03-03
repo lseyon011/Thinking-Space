@@ -5,6 +5,7 @@ import {
   listAiModelOptionsOrch,
   resolveAiSelectionOrch,
   resolveAiThinkingForScopeProviderOrch,
+  setAiScopeProviderOrch,
   setAiScopeProviderModelOrch,
   setAiScopeProviderThinkingOrch,
 } from '@/services/orchestrators/aiSettingsOrch'
@@ -20,10 +21,18 @@ export interface AiAssistResultPill {
   text: string
 }
 
+export interface AiAssistProviderOption {
+  provider: AiProvider
+  label: string
+  available: boolean
+}
+
 export interface AiAssistRuntimeBlockState {
   aiSelectionLoading: boolean
   selectedProvider: AiProvider | null
   selectedModel: string | null
+  providerOptions: AiAssistProviderOption[]
+  setSelectedProvider: (provider: AiProvider) => void
   selectedModelOptions: string[]
   setSelectedModel: (model: string) => void
   showThinkToggle: boolean
@@ -44,6 +53,7 @@ export interface UseAiAssistRuntimeBlockOptions {
   scope: AiSettingsScope
   useCase: string
   syncedModelScopes?: AiSettingsScope[]
+  syncedProviderScopes?: AiSettingsScope[]
 }
 
 function errorMessage(value: unknown, fallback: string): string {
@@ -52,10 +62,42 @@ function errorMessage(value: unknown, fallback: string): string {
   return fallback
 }
 
+function modelSupportsThinkingToggleBlock(provider: AiProvider | null, model: string | null): boolean {
+  if (provider !== 'opensource-ai') return false
+  const normalized = (model ?? '').trim().toLowerCase()
+  if (!normalized || normalized === 'local-model') return true
+
+  // Local reasoning families currently known to honor enable_thinking toggles.
+  if (
+    normalized.includes('qwen3')
+    || normalized.includes('qwen-3')
+    || normalized.includes('qwq')
+    || normalized.includes('deepseek-r1')
+    || normalized.includes('reasoner')
+  ) {
+    return true
+  }
+
+  // Hide for common local non-reasoning model families.
+  if (
+    normalized.includes('llama')
+    || normalized.includes('mistral')
+    || normalized.includes('gemma')
+    || normalized.includes('phi')
+    || normalized.includes('instruct')
+  ) {
+    return false
+  }
+
+  // Default-open for unknown Open Source AI models.
+  return true
+}
+
 export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions): AiAssistRuntimeBlockState {
   const [aiSelectionLoading, setAiSelectionLoading] = useState(true)
   const [selectedProvider, setSelectedProvider] = useState<AiProvider | null>(null)
   const [selectedModel, setSelectedModelState] = useState<string | null>(null)
+  const [providerOptions, setProviderOptions] = useState<AiAssistProviderOption[]>([])
   const [selectedModelOptions, setSelectedModelOptions] = useState<string[]>([])
   const [thinkEnabled, setThinkEnabledState] = useState(true)
   const [assistRunningAction, setAssistRunningAction] = useState<AiAssistAction | null>(null)
@@ -68,6 +110,13 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     const selection = await resolveAiSelectionOrch({ scope: options.scope })
     setSelectedProvider(selection?.provider ?? null)
     setSelectedModelState(selection?.model ?? null)
+    setProviderOptions(
+      selection?.providers.map((provider) => ({
+        provider: provider.provider,
+        label: provider.label,
+        available: provider.available,
+      })) ?? [],
+    )
     if (selection?.provider) {
       const providerKnownModels = listAiModelOptionsOrch(selection.provider)
       const providerResolvedModel = selection.providers.find(item => item.provider === selection.provider)?.model?.trim() ?? ''
@@ -93,6 +142,7 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
         if (cancelled) return
         setSelectedProvider(null)
         setSelectedModelState(null)
+        setProviderOptions([])
         setSelectedModelOptions([])
       })
       .finally(() => {
@@ -123,6 +173,17 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     setThinkEnabledState(enabled)
     setAiScopeProviderThinkingOrch(options.scope, 'opensource-ai', enabled)
   }, [options.scope])
+
+  const setSelectedProviderValue = useCallback((provider: AiProvider) => {
+    const scopesToUpdate = Array.from(new Set<AiSettingsScope>([
+      options.scope,
+      ...(options.syncedProviderScopes ?? []),
+    ]))
+    for (const scope of scopesToUpdate) {
+      setAiScopeProviderOrch(scope, provider)
+    }
+    void syncSelection()
+  }, [options.scope, options.syncedProviderScopes, syncSelection])
 
   const setSelectedModel = useCallback((model: string) => {
     if (!selectedProvider) return
@@ -239,9 +300,11 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     aiSelectionLoading,
     selectedProvider,
     selectedModel,
+    providerOptions,
+    setSelectedProvider: setSelectedProviderValue,
     selectedModelOptions,
     setSelectedModel,
-    showThinkToggle: selectedProvider === 'opensource-ai',
+    showThinkToggle: modelSupportsThinkingToggleBlock(selectedProvider, selectedModel),
     thinkEnabled,
     setThinkEnabled,
     assistRunningAction,

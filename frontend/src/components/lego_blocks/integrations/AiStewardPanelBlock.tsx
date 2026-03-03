@@ -12,6 +12,7 @@ interface AiStewardPanelBlockProps {
   filePath?: string
   disabled?: boolean
   onApplySuggestion?: (suggestion: StewardMetadataSuggestion) => void | Promise<void>
+  onRunningChange?: (running: boolean) => void
   className?: string
   showMissingFileMessage?: boolean
 }
@@ -32,6 +33,7 @@ export default function AiStewardPanelBlock({
   filePath,
   disabled = false,
   onApplySuggestion,
+  onRunningChange,
   className,
   showMissingFileMessage = true,
 }: AiStewardPanelBlockProps) {
@@ -71,6 +73,16 @@ export default function AiStewardPanelBlock({
       cancelled = true
     }
   }, [resolvedFilePath])
+
+  useEffect(() => {
+    onRunningChange?.(loading)
+  }, [loading, onRunningChange])
+
+  useEffect(() => {
+    return () => {
+      onRunningChange?.(false)
+    }
+  }, [onRunningChange])
 
   useEffect(() => {
     setLoading(false)
