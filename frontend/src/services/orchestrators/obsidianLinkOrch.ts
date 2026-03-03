@@ -5,6 +5,7 @@ import {
   buildThinkingSpaceWikilinkHrefBlock,
   deriveWikilinkLabelBlock,
   isThinkingSpaceWikilinkHrefBlock,
+  parseWikilinkTargetBlock,
   parseThinkingSpaceWikilinkHrefBlock,
   resolveWikilinkPathBlock,
   splitTextByWikilinksBlock,
@@ -13,6 +14,7 @@ import {
   type WikilinkSuggestionBlock,
 } from '@/services/lego_blocks/integrations/obsidianWikilinkBlock'
 import { listMarkdownEntries } from './fileSystemOrch'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 
 export function buildObsidianOpenUrlOrch(path: string): string {
   return buildObsidianOpenUrl(path)
@@ -48,15 +50,28 @@ function toMdastWikilinkNodes(text: string): Array<Record<string, unknown>> {
     }
 
     const label = deriveWikilinkLabelBlock(target, token.alias)
-    const prefix = token.embed ? '!' : ''
-    nodes.push({
-      type: 'link',
-      url: buildThinkingSpaceWikilinkHrefBlock(target),
-      children: [{ type: 'text', value: `${prefix}${label}` }],
-    })
+    if (token.embed && isImageWikilinkTargetBlock(target)) {
+      nodes.push({
+        type: 'image',
+        url: buildThinkingSpaceWikilinkHrefBlock(target),
+        alt: label,
+      })
+    } else {
+      nodes.push({
+        type: 'link',
+        url: buildThinkingSpaceWikilinkHrefBlock(target),
+        children: [{ type: 'text', value: label }],
+      })
+    }
   }
 
   return nodes
+}
+
+function isImageWikilinkTargetBlock(target: string): boolean {
+  const parsed = parseWikilinkTargetBlock(target)
+  const normalizedPath = parsed.path.toLowerCase()
+  return /\.(png|jpe?g|gif|webp|bmp|svg|avif|tiff?|heic|heif)$/.test(normalizedPath)
 }
 
 function transformMarkdownTreeWithWikilinks(node: unknown): void {
@@ -149,6 +164,63 @@ export async function resolveWikilinkTargetOrch(input: {
     target: input.target,
     candidatePaths: refreshedPaths,
   })
+}
+
+function normalizeAssetCandidatePathBlock(path: string): string {
+  const sanitized = path.replace(/\\/g, '/').trim()
+  if (!sanitized) return ''
+  const parts = sanitized.split('/').filter(Boolean)
+  const stack: string[] = []
+  for (const part of parts) {
+    if (part === '.') continue
+    if (part === '..') {
+      if (stack.length > 0) stack.pop()
+      continue
+    }
+    stack.push(part)
+  }
+  return stack.join('/')
+}
+
+function dirnameAssetCandidatePathBlock(path: string): string {
+  const normalized = normalizeAssetCandidatePathBlock(path)
+  const idx = normalized.lastIndexOf('/')
+  if (idx < 0) return ''
+  return normalized.slice(0, idx)
+}
+
+function joinAssetCandidatePathBlock(parent: string, child: string): string {
+  const base = normalizeAssetCandidatePathBlock(parent)
+  const rel = child.replace(/\\/g, '/').trim()
+  if (!base) return normalizeAssetCandidatePathBlock(rel)
+  if (!rel) return base
+  return normalizeAssetCandidatePathBlock(`${base}/${rel}`)
+}
+
+export async function resolveWikilinkAssetTargetOrch(input: {
+  currentPath: string
+  target: string
+}): Promise<string | null> {
+  const parsed = parseWikilinkTargetBlock(input.target)
+  const rawPath = parsed.path.trim()
+  if (!rawPath) return null
+  const normalizedRawPath = rawPath.replace(/\\/g, '/')
+  const currentDir = dirnameAssetCandidatePathBlock(input.currentPath)
+  const fs = getVaultFS()
+
+  const candidates = new Set<string>()
+  if (normalizedRawPath.startsWith('/')) {
+    candidates.add(normalizeAssetCandidatePathBlock(normalizedRawPath.slice(1)))
+  } else {
+    candidates.add(joinAssetCandidatePathBlock(currentDir, normalizedRawPath))
+    candidates.add(normalizeAssetCandidatePathBlock(normalizedRawPath))
+  }
+
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    if (await fs.exists(candidate)) return candidate
+  }
+  return null
 }
 
 export async function getWikilinkSuggestionsOrch(input: {

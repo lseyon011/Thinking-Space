@@ -26,6 +26,7 @@ import {
   buildObsidianOpenUrlOrch,
   isThinkingSpaceWikilinkHrefOrch,
   parseThinkingSpaceWikilinkHrefOrch,
+  resolveWikilinkAssetTargetOrch,
   remarkObsidianWikilinksOrch,
   resolveWikilinkTargetOrch,
 } from '@/services/orchestrators/obsidianLinkOrch'
@@ -72,6 +73,7 @@ import { isTableDocumentPathBlock } from '@/services/lego_blocks/units/tableDocu
 import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocumentPathBlock'
 import { isGoogleDocDocumentPathBlock } from '@/services/lego_blocks/units/googleDocDocumentPathBlock'
 import { isImageDocumentPathBlock } from '@/services/lego_blocks/units/imageDocumentPathBlock'
+import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOrch'
 
 export type MarkdownViewerMode = 'view' | 'edit'
 
@@ -88,6 +90,98 @@ interface MarkdownDocumentBlockProps {
 
 interface MarkdownEditBaselineState {
   content: string
+}
+
+interface MarkdownWikilinkImageBlockProps {
+  src: string | undefined
+  alt: string | undefined
+  currentPath: string
+}
+
+function MarkdownWikilinkImageBlock({
+  src,
+  alt,
+  currentPath,
+}: MarkdownWikilinkImageBlockProps) {
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!src || !isThinkingSpaceWikilinkHrefOrch(src)) {
+      setImageUrl(null)
+      setError(null)
+      return
+    }
+
+    const parsed = parseThinkingSpaceWikilinkHrefOrch(src)
+    if (!parsed?.target) {
+      setImageUrl(null)
+      setError('Invalid embedded image target.')
+      return
+    }
+
+    let cancelled = false
+    let objectUrl: string | null = null
+
+    const load = async () => {
+      setImageUrl(null)
+      setError(null)
+      try {
+        const resolvedPath = await resolveWikilinkAssetTargetOrch({
+          currentPath,
+          target: parsed.target,
+        })
+        if (!resolvedPath) {
+          if (!cancelled) setError(`Embedded file not found: [[${parsed.target}]]`)
+          return
+        }
+        const doc = await readImageDocumentOrch(resolvedPath)
+        const blob = new Blob([Uint8Array.from(doc.bytes)], { type: doc.mime })
+        objectUrl = URL.createObjectURL(blob)
+        if (!cancelled) setImageUrl(objectUrl)
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load embedded image.')
+        }
+      }
+    }
+
+    void load()
+
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [currentPath, src])
+
+  if (!src || !isThinkingSpaceWikilinkHrefOrch(src)) {
+    return <img src={src} alt={alt ?? ''} />
+  }
+
+  if (error) {
+    return (
+      <span className="inline-flex rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs text-destructive">
+        {error}
+      </span>
+    )
+  }
+
+  if (!imageUrl) {
+    return (
+      <span className="inline-flex rounded border border-border/50 bg-muted/20 px-2 py-1 text-xs text-muted-foreground">
+        Loading image...
+      </span>
+    )
+  }
+
+  return (
+    <img
+      src={imageUrl}
+      alt={alt ?? ''}
+      className="max-w-full rounded-md border border-border/40"
+      loading="lazy"
+    />
+  )
 }
 
 function MarkdownTextDocumentRuntimeBlock({
@@ -381,6 +475,7 @@ function MarkdownTextDocumentRuntimeBlock({
 
   type MarkdownAnchorProps = ComponentPropsWithoutRef<'a'> & { node?: unknown }
   type MarkdownParagraphProps = ComponentPropsWithoutRef<'p'> & { node?: unknown }
+  type MarkdownImageProps = ComponentPropsWithoutRef<'img'> & { node?: unknown }
   const markdownComponents = useMemo(() => ({
     a: ({ href, children, ...props }: MarkdownAnchorProps) => {
       const isWikilink = isThinkingSpaceWikilinkHrefOrch(href)
@@ -407,14 +502,19 @@ function MarkdownTextDocumentRuntimeBlock({
               target: parsed.target,
             })
 
-            if (!resolved.path) {
+            const resolvedPath = resolved.path ?? await resolveWikilinkAssetTargetOrch({
+              currentPath: path,
+              target: parsed.target,
+            })
+
+            if (!resolvedPath) {
               setNavigationError(`Linked file not found: [[${parsed.target}]]`)
               return
             }
 
-            if (resolved.path === path) return
+            if (resolvedPath === path) return
             if (openInNewTab) {
-              openFileInNewTabOrch(resolved.path)
+              openFileInNewTabOrch(resolvedPath)
               setNavigationError(null)
               return
             }
@@ -424,7 +524,7 @@ function MarkdownTextDocumentRuntimeBlock({
               return
             }
 
-            openLinkedPath(resolved.path)
+            openLinkedPath(resolvedPath)
             setNavigationError(null)
           } catch (err) {
             setNavigationError(err instanceof Error ? err.message : 'Failed to open linked file')
@@ -450,6 +550,13 @@ function MarkdownTextDocumentRuntimeBlock({
       }
       return <p {...props}>{children}</p>
     },
+    img: ({ src, alt }: MarkdownImageProps) => (
+      <MarkdownWikilinkImageBlock
+        src={src}
+        alt={alt}
+        currentPath={path}
+      />
+    ),
   }), [openLinkedPath, path])
 
   useEffect(() => {

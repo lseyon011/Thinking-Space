@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Image as ImageIcon, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
-  imageDocumentMimeFromPathBlock,
   isHeicImagePathBlock,
 } from '@/services/lego_blocks/units/imageDocumentPathBlock'
+import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOrch'
 
 interface ImageDocumentBlockProps {
   path: string
@@ -30,10 +29,9 @@ export default function ImageDocumentBlock({ path, className }: ImageDocumentBlo
       setConvertedFromHeic(false)
 
       try {
-        const fs = getVaultFS()
-        const bytes = await fs.readBytes(path)
-        const normalizedBytes = Uint8Array.from(bytes)
-        let blob = new Blob([normalizedBytes], { type: imageDocumentMimeFromPathBlock(path) })
+        const doc = await readImageDocumentOrch(path)
+        const normalizedBytes = Uint8Array.from(doc.bytes)
+        let blob = new Blob([normalizedBytes], { type: doc.mime })
 
         if (isHeicImage) {
           const { default: heic2any } = await import('heic2any')
