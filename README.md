@@ -8,15 +8,45 @@
 
 ---
 
+## What Is This?
+
+Thinking Space helps you turn a folder of notes into a practical, compounding long-term memory.
+
+Your notes folder is the source of truth, and Thinking Space is the helpful layer on top that makes creation, management, and use easier with AI of your choice.
+
+You can use an existing folder with your notes or create a new one. A cloud-synced folder is recommended so your notes are available across devices.
+
+Thinking Space does not impose a fixed way of thinking or organization. Your structure is yours. It provides useful tools out of the box and removes repetitive parts of knowledge-base work so you can focus on actual thinking.
+
+Thinking Space is open source and designed to be extendable with AI. You can download the source code, add features, and shape the app to fit your workflow.
+
+- Works alongside Obsidian — no conflicts
+- Local-first and portable (plain Markdown + YAML)
+- No lock-in to one AI provider
+
+Humans are beautiful.
+
+### Core Pillars
+
+Thinking Space is built as three product pillars:
+
+**A thinking space for individuals.** Capture structured thoughts in a natural hierarchy: Programs, Epics, Ideas, and Thoughts. Everything is local-first, stored as plain Markdown files with YAML frontmatter, and fully portable.
+
+**A place where humans and AI work together.** AI writing assistance lives directly in your workspace — grammar, clarity, structure, and tone actions right where you're writing. Chat with AI models, configure providers, and track usage with built-in telemetry.
+
+**An AI agent management space.** Manage agent tasks, track runs and handoffs, and integrate AI output with your own thinking. A full capability system with 55+ typed operations, audit logging, and policy controls.
+
+---
+
 ## Screenshots
 
 <p align="center">
   <img src="docs/screenshots/home.png" alt="Vault Setup" width="700" />
   <br />
-  <em>Local-first vault setup — your data stays on your machine</em>
+  <em>Local-first folder setup — your data stays on your machine</em>
 </p>
 
-<!-- Add more screenshots here after connecting a vault:
+<!-- Add more screenshots here after connecting a folder:
   - Home dashboard with activity summary
   - Thinking Space markdown workspace with file explorer
   - Thinking Organizer hierarchy tree
@@ -24,18 +54,6 @@
   - New Thought with emotion tags
   - Extension Builder
 -->
-
----
-
-## What is Thinking Space?
-
-Most note-taking tools force you into rigid plugin systems and disconnected AI workflows. Thinking Space is different — it's built from the ground up as three things at once:
-
-**A thinking space for individuals.** Capture structured thoughts in a natural hierarchy: Programs, Epics, Ideas, and Thoughts. Everything is local-first, stored as plain Markdown files with YAML frontmatter, and fully portable.
-
-**A place where humans and AI work together.** AI writing assistance lives directly in your workspace — grammar, clarity, structure, and tone actions right where you're writing. Chat with AI models, configure providers, and track usage with built-in telemetry.
-
-**An AI agent management space.** Manage agent tasks, track runs and handoffs, and integrate AI output with your own thinking. A full capability system with 55+ typed operations, audit logging, and policy controls.
 
 ---
 
