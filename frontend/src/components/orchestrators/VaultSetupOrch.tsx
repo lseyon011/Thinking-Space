@@ -146,18 +146,19 @@ export default function VaultSetup({ onComplete }: Props) {
   const handleNativeSelect = isElectronApp ? handleElectronSelect : handleCapacitorSelect
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-background">
-      <div className="mx-auto max-w-md px-6 text-center">
+    <div className="h-dvh overflow-y-auto bg-background">
+      <div className="mx-auto flex min-h-dvh w-full max-w-2xl items-start justify-center px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-lg text-center">
         <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
           <FolderOpen className="h-8 w-8 text-primary" />
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">Select Thinking Space</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <h1 className="text-3xl font-semibold tracking-tight">Select Thinking Space</h1>
+        <p className="mt-3 text-base text-muted-foreground">
           {isNativeApp
             ? 'Choose your existing notes folder, or create a new folder where you want to store your notes.'
             : 'Choose how to connect to your Thinking Space folder.'}
         </p>
-        <p className="mt-2 text-xs text-muted-foreground">
+        <p className="mt-2 text-sm text-muted-foreground">
           Recommended: select a cloud-synced folder so your notes stay available across your devices.
         </p>
 
@@ -193,7 +194,7 @@ export default function VaultSetup({ onComplete }: Props) {
                 {profilePreviewSymbol}
               </span>
             </div>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               This will be used for comments and profile displays. Saved in your Thinking Space folder under `.thinking-space/profile.json`.
             </p>
           </div>
@@ -248,16 +249,12 @@ export default function VaultSetup({ onComplete }: Props) {
           <p className="mt-4 text-sm text-destructive">{error}</p>
         )}
 
-        <div className="mt-8 rounded-md border border-border/60 bg-muted/20 px-3 py-3 text-left">
-          <p className="text-xs text-muted-foreground">
-            This is your existing folder where your notes are stored, or a new folder where you want to store your notes.
-          </p>
-
-          <details className="mt-3">
-            <summary className="cursor-pointer text-xs font-medium text-foreground">
+        <div className="mt-8 rounded-md border border-border/60 bg-muted/20 px-3 py-3 text-left sm:px-4">
+          <details>
+            <summary className="cursor-pointer text-sm font-medium text-foreground">
               Learn more
             </summary>
-            <div className="mt-2 space-y-2 text-xs text-muted-foreground">
+            <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
               <p>
                 Think of your notes folder as a database, with Thinking Space as the helpful layer on top that makes
                 creation, management, and usage easier with AI of your choice. It aims to remove boring, tedious,
@@ -274,44 +271,36 @@ export default function VaultSetup({ onComplete }: Props) {
               </p>
 
               <div className="flex items-start gap-2">
-                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                <Check className="mt-1 h-3 w-3 shrink-0 text-green-500" />
                 <span>Works alongside Obsidian — no conflicts</span>
               </div>
               <div className="flex items-start gap-2">
-                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                <Check className="mt-1 h-3 w-3 shrink-0 text-green-500" />
                 <span>All data stays on your machine — nothing is uploaded</span>
               </div>
               <div className="flex items-start gap-2">
-                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                <Check className="mt-1 h-3 w-3 shrink-0 text-green-500" />
                 <span>You can change the Thinking Space folder later in settings</span>
               </div>
               <div className="flex items-start gap-2">
-                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
-                <span>Changing folder does not delete notes from your previous folder</span>
+                <Check className="mt-1 h-3 w-3 shrink-0 text-green-500" />
+                <span>Changing folders does not delete notes from your previous folder</span>
               </div>
               <div className="flex items-start gap-2">
-                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
-                <span>When you switch folders, Thinking Space reloads and rebuilds its local cache from the selected folder</span>
+                <Check className="mt-1 h-3 w-3 shrink-0 text-green-500" />
+                <span>When you switch folders, Thinking Space reloads and rebuilds local cache from the selected folder</span>
               </div>
               <div className="flex items-start gap-2">
-                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
-                <span>Clear Cache only removes local app cache/settings cache. It does not delete your notes</span>
+                <Check className="mt-1 h-3 w-3 shrink-0 text-green-500" />
+                <span>Clear Cache removes local app cache and local API/OAuth credentials, but does not delete your notes</span>
               </div>
               <div className="flex items-start gap-2">
-                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
-                <span>Switching Thinking Space folders does not delete API keys or credentials</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
-                <span>Clear Cache removes local API/OAuth credentials stored in app cache, so sign-in may be required again</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                <Check className="mt-1 h-3 w-3 shrink-0 text-green-500" />
                 <span>Electron F9 secure credentials are kept unless you clear them from F9 settings</span>
               </div>
               {hasBrowserFS && (
                 <div className="flex items-start gap-2">
-                  <Check className="mt-0.5 h-3 w-3 shrink-0 text-green-500" />
+                  <Check className="mt-1 h-3 w-3 shrink-0 text-green-500" />
                   <span>Select Thinking Space Folder works without any server — your browser reads files directly</span>
                 </div>
               )}
@@ -320,6 +309,7 @@ export default function VaultSetup({ onComplete }: Props) {
             </div>
           </details>
         </div>
+      </div>
       </div>
     </div>
   )

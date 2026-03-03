@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ExternalLink, FileText, FolderOpen, Loader2, Pencil, Save, Settings2, Unplug, X } from 'lucide-react'
+import { ExternalLink, FileText, FolderOpen, Pencil, Save, Settings2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import {
@@ -20,8 +20,6 @@ import {
   openVaultPathInSystemOrch,
 } from '@/services/orchestrators/fileSystemOrch'
 import {
-  clearGoogleDriveAuthOrch,
-  connectGoogleDriveAuthOrch,
   readGoogleDriveAuthOrch,
   type GoogleDriveAuthStateOrch,
 } from '@/services/orchestrators/googleDriveAuthOrch'
@@ -66,7 +64,6 @@ function GoogleDocDocumentBlock({
   const [showAdvancedFields, setShowAdvancedFields] = useState(false)
   const [conflict, setConflict] = useState<GoogleDocDocumentConflictError | null>(null)
   const [googleAuth, setGoogleAuth] = useState<GoogleDriveAuthStateOrch | null>(() => readGoogleDriveAuthOrch())
-  const [googleAuthLoading, setGoogleAuthLoading] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerQuery, setPickerQuery] = useState('')
   const [pickerItems, setPickerItems] = useState<GoogleDriveFilePickerItemOrch[]>([])
@@ -154,7 +151,9 @@ function GoogleDocDocumentBlock({
       setPickerQuery('')
       setPickerError(null)
       setShowAdvancedFields(false)
+      return
     }
+    setGoogleAuth(readGoogleDriveAuthOrch())
   }, [showSettings])
 
   const updateDescriptor = useCallback((updater: (current: GoogleDocDocumentModelBlock) => GoogleDocDocumentModelBlock) => {
@@ -227,34 +226,6 @@ function GoogleDocDocumentBlock({
       setOpenInSystemError(err instanceof Error ? err.message : 'Failed to open file in system file manager')
     })
   }, [canOpenInSystem, openUrl, path])
-
-  const refreshGoogleAuthState = useCallback(() => {
-    setGoogleAuth(readGoogleDriveAuthOrch())
-  }, [])
-
-  const handleConnectGoogle = useCallback(async () => {
-    setGoogleAuthLoading(true)
-    setSaveError(null)
-    setPickerError(null)
-    try {
-      const next = await connectGoogleDriveAuthOrch()
-      setGoogleAuth(next)
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Google sign-in failed')
-      refreshGoogleAuthState()
-    } finally {
-      setGoogleAuthLoading(false)
-    }
-  }, [refreshGoogleAuthState])
-
-  const handleDisconnectGoogle = useCallback(() => {
-    clearGoogleDriveAuthOrch()
-    refreshGoogleAuthState()
-    setPickerOpen(false)
-    setPickerQuery('')
-    setPickerItems([])
-    setPickerError(null)
-  }, [refreshGoogleAuthState])
 
   const loadGoogleDocsPicker = useCallback(async (query: string) => {
     setPickerLoading(true)
@@ -449,31 +420,10 @@ function GoogleDocDocumentBlock({
             isIosPhone ? 'col-span-1' : 'col-span-2',
           )}>
             <div className="flex flex-wrap items-center gap-2">
-              {hasGoogleConnection ? (
-                <button
-                  type="button"
-                  onClick={handleDisconnectGoogle}
-                  disabled={googleAuthLoading}
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-55"
-                >
-                  <Unplug className="h-3.5 w-3.5" />
-                  Disconnect Google
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => { void handleConnectGoogle() }}
-                  disabled={googleAuthLoading}
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-55"
-                >
-                  {googleAuthLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                  {googleAuthLoading ? 'Connecting...' : 'Connect Google'}
-                </button>
-              )}
               <button
                 type="button"
                 onClick={() => setPickerOpen((value) => !value)}
-                disabled={!hasGoogleConnection || googleAuthLoading}
+                disabled={!hasGoogleConnection}
                 className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-55"
               >
                 {pickerOpen ? 'Hide Drive Docs' : 'Pick from Drive'}
@@ -528,7 +478,7 @@ function GoogleDocDocumentBlock({
 
             {!hasGoogleConnection && (
               <div className="text-[11px] text-muted-foreground">
-                Connect once to browse Drive files and auto-fill this `.gdoc` mapping.
+                Connect Google in Settings {'>'} Google Docs and Sheets to browse Drive files and auto-fill this `.gdoc` mapping.
               </div>
             )}
           </div>

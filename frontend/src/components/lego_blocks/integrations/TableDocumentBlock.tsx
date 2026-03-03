@@ -6,7 +6,7 @@ import {
   textColumn,
 } from 'react-datasheet-grid'
 import 'react-datasheet-grid/dist/style.css'
-import { Check, CloudDownload, CloudUpload, ExternalLink, FileSpreadsheet, FolderOpen, Loader2, Pencil, Plus, Save, Unplug, X } from 'lucide-react'
+import { CloudDownload, CloudUpload, ExternalLink, FileSpreadsheet, FolderOpen, Pencil, Plus, Save, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   pullGoogleSheetDocumentBlock,
@@ -33,8 +33,6 @@ import {
 } from '@/services/orchestrators/fileSystemOrch'
 import { resolveGoogleSheetOpenUrlBlock } from '@/services/lego_blocks/units/googleSheetTableCodecBlock'
 import {
-  clearGoogleDriveAuthOrch,
-  connectGoogleDriveAuthOrch,
   getGoogleDriveAccessTokenOrch,
   readGoogleDriveAuthOrch,
   type GoogleDriveAuthStateOrch,
@@ -105,7 +103,6 @@ function TableDocumentBlock({
   const [activeCell, setActiveCell] = useState<GridCellWithIdBlock | null>(null)
   const [selection, setSelection] = useState<GridSelectionWithIdBlock | null>(null)
   const [googleAuth, setGoogleAuth] = useState<GoogleDriveAuthStateOrch | null>(() => readGoogleDriveAuthOrch())
-  const [googleAuthLoading, setGoogleAuthLoading] = useState(false)
   const [googlePickerOpen, setGooglePickerOpen] = useState(false)
   const [googlePickerQuery, setGooglePickerQuery] = useState('')
   const [googlePickerItems, setGooglePickerItems] = useState<GoogleDriveFilePickerItemOrch[]>([])
@@ -207,33 +204,10 @@ function TableDocumentBlock({
     }
   }, [isEditing])
 
-  const refreshGoogleAuthState = useCallback(() => {
+  useEffect(() => {
+    if (!isEditing || draft?.kind !== 'gsheet') return
     setGoogleAuth(readGoogleDriveAuthOrch())
-  }, [])
-
-  const handleConnectGoogle = useCallback(async () => {
-    setGoogleAuthLoading(true)
-    setSaveError(null)
-    setGooglePickerError(null)
-    try {
-      const next = await connectGoogleDriveAuthOrch()
-      setGoogleAuth(next)
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Google sign-in failed')
-      refreshGoogleAuthState()
-    } finally {
-      setGoogleAuthLoading(false)
-    }
-  }, [refreshGoogleAuthState])
-
-  const handleDisconnectGoogle = useCallback(() => {
-    clearGoogleDriveAuthOrch()
-    refreshGoogleAuthState()
-    setGooglePickerOpen(false)
-    setGooglePickerQuery('')
-    setGooglePickerItems([])
-    setGooglePickerError(null)
-  }, [refreshGoogleAuthState])
+  }, [draft?.kind, isEditing])
 
   const loadGoogleSheetsPicker = useCallback(async (query: string) => {
     setGooglePickerLoading(true)
@@ -529,7 +503,7 @@ function TableDocumentBlock({
       const manualToken = draft.google?.accessToken?.trim()
       const token = connectedToken || manualToken || ''
       if (!token) {
-        throw new Error('Connect Google first, or provide an access token in Advanced settings.')
+        throw new Error('Connect Google in Settings > Google Docs and Sheets first, or provide an access token in Advanced settings.')
       }
       const updated = connectedToken
         ? await pullGoogleSheetDocumentWithTokenBlock(draft, token)
@@ -561,7 +535,7 @@ function TableDocumentBlock({
       const manualToken = draft.google?.accessToken?.trim()
       const token = connectedToken || manualToken || ''
       if (!token) {
-        throw new Error('Connect Google first, or provide an access token in Advanced settings.')
+        throw new Error('Connect Google in Settings > Google Docs and Sheets first, or provide an access token in Advanced settings.')
       }
       if (connectedToken) {
         await pushGoogleSheetDocumentWithTokenBlock(draft, token)
@@ -914,31 +888,10 @@ function TableDocumentBlock({
         <div className="border-b border-border/40 bg-muted/10 px-5 py-2.5">
           <div className="mb-2.5 space-y-2 rounded-md border border-border/60 bg-background/65 p-2.5">
             <div className="flex flex-wrap items-center gap-2">
-              {hasGoogleConnection ? (
-                <button
-                  type="button"
-                  onClick={handleDisconnectGoogle}
-                  disabled={googleAuthLoading}
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-55"
-                >
-                  <Unplug className="h-3.5 w-3.5" />
-                  Disconnect Google
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => { void handleConnectGoogle() }}
-                  disabled={googleAuthLoading}
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-55"
-                >
-                  {googleAuthLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                  {googleAuthLoading ? 'Connecting...' : 'Connect Google'}
-                </button>
-              )}
               <button
                 type="button"
                 onClick={() => setGooglePickerOpen((value) => !value)}
-                disabled={!hasGoogleConnection || googleAuthLoading}
+                disabled={!hasGoogleConnection}
                 className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-55"
               >
                 {googlePickerOpen ? 'Hide Drive Sheets' : 'Pick from Drive'}
@@ -993,7 +946,7 @@ function TableDocumentBlock({
 
             {!hasGoogleConnection && (
               <div className="text-[11px] text-muted-foreground">
-                Connect once to browse Drive sheets and sync without storing OAuth tokens in this file.
+                Connect Google in Settings {'>'} Google Docs and Sheets to browse Drive sheets and sync without storing OAuth tokens in this file.
               </div>
             )}
           </div>

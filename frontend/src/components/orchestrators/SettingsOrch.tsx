@@ -24,13 +24,20 @@ import {
   saveF9WebullCredentialsBlock,
 } from '@/personal_extension/services/lego_blocks/units/f9WebullConfigBlock'
 import {
+  clearGoogleDriveAuthOrch,
+  connectGoogleDriveAuthOrch,
+  getGoogleOauthClientIdOrch,
+  readGoogleDriveAuthOrch,
+  setGoogleOauthClientIdOrch,
+} from '@/services/orchestrators/googleDriveAuthOrch'
+import {
   DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK,
   type ExplorerFolderColorPreferenceBlock,
   type ExplorerIconStyleBlock,
 } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import type { UIThemeId } from '@/services/orchestrators/uiThemeOrch'
 
-export type SettingsTabId = 'theme' | 'explorer' | 'ai' | 'f9' | 'cache' | 'vault'
+export type SettingsTabId = 'theme' | 'explorer' | 'ai' | 'google_docs_sheets' | 'f9' | 'cache' | 'vault'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
 
 interface SettingsOrchProps {
@@ -59,6 +66,7 @@ const TAB_OPTIONS: Array<{ id: SettingsTabWithProfileId; label: string }> = [
   { id: 'explorer', label: 'Explorer' },
   { id: 'profile', label: 'Profile' },
   { id: 'ai', label: 'AI' },
+  { id: 'google_docs_sheets', label: 'Google Docs and Sheets' },
   { id: 'f9', label: 'F9' },
   { id: 'cache', label: 'Clear Cache' },
   { id: 'vault', label: 'Select Thinking Space' },
@@ -89,6 +97,9 @@ export default function SettingsOrch({
   const [f9WebullCredentialsConfigured, setF9WebullCredentialsConfigured] = useState(false)
   const [f9WebullAppKeyHint, setF9WebullAppKeyHint] = useState<string | null>(null)
   const [f9WebullSecureStorageAvailable, setF9WebullSecureStorageAvailable] = useState(false)
+  const [googleOauthClientIdInput, setGoogleOauthClientIdInput] = useState(() => getGoogleOauthClientIdOrch() ?? '')
+  const [googleDriveConnected, setGoogleDriveConnected] = useState(() => Boolean(readGoogleDriveAuthOrch()?.accessToken))
+  const [googleDriveAuthBusy, setGoogleDriveAuthBusy] = useState(false)
   const [busyAction, setBusyAction] = useState<SettingsTabId | null>(null)
   const [explorerFolderColorRulesDraft, setExplorerFolderColorRulesDraft] = useState<ExplorerFolderColorPreferenceBlock[]>(
     () => explorerFolderColorRules,
@@ -285,6 +296,51 @@ export default function SettingsOrch({
     } finally {
       setBusyAction(null)
     }
+  }
+
+  const refreshGoogleDriveAuthState = () => {
+    setGoogleDriveConnected(Boolean(readGoogleDriveAuthOrch()?.accessToken))
+  }
+
+  const onSaveGoogleOauthClientId = () => {
+    setError(null)
+    setMessage(null)
+    const normalized = googleOauthClientIdInput.trim()
+    setGoogleOauthClientIdOrch(normalized)
+    setMessage(normalized ? 'Google OAuth client ID saved.' : 'Google OAuth client ID cleared.')
+  }
+
+  const onConnectGoogleDrive = async () => {
+    const typedClientId = googleOauthClientIdInput.trim()
+    const resolvedClientId = typedClientId || getGoogleOauthClientIdOrch() || ''
+    if (!resolvedClientId) {
+      setError('Google OAuth client ID is required. Add it in this tab before connecting.')
+      return
+    }
+    setGoogleDriveAuthBusy(true)
+    setError(null)
+    setMessage(null)
+    try {
+      if (typedClientId) {
+        setGoogleOauthClientIdOrch(typedClientId)
+      }
+      await connectGoogleDriveAuthOrch({ clientId: resolvedClientId })
+      refreshGoogleDriveAuthState()
+      setMessage('Google Drive connected.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Google sign-in failed')
+      refreshGoogleDriveAuthState()
+    } finally {
+      setGoogleDriveAuthBusy(false)
+    }
+  }
+
+  const onDisconnectGoogleDrive = () => {
+    setError(null)
+    setMessage(null)
+    clearGoogleDriveAuthOrch()
+    refreshGoogleDriveAuthState()
+    setMessage('Google Drive disconnected.')
   }
 
   const onClearF9WebullCredentials = async () => {
@@ -690,6 +746,62 @@ export default function SettingsOrch({
 
       {activeTab === 'ai' && (
         <AiSettingsOrch />
+      )}
+
+      {activeTab === 'google_docs_sheets' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Google Docs and Sheets</CardTitle>
+            <CardDescription>
+              Configure Google OAuth once so Docs/Sheets mapping can use Pick from Drive.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <label htmlFor="ltm-settings-google-oauth-client-id" className="text-sm font-medium">
+                Google OAuth Client ID
+              </label>
+              <input
+                id="ltm-settings-google-oauth-client-id"
+                type="text"
+                value={googleOauthClientIdInput}
+                onChange={(event) => setGoogleOauthClientIdInput(event.target.value)}
+                placeholder="1234567890-xxxx.apps.googleusercontent.com"
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter your real OAuth client ID. The placeholder is an example format.
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Status: {googleDriveConnected ? 'connected' : 'not connected'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onSaveGoogleOauthClientId}
+              >
+                Save Client ID
+              </Button>
+              <Button
+                type="button"
+                onClick={() => { void onConnectGoogleDrive() }}
+                disabled={googleDriveAuthBusy}
+              >
+                {googleDriveAuthBusy ? 'Connecting...' : 'Connect Google'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onDisconnectGoogleDrive}
+                disabled={googleDriveAuthBusy || !googleDriveConnected}
+              >
+                Disconnect Google
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {activeTab === 'f9' && (

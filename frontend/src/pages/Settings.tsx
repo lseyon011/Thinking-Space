@@ -30,6 +30,8 @@ export default function Settings({
         ? 'ai'
         : requestedTab === 'f9'
           ? 'f9'
+          : requestedTab === 'google-docs-sheets'
+            ? 'google_docs_sheets'
           : requestedTab === 'explorer'
             ? 'explorer'
           : requestedTab === 'cache'

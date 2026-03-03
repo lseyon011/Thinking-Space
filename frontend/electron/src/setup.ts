@@ -6,7 +6,7 @@ import {
 } from '@capacitor-community/electron';
 import chokidar from 'chokidar';
 import type { MenuItemConstructorOptions } from 'electron';
-import { app, BrowserWindow, Menu, MenuItem, nativeImage, Tray, session } from 'electron';
+import { app, BrowserWindow, Menu, MenuItem, nativeImage, Tray, session, shell } from 'electron';
 import electronIsDev from 'electron-is-dev';
 import electronServe from 'electron-serve';
 import windowStateKeeper from 'electron-window-state';
@@ -21,6 +21,22 @@ const reloadWatcher = {
 };
 
 const MAC_TRAFFIC_LIGHT_POSITION = { x: 14, y: 14 };
+function isCustomSchemeUrlBlock(url: string, customScheme: string): boolean {
+  return url.startsWith(`${customScheme}://`);
+}
+
+function isTrustedPopupUrlBlock(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    return host === 'google.com'
+      || host.endsWith('.google.com')
+      || host.endsWith('.googleusercontent.com');
+  } catch {
+    return false;
+  }
+}
 export function setupReloadWatcher(electronCapacitorApp: ElectronCapacitorApp): void {
   reloadWatcher.watcher = chokidar
     .watch(join(app.getAppPath(), 'app'), {
@@ -271,11 +287,11 @@ export class ElectronCapacitorApp {
 
     // Security
     newWindow.webContents.setWindowOpenHandler((details) => {
-      if (!details.url.includes(this.customScheme)) {
-        return { action: 'deny' };
-      } else {
+      if (isCustomSchemeUrlBlock(details.url, this.customScheme) || isTrustedPopupUrlBlock(details.url)) {
         return { action: 'allow' };
       }
+      void shell.openExternal(details.url).catch(() => undefined);
+      return { action: 'deny' };
     });
     newWindow.webContents.on('will-navigate', (event, _newURL) => {
       if (!newWindow.webContents.getURL().includes(this.customScheme)) {
@@ -387,11 +403,11 @@ export class ElectronCapacitorApp {
 
     // Security
     mainWindow.webContents.setWindowOpenHandler((details) => {
-      if (!details.url.includes(this.customScheme)) {
-        return { action: 'deny' };
-      } else {
+      if (isCustomSchemeUrlBlock(details.url, this.customScheme) || isTrustedPopupUrlBlock(details.url)) {
         return { action: 'allow' };
       }
+      void shell.openExternal(details.url).catch(() => undefined);
+      return { action: 'deny' };
     });
     mainWindow.webContents.on('will-navigate', (event, _newURL) => {
       if (!mainWindow.webContents.getURL().includes(this.customScheme)) {
@@ -437,14 +453,24 @@ export function setupContentSecurityPolicy(customScheme: string): void {
     'ws://127.0.0.1:1234',
     'ws://192.168.4.23:1234',
   ].join(' ');
+  const frameSrc = [
+    `${customScheme}://*`,
+    'https://accounts.google.com',
+    'https://docs.google.com',
+    'https://drive.google.com',
+  ].join(' ');
+  const devCsp = `default-src ${customScheme}://* 'unsafe-inline' devtools://* 'unsafe-eval' data:; img-src ${customScheme}://* data: blob: https:; media-src ${customScheme}://* data: blob: https:; connect-src ${customScheme}://* ${aiConnectSrc} devtools://*; frame-src ${frameSrc}`
+  const prodCsp = `default-src ${customScheme}://* 'unsafe-inline' data:; img-src ${customScheme}://* data: blob: https:; media-src ${customScheme}://* data: blob: https:; connect-src ${customScheme}://* ${aiConnectSrc}; frame-src ${frameSrc}`
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    if (!details.url.startsWith(`${customScheme}://`)) {
+      callback({ responseHeaders: details.responseHeaders });
+      return;
+    }
     callback({
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          electronIsDev
-            ? `default-src ${customScheme}://* 'unsafe-inline' devtools://* 'unsafe-eval' data:; img-src ${customScheme}://* data: blob: https:; media-src ${customScheme}://* data: blob: https:; connect-src ${customScheme}://* ${aiConnectSrc} devtools://*`
-            : `default-src ${customScheme}://* 'unsafe-inline' data:; img-src ${customScheme}://* data: blob: https:; media-src ${customScheme}://* data: blob: https:; connect-src ${customScheme}://* ${aiConnectSrc}`,
+          electronIsDev ? devCsp : prodCsp,
         ],
       },
     });
