@@ -38,6 +38,7 @@ import {
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/integrations/ExcalidrawDocumentBlock'
 import TableDocumentBlock from '@/components/lego_blocks/integrations/TableDocumentBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
+import GoogleDocDocumentBlock from '@/components/lego_blocks/integrations/GoogleDocDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/MarkdownMiniNavBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
@@ -68,6 +69,7 @@ import {
 } from '@/components/lego_blocks/units/MarkdownDocumentContentBlock'
 import { isTableDocumentPathBlock } from '@/services/lego_blocks/units/tableDocumentPathBlock'
 import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocumentPathBlock'
+import { isGoogleDocDocumentPathBlock } from '@/services/lego_blocks/units/googleDocDocumentPathBlock'
 
 export type MarkdownViewerMode = 'view' | 'edit'
 
@@ -1407,6 +1409,18 @@ function MarkdownDocumentBlock(props: MarkdownDocumentBlockProps) {
         onSaved={props.onSaved}
         onOpenPath={props.onOpenPath}
         onOpenPathForEdit={props.onOpenPathForEdit}
+        onClose={props.onClose}
+        showCloseButton={props.showCloseButton}
+        className={props.className}
+      />
+    )
+  }
+  if (isGoogleDocDocumentPathBlock(props.path)) {
+    return (
+      <GoogleDocDocumentBlock
+        path={props.path}
+        initialMode={props.initialMode}
+        onSaved={props.onSaved}
         onClose={props.onClose}
         showCloseButton={props.showCloseButton}
         className={props.className}
