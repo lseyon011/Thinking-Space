@@ -471,12 +471,51 @@ def is_opensource_ai_available_block(base_url: str | None = None, api_key: str |
         return False
 
 
+def get_opensource_ai_model_identifier_block(base_url: str | None = None, api_key: str | None = None) -> str | None:
+    """Return first model id from an OpenAI-compatible /v1/models response."""
+    normalized_base_url = _normalize_opensource_ai_base_url_block(base_url)
+    headers = {}
+    token = (api_key or "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        response = httpx.get(
+            f"{normalized_base_url}/models",
+            headers=headers,
+            timeout=OPENSOURCE_AI_PROBE_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, list):
+            return None
+        for row in data:
+            if isinstance(row, dict):
+                model_id = row.get("id")
+                if isinstance(model_id, str) and model_id.strip():
+                    return model_id.strip()
+        return None
+    except Exception:
+        return None
+
+
 def chat_opensource_ai_block(messages: list[dict], model: str | None = None, config: dict | None = None) -> dict:
     """Send messages to an OpenAI-compatible local endpoint (LM Studio by default)."""
     config = config or {}
     base_url = _normalize_opensource_ai_base_url_block(config.get("base_url") if isinstance(config, dict) else None)
     api_key = (config.get("api_key") if isinstance(config, dict) else None) or os.getenv("OPEN_SOURCE_AI_API_KEY") or ""
-    model = model.strip() if isinstance(model, str) and model.strip() else OPENSOURCE_AI_DEFAULT_MODEL
+    configured_model = ((config.get("model") or "").strip() if isinstance(config, dict) else "")
+    requested_model = model.strip() if isinstance(model, str) and model.strip() else ""
+    model = (
+        requested_model
+        if requested_model and requested_model != OPENSOURCE_AI_DEFAULT_MODEL
+        else (
+            configured_model
+            or requested_model
+            or get_opensource_ai_model_identifier_block(base_url=base_url, api_key=api_key)
+            or OPENSOURCE_AI_DEFAULT_MODEL
+        )
+    )
     requested_at = datetime.now(timezone.utc).isoformat()
     started = time.perf_counter()
 
@@ -488,7 +527,16 @@ def chat_opensource_ai_block(messages: list[dict], model: str | None = None, con
         "model": model,
         "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
     }
-    response = client.chat.completions.create(**payload)
+    try:
+        response = client.chat.completions.create(**payload)
+    except Exception as exc:
+        host_hint = ""
+        if "127.0.0.1" in base_url or "localhost" in base_url:
+            host_hint = (
+                " If backend is not running on the same host as LM Studio, use "
+                "host.docker.internal or your host LAN IP in Open Source AI base URL."
+            )
+        raise RuntimeError(f"Open Source AI connection failed at {base_url}: {exc}.{host_hint}") from exc
 
     text = response.choices[0].message.content or ""
     responded_at = datetime.now(timezone.utc).isoformat()

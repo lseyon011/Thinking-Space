@@ -55,6 +55,7 @@ export interface ChatSendOptions {
   opensourceAi?: {
     baseUrl?: string
     apiKey?: string
+    model?: string
   }
 }
 
@@ -71,11 +72,12 @@ function normalizeOpenSourceAiBaseUrlBlock(raw: string | null | undefined): stri
   return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
 }
 
-function resolveOpenSourceAiConfigBlock(options?: ChatSendOptions): { baseUrl: string; apiKey?: string } {
+function resolveOpenSourceAiConfigBlock(options?: ChatSendOptions): { baseUrl: string; apiKey?: string; model?: string } {
   const manual = getManualOpenSourceAiCredentialsBlock()
   const baseUrl = normalizeOpenSourceAiBaseUrlBlock(options?.opensourceAi?.baseUrl || manual?.baseUrl)
   const apiKey = (options?.opensourceAi?.apiKey || manual?.apiKey || '').trim() || undefined
-  return { baseUrl, ...(apiKey ? { apiKey } : {}) }
+  const model = (options?.opensourceAi?.model || manual?.model || '').trim() || undefined
+  return { baseUrl, ...(apiKey ? { apiKey } : {}), ...(model ? { model } : {}) }
 }
 
 async function sendClaudeDirectBlock(messages: ChatMessage[], model?: string): Promise<ChatResponse> {
@@ -196,8 +198,13 @@ async function sendOpenSourceAiDirectBlock(
   options?: ChatSendOptions,
 ): Promise<ChatResponse> {
   const { default: OpenAI } = await import('openai')
-  const requestedModel = resolveRequestedModel('opensource-ai', model)
   const config = resolveOpenSourceAiConfigBlock(options)
+  const optionModel = typeof model === 'string' ? model.trim() : ''
+  const requestedModel = (
+    optionModel && optionModel !== defaultProviderModelBlock('opensource-ai')
+      ? optionModel
+      : (config.model || optionModel || resolveRequestedModel('opensource-ai', model))
+  )
   const client = new OpenAI({
     apiKey: config.apiKey || 'local-not-required',
     baseURL: config.baseUrl,
@@ -205,10 +212,21 @@ async function sendOpenSourceAiDirectBlock(
   })
   const requestedAt = new Date().toISOString()
   const started = performance.now()
-  const response = await client.chat.completions.create({
-    model: requestedModel,
-    messages: messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-  })
+  let response: Awaited<ReturnType<typeof client.chat.completions.create>>
+  try {
+    response = await client.chat.completions.create({
+      model: requestedModel,
+      messages: messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+    })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    const hostHint = (
+      config.baseUrl.includes('127.0.0.1') || config.baseUrl.includes('localhost')
+    )
+      ? ' If this runtime is not on the same host as LM Studio, use host.docker.internal or your host LAN IP.'
+      : ''
+    throw new Error(`Open Source AI connection failed at ${config.baseUrl}: ${msg}.${hostHint}`)
+  }
 
   const text = response.choices[0]?.message?.content ?? ''
   const respondedAt = new Date().toISOString()
@@ -433,6 +451,7 @@ async function sendViaBackendBlock(
           return {
             base_url: config.baseUrl,
             api_key: config.apiKey || null,
+            model: config.model || null,
           }
         })()
         : null,

@@ -8,6 +8,7 @@ from app.services.lego_blocks.ai_chat_block import (
     chat_codex_cli_block,
     chat_claude_block,
     chat_codex_block,
+    get_opensource_ai_model_identifier_block,
     is_opensource_ai_available_block,
     is_codex_cli_available_block,
 )
@@ -49,11 +50,15 @@ def list_providers_orch() -> list[dict]:
         opensource_available = is_opensource_ai_available_block()
     except Exception:
         opensource_available = False
+    try:
+        opensource_model = get_opensource_ai_model_identifier_block() or "local-model"
+    except Exception:
+        opensource_model = "local-model"
     providers.append({
         "provider": "opensource-ai",
         "available": opensource_available,
         "label": "Open Source AI",
-        "model": "local-model",
+        "model": opensource_model,
     })
 
     # Claude

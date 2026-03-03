@@ -19,6 +19,7 @@ export interface NativeAiLoginState {
   azureApiVersion: string
   openSourceAiBaseUrl: string
   openSourceAiApiKey: string
+  openSourceAiModel: string
 }
 
 export function getNativeAiLoginStateOrch(): NativeAiLoginState {
@@ -33,6 +34,7 @@ export function getNativeAiLoginStateOrch(): NativeAiLoginState {
     azureApiVersion: azure?.apiVersion ?? '',
     openSourceAiBaseUrl: openSourceAi?.baseUrl ?? '',
     openSourceAiApiKey: openSourceAi?.apiKey ?? '',
+    openSourceAiModel: openSourceAi?.model ?? '',
   }
 }
 
@@ -59,6 +61,7 @@ export function setNativeAzureLoginOrch(input: {
 export function setNativeOpenSourceAiLoginOrch(input: {
   baseUrl?: string
   apiKey?: string
+  model?: string
 }): NativeAiLoginState {
   setManualOpenSourceAiCredentialsBlock(input)
   return getNativeAiLoginStateOrch()

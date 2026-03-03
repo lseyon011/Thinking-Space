@@ -61,6 +61,7 @@ export default function AiSettingsOrch() {
   const [azureApiVersionInput, setAzureApiVersionInput] = useState('')
   const [openSourceAiBaseUrlInput, setOpenSourceAiBaseUrlInput] = useState('')
   const [openSourceAiApiKeyInput, setOpenSourceAiApiKeyInput] = useState('')
+  const [openSourceAiModelInput, setOpenSourceAiModelInput] = useState('')
   const [transferCodeInput, setTransferCodeInput] = useState('')
   const [generatingTransferCode, setGeneratingTransferCode] = useState(false)
   const [telemetryEvents, setTelemetryEvents] = useState<AiTelemetryEvent[]>([])
@@ -110,6 +111,7 @@ export default function AiSettingsOrch() {
     setAzureApiVersionInput(state.azureApiVersion)
     setOpenSourceAiBaseUrlInput(state.openSourceAiBaseUrl)
     setOpenSourceAiApiKeyInput(state.openSourceAiApiKey)
+    setOpenSourceAiModelInput(state.openSourceAiModel)
   }, [])
 
   const loadProviders = useCallback(async (options?: { forceBackendRefresh?: boolean }): Promise<boolean> => {
@@ -235,6 +237,7 @@ export default function AiSettingsOrch() {
       setNativeOpenSourceAiLoginOrch({
         baseUrl: openSourceAiBaseUrlInput,
         apiKey: openSourceAiApiKeyInput,
+        model: openSourceAiModelInput,
       })
       hydrateNativeLoginInputs()
       await loadProviders()
@@ -387,7 +390,7 @@ export default function AiSettingsOrch() {
               <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
                 Open Source AI (LM Studio/OpenAI-Compatible)
               </div>
-              <div className="grid gap-2 md:grid-cols-2">
+              <div className="grid gap-2 md:grid-cols-3">
                 <input
                   value={openSourceAiBaseUrlInput}
                   onChange={(event) => setOpenSourceAiBaseUrlInput(event.target.value)}
@@ -400,6 +403,12 @@ export default function AiSettingsOrch() {
                   type="password"
                   className="rounded-md border border-input bg-background px-3 py-2 text-sm"
                   placeholder="Optional API key"
+                />
+                <input
+                  value={openSourceAiModelInput}
+                  onChange={(event) => setOpenSourceAiModelInput(event.target.value)}
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="Model id (e.g. qwen/qwen3.5-35b-a3b)"
                 />
               </div>
             </div>
@@ -507,7 +516,11 @@ export default function AiSettingsOrch() {
                     value={modelInput}
                     onChange={(event) => setModelInput(event.target.value)}
                     disabled={!selectedProvider || savingModel}
-                    placeholder={selectedProviderStatus?.model || 'Select a provider first'}
+                    placeholder={
+                      selectedProvider === 'opensource-ai'
+                        ? 'LM Studio API Model Identifier (e.g. qwen/qwen3.5-35b-a3b)'
+                        : (selectedProviderStatus?.model || 'Select a provider first')
+                    }
                     className="min-w-[18rem] rounded-md border border-input bg-background px-3 py-2 text-sm"
                   />
                   <Button size="sm" onClick={() => { void onSaveModel() }} disabled={!selectedProvider || savingModel}>

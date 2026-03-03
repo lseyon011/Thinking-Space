@@ -422,7 +422,21 @@ export class ElectronCapacitorApp {
 
 // Set a CSP up for our application based on the custom scheme
 export function setupContentSecurityPolicy(customScheme: string): void {
-  const aiConnectSrc = 'https://api.anthropic.com https://*.openai.azure.com https://platform.claude.com https://api.openai.com https://auth.openai.com https://chatgpt.com';
+  const aiConnectSrc = [
+    'https://api.anthropic.com',
+    'https://*.openai.azure.com',
+    'https://platform.claude.com',
+    'https://api.openai.com',
+    'https://auth.openai.com',
+    'https://chatgpt.com',
+    // Allow local OpenAI-compatible runtimes (LM Studio, etc.) from Electron renderer.
+    'http://localhost:1234',
+    'http://127.0.0.1:1234',
+    'http://192.168.4.23:1234',
+    'ws://localhost:1234',
+    'ws://127.0.0.1:1234',
+    'ws://192.168.4.23:1234',
+  ].join(' ');
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {

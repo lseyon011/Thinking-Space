@@ -19,6 +19,7 @@ Provider = Literal["opensource-ai", "claude", "openai-codex", "codex-cli", "azur
 class OpenSourceAiConfig(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
+    model: str | None = None
 
 
 class ChatMessageIn(BaseModel):

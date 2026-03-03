@@ -18,6 +18,7 @@ export interface ManualAzureCredentials {
 export interface ManualOpenSourceAiCredentials {
   baseUrl: string
   apiKey?: string
+  model?: string
 }
 
 export interface AiManualCredentials {
@@ -72,9 +73,11 @@ function sanitizeOpenSourceAi(raw: unknown): ManualOpenSourceAiCredentials | und
   const record = raw as Record<string, unknown>
   const baseUrl = sanitizeValue(record.baseUrl) || DEFAULT_OPENSOURCE_AI_BASE_URL
   const apiKey = sanitizeValue(record.apiKey) || undefined
+  const model = sanitizeValue(record.model) || undefined
   return {
     baseUrl,
     ...(apiKey ? { apiKey } : {}),
+    ...(model ? { model } : {}),
   }
 }
 
@@ -178,15 +181,18 @@ export function getManualAzureCredentialsBlock(): ManualAzureCredentials | null 
 export function setManualOpenSourceAiCredentialsBlock(input: {
   baseUrl?: string
   apiKey?: string
+  model?: string
 }): AiManualCredentials {
   const current = readAiManualCredentialsBlock()
   const baseUrl = sanitizeValue(input.baseUrl) || DEFAULT_OPENSOURCE_AI_BASE_URL
   const apiKey = sanitizeValue(input.apiKey) || undefined
+  const model = sanitizeValue(input.model) || undefined
   return writeAiManualCredentialsBlock({
     ...current,
     opensourceAi: {
       baseUrl,
       ...(apiKey ? { apiKey } : {}),
+      ...(model ? { model } : {}),
     },
   })
 }
