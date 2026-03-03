@@ -13,6 +13,7 @@ import {
   List,
   ListOrdered,
   Loader2,
+  Maximize2,
   PenLine,
   Quote,
   RotateCcw,
@@ -22,6 +23,7 @@ import {
   Sparkles,
   Table,
   Workflow,
+  X,
 } from 'lucide-react'
 import type { AiSettingsScope } from '@/services/lego_blocks/integrations/aiSettingsBlock'
 import AiAssistControlsBlock from '@/components/lego_blocks/integrations/AiAssistControlsBlock'
@@ -493,6 +495,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   const [wikilinkLoading, setWikilinkLoading] = useState(false)
   const [relatedThoughtsOpen, setRelatedThoughtsOpen] = useState(false)
   const [mindmapPanelOpen, setMindmapPanelOpen] = useState(false)
+  const [mindmapImmersiveOpen, setMindmapImmersiveOpen] = useState(false)
   const [mindmapSettingsOpen, setMindmapSettingsOpen] = useState(false)
   const [mindmapOptions, setMindmapOptions] = useState<MindmapBuildOptions>(() => getDefaultMindmapBuildOptionsOrch())
   const [debouncedMindmapOptions, setDebouncedMindmapOptions] = useState<MindmapBuildOptions>(() => getDefaultMindmapBuildOptionsOrch())
@@ -544,6 +547,27 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     if (!mindmapPreview) return null
     return `${mindmapPreview.sourceLines} lines • ${mindmapPreview.headingCount} headings • ${mindmapPreview.nodeCount} nodes • ${mindmapPreview.connectionCount} links • build ${Math.round(mindmapPreview.timingMs.build)} ms`
   }, [mindmapPreview])
+  const mindmapPreviewCanvas = (
+    <>
+      {mindmapPreview && (
+        <ExcalidrawDocumentBlock
+          content={mindmapPreview.sceneMarkdown}
+          className="h-full"
+        />
+      )}
+      {mindmapLoading && (
+        <div className={`absolute inset-0 flex items-center justify-center text-xs text-muted-foreground ${mindmapPreview ? 'bg-background/50 backdrop-blur-[1px]' : ''}`}>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Building mindmap preview...
+        </div>
+      )}
+      {!mindmapLoading && !mindmapPreview && (
+        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+          No preview available.
+        </div>
+      )}
+    </>
+  )
 
   useEffect(() => {
     if (!aiPanelOpen) setRelatedThoughtsOpen(false)
@@ -561,6 +585,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   useEffect(() => {
     if (!supportsMindmap) {
       setMindmapPanelOpen(false)
+      setMindmapImmersiveOpen(false)
       setMindmapPreview(null)
       setMindmapOutputPath('')
       setMindmapError(null)
@@ -578,6 +603,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   useEffect(() => {
     if (!mindmapPanelOpen || !supportsMindmap) {
       setMindmapLoading(false)
+      if (!mindmapPanelOpen) setMindmapImmersiveOpen(false)
       return
     }
     let cancelled = false
@@ -606,6 +632,19 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       window.clearTimeout(timer)
     }
   }, [debouncedMindmapOptions, mindmapPanelOpen, normalizedPath, supportsMindmap, value])
+
+  useEffect(() => {
+    if (!mindmapImmersiveOpen) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setMindmapImmersiveOpen(false)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [mindmapImmersiveOpen])
 
   useLayoutEffect(() => {
     const pending = pendingInlineWidgetScrollRestoreRef.current
@@ -1429,28 +1468,23 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
             </div>
           )}
 
-          {mindmapStatsLine && (
-            <div className="text-xs text-muted-foreground">{mindmapStatsLine}</div>
-          )}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs text-muted-foreground">
+              {mindmapStatsLine ?? 'Build a preview, then pop out for a larger view.'}
+            </div>
+            <button
+              type="button"
+              onClick={() => setMindmapImmersiveOpen(true)}
+              disabled={!mindmapPreview && !mindmapLoading}
+              className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+              Pop out
+            </button>
+          </div>
 
           <div className="relative h-[42vh] min-h-[280px] overflow-hidden rounded-md border border-border/60 bg-background">
-            {mindmapPreview && (
-              <ExcalidrawDocumentBlock
-                content={mindmapPreview.sceneMarkdown}
-                className="h-full"
-              />
-            )}
-            {mindmapLoading && (
-              <div className={`absolute inset-0 flex items-center justify-center text-xs text-muted-foreground ${mindmapPreview ? 'bg-background/50 backdrop-blur-[1px]' : ''}`}>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Building mindmap preview...
-              </div>
-            )}
-            {!mindmapLoading && !mindmapPreview && (
-              <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                No preview available.
-              </div>
-            )}
+            {mindmapPreviewCanvas}
           </div>
 
           {mindmapError && (
@@ -1463,6 +1497,36 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
               {mindmapMessage}
             </div>
           )}
+        </div>
+      )}
+
+      {supportsMindmap && mindmapImmersiveOpen && (
+        <div className="fixed inset-2 z-[70] sm:inset-4">
+          <div
+            className="absolute inset-0 rounded-xl bg-black/45 backdrop-blur-[1px]"
+            onClick={() => setMindmapImmersiveOpen(false)}
+          />
+          <div className="relative flex h-full flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-foreground">Mindmap Preview (Pop-out)</div>
+                <div className="truncate text-xs text-muted-foreground">{mindmapStatsLine ?? 'Previewing current markdown content'}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMindmapImmersiveOpen(false)}
+                className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground hover:bg-muted"
+              >
+                <X className="h-3.5 w-3.5" />
+                Close
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 p-2">
+              <div className="relative h-full overflow-hidden rounded-md border border-border/60 bg-background">
+                {mindmapPreviewCanvas}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
