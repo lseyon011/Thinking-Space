@@ -76,6 +76,7 @@ interface VaultExplorerBlockProps {
   onDuplicateFile?: (path: string) => ExplorerActionResult
   onRenamePath?: (path: string, kind: ExplorerPathKind, nextName: string) => ExplorerActionResult
   onDeleteFile?: (path: string) => ExplorerActionResult
+  onDeleteFolder?: (path: string) => ExplorerActionResult
   onOpenInFinder?: (path: string) => ExplorerActionResult
   selectedPath?: string | null
   onSelectFile?: (path: string) => void
@@ -116,6 +117,7 @@ export default function VaultExplorerBlock({
   onDuplicateFile,
   onRenamePath,
   onDeleteFile,
+  onDeleteFolder,
   onOpenInFinder,
   selectedPath = null,
   onSelectFile,
@@ -910,14 +912,18 @@ export default function VaultExplorerBlock({
   const contextMenuStyle = useMemo(() => {
     if (!contextMenu) return undefined
     const menuWidth = 228
-    const menuHeight = contextMenu.kind === 'file' ? 452 : 304
+    const menuHeight = contextMenu.kind === 'file'
+      ? 452
+      : onDeleteFolder
+        ? 342
+        : 304
     const maxX = Math.max(8, window.innerWidth - menuWidth - 8)
     const maxY = Math.max(8, window.innerHeight - menuHeight - 8)
     return {
       left: `${Math.min(contextMenu.x, maxX)}px`,
       top: `${Math.min(contextMenu.y, maxY)}px`,
     }
-  }, [contextMenu])
+  }, [contextMenu, onDeleteFolder])
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col', className)}>
@@ -1078,6 +1084,22 @@ export default function VaultExplorerBlock({
                   }}
                   disabled={!onRenamePath}
                 />
+                {!showFileActions && (
+                  <>
+                    <div className="my-1 border-t border-border/70" />
+                    <MenuItem
+                      label="Delete Folder"
+                      onClick={() => { void runContextAction(onDeleteFolder ? () => onDeleteFolder(filePath) : undefined, { refreshPath: parentPath }) }}
+                      disabled={!onDeleteFolder}
+                      destructive
+                    />
+                    <MenuItem
+                      label="Open in Finder"
+                      onClick={() => { void runContextAction(onOpenInFinder ? () => onOpenInFinder(filePath) : undefined) }}
+                      disabled={!onOpenInFinder}
+                    />
+                  </>
+                )}
                 {showFileActions && (
                   <>
                     <div className="my-1 border-t border-border/70" />

@@ -46,6 +46,11 @@ function remapPathAfterMove(path: string, sourcePath: string, targetPath: string
   return suffix ? `${targetPath}/${suffix}` : targetPath
 }
 
+function isSameOrChildPath(path: string, candidateParent: string): boolean {
+  if (!candidateParent) return true
+  return path === candidateParent || path.startsWith(`${candidateParent}/`)
+}
+
 function clampExplorerWidthPx(value: number): number {
   if (!Number.isFinite(value)) return EXPLORER_DEFAULT_WIDTH_PX
   return Math.max(EXPLORER_MIN_WIDTH_PX, value)
@@ -280,6 +285,29 @@ export default function ThinkingSpaceOrch() {
     return true
   }, [inlinePath, removeMountedInlinePath, setInlinePathAndSyncUrl])
 
+  const handleExplorerDeleteFolder = useCallback(async (path: string): Promise<boolean> => {
+    const confirmed = window.confirm(`Delete folder "${leafNameOf(path)}" and all its contents?`)
+    if (!confirmed) return false
+    await deleteVaultPathOrch(path)
+    setMountedInlinePaths((prev) => prev.filter((item) => !isSameOrChildPath(item, path)))
+    setInlineInitialModeByPath((prev) => {
+      let changed = false
+      const next: Record<string, MarkdownViewerMode> = {}
+      for (const [itemPath, mode] of Object.entries(prev)) {
+        if (isSameOrChildPath(itemPath, path)) {
+          changed = true
+          continue
+        }
+        next[itemPath] = mode
+      }
+      return changed ? next : prev
+    })
+    if (inlinePath && isSameOrChildPath(inlinePath, path)) {
+      setInlinePathAndSyncUrl(null)
+    }
+    return true
+  }, [inlinePath, setInlinePathAndSyncUrl])
+
   const handleExplorerOpenInFinder = useCallback(async (path: string): Promise<boolean> => {
     await revealVaultPathOrch(path)
     return true
@@ -491,9 +519,11 @@ export default function ThinkingSpaceOrch() {
           onDuplicateFile={handleExplorerDuplicateFile}
           onRenamePath={handleExplorerRenamePath}
           onDeleteFile={handleExplorerDeleteFile}
+          onDeleteFolder={handleExplorerDeleteFolder}
           onOpenInFinder={handleExplorerOpenInFinder}
           onMovePath={handleExplorerMovePath}
           draggableFiles
+          draggableFolders
           title=""
         />
       </div>
@@ -655,9 +685,11 @@ export default function ThinkingSpaceOrch() {
                 onDuplicateFile={handleExplorerDuplicateFile}
                 onRenamePath={handleExplorerRenamePath}
                 onDeleteFile={handleExplorerDeleteFile}
+                onDeleteFolder={handleExplorerDeleteFolder}
                 onOpenInFinder={handleExplorerOpenInFinder}
                 onMovePath={handleExplorerMovePath}
                 draggableFiles
+                draggableFolders
                 title=""
               />
             </div>
