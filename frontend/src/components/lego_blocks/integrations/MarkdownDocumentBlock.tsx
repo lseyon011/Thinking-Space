@@ -39,6 +39,7 @@ import ExcalidrawDocumentBlock from '@/components/lego_blocks/integrations/Excal
 import TableDocumentBlock from '@/components/lego_blocks/integrations/TableDocumentBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
 import GoogleDocDocumentBlock from '@/components/lego_blocks/integrations/GoogleDocDocumentBlock'
+import ImageDocumentBlock from '@/components/lego_blocks/integrations/ImageDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/MarkdownMiniNavBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
@@ -70,6 +71,7 @@ import {
 import { isTableDocumentPathBlock } from '@/services/lego_blocks/units/tableDocumentPathBlock'
 import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocumentPathBlock'
 import { isGoogleDocDocumentPathBlock } from '@/services/lego_blocks/units/googleDocDocumentPathBlock'
+import { isImageDocumentPathBlock } from '@/services/lego_blocks/units/imageDocumentPathBlock'
 
 export type MarkdownViewerMode = 'view' | 'edit'
 
@@ -1400,6 +1402,85 @@ function PdfDocumentRuntimeBlock({
   )
 }
 
+function ImageDocumentRuntimeBlock({
+  path,
+  onOpenPath,
+  onClose,
+  showCloseButton = false,
+  className,
+}: MarkdownDocumentBlockProps) {
+  const filename = path.split('/').pop() || path
+  const breadcrumb = path.split('/').slice(0, -1).join(' / ')
+  const openInSystemLabel = getOpenInSystemLabelOrch()
+  const canOpenInSystem = openInSystemLabel !== null
+  const openInSystemButtonLabel = openInSystemLabel ?? 'System'
+  const [openInSystemError, setOpenInSystemError] = useState<string | null>(null)
+
+  const handleOpenInSystem = useCallback(() => {
+    if (!canOpenInSystem) return
+    setOpenInSystemError(null)
+    void openVaultPathInSystemOrch(path).catch((err) => {
+      setOpenInSystemError(err instanceof Error ? err.message : 'Failed to open file in system file manager')
+    })
+  }, [canOpenInSystem, path])
+
+  return (
+    <div className={cn('flex h-full min-h-0 flex-col bg-card p-2', className)}>
+      <div className="ts-doc-header border-b border-border/50 px-6 py-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="truncate font-medium">{filename}</span>
+            </div>
+            {breadcrumb && <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={handleOpenInSystem}
+              disabled={!canOpenInSystem}
+              className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+              title={canOpenInSystem ? `Open file in ${openInSystemButtonLabel}` : 'Open in system file manager is unavailable on web'}
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{openInSystemButtonLabel}</span>
+            </button>
+            {onOpenPath && (
+              <button
+                type="button"
+                onClick={() => onOpenPath(path)}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                title="Open in Thinking Space explorer"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </button>
+            )}
+            {showCloseButton && onClose && (
+              <button
+                onClick={onClose}
+                className="rounded-lg p-1.5 transition-colors hover:bg-muted"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      {openInSystemError && (
+        <div className="mx-6 mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {openInSystemError}
+        </div>
+      )}
+
+      <div className="min-h-0 flex-1 px-6 py-5">
+        <ImageDocumentBlock path={path} className="h-full" />
+      </div>
+    </div>
+  )
+}
+
 function MarkdownDocumentBlock(props: MarkdownDocumentBlockProps) {
   if (isTableDocumentPathBlock(props.path)) {
     return (
@@ -1421,6 +1502,20 @@ function MarkdownDocumentBlock(props: MarkdownDocumentBlockProps) {
         path={props.path}
         initialMode={props.initialMode}
         onSaved={props.onSaved}
+        onClose={props.onClose}
+        showCloseButton={props.showCloseButton}
+        className={props.className}
+      />
+    )
+  }
+  if (isImageDocumentPathBlock(props.path)) {
+    return (
+      <ImageDocumentRuntimeBlock
+        path={props.path}
+        initialMode={props.initialMode}
+        onSaved={props.onSaved}
+        onOpenPath={props.onOpenPath}
+        onOpenPathForEdit={props.onOpenPathForEdit}
         onClose={props.onClose}
         showCloseButton={props.showCloseButton}
         className={props.className}
