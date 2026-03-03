@@ -505,6 +505,8 @@ def chat_opensource_ai_block(messages: list[dict], model: str | None = None, con
     base_url = _normalize_opensource_ai_base_url_block(config.get("base_url") if isinstance(config, dict) else None)
     api_key = (config.get("api_key") if isinstance(config, dict) else None) or os.getenv("OPEN_SOURCE_AI_API_KEY") or ""
     configured_model = ((config.get("model") or "").strip() if isinstance(config, dict) else "")
+    think = config.get("think") if isinstance(config, dict) else None
+    think_enabled = True if not isinstance(think, bool) else think
     requested_model = model.strip() if isinstance(model, str) and model.strip() else ""
     model = (
         requested_model
@@ -527,6 +529,13 @@ def chat_opensource_ai_block(messages: list[dict], model: str | None = None, con
         "model": model,
         "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
     }
+    if not think_enabled:
+        payload["extra_body"] = {
+            "chat_template_kwargs": {
+                "enable_thinking": False,
+            },
+            "enable_thinking": False,
+        }
     try:
         response = client.chat.completions.create(**payload)
     except Exception as exc:

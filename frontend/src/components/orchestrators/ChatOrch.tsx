@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent } from '@/components/lego_blocks/units/ui/card'
+import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import {
   type AiProvider,
   type AiProviderStatus,
@@ -13,8 +14,10 @@ import {
   sendChatWithTelemetryOrch,
 } from '@/services/orchestrators/chatOrch'
 import {
+  resolveAiThinkingForScopeProviderOrch,
   resolveAiSelectionFromProvidersOrch,
   resolveAiSelectionOrch,
+  setAiScopeProviderThinkingOrch,
   setAiSelectedProviderOrch,
 } from '@/services/orchestrators/aiSettingsOrch'
 
@@ -42,6 +45,7 @@ export default function ChatOrch() {
   const [providers, setProviders] = useState<AiProviderStatus[]>([])
   const [selectedProvider, setSelectedProvider] = useState<AiProvider | null>(null)
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  const [thinkEnabled, setThinkEnabled] = useState(true)
   const [messages, setMessages] = useState<ChatTimelineMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -67,6 +71,11 @@ export default function ChatOrch() {
         const selection = resolveAiSelectionFromProvidersOrch(p, { scope: 'chat' })
         setSelectedProvider(selection?.provider ?? null)
         setSelectedModel(selection?.model ?? null)
+        setThinkEnabled(
+          selection?.provider === 'opensource-ai'
+            ? resolveAiThinkingForScopeProviderOrch('chat', 'opensource-ai')
+            : true,
+        )
       })
       .catch((err) => setError(err.message))
       .finally(() => setProvidersLoading(false))
@@ -80,6 +89,11 @@ export default function ChatOrch() {
     const selection = resolveAiSelectionFromProvidersOrch(providers, { provider: selectedProvider, scope: 'chat' })
     setSelectedProvider(selection?.provider ?? null)
     setSelectedModel(selection?.model ?? null)
+    setThinkEnabled(
+      selection?.provider === 'opensource-ai'
+        ? resolveAiThinkingForScopeProviderOrch('chat', 'opensource-ai')
+        : true,
+    )
   }, [providers, selectedProvider])
 
   useEffect(() => {
@@ -108,11 +122,18 @@ export default function ChatOrch() {
         throw new Error('No AI provider available. Configure one in AI Settings.')
       }
       setSelectedModel(selection.model)
+      const resolvedThinkEnabled = selection.provider === 'opensource-ai'
+        ? resolveAiThinkingForScopeProviderOrch('chat', 'opensource-ai')
+        : true
+      setThinkEnabled(resolvedThinkEnabled)
       const { response } = await sendChatWithTelemetryOrch(
         selection.provider,
         allMessages,
         {
           model: selection.model,
+          opensourceAi: selection.provider === 'opensource-ai'
+            ? { think: resolvedThinkEnabled }
+            : undefined,
           threadId: selection.provider === 'codex-cli'
             ? latestCodexCliThreadId()
             : undefined,
@@ -175,6 +196,9 @@ export default function ChatOrch() {
               onClick={() => {
                 setSelectedProvider(p.provider)
                 setAiSelectedProviderOrch(p.provider)
+                if (p.provider === 'opensource-ai') {
+                  setThinkEnabled(resolveAiThinkingForScopeProviderOrch('chat', 'opensource-ai'))
+                }
               }}
               className={`rounded-full border px-3 py-1 text-sm transition-colors ${
                 selectedProvider === p.provider
@@ -193,6 +217,18 @@ export default function ChatOrch() {
           <span className="text-xs text-muted-foreground">
             Model: {selectedModel} (from AI Settings)
           </span>
+        )}
+        {selectedProvider === 'opensource-ai' && (
+          <label className="ml-1 inline-flex items-center gap-2 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-muted-foreground">
+            <span>Think</span>
+            <Switch
+              checked={thinkEnabled}
+              onCheckedChange={(checked) => {
+                setThinkEnabled(checked)
+                setAiScopeProviderThinkingOrch('chat', 'opensource-ai', checked)
+              }}
+            />
+          </label>
         )}
       </div>
 

@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AiProvider } from '@/services/orchestrators/chatOrch'
 import { runAiAssistOrch, type AiAssistAction, type RunAiAssistResult } from '@/services/orchestrators/aiAssistOrch'
-import { resolveAiSelectionOrch } from '@/services/orchestrators/aiSettingsOrch'
+import {
+  resolveAiSelectionOrch,
+  resolveAiThinkingForScopeProviderOrch,
+  setAiScopeProviderThinkingOrch,
+} from '@/services/orchestrators/aiSettingsOrch'
 import {
   listAiAssistPromptHistoryOrch,
   recordAiAssistPromptHistoryOrch,
@@ -18,6 +22,9 @@ export interface AiAssistRuntimeBlockState {
   aiSelectionLoading: boolean
   selectedProvider: AiProvider | null
   selectedModel: string | null
+  showThinkToggle: boolean
+  thinkEnabled: boolean
+  setThinkEnabled: (enabled: boolean) => void
   assistRunningAction: AiAssistAction | null
   assistError: string | null
   assistResultPill: AiAssistResultPill | null
@@ -44,6 +51,7 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
   const [aiSelectionLoading, setAiSelectionLoading] = useState(true)
   const [selectedProvider, setSelectedProvider] = useState<AiProvider | null>(null)
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  const [thinkEnabled, setThinkEnabledState] = useState(true)
   const [assistRunningAction, setAssistRunningAction] = useState<AiAssistAction | null>(null)
   const [assistError, setAssistError] = useState<string | null>(null)
   const [assistResultPill, setAssistResultPill] = useState<AiAssistResultPill | null>(null)
@@ -54,6 +62,10 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     const selection = await resolveAiSelectionOrch({ scope: options.scope })
     setSelectedProvider(selection?.provider ?? null)
     setSelectedModel(selection?.model ?? null)
+    const nextThinkEnabled = selection?.provider === 'opensource-ai'
+      ? resolveAiThinkingForScopeProviderOrch(options.scope, 'opensource-ai')
+      : true
+    setThinkEnabledState(nextThinkEnabled)
     return selection
   }, [options.scope])
 
@@ -89,6 +101,11 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
       cancelled = true
     }
   }, [])
+
+  const setThinkEnabled = useCallback((enabled: boolean) => {
+    setThinkEnabledState(enabled)
+    setAiScopeProviderThinkingOrch(options.scope, 'opensource-ai', enabled)
+  }, [options.scope])
 
   const runAssistAction = useCallback(async (action: AiAssistAction, content: string, customPrompt?: string) => {
     if (assistRunningAction) return null
@@ -132,6 +149,7 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
         action,
         content,
         customPrompt: normalizedCustomPrompt,
+        think: selection.provider === 'opensource-ai' ? thinkEnabled : undefined,
       })
       if (!result.changed) {
         setAssistError(null)
@@ -149,7 +167,7 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     } finally {
       setAssistRunningAction(null)
     }
-  }, [assistRunningAction, options.scope, options.useCase, syncSelection])
+  }, [assistRunningAction, options.scope, options.useCase, syncSelection, thinkEnabled])
 
   const applyAssistSuggestion = useCallback((onApply: (nextContent: string) => void, overrideContent?: string): boolean => {
     if (!assistSuggestion) return false
@@ -185,6 +203,9 @@ export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions)
     aiSelectionLoading,
     selectedProvider,
     selectedModel,
+    showThinkToggle: selectedProvider === 'opensource-ai',
+    thinkEnabled,
+    setThinkEnabled,
     assistRunningAction,
     assistError,
     assistResultPill,

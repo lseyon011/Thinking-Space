@@ -3,8 +3,13 @@ import {
   isAiSettingsScope,
   readAiSettingsBlock,
   resolveAiProviderForScopeBlock,
+  resolveAiThinkingForProviderBlock,
+  resolveAiThinkingForScopeProviderBlock,
+  resolveAiThinkingOverrideForScopeProviderBlock,
   resolveAiModelForScopeProviderBlock,
   resolveAiModelForProviderBlock,
+  setSelectedAiThinkingBlock,
+  setSelectedAiThinkingForScopeBlock,
   setSelectedAiProviderForScopeBlock,
   setSelectedAiModelForScopeBlock,
   setSelectedAiModelBlock,
@@ -80,6 +85,18 @@ export function setAiScopeProviderModelOrch(
   model: string,
 ): AiSettings {
   return setSelectedAiModelForScopeBlock(scope, provider, model)
+}
+
+export function setAiProviderThinkingOrch(provider: AiProvider, enabled: boolean): AiSettings {
+  return setSelectedAiThinkingBlock(provider, enabled)
+}
+
+export function setAiScopeProviderThinkingOrch(
+  scope: AiSettingsScope,
+  provider: AiProvider,
+  enabled: boolean | null,
+): AiSettings {
+  return setSelectedAiThinkingForScopeBlock(scope, provider, enabled)
 }
 
 export function listAiModelOptionsOrch(provider: AiProvider): string[] {
@@ -171,4 +188,19 @@ export function resolveAiModelForScopeProviderOrch(scope: AiSettingsScope, provi
 
 export function resolveAiProviderForScopeOrch(scope: AiSettingsScope): AiProvider | null {
   return resolveAiProviderForScopeBlock(scope)
+}
+
+export function resolveAiThinkingForProviderOrch(provider: AiProvider): boolean {
+  return resolveAiThinkingForProviderBlock(provider)
+}
+
+export function resolveAiThinkingForScopeProviderOrch(scope: AiSettingsScope, provider: AiProvider): boolean {
+  return resolveAiThinkingForScopeProviderBlock(scope, provider)
+}
+
+export function resolveAiThinkingOverrideForScopeProviderOrch(
+  scope: AiSettingsScope,
+  provider: AiProvider,
+): boolean | null {
+  return resolveAiThinkingOverrideForScopeProviderBlock(scope, provider)
 }

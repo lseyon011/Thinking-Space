@@ -1,6 +1,6 @@
 import type { AiProvider } from '@/services/lego_blocks/integrations/aiProviderBlock'
 import type { AiSettingsScope } from '@/services/lego_blocks/integrations/aiSettingsBlock'
-import { resolveAiSelectionOrch } from './aiSettingsOrch'
+import { resolveAiSelectionOrch, resolveAiThinkingForScopeProviderOrch } from './aiSettingsOrch'
 import { sendChatWithTelemetryOrch } from './chatOrch'
 import type { AiTelemetryEvent } from './aiTelemetryOrch'
 
@@ -14,6 +14,7 @@ export interface RunAiAssistInput {
   action: AiAssistAction
   content: string
   customPrompt?: string
+  think?: boolean
 }
 
 export interface RunAiAssistResult {
@@ -92,10 +93,23 @@ export async function runAiAssistOrch(input: RunAiAssistInput): Promise<RunAiAss
     throw new Error('No AI provider available. Configure one in AI Settings.')
   }
 
+  const thinkEnabled = selection.provider === 'opensource-ai'
+    ? (
+      typeof input.think === 'boolean'
+        ? input.think
+        : resolveAiThinkingForScopeProviderOrch(input.scope ?? 'markdown_editor', 'opensource-ai')
+    )
+    : undefined
+
   const { response, telemetryEvent } = await sendChatWithTelemetryOrch(
     selection.provider,
     [{ role: 'user', content: prompt }],
-    { model: selection.model },
+    {
+      model: selection.model,
+      opensourceAi: selection.provider === 'opensource-ai'
+        ? { think: thinkEnabled }
+        : undefined,
+    },
     {
       useCase: input.useCase || 'markdown.assist',
       metadata: {

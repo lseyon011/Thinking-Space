@@ -4,7 +4,7 @@ import { syncSingleFile } from './vaultSyncOrch'
 import { sendChatWithTelemetryOrch, type AiProvider } from './chatOrch'
 import { recordAiTelemetryOrch, type AiTelemetryEvent } from './aiTelemetryOrch'
 import { findSimilarGroupedMatchesOrch, type SimilarityGroupedMatches } from './similarityOrch'
-import { resolveAiSelectionOrch } from './aiSettingsOrch'
+import { resolveAiSelectionOrch, resolveAiThinkingForScopeProviderOrch } from './aiSettingsOrch'
 
 export interface StewardMetadataSuggestion {
   summary: string
@@ -245,7 +245,12 @@ export async function generateStewardMetadataSuggestionForFileOrch(filePath: str
     const { response, telemetryEvent } = await sendChatWithTelemetryOrch(
       selection.provider,
       [{ role: 'user', content: prompt }],
-      { model: selection.model },
+      {
+        model: selection.model,
+        opensourceAi: selection.provider === 'opensource-ai'
+          ? { think: resolveAiThinkingForScopeProviderOrch('steward_metadata', 'opensource-ai') }
+          : undefined,
+      },
       {
         useCase: 'steward.metadata.proposal_generation',
         metadata: {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import AiTelemetryPanelBlock from '@/components/lego_blocks/integrations/AiTelemetryPanelBlock'
 import { listProvidersOrch, type AiProvider, type AiProviderStatus } from '@/services/orchestrators/chatOrch'
 import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeOrch'
@@ -23,8 +24,13 @@ import {
   listAiModelOptionsOrch,
   listAiModelScopesOrch,
   resolveAiProviderForScopeOrch,
+  resolveAiThinkingForProviderOrch,
+  resolveAiThinkingForScopeProviderOrch,
+  resolveAiThinkingOverrideForScopeProviderOrch,
   resolveAiModelForScopeProviderOrch,
   resolveAiModelForProviderOrch,
+  setAiProviderThinkingOrch,
+  setAiScopeProviderThinkingOrch,
   setAiScopeProviderOrch,
   setAiScopeProviderModelOrch,
   resolveAiSelectionFromProvidersOrch,
@@ -222,6 +228,26 @@ export default function AiSettingsOrch() {
     } finally {
       setSavingModel(false)
     }
+  }
+
+  const onToggleProviderThinking = (provider: AiProvider, enabled: boolean) => {
+    setAiProviderThinkingOrch(provider, enabled)
+    setMessage(`${provider} thinking ${enabled ? 'enabled' : 'disabled'} by default.`)
+    setError(null)
+  }
+
+  const onToggleScopeThinking = (
+    scope: AiSettingsScope,
+    provider: AiProvider,
+    enabled: boolean | null,
+  ) => {
+    setAiScopeProviderThinkingOrch(scope, provider, enabled)
+    setMessage(
+      enabled == null
+        ? `${scopeLabels[scope]} thinking reset to provider default.`
+        : `${scopeLabels[scope]} thinking ${enabled ? 'enabled' : 'disabled'}.`,
+    )
+    setError(null)
   }
 
   const onSaveNativeLogins = async () => {
@@ -544,6 +570,24 @@ export default function AiSettingsOrch() {
                 )}
               </div>
 
+              {selectedProvider === 'opensource-ai' && (
+                <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-3">
+                  <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    Open Source AI Thinking
+                  </div>
+                  <label className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-background px-3 py-2">
+                    <span className="text-sm text-foreground">Enable thinking by default</span>
+                    <Switch
+                      checked={resolveAiThinkingForProviderOrch('opensource-ai')}
+                      onCheckedChange={(checked) => onToggleProviderThinking('opensource-ai', checked)}
+                    />
+                  </label>
+                  <div className="text-xs text-muted-foreground">
+                    Used when a scope does not define its own override.
+                  </div>
+                </div>
+              )}
+
               <div className="text-xs text-muted-foreground">
                 Available providers: {availableProviders.map(item => item.provider).join(', ') || 'none'}
               </div>
@@ -648,6 +692,34 @@ export default function AiSettingsOrch() {
                                 </Button>
                               )}
                             </div>
+                            {scopeProvider === 'opensource-ai' && (
+                              <div className="mt-2 rounded-md border border-border/60 bg-background px-3 py-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="text-xs text-muted-foreground">
+                                    Thinking override for {scopeLabels[scope]}
+                                  </div>
+                                  <Switch
+                                    checked={resolveAiThinkingForScopeProviderOrch(scope, 'opensource-ai')}
+                                    onCheckedChange={(checked) => onToggleScopeThinking(scope, 'opensource-ai', checked)}
+                                  />
+                                </div>
+                                <div className="mt-2 flex items-center justify-between gap-2">
+                                  <div className="text-xs text-muted-foreground">
+                                    {resolveAiThinkingOverrideForScopeProviderOrch(scope, 'opensource-ai') == null
+                                      ? 'Using provider default.'
+                                      : 'Scope override active.'}
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={resolveAiThinkingOverrideForScopeProviderOrch(scope, 'opensource-ai') == null}
+                                    onClick={() => onToggleScopeThinking(scope, 'opensource-ai', null)}
+                                  >
+                                    Use Provider Default
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                             {knownModels.length > 0 && (
                               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                 Suggested:

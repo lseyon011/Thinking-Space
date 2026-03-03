@@ -13,6 +13,7 @@ import {
   getCodexCredentialsBlock,
   getAzureCredentialsBlock,
 } from '@/services/lego_blocks/integrations/aiProviderBlock'
+import { resolveAiThinkingForProviderBlock } from '@/services/lego_blocks/integrations/aiSettingsBlock'
 import {
   DEFAULT_OPENSOURCE_AI_BASE_URL,
   getManualAzureCredentialsBlock,
@@ -56,6 +57,7 @@ export interface ChatSendOptions {
     baseUrl?: string
     apiKey?: string
     model?: string
+    think?: boolean
   }
 }
 
@@ -72,12 +74,25 @@ function normalizeOpenSourceAiBaseUrlBlock(raw: string | null | undefined): stri
   return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
 }
 
-function resolveOpenSourceAiConfigBlock(options?: ChatSendOptions): { baseUrl: string; apiKey?: string; model?: string } {
+function resolveOpenSourceAiConfigBlock(options?: ChatSendOptions): {
+  baseUrl: string
+  apiKey?: string
+  model?: string
+  think: boolean
+} {
   const manual = getManualOpenSourceAiCredentialsBlock()
   const baseUrl = normalizeOpenSourceAiBaseUrlBlock(options?.opensourceAi?.baseUrl || manual?.baseUrl)
   const apiKey = (options?.opensourceAi?.apiKey || manual?.apiKey || '').trim() || undefined
   const model = (options?.opensourceAi?.model || manual?.model || '').trim() || undefined
-  return { baseUrl, ...(apiKey ? { apiKey } : {}), ...(model ? { model } : {}) }
+  const think = typeof options?.opensourceAi?.think === 'boolean'
+    ? options.opensourceAi.think
+    : resolveAiThinkingForProviderBlock('opensource-ai')
+  return {
+    baseUrl,
+    ...(apiKey ? { apiKey } : {}),
+    ...(model ? { model } : {}),
+    think,
+  }
 }
 
 async function sendClaudeDirectBlock(messages: ChatMessage[], model?: string): Promise<ChatResponse> {
@@ -214,10 +229,21 @@ async function sendOpenSourceAiDirectBlock(
   const started = performance.now()
   let response: Awaited<ReturnType<typeof client.chat.completions.create>>
   try {
-    response = await client.chat.completions.create({
+    const payload: Record<string, unknown> = {
       model: requestedModel,
       messages: messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-    })
+      ...(config.think
+        ? {}
+        : {
+          extra_body: {
+            chat_template_kwargs: {
+              enable_thinking: false,
+            },
+            enable_thinking: false,
+          },
+        }),
+    }
+    response = await client.chat.completions.create(payload as never)
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     const hostHint = (
@@ -452,6 +478,7 @@ async function sendViaBackendBlock(
             base_url: config.baseUrl,
             api_key: config.apiKey || null,
             model: config.model || null,
+            think: config.think,
           }
         })()
         : null,

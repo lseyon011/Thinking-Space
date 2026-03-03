@@ -20,6 +20,7 @@ class OpenSourceAiConfig(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     model: str | None = None
+    think: bool | None = None
 
 
 class ChatMessageIn(BaseModel):

@@ -9,7 +9,7 @@ import {
   parseExtensionBuilderDraftFromAiBlock,
   type ExtensionBuilderDraft,
 } from '@/services/lego_blocks/integrations/extensionPromptTemplateBlock'
-import { resolveAiSelectionOrch } from './aiSettingsOrch'
+import { resolveAiSelectionOrch, resolveAiThinkingForScopeProviderOrch } from './aiSettingsOrch'
 import { sendChatWithTelemetryOrch, type AiTelemetryEvent } from './chatOrch'
 import {
   activateExtensionOrch,
@@ -172,7 +172,12 @@ async function generateDraftWithAiOrFallback(intent: string): Promise<{
         { role: 'assistant', content: prompts.systemPrompt },
         { role: 'user', content: prompts.userPrompt },
       ],
-      { model: selection.model },
+      {
+        model: selection.model,
+        opensourceAi: selection.provider === 'opensource-ai'
+          ? { think: resolveAiThinkingForScopeProviderOrch('chat', 'opensource-ai') }
+          : undefined,
+      },
       {
         useCase: 'extensions.builder.generate',
         metadata: {

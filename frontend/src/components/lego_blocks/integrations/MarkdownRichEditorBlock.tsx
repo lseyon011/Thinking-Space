@@ -521,6 +521,9 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     aiSelectionLoading,
     selectedProvider,
     selectedModel,
+    showThinkToggle,
+    thinkEnabled,
+    setThinkEnabled,
     assistRunningAction,
     assistError,
     assistResultPill,
@@ -1681,6 +1684,9 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           <AiAssistControlsBlock
             selectedProvider={selectedProvider}
             selectedModel={selectedModel}
+            showThinkToggle={showThinkToggle}
+            thinkEnabled={thinkEnabled}
+            onThinkEnabledChange={setThinkEnabled}
             runningAction={assistRunningAction}
             loading={aiSelectionLoading}
             disabled={aiAssistDisabled || inlineDiffSession != null}

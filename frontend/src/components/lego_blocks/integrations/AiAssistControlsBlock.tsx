@@ -3,6 +3,7 @@ import { Sparkles } from 'lucide-react'
 import type { AiAssistAction } from '@/services/orchestrators/aiAssistOrch'
 import type { AiAssistPromptHistoryEntryBlock } from '@/services/orchestrators/aiAssistPromptHistoryOrch'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
+import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import { cn } from '@/lib/utils'
 
 const AI_ASSIST_ACTIONS: Array<{ action: AiAssistAction; label: string }> = [
@@ -15,6 +16,9 @@ const AI_ASSIST_ACTIONS: Array<{ action: AiAssistAction; label: string }> = [
 interface AiAssistControlsBlockProps {
   selectedProvider: string | null
   selectedModel: string | null
+  showThinkToggle?: boolean
+  thinkEnabled?: boolean
+  onThinkEnabledChange?: (enabled: boolean) => void
   runningAction: AiAssistAction | null
   loading?: boolean
   disabled?: boolean
@@ -38,6 +42,9 @@ function formatPromptHistoryLastUsedBlock(value: string): string {
 export default function AiAssistControlsBlock({
   selectedProvider,
   selectedModel,
+  showThinkToggle = false,
+  thinkEnabled = true,
+  onThinkEnabledChange,
   runningAction,
   loading = false,
   disabled = false,
@@ -151,6 +158,17 @@ export default function AiAssistControlsBlock({
           </button>
         </div>
       </div>
+
+      {showThinkToggle && (
+        <label className="flex items-center justify-between rounded-md border border-border/60 bg-background px-3 py-2">
+          <div className="text-xs text-muted-foreground">Think before answering</div>
+          <Switch
+            checked={!!thinkEnabled}
+            onCheckedChange={(checked) => onThinkEnabledChange?.(checked)}
+            disabled={disabled || loading}
+          />
+        </label>
+      )}
 
       <div className="text-xs text-muted-foreground">
         {helperText}

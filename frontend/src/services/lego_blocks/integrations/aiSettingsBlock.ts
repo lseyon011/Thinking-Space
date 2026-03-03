@@ -25,6 +25,8 @@ export interface AiSettings {
   selectedModelByProvider: Partial<Record<AiProvider, string>>
   selectedProviderByScope: Partial<Record<AiSettingsScope, AiProvider>>
   selectedModelByScopeProvider: Partial<Record<string, string>>
+  selectedThinkingByProvider: Partial<Record<AiProvider, boolean>>
+  selectedThinkingByScopeProvider: Partial<Record<string, boolean>>
 }
 
 const DEFAULT_SETTINGS: AiSettings = {
@@ -32,6 +34,8 @@ const DEFAULT_SETTINGS: AiSettings = {
   selectedModelByProvider: {},
   selectedProviderByScope: {},
   selectedModelByScopeProvider: {},
+  selectedThinkingByProvider: {},
+  selectedThinkingByScopeProvider: {},
 }
 
 function sanitizeModel(value: unknown): string | null {
@@ -47,6 +51,23 @@ function sanitizeModelMap(raw: unknown): Partial<Record<AiProvider, string>> {
     if (!isAiProvider(key)) continue
     const model = sanitizeModel(value)
     if (model) next[key] = model
+  }
+  return next
+}
+
+function sanitizeThinking(value: unknown): boolean | null {
+  if (typeof value !== 'boolean') return null
+  return value
+}
+
+function sanitizeProviderThinkingMap(raw: unknown): Partial<Record<AiProvider, boolean>> {
+  if (!raw || typeof raw !== 'object') return {}
+  const next: Partial<Record<AiProvider, boolean>> = {}
+  for (const [key, value] of Object.entries(raw)) {
+    if (!isAiProvider(key)) continue
+    const thinking = sanitizeThinking(value)
+    if (thinking == null) continue
+    next[key] = thinking
   }
   return next
 }
@@ -93,6 +114,18 @@ function sanitizeScopeProviderModelMap(raw: unknown): Partial<Record<string, str
   return next
 }
 
+function sanitizeScopeProviderThinkingMap(raw: unknown): Partial<Record<string, boolean>> {
+  if (!raw || typeof raw !== 'object') return {}
+  const next: Partial<Record<string, boolean>> = {}
+  for (const [key, value] of Object.entries(raw)) {
+    if (!parseScopeProviderKey(key)) continue
+    const thinking = sanitizeThinking(value)
+    if (thinking == null) continue
+    next[key] = thinking
+  }
+  return next
+}
+
 export function readAiSettingsBlock(): AiSettings {
   const raw = getJsonStorageItem<unknown>(STORAGE_KEYS.aiSettings, DEFAULT_SETTINGS)
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_SETTINGS }
@@ -102,6 +135,8 @@ export function readAiSettingsBlock(): AiSettings {
     selectedModelByProvider: sanitizeModelMap(parsed.selectedModelByProvider),
     selectedProviderByScope: sanitizeScopeProviderMap(parsed.selectedProviderByScope),
     selectedModelByScopeProvider: sanitizeScopeProviderModelMap(parsed.selectedModelByScopeProvider),
+    selectedThinkingByProvider: sanitizeProviderThinkingMap(parsed.selectedThinkingByProvider),
+    selectedThinkingByScopeProvider: sanitizeScopeProviderThinkingMap(parsed.selectedThinkingByScopeProvider),
   }
 }
 
@@ -111,6 +146,8 @@ export function writeAiSettingsBlock(next: AiSettings): AiSettings {
     selectedModelByProvider: sanitizeModelMap(next.selectedModelByProvider),
     selectedProviderByScope: sanitizeScopeProviderMap(next.selectedProviderByScope),
     selectedModelByScopeProvider: sanitizeScopeProviderModelMap(next.selectedModelByScopeProvider),
+    selectedThinkingByProvider: sanitizeProviderThinkingMap(next.selectedThinkingByProvider),
+    selectedThinkingByScopeProvider: sanitizeScopeProviderThinkingMap(next.selectedThinkingByScopeProvider),
   }
   setJsonStorageItem(STORAGE_KEYS.aiSettings, normalized)
   return normalized
@@ -136,6 +173,15 @@ export function setSelectedAiModelBlock(provider: AiProvider, model: string): Ai
   return writeAiSettingsBlock({
     ...current,
     selectedModelByProvider: nextModels,
+  })
+}
+
+export function setSelectedAiThinkingBlock(provider: AiProvider, enabled: boolean): AiSettings {
+  const current = readAiSettingsBlock()
+  const nextThinking = { ...current.selectedThinkingByProvider, [provider]: !!enabled }
+  return writeAiSettingsBlock({
+    ...current,
+    selectedThinkingByProvider: nextThinking,
   })
 }
 
@@ -180,6 +226,27 @@ export function setSelectedAiModelForScopeBlock(
   })
 }
 
+export function setSelectedAiThinkingForScopeBlock(
+  scope: AiSettingsScope,
+  provider: AiProvider,
+  enabled: boolean | null,
+): AiSettings {
+  const current = readAiSettingsBlock()
+  const nextMap = { ...current.selectedThinkingByScopeProvider }
+  const key = scopeProviderKey(scope, provider)
+
+  if (typeof enabled === 'boolean') {
+    nextMap[key] = enabled
+  } else {
+    delete nextMap[key]
+  }
+
+  return writeAiSettingsBlock({
+    ...current,
+    selectedThinkingByScopeProvider: nextMap,
+  })
+}
+
 export function resolveAiModelForProviderBlock(provider: AiProvider, settings?: AiSettings): string {
   const snapshot = settings ?? readAiSettingsBlock()
   const configured = sanitizeModel(snapshot.selectedModelByProvider[provider])
@@ -205,4 +272,36 @@ export function resolveAiProviderForScopeBlock(
   const scopedProvider = snapshot.selectedProviderByScope[scope]
   if (scopedProvider && isAiProvider(scopedProvider)) return scopedProvider
   return null
+}
+
+function defaultThinkingForProvider(provider: AiProvider): boolean {
+  if (provider === 'opensource-ai') return true
+  return true
+}
+
+export function resolveAiThinkingForProviderBlock(provider: AiProvider, settings?: AiSettings): boolean {
+  const snapshot = settings ?? readAiSettingsBlock()
+  const configured = snapshot.selectedThinkingByProvider[provider]
+  if (typeof configured === 'boolean') return configured
+  return defaultThinkingForProvider(provider)
+}
+
+export function resolveAiThinkingOverrideForScopeProviderBlock(
+  scope: AiSettingsScope,
+  provider: AiProvider,
+  settings?: AiSettings,
+): boolean | null {
+  const snapshot = settings ?? readAiSettingsBlock()
+  const configured = snapshot.selectedThinkingByScopeProvider[scopeProviderKey(scope, provider)]
+  return typeof configured === 'boolean' ? configured : null
+}
+
+export function resolveAiThinkingForScopeProviderBlock(
+  scope: AiSettingsScope,
+  provider: AiProvider,
+  settings?: AiSettings,
+): boolean {
+  const scoped = resolveAiThinkingOverrideForScopeProviderBlock(scope, provider, settings)
+  if (typeof scoped === 'boolean') return scoped
+  return resolveAiThinkingForProviderBlock(provider, settings)
 }
