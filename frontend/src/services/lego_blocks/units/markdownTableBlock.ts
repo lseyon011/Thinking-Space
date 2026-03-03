@@ -121,6 +121,103 @@ function scoreRowsForDelimiterBlock(rows: string[][], delimiter: DelimitedTableD
   return (consistentRows * 20) + (minColumns * 10) + maxColumns + delimiterBonus
 }
 
+function readDelimitedLineStatsBlock(
+  input: string,
+  delimiter: DelimitedTableDelimiterBlock,
+): {
+  nonEmptyLineCount: number
+  linesWithDelimiter: number
+  maxDelimitersOnLine: number
+  totalDelimiters: number
+  delimitersFollowedByWhitespace: number
+} {
+  const lines = input
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+
+  let linesWithDelimiter = 0
+  let maxDelimitersOnLine = 0
+  let totalDelimiters = 0
+  let delimitersFollowedByWhitespace = 0
+
+  for (const line of lines) {
+    let inQuotes = false
+    let delimiterCount = 0
+
+    for (let index = 0; index < line.length; index += 1) {
+      const ch = line[index]
+      if (ch === '"') {
+        if (inQuotes && line[index + 1] === '"') {
+          index += 1
+          continue
+        }
+        inQuotes = !inQuotes
+        continue
+      }
+      if (!inQuotes && ch === delimiter) {
+        delimiterCount += 1
+        totalDelimiters += 1
+        if (/\s/.test(line[index + 1] ?? '')) {
+          delimitersFollowedByWhitespace += 1
+        }
+      }
+    }
+
+    if (delimiterCount > 0) {
+      linesWithDelimiter += 1
+      if (delimiterCount > maxDelimitersOnLine) {
+        maxDelimitersOnLine = delimiterCount
+      }
+    }
+  }
+
+  return {
+    nonEmptyLineCount: lines.length,
+    linesWithDelimiter,
+    maxDelimitersOnLine,
+    totalDelimiters,
+    delimitersFollowedByWhitespace,
+  }
+}
+
+function isLikelyDelimitedTableBlock(
+  input: string,
+  delimiter: DelimitedTableDelimiterBlock,
+  rows: string[][],
+): boolean {
+  const normalizedRows = rows.filter(row => row.some(cell => cell.trim().length > 0))
+  if (normalizedRows.length < 2) return false
+
+  const widths = normalizedRows.map(row => row.length)
+  const maxColumns = Math.max(...widths)
+  if (maxColumns < 2) return false
+
+  const stats = readDelimitedLineStatsBlock(input, delimiter)
+  if (stats.linesWithDelimiter < 2) return false
+
+  const delimiterLineCoverage = stats.nonEmptyLineCount > 0
+    ? stats.linesWithDelimiter / stats.nonEmptyLineCount
+    : 0
+  if (delimiterLineCoverage < 0.8) return false
+
+  // Pipe-delimited table-like content should have at least 2 separators per line
+  // (e.g. col1|col2|col3). Single pipe usage is often prose/code.
+  if (delimiter === '|' && stats.maxDelimitersOnLine < 2) return false
+
+  // For comma/semicolon, avoid converting prose clauses like
+  // "sentence, with punctuation" pasted over multiple lines.
+  if ((delimiter === ',' || delimiter === ';') && stats.maxDelimitersOnLine === 1) {
+    if (stats.linesWithDelimiter < 3) return false
+    const followedByWhitespaceRatio = stats.totalDelimiters > 0
+      ? stats.delimitersFollowedByWhitespace / stats.totalDelimiters
+      : 0
+    if (followedByWhitespaceRatio > 0.8) return false
+  }
+
+  return true
+}
+
 export function detectAndParseDelimitedTableBlock(input: string): ParsedDelimitedTableBlock | null {
   if (!input.trim()) return null
   const normalizedInput = input.replace(/\r\n/g, '\n')
@@ -139,6 +236,7 @@ export function detectAndParseDelimitedTableBlock(input: string): ParsedDelimite
   if (!best) return null
   const normalizedRows = normalizeRowsBlock(best.rows)
   if (normalizedRows.length < 2 || normalizedRows[0]?.length < 2) return null
+  if (!isLikelyDelimitedTableBlock(normalizedInput, best.delimiter, normalizedRows)) return null
   return {
     delimiter: best.delimiter,
     rows: normalizedRows,

@@ -64,6 +64,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Window management
   newWindow: (route?: string) => ipcRenderer.invoke('window:new', route),
+  markdownEditorOnPasteAsTable: (handler: () => void) => {
+    const channel = 'markdown-editor:paste-as-table'
+    const listener = () => {
+      handler()
+    }
+    ipcRenderer.on(channel, listener)
+    return () => {
+      ipcRenderer.removeListener(channel, listener)
+    }
+  },
 
   // Vault folder picker dialog
   selectVaultFolder: () => ipcRenderer.invoke('vault:selectFolder'),

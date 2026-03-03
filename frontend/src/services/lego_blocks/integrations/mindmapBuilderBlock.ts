@@ -908,7 +908,7 @@ function deriveNodeColor(branchIndex: number, options: MindmapBuildOptions): { f
 
 function resolveTextAlign(node: MindmapNode, parent: MindmapNode | null, options: MindmapBuildOptions): 'left' | 'right' | 'center' {
   if (options.centerText) return 'center'
-  if (isVerticalGrowthMode(options.growthMode)) return 'center'
+  if (isVerticalGrowthMode(options.growthMode)) return node.kind === 'root' ? 'center' : 'left'
   if (!parent) return 'center'
 
   const nodeCenterX = node.x + node.width / 2

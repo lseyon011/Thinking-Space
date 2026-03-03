@@ -1089,22 +1089,6 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       uiTheme,
       ...(inlineDiffRender ? [EditorState.readOnly.of(true)] : []),
       ...(inlineDiffDecorations ? [EditorView.decorations.of(inlineDiffDecorations)] : []),
-      EditorView.domEventHandlers({
-        paste: (event, view) => {
-          const pastedText = event.clipboardData?.getData('text/plain') ?? ''
-          const parsedTable = detectAndParseDelimitedTableBlock(pastedText)
-          if (!parsedTable) return false
-
-          event.preventDefault()
-          const markdownTableText = buildMarkdownTableFromRowsBlock(parsedTable.rows)
-          const { from, to } = view.state.selection.main
-          view.dispatch({
-            changes: { from, to, insert: markdownTableText },
-            selection: { anchor: from + markdownTableText.length },
-          })
-          return true
-        },
-      }),
       EditorView.updateListener.of((update) => {
         const query = getWikilinkCompletionQueryFromState(update.state)
         if (!query) {
@@ -1146,6 +1130,39 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     onChange(next)
     if (assistSuggestion || assistError) clearAssistState()
   }, [assistError, assistSuggestion, clearAssistState, onChange])
+
+  const pasteClipboardAsMarkdownTable = useCallback(async () => {
+    const view = editorViewRef.current
+    if (!view || !view.hasFocus) return
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.readText) return
+
+    let pastedText = ''
+    try {
+      pastedText = await navigator.clipboard.readText()
+    } catch {
+      return
+    }
+
+    const parsedTable = detectAndParseDelimitedTableBlock(pastedText)
+    if (!parsedTable) return
+
+    const markdownTableText = buildMarkdownTableFromRowsBlock(parsedTable.rows)
+    const { from, to } = view.state.selection.main
+    view.dispatch({
+      changes: { from, to, insert: markdownTableText },
+      selection: { anchor: from + markdownTableText.length },
+    })
+    view.focus()
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const subscribe = window.electronAPI?.markdownEditorOnPasteAsTable
+    if (!subscribe) return
+    return subscribe(() => {
+      void pasteClipboardAsMarkdownTable()
+    })
+  }, [pasteClipboardAsMarkdownTable])
 
   return (
     <div className={cn('ltm-markdown-rich-editor relative flex min-h-0 flex-col bg-white', className)}>

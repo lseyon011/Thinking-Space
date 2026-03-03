@@ -501,6 +501,29 @@ function App() {
     }
   }, [iPhoneHandsetMode])
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const isElectronDesktopSurface = layout.surface === 'electron' && layout.mode === 'desktop'
+    if (!isElectronDesktopSurface) return
+
+    const htmlElement = document.documentElement
+    const bodyElement = document.body
+    const rootElement = document.getElementById('root')
+    const previousHtmlBackground = htmlElement.style.backgroundColor
+    const previousBodyBackground = bodyElement.style.backgroundColor
+    const previousRootBackground = rootElement?.style.backgroundColor ?? ''
+
+    htmlElement.style.backgroundColor = 'transparent'
+    bodyElement.style.backgroundColor = 'transparent'
+    if (rootElement) rootElement.style.backgroundColor = 'transparent'
+
+    return () => {
+      htmlElement.style.backgroundColor = previousHtmlBackground
+      bodyElement.style.backgroundColor = previousBodyBackground
+      if (rootElement) rootElement.style.backgroundColor = previousRootBackground
+    }
+  }, [layout.mode, layout.surface])
+
   const openCommandPalette = useCallback(() => {
     setCommandQuery('')
     setCommandPaletteOpen(true)

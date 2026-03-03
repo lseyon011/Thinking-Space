@@ -19,6 +19,8 @@ const reloadWatcher = {
   ready: false,
   watcher: null,
 };
+
+const MAC_TRAFFIC_LIGHT_POSITION = { x: 14, y: 14 };
 export function setupReloadWatcher(electronCapacitorApp: ElectronCapacitorApp): void {
   reloadWatcher.watcher = chokidar
     .watch(join(app.getAppPath(), 'app'), {
@@ -108,6 +110,9 @@ export class ElectronCapacitorApp {
         frame: false,
         titleBarStyle: 'hidden' as const,
         roundedCorners: true,
+        transparent: true,
+        backgroundColor: '#00000000',
+        trafficLightPosition: MAC_TRAFFIC_LIGHT_POSITION,
       };
     }
     return {
@@ -193,6 +198,13 @@ export class ElectronCapacitorApp {
           { role: 'cut', enabled: params.editFlags.canCut },
           { role: 'copy', enabled: params.editFlags.canCopy },
           { role: 'paste', enabled: params.editFlags.canPaste },
+          {
+            label: 'Paste as Markdown Table',
+            enabled: params.editFlags.canPaste,
+            click: () => {
+              targetWindow.webContents.send('markdown-editor:paste-as-table')
+            },
+          },
           { role: 'selectAll' },
         ];
       } else if (params.selectionText?.trim()) {
@@ -212,6 +224,11 @@ export class ElectronCapacitorApp {
   private applyMacWindowButtonVisibility(targetWindow: BrowserWindow): void {
     if (process.platform !== 'darwin') return;
     targetWindow.setWindowButtonVisibility(true);
+    targetWindow.setWindowButtonPosition(MAC_TRAFFIC_LIGHT_POSITION);
+  }
+
+  private shouldApplyConfiguredBackgroundColor(): boolean {
+    return process.platform !== 'darwin';
   }
 
   // Create a new window (used for multi-window support).
@@ -242,7 +259,7 @@ export class ElectronCapacitorApp {
     this.applyMacWindowButtonVisibility(newWindow);
     this.attachNativeContextMenu(newWindow);
 
-    if (this.CapacitorFileConfig.backgroundColor) {
+    if (this.CapacitorFileConfig.backgroundColor && this.shouldApplyConfiguredBackgroundColor()) {
       newWindow.setBackgroundColor(this.CapacitorFileConfig.electron.backgroundColor);
     }
 
@@ -310,7 +327,7 @@ export class ElectronCapacitorApp {
     this.windows = [mainWindow];
     this.attachNativeContextMenu(mainWindow);
 
-    if (this.CapacitorFileConfig.backgroundColor) {
+    if (this.CapacitorFileConfig.backgroundColor && this.shouldApplyConfiguredBackgroundColor()) {
       mainWindow.setBackgroundColor(this.CapacitorFileConfig.electron.backgroundColor);
     }
 
