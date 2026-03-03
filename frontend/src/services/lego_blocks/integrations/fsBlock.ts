@@ -84,6 +84,13 @@ interface ElectronAPI {
     dryRun?: boolean
   }): Promise<unknown>
   selectVaultFolder(): Promise<string | null>
+  openExternal?(url: string): Promise<void>
+  googleOauthRequest?(payload: {
+    method: 'GET' | 'POST' | 'PUT'
+    url: string
+    headers?: Record<string, string>
+    body?: string
+  }): Promise<{ status: number; body: string }>
   vaultRootGetPersisted?(): string | null
   vaultRootSetPersisted?(vaultRoot: string | null): Promise<void>
   newWindow?(route?: string): Promise<void>

@@ -27,6 +27,7 @@
   },
   "win": {
     "target": "nsis",
+    "artifactName": "${productName} Setup ${version}-${arch}.${ext}",
     "icon": "assets/appIcon.ico"
   },
   "mac": {

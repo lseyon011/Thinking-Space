@@ -6,11 +6,13 @@ import {
   textColumn,
 } from 'react-datasheet-grid'
 import 'react-datasheet-grid/dist/style.css'
-import { CloudDownload, CloudUpload, FileSpreadsheet, FolderOpen, Pencil, Plus, Save, X } from 'lucide-react'
+import { Check, CloudDownload, CloudUpload, ExternalLink, FileSpreadsheet, FolderOpen, Loader2, Pencil, Plus, Save, Unplug, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   pullGoogleSheetDocumentBlock,
+  pullGoogleSheetDocumentWithTokenBlock,
   pushGoogleSheetDocumentBlock,
+  pushGoogleSheetDocumentWithTokenBlock,
 } from '@/services/lego_blocks/integrations/tableDocumentCodecBlock'
 import type {
   TableCellAlign,
@@ -25,9 +27,23 @@ import {
 } from '@/services/orchestrators/tableDocumentsOrch'
 import {
   getOpenInSystemLabelOrch,
+  openExternalUrlOrch,
   openVaultPathInSystemOrch,
   renameVaultPathOrch,
 } from '@/services/orchestrators/fileSystemOrch'
+import { resolveGoogleSheetOpenUrlBlock } from '@/services/lego_blocks/units/googleSheetTableCodecBlock'
+import {
+  clearGoogleDriveAuthOrch,
+  connectGoogleDriveAuthOrch,
+  getGoogleDriveAccessTokenOrch,
+  readGoogleDriveAuthOrch,
+  type GoogleDriveAuthStateOrch,
+} from '@/services/orchestrators/googleDriveAuthOrch'
+import {
+  listGoogleDriveSheetsOrch,
+  type GoogleDriveFilePickerItemOrch,
+} from '@/services/orchestrators/googleDrivePickerOrch'
+import { isGoogleDriveVaultOrch } from '@/services/orchestrators/googleDriveVaultOrch'
 
 type ViewerMode = 'view' | 'edit'
 type GridRowBlock = Record<string, string | null>
@@ -88,6 +104,14 @@ function TableDocumentBlock({
   const [conflict, setConflict] = useState<TableDocumentConflictError | null>(null)
   const [activeCell, setActiveCell] = useState<GridCellWithIdBlock | null>(null)
   const [selection, setSelection] = useState<GridSelectionWithIdBlock | null>(null)
+  const [googleAuth, setGoogleAuth] = useState<GoogleDriveAuthStateOrch | null>(() => readGoogleDriveAuthOrch())
+  const [googleAuthLoading, setGoogleAuthLoading] = useState(false)
+  const [googlePickerOpen, setGooglePickerOpen] = useState(false)
+  const [googlePickerQuery, setGooglePickerQuery] = useState('')
+  const [googlePickerItems, setGooglePickerItems] = useState<GoogleDriveFilePickerItemOrch[]>([])
+  const [googlePickerLoading, setGooglePickerLoading] = useState(false)
+  const [googlePickerError, setGooglePickerError] = useState<string | null>(null)
+  const [showGoogleAdvancedFields, setShowGoogleAdvancedFields] = useState(false)
   const headerRenameInputRef = useRef<HTMLInputElement | null>(null)
   const scopeId = useId()
 
@@ -144,6 +168,15 @@ function TableDocumentBlock({
   const openInSystemLabel = getOpenInSystemLabelOrch()
   const canOpenInSystem = openInSystemLabel !== null
   const openInSystemButtonLabel = openInSystemLabel ?? 'System'
+  const hasGoogleConnection = Boolean(googleAuth?.accessToken)
+  const isGoogleDriveVault = useMemo(() => isGoogleDriveVaultOrch(), [])
+  const activeGoogleDescriptor = (isEditing ? draft : document)?.google
+  const googleSheetOpenUrl = useMemo(
+    () => resolveGoogleSheetOpenUrlBlock(activeGoogleDescriptor),
+    [activeGoogleDescriptor],
+  )
+  const isGoogleSheetDocument = (isEditing ? draft : document)?.kind === 'gsheet'
+  const canOpenGoogleSheet = Boolean(googleSheetOpenUrl) || canOpenInSystem
 
   useEffect(() => {
     setRenameDraft(filename)
@@ -164,6 +197,70 @@ function TableDocumentBlock({
     input.focus()
     input.select()
   }, [isHeaderRenameActive])
+
+  useEffect(() => {
+    if (!isEditing) {
+      setGooglePickerOpen(false)
+      setGooglePickerQuery('')
+      setGooglePickerError(null)
+      setShowGoogleAdvancedFields(false)
+    }
+  }, [isEditing])
+
+  const refreshGoogleAuthState = useCallback(() => {
+    setGoogleAuth(readGoogleDriveAuthOrch())
+  }, [])
+
+  const handleConnectGoogle = useCallback(async () => {
+    setGoogleAuthLoading(true)
+    setSaveError(null)
+    setGooglePickerError(null)
+    try {
+      const next = await connectGoogleDriveAuthOrch()
+      setGoogleAuth(next)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Google sign-in failed')
+      refreshGoogleAuthState()
+    } finally {
+      setGoogleAuthLoading(false)
+    }
+  }, [refreshGoogleAuthState])
+
+  const handleDisconnectGoogle = useCallback(() => {
+    clearGoogleDriveAuthOrch()
+    refreshGoogleAuthState()
+    setGooglePickerOpen(false)
+    setGooglePickerQuery('')
+    setGooglePickerItems([])
+    setGooglePickerError(null)
+  }, [refreshGoogleAuthState])
+
+  const loadGoogleSheetsPicker = useCallback(async (query: string) => {
+    setGooglePickerLoading(true)
+    setGooglePickerError(null)
+    try {
+      const items = await listGoogleDriveSheetsOrch({
+        query,
+        pageSize: 24,
+      })
+      setGooglePickerItems(items)
+    } catch (err) {
+      setGooglePickerItems([])
+      setGooglePickerError(err instanceof Error ? err.message : 'Failed to load Google Sheets from Drive')
+    } finally {
+      setGooglePickerLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!googlePickerOpen || !isEditing || !hasGoogleConnection || draft?.kind !== 'gsheet') return
+    const handle = window.setTimeout(() => {
+      void loadGoogleSheetsPicker(googlePickerQuery.trim())
+    }, 220)
+    return () => {
+      window.clearTimeout(handle)
+    }
+  }, [draft?.kind, googlePickerOpen, googlePickerQuery, hasGoogleConnection, isEditing, loadGoogleSheetsPicker])
 
   const commitHeaderRename = useCallback(async () => {
     if (!isEditing || !canRenameInHeader || renaming) return
@@ -203,6 +300,20 @@ function TableDocumentBlock({
       setOpenInSystemError(err instanceof Error ? err.message : 'Failed to open file in system file manager')
     })
   }, [canOpenInSystem, path])
+
+  const handleOpenGoogleSheet = useCallback(() => {
+    setOpenInSystemError(null)
+    if (googleSheetOpenUrl) {
+      void openExternalUrlOrch(googleSheetOpenUrl).catch((err) => {
+        setOpenInSystemError(err instanceof Error ? err.message : 'Failed to open Google Sheets')
+      })
+      return
+    }
+    if (!canOpenInSystem) return
+    void openVaultPathInSystemOrch(path).catch((err) => {
+      setOpenInSystemError(err instanceof Error ? err.message : 'Failed to open file in system file manager')
+    })
+  }, [canOpenInSystem, googleSheetOpenUrl, path])
 
   const columnCount = useMemo(() => {
     if (!activeSheet) return 1
@@ -382,7 +493,7 @@ function TableDocumentBlock({
     setSelection({ min: { row: 0, col: 0 }, max: { row: 0, col: 0 } })
   }, [applyDraftChange])
 
-  const updateGoogleMetadata = useCallback((key: 'spreadsheetId' | 'sheetName' | 'range' | 'accessToken', value: string) => {
+  const updateGoogleMetadata = useCallback((key: 'spreadsheetId' | 'title' | 'openUrl' | 'sheetName' | 'range' | 'accessToken', value: string) => {
     applyDraftChange((current) => ({
       ...current,
       google: {
@@ -393,13 +504,46 @@ function TableDocumentBlock({
     }))
   }, [applyDraftChange])
 
+  const handlePickGoogleSheet = useCallback((item: GoogleDriveFilePickerItemOrch) => {
+    applyDraftChange((current) => ({
+      ...current,
+      google: {
+        kind: 'google_sheet',
+        ...current.google,
+        spreadsheetId: item.id,
+        title: item.name,
+        openUrl: item.webViewLink || `https://docs.google.com/spreadsheets/d/${encodeURIComponent(item.id)}/edit`,
+      },
+    }))
+    setGooglePickerOpen(false)
+    setGooglePickerQuery('')
+    setGooglePickerError(null)
+  }, [applyDraftChange])
+
   const handleGooglePull = useCallback(async () => {
     if (!draft || draft.kind !== 'gsheet') return
     setSyncingPull(true)
     setSaveError(null)
     try {
-      const updated = await pullGoogleSheetDocumentBlock(draft)
-      setDraft(updated)
+      const connectedToken = await getGoogleDriveAccessTokenOrch().catch(() => null)
+      const manualToken = draft.google?.accessToken?.trim()
+      const token = connectedToken || manualToken || ''
+      if (!token) {
+        throw new Error('Connect Google first, or provide an access token in Advanced settings.')
+      }
+      const updated = connectedToken
+        ? await pullGoogleSheetDocumentWithTokenBlock(draft, token)
+        : await pullGoogleSheetDocumentBlock(draft)
+      const persistedManualToken = manualToken || undefined
+      setDraft({
+        ...updated,
+        google: updated.google
+          ? {
+            ...updated.google,
+            accessToken: persistedManualToken,
+          }
+          : undefined,
+      })
       setSuccessMessage('Pulled latest values from Google Sheets.')
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Google pull failed')
@@ -413,7 +557,17 @@ function TableDocumentBlock({
     setSyncingPush(true)
     setSaveError(null)
     try {
-      await pushGoogleSheetDocumentBlock(draft)
+      const connectedToken = await getGoogleDriveAccessTokenOrch().catch(() => null)
+      const manualToken = draft.google?.accessToken?.trim()
+      const token = connectedToken || manualToken || ''
+      if (!token) {
+        throw new Error('Connect Google first, or provide an access token in Advanced settings.')
+      }
+      if (connectedToken) {
+        await pushGoogleSheetDocumentWithTokenBlock(draft, token)
+      } else {
+        await pushGoogleSheetDocumentBlock(draft)
+      }
       setSuccessMessage('Pushed values to Google Sheets.')
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Google push failed')
@@ -564,6 +718,22 @@ function TableDocumentBlock({
             {openInSystemError && <div className="mt-1 truncate text-xs text-destructive">{openInSystemError}</div>}
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {isGoogleSheetDocument && (
+              <button
+                type="button"
+                onClick={handleOpenGoogleSheet}
+                disabled={!canOpenGoogleSheet}
+                className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                title={googleSheetOpenUrl
+                  ? 'Open in Google Sheets'
+                  : canOpenInSystem
+                    ? `Open file in ${openInSystemButtonLabel}`
+                    : 'Google Sheets link unavailable'}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Google Sheets</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handleOpenInSystem}
@@ -742,37 +912,140 @@ function TableDocumentBlock({
 
       {isEditing && draft?.kind === 'gsheet' && (
         <div className="border-b border-border/40 bg-muted/10 px-5 py-2.5">
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-            <input
-              className="rounded border border-border/70 bg-background px-2 py-1.5 text-xs"
-              placeholder="Spreadsheet ID"
-              value={draft.google?.spreadsheetId || ''}
-              onChange={(event) => updateGoogleMetadata('spreadsheetId', event.target.value)}
-            />
-            <input
-              className="rounded border border-border/70 bg-background px-2 py-1.5 text-xs"
-              placeholder="Sheet Name"
-              value={draft.google?.sheetName || ''}
-              onChange={(event) => updateGoogleMetadata('sheetName', event.target.value)}
-            />
-            <input
-              className="rounded border border-border/70 bg-background px-2 py-1.5 text-xs"
-              placeholder="Range (optional, e.g. Sheet1!A1:Z200)"
-              value={draft.google?.range || ''}
-              onChange={(event) => updateGoogleMetadata('range', event.target.value)}
-            />
-            <input
-              className="rounded border border-border/70 bg-background px-2 py-1.5 text-xs"
-              placeholder="Access Token"
-              value={draft.google?.accessToken || ''}
-              onChange={(event) => updateGoogleMetadata('accessToken', event.target.value)}
-            />
+          <div className="mb-2.5 space-y-2 rounded-md border border-border/60 bg-background/65 p-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              {hasGoogleConnection ? (
+                <button
+                  type="button"
+                  onClick={handleDisconnectGoogle}
+                  disabled={googleAuthLoading}
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  <Unplug className="h-3.5 w-3.5" />
+                  Disconnect Google
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { void handleConnectGoogle() }}
+                  disabled={googleAuthLoading}
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  {googleAuthLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  {googleAuthLoading ? 'Connecting...' : 'Connect Google'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setGooglePickerOpen((value) => !value)}
+                disabled={!hasGoogleConnection || googleAuthLoading}
+                className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                {googlePickerOpen ? 'Hide Drive Sheets' : 'Pick from Drive'}
+              </button>
+              {isGoogleDriveVault && (
+                <button
+                  type="button"
+                  onClick={() => setShowGoogleAdvancedFields((value) => !value)}
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+                >
+                  {showGoogleAdvancedFields ? 'Hide Advanced' : 'Show Advanced'}
+                </button>
+              )}
+            </div>
+
+            {googlePickerOpen && hasGoogleConnection && (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={googlePickerQuery}
+                  onChange={(event) => setGooglePickerQuery(event.target.value)}
+                  placeholder="Search Google Sheets"
+                  className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground"
+                />
+                <div className="max-h-44 overflow-auto rounded-md border border-border/60 bg-background/70">
+                  {googlePickerLoading && (
+                    <div className="px-2.5 py-2 text-xs text-muted-foreground">Loading Google Sheets...</div>
+                  )}
+                  {!googlePickerLoading && googlePickerItems.length === 0 && (
+                    <div className="px-2.5 py-2 text-xs text-muted-foreground">No matching Google Sheets found.</div>
+                  )}
+                  {!googlePickerLoading && googlePickerItems.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handlePickGoogleSheet(item)}
+                      className="flex w-full items-center justify-between gap-3 border-b border-border/40 px-2.5 py-2 text-left text-xs last:border-b-0 hover:bg-muted/60"
+                    >
+                      <span className="min-w-0 truncate">{item.name}</span>
+                      <span className="shrink-0 text-[10px] text-muted-foreground">{item.id.slice(0, 8)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {googlePickerError && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-xs text-destructive">
+                {googlePickerError}
+              </div>
+            )}
+
+            {!hasGoogleConnection && (
+              <div className="text-[11px] text-muted-foreground">
+                Connect once to browse Drive sheets and sync without storing OAuth tokens in this file.
+              </div>
+            )}
           </div>
+
+          {(!isGoogleDriveVault || showGoogleAdvancedFields) && (
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <input
+                className="rounded border border-border/70 bg-background px-2 py-1.5 text-xs"
+                placeholder="Spreadsheet ID"
+                value={draft.google?.spreadsheetId || ''}
+                onChange={(event) => updateGoogleMetadata('spreadsheetId', event.target.value)}
+              />
+              <input
+                className="rounded border border-border/70 bg-background px-2 py-1.5 text-xs"
+                placeholder="Open URL (optional)"
+                value={draft.google?.openUrl || ''}
+                onChange={(event) => updateGoogleMetadata('openUrl', event.target.value)}
+              />
+              <input
+                className="rounded border border-border/70 bg-background px-2 py-1.5 text-xs"
+                placeholder="Sheet Name"
+                value={draft.google?.sheetName || ''}
+                onChange={(event) => updateGoogleMetadata('sheetName', event.target.value)}
+              />
+              <input
+                className="rounded border border-border/70 bg-background px-2 py-1.5 text-xs"
+                placeholder="Range (optional, e.g. Sheet1!A1:Z200)"
+                value={draft.google?.range || ''}
+                onChange={(event) => updateGoogleMetadata('range', event.target.value)}
+              />
+              {!hasGoogleConnection && (
+                <input
+                  className="rounded border border-border/70 bg-background px-2 py-1.5 text-xs md:col-span-2"
+                  placeholder="Access Token (optional fallback)"
+                  value={draft.google?.accessToken || ''}
+                  onChange={(event) => updateGoogleMetadata('accessToken', event.target.value)}
+                />
+              )}
+            </div>
+          )}
+
+          {isGoogleDriveVault && !showGoogleAdvancedFields && (
+            <div className="mb-2 text-xs text-muted-foreground">
+              Google Drive vault detected. Advanced metadata fields are hidden by default.
+            </div>
+          )}
+
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => { void handleGooglePull() }}
-              disabled={syncingPull}
+              disabled={syncingPull || syncingPush}
               className="inline-flex items-center gap-1 rounded border border-border/70 bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CloudDownload className="h-3.5 w-3.5" />
@@ -781,7 +1054,7 @@ function TableDocumentBlock({
             <button
               type="button"
               onClick={() => { void handleGooglePush() }}
-              disabled={syncingPush}
+              disabled={syncingPush || syncingPull}
               className="inline-flex items-center gap-1 rounded border border-border/70 bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CloudUpload className="h-3.5 w-3.5" />

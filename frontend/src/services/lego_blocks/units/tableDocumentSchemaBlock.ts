@@ -34,6 +34,8 @@ export interface TableSheetBlock {
 export interface GoogleSheetDescriptorBlock {
   kind: 'google_sheet'
   spreadsheetId?: string
+  title?: string
+  openUrl?: string
   sheetName?: string
   range?: string
   accessToken?: string
@@ -130,4 +132,3 @@ function normalizeFormatBlock(input: TableCellFormatBlock | undefined): TableCel
   }
   return Object.keys(next).length > 0 ? next : undefined
 }
-

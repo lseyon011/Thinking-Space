@@ -993,6 +993,23 @@ export async function openVaultPathInSystemOrch(path: string): Promise<'finder' 
   throw new Error('Open in system file manager is available only on Electron and Capacitor')
 }
 
+export async function openExternalUrlOrch(url: string): Promise<void> {
+  const normalized = url.trim()
+  if (!/^https?:\/\//i.test(normalized)) {
+    throw new Error('Only http/https URLs are supported.')
+  }
+
+  if (isElectron()) {
+    const api = window.electronAPI
+    if (api?.openExternal) {
+      await api.openExternal(normalized)
+      return
+    }
+  }
+
+  window.open(normalized, '_blank', 'noopener,noreferrer')
+}
+
 export function buildThinkingSpaceFileUrlOrch(path: string): string {
   const normalizedPath = normalizeRelPath(path)
   const encodedPath = encodeURIComponent(normalizedPath)

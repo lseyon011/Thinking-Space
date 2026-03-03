@@ -32,6 +32,8 @@ export const STORAGE_KEYS = {
   f9OverallRememberByProjectRoot: 'ltm-f9-overall-remember-by-project-root',
   aiManualCredentials: 'ltm-ai-manual-credentials',
   aiOauthCredentials: 'ltm-ai-oauth-credentials',
+  googleDriveAuth: 'ltm-google-drive-auth',
+  googleDriveOauthClientId: 'ltm-google-drive-oauth-client-id',
 } as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]

@@ -6,6 +6,10 @@ import type {
   GoogleDocDescriptorBlock,
   GoogleDocDocumentModelBlock,
 } from '@/services/lego_blocks/units/googleDocDocumentSchemaBlock'
+import {
+  extractGoogleDocIdFromUrlBlock,
+  parseGoogleDriveShortcutBlock,
+} from '@/services/lego_blocks/units/googleDriveShortcutBlock'
 
 interface GoogleDocFilePayloadBlock {
   kind?: 'google_doc'
@@ -15,6 +19,11 @@ interface GoogleDocFilePayloadBlock {
   openUrl?: string
   embedViewUrl?: string
   embedEditUrl?: string
+  doc_id?: string
+  documentId?: string
+  file_id?: string
+  resource_id?: string
+  webViewLink?: string
 }
 
 export interface EncodedGoogleDocDocumentBlock {
@@ -100,7 +109,7 @@ export function parseGoogleDocFileIdBlock(value: string | null | undefined): str
 }
 
 function decodeDescriptorFromTextBlock(text: string, kind: GoogleDocFileKindBlock): GoogleDocDescriptorBlock {
-  const trimmed = text.trim()
+  const trimmed = stripUtf8BomBlock(text).trim()
   if (!trimmed) {
     return {
       kind: 'google_doc',
@@ -117,16 +126,36 @@ function decodeDescriptorFromTextBlock(text: string, kind: GoogleDocFileKindBloc
 
   try {
     const parsed = JSON.parse(trimmed) as GoogleDocFilePayloadBlock
-    const openUrl = sanitizeValueBlock(parsed.openUrl) || sanitizeValueBlock(parsed.url)
+    const openUrl = sanitizeValueBlock(parsed.openUrl)
+      || sanitizeValueBlock(parsed.url)
+      || sanitizeValueBlock(parsed.webViewLink)
+    const parsedShortcut = parseGoogleDriveShortcutBlock(trimmed)
     return normalizeDescriptorBlock({
       kind: 'google_doc',
-      fileId: sanitizeValueBlock(parsed.fileId),
-      title: sanitizeValueBlock(parsed.title),
-      openUrl,
+      fileId: sanitizeValueBlock(parsed.fileId)
+        || sanitizeValueBlock(parsed.file_id)
+        || sanitizeValueBlock(parsed.doc_id)
+        || sanitizeValueBlock(parsed.documentId)
+        || sanitizeValueBlock(parsed.resource_id)
+        || parsedShortcut?.docId
+        || parsedShortcut?.fileId
+        || (openUrl ? extractGoogleDocIdFromUrlBlock(openUrl) ?? undefined : undefined),
+      title: sanitizeValueBlock(parsed.title) || parsedShortcut?.title,
+      openUrl: openUrl || parsedShortcut?.url,
       embedViewUrl: sanitizeValueBlock(parsed.embedViewUrl),
       embedEditUrl: sanitizeValueBlock(parsed.embedEditUrl),
     })
   } catch {
+    const parsedShortcut = parseGoogleDriveShortcutBlock(trimmed)
+    if (parsedShortcut) {
+      return normalizeDescriptorBlock({
+        kind: 'google_doc',
+        fileId: parsedShortcut.docId || parsedShortcut.fileId,
+        title: parsedShortcut.title || (kind === 'docx' ? 'Google Drive DOCX' : 'Google Doc'),
+        openUrl: parsedShortcut.url,
+      })
+    }
+
     return normalizeDescriptorBlock({
       kind: 'google_doc',
       openUrl: trimmed,
@@ -139,4 +168,8 @@ function sanitizeValueBlock(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   const trimmed = value.trim()
   return trimmed ? trimmed : undefined
+}
+
+function stripUtf8BomBlock(input: string): string {
+  return input.charCodeAt(0) === 0xfeff ? input.slice(1) : input
 }

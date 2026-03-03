@@ -77,6 +77,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Vault folder picker dialog
   selectVaultFolder: () => ipcRenderer.invoke('vault:selectFolder'),
+  openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+  googleOauthRequest: (payload: {
+    method: 'GET' | 'POST' | 'PUT'
+    url: string
+    headers?: Record<string, string>
+    body?: string
+  }) => ipcRenderer.invoke('google:oauth:request', payload),
   vaultRootGetPersisted: () => getPersistedVaultRootBlock(),
   vaultRootSetPersisted: async (vaultRoot: string | null) => {
     const normalized = normalizePersistedVaultRootBlock(vaultRoot)

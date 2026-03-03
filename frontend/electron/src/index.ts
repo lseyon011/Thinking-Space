@@ -502,6 +502,7 @@ function assertAllowedF9WebullUrl(url: string): URL {
 }
 
 const WEBULL_REQUEST_MAX_REDIRECTS_BLOCK = 20;
+const GOOGLE_REQUEST_MAX_REDIRECTS_BLOCK = 10;
 
 function encodeWebullSignatureSourceBlock(value: string): string {
   return encodeURIComponent(value).replace(/[!'()*]/g, (char) => (
@@ -620,6 +621,98 @@ function requestTextOverHttps(
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             reject(new Error(`Failed to decode Webull response body (${contentEncoding || 'unknown encoding'}): ${message}`));
+            return;
+          }
+
+          resolve({
+            status,
+            body: decodedBody.toString('utf-8'),
+          });
+        });
+      },
+    );
+
+    request.on('error', reject);
+    if (body) {
+      request.write(body);
+    }
+    request.end();
+  });
+}
+
+function assertAllowedGoogleApiUrlBlock(url: string): URL {
+  const parsed = new URL(url);
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Google API requests require https:// URLs.');
+  }
+  const host = parsed.hostname.toLowerCase();
+  const allowedHosts = new Set([
+    'oauth2.googleapis.com',
+    'www.googleapis.com',
+    'sheets.googleapis.com',
+    'docs.googleapis.com',
+    'drive.googleapis.com',
+  ]);
+  if (!allowedHosts.has(host)) {
+    throw new Error(`Unsupported Google API host: ${parsed.hostname}`);
+  }
+  return parsed;
+}
+
+function requestGoogleTextOverHttpsBlock(
+  method: 'GET' | 'POST' | 'PUT',
+  url: string,
+  headers: Record<string, string>,
+  body = '',
+  redirects = 0,
+): Promise<F9WebullGetResponse> {
+  return new Promise((resolve, reject) => {
+    const parsed = assertAllowedGoogleApiUrlBlock(url);
+    const request = https.request(
+      parsed,
+      {
+        method,
+        headers: {
+          ...headers,
+        },
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        const location = res.headers.location;
+
+        if ([301, 302, 303, 307, 308].includes(status) && location) {
+          if (redirects >= GOOGLE_REQUEST_MAX_REDIRECTS_BLOCK) {
+            res.resume();
+            reject(new Error('Too many redirects while requesting Google API'));
+            return;
+          }
+          const redirected = new URL(location, parsed.toString()).toString();
+          res.resume();
+          requestGoogleTextOverHttpsBlock(method, redirected, headers, body, redirects + 1).then(resolve).catch(reject);
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        res.on('end', () => {
+          const rawBody = Buffer.concat(chunks);
+          const contentEncodingHeader = res.headers['content-encoding'];
+          const contentEncoding = Array.isArray(contentEncodingHeader)
+            ? (contentEncodingHeader[0] ?? '').toLowerCase()
+            : (contentEncodingHeader ?? '').toLowerCase();
+
+          let decodedBody = rawBody;
+          try {
+            if (contentEncoding.includes('gzip')) {
+              decodedBody = gunzipSync(rawBody);
+            } else if (contentEncoding.includes('deflate')) {
+              decodedBody = inflateSync(rawBody);
+            } else if (contentEncoding.includes('br')) {
+              decodedBody = brotliDecompressSync(rawBody);
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            reject(new Error(`Failed to decode Google API response body (${contentEncoding || 'unknown encoding'}): ${message}`));
             return;
           }
 
@@ -932,6 +1025,44 @@ ipcMain.handle('vault:root:setPersisted', async (_event, vaultRoot: string | nul
     throw new Error('Persisted vault root must be a string or null.');
   }
   writePersistedVaultRootBlock(vaultRoot);
+});
+
+// -- Open external URL in default browser --
+ipcMain.handle('shell:openExternal', async (_event, url: string) => {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url.trim())) {
+    throw new Error('openExternal requires an http/https URL.');
+  }
+  await shell.openExternal(url.trim());
+});
+
+ipcMain.handle('google:oauth:request', async (
+  _event,
+  payload: {
+    method: 'GET' | 'POST' | 'PUT'
+    url: string
+    headers?: Record<string, string>
+    body?: string
+  },
+) => {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('google oauth payload must be an object.');
+  }
+  const method = payload.method === 'PUT'
+    ? 'PUT'
+    : payload.method === 'POST'
+      ? 'POST'
+      : 'GET';
+  const url = typeof payload.url === 'string' ? payload.url.trim() : '';
+  if (!/^https?:\/\//i.test(url)) {
+    throw new Error('google oauth payload requires an http/https URL.');
+  }
+  const headers = payload.headers && typeof payload.headers === 'object' ? payload.headers : {};
+  const body = typeof payload.body === 'string' ? payload.body : '';
+  const response = await requestGoogleTextOverHttpsBlock(method, url, headers, body);
+  return {
+    status: response.status,
+    body: response.body,
+  };
 });
 
 // -- Read file --

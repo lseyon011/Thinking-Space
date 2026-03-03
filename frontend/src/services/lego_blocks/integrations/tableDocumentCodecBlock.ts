@@ -96,7 +96,23 @@ export async function pullGoogleSheetDocumentBlock(document: TableDocumentBlock)
   return pullGoogleSheetValuesBlock(document)
 }
 
+export async function pullGoogleSheetDocumentWithTokenBlock(
+  document: TableDocumentBlock,
+  accessToken: string,
+): Promise<TableDocumentBlock> {
+  if (document.kind !== 'gsheet') return document
+  return pullGoogleSheetValuesBlock(document, { accessToken })
+}
+
 export async function pushGoogleSheetDocumentBlock(document: TableDocumentBlock): Promise<void> {
   if (document.kind !== 'gsheet') return
   await pushGoogleSheetValuesBlock(document)
+}
+
+export async function pushGoogleSheetDocumentWithTokenBlock(
+  document: TableDocumentBlock,
+  accessToken: string,
+): Promise<void> {
+  if (document.kind !== 'gsheet') return
+  await pushGoogleSheetValuesBlock(document, { accessToken })
 }
