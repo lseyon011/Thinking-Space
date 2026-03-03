@@ -1275,7 +1275,9 @@ function App() {
             </div>
 
             <div
-              className="absolute right-8 top-0 z-20 flex h-full items-center justify-end gap-2 [-webkit-app-region:no-drag]"
+              className={`absolute top-0 z-20 flex h-full items-center justify-end gap-2 [-webkit-app-region:no-drag] ${
+                iPhoneMode ? 'right-1' : 'right-8'
+              }`}
               style={{ width: `${phoneMode ? topChromeRightWidth : topChromeBalancedWidth}px` }}
             >
               <div ref={syncToolsRef} className="inline-flex items-center gap-2">

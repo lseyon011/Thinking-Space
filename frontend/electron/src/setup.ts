@@ -105,7 +105,8 @@ export class ElectronCapacitorApp {
   private getWindowChromeOptions() {
     if (process.platform === 'darwin') {
       return {
-        titleBarStyle: 'hiddenInset' as const,
+        frame: false,
+        titleBarStyle: 'hidden' as const,
         roundedCorners: true,
       };
     }
@@ -208,6 +209,11 @@ export class ElectronCapacitorApp {
     });
   }
 
+  private applyMacWindowButtonVisibility(targetWindow: BrowserWindow): void {
+    if (process.platform !== 'darwin') return;
+    targetWindow.setWindowButtonVisibility(true);
+  }
+
   // Create a new window (used for multi-window support).
   async createWindow(route?: string): Promise<BrowserWindow> {
     const icon = this.createAppIcon();
@@ -233,6 +239,7 @@ export class ElectronCapacitorApp {
     });
     winState.manage(newWindow);
     this.enforceRoundedRectangleWindow(newWindow);
+    this.applyMacWindowButtonVisibility(newWindow);
     this.attachNativeContextMenu(newWindow);
 
     if (this.CapacitorFileConfig.backgroundColor) {
@@ -299,6 +306,7 @@ export class ElectronCapacitorApp {
     });
     this.mainWindowState.manage(mainWindow);
     this.enforceRoundedRectangleWindow(mainWindow);
+    this.applyMacWindowButtonVisibility(mainWindow);
     this.windows = [mainWindow];
     this.attachNativeContextMenu(mainWindow);
 

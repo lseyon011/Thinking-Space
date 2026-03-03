@@ -1712,7 +1712,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
             lineNumbers: !isIphoneRuntime,
             highlightActiveLine: false,
             highlightActiveLineGutter: false,
-            foldGutter: true,
+            foldGutter: !isIphoneRuntime,
             dropCursor: false,
             allowMultipleSelections: true,
             indentOnInput: true,

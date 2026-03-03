@@ -277,7 +277,10 @@
   }
 
   .ltm-app-shell[data-ltm-surface='electron'][data-ltm-mode='desktop'] {
-    --ltm-shell-main-panel-radius: calc(var(--radius) + 0.24rem);
+    --ltm-shell-surface-radius: calc(var(--radius) + 0.72rem);
+    --ltm-shell-main-panel-radius: calc(var(--radius) + 0.72rem);
+    border-radius: clamp(0.95rem, 1.4vw, 1.35rem);
+    overflow: hidden;
   }
 
   .ltm-app-shell[data-ltm-surface='browser'][data-ltm-mode='desktop'] {
