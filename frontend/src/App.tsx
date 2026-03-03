@@ -592,11 +592,12 @@ function App() {
 
   useEffect(() => {
     if (!needsVaultSetup || !isElectron()) return
+    if (vaultSwitchHardRefreshPending) return
     const persistedRoot = getStoredVaultRoot()?.trim()
     if (!persistedRoot) return
     setVaultRoot(persistedRoot)
     setNeedsVaultSetup(false)
-  }, [needsVaultSetup])
+  }, [needsVaultSetup, vaultSwitchHardRefreshPending])
 
   useEffect(() => {
     if (needsVaultSetup) {
