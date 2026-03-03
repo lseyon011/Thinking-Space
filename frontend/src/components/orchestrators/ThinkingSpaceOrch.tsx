@@ -56,6 +56,11 @@ function clampExplorerWidthPx(value: number): number {
   return Math.max(EXPLORER_MIN_WIDTH_PX, value)
 }
 
+function isGoogleWorkspacePathBlock(path: string | null): boolean {
+  if (!path) return false
+  return /\.(gdoc|gdoc\.json|gsheet|gsheet\.json)$/i.test(path)
+}
+
 export default function ThinkingSpaceOrch() {
   const [searchParams, setSearchParams] = useSearchParams()
   const inlinePathFromUrl = searchParams.get(FILE_QUERY_PARAM)?.trim() || null
@@ -69,6 +74,7 @@ export default function ThinkingSpaceOrch() {
   )
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
   const [isExplorerResizing, setIsExplorerResizing] = useState(false)
+  const [focusedHeaderVisible, setFocusedHeaderVisible] = useState(false)
   const [explorerCollapsed, setExplorerCollapsed] = useState(
     () => getStorageItem(STORAGE_KEYS.thinkingSpaceExplorerCollapsed) === '1',
   )
@@ -85,8 +91,13 @@ export default function ThinkingSpaceOrch() {
   const showInlineSidebar = layout.hasSidebar && !forceCompactForIosKeyboard
   const showCollapsedInlineExplorer = showInlineSidebar && !explorerCollapsed
   const showExplorerTrigger = !showCollapsedInlineExplorer
+  const isGoogleWorkspaceInlinePath = isGoogleWorkspacePathBlock(inlinePath)
+  const useInstantExplorerToggle = showInlineSidebar && isGoogleWorkspaceInlinePath
+  const focusedDocumentMode = showInlineSidebar && showExplorerTrigger
+  const focusedGoogleWorkspaceMode = focusedDocumentMode && isGoogleWorkspaceInlinePath
+  const hideDocumentHeaderInFocusedMode = focusedDocumentMode && !focusedHeaderVisible
   const isIosSurface = layout.surface === 'capacitor-ios'
-  const headerOffsetClass = showExplorerTrigger
+  const headerOffsetClass = showExplorerTrigger && !hideDocumentHeaderInFocusedMode
     ? (isIosSurface
       ? '[&_.ts-doc-header]:pl-20 sm:[&_.ts-doc-header]:pl-24'
       : '[&_.ts-doc-header]:pl-40 sm:[&_.ts-doc-header]:pl-44')
@@ -407,6 +418,14 @@ export default function ThinkingSpaceOrch() {
   }, [explorerWidthPx])
 
   useEffect(() => {
+    if (!focusedDocumentMode) {
+      setFocusedHeaderVisible(true)
+      return
+    }
+    setFocusedHeaderVisible(false)
+  }, [focusedDocumentMode])
+
+  useEffect(() => {
     const handleResize = () => {
       setExplorerWidthPx((prev) => clampExplorerWidthPx(prev))
     }
@@ -569,7 +588,9 @@ export default function ThinkingSpaceOrch() {
           <aside
             className={cn(
               'ltm-thinking-space-explorer-surface min-h-0 shrink-0 overflow-hidden md:flex md:flex-col',
-              isExplorerResizing ? 'transition-none' : 'transition-[width,opacity] duration-200 ease-out',
+              (isExplorerResizing || useInstantExplorerToggle)
+                ? 'transition-none'
+                : 'transition-[width,opacity] duration-200 ease-out',
               showCollapsedInlineExplorer
                 ? 'opacity-100'
                 : 'opacity-0',
@@ -606,7 +627,10 @@ export default function ThinkingSpaceOrch() {
             variant="outline"
             size="sm"
             className={cn(
-              'ltm-shell-action ltm-motion-fast ltm-touch-target absolute left-6 top-6 z-20 h-11 items-center gap-1.5',
+              'ltm-shell-action ltm-motion-fast ltm-touch-target absolute z-20 h-11 items-center gap-1.5',
+              focusedGoogleWorkspaceMode
+                ? 'left-4 top-1/2 -translate-y-1/2'
+                : 'left-6 top-6',
               isIosSurface ? 'w-11 justify-center px-0' : 'px-3',
               showExplorerTrigger ? 'inline-flex' : 'hidden',
             )}
@@ -623,8 +647,31 @@ export default function ThinkingSpaceOrch() {
             <PanelLeft className="h-4 w-4" />
             {!isIosSurface && <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">Explorer</span>}
           </Button>
+          {focusedDocumentMode && inlinePath && (
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn(
+                'ltm-shell-action ltm-motion-fast ltm-touch-target absolute z-20 h-11 px-3',
+                focusedGoogleWorkspaceMode
+                  ? 'right-4 top-1/2 -translate-y-1/2'
+                  : 'right-6 top-6',
+              )}
+              title={focusedHeaderVisible ? 'Hide header' : 'Show header'}
+              aria-label={focusedHeaderVisible ? 'Hide header' : 'Show header'}
+              onClick={() => setFocusedHeaderVisible((prev) => !prev)}
+            >
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">
+                {focusedHeaderVisible ? 'Hide Header' : 'Show Header'}
+              </span>
+            </Button>
+          )}
           {inlinePath && inlineDocumentContent ? (
-            <div className={cn('h-full min-h-0', headerOffsetClass)}>
+            <div className={cn(
+              'h-full min-h-0',
+              headerOffsetClass,
+              hideDocumentHeaderInFocusedMode && '[&_.ts-doc-header]:hidden',
+            )}>
               {inlineDocumentContent}
             </div>
           ) : (

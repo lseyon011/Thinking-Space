@@ -577,7 +577,11 @@ function TableDocumentBlock({
   }, [gridRows.length])
 
   return (
-    <div className={cn('flex h-full min-h-0 flex-col bg-card p-2', className)}>
+    <div className={cn(
+      'flex h-full min-h-0 flex-col bg-card',
+      isGoogleSheetDocument ? 'p-0' : 'p-2',
+      className,
+    )}>
       <div className="ts-doc-header border-b border-border/50 px-6 py-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -926,7 +930,7 @@ function TableDocumentBlock({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className={cn('min-h-0 flex-1', isGoogleSheetDocument ? 'overflow-hidden' : 'overflow-auto')}>
         {!isGoogleSheetDocument && formattedCellCssText && <style>{formattedCellCssText}</style>}
         {loading && <div className="text-sm text-muted-foreground">Loading table...</div>}
         {error && <div className="text-sm text-destructive">{error}</div>}
@@ -936,7 +940,7 @@ function TableDocumentBlock({
           </div>
         )}
         {!loading && !error && isGoogleSheetDocument && googleSheetOpenUrl && (
-          <div className="h-full p-5">
+          <div className="h-full min-h-0">
             <GoogleWorkspaceViewerBlock
               title={`Google sheet ${filename}`}
               url={googleSheetOpenUrl}

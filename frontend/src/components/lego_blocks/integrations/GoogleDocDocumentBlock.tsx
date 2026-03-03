@@ -274,8 +274,10 @@ function GoogleDocDocumentBlock({
     setConflict(null)
   }, [conflict])
 
+  const showWorkspaceViewer = !loading && !error && !activeDocument?.isBinaryDocx && Boolean(openUrl)
+
   return (
-    <div className={cn('flex h-full min-h-0 flex-col bg-card p-2', className)}>
+    <div className={cn('flex h-full min-h-0 flex-col bg-card', className)}>
       <div className={cn(
         'ts-doc-header border-b border-border/50',
         isIosPhone ? 'px-4 py-3.5' : 'px-6 py-5',
@@ -595,7 +597,12 @@ function GoogleDocDocumentBlock({
         </div>
       )}
 
-      <div className={cn('min-h-0 flex-1', isIosPhone ? 'px-3 pb-3 pt-3' : 'px-6 py-5')}>
+      <div className={cn(
+        'min-h-0 flex-1',
+        showWorkspaceViewer
+          ? 'overflow-hidden'
+          : (isIosPhone ? 'px-3 pb-3 pt-3' : 'px-6 py-5'),
+      )}>
         {loading && (
           <div className="space-y-3">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -622,10 +629,10 @@ function GoogleDocDocumentBlock({
           </div>
         )}
 
-        {!loading && !error && !activeDocument?.isBinaryDocx && openUrl && (
+        {showWorkspaceViewer && (
           <GoogleWorkspaceViewerBlock
             title={`Google document ${filename}`}
-            url={openUrl}
+            url={openUrl!}
           />
         )}
       </div>

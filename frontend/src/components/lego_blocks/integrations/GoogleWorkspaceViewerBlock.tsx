@@ -64,7 +64,7 @@ function GoogleWorkspaceViewerBlock({
 
   if (isElectronRuntime) {
     return (
-      <div className="relative h-full min-h-[56vh]">
+      <div className="relative h-full min-h-0">
         {loadError && (
           <div className="absolute left-3 right-3 top-3 z-10 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             {loadError}
@@ -76,7 +76,7 @@ function GoogleWorkspaceViewerBlock({
           src={url}
           partition={GOOGLE_WEBVIEW_PARTITION_BLOCK}
           allowpopups
-          className={cn('h-full min-h-[56vh] w-full rounded-xl border border-border/60 bg-background', className)}
+          className={cn('h-full min-h-0 w-full bg-background', className)}
         />
       </div>
     )
@@ -86,7 +86,7 @@ function GoogleWorkspaceViewerBlock({
     <iframe
       title={title}
       src={url}
-      className={cn('h-full min-h-[56vh] w-full rounded-xl border border-border/60 bg-background', className)}
+      className={cn('h-full min-h-0 w-full bg-background', className)}
       allow="clipboard-read; clipboard-write"
     />
   )
