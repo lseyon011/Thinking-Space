@@ -5,10 +5,10 @@ import { spawnSync } from 'child_process'
 import { HIERARCHY_MIGRATIONS_BLOCK } from './hierarchySchemaBlock'
 
 const MIGRATIONS_TABLE_BLOCK = 'schema_migrations'
-const STORAGE_DIR_BLOCK = '.think-space'
-const LEGACY_STORAGE_DIR_BLOCK = '.ltm-pilot'
+const STORAGE_DIR_BLOCK = '.thinking-space'
+const LEGACY_STORAGE_DIRS_BLOCK = ['.think-space', 'think-space', '.ltm-pilot']
 const DB_FILENAME_BLOCK = 'ltm.db'
-const CONTENT_PREFIX_BLOCK = '.think-space/thinking_organizer'
+const CONTENT_PREFIX_BLOCK = '.thinking-space/thinking_organizer'
 
 export interface HierarchyDbStatusBlock {
   db_path: string
@@ -30,35 +30,73 @@ function assertInsideVaultBlock(vaultRoot: string, targetRelativePath: string): 
 }
 
 function migrateLegacyStorageDirBlock(vaultRoot: string): void {
-  const legacyDir = assertInsideVaultBlock(vaultRoot, LEGACY_STORAGE_DIR_BLOCK)
   const currentDir = assertInsideVaultBlock(vaultRoot, STORAGE_DIR_BLOCK)
 
-  if (!fs.existsSync(legacyDir)) return
-  if (!fs.existsSync(currentDir)) {
-    fs.renameSync(legacyDir, currentDir)
+  for (const legacyDirName of LEGACY_STORAGE_DIRS_BLOCK) {
+    const legacyDir = assertInsideVaultBlock(vaultRoot, legacyDirName)
+    if (!fs.existsSync(legacyDir)) continue
+
+    if (!fs.existsSync(currentDir)) {
+      fs.renameSync(legacyDir, currentDir)
+      continue
+    }
+
+    mergeLegacyDirIntoCurrentBlock(legacyDir, currentDir, legacyDirName.replace(/^\./, ''))
+    removeEmptyDirectoryTreeBlock(legacyDir)
+  }
+}
+
+function mergeLegacyDirIntoCurrentBlock(legacyDir: string, currentDir: string, legacyLabel: string): void {
+  fs.mkdirSync(currentDir, { recursive: true })
+  const entries = fs.readdirSync(legacyDir, { withFileTypes: true })
+  for (const entry of entries) {
+    const fromPath = path.join(legacyDir, entry.name)
+    const toPath = path.join(currentDir, entry.name)
+    if (!fs.existsSync(toPath)) {
+      fs.renameSync(fromPath, toPath)
+      continue
+    }
+
+    const fromStat = fs.statSync(fromPath)
+    const toStat = fs.statSync(toPath)
+    if (fromStat.isDirectory() && toStat.isDirectory()) {
+      mergeLegacyDirIntoCurrentBlock(fromPath, toPath, legacyLabel)
+      continue
+    }
+
+    const conflictPath = uniqueLegacyConflictPathBlock(toPath, legacyLabel)
+    fs.renameSync(fromPath, conflictPath)
+  }
+}
+
+function uniqueLegacyConflictPathBlock(targetPath: string, legacyLabel: string): string {
+  const safeLabel = legacyLabel.replace(/[^a-zA-Z0-9_-]/g, '') || 'legacy'
+  let suffix = 1
+  while (true) {
+    const candidate = `${targetPath}.legacy-${safeLabel}${suffix > 1 ? `-${suffix}` : ''}`
+    if (!fs.existsSync(candidate)) return candidate
+    suffix += 1
+  }
+}
+
+function removeEmptyDirectoryTreeBlock(dirPath: string): void {
+  if (!fs.existsSync(dirPath)) return
+
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(dirPath, { withFileTypes: true })
+  } catch {
     return
   }
 
-  const migrateEntries = [
-    DB_FILENAME_BLOCK,
-    `${DB_FILENAME_BLOCK}-wal`,
-    `${DB_FILENAME_BLOCK}-shm`,
-    'thinking_organizer',
-    'audit',
-    'revisions',
-    'archive',
-  ]
-  for (const entry of migrateEntries) {
-    const fromPath = path.join(legacyDir, entry)
-    const toPath = path.join(currentDir, entry)
-    if (!fs.existsSync(fromPath) || fs.existsSync(toPath)) continue
-    fs.mkdirSync(path.dirname(toPath), { recursive: true })
-    fs.renameSync(fromPath, toPath)
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    removeEmptyDirectoryTreeBlock(path.join(dirPath, entry.name))
   }
 
   try {
-    if (fs.readdirSync(legacyDir).length === 0) {
-      fs.rmdirSync(legacyDir)
+    if (fs.readdirSync(dirPath).length === 0) {
+      fs.rmdirSync(dirPath)
     }
   } catch {
     // Best-effort cleanup only.

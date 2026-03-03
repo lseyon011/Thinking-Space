@@ -144,7 +144,7 @@ describe('extensionCapabilityOrch', () => {
     expect(result.requiredPermissions).toEqual(['organizer:write'])
     expect(result.message).toContain('requires one of')
 
-    const log = await fs.read('.think-space/audit/capability-audit.log')
+    const log = await fs.read('.thinking-space/audit/capability-audit.log')
     const lines = log.split('\n').filter(Boolean)
     const latest = JSON.parse(lines[lines.length - 1]) as {
       extensionId?: string
@@ -174,7 +174,7 @@ describe('extensionCapabilityOrch', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    const log = await fs.read('.think-space/audit/capability-audit.log')
+    const log = await fs.read('.thinking-space/audit/capability-audit.log')
     const lines = log.split('\n').filter(Boolean)
     const latest = JSON.parse(lines[lines.length - 1]) as {
       extensionId?: string
@@ -188,4 +188,3 @@ describe('extensionCapabilityOrch', () => {
     expect(latest.origin).toBe('extension')
   })
 })
-

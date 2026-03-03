@@ -15,7 +15,7 @@ import {
 export type NodeTypeBlock = 'project' | 'epic' | 'idea'
 
 const NODE_TYPES_BLOCK: NodeTypeBlock[] = ['project', 'epic', 'idea']
-export const HIERARCHY_CONTENT_PREFIX = '.think-space/thinking_organizer'
+export const HIERARCHY_CONTENT_PREFIX = '.thinking-space/thinking_organizer'
 const PARENT_TYPE_RULES_BLOCK: Record<NodeTypeBlock, NodeTypeBlock[] | null> = {
   project: null,
   epic: ['project', 'epic', 'idea'],

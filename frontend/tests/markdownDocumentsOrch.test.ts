@@ -120,9 +120,9 @@ describe('markdownDocumentsOrch', () => {
     })
 
     expect(result.output_path).toBe('notes/a.md')
-    expect(result.revision_path).toContain('.think-space/revisions/2026-02-14/')
-    expect(fakeFs.mkdirs[0]).toContain('.think-space/revisions/2026-02-14')
+    expect(result.revision_path).toContain('.thinking-space/revisions/2026-02-14/')
+    expect(fakeFs.mkdirs[0]).toContain('.thinking-space/revisions/2026-02-14')
     expect(fakeFs.writes.some(path => path === 'notes/a.md')).toBe(true)
-    expect(fakeFs.writes.some(path => path.includes('.think-space/revisions/2026-02-14'))).toBe(true)
+    expect(fakeFs.writes.some(path => path.includes('.thinking-space/revisions/2026-02-14'))).toBe(true)
   })
 })

@@ -32,7 +32,7 @@ function buildRevisionPathBlock(filePath: string): string {
   const day = `${y}-${m}-${d}`
   const time = `${hh}${mm}${ss}-${ms}`
   const safePath = filePath.replace(/\//g, '__').replace(/\\/g, '__').replace(/ /g, '_')
-  return `.think-space/revisions/${day}/${time}--${safePath}`
+  return `.thinking-space/revisions/${day}/${time}--${safePath}`
 }
 
 function isAlreadyExistsFsErrorBlock(error: unknown): boolean {

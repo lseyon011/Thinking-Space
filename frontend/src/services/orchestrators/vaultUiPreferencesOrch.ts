@@ -13,9 +13,12 @@ import {
   type VaultUiPreferencesBlock,
 } from '@/services/lego_blocks/units/vaultUiPreferencesBlock'
 
-const THINK_SPACE_DIR_ORCH = '.think-space'
+const THINK_SPACE_DIR_ORCH = '.thinking-space'
+const LEGACY_THINK_SPACE_DIR_ORCH = '.think-space'
 const UI_PREFERENCES_DIR_ORCH = `${THINK_SPACE_DIR_ORCH}/preferences`
 const UI_PREFERENCES_FILE_ORCH = `${UI_PREFERENCES_DIR_ORCH}/ui.json`
+const LEGACY_UI_PREFERENCES_DIR_ORCH = `${LEGACY_THINK_SPACE_DIR_ORCH}/preferences`
+const LEGACY_UI_PREFERENCES_FILE_ORCH = `${LEGACY_UI_PREFERENCES_DIR_ORCH}/ui.json`
 
 export type {
   ExplorerFolderColorPreferenceBlock,
@@ -42,12 +45,28 @@ async function ensurePreferencesDirOrch(): Promise<void> {
 export async function readVaultUiPreferencesOrch(): Promise<VaultUiPreferencesBlock> {
   const fs = getVaultFS()
   try {
-    if (!(await fs.exists(UI_PREFERENCES_FILE_ORCH))) {
+    const hasCurrent = await fs.exists(UI_PREFERENCES_FILE_ORCH)
+    const targetPath = hasCurrent
+      ? UI_PREFERENCES_FILE_ORCH
+      : (await fs.exists(LEGACY_UI_PREFERENCES_FILE_ORCH))
+        ? LEGACY_UI_PREFERENCES_FILE_ORCH
+        : null
+    if (!targetPath) {
       return createDefaultVaultUiPreferencesBlock()
     }
-    const raw = await fs.read(UI_PREFERENCES_FILE_ORCH)
+    const raw = await fs.read(targetPath)
     if (!raw.trim()) return createDefaultVaultUiPreferencesBlock()
-    return normalizeVaultUiPreferencesBlock(JSON.parse(raw))
+    const normalized = normalizeVaultUiPreferencesBlock(JSON.parse(raw))
+    if (targetPath === LEGACY_UI_PREFERENCES_FILE_ORCH) {
+      // Best effort: migrate legacy location to canonical .thinking-space path.
+      try {
+        await ensurePreferencesDirOrch()
+        await fs.write(UI_PREFERENCES_FILE_ORCH, serializeVaultUiPreferencesBlock(normalized))
+      } catch {
+        // Ignore migration write errors; return parsed preferences.
+      }
+    }
+    return normalized
   } catch {
     return createDefaultVaultUiPreferencesBlock()
   }

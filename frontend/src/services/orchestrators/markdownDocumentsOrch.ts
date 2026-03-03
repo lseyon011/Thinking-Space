@@ -108,7 +108,7 @@ function buildRevisionPath(filePath: string): string {
     ? safePath.slice(0, MAX_SAFE_PATH_LEN) + '--' + hashContent(safePath).slice(0, 8)
     : safePath
 
-  return `.think-space/revisions/${day}/${time}--${truncatedPath}`
+  return `.thinking-space/revisions/${day}/${time}--${truncatedPath}`
 }
 
 function isAlreadyExistsFsError(error: unknown): boolean {

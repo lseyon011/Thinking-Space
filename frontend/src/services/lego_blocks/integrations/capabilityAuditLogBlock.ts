@@ -19,8 +19,11 @@ export interface CapabilityAuditEntry {
   errorMessage?: string
 }
 
-const AUDIT_DIR = '.think-space/audit'
+const THINKING_SPACE_DIR = '.thinking-space'
+const LEGACY_THINK_SPACE_DIR = '.think-space'
+const AUDIT_DIR = `${THINKING_SPACE_DIR}/audit`
 const AUDIT_FILE = `${AUDIT_DIR}/capability-audit.log`
+const LEGACY_AUDIT_FILE = `${LEGACY_THINK_SPACE_DIR}/audit/capability-audit.log`
 
 export async function writeCapabilityAuditEntry(
   entry: CapabilityAuditEntry,
@@ -29,6 +32,7 @@ export async function writeCapabilityAuditEntry(
   if (!fs) return
 
   await ensureAuditDir(fs)
+  await migrateLegacyAuditLogIfNeeded(fs)
   const line = JSON.stringify(entry)
   const exists = await fs.exists(AUDIT_FILE)
   if (!exists) {
@@ -70,7 +74,7 @@ function hashString(value: string): string {
 
 async function ensureAuditDir(fs: VaultFS): Promise<void> {
   try {
-    await fs.mkdir('.think-space')
+    await fs.mkdir(THINKING_SPACE_DIR)
   } catch {
     // Directory likely exists.
   }
@@ -79,4 +83,13 @@ async function ensureAuditDir(fs: VaultFS): Promise<void> {
   } catch {
     // Directory likely exists.
   }
+}
+
+async function migrateLegacyAuditLogIfNeeded(fs: VaultFS): Promise<void> {
+  const hasCurrent = await fs.exists(AUDIT_FILE).catch(() => false)
+  if (hasCurrent) return
+  const hasLegacy = await fs.exists(LEGACY_AUDIT_FILE).catch(() => false)
+  if (!hasLegacy) return
+  const legacyContent = await fs.read(LEGACY_AUDIT_FILE).catch(() => '')
+  await fs.create(AUDIT_FILE, legacyContent)
 }

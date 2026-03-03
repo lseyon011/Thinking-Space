@@ -58,7 +58,7 @@ export function copyAndArchivePathTransitionBlock(params: {
   const ms = String(now.getUTCMilliseconds()).padStart(3, '0')
 
   const archiveRel = path.join(
-    '.think-space',
+    '.thinking-space',
     'archive',
     `${y}-${m}-${d}`,
     `${hh}${mm}${ss}-${ms}`,
