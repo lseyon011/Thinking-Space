@@ -11,6 +11,8 @@ import {
   Loader2,
   Menu,
   MessageSquare,
+  Eye,
+  EyeOff,
   PanelLeft,
   PanelLeftClose,
   PlusSquare,
@@ -86,6 +88,12 @@ import {
   shouldOpenDrawerFromSwipeBlock,
   shouldStartEdgeSwipeOpenBlock,
 } from '@/services/lego_blocks/units/uiGestureBlock'
+import {
+  dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock,
+  dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock,
+  THINKING_SPACE_GOOGLE_WORKSPACE_CHROME_STATE_EVENT_BLOCK,
+  type ThinkingSpaceGoogleWorkspaceChromeStateBlock,
+} from '@/services/lego_blocks/units/thinkingSpaceGoogleWorkspaceChromeBlock'
 
 type NavIcon = ComponentType<{ className?: string }>
 
@@ -309,6 +317,11 @@ function App() {
   const [explorerIconStyle, setExplorerIconStyle] = useState<ExplorerIconStyleBlock>('outline')
   const [explorerFolderColorRules, setExplorerFolderColorRules] = useState<ExplorerFolderColorPreferenceBlock[]>([])
   const [refreshRunning, setRefreshRunning] = useState(false)
+  const [thinkingSpaceGoogleWorkspaceChromeState, setThinkingSpaceGoogleWorkspaceChromeState] = useState<ThinkingSpaceGoogleWorkspaceChromeStateBlock>({
+    enabled: false,
+    explorerCollapsed: false,
+    headerVisible: true,
+  })
   const [syncPanelOpen, setSyncPanelOpen] = useState(false)
   const [syncActionRunning, setSyncActionRunning] = useState<'sync' | 'rebuild' | null>(null)
   const [gitActionRunning, setGitActionRunning] = useState<'commit' | 'push' | null>(null)
@@ -364,6 +377,10 @@ function App() {
   const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState(
     () => getStorageItem(STORAGE_KEYS.appShellActiveTabId) ?? '',
   )
+  const showGoogleWorkspaceChromeControls = location.pathname === '/thinking-space'
+    && thinkingSpaceGoogleWorkspaceChromeState.enabled
+  const canToggleGoogleWorkspaceHeader = showGoogleWorkspaceChromeControls
+    && thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed
 
   const utilityNavItems = useMemo(() => {
     const items: NavItem[] = [
@@ -1195,6 +1212,24 @@ function App() {
   }, [])
 
   useEffect(() => {
+    const handleChromeState = (event: Event) => {
+      const customEvent = event as CustomEvent<ThinkingSpaceGoogleWorkspaceChromeStateBlock>
+      const detail = customEvent.detail
+      if (!detail) return
+      setThinkingSpaceGoogleWorkspaceChromeState({
+        enabled: Boolean(detail.enabled),
+        explorerCollapsed: Boolean(detail.explorerCollapsed),
+        headerVisible: Boolean(detail.headerVisible),
+      })
+    }
+
+    window.addEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_CHROME_STATE_EVENT_BLOCK, handleChromeState as EventListener)
+    return () => {
+      window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_CHROME_STATE_EVENT_BLOCK, handleChromeState as EventListener)
+    }
+  }, [])
+
+  useEffect(() => {
     const appShellNode = appShellRef.current
     if (!appShellNode) return
 
@@ -1305,6 +1340,37 @@ function App() {
               style={{ width: `${phoneMode ? topChromeRightWidth : topChromeBalancedWidth}px` }}
             >
               <div ref={syncToolsRef} className="inline-flex items-center gap-2">
+                {showGoogleWorkspaceChromeControls && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}
+                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
+                      title={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
+                    >
+                      {thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed
+                        ? <PanelLeft className="h-3.5 w-3.5" />
+                        : <PanelLeftClose className="h-3.5 w-3.5" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock}
+                      disabled={!canToggleGoogleWorkspaceHeader}
+                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-55"
+                      aria-label={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header'}
+                      title={canToggleGoogleWorkspaceHeader
+                        ? (thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header')
+                        : 'Collapse explorer to toggle document header'}
+                    >
+                      {thinkingSpaceGoogleWorkspaceChromeState.headerVisible
+                        ? <EyeOff className="h-3.5 w-3.5" />
+                        : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  </>
+                )}
+
                 <button
                   type="button"
                   onClick={handleGlobalRefresh}

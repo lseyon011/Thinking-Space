@@ -28,6 +28,11 @@ import {
   shouldOpenDrawerFromSwipeBlock,
   shouldStartEdgeSwipeOpenBlock,
 } from '@/services/lego_blocks/units/uiGestureBlock'
+import {
+  dispatchThinkingSpaceGoogleWorkspaceChromeStateBlock,
+  THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_EXPLORER_EVENT_BLOCK,
+  THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_HEADER_EVENT_BLOCK,
+} from '@/services/lego_blocks/units/thinkingSpaceGoogleWorkspaceChromeBlock'
 
 const FILE_QUERY_PARAM = 'file'
 const MAX_MOUNTED_INLINE_DOCS = 8
@@ -426,6 +431,47 @@ export default function ThinkingSpaceOrch() {
   }, [focusedDocumentMode])
 
   useEffect(() => {
+    const headerVisible = !hideDocumentHeaderInFocusedMode
+    dispatchThinkingSpaceGoogleWorkspaceChromeStateBlock({
+      enabled: isGoogleWorkspaceInlinePath,
+      explorerCollapsed,
+      headerVisible,
+    })
+  }, [explorerCollapsed, hideDocumentHeaderInFocusedMode, isGoogleWorkspaceInlinePath])
+
+  useEffect(() => {
+    return () => {
+      dispatchThinkingSpaceGoogleWorkspaceChromeStateBlock({
+        enabled: false,
+        explorerCollapsed: false,
+        headerVisible: true,
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    const onToggleExplorer = () => {
+      if (!isGoogleWorkspaceInlinePath) return
+      if (showInlineSidebar) {
+        setExplorerCollapsed(prev => !prev)
+        return
+      }
+      setMobileExplorerOpen(prev => !prev)
+    }
+    const onToggleHeader = () => {
+      if (!isGoogleWorkspaceInlinePath || !focusedDocumentMode) return
+      setFocusedHeaderVisible(prev => !prev)
+    }
+
+    window.addEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_EXPLORER_EVENT_BLOCK, onToggleExplorer as EventListener)
+    window.addEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_HEADER_EVENT_BLOCK, onToggleHeader as EventListener)
+    return () => {
+      window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_EXPLORER_EVENT_BLOCK, onToggleExplorer as EventListener)
+      window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_HEADER_EVENT_BLOCK, onToggleHeader as EventListener)
+    }
+  }, [focusedDocumentMode, isGoogleWorkspaceInlinePath, showInlineSidebar])
+
+  useEffect(() => {
     const handleResize = () => {
       setExplorerWidthPx((prev) => clampExplorerWidthPx(prev))
     }
@@ -632,7 +678,7 @@ export default function ThinkingSpaceOrch() {
                 ? 'left-4 top-1/2 -translate-y-1/2'
                 : 'left-6 top-6',
               isIosSurface ? 'w-11 justify-center px-0' : 'px-3',
-              showExplorerTrigger ? 'inline-flex' : 'hidden',
+              showExplorerTrigger && !focusedGoogleWorkspaceMode ? 'inline-flex' : 'hidden',
             )}
             title="Open explorer"
             aria-label="Open explorer"
@@ -647,7 +693,7 @@ export default function ThinkingSpaceOrch() {
             <PanelLeft className="h-4 w-4" />
             {!isIosSurface && <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">Explorer</span>}
           </Button>
-          {focusedDocumentMode && inlinePath && (
+          {focusedDocumentMode && inlinePath && !focusedGoogleWorkspaceMode && (
             <Button
               variant="outline"
               size="sm"
