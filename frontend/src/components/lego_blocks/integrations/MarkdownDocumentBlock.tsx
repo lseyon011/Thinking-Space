@@ -116,7 +116,7 @@ function MarkdownTextDocumentRuntimeBlock({
   const [saveError, setSaveError] = useState<string | null>(null)
   const [navigationError, setNavigationError] = useState<string | null>(null)
   const [conflict, setConflict] = useState<MarkdownDocumentConflictError | null>(null)
-  const [showMeta, setShowMeta] = useState(true)
+  const [showMeta, setShowMeta] = useState(false)
   const [topBarHiddenInViewMode, setTopBarHiddenInViewMode] = useState<boolean>(
     () => getStorageItem(STORAGE_KEYS.markdownDocumentTopBarHidden) === '1',
   )

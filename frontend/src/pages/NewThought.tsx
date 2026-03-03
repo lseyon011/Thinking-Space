@@ -1120,6 +1120,43 @@ function CreateTab() {
                 </div>
               )}
 
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <div className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
+                  {makeThisTodo ? 'Destination todo file' : 'Destination file'}:{' '}
+                  {targetPath ? (
+                    <button
+                      type="button"
+                      onClick={() => openFileInNewTabOrch(targetPath)}
+                      className="font-mono text-foreground break-all underline decoration-dotted underline-offset-2 hover:text-primary"
+                      title="Open in Thinking Space explorer (new tab)"
+                    >
+                      {targetPath}
+                    </button>
+                  ) : (
+                    <span className="font-mono text-foreground break-all">
+                      {makeThisTodo ? '(select destination + date)' : '(select destination + filename)'}
+                    </span>
+                  )}
+                </div>
+                <Button
+                  onClick={handleSave}
+                  disabled={!canSave}
+                  className={saveFeedbackVisible && !saving
+                    ? 'ltm-animate-fade-in bg-emerald-600 text-white hover:bg-emerald-600'
+                    : undefined}
+                >
+                  {saving
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : (saveFeedbackVisible ? 'Saved' : 'Save')}
+                </Button>
+              </div>
+
+              {!makeThisTodo && loadingTargetContent && (
+                <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                  Loading destination note...
+                </div>
+              )}
+
               <MarkdownRichEditorBlock
                 value={content}
                 onChange={setContent}
@@ -1136,46 +1173,8 @@ function CreateTab() {
                   openFileInNewTabOrch(relatedPath)
                   setMessage(`Opened ${relatedPath} in a new tab.`)
                 }}
-                className="min-h-[520px] md:min-h-[620px] rounded-lg border border-input overflow-hidden"
+                className="min-h-[520px] md:min-h-[620px]"
               />
-            </div>
-
-            <div className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
-              {makeThisTodo ? 'Destination todo file' : 'Destination file'}:{' '}
-              {targetPath ? (
-                <button
-                  type="button"
-                  onClick={() => openFileInNewTabOrch(targetPath)}
-                  className="font-mono text-foreground break-all underline decoration-dotted underline-offset-2 hover:text-primary"
-                  title="Open in Thinking Space explorer (new tab)"
-                >
-                  {targetPath}
-                </button>
-              ) : (
-                <span className="font-mono text-foreground break-all">
-                  {makeThisTodo ? '(select destination + date)' : '(select destination + filename)'}
-                </span>
-              )}
-            </div>
-
-            {!makeThisTodo && loadingTargetContent && (
-              <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                Loading destination note...
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                onClick={handleSave}
-                disabled={!canSave}
-                className={saveFeedbackVisible && !saving
-                  ? 'ltm-animate-fade-in bg-emerald-600 text-white hover:bg-emerald-600'
-                  : undefined}
-              >
-                {saving
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : (saveFeedbackVisible ? 'Saved' : 'Save')}
-              </Button>
             </div>
 
             {savedPath && (

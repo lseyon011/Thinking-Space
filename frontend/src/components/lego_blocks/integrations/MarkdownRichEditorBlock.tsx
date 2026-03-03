@@ -25,6 +25,7 @@ import {
   Workflow,
   X,
 } from 'lucide-react'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import type { AiSettingsScope } from '@/services/lego_blocks/integrations/aiSettingsBlock'
 import AiAssistControlsBlock from '@/components/lego_blocks/integrations/AiAssistControlsBlock'
 import AiAssistReviewBlock from '@/components/lego_blocks/integrations/AiAssistReviewBlock'
@@ -486,6 +487,13 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   onRelatedThoughtOpenPath,
   onRelatedThoughtOpenPathInNewTab,
 }, ref) {
+  const { layout } = useUILayoutBlock()
+  const isIphoneRuntime = useMemo(() => {
+    const isIosPhoneSurface = layout.surface === 'capacitor-ios' && layout.mode === 'phone'
+    if (isIosPhoneSurface) return true
+    if (typeof navigator === 'undefined') return false
+    return /iPhone/i.test(navigator.userAgent)
+  }, [layout.mode, layout.surface])
   const editorViewRef = useRef<EditorView | null>(null)
   const [toolbarOpen, setToolbarOpen] = useState(false)
   const [internalAiPanelOpen, setInternalAiPanelOpen] = useState(defaultAiPanelOpen)
@@ -1701,7 +1709,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           height="100%"
           className="h-full bg-white"
           basicSetup={{
-            lineNumbers: true,
+            lineNumbers: !isIphoneRuntime,
             highlightActiveLine: false,
             highlightActiveLineGutter: false,
             foldGutter: true,
