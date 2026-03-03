@@ -403,22 +403,30 @@ export default function SettingsOrch({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="mb-4 flex items-center gap-2">
-        {TAB_OPTIONS.map(tab => (
-          <Button
-            key={tab.id}
-            type="button"
-            variant={activeTab === tab.id ? 'default' : 'ghost'}
-            size="sm"
-            className="w-[7.5rem] justify-center"
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </Button>
-        ))}
-      </div>
+    <div className="grid gap-4 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-6">
+      <aside className="self-start">
+        <div className="rounded-2xl border border-border/60 bg-muted/20 p-2">
+          <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Sections
+          </p>
+          <div className="space-y-1">
+            {TAB_OPTIONS.map(tab => (
+              <Button
+                key={tab.id}
+                type="button"
+                variant={activeTab === tab.id ? 'default' : 'ghost'}
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => setActiveTab(tab.id)}
+              >
+                {tab.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </aside>
 
+      <div className="space-y-4 min-w-0">
       {activeTab === 'theme' && (
         <Card>
           <CardHeader>
@@ -845,6 +853,7 @@ export default function SettingsOrch({
 
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
+      </div>
     </div>
   )
 }
