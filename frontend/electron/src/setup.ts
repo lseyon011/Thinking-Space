@@ -268,6 +268,7 @@ export class ElectronCapacitorApp {
         nodeIntegration: true,
         contextIsolation: true,
         preload: preloadPath,
+        webviewTag: true,
       },
     });
     winState.manage(newWindow);
@@ -335,6 +336,7 @@ export class ElectronCapacitorApp {
         nodeIntegration: true,
         contextIsolation: true,
         preload: preloadPath,
+        webviewTag: true,
       },
     });
     this.mainWindowState.manage(mainWindow);

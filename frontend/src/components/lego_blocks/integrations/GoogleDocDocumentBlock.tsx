@@ -1,11 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { ExternalLink, FileText, FolderOpen, Pencil, Save, Settings2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import GoogleWorkspaceViewerBlock from '@/components/lego_blocks/integrations/GoogleWorkspaceViewerBlock'
 import {
   normalizeDescriptorBlock,
   parseGoogleDocFileIdBlock,
-  resolveGoogleDocEmbedUrlBlock,
   resolveGoogleDocOpenUrlBlock,
 } from '@/services/lego_blocks/integrations/googleDocDocumentCodecBlock'
 import type { GoogleDocDocumentModelBlock } from '@/services/lego_blocks/units/googleDocDocumentSchemaBlock'
@@ -69,7 +69,6 @@ function GoogleDocDocumentBlock({
   const [pickerItems, setPickerItems] = useState<GoogleDriveFilePickerItemOrch[]>([])
   const [pickerLoading, setPickerLoading] = useState(false)
   const [pickerError, setPickerError] = useState<string | null>(null)
-  const iframeRef = useRef<HTMLIFrameElement | null>(null)
 
   const loadDocument = useCallback(async () => {
     setLoading(true)
@@ -122,10 +121,6 @@ function GoogleDocDocumentBlock({
   const openUrl = useMemo(
     () => (activeDocument ? resolveGoogleDocOpenUrlBlock(activeDocument.descriptor) : null),
     [activeDocument],
-  )
-  const embedUrl = useMemo(
-    () => (activeDocument ? resolveGoogleDocEmbedUrlBlock(activeDocument.descriptor, isEditing ? 'edit' : 'view') : null),
-    [activeDocument, isEditing],
   )
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
@@ -478,7 +473,7 @@ function GoogleDocDocumentBlock({
 
             {!hasGoogleConnection && (
               <div className="text-[11px] text-muted-foreground">
-                Connect Google in Settings {'>'} Google Docs and Sheets to browse Drive files and auto-fill this `.gdoc` mapping.
+                Connect Google in Settings {'>'} Google Docs and Sheets only if you want Drive picker. Opening/editing docs does not require OAuth setup here.
               </div>
             )}
           </div>
@@ -615,25 +610,22 @@ function GoogleDocDocumentBlock({
 
         {!loading && !error && activeDocument?.isBinaryDocx && (
           <div className="rounded-lg border border-border/60 bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
-            This DOCX file is binary and cannot be embedded directly. Use a `.gdoc` file (or DOCX metadata JSON) to map a Google Drive file ID for inline view/edit.
+            This DOCX file is binary and cannot be embedded directly. Use a `.gdoc` file (or DOCX metadata JSON) to map a Google Drive file ID for Google Docs editing.
           </div>
         )}
 
-        {!loading && !error && !activeDocument?.isBinaryDocx && !embedUrl && (
+        {!loading && !error && !activeDocument?.isBinaryDocx && !openUrl && (
           <div className="rounded-lg border border-border/60 bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
             {isGoogleDriveVault
               ? 'No Google Doc URL was found yet. Open Settings and use Pick from Drive, or open this file in Google Docs once to validate the shortcut metadata.'
-              : 'Add a Google file ID or URL in Settings to enable inline view/edit.'}
+              : 'Add a Google file ID or URL in Settings to open/edit this file in Google Docs.'}
           </div>
         )}
 
-        {!loading && !error && !activeDocument?.isBinaryDocx && embedUrl && (
-          <iframe
-            ref={iframeRef}
+        {!loading && !error && !activeDocument?.isBinaryDocx && openUrl && (
+          <GoogleWorkspaceViewerBlock
             title={`Google document ${filename}`}
-            src={embedUrl}
-            className="h-full min-h-[56vh] w-full rounded-xl border border-border/60 bg-background"
-            allow="clipboard-read; clipboard-write"
+            url={openUrl}
           />
         )}
       </div>

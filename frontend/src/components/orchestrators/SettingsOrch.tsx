@@ -753,10 +753,13 @@ export default function SettingsOrch({
           <CardHeader>
             <CardTitle>Google Docs and Sheets</CardTitle>
             <CardDescription>
-              Configure Google OAuth once so Docs/Sheets mapping can use Pick from Drive.
+              Optional setup for Drive picker. Opening/editing Docs and Sheets works from the in-app Google view without this.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Sign in once inside a Google Doc/Sheet view and that session is reused. Add OAuth client ID only if you want Pick from Drive.
+            </p>
             <div className="space-y-2">
               <label htmlFor="ltm-settings-google-oauth-client-id" className="text-sm font-medium">
                 Google OAuth Client ID
@@ -770,11 +773,11 @@ export default function SettingsOrch({
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
               />
               <p className="text-xs text-muted-foreground">
-                Enter your real OAuth client ID. The placeholder is an example format.
+                Required only for Connect Google / Pick from Drive. The placeholder is an example format.
               </p>
             </div>
             <p className="text-xs text-muted-foreground">
-              Status: {googleDriveConnected ? 'connected' : 'not connected'}
+              Drive picker status: {googleDriveConnected ? 'connected' : 'not connected'}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button

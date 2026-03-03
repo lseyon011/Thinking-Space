@@ -6,14 +6,9 @@ import {
   textColumn,
 } from 'react-datasheet-grid'
 import 'react-datasheet-grid/dist/style.css'
-import { CloudDownload, CloudUpload, ExternalLink, FileSpreadsheet, FolderOpen, Pencil, Plus, Save, X } from 'lucide-react'
+import { ExternalLink, FileSpreadsheet, FolderOpen, Pencil, Plus, Save, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import {
-  pullGoogleSheetDocumentBlock,
-  pullGoogleSheetDocumentWithTokenBlock,
-  pushGoogleSheetDocumentBlock,
-  pushGoogleSheetDocumentWithTokenBlock,
-} from '@/services/lego_blocks/integrations/tableDocumentCodecBlock'
+import GoogleWorkspaceViewerBlock from '@/components/lego_blocks/integrations/GoogleWorkspaceViewerBlock'
 import type {
   TableCellAlign,
   TableCellFormatBlock,
@@ -33,7 +28,6 @@ import {
 } from '@/services/orchestrators/fileSystemOrch'
 import { resolveGoogleSheetOpenUrlBlock } from '@/services/lego_blocks/units/googleSheetTableCodecBlock'
 import {
-  getGoogleDriveAccessTokenOrch,
   readGoogleDriveAuthOrch,
   type GoogleDriveAuthStateOrch,
 } from '@/services/orchestrators/googleDriveAuthOrch'
@@ -89,8 +83,6 @@ function TableDocumentBlock({
   const [baseHash, setBaseHash] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [syncingPull, setSyncingPull] = useState(false)
-  const [syncingPush, setSyncingPush] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [renameError, setRenameError] = useState<string | null>(null)
@@ -467,7 +459,7 @@ function TableDocumentBlock({
     setSelection({ min: { row: 0, col: 0 }, max: { row: 0, col: 0 } })
   }, [applyDraftChange])
 
-  const updateGoogleMetadata = useCallback((key: 'spreadsheetId' | 'title' | 'openUrl' | 'sheetName' | 'range' | 'accessToken', value: string) => {
+  const updateGoogleMetadata = useCallback((key: 'spreadsheetId' | 'title' | 'openUrl' | 'sheetName' | 'range', value: string) => {
     applyDraftChange((current) => ({
       ...current,
       google: {
@@ -493,62 +485,6 @@ function TableDocumentBlock({
     setGooglePickerQuery('')
     setGooglePickerError(null)
   }, [applyDraftChange])
-
-  const handleGooglePull = useCallback(async () => {
-    if (!draft || draft.kind !== 'gsheet') return
-    setSyncingPull(true)
-    setSaveError(null)
-    try {
-      const connectedToken = await getGoogleDriveAccessTokenOrch().catch(() => null)
-      const manualToken = draft.google?.accessToken?.trim()
-      const token = connectedToken || manualToken || ''
-      if (!token) {
-        throw new Error('Connect Google in Settings > Google Docs and Sheets first, or provide an access token in Advanced settings.')
-      }
-      const updated = connectedToken
-        ? await pullGoogleSheetDocumentWithTokenBlock(draft, token)
-        : await pullGoogleSheetDocumentBlock(draft)
-      const persistedManualToken = manualToken || undefined
-      setDraft({
-        ...updated,
-        google: updated.google
-          ? {
-            ...updated.google,
-            accessToken: persistedManualToken,
-          }
-          : undefined,
-      })
-      setSuccessMessage('Pulled latest values from Google Sheets.')
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Google pull failed')
-    } finally {
-      setSyncingPull(false)
-    }
-  }, [draft])
-
-  const handleGooglePush = useCallback(async () => {
-    if (!draft || draft.kind !== 'gsheet') return
-    setSyncingPush(true)
-    setSaveError(null)
-    try {
-      const connectedToken = await getGoogleDriveAccessTokenOrch().catch(() => null)
-      const manualToken = draft.google?.accessToken?.trim()
-      const token = connectedToken || manualToken || ''
-      if (!token) {
-        throw new Error('Connect Google in Settings > Google Docs and Sheets first, or provide an access token in Advanced settings.')
-      }
-      if (connectedToken) {
-        await pushGoogleSheetDocumentWithTokenBlock(draft, token)
-      } else {
-        await pushGoogleSheetDocumentBlock(draft)
-      }
-      setSuccessMessage('Pushed values to Google Sheets.')
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Google push failed')
-    } finally {
-      setSyncingPush(false)
-    }
-  }, [draft])
 
   const handleSave = useCallback(async () => {
     if (!draft || baseMtime === null) return
@@ -670,7 +606,7 @@ function TableDocumentBlock({
                       setIsHeaderRenameActive(false)
                     }
                   }}
-                  disabled={renaming || saving || syncingPull || syncingPush}
+                  disabled={renaming || saving}
                   className="h-8 min-w-0 flex-1 border-0 bg-transparent px-0 text-sm font-medium outline-none focus:outline-none disabled:opacity-60"
                   aria-label="File name"
                 />
@@ -761,7 +697,7 @@ function TableDocumentBlock({
         </div>
       </div>
 
-      {isEditing && (
+      {isEditing && !isGoogleSheetDocument && (
         <Toolbar.Root
           aria-label="Table formatting toolbar"
           className="border-b border-border/40 bg-background px-5 py-2.5"
@@ -857,32 +793,34 @@ function TableDocumentBlock({
         </Toolbar.Root>
       )}
 
-      <div className="border-b border-border/30 bg-background px-5 py-2">
-        <div className="flex flex-wrap items-center gap-1">
-          {draft?.sheets.map((sheet) => (
-            <button
-              key={sheet.id}
-              type="button"
-              onClick={() => setActiveSheetBlock(sheet.id)}
-              className={cn(
-                'rounded px-2 py-1 text-xs',
-                draft.activeSheetId === sheet.id ? 'bg-primary text-primary-foreground' : 'border border-border/70 bg-background hover:bg-muted',
-              )}
-            >
-              {sheet.name}
-            </button>
-          ))}
-          {isEditing && (
-            <button
-              type="button"
-              onClick={addSheet}
-              className="inline-flex items-center gap-1 rounded border border-border/70 bg-background px-2 py-1 text-xs hover:bg-muted"
-            >
-              <Plus className="h-3.5 w-3.5" /> Sheet
-            </button>
-          )}
+      {!isGoogleSheetDocument && (
+        <div className="border-b border-border/30 bg-background px-5 py-2">
+          <div className="flex flex-wrap items-center gap-1">
+            {draft?.sheets.map((sheet) => (
+              <button
+                key={sheet.id}
+                type="button"
+                onClick={() => setActiveSheetBlock(sheet.id)}
+                className={cn(
+                  'rounded px-2 py-1 text-xs',
+                  draft.activeSheetId === sheet.id ? 'bg-primary text-primary-foreground' : 'border border-border/70 bg-background hover:bg-muted',
+                )}
+              >
+                {sheet.name}
+              </button>
+            ))}
+            {isEditing && (
+              <button
+                type="button"
+                onClick={addSheet}
+                className="inline-flex items-center gap-1 rounded border border-border/70 bg-background px-2 py-1 text-xs hover:bg-muted"
+              >
+                <Plus className="h-3.5 w-3.5" /> Sheet
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {isEditing && draft?.kind === 'gsheet' && (
         <div className="border-b border-border/40 bg-muted/10 px-5 py-2.5">
@@ -946,7 +884,7 @@ function TableDocumentBlock({
 
             {!hasGoogleConnection && (
               <div className="text-[11px] text-muted-foreground">
-                Connect Google in Settings {'>'} Google Docs and Sheets to browse Drive sheets and sync without storing OAuth tokens in this file.
+                Connect Google in Settings {'>'} Google Docs and Sheets only if you want Drive picker. Opening/editing sheets does not require OAuth setup here.
               </div>
             )}
           </div>
@@ -977,14 +915,6 @@ function TableDocumentBlock({
                 value={draft.google?.range || ''}
                 onChange={(event) => updateGoogleMetadata('range', event.target.value)}
               />
-              {!hasGoogleConnection && (
-                <input
-                  className="rounded border border-border/70 bg-background px-2 py-1.5 text-xs md:col-span-2"
-                  placeholder="Access Token (optional fallback)"
-                  value={draft.google?.accessToken || ''}
-                  onChange={(event) => updateGoogleMetadata('accessToken', event.target.value)}
-                />
-              )}
             </div>
           )}
 
@@ -993,35 +923,27 @@ function TableDocumentBlock({
               Google Drive vault detected. Advanced metadata fields are hidden by default.
             </div>
           )}
-
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => { void handleGooglePull() }}
-              disabled={syncingPull || syncingPush}
-              className="inline-flex items-center gap-1 rounded border border-border/70 bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <CloudDownload className="h-3.5 w-3.5" />
-              {syncingPull ? 'Pulling...' : 'Pull from Google'}
-            </button>
-            <button
-              type="button"
-              onClick={() => { void handleGooglePush() }}
-              disabled={syncingPush || syncingPull}
-              className="inline-flex items-center gap-1 rounded border border-border/70 bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <CloudUpload className="h-3.5 w-3.5" />
-              {syncingPush ? 'Pushing...' : 'Push to Google'}
-            </button>
-          </div>
         </div>
       )}
 
       <div className="min-h-0 flex-1 overflow-auto">
-        {formattedCellCssText && <style>{formattedCellCssText}</style>}
+        {!isGoogleSheetDocument && formattedCellCssText && <style>{formattedCellCssText}</style>}
         {loading && <div className="text-sm text-muted-foreground">Loading table...</div>}
         {error && <div className="text-sm text-destructive">{error}</div>}
-        {!loading && !error && activeSheet && (
+        {!loading && !error && isGoogleSheetDocument && !googleSheetOpenUrl && (
+          <div className="mx-5 mt-5 rounded-lg border border-border/60 bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
+            Add a spreadsheet ID or Google Sheets URL in edit settings to open this file in Google Sheets.
+          </div>
+        )}
+        {!loading && !error && isGoogleSheetDocument && googleSheetOpenUrl && (
+          <div className="h-full p-5">
+            <GoogleWorkspaceViewerBlock
+              title={`Google sheet ${filename}`}
+              url={googleSheetOpenUrl}
+            />
+          </div>
+        )}
+        {!loading && !error && !isGoogleSheetDocument && activeSheet && (
           <DataSheetGrid<GridRowBlock>
             className={gridScopeClass}
             value={gridRows}
