@@ -232,16 +232,12 @@ async function sendOpenSourceAiDirectBlock(
     const payload: Record<string, unknown> = {
       model: requestedModel,
       messages: messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-      ...(config.think
-        ? {}
-        : {
-          extra_body: {
-            chat_template_kwargs: {
-              enable_thinking: false,
-            },
-            enable_thinking: false,
-          },
-        }),
+      extra_body: {
+        chat_template_kwargs: {
+          enable_thinking: config.think,
+        },
+        enable_thinking: config.think,
+      },
     }
     response = await client.chat.completions.create(payload as never)
   } catch (error) {

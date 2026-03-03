@@ -528,14 +528,13 @@ def chat_opensource_ai_block(messages: list[dict], model: str | None = None, con
     payload = {
         "model": model,
         "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
-    }
-    if not think_enabled:
-        payload["extra_body"] = {
+        "extra_body": {
             "chat_template_kwargs": {
-                "enable_thinking": False,
+                "enable_thinking": think_enabled,
             },
-            "enable_thinking": False,
-        }
+            "enable_thinking": think_enabled,
+        },
+    }
     try:
         response = client.chat.completions.create(**payload)
     except Exception as exc:
