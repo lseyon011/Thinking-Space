@@ -379,6 +379,13 @@ function App() {
   )
   const showGoogleWorkspaceChromeControls = location.pathname === '/thinking-space'
     && thinkingSpaceGoogleWorkspaceChromeState.enabled
+  const isElectronDesktopSurface = layout.surface === 'electron' && layout.mode === 'desktop'
+  const isMacDesktopSurface = isElectronDesktopSurface
+    && typeof navigator !== 'undefined'
+    && /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform || navigator.userAgent || '')
+  const showLeftAlignedGoogleWorkspaceChromeControls = showGoogleWorkspaceChromeControls && isMacDesktopSurface
+  const showRightAlignedGoogleWorkspaceChromeControls = showGoogleWorkspaceChromeControls
+    && !showLeftAlignedGoogleWorkspaceChromeControls
   const canToggleGoogleWorkspaceHeader = showGoogleWorkspaceChromeControls
     && thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed
 
@@ -461,9 +468,13 @@ function App() {
   const iPhoneHandsetMode = phoneMode && (iPhoneMode || iPhoneUserAgent)
   const isCapacitorSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
   const showCapacitorTopChromeMenu = compactNav && !drawerOpen && isCapacitorSurface
+  const macTrafficLightOffsetPx = 72
+  const leftGoogleWorkspaceChromeControlsWidthPx = showLeftAlignedGoogleWorkspaceChromeControls
+    ? macTrafficLightOffsetPx + 76
+    : 0
   const topChromeLeftWidth = showCapacitorTopChromeMenu
     ? Math.max(phoneMode ? 42 : 96, topChromeMenuWidth)
-    : 0
+    : leftGoogleWorkspaceChromeControlsWidthPx
   const topChromeRightWidth = Math.max(phoneMode ? 86 : 120, syncToolsWidth)
   const topChromeBalancedWidth = Math.max(120, topChromeLeftWidth, topChromeRightWidth)
   const topChromePaddingLeft = phoneMode ? topChromeLeftWidth : topChromeBalancedWidth
@@ -520,7 +531,6 @@ function App() {
 
   useEffect(() => {
     if (typeof document === 'undefined') return
-    const isElectronDesktopSurface = layout.surface === 'electron' && layout.mode === 'desktop'
     if (!isElectronDesktopSurface) return
 
     const htmlElement = document.documentElement
@@ -539,7 +549,7 @@ function App() {
       bodyElement.style.backgroundColor = previousBodyBackground
       if (rootElement) rootElement.style.backgroundColor = previousRootBackground
     }
-  }, [layout.mode, layout.surface])
+  }, [isElectronDesktopSurface])
 
   const openCommandPalette = useCallback(() => {
     setCommandQuery('')
@@ -1314,6 +1324,37 @@ function App() {
                   </button>
                 </div>
               )}
+
+              {showLeftAlignedGoogleWorkspaceChromeControls && (
+                <div className="inline-flex items-center gap-2" style={{ marginLeft: `${macTrafficLightOffsetPx}px` }}>
+                  <button
+                    type="button"
+                    onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}
+                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                    aria-label={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
+                    title={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
+                  >
+                    {thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed
+                      ? <PanelLeft className="h-3.5 w-3.5" />
+                      : <PanelLeftClose className="h-3.5 w-3.5" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock}
+                    disabled={!canToggleGoogleWorkspaceHeader}
+                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-55"
+                    aria-label={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header'}
+                    title={canToggleGoogleWorkspaceHeader
+                      ? (thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header')
+                      : 'Collapse explorer to toggle document header'}
+                  >
+                    {thinkingSpaceGoogleWorkspaceChromeState.headerVisible
+                      ? <EyeOff className="h-3.5 w-3.5" />
+                      : <Eye className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              )}
             </div>
 
             <div
@@ -1340,7 +1381,7 @@ function App() {
               style={{ width: `${phoneMode ? topChromeRightWidth : topChromeBalancedWidth}px` }}
             >
               <div ref={syncToolsRef} className="inline-flex items-center gap-2">
-                {showGoogleWorkspaceChromeControls && (
+                {showRightAlignedGoogleWorkspaceChromeControls && (
                   <>
                     <button
                       type="button"
