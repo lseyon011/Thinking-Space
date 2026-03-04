@@ -1210,6 +1210,13 @@ ipcMain.handle('vault:reveal', async (_event, vaultRoot: string, relPath: string
   shell.showItemInFolder(full);
 });
 
+// -- Open path with default app --
+ipcMain.handle('vault:openPath', async (_event, vaultRoot: string, relPath: string) => {
+  const full = assertInsideVault(vaultRoot, relPath);
+  const openErr = await shell.openPath(full);
+  if (openErr) throw new Error(openErr);
+});
+
 // -- Git command --
 ipcMain.handle('vault:git', async (_event, vaultRoot: string, args: string[]) => {
   return new Promise<string>((resolve, reject) => {

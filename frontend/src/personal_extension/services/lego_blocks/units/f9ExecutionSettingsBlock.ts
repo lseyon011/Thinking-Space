@@ -4,7 +4,7 @@ export interface F9ExecutionSettingsBlock {
   executionFolderPath: string
 }
 
-export const DEFAULT_F9_EXECUTION_FOLDER_PATH_BLOCK = 'acceleration_core/F9/F9-execution'
+export const DEFAULT_F9_EXECUTION_FOLDER_PATH_BLOCK = ''
 
 const F9_RELATIVE_ROOT_HINTS_BLOCK = [
   'acceleration_core/',
@@ -44,7 +44,7 @@ function sanitizeExecutionFolderPathBlock(value: unknown): string {
   return withoutTrailing
 }
 
-function sanitizeSettingsBlock(
+export function normalizeF9ExecutionSettingsBlock(
   value: Partial<F9ExecutionSettingsBlock> | null | undefined,
 ): F9ExecutionSettingsBlock {
   return {
@@ -63,13 +63,13 @@ export function readF9ExecutionSettingsBlock(): F9ExecutionSettingsBlock {
     STORAGE_KEYS.f9ExecutionSettings,
     null,
   )
-  return sanitizeSettingsBlock(raw)
+  return normalizeF9ExecutionSettingsBlock(raw)
 }
 
 export function writeF9ExecutionSettingsBlock(
   settings: F9ExecutionSettingsBlock,
 ): F9ExecutionSettingsBlock {
-  const sanitized = sanitizeSettingsBlock(settings)
+  const sanitized = normalizeF9ExecutionSettingsBlock(settings)
   setJsonStorageItem(STORAGE_KEYS.f9ExecutionSettings, sanitized)
   return sanitized
 }

@@ -118,6 +118,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('vault:copy', vaultRoot, fromRelPath, toRelPath),
   revealPath: (vaultRoot: string, relPath: string) =>
     ipcRenderer.invoke('vault:reveal', vaultRoot, relPath),
+  openPath: (vaultRoot: string, relPath: string) =>
+    ipcRenderer.invoke('vault:openPath', vaultRoot, relPath),
 
   // Git (desktop-only)
   git: (vaultRoot: string, args: string[]) =>

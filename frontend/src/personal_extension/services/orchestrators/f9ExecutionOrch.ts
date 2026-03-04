@@ -27,12 +27,33 @@ export type {
   SyncF9ExecutionResultBlock,
 }
 
+async function readConfiguredExecutionFolderPathOrNullOrch(): Promise<string | null> {
+  const normalized = (await readF9ExecutionSettingsOrch()).executionFolderPath.trim()
+  return normalized || null
+}
+
+async function requireConfiguredExecutionFolderPathOrch(): Promise<string> {
+  const executionFolderPath = await readConfiguredExecutionFolderPathOrNullOrch()
+  if (executionFolderPath) return executionFolderPath
+  throw new Error('F9 execution folder path is not configured. Set it in Settings > F9 first.')
+}
+
 export async function syncF9ExecutionFromOverallOrch(
   snapshot: F9OverallSnapshotOrch,
 ): Promise<SyncF9ExecutionResultBlock> {
-  const settings = readF9ExecutionSettingsOrch()
+  const executionFolderPath = await readConfiguredExecutionFolderPathOrNullOrch()
+  if (!executionFolderPath) {
+    return {
+      executionRoot: '',
+      overallPath: '',
+      companyCount: 0,
+      positionCount: 0,
+      source: 'none',
+      warnings: [],
+    }
+  }
   return syncF9ExecutionStorageBlock({
-    executionFolderPath: settings.executionFolderPath,
+    executionFolderPath,
     fetchedAt: snapshot.fetchedAt,
     runtime: snapshot.runtime,
     selectedAccount: snapshot.selectedAccount,
@@ -44,31 +65,40 @@ export async function syncF9ExecutionFromOverallOrch(
 }
 
 export async function loadF9ExecutionOverviewOrch(): Promise<F9ExecutionOverviewBlock> {
-  const settings = readF9ExecutionSettingsOrch()
-  return readF9ExecutionOverviewBlock(settings.executionFolderPath)
+  const executionFolderPath = await readConfiguredExecutionFolderPathOrNullOrch()
+  if (!executionFolderPath) {
+    return {
+      executionRoot: '',
+      companyCount: 0,
+      positionCount: 0,
+      companies: [],
+    }
+  }
+  return readF9ExecutionOverviewBlock(executionFolderPath)
 }
 
 export async function loadF9OverallCacheOrch(): Promise<F9OverallCacheBlock | null> {
-  const settings = readF9ExecutionSettingsOrch()
-  return readF9OverallCacheBlock(settings.executionFolderPath)
+  const executionFolderPath = await readConfiguredExecutionFolderPathOrNullOrch()
+  if (!executionFolderPath) return null
+  return readF9OverallCacheBlock(executionFolderPath)
 }
 
 export async function loadF9PositionDetailOrch(
   companyTicker: string,
   fileName: string,
 ): Promise<F9PositionDetailBlock> {
-  const settings = readF9ExecutionSettingsOrch()
+  const executionFolderPath = await requireConfiguredExecutionFolderPathOrch()
   return readF9PositionDetailBlock({
-    executionFolderPath: settings.executionFolderPath,
+    executionFolderPath,
     companyTicker,
     fileName,
   })
 }
 
 export async function createF9CompanyOrch(companyTicker: string): Promise<F9CompanyOverviewBlock> {
-  const settings = readF9ExecutionSettingsOrch()
+  const executionFolderPath = await requireConfiguredExecutionFolderPathOrch()
   return createF9CompanyBlock({
-    executionFolderPath: settings.executionFolderPath,
+    executionFolderPath,
     companyTicker,
   })
 }
@@ -84,9 +114,9 @@ export async function createF9ManualPositionOrch(input: {
   linkedIdeaId?: string | null
   notes?: string
 }): Promise<F9PositionSummaryBlock> {
-  const settings = readF9ExecutionSettingsOrch()
+  const executionFolderPath = await requireConfiguredExecutionFolderPathOrch()
   return createF9ManualPositionBlock({
-    executionFolderPath: settings.executionFolderPath,
+    executionFolderPath,
     ...input,
   })
 }
@@ -108,9 +138,9 @@ export async function updateF9PositionOverlayOrch(input: {
   tags?: string[]
   projectPresetTags?: string[]
 }): Promise<F9PositionDetailBlock> {
-  const settings = readF9ExecutionSettingsOrch()
+  const executionFolderPath = await requireConfiguredExecutionFolderPathOrch()
   return updateF9PositionOverlayBlock({
-    executionFolderPath: settings.executionFolderPath,
+    executionFolderPath,
     ...input,
   })
 }
@@ -123,9 +153,9 @@ export async function updateF9CompanyOverlayOrch(input: {
   valuationNotePath?: string | null
   companyPdfReportPath?: string | null
 }): Promise<F9CompanyOverviewBlock> {
-  const settings = readF9ExecutionSettingsOrch()
+  const executionFolderPath = await requireConfiguredExecutionFolderPathOrch()
   return updateF9CompanyOverlayBlock({
-    executionFolderPath: settings.executionFolderPath,
+    executionFolderPath,
     ...input,
   })
 }
@@ -135,9 +165,9 @@ export async function saveF9PositionBodyOrch(input: {
   fileName: string
   body: string
 }): Promise<F9PositionDetailBlock> {
-  const settings = readF9ExecutionSettingsOrch()
+  const executionFolderPath = await requireConfiguredExecutionFolderPathOrch()
   return saveF9PositionBodyBlock({
-    executionFolderPath: settings.executionFolderPath,
+    executionFolderPath,
     ...input,
   })
 }

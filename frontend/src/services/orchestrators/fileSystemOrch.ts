@@ -993,6 +993,23 @@ export async function openVaultPathInSystemOrch(path: string): Promise<'finder' 
   throw new Error('Open in system file manager is available only on Electron and Capacitor')
 }
 
+export async function openVaultPathWithDefaultAppOrch(path: string): Promise<'app' | 'files'> {
+  const normalizedPath = normalizeRelPath(path)
+  if (!normalizedPath) throw new Error('Invalid path')
+
+  if (isElectron()) {
+    const api = window.electronAPI
+    if (!api?.openPath) throw new Error('Open with default app is unavailable in this desktop build')
+    await api.openPath(getElectronVaultRoot(), normalizedPath)
+    return 'app'
+  }
+  if (isCapacitorNative()) {
+    await openVaultPathInFilesOrch(normalizedPath)
+    return 'files'
+  }
+  throw new Error('Open with default app is available only on Electron and Capacitor')
+}
+
 export async function openExternalUrlOrch(url: string): Promise<void> {
   const normalized = url.trim()
   if (!/^https?:\/\//i.test(normalized)) {

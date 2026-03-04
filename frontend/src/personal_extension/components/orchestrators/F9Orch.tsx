@@ -103,6 +103,9 @@ export default function F9Orch() {
   const [hasConfig, setHasConfig] = useState(false)
   const [, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const executionRoot = executionOverview?.executionRoot?.trim()
+    ? executionOverview.executionRoot
+    : (executionSync?.executionRoot?.trim() ? executionSync.executionRoot : null)
 
   const activeCompany: F9CompanyOverviewBlock | null = executionOverview?.companies.find(
     (company) => company.companyTicker === activeCompanyTicker,
@@ -473,7 +476,7 @@ export default function F9Orch() {
       marketQuotes={snapshot?.marketQuotes ?? null}
       warnings={snapshot?.warnings ?? []}
       attempts={snapshot?.attempts ?? []}
-      executionRoot={executionOverview?.executionRoot ?? executionSync?.executionRoot ?? null}
+      executionRoot={executionRoot}
       executionCompanyCount={executionOverview?.companyCount ?? executionSync?.companyCount ?? 0}
       executionPositionCount={executionOverview?.positionCount ?? executionSync?.positionCount ?? 0}
       executionSyncSource={executionSync?.source ?? 'none'}

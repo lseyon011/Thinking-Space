@@ -108,6 +108,7 @@ interface ElectronAPI {
   deletePath?(vaultRoot: string, relPath: string, recursive?: boolean): Promise<void>
   copyPath?(vaultRoot: string, fromRelPath: string, toRelPath: string): Promise<void>
   revealPath?(vaultRoot: string, relPath: string): Promise<void>
+  openPath?(vaultRoot: string, relPath: string): Promise<void>
   git(vaultRoot: string, args: string[]): Promise<string>
   excalidrawPluginStatus(vaultRoot: string): Promise<import('@/services/lego_blocks/units/typesBlock').ExcalidrawPluginStatus>
   installLatestExcalidrawPlugin(vaultRoot: string): Promise<import('@/services/lego_blocks/units/typesBlock').ExcalidrawPluginStatus>

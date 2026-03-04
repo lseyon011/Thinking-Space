@@ -17,6 +17,7 @@ import {
 import {
   getOpenInSystemLabelOrch,
   openExternalUrlOrch,
+  openVaultPathWithDefaultAppOrch,
   openVaultPathInSystemOrch,
 } from '@/services/orchestrators/fileSystemOrch'
 import {
@@ -221,6 +222,13 @@ function GoogleDocDocumentBlock({
       setOpenInSystemError(err instanceof Error ? err.message : 'Failed to open file in system file manager')
     })
   }, [canOpenInSystem, openUrl, path])
+
+  const handleOpenDocxInWord = useCallback(() => {
+    setOpenInSystemError(null)
+    void openVaultPathWithDefaultAppOrch(path).catch((err) => {
+      setOpenInSystemError(err instanceof Error ? err.message : 'Failed to open DOCX in Word')
+    })
+  }, [path])
 
   const loadGoogleDocsPicker = useCallback(async (query: string) => {
     setPickerLoading(true)
@@ -616,8 +624,22 @@ function GoogleDocDocumentBlock({
         )}
 
         {!loading && !error && activeDocument?.isBinaryDocx && (
-          <div className="rounded-lg border border-border/60 bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
-            This DOCX file is binary and cannot be embedded directly. Use a `.gdoc` file (or DOCX metadata JSON) to map a Google Drive file ID for Google Docs editing.
+          <div className="flex h-full min-h-[220px] items-center justify-center">
+            <div className="w-full max-w-xl rounded-2xl border border-border/60 bg-muted/20 p-8 text-center">
+              <button
+                type="button"
+                onClick={handleOpenDocxInWord}
+                disabled={!canOpenInSystem}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-border/70 bg-background/95 px-5 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-background"
+                title={canOpenInSystem ? 'Open DOCX in Word' : 'Opening DOCX files directly is unavailable on web'}
+              >
+                <ExternalLink className="h-4 w-4" />
+                Open in Word
+              </button>
+              <p className="mt-4 text-sm text-muted-foreground">
+                This file type is not supported in-app right now. Please open it in your default app.
+              </p>
+            </div>
           </div>
         )}
 

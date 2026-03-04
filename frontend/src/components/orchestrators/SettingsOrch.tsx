@@ -86,12 +86,8 @@ export default function SettingsOrch({
   const [markdownEditorSettings, setMarkdownEditorSettings] = useState<MarkdownEditorSettingsBlock>(
     () => readMarkdownEditorSettingsOrch(),
   )
-  const [f9ExecutionFolderPathInput, setF9ExecutionFolderPathInput] = useState<string>(
-    () => readF9ExecutionSettingsOrch().executionFolderPath,
-  )
-  const [f9SavedExecutionFolderPath, setF9SavedExecutionFolderPath] = useState<string>(
-    () => readF9ExecutionSettingsOrch().executionFolderPath,
-  )
+  const [f9ExecutionFolderPathInput, setF9ExecutionFolderPathInput] = useState<string>('')
+  const [f9SavedExecutionFolderPath, setF9SavedExecutionFolderPath] = useState<string>('')
   const [f9WebullAppKeyInput, setF9WebullAppKeyInput] = useState('')
   const [f9WebullAppSecretInput, setF9WebullAppSecretInput] = useState('')
   const [f9WebullCredentialsConfigured, setF9WebullCredentialsConfigured] = useState(false)
@@ -155,6 +151,23 @@ export default function SettingsOrch({
     setExplorerFolderColorRulesDraft(explorerFolderColorRules)
     setExplorerRulesDirty(false)
   }, [explorerFolderColorRules])
+
+  useEffect(() => {
+    let cancelled = false
+    void readF9ExecutionSettingsOrch()
+      .then((settings) => {
+        if (cancelled) return
+        setF9ExecutionFolderPathInput(settings.executionFolderPath)
+        setF9SavedExecutionFolderPath(settings.executionFolderPath)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'Failed to load F9 settings')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const onSaveProfile = async () => {
     const normalizedName = profileNameInput.trim()
@@ -228,20 +241,18 @@ export default function SettingsOrch({
     writeMarkdownEditorSettingsOrch(nextSettings)
   }
 
-  const onSaveF9Settings = () => {
+  const onSaveF9Settings = async () => {
     const normalized = f9ExecutionFolderPathInput.trim()
-    if (!normalized) {
-      setError('F9 execution folder path cannot be empty.')
-      return
-    }
     setBusyAction('f9')
     setError(null)
     setMessage(null)
     try {
-      const saved = writeF9ExecutionSettingsOrch({ executionFolderPath: normalized })
+      const saved = await writeF9ExecutionSettingsOrch({ executionFolderPath: normalized })
       setF9ExecutionFolderPathInput(saved.executionFolderPath)
       setF9SavedExecutionFolderPath(saved.executionFolderPath)
-      setMessage('F9 execution folder path saved.')
+      setMessage(saved.executionFolderPath
+        ? 'F9 execution folder path saved.'
+        : 'F9 execution folder path cleared. Execution file sync is disabled until a path is set.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save F9 settings')
     } finally {
@@ -249,16 +260,16 @@ export default function SettingsOrch({
     }
   }
 
-  const onResetF9Settings = () => {
+  const onResetF9Settings = async () => {
     setBusyAction('f9')
     setError(null)
     setMessage(null)
     try {
       const defaults = getDefaultF9ExecutionSettingsOrch()
-      const saved = writeF9ExecutionSettingsOrch(defaults)
+      const saved = await writeF9ExecutionSettingsOrch(defaults)
       setF9ExecutionFolderPathInput(saved.executionFolderPath)
       setF9SavedExecutionFolderPath(saved.executionFolderPath)
-      setMessage('F9 execution folder path reset to default.')
+      setMessage('F9 execution folder path reset to default (not configured).')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reset F9 settings')
     } finally {
@@ -893,17 +904,20 @@ export default function SettingsOrch({
                 type="text"
                 value={f9ExecutionFolderPathInput}
                 onChange={(event) => setF9ExecutionFolderPathInput(event.target.value)}
-                placeholder="Absolute or Thinking Space-relative path"
+                placeholder="Optional. Leave blank to disable execution file sync."
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Current saved value: <span className="font-mono">{f9SavedExecutionFolderPath}</span>
+              Current saved value:{' '}
+              {f9SavedExecutionFolderPath
+                ? <span className="font-mono">{f9SavedExecutionFolderPath}</span>
+                : <span className="italic">Not configured</span>}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
-                onClick={onSaveF9Settings}
+                onClick={() => { void onSaveF9Settings() }}
                 disabled={busyAction === 'f9'}
               >
                 {busyAction === 'f9' ? 'Saving...' : 'Save F9 Path'}
@@ -911,7 +925,7 @@ export default function SettingsOrch({
               <Button
                 type="button"
                 variant="outline"
-                onClick={onResetF9Settings}
+                onClick={() => { void onResetF9Settings() }}
                 disabled={busyAction === 'f9'}
               >
                 Reset to Default
