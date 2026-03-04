@@ -1068,6 +1068,10 @@ ipcMain.handle('google:oauth:request', async (
 // -- Read file --
 ipcMain.handle('vault:read', async (_event, vaultRoot: string, relPath: string) => {
   const full = assertInsideVault(vaultRoot, relPath);
+  const stat = await fsPromises.stat(full);
+  if (stat.isDirectory()) {
+    throw new Error(`Path is a directory, expected a file: ${relPath}`);
+  }
   return fsPromises.readFile(full, 'utf-8');
 });
 
@@ -1081,6 +1085,10 @@ ipcMain.handle('vault:write', async (_event, vaultRoot: string, relPath: string,
 // -- Read bytes (base64) --
 ipcMain.handle('vault:readBytesBase64', async (_event, vaultRoot: string, relPath: string) => {
   const full = assertInsideVault(vaultRoot, relPath);
+  const stat = await fsPromises.stat(full);
+  if (stat.isDirectory()) {
+    throw new Error(`Path is a directory, expected a file: ${relPath}`);
+  }
   const bytes = await fsPromises.readFile(full);
   return bytes.toString('base64');
 });
@@ -1101,8 +1109,32 @@ ipcMain.handle('vault:list', async (_event, vaultRoot: string, relPath: string) 
   const folders: string[] = [];
   for (const e of entries) {
     if (e.name.startsWith('.') || EXCLUDED_DIRS.has(e.name)) continue;
-    if (e.isDirectory()) folders.push(e.name);
-    else files.push(e.name);
+    if (e.isDirectory()) {
+      folders.push(e.name);
+      continue;
+    }
+    if (e.isFile()) {
+      files.push(e.name);
+      continue;
+    }
+    if (e.isSymbolicLink()) {
+      try {
+        const targetStat = await fsPromises.stat(path.join(full, e.name));
+        if (targetStat.isDirectory()) folders.push(e.name);
+        else if (targetStat.isFile()) files.push(e.name);
+      } catch {
+        // skip broken symlink
+      }
+      continue;
+    }
+    // Fallback for unknown dirent types (Windows/junction edge cases).
+    try {
+      const targetStat = await fsPromises.stat(path.join(full, e.name));
+      if (targetStat.isDirectory()) folders.push(e.name);
+      else if (targetStat.isFile()) files.push(e.name);
+    } catch {
+      // skip unreadable entry
+    }
   }
   return { files, folders };
 });
@@ -1125,20 +1157,43 @@ ipcMain.handle('vault:walk', async (_event, vaultRoot: string, extensions: strin
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         await walk(full);
-      } else {
-        const ext = path.extname(entry.name).toLowerCase();
-        if (!extSet.has(ext)) continue;
+        continue;
+      }
+
+      if (!entry.isFile() && !entry.isSymbolicLink()) {
+        // Unknown dirent type; treat via stat best-effort.
         try {
           const st = await fsPromises.stat(full);
-          results.push({
-            path: path.relative(rootResolved, full),
-            size: st.size,
-            mtime: st.mtimeMs / 1000,
-            ctime: st.birthtimeMs / 1000,
-          });
+          if (st.isDirectory()) continue;
+          if (!st.isFile()) continue;
         } catch {
-          // skip unreadable files
+          continue;
         }
+      }
+
+      // Do not recurse into symlink directories to avoid potential loops.
+      if (entry.isSymbolicLink()) {
+        try {
+          const targetStat = await fsPromises.stat(full);
+          if (targetStat.isDirectory()) continue;
+        } catch {
+          continue;
+        }
+      }
+
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!extSet.has(ext)) continue;
+      try {
+        const st = await fsPromises.stat(full);
+        if (!st.isFile()) continue;
+        results.push({
+          path: path.relative(rootResolved, full),
+          size: st.size,
+          mtime: st.mtimeMs / 1000,
+          ctime: st.birthtimeMs / 1000,
+        });
+      } catch {
+        // skip unreadable files
       }
     }
   }

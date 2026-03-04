@@ -383,7 +383,7 @@ function App() {
   const isMacDesktopSurface = isElectronDesktopSurface
     && typeof navigator !== 'undefined'
     && /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform || navigator.userAgent || '')
-  const showLeftAlignedGoogleWorkspaceChromeControls = showGoogleWorkspaceChromeControls && isMacDesktopSurface
+  const showLeftAlignedGoogleWorkspaceChromeControls = showGoogleWorkspaceChromeControls && isElectronDesktopSurface
   const showRightAlignedGoogleWorkspaceChromeControls = showGoogleWorkspaceChromeControls
     && !showLeftAlignedGoogleWorkspaceChromeControls
   const canToggleGoogleWorkspaceHeader = showGoogleWorkspaceChromeControls
@@ -468,9 +468,9 @@ function App() {
   const iPhoneHandsetMode = phoneMode && (iPhoneMode || iPhoneUserAgent)
   const isCapacitorSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
   const showCapacitorTopChromeMenu = compactNav && !drawerOpen && isCapacitorSurface
-  const macTrafficLightOffsetPx = 72
+  const googleWorkspaceChromeLeftOffsetPx = isMacDesktopSurface ? 72 : 8
   const leftGoogleWorkspaceChromeControlsWidthPx = showLeftAlignedGoogleWorkspaceChromeControls
-    ? macTrafficLightOffsetPx + 76
+    ? googleWorkspaceChromeLeftOffsetPx + 76
     : 0
   const topChromeLeftWidth = showCapacitorTopChromeMenu
     ? Math.max(phoneMode ? 42 : 96, topChromeMenuWidth)
@@ -1326,7 +1326,7 @@ function App() {
               )}
 
               {showLeftAlignedGoogleWorkspaceChromeControls && (
-                <div className="inline-flex items-center gap-2" style={{ marginLeft: `${macTrafficLightOffsetPx}px` }}>
+                <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
                   <button
                     type="button"
                     onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}

@@ -136,6 +136,16 @@ export class ElectronCapacitorApp {
     };
   }
 
+  private shouldHideNativeMenuBar(): boolean {
+    return process.platform === 'win32';
+  }
+
+  private applyNativeMenuBarVisibility(targetWindow: BrowserWindow): void {
+    if (!this.shouldHideNativeMenuBar()) return;
+    targetWindow.setAutoHideMenuBar(true);
+    targetWindow.setMenuBarVisibility(false);
+  }
+
   /**
    * Preserve rounded-corner window chrome by avoiding restored maximized/fullscreen states.
    */
@@ -263,6 +273,7 @@ export class ElectronCapacitorApp {
       y: winState.y,
       width: winState.width,
       height: winState.height,
+      autoHideMenuBar: this.shouldHideNativeMenuBar(),
       ...this.getWindowChromeOptions(),
       webPreferences: {
         nodeIntegration: true,
@@ -274,6 +285,7 @@ export class ElectronCapacitorApp {
     winState.manage(newWindow);
     this.enforceRoundedRectangleWindow(newWindow);
     this.applyMacWindowButtonVisibility(newWindow);
+    this.applyNativeMenuBarVisibility(newWindow);
     this.attachNativeContextMenu(newWindow);
 
     if (this.CapacitorFileConfig.backgroundColor && this.shouldApplyConfiguredBackgroundColor()) {
@@ -331,6 +343,7 @@ export class ElectronCapacitorApp {
       y: this.mainWindowState.y,
       width: this.mainWindowState.width,
       height: this.mainWindowState.height,
+      autoHideMenuBar: this.shouldHideNativeMenuBar(),
       ...this.getWindowChromeOptions(),
       webPreferences: {
         nodeIntegration: true,
@@ -342,6 +355,7 @@ export class ElectronCapacitorApp {
     this.mainWindowState.manage(mainWindow);
     this.enforceRoundedRectangleWindow(mainWindow);
     this.applyMacWindowButtonVisibility(mainWindow);
+    this.applyNativeMenuBarVisibility(mainWindow);
     this.windows = [mainWindow];
     this.attachNativeContextMenu(mainWindow);
 
@@ -385,7 +399,11 @@ export class ElectronCapacitorApp {
     }
 
     // Setup the main menu bar at the top of our window.
-    Menu.setApplicationMenu(Menu.buildFromTemplate(this.AppMenuBarMenuTemplate));
+    if (this.shouldHideNativeMenuBar()) {
+      Menu.setApplicationMenu(null);
+    } else {
+      Menu.setApplicationMenu(Menu.buildFromTemplate(this.AppMenuBarMenuTemplate));
+    }
 
     // If the splashscreen is enabled, show it first while the main window loads then switch it out for the main window, or just load the main window from the start.
     if (this.CapacitorFileConfig.electron?.splashScreenEnabled) {

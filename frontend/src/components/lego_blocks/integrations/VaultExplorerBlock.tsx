@@ -103,6 +103,17 @@ function remapPathAfterMove(path: string, sourcePath: string, targetPath: string
   return suffix ? `${targetPath}/${suffix}` : targetPath
 }
 
+function collectRefreshPaths(path: string): string[] {
+  const trimmed = path.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  const chain = new Set<string>([''])
+  let current = trimmed
+  while (current) {
+    chain.add(current)
+    current = getParentPath(current)
+  }
+  return [...chain]
+}
+
 export default function VaultExplorerBlock({
   loadEntries,
   onOpenFile,
@@ -508,7 +519,10 @@ export default function VaultExplorerBlock({
           setPendingRename(null)
         }
         if (result !== false && typeof options?.refreshPath === 'string') {
-          void loadPath(options.refreshPath, true)
+          const refreshPaths = collectRefreshPaths(options.refreshPath)
+          for (const refreshPath of refreshPaths) {
+            void loadPath(refreshPath, true)
+          }
         } else if (options?.refresh && result !== false) {
           refreshRoot()
         }
@@ -1089,7 +1103,7 @@ export default function VaultExplorerBlock({
                     <div className="my-1 border-t border-border/70" />
                     <MenuItem
                       label="Delete Folder"
-                      onClick={() => { void runContextAction(onDeleteFolder ? () => onDeleteFolder(filePath) : undefined, { refreshPath: parentPath }) }}
+                      onClick={() => { void runContextAction(onDeleteFolder ? () => onDeleteFolder(filePath) : undefined, { refreshPath: getParentPath(filePath) }) }}
                       disabled={!onDeleteFolder}
                       destructive
                     />
