@@ -868,12 +868,356 @@ async function installOrUpdateExcalidrawPlugin(vaultRoot: string): Promise<Excal
   return getExcalidrawPluginStatus(vaultRoot);
 }
 
+function normalizeVaultTargetPath(targetPath: string): string {
+  if (typeof targetPath !== 'string' || targetPath.length === 0) return '.';
+  return targetPath.replace(/[\\/]+/g, path.sep);
+}
+
 function assertInsideVault(vaultRoot: string, targetPath: string): string {
-  const resolved = path.resolve(vaultRoot, targetPath);
-  if (!resolved.startsWith(path.resolve(vaultRoot))) {
+  const rootResolved = path.resolve(vaultRoot);
+  const normalizedTarget = normalizeVaultTargetPath(targetPath);
+  const resolved = path.resolve(rootResolved, normalizedTarget);
+  const relative = path.relative(rootResolved, resolved);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error('Path traversal detected');
   }
   return resolved;
+}
+
+const GOOGLE_SHORTCUT_EXTENSIONS = ['.gdoc', '.gdoc.json', '.gsheet', '.gsheet.json', '.gslides', '.gslides.json'];
+
+function isGoogleShortcutPathBlock(targetPath: string): boolean {
+  const lower = targetPath.toLowerCase();
+  return GOOGLE_SHORTCUT_EXTENSIONS.some(ext => lower.endsWith(ext));
+}
+
+function decodeTextFromBytesBlock(bytes: Buffer): string {
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return bytes.toString('utf8', 3);
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return bytes.toString('utf16le', 2);
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    const payload = bytes.subarray(2);
+    const swapped = Buffer.alloc(payload.length - (payload.length % 2));
+    for (let i = 0; i < swapped.length; i += 2) {
+      swapped[i] = payload[i + 1];
+      swapped[i + 1] = payload[i];
+    }
+    return swapped.toString('utf16le');
+  }
+  return bytes.toString('utf8');
+}
+
+function summarizeShellFallbackErrorBlock(raw: string): string {
+  return raw.replace(/\s+/g, ' ').trim().slice(0, 600);
+}
+
+function extractFirstUrlBlock(value: string): string | null {
+  const match = value.match(/https?:\/\/[^\s"'<>]+/i);
+  return match?.[0] ?? null;
+}
+
+function extractNamedGoogleIdFromTextBlock(value: string, fieldNames: string[]): string | null {
+  if (fieldNames.length === 0) return null;
+  const escapedNames = fieldNames.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const pattern = new RegExp(
+    `(?:${escapedNames})\\s*[:=]\\s*["']?(?:(?:document|spreadsheet|presentation|file)(?::|%3a|%253a))?([A-Za-z0-9_-]{10,})`,
+    'i',
+  );
+  const match = value.match(pattern);
+  if (match?.[1]) return match[1];
+  return null;
+}
+
+function extractGoogleDocIdFromTextBlock(value: string): string | null {
+  const byDocPath = value.match(/\/document\/d\/([A-Za-z0-9_-]{16,})/i);
+  if (byDocPath?.[1]) return byDocPath[1];
+  const byFilePath = value.match(/\/file\/d\/([A-Za-z0-9_-]{16,})/i);
+  if (byFilePath?.[1]) return byFilePath[1];
+  const byQuery = value.match(/[?&]id=([A-Za-z0-9_-]{16,})/i);
+  if (byQuery?.[1]) return byQuery[1];
+  const byResource = value.match(/\b(?:document|file)(?::|%3a|%253a)([A-Za-z0-9_-]{10,})\b/i);
+  if (byResource?.[1]) return byResource[1];
+  const byNamedField = extractNamedGoogleIdFromTextBlock(value, [
+    'doc_id',
+    'document_id',
+    'documentid',
+    'docid',
+    'resource_id',
+    'resourceid',
+    'file_id',
+    'fileid',
+  ]);
+  if (byNamedField) return byNamedField;
+  return null;
+}
+
+function extractGoogleSheetIdFromTextBlock(value: string): string | null {
+  const bySheetPath = value.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]{16,})/i);
+  if (bySheetPath?.[1]) return bySheetPath[1];
+  const byFilePath = value.match(/\/file\/d\/([A-Za-z0-9_-]{16,})/i);
+  if (byFilePath?.[1]) return byFilePath[1];
+  const byQuery = value.match(/[?&]id=([A-Za-z0-9_-]{16,})/i);
+  if (byQuery?.[1]) return byQuery[1];
+  const byResource = value.match(/\b(?:spreadsheet|file)(?::|%3a|%253a)([A-Za-z0-9_-]{10,})\b/i);
+  if (byResource?.[1]) return byResource[1];
+  const byNamedField = extractNamedGoogleIdFromTextBlock(value, [
+    'spreadsheet_id',
+    'spreadsheetid',
+    'sheet_id',
+    'sheetid',
+    'resource_id',
+    'resourceid',
+    'file_id',
+    'fileid',
+  ]);
+  if (byNamedField) return byNamedField;
+  return null;
+}
+
+function extractGoogleSlideIdFromTextBlock(value: string): string | null {
+  const byPresentationPath = value.match(/\/presentation\/d\/([A-Za-z0-9_-]{16,})/i);
+  if (byPresentationPath?.[1]) return byPresentationPath[1];
+  const byFilePath = value.match(/\/file\/d\/([A-Za-z0-9_-]{16,})/i);
+  if (byFilePath?.[1]) return byFilePath[1];
+  const byQuery = value.match(/[?&]id=([A-Za-z0-9_-]{16,})/i);
+  if (byQuery?.[1]) return byQuery[1];
+  const byResource = value.match(/\b(?:presentation|file)(?::|%3a|%253a)([A-Za-z0-9_-]{10,})\b/i);
+  if (byResource?.[1]) return byResource[1];
+  const byNamedField = extractNamedGoogleIdFromTextBlock(value, [
+    'presentation_id',
+    'presentationid',
+    'slide_id',
+    'slideid',
+    'resource_id',
+    'resourceid',
+    'file_id',
+    'fileid',
+  ]);
+  if (byNamedField) return byNamedField;
+  return null;
+}
+
+type GoogleShortcutKindBlock = 'doc' | 'sheet' | 'slides';
+
+function googleShortcutKindFromPathBlock(targetPath: string): GoogleShortcutKindBlock | null {
+  const lower = targetPath.toLowerCase();
+  if (lower.endsWith('.gdoc') || lower.endsWith('.gdoc.json')) return 'doc';
+  if (lower.endsWith('.gsheet') || lower.endsWith('.gsheet.json')) return 'sheet';
+  if (lower.endsWith('.gslides') || lower.endsWith('.gslides.json')) return 'slides';
+  return null;
+}
+
+function buildGoogleShortcutOpenUrlBlock(kind: GoogleShortcutKindBlock, id: string): string {
+  if (kind === 'sheet') return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/edit`;
+  if (kind === 'slides') return `https://docs.google.com/presentation/d/${encodeURIComponent(id)}/edit`;
+  return `https://docs.google.com/document/d/${encodeURIComponent(id)}/edit`;
+}
+
+function resolveGoogleShortcutUrlFromTextBlock(path: string, text: string): string | null {
+  const kind = googleShortcutKindFromPathBlock(path);
+  if (!kind) return null;
+  const candidates: string[] = [text];
+  for (let depth = 0; depth < 2; depth++) {
+    const prev = candidates[candidates.length - 1];
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(prev);
+    } catch {
+      break;
+    }
+    if (!decoded || decoded === prev) break;
+    candidates.push(decoded);
+  }
+  // Windows Shell metadata can include XML-escaped CRLF markers and escaped backslashes.
+  const normalizedCandidates = candidates.flatMap((value) => ([
+    value,
+    value.replace(/_x000D__x000A_/gi, '\n'),
+    value.replace(/\\u003a/gi, ':').replace(/\\x3a/gi, ':'),
+  ]));
+
+  for (const candidate of normalizedCandidates) {
+    const directUrl = extractFirstUrlBlock(candidate);
+    if (directUrl) return directUrl;
+    const id = kind === 'sheet'
+      ? extractGoogleSheetIdFromTextBlock(candidate)
+      : kind === 'slides'
+        ? extractGoogleSlideIdFromTextBlock(candidate)
+        : extractGoogleDocIdFromTextBlock(candidate);
+    if (id) return buildGoogleShortcutOpenUrlBlock(kind, id);
+  }
+
+  return null;
+}
+
+async function runPowershellEncodedCommandBlock(script: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const encodedCommand = Buffer.from(script, 'utf16le').toString('base64');
+  return new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+    const proc = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedCommand],
+      {
+        windowsHide: true,
+      },
+    );
+
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    proc.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    proc.on('error', reject);
+    proc.on('close', (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
+async function tryReadWindowsShortcutBytesBlock(fullPath: string): Promise<{ bytes: Buffer | null; debug: string }> {
+  if (process.platform !== 'win32') {
+    return { bytes: null, debug: 'skipped_non_windows' };
+  }
+  if (!isGoogleShortcutPathBlock(fullPath)) {
+    return { bytes: null, debug: 'skipped_non_google_shortcut_extension' };
+  }
+
+  const escapedPath = fullPath.replace(/'/g, "''");
+  const readBytesScript = [
+    '$ErrorActionPreference = "Stop"',
+    `$p = '${escapedPath}'`,
+    '$bytes = [System.IO.File]::ReadAllBytes($p)',
+    '[Console]::Out.Write([Convert]::ToBase64String($bytes))',
+  ].join('; ');
+  const readBytesResult = await runPowershellEncodedCommandBlock(readBytesScript).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    return { code: -1, stdout: '', stderr: message };
+  });
+
+  if (readBytesResult.code === 0) {
+    const base64 = readBytesResult.stdout.replace(/\s+/g, '');
+    if (base64.length === 0) {
+      return {
+        bytes: Buffer.alloc(0),
+        debug: 'powershell_ok_empty',
+      };
+    }
+    return {
+      bytes: Buffer.from(base64, 'base64'),
+      debug: 'powershell_ok',
+    };
+  }
+
+  const readBytesError = summarizeShellFallbackErrorBlock(readBytesResult.stderr || 'no stderr');
+  const metadataScript = [
+    '$ErrorActionPreference = "Stop"',
+    '$ProgressPreference = "SilentlyContinue"',
+    `$p = '${escapedPath}'`,
+    '$dir = [System.IO.Path]::GetDirectoryName($p)',
+    '$name = [System.IO.Path]::GetFileName($p)',
+    '$shell = New-Object -ComObject Shell.Application',
+    '$ns = $shell.Namespace($dir)',
+    'if ($null -eq $ns) { throw "shell namespace unavailable" }',
+    '$item = $ns.ParseName($name)',
+    'if ($null -eq $item) { throw "shell item unavailable" }',
+    '$values = New-Object System.Collections.Generic.List[string]',
+    "$keys = @('System.Link.TargetUrl', 'System.ItemUrl', 'System.Link.TargetParsingPath', 'System.Title', 'System.Comment', 'System.Subject', 'System.Keywords')",
+    'foreach ($key in $keys) {',
+    '  try { $value = $item.ExtendedProperty($key) } catch { $value = $null }',
+    '  if ($value -is [string] -and -not [string]::IsNullOrWhiteSpace($value)) { $values.Add("$key=$value") }',
+    '}',
+    'for ($i = 0; $i -lt 512; $i++) {',
+    '  try { $nameKey = $ns.GetDetailsOf($null, $i) } catch { $nameKey = $null }',
+    '  if (-not ($nameKey -is [string]) -or [string]::IsNullOrWhiteSpace($nameKey)) { continue }',
+    '  try { $value = $ns.GetDetailsOf($item, $i) } catch { $value = $null }',
+    '  if ($value -is [string] -and -not [string]::IsNullOrWhiteSpace($value)) { $values.Add("$nameKey=$value") }',
+    '}',
+    'if ($values.Count -eq 0) { throw "no metadata values" }',
+    '$payload = [string]::Join("`n", $values)',
+    '$bytes = [System.Text.Encoding]::UTF8.GetBytes($payload)',
+    '[Console]::Out.Write([Convert]::ToBase64String($bytes))',
+  ].join('; ');
+  const metadataResult = await runPowershellEncodedCommandBlock(metadataScript).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    return { code: -1, stdout: '', stderr: message };
+  });
+
+  if (metadataResult.code !== 0) {
+    const metadataError = summarizeShellFallbackErrorBlock(metadataResult.stderr || 'no stderr');
+    return {
+      bytes: null,
+      debug: `powershell_bytes_failed(code=${String(readBytesResult.code)}): ${readBytesError} | metadata_fallback_failed(code=${String(metadataResult.code)}): ${metadataError}`,
+    };
+  }
+
+  const metadataBase64 = metadataResult.stdout.replace(/\s+/g, '');
+  if (!metadataBase64) {
+    return {
+      bytes: null,
+      debug: `powershell_bytes_failed(code=${String(readBytesResult.code)}): ${readBytesError} | metadata_fallback_failed(code=0): empty_metadata_stdout`,
+    };
+  }
+  const metadataText = Buffer.from(metadataBase64, 'base64').toString('utf8');
+  const url = resolveGoogleShortcutUrlFromTextBlock(fullPath, metadataText);
+  if (!url) {
+    return {
+      bytes: null,
+      debug: `powershell_bytes_failed(code=${String(readBytesResult.code)}): ${readBytesError} | metadata_fallback_failed(code=0): no_google_url_from_metadata`,
+    };
+  }
+
+  const metadataPayload = JSON.stringify({
+    kind: 'google_doc',
+    url,
+    openUrl: url,
+  });
+  return {
+    bytes: Buffer.from(metadataPayload, 'utf8'),
+    debug: 'powershell_metadata_ok',
+  };
+}
+
+async function tryReadWindowsShortcutBytesNoThrowBlock(fullPath: string): Promise<{ bytes: Buffer | null; debug: string }> {
+  try {
+    return await tryReadWindowsShortcutBytesBlock(fullPath);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      bytes: null,
+      debug: `powershell_runner_exception: ${summarizeShellFallbackErrorBlock(message)}`,
+    };
+  }
+}
+
+async function resolveGoogleShortcutUrlForWindowsBlock(fullPath: string): Promise<{ url: string | null; debug: string }> {
+  if (process.platform !== 'win32') return { url: null, debug: 'skipped_non_windows' };
+  if (!isGoogleShortcutPathBlock(fullPath)) return { url: null, debug: 'skipped_non_google_shortcut_extension' };
+
+  try {
+    const text = await fsPromises.readFile(fullPath, 'utf-8');
+    const resolved = resolveGoogleShortcutUrlFromTextBlock(fullPath, text);
+    if (resolved) return { url: resolved, debug: 'resolved_from_readfile' };
+  } catch {
+    // fall through to Windows shortcut probing.
+  }
+
+  const shortcutRead = await tryReadWindowsShortcutBytesNoThrowBlock(fullPath);
+  if (shortcutRead.bytes) {
+    const text = decodeTextFromBytesBlock(shortcutRead.bytes);
+    const resolved = resolveGoogleShortcutUrlFromTextBlock(fullPath, text);
+    if (resolved) {
+      return {
+        url: resolved,
+        debug: `resolved_from_shortcut_probe:${shortcutRead.debug}`,
+      };
+    }
+  }
+  return {
+    url: null,
+    debug: `shortcut_probe_failed:${shortcutRead.debug}`,
+  };
 }
 
 // -- Capability adapter list --
@@ -1035,6 +1379,12 @@ ipcMain.handle('shell:openExternal', async (_event, url: string) => {
   await shell.openExternal(url.trim());
 });
 
+ipcMain.handle('vault:resolveGoogleShortcutUrl', async (_event, vaultRoot: string, relPath: string) => {
+  const full = assertInsideVault(vaultRoot, relPath);
+  const resolved = await resolveGoogleShortcutUrlForWindowsBlock(full);
+  return resolved;
+});
+
 ipcMain.handle('google:oauth:request', async (
   _event,
   payload: {
@@ -1072,7 +1422,29 @@ ipcMain.handle('vault:read', async (_event, vaultRoot: string, relPath: string) 
   if (stat.isDirectory()) {
     throw new Error(`Path is a directory, expected a file: ${relPath}`);
   }
-  return fsPromises.readFile(full, 'utf-8');
+  try {
+    return await fsPromises.readFile(full, 'utf-8');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    let shortcutFallback = 'not_attempted';
+    if (process.platform === 'win32' && isGoogleShortcutPathBlock(full)) {
+      const shortcutRead = await tryReadWindowsShortcutBytesNoThrowBlock(full);
+      shortcutFallback = shortcutRead.debug;
+      if (shortcutRead.bytes !== null) {
+        return decodeTextFromBytesBlock(shortcutRead.bytes);
+      }
+    }
+    let lstatSummary = 'unavailable';
+    try {
+      const lstat = await fsPromises.lstat(full);
+      lstatSummary = `isFile=${lstat.isFile()} isDirectory=${lstat.isDirectory()} isSymbolicLink=${lstat.isSymbolicLink()} mode=${lstat.mode}`;
+    } catch (lstatError) {
+      lstatSummary = `error=${lstatError instanceof Error ? lstatError.message : String(lstatError)}`;
+    }
+    throw new Error(
+      `Failed to read file "${relPath}" (resolved: "${full}"): ${message} | stat: isFile=${stat.isFile()} isDirectory=${stat.isDirectory()} mode=${stat.mode} | lstat: ${lstatSummary} | shortcut_fallback: ${shortcutFallback}`,
+    );
+  }
 });
 
 // -- Write file --
@@ -1089,8 +1461,30 @@ ipcMain.handle('vault:readBytesBase64', async (_event, vaultRoot: string, relPat
   if (stat.isDirectory()) {
     throw new Error(`Path is a directory, expected a file: ${relPath}`);
   }
-  const bytes = await fsPromises.readFile(full);
-  return bytes.toString('base64');
+  try {
+    const bytes = await fsPromises.readFile(full);
+    return bytes.toString('base64');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    let shortcutFallback = 'not_attempted';
+    if (process.platform === 'win32' && isGoogleShortcutPathBlock(full)) {
+      const shortcutRead = await tryReadWindowsShortcutBytesNoThrowBlock(full);
+      shortcutFallback = shortcutRead.debug;
+      if (shortcutRead.bytes !== null) {
+        return shortcutRead.bytes.toString('base64');
+      }
+    }
+    let lstatSummary = 'unavailable';
+    try {
+      const lstat = await fsPromises.lstat(full);
+      lstatSummary = `isFile=${lstat.isFile()} isDirectory=${lstat.isDirectory()} isSymbolicLink=${lstat.isSymbolicLink()} mode=${lstat.mode}`;
+    } catch (lstatError) {
+      lstatSummary = `error=${lstatError instanceof Error ? lstatError.message : String(lstatError)}`;
+    }
+    throw new Error(
+      `Failed to read bytes for "${relPath}" (resolved: "${full}"): ${message} | stat: isFile=${stat.isFile()} isDirectory=${stat.isDirectory()} mode=${stat.mode} | lstat: ${lstatSummary} | shortcut_fallback: ${shortcutFallback}`,
+    );
+  }
 });
 
 // -- Write bytes (base64) --
@@ -1104,7 +1498,29 @@ ipcMain.handle('vault:writeBytesBase64', async (_event, vaultRoot: string, relPa
 // -- List directory (returns { files, folders }) --
 ipcMain.handle('vault:list', async (_event, vaultRoot: string, relPath: string) => {
   const full = assertInsideVault(vaultRoot, relPath || '.');
-  const entries = await fsPromises.readdir(full, { withFileTypes: true });
+  let entries: fs.Dirent[];
+  try {
+    entries = await fsPromises.readdir(full, { withFileTypes: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    let statSummary = 'unavailable';
+    try {
+      const stat = await fsPromises.stat(full);
+      statSummary = `isFile=${stat.isFile()} isDirectory=${stat.isDirectory()} mode=${stat.mode}`;
+    } catch (statError) {
+      statSummary = `error=${statError instanceof Error ? statError.message : String(statError)}`;
+    }
+    let lstatSummary = 'unavailable';
+    try {
+      const lstat = await fsPromises.lstat(full);
+      lstatSummary = `isFile=${lstat.isFile()} isDirectory=${lstat.isDirectory()} isSymbolicLink=${lstat.isSymbolicLink()} mode=${lstat.mode}`;
+    } catch (lstatError) {
+      lstatSummary = `error=${lstatError instanceof Error ? lstatError.message : String(lstatError)}`;
+    }
+    throw new Error(
+      `Failed to list directory "${relPath}" (resolved: "${full}"): ${message} | stat: ${statSummary} | lstat: ${lstatSummary}`,
+    );
+  }
   const files: string[] = [];
   const folders: string[] = [];
   for (const e of entries) {

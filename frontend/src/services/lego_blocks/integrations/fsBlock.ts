@@ -54,6 +54,7 @@ function isAlreadyExistsFilesystemErrorBlock(error: unknown): boolean {
 
 interface ElectronAPI {
   isElectron: true
+  platform?: string
   capabilitiesList(): Promise<{
     ok: boolean
     capabilities?: Array<{ name: string; description: string; readOnly: boolean }>
@@ -85,6 +86,10 @@ interface ElectronAPI {
   }): Promise<unknown>
   selectVaultFolder(): Promise<string | null>
   openExternal?(url: string): Promise<void>
+  resolveGoogleShortcutUrl?(
+    vaultRoot: string,
+    relPath: string,
+  ): Promise<{ url: string | null; debug: string }>
   googleOauthRequest?(payload: {
     method: 'GET' | 'POST' | 'PUT'
     url: string

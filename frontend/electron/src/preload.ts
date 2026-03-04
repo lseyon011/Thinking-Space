@@ -32,6 +32,7 @@ function getPersistedVaultRootBlock(): string | null {
 
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
+  platform: process.platform,
 
   // Capability adapter management
   capabilitiesList: () =>
@@ -78,6 +79,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Vault folder picker dialog
   selectVaultFolder: () => ipcRenderer.invoke('vault:selectFolder'),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+  resolveGoogleShortcutUrl: (vaultRoot: string, relPath: string) =>
+    ipcRenderer.invoke('vault:resolveGoogleShortcutUrl', vaultRoot, relPath),
   googleOauthRequest: (payload: {
     method: 'GET' | 'POST' | 'PUT'
     url: string

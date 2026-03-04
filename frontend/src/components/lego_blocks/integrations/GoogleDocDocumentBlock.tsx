@@ -19,6 +19,7 @@ import {
   openExternalUrlOrch,
   openVaultPathWithDefaultAppOrch,
   openVaultPathInSystemOrch,
+  resolveGoogleShortcutUrlDetailsOrch,
 } from '@/services/orchestrators/fileSystemOrch'
 import {
   readGoogleDriveAuthOrch,
@@ -70,24 +71,80 @@ function GoogleDocDocumentBlock({
   const [pickerItems, setPickerItems] = useState<GoogleDriveFilePickerItemOrch[]>([])
   const [pickerLoading, setPickerLoading] = useState(false)
   const [pickerError, setPickerError] = useState<string | null>(null)
+  const [shortcutUrlOnlyMode, setShortcutUrlOnlyMode] = useState(false)
 
   const loadDocument = useCallback(async () => {
     setLoading(true)
     setError(null)
     setSaveError(null)
     setConflict(null)
+    const platform = window.electronAPI?.platform
+    const isWindowsElectron = Boolean(window.electronAPI?.isElectron) && (
+      platform === 'win32'
+      || (
+        platform !== 'darwin'
+        && platform !== 'linux'
+        && /windows|win32|win64/i.test(`${navigator.userAgent} ${navigator.platform}`)
+      )
+    )
+    const isGoogleShortcutPath = /\.(gdoc|gdoc\.json)$/i.test(path)
+
+    if (isWindowsElectron && isGoogleShortcutPath) {
+      const shortcutResolution = await resolveGoogleShortcutUrlDetailsOrch(path).catch((error) => ({
+        url: null,
+        debug: error instanceof Error ? error.message : String(error),
+      }))
+      if (shortcutResolution.url) {
+        const fallbackDocument: GoogleDocDocumentModelBlock = {
+          kind: 'gdoc',
+          isBinaryDocx: false,
+          descriptor: normalizeDescriptorBlock({
+            kind: 'google_doc',
+            title: path.split('/').pop() || 'Google Doc',
+            openUrl: shortcutResolution.url,
+            fileId: parseGoogleDocFileIdBlock(shortcutResolution.url) ?? undefined,
+          }),
+        }
+        setMode('view')
+        setDocument(fallbackDocument)
+        setDraft(fallbackDocument)
+        setBaseMtime(null)
+        setBaseHash(null)
+        setShortcutUrlOnlyMode(true)
+        setLoading(false)
+        return
+      }
+
+      setError(
+        [
+          'Could not resolve Google Docs URL from this Windows shortcut.',
+          `shortcut_probe_debug: ${shortcutResolution.debug}`,
+          'Use "Open in Default App" for this file.',
+        ].join('\n'),
+      )
+      setDocument(null)
+      setDraft(null)
+      setBaseMtime(null)
+      setBaseHash(null)
+      setShortcutUrlOnlyMode(true)
+      setLoading(false)
+      return
+    }
+
     try {
       const result = await readGoogleDocDocument(path)
       setDocument(result.document)
       setDraft(result.document)
       setBaseMtime(result.mtime)
       setBaseHash(result.hash)
+      setShortcutUrlOnlyMode(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load Google document')
       setDocument(null)
       setDraft(null)
       setBaseMtime(null)
       setBaseHash(null)
+      setShortcutUrlOnlyMode(false)
     } finally {
       setLoading(false)
     }
@@ -162,7 +219,11 @@ function GoogleDocDocumentBlock({
   }, [])
 
   const handleSave = useCallback(async () => {
-    if (!draft || baseMtime === null) return
+    if (!draft) return
+    if (baseMtime === null) {
+      setSaveError('This Windows shortcut is opened by URL only. Metadata editing is unavailable for this file.')
+      return
+    }
     if (draft.isBinaryDocx) {
       setSaveError('This DOCX file is binary. Add Google Doc metadata in a .gdoc file to edit in-app.')
       return
@@ -218,15 +279,15 @@ function GoogleDocDocumentBlock({
       return
     }
     if (!canOpenInSystem) return
-    void openVaultPathInSystemOrch(path).catch((err) => {
-      setOpenInSystemError(err instanceof Error ? err.message : 'Failed to open file in system file manager')
+    void openVaultPathWithDefaultAppOrch(path).catch((err) => {
+      setOpenInSystemError(err instanceof Error ? err.message : 'Failed to open file in default app')
     })
   }, [canOpenInSystem, openUrl, path])
 
-  const handleOpenDocxInWord = useCallback(() => {
+  const handleOpenInDefaultApp = useCallback(() => {
     setOpenInSystemError(null)
     void openVaultPathWithDefaultAppOrch(path).catch((err) => {
-      setOpenInSystemError(err instanceof Error ? err.message : 'Failed to open DOCX in Word')
+      setOpenInSystemError(err instanceof Error ? err.message : 'Failed to open file in default app')
     })
   }, [path])
 
@@ -306,7 +367,7 @@ function GoogleDocDocumentBlock({
             'flex shrink-0 items-center gap-1',
             isIosPhone && 'w-full min-w-0 flex-wrap justify-start gap-1.5',
           )}>
-            {!isEditing && (
+            {!isEditing && !shortcutUrlOnlyMode && (
               <button
                 type="button"
                 onClick={() => {
@@ -593,6 +654,12 @@ function GoogleDocDocumentBlock({
         </div>
       )}
 
+      {!loading && !error && shortcutUrlOnlyMode && (
+        <div className="mx-6 mt-3 rounded-lg border border-border/60 bg-muted/25 px-3 py-2 text-sm text-muted-foreground">
+          Opened via Windows shortcut URL resolution. In-app metadata editing is disabled for this file.
+        </div>
+      )}
+
       {conflict && (
         <div className="mx-6 mt-3">
           <button
@@ -620,7 +687,19 @@ function GoogleDocDocumentBlock({
         )}
 
         {!loading && error && (
-          <div className="text-sm text-destructive">{error}</div>
+          <div className="space-y-3">
+            <div className="whitespace-pre-wrap break-words text-sm text-destructive">{error}</div>
+            {canOpenInSystem && (
+              <button
+                type="button"
+                onClick={handleOpenInDefaultApp}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-border/70 bg-background/95 px-4 py-2 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Open in Default App
+              </button>
+            )}
+          </div>
         )}
 
         {!loading && !error && activeDocument?.isBinaryDocx && (
@@ -628,7 +707,7 @@ function GoogleDocDocumentBlock({
             <div className="w-full max-w-xl rounded-2xl border border-border/60 bg-muted/20 p-8 text-center">
               <button
                 type="button"
-                onClick={handleOpenDocxInWord}
+                onClick={handleOpenInDefaultApp}
                 disabled={!canOpenInSystem}
                 className="inline-flex items-center justify-center gap-2 rounded-full border border-border/70 bg-background/95 px-5 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-background"
                 title={canOpenInSystem ? 'Open DOCX in Word' : 'Opening DOCX files directly is unavailable on web'}

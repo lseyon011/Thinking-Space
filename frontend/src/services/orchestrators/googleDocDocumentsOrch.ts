@@ -3,8 +3,9 @@ import {
   decodeGoogleDocDocumentBlock,
   encodeGoogleDocDocumentBlock,
 } from '@/services/lego_blocks/integrations/googleDocDocumentCodecBlock'
+import { googleDocFileKindFromPathBlock } from '@/services/lego_blocks/units/googleDocDocumentPathBlock'
 import type { GoogleDocDocumentModelBlock } from '@/services/lego_blocks/units/googleDocDocumentSchemaBlock'
-import { bytesToUtf8Block } from '@/services/lego_blocks/units/byteEncodingBlock'
+import { bytesToUtf8Block, utf8ToBytesBlock } from '@/services/lego_blocks/units/byteEncodingBlock'
 
 function hashBytesBlock(bytes: Uint8Array): string {
   let hash = 0x811c9dc5
@@ -66,6 +67,286 @@ function isLikelyBinaryDocxBlock(path: string, bytes: Uint8Array): boolean {
     && bytes[3] === 0x04
 }
 
+function isDirectoryReadErrorBlock(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  const normalized = message.toLowerCase()
+  return normalized.includes('eisdir')
+    || normalized.includes('is a directory')
+    || normalized.includes('path is a directory')
+}
+
+function joinRelativePathBlock(parent: string, child: string): string {
+  const cleanParent = parent.replace(/\\/g, '/').replace(/\/+$/g, '')
+  const cleanChild = child.replace(/\\/g, '/').replace(/^\/+/g, '')
+  if (!cleanParent) return cleanChild
+  if (!cleanChild) return cleanParent
+  return `${cleanParent}/${cleanChild}`
+}
+
+function splitParentPathBlock(path: string): { parent: string; name: string } {
+  const normalized = path.replace(/\\/g, '/').replace(/\/+$/g, '')
+  const idx = normalized.lastIndexOf('/')
+  if (idx < 0) return { parent: '', name: normalized }
+  return {
+    parent: normalized.slice(0, idx),
+    name: normalized.slice(idx + 1),
+  }
+}
+
+function googleShortcutStemBlock(fileName: string): string {
+  const lower = fileName.toLowerCase()
+  if (lower.endsWith('.gdoc.json')) return fileName.slice(0, -10)
+  if (lower.endsWith('.gdoc')) return fileName.slice(0, -5)
+  const dot = fileName.lastIndexOf('.')
+  return dot > 0 ? fileName.slice(0, dot) : fileName
+}
+
+function scoreGoogleShortcutCandidateBlock(fileName: string): number {
+  const lower = fileName.toLowerCase()
+  if (lower.endsWith('.gdoc.json')) return 0
+  if (lower.endsWith('.gdoc')) return 1
+  if (lower.endsWith('.json')) return 2
+  if (lower.endsWith('.url')) return 3
+  if (lower.endsWith('.txt')) return 4
+  return 9
+}
+
+function summarizeErrorBlock(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error)
+  return raw.replace(/\s+/g, ' ').trim()
+}
+
+function formatListPreviewBlock(values: string[], maxItems = 12): string {
+  if (values.length === 0) return '(none)'
+  const head = values.slice(0, maxItems).join(', ')
+  const remaining = values.length - maxItems
+  return remaining > 0 ? `${head}, ... (+${remaining} more)` : head
+}
+
+function buildSiblingShortcutCandidateNamesBlock(fileName: string): string[] {
+  const names: string[] = []
+  const seen = new Set<string>()
+  const push = (value: string) => {
+    const next = value.trim()
+    if (!next) return
+    const key = next.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    names.push(next)
+  }
+
+  push(`${fileName}.json`)
+  push(`${fileName}.url`)
+  push(`${fileName}.txt`)
+
+  const lower = fileName.toLowerCase()
+  if (lower.endsWith('.gdoc.json')) {
+    const stem = fileName.slice(0, -10)
+    push(`${stem}.gdoc`)
+    push(`${stem}.json`)
+    push(`${stem}.url`)
+    push(`${stem}.txt`)
+    return names
+  }
+
+  if (lower.endsWith('.gdoc')) {
+    const stem = fileName.slice(0, -5)
+    push(`${stem}.gdoc.json`)
+    push(`${stem}.json`)
+    push(`${stem}.url`)
+    push(`${stem}.txt`)
+    return names
+  }
+
+  push(`${fileName}.gdoc.json`)
+  push(`${fileName}.gdoc`)
+  return names
+}
+
+async function readGoogleShortcutCandidatePathBlock(
+  requestPath: string,
+  candidatePath: string,
+): Promise<{ bytes: Uint8Array | null; debug: string }> {
+  const fs = getVaultFS()
+  try {
+    const text = await fs.read(candidatePath)
+    const decoded = decodeGoogleDocDocumentBlock(requestPath, { text, isBinaryDocx: false })
+    if (decoded.descriptor.fileId || decoded.descriptor.openUrl) {
+      return {
+        bytes: utf8ToBytesBlock(text),
+        debug: `resolved_from_candidate: ${candidatePath}`,
+      }
+    }
+    return {
+      bytes: null,
+      debug: `${candidatePath}: parsed_without_google_metadata`,
+    }
+  } catch (error) {
+    return {
+      bytes: null,
+      debug: `${candidatePath}: ${summarizeErrorBlock(error)}`,
+    }
+  }
+}
+
+async function readGoogleDocSiblingFallbackBytesBlock(path: string): Promise<{ bytes: Uint8Array | null; debug: string }> {
+  const fs = getVaultFS()
+  const { parent, name } = splitParentPathBlock(path)
+  const stem = googleShortcutStemBlock(name).toLowerCase()
+  const probePaths: string[] = []
+  const seenProbePaths = new Set<string>()
+  const addProbePath = (value: string) => {
+    const normalized = value.replace(/\\/g, '/').replace(/\/+$/g, '')
+    if (!normalized) return
+    const key = normalized.toLowerCase()
+    if (seenProbePaths.has(key)) return
+    seenProbePaths.add(key)
+    probePaths.push(normalized)
+  }
+
+  for (const candidateName of buildSiblingShortcutCandidateNamesBlock(name)) {
+    addProbePath(joinRelativePathBlock(parent, candidateName))
+  }
+
+  let parentListError: string | null = null
+  let parentListedFiles: string[] = []
+  try {
+    const listed = await fs.list(parent)
+    parentListedFiles = listed.files
+      .filter(fileName => {
+        if (!fileName || fileName.startsWith('.')) return false
+        const lowerName = fileName.toLowerCase()
+        if (lowerName === name.toLowerCase()) return false
+        const score = scoreGoogleShortcutCandidateBlock(fileName)
+        if (score >= 9) return false
+        const candidateStem = googleShortcutStemBlock(fileName).toLowerCase()
+        return candidateStem === stem
+          || candidateStem.startsWith(stem)
+          || stem.startsWith(candidateStem)
+      })
+      .sort((a, b) => {
+        const scoreDelta = scoreGoogleShortcutCandidateBlock(a) - scoreGoogleShortcutCandidateBlock(b)
+        if (scoreDelta !== 0) return scoreDelta
+        return a.localeCompare(b, undefined, { sensitivity: 'base' })
+      })
+    for (const fileName of parentListedFiles.slice(0, 24)) {
+      addProbePath(joinRelativePathBlock(parent, fileName))
+    }
+  } catch (error) {
+    parentListError = summarizeErrorBlock(error)
+  }
+
+  const probeResults: string[] = []
+  for (const candidatePath of probePaths.slice(0, 32)) {
+    const attempt = await readGoogleShortcutCandidatePathBlock(path, candidatePath)
+    if (attempt.bytes) {
+      return {
+        bytes: attempt.bytes,
+        debug: attempt.debug,
+      }
+    }
+    probeResults.push(attempt.debug)
+  }
+
+  return {
+    bytes: null,
+    debug: [
+      `sibling_candidate_paths(${probePaths.length}): ${formatListPreviewBlock(probePaths)}`,
+      `parent_match_files(${parentListedFiles.length}): ${formatListPreviewBlock(parentListedFiles)}`,
+      parentListError ? `parent_list_error: ${parentListError}` : null,
+      `probe_results(${probeResults.length}): ${formatListPreviewBlock(probeResults, 10)}`,
+    ].filter(Boolean).join('\n'),
+  }
+}
+
+async function readGoogleDocDirectoryFallbackBytesBlock(path: string): Promise<{ bytes: Uint8Array | null; debug: string }> {
+  const fs = getVaultFS()
+  let listed: { files: string[]; folders: string[] }
+  try {
+    listed = await fs.list(path)
+  } catch (error) {
+    return {
+      bytes: null,
+      debug: `list_error: ${summarizeErrorBlock(error)}`,
+    }
+  }
+
+  const candidates = [...listed.files]
+    .filter(name => !!name && !name.startsWith('.'))
+    .sort((a, b) => {
+      const scoreDelta = scoreGoogleShortcutCandidateBlock(a) - scoreGoogleShortcutCandidateBlock(b)
+      if (scoreDelta !== 0) return scoreDelta
+      return a.localeCompare(b, undefined, { sensitivity: 'base' })
+    })
+
+  const probeResults: string[] = []
+  for (const name of candidates.slice(0, 24)) {
+    const candidatePath = joinRelativePathBlock(path, name)
+    const attempt = await readGoogleShortcutCandidatePathBlock(path, candidatePath)
+    if (attempt.bytes) {
+      return {
+        bytes: attempt.bytes,
+        debug: attempt.debug,
+      }
+    }
+    probeResults.push(attempt.debug)
+  }
+
+  return {
+    bytes: null,
+    debug: [
+      `directory_files(${listed.files.length}): ${formatListPreviewBlock(listed.files)}`,
+      `directory_folders(${listed.folders.length}): ${formatListPreviewBlock(listed.folders)}`,
+      `probe_results(${probeResults.length}): ${formatListPreviewBlock(probeResults, 10)}`,
+    ].join('\n'),
+  }
+}
+
+async function readGoogleDocProxyFallbackBytesBlock(path: string): Promise<{ bytes: Uint8Array | null; debug: string }> {
+  const siblingFallback = await readGoogleDocSiblingFallbackBytesBlock(path)
+  if (siblingFallback.bytes) return siblingFallback
+
+  const directoryFallback = await readGoogleDocDirectoryFallbackBytesBlock(path)
+  if (directoryFallback.bytes) return directoryFallback
+
+  return {
+    bytes: null,
+    debug: [
+      siblingFallback.debug,
+      directoryFallback.debug,
+    ].join('\n'),
+  }
+}
+
+async function readGoogleDocTextBytesBlock(path: string, allowDirectoryFallback: boolean): Promise<Uint8Array> {
+  const fs = getVaultFS()
+  try {
+    return utf8ToBytesBlock(await fs.read(path))
+  } catch (error) {
+    if (!isDirectoryReadErrorBlock(error)) throw error
+    const readError = summarizeErrorBlock(error)
+    if (!allowDirectoryFallback) {
+      throw new Error(
+        [
+          `Google shortcut directory-proxy detected for "${path}".`,
+          `read_error: ${readError}`,
+          'Editing is disabled for this representation. Open it in your default app.',
+        ].join('\n'),
+      )
+    }
+    const fallback = await readGoogleDocProxyFallbackBytesBlock(path)
+    if (fallback.bytes) return fallback.bytes
+    throw new Error(
+      [
+        `Google shortcut directory-proxy detected for "${path}".`,
+        `read_error: ${readError}`,
+        fallback.debug,
+        'Could not parse this shortcut in-app. Open it in your default app.',
+      ].join('\n'),
+    )
+  }
+}
+
 export class GoogleDocDocumentConflictError extends Error {
   readonly code = 'GOOGLE_DOC_DOCUMENT_CONFLICT'
   readonly currentMtime: number
@@ -91,8 +372,11 @@ export async function readGoogleDocDocument(path: string): Promise<{
 }> {
   const fs = getVaultFS()
   const stat = await fs.stat(path)
-  const bytes = await fs.readBytes(path)
-  const isBinaryDocx = isLikelyBinaryDocxBlock(path, bytes)
+  const fileKind = googleDocFileKindFromPathBlock(path)
+  const bytes = fileKind === 'docx'
+    ? await fs.readBytes(path)
+    : await readGoogleDocTextBytesBlock(path, true)
+  const isBinaryDocx = fileKind === 'docx' && isLikelyBinaryDocxBlock(path, bytes)
   return {
     path,
     document: decodeGoogleDocDocumentBlock(path, {
@@ -118,7 +402,10 @@ export async function saveGoogleDocDocument(params: {
 
   const fs = getVaultFS()
   const currentStat = await fs.stat(params.path)
-  const currentBytes = await fs.readBytes(params.path)
+  const fileKind = googleDocFileKindFromPathBlock(params.path)
+  const currentBytes = fileKind === 'docx'
+    ? await fs.readBytes(params.path)
+    : await readGoogleDocTextBytesBlock(params.path, false)
   const currentHash = hashBytesBlock(currentBytes)
   const mtimeChanged = currentStat.mtime !== params.baseMtime
   const hashProvided = typeof params.baseHash === 'string' && params.baseHash.length > 0

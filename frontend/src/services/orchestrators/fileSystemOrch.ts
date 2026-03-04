@@ -1027,6 +1027,34 @@ export async function openExternalUrlOrch(url: string): Promise<void> {
   window.open(normalized, '_blank', 'noopener,noreferrer')
 }
 
+function isWindowsElectronRuntimeBlock(): boolean {
+  if (!isElectron()) return false
+  const platform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined
+  if (platform === 'win32') return true
+  if (platform === 'darwin' || platform === 'linux') return false
+  if (typeof navigator === 'undefined') return false
+  return /windows|win32|win64/i.test(`${navigator.userAgent} ${navigator.platform}`)
+}
+
+export async function resolveGoogleShortcutUrlOrch(path: string): Promise<string | null> {
+  const result = await resolveGoogleShortcutUrlDetailsOrch(path)
+  return result.url
+}
+
+export async function resolveGoogleShortcutUrlDetailsOrch(path: string): Promise<{ url: string | null; debug: string }> {
+  if (!isWindowsElectronRuntimeBlock()) return { url: null, debug: 'skipped_non_windows' }
+  const api = window.electronAPI
+  if (!api?.resolveGoogleShortcutUrl) return { url: null, debug: 'electron_api_unavailable' }
+  const normalizedPath = normalizeRelPath(path)
+  if (!normalizedPath) return { url: null, debug: 'invalid_path' }
+  const result = await api.resolveGoogleShortcutUrl(getElectronVaultRoot(), normalizedPath)
+  const url = typeof result?.url === 'string' ? result.url.trim() : ''
+  return {
+    url: url || null,
+    debug: typeof result?.debug === 'string' ? result.debug : 'no_debug',
+  }
+}
+
 export function buildThinkingSpaceFileUrlOrch(path: string): string {
   const normalizedPath = normalizeRelPath(path)
   const encodedPath = encodeURIComponent(normalizedPath)
