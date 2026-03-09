@@ -257,6 +257,7 @@ function MarkdownTextDocumentRuntimeBlock({
   const manualSaveFeedbackTimeoutRef = useRef<number | null>(null)
   const excalidrawSceneRef = useRef<ParsedExcalidrawScene | null>(null)
   const excalidrawApiRef = useRef<ExcalidrawCanvasApiOrch | null>(null)
+  const persistedExcalidrawContentRef = useRef<string | null>(null)
   const ignoreInitialExcalidrawChangeRef = useRef(true)
   const [hasExcalidrawChanges, setHasExcalidrawChanges] = useState(false)
   const [excalidrawImmersive, setExcalidrawImmersive] = useState(false)
@@ -280,6 +281,7 @@ function MarkdownTextDocumentRuntimeBlock({
     ignoreInitialExcalidrawChangeRef.current = true
     try {
       const data = await readMarkdownDocument(path, { includeHash: false })
+      persistedExcalidrawContentRef.current = data.content
       setContent(data.content)
       setDraft(seedDraft && !isExcalidrawDoc ? data.content : '')
       setBaseMtime(data.mtime)
@@ -287,6 +289,7 @@ function MarkdownTextDocumentRuntimeBlock({
       setBaseHash(data.hash)
       setSizeBytes(data.size)
     } catch (err) {
+      persistedExcalidrawContentRef.current = null
       setError(err instanceof Error ? err.message : 'Failed to load file')
       setContent(null)
       setDraft('')
@@ -735,6 +738,13 @@ function MarkdownTextDocumentRuntimeBlock({
   }
 
   const cancelEditing = () => {
+    if (isExcalidrawDoc) {
+      const persistedContent = persistedExcalidrawContentRef.current
+      if (typeof persistedContent === 'string') {
+        setContent(persistedContent)
+      }
+      setDraft('')
+    }
     setMode('view')
     setSaveError(null)
     setConflict(null)
@@ -752,6 +762,7 @@ function MarkdownTextDocumentRuntimeBlock({
 
   const useLatestConflictVersion = () => {
     if (!conflict) return
+    persistedExcalidrawContentRef.current = conflict.currentContent
     setContent(conflict.currentContent)
     setDraft(isExcalidrawDoc ? '' : conflict.currentContent)
     setBaseMtime(conflict.currentMtime)
@@ -810,9 +821,10 @@ function MarkdownTextDocumentRuntimeBlock({
   }, [baseHash, baseMtime, content, draft, isExcalidrawDoc, onSaved, path])
 
   const saveExcalidrawDraft = useCallback(async (
-    options?: { exitEditMode?: boolean },
+    options?: { exitEditMode?: boolean; notifySaved?: boolean },
   ): Promise<boolean> => {
     if (!isExcalidrawDoc || content === null || baseMtime === null) return false
+    const persistedContent = persistedExcalidrawContentRef.current ?? content
 
     const sceneForSave = excalidrawSceneRef.current ?? (() => {
       const api = excalidrawApiRef.current
@@ -830,9 +842,9 @@ function MarkdownTextDocumentRuntimeBlock({
 
     try {
       await yieldToNextFrame()
-      const contentToSave = serializeExcalidrawSceneOrch(content, sceneForSave)
+      const contentToSave = serializeExcalidrawSceneOrch(persistedContent, sceneForSave)
       excalidrawSceneRef.current = sceneForSave
-      if (contentToSave === content) {
+      if (contentToSave === persistedContent) {
         setHasExcalidrawChanges(false)
         return true
       }
@@ -842,22 +854,25 @@ function MarkdownTextDocumentRuntimeBlock({
         content: contentToSave,
         baseMtime,
         baseHash,
-        baseContent: content,
+        baseContent: persistedContent,
       })
-      setContent(contentToSave)
-      setDraft('')
+      persistedExcalidrawContentRef.current = contentToSave
       setBaseMtime(result.mtime)
       setBaseCtime(result.ctime)
       setBaseHash(result.hash)
       setSizeBytes(result.size)
       setHasExcalidrawChanges(false)
       if (options?.exitEditMode) {
+        setContent(contentToSave)
+        setDraft('')
         setMode('view')
         setExcalidrawImmersive(false)
         excalidrawSceneRef.current = null
         ignoreInitialExcalidrawChangeRef.current = true
       }
-      onSaved?.(result)
+      if (options?.notifySaved) {
+        onSaved?.(result)
+      }
       return true
     } catch (err) {
       if (err instanceof MarkdownDocumentConflictError) {
@@ -887,7 +902,7 @@ function MarkdownTextDocumentRuntimeBlock({
     setConflict(null)
 
     try {
-      didSave = await saveExcalidrawDraft({ exitEditMode: true })
+      didSave = await saveExcalidrawDraft({ exitEditMode: true, notifySaved: true })
     } finally {
       setSaving(false)
     }
@@ -953,35 +968,6 @@ function MarkdownTextDocumentRuntimeBlock({
     saveMarkdownDraft,
     saving,
     autoSaving,
-  ])
-
-  useEffect(() => {
-    if (!autoSaveEnabled) return
-    if (!isEditing || !isExcalidrawDoc || loading || error || baseMtime === null) return
-    if (!hasExcalidrawChanges || saving || autoSaving || conflict) return
-
-    const timeoutId = window.setTimeout(() => {
-      setAutoSaving(true)
-      void saveExcalidrawDraft().finally(() => {
-        setAutoSaving(false)
-      })
-    }, 900)
-
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [
-    autoSaveEnabled,
-    autoSaving,
-    baseMtime,
-    conflict,
-    error,
-    hasExcalidrawChanges,
-    isEditing,
-    isExcalidrawDoc,
-    loading,
-    saveExcalidrawDraft,
-    saving,
   ])
 
   const toggleTopBarHiddenInViewMode = useCallback(() => {
@@ -1112,7 +1098,7 @@ function MarkdownTextDocumentRuntimeBlock({
                   </button>
                 )}
 
-                {isEditing && (
+                {isEditing && !isExcalidrawDoc && (
                   <>
                     <button
                       type="button"
@@ -1156,7 +1142,7 @@ function MarkdownTextDocumentRuntimeBlock({
                 {isEditing && isExcalidrawDoc && (
                   <>
                     <span className="hidden px-1 text-xs text-muted-foreground md:inline">
-                      {autoSaving && !saving ? 'Auto-saving…' : hasChanges ? 'Unsaved changes' : 'No changes'}
+                      {hasChanges ? 'Unsaved changes' : 'No changes'}
                     </span>
                     <button
                       type="button"
@@ -1361,9 +1347,6 @@ function MarkdownTextDocumentRuntimeBlock({
               onOpenPath={openLinkedPath}
               className="h-[52vh] sm:h-[60vh] lg:h-[72vh]"
             />
-            {autoSaving && !saving && (
-              <div className="text-xs text-muted-foreground">Auto-saving…</div>
-            )}
             {saveError && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {saveError}
@@ -1391,7 +1374,7 @@ function MarkdownTextDocumentRuntimeBlock({
               }}
             >
               <span className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Excalidraw Focus Mode {autoSaving && !saving ? '· Auto-saving…' : hasChanges ? '· Unsaved changes' : '· Saved'}
+                Excalidraw Focus Mode {hasChanges ? '· Unsaved changes' : '· Saved'}
               </span>
               <div className="flex flex-wrap items-center justify-end gap-1.5" style={isElectronSurface ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
                 <button

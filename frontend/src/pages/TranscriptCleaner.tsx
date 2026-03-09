@@ -3,11 +3,9 @@ import { FileText, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/lego_blocks/units/ui/card'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import SearchDropdown from '@/components/lego_blocks/integrations/SearchDropdownBlock'
-import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
 import type { CleanResult } from '@/services/lego_blocks/units/typesBlock'
-import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
-
-const TRANSCRIPT_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.tools.transcript' }
+import { listFolders } from '@/services/orchestrators/fileSystemOrch'
+import { cleanAndSave, previewTranscript } from '@/services/orchestrators/transcriptCleanerOrch'
 
 export default function TranscriptCleaner() {
   const [transcriptText, setTranscriptText] = useState('')
@@ -22,12 +20,8 @@ export default function TranscriptCleaner() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    invokeCapabilityOrThrow({
-      capability: 'tools.folders.list',
-      input: { limit: 1000 },
-      actor: TRANSCRIPT_ACTOR,
-    })
-      .then(({ folders }) => setFolders(folders))
+    listFolders(1000)
+      .then((nextFolders) => setFolders(nextFolders))
       .catch(err => setError(err.message))
   }, [])
 
@@ -37,17 +31,13 @@ export default function TranscriptCleaner() {
       return
     }
 
-    invokeCapabilityOrThrow({
-      capability: 'tools.transcript.preview',
-      input: {
-        inputText: transcriptText,
-        headingsText,
-        options: { heading_level: 2 },
-      },
-      actor: TRANSCRIPT_ACTOR,
-    })
-      .then(({ result }) => setPreview(result))
-      .catch(err => setError(err instanceof Error ? err.message : 'Unknown error'))
+    try {
+      const result = previewTranscript(transcriptText, headingsText, { heading_level: 2 })
+      setPreview(result)
+      setError(result.success ? null : result.message)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error')
+    }
   }, [transcriptText, headingsText])
 
   const handleSave = async () => {
@@ -55,19 +45,16 @@ export default function TranscriptCleaner() {
     setSaving(true)
     setError(null)
     try {
-      const { result } = await invokeCapabilityOrThrow({
-        capability: 'tools.transcript.clean_save',
-        input: {
-          input_text: transcriptText,
-          headings_text: headingsText,
-          output_folder: outputName,
-          output_name: outputName,
-          base_folder: (selectedFolder || folderInput).trim() || null,
-          options: { heading_level: 2 },
-        },
-        actor: TRANSCRIPT_ACTOR,
+      const result = await cleanAndSave({
+        input_text: transcriptText,
+        headings_text: headingsText,
+        output_folder: outputName,
+        output_name: outputName,
+        base_folder: (selectedFolder || folderInput).trim() || null,
+        options: { heading_level: 2 },
       })
       setPreview(result)
+      setError(result.success ? null : result.message)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
