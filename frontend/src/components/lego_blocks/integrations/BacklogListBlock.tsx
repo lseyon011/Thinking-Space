@@ -45,6 +45,44 @@ interface BacklogRelatedNodeOptionBlock {
   summary?: string
 }
 
+export function shouldRequestBacklogChildrenLoadBlock(state: ChildStateBlock | undefined): boolean {
+  return !state?.loading && !state?.loaded
+}
+
+export function collectProgramsNeedingLoadBlock(
+  programs: NodeRecord[],
+  childrenByNode: Record<string, ChildStateBlock>,
+): NodeRecord[] {
+  return programs.filter(program => shouldRequestBacklogChildrenLoadBlock(childrenByNode[program.uuid]))
+}
+
+export function collectExpandedBacklogNodesNeedingLoadBlock(
+  programs: NodeRecord[],
+  childrenByNode: Record<string, ChildStateBlock>,
+  expandedNodes: Record<string, boolean>,
+): NodeRecord[] {
+  const queue = [...programs]
+  const seen = new Set<string>()
+  const nodes: NodeRecord[] = []
+
+  while (queue.length > 0) {
+    const node = queue.shift()
+    if (!node || seen.has(node.uuid)) continue
+    seen.add(node.uuid)
+
+    if (node.type !== 'program' && expandedNodes[node.uuid] && shouldRequestBacklogChildrenLoadBlock(childrenByNode[node.uuid])) {
+      nodes.push(node)
+      continue
+    }
+
+    const childState = childrenByNode[node.uuid]
+    if (!childState?.loaded) continue
+    queue.push(...childState.nodes)
+  }
+
+  return nodes
+}
+
 function normalizeRelatedNodePathsBlock(paths: string[] | undefined): string[] {
   if (!paths || paths.length === 0) return []
   const seen = new Set<string>()
@@ -217,6 +255,9 @@ export default function BacklogListBlock({
   const [internalProgramLayoutEditMode, setInternalProgramLayoutEditMode] = useState(false)
   const [programGroupDraft, setProgramGroupDraft] = useState('')
   const newRowHighlightTimeoutByNodeRef = useRef<Record<string, number>>({})
+  const childrenByNodeRef = useRef<Record<string, ChildStateBlock>>({})
+  const pendingChildLoadIdsRef = useRef<Set<string>>(new Set())
+  const childLoadGenerationRef = useRef(0)
   const rootCreateTitleInputRef = useRef<HTMLInputElement | null>(null)
   const prevFocusRootCreateRequestNonceRef = useRef(0)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -277,14 +318,31 @@ export default function BacklogListBlock({
     }
   }, [programGroups, programs, resolvedProgramGroupIdByProgram])
 
+  const programsNeedingLoad = useMemo(
+    () => collectProgramsNeedingLoadBlock(programs, childrenByNode),
+    [childrenByNode, programs],
+  )
+  const expandedNodesNeedingLoad = useMemo(
+    () => collectExpandedBacklogNodesNeedingLoadBlock(programs, childrenByNode, expandedNodes),
+    [childrenByNode, expandedNodes, programs],
+  )
+
+  useEffect(() => {
+    childrenByNodeRef.current = childrenByNode
+  }, [childrenByNode])
+
   useEffect(() => {
     // Child lists are locally cached; clear them when upstream program data refreshes
     // so externally-created organizer nodes become visible without stale tree state.
+    childLoadGenerationRef.current += 1
+    pendingChildLoadIdsRef.current.clear()
     setChildrenByNode({})
     setExpandedNodes({})
   }, [programFingerprint])
 
   useEffect(() => {
+    childLoadGenerationRef.current += 1
+    pendingChildLoadIdsRef.current.clear()
     setChildrenByNode({})
   }, [treeRevision])
 
@@ -299,6 +357,7 @@ export default function BacklogListBlock({
   }, [rowDetailsRenderer])
 
   useEffect(() => () => {
+    pendingChildLoadIdsRef.current.clear()
     for (const timeoutId of Object.values(newRowHighlightTimeoutByNodeRef.current)) {
       window.clearTimeout(timeoutId)
     }
@@ -324,71 +383,110 @@ export default function BacklogListBlock({
     }, NEW_ROW_HIGHLIGHT_MS)
   }, [])
 
-  const ensureProgramLoaded = useCallback(async (program: NodeRecord) => {
-    const existing = childrenByNode[program.uuid]
-    if (existing?.loading || existing?.loaded) return
+  const beginChildLoad = useCallback((nodeUuid: string): number | null => {
+    const existing = childrenByNodeRef.current[nodeUuid]
+    if (!shouldRequestBacklogChildrenLoadBlock(existing)) return null
+    if (pendingChildLoadIdsRef.current.has(nodeUuid)) return null
 
-    setChildrenByNode(prev => ({
-      ...prev,
-      [program.uuid]: { loading: true, loaded: false, nodes: [], error: null },
-    }))
+    const generation = childLoadGenerationRef.current
+    pendingChildLoadIdsRef.current.add(nodeUuid)
+
+    setChildrenByNode(prev => {
+      if (childLoadGenerationRef.current !== generation) return prev
+      const current = prev[nodeUuid]
+      if (!shouldRequestBacklogChildrenLoadBlock(current)) return prev
+      return {
+        ...prev,
+        [nodeUuid]: { loading: true, loaded: false, nodes: [], error: null },
+      }
+    })
+
+    return generation
+  }, [])
+
+  const ensureProgramLoaded = useCallback(async (program: NodeRecord) => {
+    const generation = beginChildLoad(program.uuid)
+    if (generation == null) return
 
     try {
       const epics = await loadEpics(program)
-      setChildrenByNode(prev => ({
-        ...prev,
-        [program.uuid]: {
-          loading: false,
-          loaded: true,
-          nodes: sortNodesForDisplay(epics),
-          error: null,
-        },
-      }))
+      setChildrenByNode(prev => {
+        if (childLoadGenerationRef.current !== generation) return prev
+        return {
+          ...prev,
+          [program.uuid]: {
+            loading: false,
+            loaded: true,
+            nodes: sortNodesForDisplay(epics),
+            error: null,
+          },
+        }
+      })
     } catch (err) {
-      setChildrenByNode(prev => ({
-        ...prev,
-        [program.uuid]: {
-          loading: false,
-          loaded: false,
-          nodes: [],
-          error: err instanceof Error ? err.message : 'Failed to load epics',
-        },
-      }))
+      setChildrenByNode(prev => {
+        if (childLoadGenerationRef.current !== generation) return prev
+        return {
+          ...prev,
+          [program.uuid]: {
+            loading: false,
+            loaded: false,
+            nodes: [],
+            error: err instanceof Error ? err.message : 'Failed to load epics',
+          },
+        }
+      })
+    } finally {
+      pendingChildLoadIdsRef.current.delete(program.uuid)
     }
-  }, [childrenByNode, loadEpics])
+  }, [beginChildLoad, loadEpics])
 
   const ensureChildrenLoaded = useCallback(async (node: NodeRecord) => {
-    const existing = childrenByNode[node.uuid]
-    if (existing?.loading || existing?.loaded) return
-
-    setChildrenByNode(prev => ({
-      ...prev,
-      [node.uuid]: { loading: true, loaded: false, nodes: [], error: null },
-    }))
+    const generation = beginChildLoad(node.uuid)
+    if (generation == null) return
 
     try {
       const children = await loadChildren(node)
-      setChildrenByNode(prev => ({
-        ...prev,
-        [node.uuid]: {
-          loading: false,
-          loaded: true,
-          nodes: sortNodesForDisplay(children),
-          error: null,
-        },
-      }))
+      setChildrenByNode(prev => {
+        if (childLoadGenerationRef.current !== generation) return prev
+        return {
+          ...prev,
+          [node.uuid]: {
+            loading: false,
+            loaded: true,
+            nodes: sortNodesForDisplay(children),
+            error: null,
+          },
+        }
+      })
     } catch (err) {
-      setChildrenByNode(prev => ({
-        ...prev,
-        [node.uuid]: {
-          loading: false,
-          loaded: false,
-          nodes: [],
-          error: err instanceof Error ? err.message : 'Failed to load children',
-        },
-      }))
+      setChildrenByNode(prev => {
+        if (childLoadGenerationRef.current !== generation) return prev
+        return {
+          ...prev,
+          [node.uuid]: {
+            loading: false,
+            loaded: false,
+            nodes: [],
+            error: err instanceof Error ? err.message : 'Failed to load children',
+          },
+        }
+      })
+    } finally {
+      pendingChildLoadIdsRef.current.delete(node.uuid)
     }
-  }, [childrenByNode, loadChildren])
+  }, [beginChildLoad, loadChildren])
+
+  useEffect(() => {
+    for (const program of programsNeedingLoad) {
+      void ensureProgramLoaded(program)
+    }
+  }, [ensureProgramLoaded, programsNeedingLoad])
+
+  useEffect(() => {
+    for (const node of expandedNodesNeedingLoad) {
+      void ensureChildrenLoaded(node)
+    }
+  }, [ensureChildrenLoaded, expandedNodesNeedingLoad])
 
   const toggleNode = useCallback((node: NodeRecord) => {
     setExpandedNodes(prev => {
@@ -784,9 +882,6 @@ export default function BacklogListBlock({
   ) => {
     const isExpanded = !!expandedNodes[node.uuid]
     const childState = childrenByNode[node.uuid]
-    if (isExpanded && !childState?.loading && !childState?.loaded) {
-      void ensureChildrenLoaded(node)
-    }
     const childCount = childState?.loaded ? childState.nodes.length : null
     const borderColorClass = depth === 0
       ? EPIC_BORDER_PALETTE[siblingIndex % EPIC_BORDER_PALETTE.length]
@@ -910,10 +1005,9 @@ export default function BacklogListBlock({
         )}
       </div>
     )
-  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
+  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
 
   const renderProgramSection = useCallback((program: NodeRecord, programIndex: number) => {
-    void ensureProgramLoaded(program)
     const childState = childrenByNode[program.uuid]
     const newlyCreated = !!newlyCreatedNodeIds[program.uuid]
     const assignedGroupId = resolvedProgramGroupIdByProgram[program.uuid] ?? '__ungrouped__'
@@ -1010,7 +1104,7 @@ export default function BacklogListBlock({
         </div>
       </div>
     )
-  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showProgramCopyButton, showProgramStatus, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleRowDetails, wrapTitleText])
+  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showProgramCopyButton, showProgramStatus, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleRowDetails, wrapTitleText])
 
   return (
     <div className="flex flex-col space-y-3">
