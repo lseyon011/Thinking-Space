@@ -42,7 +42,10 @@ import Settings from './pages/Settings'
 import F9Page from './personal_extension/pages/F9Page'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import AppTabsBlock, { type AppWorkspaceTabBlockModel } from './components/lego_blocks/units/AppTabsBlock'
+import { copyTextToClipboard } from './components/lego_blocks/units/BacklogListDomainBlock'
 import { Button } from './components/lego_blocks/units/ui/button'
+import RuntimeErrorBoundaryBlock from './components/lego_blocks/integrations/RuntimeErrorBoundaryBlock'
+import RuntimeErrorSurfaceBlock from './components/lego_blocks/integrations/RuntimeErrorSurfaceBlock'
 import {
   EXCALIDRAW_PLUS_ROOT_ROUTE,
   EXCALIDRAW_PLUS_TOOL_ROUTES,
@@ -94,6 +97,15 @@ import {
   THINKING_SPACE_GOOGLE_WORKSPACE_CHROME_STATE_EVENT_BLOCK,
   type ThinkingSpaceGoogleWorkspaceChromeStateBlock,
 } from '@/services/lego_blocks/units/thinkingSpaceGoogleWorkspaceChromeBlock'
+import {
+  captureUnhandledRejectionReportBlock,
+  captureWindowErrorReportBlock,
+  createRuntimeErrorReportBlock,
+  formatRuntimeErrorReportForClipboardBlock,
+  formatRuntimeErrorReportsForClipboardBlock,
+  type RuntimeErrorReportBlock,
+} from '@/services/lego_blocks/units/runtimeErrorBlock'
+import { consumeRecentExcalidrawCrashMarkerBlock } from '@/services/lego_blocks/units/excalidrawCrashMarkerBlock'
 
 type NavIcon = ComponentType<{ className?: string }>
 
@@ -135,6 +147,16 @@ interface GitActionSummary {
 interface SyncPanelAnchor {
   top: number
   right: number
+}
+
+function sameRuntimeErrorReport(left: RuntimeErrorReportBlock, right: RuntimeErrorReportBlock): boolean {
+  return left.source === right.source
+    && left.title === right.title
+    && left.message === right.message
+    && left.detail === right.detail
+    && left.stack === right.stack
+    && left.componentStack === right.componentStack
+    && left.location === right.location
 }
 
 function formatSyncTimestamp(value: number | null): string {
@@ -336,6 +358,8 @@ function App() {
   const [lastGitActionSummary, setLastGitActionSummary] = useState<GitActionSummary | null>(null)
   const [gitCommitDialogOpen, setGitCommitDialogOpen] = useState(false)
   const [gitCommitMessageDraft, setGitCommitMessageDraft] = useState('')
+  const [runtimeErrorReports, setRuntimeErrorReports] = useState<RuntimeErrorReportBlock[]>([])
+  const [runtimeErrorCopiedToken, setRuntimeErrorCopiedToken] = useState<string | null>(null)
   const commandInputRef = useRef<HTMLInputElement | null>(null)
   const gitCommitMessageInputRef = useRef<HTMLInputElement | null>(null)
   const syncToolsRef = useRef<HTMLDivElement | null>(null)
@@ -347,6 +371,7 @@ function App() {
   const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
   const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerPanelSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
+  const runtimeErrorCopyResetTimeoutRef = useRef<number | null>(null)
   const [vaultSwitchHardRefreshPending, setVaultSwitchHardRefreshPending] = useState(false)
   const [needsVaultSetup, setNeedsVaultSetup] = useState(() => {
     const stored = getStoredVaultRoot()
@@ -511,6 +536,58 @@ function App() {
     [explorerFolderColorRules],
   )
 
+  const pushRuntimeErrorReport = useCallback((report: RuntimeErrorReportBlock) => {
+    setRuntimeErrorReports((prev) => {
+      if (prev.some(existing => sameRuntimeErrorReport(existing, report))) return prev
+      return [report, ...prev].slice(0, 12)
+    })
+  }, [])
+
+  const copyRuntimeErrorText = useCallback(async (text: string, token: string) => {
+    try {
+      await copyTextToClipboard(text)
+      setRuntimeErrorCopiedToken(token)
+      if (runtimeErrorCopyResetTimeoutRef.current !== null) {
+        window.clearTimeout(runtimeErrorCopyResetTimeoutRef.current)
+      }
+      runtimeErrorCopyResetTimeoutRef.current = window.setTimeout(() => {
+        setRuntimeErrorCopiedToken((current) => (current === token ? null : current))
+        runtimeErrorCopyResetTimeoutRef.current = null
+      }, 2200)
+    } catch (error) {
+      pushRuntimeErrorReport(createRuntimeErrorReportBlock(error, {
+        source: 'clipboard',
+        title: 'Failed to copy runtime error',
+        location: currentRoute,
+      }))
+    }
+  }, [currentRoute, pushRuntimeErrorReport])
+
+  const handleCopyRuntimeErrorReport = useCallback((reportId: string) => {
+    const report = runtimeErrorReports.find((candidate) => candidate.id === reportId)
+    if (!report) return
+    void copyRuntimeErrorText(formatRuntimeErrorReportForClipboardBlock(report), report.id)
+  }, [copyRuntimeErrorText, runtimeErrorReports])
+
+  const handleCopyAllRuntimeErrors = useCallback(() => {
+    if (runtimeErrorReports.length === 0) return
+    void copyRuntimeErrorText(formatRuntimeErrorReportsForClipboardBlock(runtimeErrorReports), 'all')
+  }, [copyRuntimeErrorText, runtimeErrorReports])
+
+  const handleDismissRuntimeErrorReport = useCallback((reportId: string) => {
+    setRuntimeErrorReports(prev => prev.filter(report => report.id !== reportId))
+    setRuntimeErrorCopiedToken(prev => (prev === reportId ? null : prev))
+  }, [])
+
+  const handleClearRuntimeErrors = useCallback(() => {
+    setRuntimeErrorReports([])
+    setRuntimeErrorCopiedToken(null)
+  }, [])
+
+  const handleFatalRuntimeError = useCallback((report: RuntimeErrorReportBlock) => {
+    pushRuntimeErrorReport(report)
+  }, [pushRuntimeErrorReport])
+
   useEffect(() => {
     if (typeof document === 'undefined') return
     const viewportMeta = document.querySelector('meta[name="viewport"]')
@@ -550,6 +627,49 @@ function App() {
       if (rootElement) rootElement.style.backgroundColor = previousRootBackground
     }
   }, [isElectronDesktopSurface])
+
+  useEffect(() => {
+    return () => {
+      if (runtimeErrorCopyResetTimeoutRef.current !== null) {
+        window.clearTimeout(runtimeErrorCopyResetTimeoutRef.current)
+        runtimeErrorCopyResetTimeoutRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleWindowError = (event: Event) => {
+      pushRuntimeErrorReport(captureWindowErrorReportBlock(event, currentRoute))
+    }
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      pushRuntimeErrorReport(captureUnhandledRejectionReportBlock(event, currentRoute))
+    }
+
+    window.addEventListener('error', handleWindowError)
+    window.addEventListener('unhandledrejection', handleUnhandledRejection)
+
+    return () => {
+      window.removeEventListener('error', handleWindowError)
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+    }
+  }, [currentRoute, pushRuntimeErrorReport])
+
+  useEffect(() => {
+    const marker = consumeRecentExcalidrawCrashMarkerBlock()
+    if (!marker) return
+    pushRuntimeErrorReport(createRuntimeErrorReportBlock(
+      new Error(
+        `Excalidraw edit mode exited unexpectedly while opening "${marker.path}" during stage "${marker.stage}". ` +
+        'The app appears to have restarted before the editor finished stabilizing.'
+      ),
+      {
+        source: 'session-recovery',
+        title: 'Excalidraw edit mode exited unexpectedly',
+        location: marker.path,
+      },
+    ))
+  }, [pushRuntimeErrorReport])
 
   const openCommandPalette = useCallback(() => {
     setCommandQuery('')
@@ -1266,8 +1386,7 @@ function App() {
     }
   }, [])
 
-  if (needsVaultSetup) {
-    return (
+  const appContent = needsVaultSetup ? (
       <VaultSetup
         onComplete={(vaultRoot) => {
           setVaultRoot(vaultRoot)
@@ -1278,10 +1397,7 @@ function App() {
           setNeedsVaultSetup(false)
         }}
       />
-    )
-  }
-
-  return (
+  ) : (
     <div
       ref={appShellRef}
       className="ltm-app-shell"
@@ -2098,6 +2214,50 @@ function App() {
       )}
 
     </div>
+  )
+
+  return (
+    <RuntimeErrorBoundaryBlock
+      location={currentRoute}
+      onError={handleFatalRuntimeError}
+      renderFallback={(report) => {
+        const fallbackReports = runtimeErrorReports.some(existing => sameRuntimeErrorReport(existing, report))
+          ? runtimeErrorReports
+          : [report, ...runtimeErrorReports]
+        return (
+          <RuntimeErrorSurfaceBlock
+            reports={fallbackReports}
+            fatalReport={report}
+            copiedToken={runtimeErrorCopiedToken}
+            onCopyReport={(reportId) => {
+              const matched = reportId === report.id
+                ? report
+                : fallbackReports.find((candidate) => candidate.id === reportId)
+              if (!matched) return
+              void copyRuntimeErrorText(formatRuntimeErrorReportForClipboardBlock(matched), matched.id)
+            }}
+            onCopyAll={() => {
+              void copyRuntimeErrorText(formatRuntimeErrorReportsForClipboardBlock(fallbackReports), 'all')
+            }}
+            onDismissReport={handleDismissRuntimeErrorReport}
+            onClearReports={handleClearRuntimeErrors}
+            onReloadApp={() => window.location.reload()}
+          />
+        )
+      }}
+    >
+      <>
+        {appContent}
+        <RuntimeErrorSurfaceBlock
+          reports={runtimeErrorReports}
+          copiedToken={runtimeErrorCopiedToken}
+          onCopyReport={handleCopyRuntimeErrorReport}
+          onCopyAll={handleCopyAllRuntimeErrors}
+          onDismissReport={handleDismissRuntimeErrorReport}
+          onClearReports={handleClearRuntimeErrors}
+        />
+      </>
+    </RuntimeErrorBoundaryBlock>
   )
 }
 

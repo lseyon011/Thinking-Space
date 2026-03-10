@@ -75,6 +75,10 @@ import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocument
 import { isGoogleDocDocumentPathBlock } from '@/services/lego_blocks/units/googleDocDocumentPathBlock'
 import { isImageDocumentPathBlock } from '@/services/lego_blocks/units/imageDocumentPathBlock'
 import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOrch'
+import {
+  clearExcalidrawCrashMarkerBlock,
+  markExcalidrawCrashStageBlock,
+} from '@/services/lego_blocks/units/excalidrawCrashMarkerBlock'
 
 export type MarkdownViewerMode = 'view' | 'edit'
 
@@ -264,6 +268,8 @@ function MarkdownTextDocumentRuntimeBlock({
   const markdownSavePromiseRef = useRef<Promise<boolean> | null>(null)
   const markdownEditBaselineRef = useRef<MarkdownEditBaselineState | null>(null)
   const markdownCancelRevertInFlightRef = useRef(false)
+  const excalidrawCrashMarkerClearTimeoutRef = useRef<number | null>(null)
+  const preserveExcalidrawCrashMarkerOnUnmountRef = useRef(false)
 
   const loadDocument = useCallback(async (seedDraft = false) => {
     setLoading(true)
@@ -313,6 +319,11 @@ function MarkdownTextDocumentRuntimeBlock({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [excalidrawImmersive])
 
+  useEffect(() => {
+    if (mode !== 'edit' || !isExcalidrawDoc) return
+    markExcalidrawCrashStageBlock(path, 'editor_mounting')
+  }, [isExcalidrawDoc, mode, path])
+
   const triggerManualSaveFeedback = useCallback(() => {
     if (manualSaveFeedbackTimeoutRef.current !== null) {
       window.clearTimeout(manualSaveFeedbackTimeoutRef.current)
@@ -328,6 +339,18 @@ function MarkdownTextDocumentRuntimeBlock({
     return () => {
       if (manualSaveFeedbackTimeoutRef.current !== null) {
         window.clearTimeout(manualSaveFeedbackTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (excalidrawCrashMarkerClearTimeoutRef.current !== null) {
+        window.clearTimeout(excalidrawCrashMarkerClearTimeoutRef.current)
+        excalidrawCrashMarkerClearTimeoutRef.current = null
+      }
+      if (!preserveExcalidrawCrashMarkerOnUnmountRef.current) {
+        clearExcalidrawCrashMarkerBlock()
       }
     }
   }, [])
@@ -663,7 +686,23 @@ function MarkdownTextDocumentRuntimeBlock({
 
   const handleExcalidrawApiChange = useCallback((api: ExcalidrawCanvasApiOrch | null) => {
     excalidrawApiRef.current = api
-  }, [])
+    if (!isExcalidrawDoc) return
+    preserveExcalidrawCrashMarkerOnUnmountRef.current = true
+    if (excalidrawCrashMarkerClearTimeoutRef.current !== null) {
+      window.clearTimeout(excalidrawCrashMarkerClearTimeoutRef.current)
+      excalidrawCrashMarkerClearTimeoutRef.current = null
+    }
+    if (!api) {
+      markExcalidrawCrashStageBlock(path, 'editor_mounting')
+      return
+    }
+    markExcalidrawCrashStageBlock(path, 'api_attached')
+    excalidrawCrashMarkerClearTimeoutRef.current = window.setTimeout(() => {
+      preserveExcalidrawCrashMarkerOnUnmountRef.current = false
+      clearExcalidrawCrashMarkerBlock()
+      excalidrawCrashMarkerClearTimeoutRef.current = null
+    }, 2500)
+  }, [isExcalidrawDoc, path])
 
   const revertMarkdownToEditBaseline = useCallback(async () => {
     if (markdownCancelRevertInFlightRef.current) return
@@ -719,6 +758,10 @@ function MarkdownTextDocumentRuntimeBlock({
 
   const startEditing = () => {
     if (loading || error) return
+    if (isExcalidrawDoc) {
+      preserveExcalidrawCrashMarkerOnUnmountRef.current = true
+      markExcalidrawCrashStageBlock(path, 'edit_requested')
+    }
     setMode('edit')
     setDraft(isExcalidrawDoc ? '' : (content ?? ''))
     markdownEditBaselineRef.current = isExcalidrawDoc
@@ -731,10 +774,17 @@ function MarkdownTextDocumentRuntimeBlock({
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(isExcalidrawDoc)
     excalidrawSceneRef.current = null
+    excalidrawApiRef.current = null
     ignoreInitialExcalidrawChangeRef.current = true
   }
 
   const cancelEditing = () => {
+    if (excalidrawCrashMarkerClearTimeoutRef.current !== null) {
+      window.clearTimeout(excalidrawCrashMarkerClearTimeoutRef.current)
+      excalidrawCrashMarkerClearTimeoutRef.current = null
+    }
+    preserveExcalidrawCrashMarkerOnUnmountRef.current = false
+    clearExcalidrawCrashMarkerBlock()
     setMode('view')
     setSaveError(null)
     setConflict(null)
@@ -752,6 +802,8 @@ function MarkdownTextDocumentRuntimeBlock({
 
   const useLatestConflictVersion = () => {
     if (!conflict) return
+    preserveExcalidrawCrashMarkerOnUnmountRef.current = false
+    clearExcalidrawCrashMarkerBlock()
     setContent(conflict.currentContent)
     setDraft(isExcalidrawDoc ? '' : conflict.currentContent)
     setBaseMtime(conflict.currentMtime)
@@ -862,6 +914,9 @@ function MarkdownTextDocumentRuntimeBlock({
       setHasExcalidrawChanges(false)
       setExcalidrawImmersive(false)
       excalidrawSceneRef.current = null
+      excalidrawApiRef.current = null
+      preserveExcalidrawCrashMarkerOnUnmountRef.current = false
+      clearExcalidrawCrashMarkerBlock()
       ignoreInitialExcalidrawChangeRef.current = true
       onSaved?.(result)
       didSave = true
@@ -1297,7 +1352,7 @@ function MarkdownTextDocumentRuntimeBlock({
             </div>
           )}
 
-        {!loading && !error && content !== null && isEditing && isExcalidrawDoc && (
+        {!loading && !error && content !== null && isEditing && isExcalidrawDoc && !excalidrawImmersive && (
           <div className="space-y-4">
             <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
               Full Excalidraw tool surface is enabled in edit mode.

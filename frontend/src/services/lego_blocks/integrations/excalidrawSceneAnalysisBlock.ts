@@ -9,6 +9,7 @@ export const MEDIAN_SORT_THRESHOLD = 2000
 export const PERF_EVENTS_LIMIT = 400
 export const MINIMAP_MAX_RECTS = 400
 export const PARSED_SCENE_CACHE_MAX_ENTRIES = 4
+const MINIMAP_HIDDEN_ELEMENT_TYPES = new Set(['line', 'arrow', 'freedraw'])
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -99,6 +100,13 @@ export function readSceneElementRect(item: unknown): SceneElementRect | null {
   return { left, top, width, height, centerX: left + width / 2, centerY: top + height / 2, type }
 }
 
+export function readMiniMapSceneElementRect(item: unknown): SceneElementRect | null {
+  const rect = readSceneElementRect(item)
+  if (!rect) return null
+  if (MINIMAP_HIDDEN_ELEMENT_TYPES.has(rect.type)) return null
+  return rect
+}
+
 // ---------------------------------------------------------------------------
 // MiniMap bounds
 // ---------------------------------------------------------------------------
@@ -111,7 +119,7 @@ export function computeMiniMapBounds(elements: readonly unknown[]): MiniMapBound
   let found = false
 
   for (const item of elements) {
-    const rect = readSceneElementRect(item)
+    const rect = readMiniMapSceneElementRect(item)
     if (!rect) continue
     minX = Math.min(minX, rect.left)
     minY = Math.min(minY, rect.top)

@@ -44,7 +44,7 @@ import {
   computeMiniMapBounds,
   parseSceneWithCache,
   pushGlobalExcalidrawPerfEvent,
-  readSceneElementRect,
+  readMiniMapSceneElementRect,
 } from '@/services/lego_blocks/integrations/excalidrawSceneAnalysisBlock'
 import {
   COMPACT_VIEW_MIN_ZOOM,
@@ -401,7 +401,7 @@ export default function ExcalidrawDocumentBlock({
     const rects: MiniMapRect[] = []
     const step = Math.max(1, Math.ceil(elementsForMiniMap.length / MINIMAP_MAX_RECTS))
     for (let index = 0; index < elementsForMiniMap.length; index += step) {
-      const rect = readSceneElementRect(elementsForMiniMap[index])
+      const rect = readMiniMapSceneElementRect(elementsForMiniMap[index])
       if (!rect) continue
       rects.push({
         key: `nav-${index}`,
