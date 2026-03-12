@@ -174,6 +174,8 @@ export default function VaultExplorerBlock({
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const renameSubmittingRef = useRef(false)
   const queryMatchCacheRef = useRef<Map<string, boolean>>(new Map())
+  const nodesRef = useRef<Record<string, NodeState>>({})
+  nodesRef.current = nodes
 
   const getNode = useCallback(
     (path: string): NodeState =>
@@ -351,9 +353,18 @@ export default function VaultExplorerBlock({
   useEffect(() => {
     if (!listenToGlobalSyncRefresh) return undefined
     return addGlobalSyncRefreshListenerBlock(() => {
-      refreshRoot()
+      // Reload all currently-loaded folder paths in-place so the tree stays
+      // expanded and selected state is preserved.  refreshRoot() would reset
+      // expandedPaths to [''] which collapses everything — avoid that here.
+      const currentNodes = nodesRef.current
+      void loadPath('', true)
+      for (const path of Object.keys(currentNodes)) {
+        if (path && currentNodes[path]?.loaded) {
+          void loadPath(path, true)
+        }
+      }
     })
-  }, [listenToGlobalSyncRefresh, refreshRoot])
+  }, [listenToGlobalSyncRefresh, loadPath])
 
   const canDropNodes = !!onDropNode
   const canDropPaths = !!onMovePath
@@ -454,6 +465,7 @@ export default function VaultExplorerBlock({
     const key = rowRefKey(inlineRename.kind, inlineRename.path)
     const row = rowRefs.current.get(key)
     setInlineRename(null)
+    setPendingRename(null)
     if (row) {
       window.requestAnimationFrame(() => row.focus())
     }
@@ -562,9 +574,13 @@ export default function VaultExplorerBlock({
     const key = rowRefKey(pendingRename.kind, pendingRename.path)
     const node = rowRefs.current.get(key)
     if (!node) return
-    const rafId = window.requestAnimationFrame(() => node.focus())
+    // Auto-open the rename input immediately instead of just focusing the
+    // button and waiting for the user to press Enter.
+    const rafId = window.requestAnimationFrame(() => {
+      beginInlineRename(pendingRename.path, pendingRename.kind)
+    })
     return () => window.cancelAnimationFrame(rafId)
-  }, [nodes, pendingRename, rowRefKey])
+  }, [nodes, pendingRename, rowRefKey, beginInlineRename])
 
   useEffect(() => {
     if (!inlineRenameSession) return

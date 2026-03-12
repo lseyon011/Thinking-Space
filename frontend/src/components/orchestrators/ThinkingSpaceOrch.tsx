@@ -33,6 +33,16 @@ import {
   THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_EXPLORER_EVENT_BLOCK,
   THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_HEADER_EVENT_BLOCK,
 } from '@/services/lego_blocks/units/thinkingSpaceGoogleWorkspaceChromeBlock'
+import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
+
+function dispatchFileOpRefresh(): void {
+  dispatchGlobalSyncRefreshBlock({
+    source: 'unknown',
+    requestedAt: Date.now(),
+    vaultSyncAttempted: false,
+    vaultSyncSucceeded: false,
+  })
+}
 
 const FILE_QUERY_PARAM = 'file'
 const MAX_MOUNTED_INLINE_DOCS = 8
@@ -224,18 +234,22 @@ export default function ThinkingSpaceOrch() {
 
   const handleExplorerCreateFolder = useCallback(async (parentPath: string): Promise<string> => {
     // Avoid prompt dependency in Electron; create then rename inline.
-    return createFolderOrch(parentPath, 'New Folder')
+    const outputPath = await createFolderOrch(parentPath, 'New Folder')
+    dispatchFileOpRefresh()
+    return outputPath
   }, [])
 
   const handleExplorerCreateFile = useCallback(async (parentPath: string): Promise<string> => {
     const outputPath = await createFileOrch(parentPath, 'New File.md')
     setInlinePathAndSyncUrl(outputPath, 'edit')
+    dispatchFileOpRefresh()
     return outputPath
   }, [setInlinePathAndSyncUrl])
 
   const handleExplorerCreateCsvFile = useCallback(async (parentPath: string): Promise<string> => {
     const outputPath = await createFileOrch(parentPath, 'New Table.csv')
     setInlinePathAndSyncUrl(outputPath, 'edit')
+    dispatchFileOpRefresh()
     return outputPath
   }, [setInlinePathAndSyncUrl])
 
@@ -244,6 +258,7 @@ export default function ThinkingSpaceOrch() {
     // Create with default name; user can rename inline like folders.
     const outputPath = await createDrawingOrch(parentPath, 'New Drawing.excalidraw.md')
     setInlinePathAndSyncUrl(outputPath)
+    dispatchFileOpRefresh()
     return outputPath
   }, [setInlinePathAndSyncUrl])
 
@@ -272,6 +287,7 @@ export default function ThinkingSpaceOrch() {
   const handleExplorerDuplicateFile = useCallback(async (path: string): Promise<boolean> => {
     const duplicatePath = await duplicateFileOrch(path)
     setInlinePathAndSyncUrl(duplicatePath)
+    dispatchFileOpRefresh()
     return true
   }, [setInlinePathAndSyncUrl])
 
@@ -287,6 +303,7 @@ export default function ThinkingSpaceOrch() {
     if (kind === 'file' && inlinePath === path) {
       setInlinePathAndSyncUrl(nextPath)
     }
+    dispatchFileOpRefresh()
     return nextPath
   }, [inlinePath, replaceMountedInlinePath, setInlinePathAndSyncUrl])
 
@@ -298,6 +315,7 @@ export default function ThinkingSpaceOrch() {
     if (inlinePath === path) {
       setInlinePathAndSyncUrl(null)
     }
+    dispatchFileOpRefresh()
     return true
   }, [inlinePath, removeMountedInlinePath, setInlinePathAndSyncUrl])
 
@@ -305,6 +323,7 @@ export default function ThinkingSpaceOrch() {
     const confirmed = window.confirm(`Delete folder "${leafNameOf(path)}" and all its contents?`)
     if (!confirmed) return false
     await deleteVaultPathOrch(path)
+    dispatchFileOpRefresh()
     setMountedInlinePaths((prev) => prev.filter((item) => !isSameOrChildPath(item, path)))
     setInlineInitialModeByPath((prev) => {
       let changed = false
