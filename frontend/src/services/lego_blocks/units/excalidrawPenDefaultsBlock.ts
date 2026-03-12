@@ -109,6 +109,40 @@ export function writeExcalidrawActivePresetIdBlock(presetId: string, storage?: S
   }
 }
 
+export const FREEHAND_PEN_ID = '__freehand__'
+
+const PER_PRESET_STORAGE_KEY = 'ltm.excalidraw.pen.perPreset.v1'
+
+type PerPresetSettingsMap = Record<string, ExcalidrawPenDefaultsBlock>
+
+export function readAllExcalidrawPerPresetSettingsBlock(storage?: Storage | null): PerPresetSettingsMap {
+  const target = resolveStorage(storage)
+  if (!target) return {}
+  try {
+    const raw = target.getItem(PER_PRESET_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as unknown
+    if (!isRecord(parsed)) return {}
+    const result: PerPresetSettingsMap = {}
+    for (const [key, val] of Object.entries(parsed)) {
+      result[key] = normalizeExcalidrawPenDefaultsBlock(val)
+    }
+    return result
+  } catch {
+    return {}
+  }
+}
+
+export function writeAllExcalidrawPerPresetSettingsBlock(settings: PerPresetSettingsMap, storage?: Storage | null): void {
+  const target = resolveStorage(storage)
+  if (!target) return
+  try {
+    target.setItem(PER_PRESET_STORAGE_KEY, JSON.stringify(settings))
+  } catch {
+    // Ignore storage failures in restricted runtimes.
+  }
+}
+
 export function buildExcalidrawPenDefaultsAppStatePatchBlock(
   defaults: ExcalidrawPenDefaultsBlock,
   currentAppState?: Record<string, unknown>,

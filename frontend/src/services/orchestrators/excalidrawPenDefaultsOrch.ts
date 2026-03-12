@@ -6,6 +6,9 @@ import {
   writeExcalidrawPenDefaultsBlock,
   readExcalidrawActivePresetIdBlock,
   writeExcalidrawActivePresetIdBlock,
+  FREEHAND_PEN_ID,
+  readAllExcalidrawPerPresetSettingsBlock,
+  writeAllExcalidrawPerPresetSettingsBlock,
   type ExcalidrawPenDefaultsBlock,
 } from '@/services/lego_blocks/units/excalidrawPenDefaultsBlock'
 
@@ -40,4 +43,14 @@ export function readExcalidrawActivePresetIdOrch(storage?: Storage | null): stri
 
 export function writeExcalidrawActivePresetIdOrch(presetId: string, storage?: Storage | null): void {
   writeExcalidrawActivePresetIdBlock(presetId, storage)
+}
+
+export { FREEHAND_PEN_ID }
+
+export function readAllExcalidrawPerPresetSettingsOrch(storage?: Storage | null): Record<string, ExcalidrawPenDefaultsOrch> {
+  return readAllExcalidrawPerPresetSettingsBlock(storage)
+}
+
+export function writeAllExcalidrawPerPresetSettingsOrch(settings: Record<string, ExcalidrawPenDefaultsOrch>, storage?: Storage | null): void {
+  writeAllExcalidrawPerPresetSettingsBlock(settings, storage)
 }

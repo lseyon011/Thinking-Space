@@ -1055,7 +1055,7 @@ function MarkdownTextDocumentRuntimeBlock({
           ref={contentScrollRef}
           className={cn(
             'relative h-full min-h-0 p-0',
-            isExcalidrawDoc ? 'overflow-hidden' : 'overflow-y-auto',
+            isExcalidrawDoc && !isEditing ? 'flex flex-col overflow-hidden' : (isExcalidrawDoc ? 'overflow-hidden' : 'overflow-y-auto'),
           )}
         >
           <div ref={chromeContainerRef} className={cn(hideTopBarInView && 'hidden')}>
@@ -1358,7 +1358,7 @@ function MarkdownTextDocumentRuntimeBlock({
           )}
 
           {!loading && !error && content !== null && !isEditing && isExcalidrawDoc && (
-            <ExcalidrawDocumentBlock content={content} filePath={path} onOpenPath={openLinkedPath} />
+            <ExcalidrawDocumentBlock content={content} filePath={path} onOpenPath={openLinkedPath} className="flex-1 min-h-0" />
           )}
 
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && (

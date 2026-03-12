@@ -142,8 +142,15 @@ function titleFromPath(path: string): string {
 }
 
 function normalizeBody(body: string): string {
-  return body
-    .replace(/\r/g, '')
+  const text = body.replace(/\r/g, '').trim()
+  if (!text) return ''
+  // Normalize 3+ consecutive newlines down to 2 (one blank line max)
+  const deduped = text.replace(/\n{3,}/g, '\n\n')
+  // Collapse single newlines between prose lines into a space — standard Markdown
+  // soft-wrap behaviour.  Keep the newline when the next line starts a list item,
+  // an indented block, or is itself blank (paragraph break already handled above).
+  return deduped
+    .replace(/([^\n])\n(?!\n)(?![ \t]*[-*+] |[ \t]*[0-9]+[.)]\s)/g, '$1 ')
     .trim()
 }
 

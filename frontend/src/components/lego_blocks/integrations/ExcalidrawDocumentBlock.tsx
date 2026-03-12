@@ -31,10 +31,12 @@ import {
 } from '@/services/orchestrators/excalidrawHighlighterOrch'
 import {
   buildExcalidrawPenDefaultsAppStatePatchOrch,
-  readExcalidrawPenDefaultsOrch,
-  writeExcalidrawPenDefaultsOrch,
   readExcalidrawActivePresetIdOrch,
   writeExcalidrawActivePresetIdOrch,
+  getDefaultExcalidrawPenDefaultsOrch,
+  FREEHAND_PEN_ID,
+  readAllExcalidrawPerPresetSettingsOrch,
+  writeAllExcalidrawPerPresetSettingsOrch,
   type ExcalidrawPenDefaultsOrch,
 } from '@/services/orchestrators/excalidrawPenDefaultsOrch'
 import {
@@ -70,6 +72,7 @@ import {
   resolveViewportWorldSize,
   scheduleDeferredWork,
 } from '@/services/lego_blocks/integrations/excalidrawViewportBlock'
+import { Palette } from 'lucide-react'
 import ExcalidrawPenPaletteBlock from '@/components/lego_blocks/integrations/ExcalidrawPenPaletteBlock'
 import ExcalidrawMiniMapBlock, { type MiniMapRect } from '@/components/lego_blocks/integrations/ExcalidrawMiniMapBlock'
 import { cn } from '@/lib/utils'
@@ -181,7 +184,32 @@ export default function ExcalidrawDocumentBlock({
   )
   const [activeHighlighterPresetId, setActiveHighlighterPresetId] = useState<string | null>(null)
   const [currentStrokeWidth, setCurrentStrokeWidth] = useState(2)
-  const [penDefaults, setPenDefaults] = useState<ExcalidrawPenDefaultsOrch>(() => readExcalidrawPenDefaultsOrch())
+  const [showPropertiesPanel, setShowPropertiesPanel] = useState(() => !isIosSurface)
+  const [perPresetSettings, setPerPresetSettings] = useState<Record<string, ExcalidrawPenDefaultsOrch>>(
+    () => readAllExcalidrawPerPresetSettingsOrch()
+  )
+  const perPresetSettingsRef = useRef<Record<string, ExcalidrawPenDefaultsOrch>>({})
+  perPresetSettingsRef.current = perPresetSettings
+
+  const activePenKey = activeHighlighterPresetId ?? FREEHAND_PEN_ID
+  const activePenKeyRef = useRef(activePenKey)
+  activePenKeyRef.current = activePenKey
+  const penDefaults = useMemo((): ExcalidrawPenDefaultsOrch => {
+    const saved = perPresetSettings[activePenKey]
+    if (saved) return saved
+    if (activeHighlighterPresetId) {
+      const preset = highlighterPresets.find((p) => p.id === activeHighlighterPresetId)
+      if (preset) {
+        return {
+          strokeColor: preset.backgroundColor !== 'transparent' ? preset.backgroundColor : preset.strokeColor,
+          strokeWidth: preset.strokeWidth > 0 ? preset.strokeWidth : 2,
+          opacity: preset.opacity > 0 ? preset.opacity : 100,
+          pressureSensitive: false,
+        }
+      }
+    }
+    return getDefaultExcalidrawPenDefaultsOrch()
+  }, [activePenKey, activeHighlighterPresetId, highlighterPresets, perPresetSettings])
 
   // ---------------------------------------------------------------------------
   // Debug logging
@@ -518,11 +546,19 @@ export default function ExcalidrawDocumentBlock({
     if (!editable || !excalidrawApi) return
     excalidrawApi.updateAppStateBlock({ currentItemStrokeWidth: width })
     setCurrentStrokeWidth(width)
+    const key = activePenKeyRef.current
+    const current = perPresetSettingsRef.current[key] ?? getDefaultExcalidrawPenDefaultsOrch()
+    const nextDefaults = { ...current, strokeWidth: width }
+    const nextPerPresetSettings = { ...perPresetSettingsRef.current, [key]: nextDefaults }
+    setPerPresetSettings(nextPerPresetSettings)
+    writeAllExcalidrawPerPresetSettingsOrch(nextPerPresetSettings)
   }, [editable, excalidrawApi])
 
   const handlePenDefaultsChange = useCallback((nextDefaults: ExcalidrawPenDefaultsOrch) => {
-    setPenDefaults(nextDefaults)
-    writeExcalidrawPenDefaultsOrch(nextDefaults)
+    const key = activePenKeyRef.current
+    const nextPerPresetSettings = { ...perPresetSettingsRef.current, [key]: nextDefaults }
+    setPerPresetSettings(nextPerPresetSettings)
+    writeAllExcalidrawPerPresetSettingsOrch(nextPerPresetSettings)
     setCurrentStrokeWidth(nextDefaults.strokeWidth)
     if (!editable || !excalidrawApi) return
     const appState = excalidrawApi.getAppStateBlock()
@@ -1182,7 +1218,18 @@ export default function ExcalidrawDocumentBlock({
   }
 
   return (
-    <div ref={containerRef} className={cn('relative h-full min-h-0 overflow-hidden', className)}>
+    <div
+      ref={containerRef}
+      className={cn('relative h-full min-h-0 overflow-hidden', className)}
+      style={{
+        '--sat': 'env(safe-area-inset-top, 0px)',
+        '--sal': 'env(safe-area-inset-left, 0px)',
+      } as React.CSSProperties}
+    >
+      {/* Hide Excalidraw's element properties panel (.App-menu__left) when toggled off */}
+      {editable && !showPropertiesPanel && (
+        <style>{'.excalidraw .App-menu__left{display:none!important}'}</style>
+      )}
       <Suspense fallback={<div className="px-4 py-3 text-sm text-muted-foreground">Loading Excalidraw canvas...</div>}>
         <ExcalidrawCanvas
           excalidrawAPI={(api: unknown) => setExcalidrawApi(createExcalidrawCanvasApiOrch(api))}
@@ -1254,7 +1301,27 @@ export default function ExcalidrawDocumentBlock({
           onPenDefaultsChange={handlePenDefaultsChange}
           currentStrokeWidth={currentStrokeWidth}
           onStrokeWidthChange={handleStrokeWidthChange}
+          perPresetSettings={perPresetSettings}
         />
+      )}
+
+      {editable && (
+        <button
+          type="button"
+          onClick={() => setShowPropertiesPanel(v => !v)}
+          className={cn(
+            'absolute z-20 flex h-9 w-9 items-center justify-center rounded-lg border border-border/50 bg-background/95 shadow-sm backdrop-blur transition-colors hover:bg-muted/70',
+            showPropertiesPanel ? 'text-foreground' : 'text-muted-foreground/50',
+          )}
+          style={{
+            top: 'calc(var(--sat, 0px) + var(--editor-container-padding, 1rem))',
+            left: 'calc(var(--sal, 0px) + var(--editor-container-padding, 1rem) + var(--lg-button-size, 2.25rem) + 0.375rem)',
+          }}
+          title={showPropertiesPanel ? 'Hide properties panel' : 'Show properties panel'}
+          aria-label={showPropertiesPanel ? 'Hide properties panel' : 'Show properties panel'}
+        >
+          <Palette className="h-4 w-4" />
+        </button>
       )}
 
       {editable && isLargeScene && !isIosSurface && (
