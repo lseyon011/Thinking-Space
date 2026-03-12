@@ -270,6 +270,7 @@ function MarkdownTextDocumentRuntimeBlock({
   const markdownCancelRevertInFlightRef = useRef(false)
   const excalidrawCrashMarkerClearTimeoutRef = useRef<number | null>(null)
   const preserveExcalidrawCrashMarkerOnUnmountRef = useRef(false)
+  const handleSaveRef = useRef<() => Promise<void>>(async () => {})
 
   const loadDocument = useCallback(async (seedDraft = false) => {
     setLoading(true)
@@ -910,11 +911,8 @@ function MarkdownTextDocumentRuntimeBlock({
       setBaseCtime(reloaded.ctime)
       setBaseHash(reloaded.hash)
       setSizeBytes(reloaded.size)
-      setMode('view')
       setHasExcalidrawChanges(false)
-      setExcalidrawImmersive(false)
       excalidrawSceneRef.current = null
-      excalidrawApiRef.current = null
       preserveExcalidrawCrashMarkerOnUnmountRef.current = false
       clearExcalidrawCrashMarkerBlock()
       ignoreInitialExcalidrawChangeRef.current = true
@@ -932,6 +930,7 @@ function MarkdownTextDocumentRuntimeBlock({
     }
     if (didSave) triggerManualSaveFeedback()
   }
+  handleSaveRef.current = handleSave
 
   const commitHeaderRename = useCallback(async () => {
     if (!isEditing || !canRenameInHeader || renaming) return
@@ -992,6 +991,30 @@ function MarkdownTextDocumentRuntimeBlock({
     saveMarkdownDraft,
     saving,
     autoSaving,
+  ])
+
+  useEffect(() => {
+    if (!autoSaveEnabled) return
+    if (!isEditing || !isExcalidrawDoc || loading || error || baseMtime === null) return
+    if (!hasExcalidrawChanges || saving || conflict) return
+
+    const timeoutId = window.setTimeout(() => {
+      void handleSaveRef.current()
+    }, 2000)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [
+    autoSaveEnabled,
+    baseMtime,
+    conflict,
+    error,
+    hasExcalidrawChanges,
+    isEditing,
+    isExcalidrawDoc,
+    loading,
+    saving,
   ])
 
   const toggleTopBarHiddenInViewMode = useCallback(() => {
@@ -1160,6 +1183,18 @@ function MarkdownTextDocumentRuntimeBlock({
 
                 {isEditing && isExcalidrawDoc && (
                   <>
+                    <button
+                      type="button"
+                      onClick={() => setAutoSaveEnabled(v => !v)}
+                      className={cn(
+                        'font-medium transition-colors',
+                        isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2 py-1 text-xs',
+                        autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                      )}
+                      title="Toggle auto save"
+                    >
+                      {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
+                    </button>
                     <span className="hidden px-1 text-xs text-muted-foreground md:inline">
                       {hasChanges ? 'Unsaved changes' : 'No changes'}
                     </span>
@@ -1175,7 +1210,7 @@ function MarkdownTextDocumentRuntimeBlock({
                       onClick={cancelEditing}
                       className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
                     >
-                      Cancel
+                      Close
                     </button>
                     <button
                       type="button"
@@ -1398,6 +1433,17 @@ function MarkdownTextDocumentRuntimeBlock({
               <div className="flex flex-wrap items-center justify-end gap-1.5" style={isElectronSurface ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
                 <button
                   type="button"
+                  onClick={() => setAutoSaveEnabled(v => !v)}
+                  className={cn(
+                    'rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                    autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                  )}
+                  title="Toggle auto save"
+                >
+                  {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
+                </button>
+                <button
+                  type="button"
                   onClick={() => setExcalidrawImmersive(false)}
                   className="rounded-md border border-border/70 px-2.5 py-1 text-xs text-foreground hover:bg-muted"
                 >
@@ -1408,7 +1454,7 @@ function MarkdownTextDocumentRuntimeBlock({
                   onClick={cancelEditing}
                   className="rounded-md border border-border/70 px-2.5 py-1 text-xs text-foreground hover:bg-muted"
                 >
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="button"
