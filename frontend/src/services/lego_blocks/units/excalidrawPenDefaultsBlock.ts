@@ -87,6 +87,28 @@ export function writeExcalidrawPenDefaultsBlock(
   }
 }
 
+const ACTIVE_PRESET_STORAGE_KEY = 'ltm.excalidraw.pen.activePreset.v1'
+
+export function readExcalidrawActivePresetIdBlock(storage?: Storage | null): string | null {
+  const target = resolveStorage(storage)
+  if (!target) return null
+  try {
+    return target.getItem(ACTIVE_PRESET_STORAGE_KEY) ?? null
+  } catch {
+    return null
+  }
+}
+
+export function writeExcalidrawActivePresetIdBlock(presetId: string, storage?: Storage | null): void {
+  const target = resolveStorage(storage)
+  if (!target) return
+  try {
+    target.setItem(ACTIVE_PRESET_STORAGE_KEY, presetId)
+  } catch {
+    // Ignore storage failures in restricted runtimes.
+  }
+}
+
 export function buildExcalidrawPenDefaultsAppStatePatchBlock(
   defaults: ExcalidrawPenDefaultsBlock,
   currentAppState?: Record<string, unknown>,

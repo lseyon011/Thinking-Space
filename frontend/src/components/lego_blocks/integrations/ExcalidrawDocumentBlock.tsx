@@ -33,6 +33,8 @@ import {
   buildExcalidrawPenDefaultsAppStatePatchOrch,
   readExcalidrawPenDefaultsOrch,
   writeExcalidrawPenDefaultsOrch,
+  readExcalidrawActivePresetIdOrch,
+  writeExcalidrawActivePresetIdOrch,
   type ExcalidrawPenDefaultsOrch,
 } from '@/services/orchestrators/excalidrawPenDefaultsOrch'
 import {
@@ -167,6 +169,7 @@ export default function ExcalidrawDocumentBlock({
   const pencilAppStateFrameRef = useRef<number | null>(null)
   const pendingPencilAppStateRef = useRef<Record<string, unknown> | null>(null)
   const lastSelectedPresetIdRef = useRef<string | null>(null)
+  const appliedInitialDefaultsRef = useRef(false)
   const viewportSubscriptionActiveRef = useRef(false)
   const [miniMapElements, setMiniMapElements] = useState<readonly unknown[] | null>(null)
   const pendingMiniMapElementsRef = useRef<readonly unknown[] | null>(null)
@@ -501,6 +504,7 @@ export default function ExcalidrawDocumentBlock({
     })
     setActiveHighlighterPresetId(preset.id)
     lastSelectedPresetIdRef.current = preset.id
+    writeExcalidrawActivePresetIdOrch(preset.id)
     // Sync stroke width display from the applied preset or current state
     const nextWidth = typeof defaultsPatch.currentItemStrokeWidth === 'number'
       ? defaultsPatch.currentItemStrokeWidth
@@ -841,6 +845,33 @@ export default function ExcalidrawDocumentBlock({
       if (stopPencilBridge) void stopPencilBridge()
     }
   }, [debugLog, editable, excalidrawApi, handlePencilDoubleTap, handlePencilMetrics])
+
+  // ---------------------------------------------------------------------------
+  // Apply persisted pen defaults + last selected preset on canvas ready
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!editable || !excalidrawApi) return
+    if (appliedInitialDefaultsRef.current) return
+
+    const savedPresetId = readExcalidrawActivePresetIdOrch()
+    if (savedPresetId) {
+      const preset = highlighterPresets.find(p => p.id === savedPresetId)
+      // If preset definitions haven't loaded from vault yet, wait for them
+      if (!preset) return
+    }
+
+    appliedInitialDefaultsRef.current = true
+
+    if (savedPresetId) {
+      applyHighlighterPreset(savedPresetId)
+    } else {
+      const appState = excalidrawApi.getAppStateBlock()
+      excalidrawApi.updateAppStateBlock(
+        buildExcalidrawPenDefaultsAppStatePatchOrch(penDefaults, appState),
+      )
+    }
+  }, [editable, excalidrawApi, highlighterPresets, applyHighlighterPreset, penDefaults])
 
   // ---------------------------------------------------------------------------
   // Auto-center

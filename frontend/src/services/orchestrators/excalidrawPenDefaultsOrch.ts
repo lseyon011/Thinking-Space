@@ -4,6 +4,8 @@ import {
   normalizeExcalidrawPenDefaultsBlock,
   readExcalidrawPenDefaultsBlock,
   writeExcalidrawPenDefaultsBlock,
+  readExcalidrawActivePresetIdBlock,
+  writeExcalidrawActivePresetIdBlock,
   type ExcalidrawPenDefaultsBlock,
 } from '@/services/lego_blocks/units/excalidrawPenDefaultsBlock'
 
@@ -30,4 +32,12 @@ export function buildExcalidrawPenDefaultsAppStatePatchOrch(
   currentAppState?: Record<string, unknown>,
 ): Record<string, unknown> {
   return buildExcalidrawPenDefaultsAppStatePatchBlock(defaults, currentAppState)
+}
+
+export function readExcalidrawActivePresetIdOrch(storage?: Storage | null): string | null {
+  return readExcalidrawActivePresetIdBlock(storage)
+}
+
+export function writeExcalidrawActivePresetIdOrch(presetId: string, storage?: Storage | null): void {
+  writeExcalidrawActivePresetIdBlock(presetId, storage)
 }
