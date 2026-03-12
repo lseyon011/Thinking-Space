@@ -220,6 +220,21 @@ export function normalizeExcalidrawElementForInteropBlock(
     normalized.simulatePressure = candidate.simulatePressure !== false
     normalized.lastCommittedPoint = candidate.lastCommittedPoint ?? null
     normalized.customData = isRecord(candidate.customData) ? candidate.customData : {}
+
+    // Obsidian Excalidraw compat: markers/highlights store the visible fill color in
+    // backgroundColor, but standard Excalidraw only uses backgroundColor for closed
+    // (loop) freedraw paths. For open highlight strokes this means they render using
+    // the near-white strokeColor at low opacity — nearly invisible. Remap strokeColor
+    // to backgroundColor so they display correctly in the standard renderer.
+    const customData = normalized.customData as JsonRecord
+    const strokeOptions = isRecord(customData.strokeOptions) ? customData.strokeOptions : null
+    if (strokeOptions !== null) {
+      const isObsidianHighlight = strokeOptions.highlighter === true || strokeOptions.hasOutline === true
+      const bgColor = normalized.backgroundColor as string
+      if (isObsidianHighlight && bgColor !== 'transparent') {
+        normalized.strokeColor = bgColor
+      }
+    }
   }
 
   return normalized
