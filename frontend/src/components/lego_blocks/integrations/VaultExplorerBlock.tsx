@@ -198,7 +198,10 @@ export default function VaultExplorerBlock({
           ...prev,
           [path]: {
             ...(existing ?? { folders: [], files: [] }),
-            loaded: false,
+            // Keep `loaded: true` when re-fetching so existing data stays
+            // visible (stale-while-revalidate). Only go to false on first load
+            // when there is no data yet.
+            loaded: existing?.loaded ?? false,
             loading: true,
             error: null,
           },
