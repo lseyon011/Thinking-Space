@@ -5,6 +5,7 @@ import {
   FileText,
   Folder,
   FolderOpen,
+  Link2,
   Loader2,
   Plus,
 } from 'lucide-react'
@@ -69,6 +70,7 @@ interface VaultExplorerBlockProps {
   onCreateFile?: (parentPath: string) => ExplorerActionResult
   onCreateCsvFile?: (parentPath: string) => ExplorerActionResult
   onCreateDrawing?: (parentPath: string) => ExplorerActionResult
+  onCreateLink?: (parentPath: string) => ExplorerActionResult
   onCopyAbsolutePath?: (path: string) => ExplorerActionResult
   onCopyRelativePath?: (path: string) => ExplorerActionResult
   onOpenInNewTab?: (path: string) => ExplorerActionResult
@@ -93,7 +95,12 @@ interface VaultExplorerBlockProps {
 function getFileIcon(name: string) {
   const lower = name.toLowerCase()
   if (lower.endsWith('.md')) return FileText
+  if (lower.endsWith('.url')) return Link2
   return File
+}
+
+function isUrlFile(name: string): boolean {
+  return name.toLowerCase().endsWith('.url')
 }
 
 function remapPathAfterMove(path: string, sourcePath: string, targetPath: string): string {
@@ -121,6 +128,7 @@ export default function VaultExplorerBlock({
   onCreateFile,
   onCreateCsvFile,
   onCreateDrawing,
+  onCreateLink,
   onCopyAbsolutePath,
   onCopyRelativePath,
   onOpenInNewTab,
@@ -173,6 +181,8 @@ export default function VaultExplorerBlock({
   const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const renameSubmittingRef = useRef(false)
+  // Prevents the Enter keydown that opened the rename from immediately committing it
+  const renameJustOpenedRef = useRef(false)
   const queryMatchCacheRef = useRef<Map<string, boolean>>(new Map())
   const nodesRef = useRef<Record<string, NodeState>>({})
   nodesRef.current = nodes
@@ -417,7 +427,15 @@ export default function VaultExplorerBlock({
           })
         }
 
+        // Reload all currently-loaded folder paths so the tree reflects the
+        // move without the user needing to manually refresh.  We always
+        // include root, source parent, and target; then sweep every other
+        // loaded node so nested/sibling folders stay consistent too.
+        const currentNodes = nodesRef.current
         const pathsToRefresh = new Set<string>(['', sourceParentPath, moveTargetFolderPath])
+        for (const path of Object.keys(currentNodes)) {
+          if (currentNodes[path]?.loaded) pathsToRefresh.add(path)
+        }
         for (const refreshPath of pathsToRefresh) {
           void loadPath(refreshPath, true)
         }
@@ -450,6 +468,7 @@ export default function VaultExplorerBlock({
 
   const beginInlineRename = useCallback((path: string, kind: ExplorerPathKind) => {
     setPendingRename(null)
+    renameJustOpenedRef.current = true
     setInlineRename({
       path,
       kind,
@@ -590,6 +609,7 @@ export default function VaultExplorerBlock({
     const rafId = window.requestAnimationFrame(() => {
       renameInputRef.current?.focus()
       renameInputRef.current?.select()
+      renameJustOpenedRef.current = false
     })
     return () => window.cancelAnimationFrame(rafId)
   }, [inlineRenameSession])
@@ -674,12 +694,13 @@ export default function VaultExplorerBlock({
               )}
               <input
                 ref={renameInputRef}
+                autoFocus
                 value={inlineRename.value}
                 onChange={event => setInlineRename(prev => prev ? { ...prev, value: event.target.value } : prev)}
                 onKeyDown={event => {
                   if (event.key === 'Enter') {
                     event.preventDefault()
-                    void commitInlineRename()
+                    if (!renameJustOpenedRef.current) void commitInlineRename()
                   } else if (event.key === 'Escape') {
                     event.preventDefault()
                     cancelInlineRename()
@@ -810,12 +831,13 @@ export default function VaultExplorerBlock({
               <Icon className="ltm-explorer-glyph ltm-explorer-file-icon h-3.5 w-3.5 shrink-0 text-white" />
               <input
                 ref={renameInputRef}
+                autoFocus
                 value={inlineRename.value}
                 onChange={event => setInlineRename(prev => prev ? { ...prev, value: event.target.value } : prev)}
                 onKeyDown={event => {
                   if (event.key === 'Enter') {
                     event.preventDefault()
-                    void commitInlineRename()
+                    if (!renameJustOpenedRef.current) void commitInlineRename()
                   } else if (event.key === 'Escape') {
                     event.preventDefault()
                     cancelInlineRename()
@@ -881,7 +903,10 @@ export default function VaultExplorerBlock({
               data-path={filePath}
               data-selected={selectedFilePath === filePath ? 'true' : undefined}
             >
-              <Icon className={cn('ltm-explorer-glyph ltm-explorer-file-icon h-3.5 w-3.5 shrink-0 text-muted-foreground', selectedFilePath === filePath && 'text-white')} />
+              <Icon className={cn(
+                'ltm-explorer-glyph ltm-explorer-file-icon h-3.5 w-3.5 shrink-0',
+                selectedFilePath === filePath ? 'text-white' : isUrlFile(fileName) ? 'text-blue-400' : 'text-muted-foreground',
+              )} />
               <span className="truncate">{fileName}</span>
             </button>,
           )
@@ -1098,6 +1123,11 @@ export default function VaultExplorerBlock({
                   label="New Drawing"
                   onClick={() => { void runContextAction(onCreateDrawing ? () => onCreateDrawing(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) }}
                   disabled={!onCreateDrawing}
+                />
+                <MenuItem
+                  label="Add Link Here"
+                  onClick={() => { void runContextAction(onCreateLink ? () => onCreateLink(parentPath) : undefined, { refreshPath: parentPath }) }}
+                  disabled={!onCreateLink}
                 />
                 <MenuItem
                   label="Copy Absolute Path"

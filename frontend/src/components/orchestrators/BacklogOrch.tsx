@@ -342,12 +342,14 @@ export default function BacklogOrch() {
   const { openFile } = useMarkdownViewer()
   const [searchParams, setSearchParams] = useSearchParams()
   const [programs, setPrograms] = useState<NodeRecord[]>([])
+  const programsRef = useRef<NodeRecord[]>([])
   const [selectedNode, setSelectedNode] = useState<NodeRecord | null>(null)
   const [urlHydrated, setUrlHydrated] = useState(false)
   const [selectedFrontmatter, setSelectedFrontmatter] = useState<YAMLFrontmatter | null>(null)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
   const [treeRevision, setTreeRevision] = useState(0)
+  const [lastExternallyUpdatedNode, setLastExternallyUpdatedNode] = useState<NodeRecord | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -547,7 +549,10 @@ export default function BacklogOrch() {
   }, [activeProjectRoot, buildProjectUiState])
 
   const loadPrograms = useCallback(async (syncVault = false): Promise<boolean> => {
-    setLoading(true)
+    // Only show the loading spinner on first load when there's no data yet.
+    // On background refreshes, keep existing programs visible (stale-while-revalidate).
+    const isFirstLoad = programsRef.current.length === 0
+    if (isFirstLoad) setLoading(true)
     setError(null)
     try {
       if (syncVault) {
@@ -559,14 +564,16 @@ export default function BacklogOrch() {
         input: { typeFilter: 'program' },
         actor: BACKLOG_ACTOR,
       })
-      setPrograms(sortBacklogNodes(roots))
+      const sorted = sortBacklogNodes(roots)
+      programsRef.current = sorted
+      setPrograms(sorted)
       return true
     } catch (err) {
       setError(errorMessage(err, 'Failed to load programs'))
       return false
     } finally {
       setSyncing(false)
-      setLoading(false)
+      if (isFirstLoad) setLoading(false)
     }
   }, [])
 
@@ -1251,6 +1258,9 @@ export default function BacklogOrch() {
   const applyUpdatedNode = useCallback((updated: NodeRecord) => {
     if (updated.type === 'program') {
       setPrograms(prev => sortBacklogNodes(prev.map(p => p.uuid === updated.uuid ? updated : p)))
+    } else {
+      // Propagate the update into BacklogListBlock's internal child cache
+      setLastExternallyUpdatedNode(updated)
     }
     setSelectedNode(prev => (prev?.uuid === updated.uuid ? updated : prev))
   }, [])
@@ -1873,6 +1883,7 @@ export default function BacklogOrch() {
                 return nodes
               }}
               treeRevision={treeRevision}
+              externallyUpdatedNode={lastExternallyUpdatedNode}
               selectedNodeId={selectedNode?.uuid ?? null}
               onSelectNode={(node) => setSelectedNode(node)}
               onCreateChild={createChildNode}

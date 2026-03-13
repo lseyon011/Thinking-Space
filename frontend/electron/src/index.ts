@@ -1065,6 +1065,48 @@ ipcMain.handle('google:oauth:request', async (
   };
 });
 
+// -- Generic HTTP GET (for renderer-side fetch requests blocked by CSP) --
+ipcMain.handle('net:fetchText', async (_event, url: string): Promise<{ status: number; body: string }> => {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url.trim())) {
+    throw new Error('net:fetchText requires an http/https URL');
+  }
+  const defaultHeaders = {
+    'User-Agent': 'Mozilla/5.0 (compatible; ThinkingSpace/1.0)',
+    'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
+    'Accept-Encoding': 'gzip, deflate, br',
+  };
+  function fetchTextOnce(targetUrl: string): Promise<{ status: number; body: string }> {
+    return new Promise((resolve, reject) => {
+      const req = https.request(targetUrl, { method: 'GET', headers: defaultHeaders }, (res) => {
+        const status = res.statusCode ?? 0;
+        const location = res.headers.location;
+        if ([301, 302, 303, 307, 308].includes(status) && location) {
+          res.resume();
+          fetchTextOnce(new URL(location, targetUrl).toString()).then(resolve).catch(reject);
+          return;
+        }
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        res.on('end', () => {
+          const raw = Buffer.concat(chunks);
+          const encHeader = res.headers['content-encoding'];
+          const enc = (Array.isArray(encHeader) ? (encHeader[0] ?? '') : (encHeader ?? '')).toLowerCase();
+          let body: Buffer = raw;
+          try {
+            if (enc.includes('gzip')) body = gunzipSync(raw);
+            else if (enc.includes('deflate')) body = inflateSync(raw);
+            else if (enc.includes('br')) body = brotliDecompressSync(raw);
+          } catch { /* use raw on decode failure */ }
+          resolve({ status, body: body.toString('utf-8') });
+        });
+      });
+      req.on('error', reject);
+      req.end();
+    });
+  }
+  return fetchTextOnce(url.trim());
+});
+
 // -- Read file --
 ipcMain.handle('vault:read', async (_event, vaultRoot: string, relPath: string) => {
   const full = assertInsideVault(vaultRoot, relPath);

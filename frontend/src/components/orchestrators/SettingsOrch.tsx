@@ -36,8 +36,17 @@ import {
   type ExplorerIconStyleBlock,
 } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import type { UIThemeId } from '@/services/orchestrators/uiThemeOrch'
+import {
+  addRssFeedOrch,
+  getRssRetentionDaysOrch,
+  readRssFeedConfigsOrch,
+  removeRssFeedOrch,
+  setRssRetentionDaysOrch,
+  updateRssFeedOrch,
+} from '@/services/orchestrators/rssFeedOrch'
+import type { RssFeedConfigBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 
-export type SettingsTabId = 'theme' | 'explorer' | 'ai' | 'google_docs_sheets' | 'f9' | 'cache' | 'vault'
+export type SettingsTabId = 'theme' | 'explorer' | 'ai' | 'google_docs_sheets' | 'f9' | 'rss' | 'cache' | 'vault'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
 
 interface SettingsOrchProps {
@@ -68,6 +77,7 @@ const TAB_OPTIONS: Array<{ id: SettingsTabWithProfileId; label: string }> = [
   { id: 'ai', label: 'AI' },
   { id: 'google_docs_sheets', label: 'Google Docs and Sheets' },
   { id: 'f9', label: 'F9' },
+  { id: 'rss', label: 'RSS Feeds' },
   { id: 'cache', label: 'Clear Cache' },
   { id: 'vault', label: 'Select Thinking Space' },
 ]
@@ -935,6 +945,10 @@ export default function SettingsOrch({
         </Card>
       )}
 
+      {activeTab === 'rss' && (
+        <RssFeedSettingsSection />
+      )}
+
       {activeTab === 'cache' && (
         <Card>
           <CardHeader>
@@ -984,5 +998,124 @@ export default function SettingsOrch({
       {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
     </div>
+  )
+}
+
+const RETENTION_OPTIONS = [7, 14, 30, 60, 90, 180] as const
+
+function RssFeedSettingsSection() {
+  const [feeds, setFeeds] = useState<RssFeedConfigBlock[]>([])
+  const [newUrl, setNewUrl] = useState('')
+  const [newTitle, setNewTitle] = useState('')
+  const [retentionDays, setRetentionDays] = useState<number>(() => getRssRetentionDaysOrch())
+
+  useEffect(() => {
+    void readRssFeedConfigsOrch().then(setFeeds)
+  }, [])
+
+  const handleAdd = async () => {
+    const url = newUrl.trim()
+    if (!url) return
+    const entry = await addRssFeedOrch(url, newTitle.trim() || undefined)
+    setFeeds(prev => [...prev, entry])
+    setNewUrl('')
+    setNewTitle('')
+  }
+
+  const handleRemove = async (feedId: string) => {
+    await removeRssFeedOrch(feedId)
+    setFeeds(prev => prev.filter(f => f.id !== feedId))
+  }
+
+  const handleUpdateTitle = async (feedId: string, title: string) => {
+    await updateRssFeedOrch(feedId, { title })
+    setFeeds(prev => prev.map(f => f.id === feedId ? { ...f, title } : f))
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>RSS Feeds</CardTitle>
+        <CardDescription>
+          Add RSS or Atom feed URLs. They appear in the RSS panel at the bottom of the explorer.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {feeds.length > 0 && (
+          <div className="space-y-2">
+            {feeds.map(feed => (
+              <div key={feed.id} className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <input
+                    defaultValue={feed.title}
+                    onBlur={e => { void handleUpdateTitle(feed.id, e.target.value) }}
+                    className="block w-full bg-transparent text-sm font-medium outline-none placeholder:text-muted-foreground"
+                    placeholder="Feed title"
+                  />
+                  <div className="truncate text-xs text-muted-foreground">{feed.url}</div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 shrink-0 px-2 text-destructive hover:text-destructive"
+                  onClick={() => void handleRemove(feed.id)}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+        {feeds.length === 0 && (
+          <div className="rounded-md border border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
+            No feeds configured yet.
+          </div>
+        )}
+        <div className="space-y-2 rounded-md border border-border/60 p-3">
+          <div className="text-xs font-medium text-muted-foreground">Add Feed</div>
+          <input
+            value={newUrl}
+            onChange={e => setNewUrl(e.target.value)}
+            placeholder="https://example.com/feed.xml"
+            className="block w-full rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring"
+            onKeyDown={e => { if (e.key === 'Enter') void handleAdd() }}
+          />
+          <input
+            value={newTitle}
+            onChange={e => setNewTitle(e.target.value)}
+            placeholder="Title (optional — auto-detected from feed)"
+            className="block w-full rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring"
+            onKeyDown={e => { if (e.key === 'Enter') void handleAdd() }}
+          />
+          <Button size="sm" onClick={() => void handleAdd()} disabled={!newUrl.trim()}>
+            Add Feed
+          </Button>
+        </div>
+        <div className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
+          <div>
+            <div className="text-sm font-medium">Article Retention</div>
+            <div className="text-xs text-muted-foreground">
+              Articles older than this are auto-purged. Articles with tags or <code className="text-xs">keep: true</code> are kept forever.
+            </div>
+          </div>
+          <select
+            value={retentionDays}
+            onChange={e => {
+              const days = Number(e.target.value)
+              setRetentionDays(days)
+              setRssRetentionDaysOrch(days)
+            }}
+            className="shrink-0 rounded-md border border-border/70 bg-background px-2 py-1.5 text-sm outline-none focus:border-ring"
+          >
+            {RETENTION_OPTIONS.map(d => (
+              <option key={d} value={d}>{d} days</option>
+            ))}
+            {!RETENTION_OPTIONS.includes(retentionDays as typeof RETENTION_OPTIONS[number]) && (
+              <option value={retentionDays}>{retentionDays} days</option>
+            )}
+          </select>
+        </div>
+      </CardContent>
+    </Card>
   )
 }

@@ -38,6 +38,8 @@ import {
   renameVaultPathOrch,
 } from '@/services/orchestrators/fileSystemOrch'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/integrations/ExcalidrawDocumentBlock'
+import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentBlock'
+import { isUrlShortcutPathBlock } from '@/services/lego_blocks/units/urlShortcutBlock'
 import TableDocumentBlock from '@/components/lego_blocks/integrations/TableDocumentBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
 import GoogleDocDocumentBlock from '@/components/lego_blocks/integrations/GoogleDocDocumentBlock'
@@ -52,6 +54,7 @@ import {
   type MarkdownEditorSettingsBlock,
 } from '@/services/orchestrators/markdownEditorSettingsOrch'
 import { STORAGE_KEYS, getStorageItem, setStorageItem } from '@/services/orchestrators/storageOrch'
+import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import { type StewardMetadataSuggestion } from '@/services/orchestrators/stewardMetadataOrch'
 import {
   DEFERRED_RENDER_CHARS,
@@ -947,6 +950,7 @@ function MarkdownTextDocumentRuntimeBlock({
       const nextPath = await renameVaultPathOrch(path, nextName)
       setFilenameDraft(nextPath.split('/').pop() || nextPath)
       setIsHeaderRenameActive(false)
+      dispatchGlobalSyncRefreshBlock({ source: 'unknown', requestedAt: Date.now(), vaultSyncAttempted: false, vaultSyncSucceeded: false })
       if (onOpenPathForEdit) onOpenPathForEdit(nextPath)
       else if (onOpenPath) onOpenPath(nextPath)
     } catch (err) {
@@ -1795,6 +1799,16 @@ function UnsupportedFileDocumentRuntimeBlock({
 }
 
 function MarkdownDocumentBlock(props: MarkdownDocumentBlockProps) {
+  if (isUrlShortcutPathBlock(props.path)) {
+    return (
+      <UrlDocumentBlock
+        path={props.path}
+        onClose={props.onClose}
+        showCloseButton={props.showCloseButton}
+        className={props.className}
+      />
+    )
+  }
   if (isTableDocumentPathBlock(props.path)) {
     return (
       <TableDocumentBlock

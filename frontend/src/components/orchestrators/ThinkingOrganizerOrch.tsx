@@ -215,12 +215,7 @@ function ViewTab() {
               <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                 {levelLabel}
               </div>
-              {nodesLoading ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading level...
-                </div>
-              ) : (
+              <div className={nodesLoading ? 'pointer-events-none opacity-60 transition-opacity' : 'transition-opacity'}>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {currentNodes.map(node => {
                     const Icon = nodeIcon(node.type)
@@ -249,13 +244,13 @@ function ViewTab() {
                       </button>
                     )
                   })}
-                  {currentNodes.length === 0 && (
+                  {currentNodes.length === 0 && !nodesLoading && (
                     <div className="rounded-xl border border-dashed border-border/70 px-3 py-6 text-sm text-muted-foreground">
                       No nodes at this level.
                     </div>
                   )}
                 </div>
-              )}
+              </div>
             </div>
           )}
         </CardContent>

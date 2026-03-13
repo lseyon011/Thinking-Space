@@ -1,0 +1,530 @@
+import { parseFeed } from 'feedsmith'
+import * as yaml from 'js-yaml'
+import {
+  STORAGE_KEYS,
+  getJsonStorageItem,
+  setJsonStorageItem,
+} from '@/services/lego_blocks/units/storageKeyBlock'
+import {
+  generateFeedIdBlock,
+  normalizeRssFeedItemIdBlock,
+  type RssFeedConfigBlock,
+  type RssFeedItemBlock,
+  type RssFeedResultBlock,
+} from '@/services/lego_blocks/units/rssFeedBlock'
+import { getVaultFS, isElectron } from '@/services/lego_blocks/integrations/fsBlock'
+
+// ---------------------------------------------------------------------------
+// Feed config persistence — vault-backed so configs sync across devices
+// ---------------------------------------------------------------------------
+
+const RSS_DIR = '.thinking-space/preferences'
+const RSS_FILE = `${RSS_DIR}/rss-feeds.json`
+
+// ---------------------------------------------------------------------------
+// Article persistence — one .md file per article, per feed
+// ---------------------------------------------------------------------------
+
+const RSS_ARTICLES_DIR = '.thinking-space/rss-feeds'
+
+/** Stable filename for an article derived from its item ID. */
+function itemFilenameBlock(itemId: string): string {
+  // itemId format: "feed-xxx::hash" — use the hash portion as filename
+  const hash = itemId.split('::')[1] ?? itemId.replace(/[^a-z0-9]/gi, '').slice(0, 16)
+  return `${hash}.md`
+}
+
+interface RssItemFrontmatter {
+  id: string
+  feedId: string
+  feedTitle: string
+  title: string
+  link: string
+  pubDate: string | null
+  fetchedAt: string
+  read: boolean
+  tags?: string[]
+  [key: string]: unknown
+}
+
+function serializeRssItemFileBlock(
+  item: RssFeedItemBlock,
+  feedTitle: string,
+  fetchedAt: string,
+): string {
+  const fm: RssItemFrontmatter = {
+    id: item.id,
+    feedId: item.feedId,
+    feedTitle,
+    title: item.title,
+    link: item.link,
+    pubDate: item.pubDate ?? null,
+    fetchedAt,
+    read: item.read,
+    tags: item.tags ?? [],
+    keep: item.keep ?? false,
+    important: item.important ?? false,
+  }
+  const yamlStr = (yaml.dump(fm, {
+    lineWidth: -1,
+    noRefs: true,
+    sortKeys: false,
+    quotingType: '"',
+  }) as string).trimEnd()
+  return `---\n${yamlStr}\n---\n\n${item.description}`
+}
+
+function parseRssItemFileBlock(content: string): RssFeedItemBlock | null {
+  if (!content.startsWith('---')) return null
+  const closeIdx = content.indexOf('\n---', 4)
+  if (closeIdx === -1) return null
+  const yamlStr = content.slice(4, closeIdx)
+  const body = content.slice(closeIdx + 4).replace(/^\n+/, '')
+  let fm: unknown
+  try {
+    fm = yaml.load(yamlStr)
+  } catch {
+    return null
+  }
+  if (!fm || typeof fm !== 'object') return null
+  const f = fm as Record<string, unknown>
+  const id = typeof f.id === 'string' ? f.id : ''
+  if (!id) return null
+  return {
+    id,
+    feedId: typeof f.feedId === 'string' ? f.feedId : '',
+    title: typeof f.title === 'string' ? f.title : '',
+    link: typeof f.link === 'string' ? f.link : '',
+    description: body,
+    pubDate: typeof f.pubDate === 'string' ? f.pubDate : null,
+    read: f.read === true,
+    tags: Array.isArray(f.tags) ? (f.tags as unknown[]).filter((t): t is string => typeof t === 'string') : [],
+    keep: f.keep === true,
+    important: f.important === true,
+  }
+}
+
+async function ensureRssArticleDirOrch(feedId: string): Promise<void> {
+  const fs = getVaultFS()
+  try { await fs.mkdir('.thinking-space') } catch { /* exists */ }
+  try { await fs.mkdir(RSS_ARTICLES_DIR) } catch { /* exists */ }
+  try { await fs.mkdir(`${RSS_ARTICLES_DIR}/${feedId}`) } catch { /* exists */ }
+}
+
+async function loadStoredFeedItemsOrch(feedId: string): Promise<Map<string, RssFeedItemBlock>> {
+  const fs = getVaultFS()
+  const dir = `${RSS_ARTICLES_DIR}/${feedId}`
+  const result = new Map<string, RssFeedItemBlock>()
+  let files: string[]
+  try {
+    const listed = await fs.list(dir)
+    files = listed.files.filter(f => f.endsWith('.md'))
+  } catch {
+    return result // directory doesn't exist yet
+  }
+  await Promise.all(files.map(async filename => {
+    try {
+      const content = await fs.read(`${dir}/${filename}`)
+      const item = parseRssItemFileBlock(content)
+      if (item?.id) result.set(item.id, item)
+    } catch { /* skip unreadable files */ }
+  }))
+  return result
+}
+
+async function writeRssItemFileOrch(
+  feedId: string,
+  feedTitle: string,
+  item: RssFeedItemBlock,
+): Promise<void> {
+  const fs = getVaultFS()
+  const path = `${RSS_ARTICLES_DIR}/${feedId}/${itemFilenameBlock(item.id)}`
+  await fs.write(path, serializeRssItemFileBlock(item, feedTitle, new Date().toISOString()))
+}
+
+// ---------------------------------------------------------------------------
+// Retention settings
+// ---------------------------------------------------------------------------
+
+export const RSS_RETENTION_DEFAULT_DAYS = 30
+
+export function getRssRetentionDaysOrch(): number {
+  const val = getJsonStorageItem<number>(STORAGE_KEYS.rssFeedRetentionDays, RSS_RETENTION_DEFAULT_DAYS)
+  return typeof val === 'number' && val > 0 ? val : RSS_RETENTION_DEFAULT_DAYS
+}
+
+export function setRssRetentionDaysOrch(days: number): void {
+  setJsonStorageItem(STORAGE_KEYS.rssFeedRetentionDays, days)
+}
+
+// ---------------------------------------------------------------------------
+// Purge
+// ---------------------------------------------------------------------------
+
+/** Reads raw frontmatter record from an RSS article file. */
+function extractRssFrontmatterBlock(content: string): Record<string, unknown> | null {
+  if (!content.startsWith('---')) return null
+  const closeIdx = content.indexOf('\n---', 4)
+  if (closeIdx === -1) return null
+  try {
+    const parsed = yaml.load(content.slice(4, closeIdx))
+    return typeof parsed === 'object' && parsed !== null ? parsed as Record<string, unknown> : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Deletes stored articles for a feed that are older than retentionDays,
+ * unless they have tags or `keep: true` / `important: true` in their frontmatter.
+ * Called fire-and-forget after each fetch.
+ */
+async function purgeOldRssItemsOrch(feedId: string, retentionDays: number): Promise<void> {
+  if (retentionDays <= 0) return
+  const fs = getVaultFS()
+  const dir = `${RSS_ARTICLES_DIR}/${feedId}`
+  let files: string[]
+  try {
+    const listed = await fs.list(dir)
+    files = listed.files.filter(f => f.endsWith('.md'))
+  } catch {
+    return // directory doesn't exist yet
+  }
+
+  const cutoffMs = Date.now() - retentionDays * 24 * 60 * 60 * 1000
+
+  await Promise.all(files.map(async filename => {
+    const path = `${dir}/${filename}`
+    try {
+      const content = await fs.read(path)
+      const fm = extractRssFrontmatterBlock(content)
+      if (!fm) return
+
+      // Never purge items the user has flagged
+      const tags = Array.isArray(fm.tags) ? fm.tags : []
+      if (tags.length > 0 || fm.keep === true || fm.important === true) return
+
+      // Determine age from fetchedAt, falling back to pubDate
+      const dateStr = typeof fm.fetchedAt === 'string' ? fm.fetchedAt
+        : typeof fm.pubDate === 'string' ? fm.pubDate
+        : null
+      if (!dateStr) return // can't determine age, keep it safe
+
+      const ageMs = new Date(dateStr).getTime()
+      if (isNaN(ageMs) || ageMs >= cutoffMs) return // not old enough
+
+      await fs.delete(path)
+    } catch { /* skip files we can't read/delete */ }
+  }))
+}
+
+async function patchRssItemFrontmatterOrch(
+  itemId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  const fs = getVaultFS()
+  const feedId = itemId.split('::')[0]
+  const path = `${RSS_ARTICLES_DIR}/${feedId}/${itemFilenameBlock(itemId)}`
+  try {
+    const content = await fs.read(path)
+    const closeIdx = content.indexOf('\n---', 4)
+    if (closeIdx === -1) return
+    let fm: unknown
+    try { fm = yaml.load(content.slice(4, closeIdx)) } catch { return }
+    if (!fm || typeof fm !== 'object') return
+    const updated = { ...(fm as Record<string, unknown>), ...patch }
+    const newYaml = (yaml.dump(updated, {
+      lineWidth: -1, noRefs: true, sortKeys: false, quotingType: '"',
+    }) as string).trimEnd()
+    const body = content.slice(closeIdx + 4).replace(/^\n+/, '')
+    await fs.write(path, `---\n${newYaml}\n---\n\n${body}`)
+  } catch { /* file may not exist yet; silently ignore */ }
+}
+
+function updateRssItemReadOrch(itemId: string, read: boolean): void {
+  void patchRssItemFrontmatterOrch(itemId, { read })
+}
+
+export async function updateRssItemMetaOrch(
+  itemId: string,
+  patch: { tags?: string[]; keep?: boolean; important?: boolean },
+): Promise<void> {
+  await patchRssItemFrontmatterOrch(itemId, patch as Record<string, unknown>)
+}
+
+// ---------------------------------------------------------------------------
+// Feed config persistence — vault-backed so configs sync across devices
+// ---------------------------------------------------------------------------
+
+function normalizeRssFeedConfigsBlock(value: unknown): RssFeedConfigBlock[] {
+  if (!Array.isArray(value)) return []
+  return value.filter(
+    (item): item is RssFeedConfigBlock =>
+      item !== null &&
+      typeof item === 'object' &&
+      typeof (item as RssFeedConfigBlock).id === 'string' &&
+      typeof (item as RssFeedConfigBlock).url === 'string' &&
+      typeof (item as RssFeedConfigBlock).title === 'string',
+  )
+}
+
+async function ensureRssDirOrch(): Promise<void> {
+  const fs = getVaultFS()
+  try { await fs.mkdir('.thinking-space') } catch { /* exists */ }
+  try { await fs.mkdir(RSS_DIR) } catch { /* exists */ }
+}
+
+export async function readRssFeedConfigsOrch(): Promise<RssFeedConfigBlock[]> {
+  const fs = getVaultFS()
+  try {
+    const raw = await fs.read(RSS_FILE)
+    const parsed = normalizeRssFeedConfigsBlock(JSON.parse(raw))
+    return parsed
+  } catch {
+    // File missing or unreadable — check localStorage for a one-time migration.
+    const legacy = getJsonStorageItem<RssFeedConfigBlock[]>(STORAGE_KEYS.rssFeedConfigs, [])
+    if (legacy.length > 0) {
+      try {
+        await ensureRssDirOrch()
+        await fs.write(RSS_FILE, JSON.stringify(legacy, null, 2))
+        setJsonStorageItem(STORAGE_KEYS.rssFeedConfigs, [])
+      } catch {
+        // Migration write failed — just return localStorage data.
+      }
+      return legacy
+    }
+    return []
+  }
+}
+
+async function writeRssFeedConfigsOrch(configs: RssFeedConfigBlock[]): Promise<void> {
+  const fs = getVaultFS()
+  await ensureRssDirOrch()
+  await fs.write(RSS_FILE, JSON.stringify(configs, null, 2))
+}
+
+export async function addRssFeedOrch(url: string, title?: string): Promise<RssFeedConfigBlock> {
+  const configs = await readRssFeedConfigsOrch()
+  const entry: RssFeedConfigBlock = {
+    id: generateFeedIdBlock(),
+    url: url.trim(),
+    title: title?.trim() || domainLabel(url),
+  }
+  configs.push(entry)
+  await writeRssFeedConfigsOrch(configs)
+  return entry
+}
+
+export async function removeRssFeedOrch(feedId: string): Promise<void> {
+  const configs = (await readRssFeedConfigsOrch()).filter(c => c.id !== feedId)
+  await writeRssFeedConfigsOrch(configs)
+}
+
+export async function updateRssFeedOrch(
+  feedId: string,
+  patch: Partial<Pick<RssFeedConfigBlock, 'url' | 'title'>>,
+): Promise<void> {
+  const configs = (await readRssFeedConfigsOrch()).map(c =>
+    c.id === feedId ? { ...c, ...patch } : c,
+  )
+  await writeRssFeedConfigsOrch(configs)
+}
+
+// ---------------------------------------------------------------------------
+// Read-state persistence — localStorage for instant UI + vault files as truth
+// ---------------------------------------------------------------------------
+
+export function readRssReadItemIdsOrch(): Set<string> {
+  const arr = getJsonStorageItem<string[]>(STORAGE_KEYS.rssReadItemIds, [])
+  return new Set(arr)
+}
+
+function writeRssReadItemIdsOrch(ids: Set<string>): void {
+  // Cap at 5 000 entries to avoid unbounded localStorage growth
+  const arr = [...ids]
+  if (arr.length > 5000) arr.splice(0, arr.length - 5000)
+  setJsonStorageItem(STORAGE_KEYS.rssReadItemIds, arr)
+}
+
+export async function removeRssItemsOrch(itemIds: string[]): Promise<void> {
+  const fs = getVaultFS()
+  await Promise.all(itemIds.map(async itemId => {
+    const feedId = itemId.split('::')[0]
+    const path = `${RSS_ARTICLES_DIR}/${feedId}/${itemFilenameBlock(itemId)}`
+    try { await fs.delete(path) } catch { /* already gone */ }
+  }))
+}
+
+export function markRssItemReadOrch(itemId: string): void {
+  const ids = readRssReadItemIdsOrch()
+  ids.add(itemId)
+  writeRssReadItemIdsOrch(ids)
+  void updateRssItemReadOrch(itemId, true)
+}
+
+export function markRssItemsReadOrch(itemIds: string[]): void {
+  const ids = readRssReadItemIdsOrch()
+  for (const id of itemIds) ids.add(id)
+  writeRssReadItemIdsOrch(ids)
+  for (const id of itemIds) void updateRssItemReadOrch(id, true)
+}
+
+// ---------------------------------------------------------------------------
+// Fetch and parse
+// ---------------------------------------------------------------------------
+
+async function fetchRssFeedTextBlock(url: string): Promise<{ status: number; body: string }> {
+  if (isElectron() && window.electronAPI?.fetchText) {
+    return window.electronAPI.fetchText(url)
+  }
+  const response = await fetch(url)
+  return { status: response.status, body: await response.text() }
+}
+
+export async function fetchAndParseRssFeedOrch(
+  config: RssFeedConfigBlock,
+): Promise<RssFeedResultBlock> {
+  // Always load stored items first — used for merging and as offline fallback.
+  const storedItems = await loadStoredFeedItemsOrch(config.id)
+  const readIds = readRssReadItemIdsOrch() // localStorage fallback for not-yet-stored items
+
+  try {
+    const response = await fetchRssFeedTextBlock(config.url)
+    if (response.status < 200 || response.status >= 300) {
+      return buildResultFromStored(config, storedItems, `HTTP ${response.status}`)
+    }
+
+    const { format, feed } = parseFeed(response.body)
+    const feedAny = feed as Record<string, unknown>
+    const entries = (
+      format === 'atom'
+        ? (feedAny.entries as Record<string, unknown>[] | undefined)
+        : (feedAny.items as Record<string, unknown>[] | undefined)
+    ) ?? []
+
+    const feedTitleRaw = feedAny.title
+    const feedTitle = (typeof feedTitleRaw === 'string' ? feedTitleRaw.trim() : '') || config.title
+
+    const liveItems: RssFeedItemBlock[] = entries.map(item => {
+      const guidObj = item.guid as { value?: string } | undefined
+      const guid = typeof item.id === 'string' ? item.id : guidObj?.value
+      const linkRaw = item.link ?? item.url
+      const link = typeof linkRaw === 'string' ? linkRaw
+        : (Array.isArray(item.links) ? extractAtomLinkBlock(item.links) : undefined)
+      const titleRaw = item.title
+      const title = typeof titleRaw === 'string' ? titleRaw
+        : (typeof titleRaw === 'object' && titleRaw !== null ? String((titleRaw as { value?: unknown }).value ?? '') : '')
+      const summaryRaw = item.summary ?? item.content
+      const description = typeof item.description === 'string' ? item.description
+        : (typeof summaryRaw === 'string' ? summaryRaw
+          : (typeof summaryRaw === 'object' && summaryRaw !== null ? String((summaryRaw as { value?: unknown }).value ?? '') : ''))
+      const pubDate = extractDateBlock(item.pubDate ?? item.published ?? item.updated)
+      const id = normalizeRssFeedItemIdBlock(config.id, guid, link, title)
+
+      // Vault state takes priority; localStorage is fallback for new items.
+      const stored = storedItems.get(id)
+      const read = stored ? stored.read : readIds.has(id)
+
+      return {
+        id,
+        feedId: config.id,
+        title,
+        link: link ?? '',
+        description: stripHtmlBlock(description),
+        pubDate,
+        read,
+        tags: stored?.tags ?? [],
+        keep: stored?.keep ?? false,
+        important: stored?.important ?? false,
+      }
+    })
+
+    // Persist new articles to vault (don't overwrite existing — preserves user edits).
+    const newItems = liveItems.filter(item => !storedItems.has(item.id))
+    if (newItems.length > 0) {
+      await ensureRssArticleDirOrch(config.id)
+      await Promise.all(newItems.map(item => writeRssItemFileOrch(config.id, feedTitle, item)))
+    }
+
+    // Merge: live items (updated read state) + stored-only items (no longer in feed).
+    const liveIds = new Set(liveItems.map(i => i.id))
+    const storedOnlyItems = [...storedItems.values()].filter(i => !liveIds.has(i.id))
+    const allItems = [...liveItems, ...storedOnlyItems]
+    sortByPubDateDesc(allItems)
+
+    // Purge old articles in the background — doesn't block the UI.
+    void purgeOldRssItemsOrch(config.id, getRssRetentionDaysOrch())
+
+    return { feedId: config.id, feedTitle, items: allItems, error: null }
+  } catch (err) {
+    // Offline or fetch failed — return whatever we have stored.
+    if (storedItems.size > 0) {
+      return buildResultFromStored(config, storedItems, err instanceof Error ? err.message : 'Fetch failed')
+    }
+    return {
+      feedId: config.id,
+      feedTitle: config.title,
+      items: [],
+      error: err instanceof Error ? err.message : 'Failed to fetch feed',
+    }
+  }
+}
+
+function buildResultFromStored(
+  config: RssFeedConfigBlock,
+  storedItems: Map<string, RssFeedItemBlock>,
+  error: string,
+): RssFeedResultBlock {
+  const items = [...storedItems.values()]
+  sortByPubDateDesc(items)
+  return { feedId: config.id, feedTitle: config.title, items, error }
+}
+
+function sortByPubDateDesc(items: RssFeedItemBlock[]): void {
+  items.sort((a, b) => {
+    if (!a.pubDate && !b.pubDate) return 0
+    if (!a.pubDate) return 1
+    if (!b.pubDate) return -1
+    return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime()
+  })
+}
+
+export async function fetchAllRssFeedsOrch(): Promise<RssFeedResultBlock[]> {
+  const configs = await readRssFeedConfigsOrch()
+  if (configs.length === 0) return []
+  const results = await Promise.allSettled(configs.map(fetchAndParseRssFeedOrch))
+  return results.map((r, i) =>
+    r.status === 'fulfilled'
+      ? r.value
+      : { feedId: configs[i].id, feedTitle: configs[i].title, items: [], error: 'Fetch failed' },
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function domainLabel(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, '') }
+  catch { return 'Feed' }
+}
+
+function extractAtomLinkBlock(links: unknown[]): string | undefined {
+  for (const link of links) {
+    if (typeof link === 'object' && link !== null) {
+      const rec = link as Record<string, unknown>
+      if (typeof rec.href === 'string') return rec.href
+    }
+  }
+  return undefined
+}
+
+function extractDateBlock(value: unknown): string | null {
+  if (typeof value === 'string') return value
+  if (value instanceof Date) return value.toISOString()
+  return null
+}
+
+function stripHtmlBlock(html: string): string {
+  return html.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim()
+}

@@ -34,6 +34,9 @@ export const STORAGE_KEYS = {
   aiOauthCredentials: 'ltm-ai-oauth-credentials',
   googleDriveAuth: 'ltm-google-drive-auth',
   googleDriveOauthClientId: 'ltm-google-drive-oauth-client-id',
+  rssFeedConfigs: 'ltm-rss-feed-configs',
+  rssReadItemIds: 'ltm-rss-read-item-ids',
+  rssFeedRetentionDays: 'ltm-rss-feed-retention-days',
 } as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]

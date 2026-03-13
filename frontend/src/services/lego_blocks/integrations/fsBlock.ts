@@ -85,6 +85,7 @@ interface ElectronAPI {
   }): Promise<unknown>
   selectVaultFolder(): Promise<string | null>
   openExternal?(url: string): Promise<void>
+  fetchText?(url: string): Promise<{ status: number; body: string }>
   googleOauthRequest?(payload: {
     method: 'GET' | 'POST' | 'PUT'
     url: string
@@ -243,6 +244,7 @@ export interface VaultFS {
   stat(path: string): Promise<VaultStat>
   exists(path: string): Promise<boolean>
   mkdir(path: string): Promise<void>
+  delete(path: string): Promise<void>
   process(path: string, fn: (data: string) => string): Promise<void>
 }
 
@@ -369,6 +371,15 @@ class WebVaultFS implements VaultFS {
     if (!res.ok) throw new Error(`Failed to mkdir: ${path}`)
   }
 
+  async delete(path: string): Promise<void> {
+    const res = await fetch('/api/tools/vault/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, recursive: false }),
+    })
+    if (!res.ok) throw new Error(`Failed to delete: ${path}`)
+  }
+
   async process(path: string, fn: (data: string) => string): Promise<void> {
     const content = await this.read(path)
     await this.write(path, fn(content))
@@ -438,6 +449,12 @@ class ElectronVaultFS implements VaultFS {
 
   async mkdir(path: string): Promise<void> {
     return this.api.mkdir(this.vaultRoot, path)
+  }
+
+  async delete(path: string): Promise<void> {
+    if (this.api.deletePath) {
+      await this.api.deletePath(this.vaultRoot, path, false)
+    }
   }
 
   async process(path: string, fn: (data: string) => string): Promise<void> {
@@ -619,6 +636,12 @@ class CapacitorVaultFS implements VaultFS {
     }
   }
 
+  async delete(path: string): Promise<void> {
+    const { Filesystem } = await import('@capacitor/filesystem')
+    const opts = await this.fsOpts(path)
+    await Filesystem.deleteFile(opts)
+  }
+
   async process(path: string, fn: (data: string) => string): Promise<void> {
     const content = await this.read(path)
     await this.write(path, fn(content))
@@ -796,6 +819,16 @@ export class BrowserVaultFS implements VaultFS {
 
   async mkdir(dirPath: string): Promise<void> {
     await this.resolveDir(dirPath, true)
+  }
+
+  async delete(filePath: string): Promise<void> {
+    const parts = filePath.split('/').filter(Boolean)
+    const fileName = parts.pop()!
+    let dir = this.root
+    for (const segment of parts) {
+      dir = await dir.getDirectoryHandle(segment)
+    }
+    await dir.removeEntry(fileName)
   }
 
   async process(filePath: string, fn: (data: string) => string): Promise<void> {

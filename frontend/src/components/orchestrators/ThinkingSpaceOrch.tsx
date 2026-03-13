@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { PanelLeft, PanelLeftClose, FileText } from 'lucide-react'
+import { PanelLeft, PanelLeftClose, FileText, Rss as RssIcon } from 'lucide-react'
 import VaultExplorerBlock from '@/components/lego_blocks/integrations/VaultExplorerBlock'
 import MarkdownDocumentBlock, { type MarkdownViewerMode } from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
@@ -34,6 +34,11 @@ import {
   THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_HEADER_EVENT_BLOCK,
 } from '@/services/lego_blocks/units/thinkingSpaceGoogleWorkspaceChromeBlock'
 import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
+import { createUrlShortcutOrch } from '@/services/orchestrators/urlShortcutOrch'
+import RssFeedPanelBlock from '@/components/lego_blocks/integrations/RssFeedPanelBlock'
+import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
+import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentBlock'
+import type { RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 
 function dispatchFileOpRefresh(): void {
   dispatchGlobalSyncRefreshBlock({
@@ -88,6 +93,14 @@ export default function ThinkingSpaceOrch() {
     () => (inlinePathFromUrl ? { [inlinePathFromUrl]: 'view' } : {}),
   )
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
+  const [rssPanelOpen, setRssPanelOpen] = useState(false)
+  const [browserUrl, setBrowserUrl] = useState<string | null>(null)
+  const [rssActiveArticle, setRssActiveArticle] = useState<{
+    item: RssFeedItemBlock
+    onItemUpdate: (updated: RssFeedItemBlock) => void
+  } | null>(null)
+  const [linkPromptOpen, setLinkPromptOpen] = useState(false)
+  const linkPromptResolveRef = useRef<((url: string | null) => void) | null>(null)
   const [isExplorerResizing, setIsExplorerResizing] = useState(false)
   const [focusedHeaderVisible, setFocusedHeaderVisible] = useState(false)
   const [explorerCollapsed, setExplorerCollapsed] = useState(
@@ -192,6 +205,7 @@ export default function ThinkingSpaceOrch() {
   const setInlinePathAndSyncUrl = useCallback((path: string | null, mode: MarkdownViewerMode = 'view') => {
     if (path) {
       rememberMountedInlinePath(path, mode)
+      setBrowserUrl(null) // clear browser URL when opening a file
     }
     setInlinePath(path)
     setSearchParams((prev) => {
@@ -261,6 +275,28 @@ export default function ThinkingSpaceOrch() {
     dispatchFileOpRefresh()
     return outputPath
   }, [setInlinePathAndSyncUrl])
+
+  const handleExplorerCreateLink = useCallback(async (parentPath: string): Promise<string | boolean> => {
+    const url = await new Promise<string | null>((resolve) => {
+      linkPromptResolveRef.current = resolve
+      setLinkPromptOpen(true)
+    })
+    setLinkPromptOpen(false)
+    if (!url?.trim()) return false
+    const outputPath = await createUrlShortcutOrch(parentPath, url.trim())
+    setInlinePathAndSyncUrl(outputPath)
+    dispatchFileOpRefresh()
+    return outputPath
+  }, [setInlinePathAndSyncUrl])
+
+  const handleRssOpenArticle = useCallback((
+    item: RssFeedItemBlock,
+    onItemUpdate: (updated: RssFeedItemBlock) => void,
+  ) => {
+    setRssActiveArticle({ item, onItemUpdate })
+    setBrowserUrl(null)
+    setMobileExplorerOpen(false)
+  }, [])
 
   const handleExplorerCopyRelativePath = useCallback(async (path: string): Promise<boolean> => {
     return copyToClipboard(getRelativePathForClipboardOrch(path))
@@ -586,33 +622,58 @@ export default function ThinkingSpaceOrch() {
           <PanelLeftClose className="h-4 w-4" />
         </Button>
       </div>
-      <div className="min-h-0 flex-1">
-        <VaultExplorerBlock
-          loadEntries={listFolderEntries}
-          selectedPath={inlinePath}
-          listenToGlobalSyncRefresh
-          onOpenFile={setInlinePathAndSyncUrl}
-          onCreateFolder={handleExplorerCreateFolder}
-          onCreateFile={handleExplorerCreateFile}
-          onCreateCsvFile={handleExplorerCreateCsvFile}
-          onCreateDrawing={handleExplorerCreateDrawing}
-          onCopyRelativePath={handleExplorerCopyRelativePath}
-          onCopyAbsolutePath={handleExplorerCopyAbsolutePath}
-          onOpenInNewTab={handleExplorerOpenInNewTab}
-          onOpenInNewWindow={handleExplorerOpenInNewWindow}
-          onDuplicateFile={handleExplorerDuplicateFile}
-          onRenamePath={handleExplorerRenamePath}
-          onDeleteFile={handleExplorerDeleteFile}
-          onDeleteFolder={handleExplorerDeleteFolder}
-          onOpenInFinder={handleExplorerOpenInFinder}
-          onMovePath={handleExplorerMovePath}
-          draggableFiles
-          draggableFolders
-          title=""
-        />
+      {rssPanelOpen ? (
+        <div className="min-h-0 flex-1">
+          <RssFeedPanelBlock
+            onOpenArticle={handleRssOpenArticle}
+            onClose={() => setRssPanelOpen(false)}
+          />
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1">
+          <VaultExplorerBlock
+            loadEntries={listFolderEntries}
+            selectedPath={inlinePath}
+            listenToGlobalSyncRefresh
+            onOpenFile={setInlinePathAndSyncUrl}
+            onCreateFolder={handleExplorerCreateFolder}
+            onCreateFile={handleExplorerCreateFile}
+            onCreateCsvFile={handleExplorerCreateCsvFile}
+            onCreateDrawing={handleExplorerCreateDrawing}
+            onCreateLink={handleExplorerCreateLink}
+            onCopyRelativePath={handleExplorerCopyRelativePath}
+            onCopyAbsolutePath={handleExplorerCopyAbsolutePath}
+            onOpenInNewTab={handleExplorerOpenInNewTab}
+            onOpenInNewWindow={handleExplorerOpenInNewWindow}
+            onDuplicateFile={handleExplorerDuplicateFile}
+            onRenamePath={handleExplorerRenamePath}
+            onDeleteFile={handleExplorerDeleteFile}
+            onDeleteFolder={handleExplorerDeleteFolder}
+            onOpenInFinder={handleExplorerOpenInFinder}
+            onMovePath={handleExplorerMovePath}
+            draggableFiles
+            draggableFolders
+            title=""
+          />
+        </div>
+      )}
+      <div className="shrink-0 border-t border-border/50 px-2 py-1.5">
+        <button
+          type="button"
+          onClick={() => setRssPanelOpen(prev => !prev)}
+          className={cn(
+            'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
+            rssPanelOpen
+              ? 'bg-primary/10 text-primary'
+              : 'text-muted-foreground hover:bg-muted/70',
+          )}
+        >
+          <RssIcon className="h-3.5 w-3.5" />
+          RSS Feeds
+        </button>
       </div>
     </>
-  ), [handleExplorerCreateCsvFile, inlinePath, setInlinePathAndSyncUrl])
+  ), [handleExplorerCreateCsvFile, inlinePath, rssPanelOpen, setInlinePathAndSyncUrl])
 
   const inlineDocumentContent = useMemo(() => {
     if (mountedInlinePaths.length === 0) return null
@@ -731,7 +792,26 @@ export default function ThinkingSpaceOrch() {
               </span>
             </Button>
           )}
-          {inlinePath && inlineDocumentContent ? (
+          {rssActiveArticle ? (
+            <div className="h-full min-h-0">
+              <RssArticleViewBlock
+                item={rssActiveArticle.item}
+                onClose={() => setRssActiveArticle(null)}
+                onItemUpdate={(updated) => {
+                  setRssActiveArticle(prev => prev ? { ...prev, item: updated } : null)
+                  rssActiveArticle.onItemUpdate(updated)
+                }}
+              />
+            </div>
+          ) : browserUrl ? (
+            <div className="h-full min-h-0">
+              <UrlDocumentBlock
+                url={browserUrl}
+                onClose={() => setBrowserUrl(null)}
+                showCloseButton
+              />
+            </div>
+          ) : inlinePath && inlineDocumentContent ? (
             <div className={cn(
               'h-full min-h-0',
               headerOffsetClass,
@@ -780,34 +860,130 @@ export default function ThinkingSpaceOrch() {
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
             </div>
-            <div className="min-h-0 flex-1">
-              <VaultExplorerBlock
-                loadEntries={listFolderEntries}
-                selectedPath={inlinePath}
-                listenToGlobalSyncRefresh
-                onOpenFile={handleDrawerFileOpen}
-                onCreateFolder={handleExplorerCreateFolder}
-                onCreateFile={handleExplorerCreateFile}
-                onCreateCsvFile={handleExplorerCreateCsvFile}
-                onCreateDrawing={handleExplorerCreateDrawing}
-                onCopyRelativePath={handleExplorerCopyRelativePath}
-                onCopyAbsolutePath={handleExplorerCopyAbsolutePath}
-                onOpenInNewTab={handleExplorerOpenInNewTab}
-                onOpenInNewWindow={handleExplorerOpenInNewWindow}
-                onDuplicateFile={handleExplorerDuplicateFile}
-                onRenamePath={handleExplorerRenamePath}
-                onDeleteFile={handleExplorerDeleteFile}
-                onDeleteFolder={handleExplorerDeleteFolder}
-                onOpenInFinder={handleExplorerOpenInFinder}
-                onMovePath={handleExplorerMovePath}
-                draggableFiles
-                draggableFolders
-                title=""
-              />
+            {rssPanelOpen ? (
+              <div className="min-h-0 flex-1">
+                <RssFeedPanelBlock
+                  onOpenArticle={handleRssOpenArticle}
+                  onClose={() => setRssPanelOpen(false)}
+                />
+              </div>
+            ) : (
+              <div className="min-h-0 flex-1">
+                <VaultExplorerBlock
+                  loadEntries={listFolderEntries}
+                  selectedPath={inlinePath}
+                  listenToGlobalSyncRefresh
+                  onOpenFile={handleDrawerFileOpen}
+                  onCreateFolder={handleExplorerCreateFolder}
+                  onCreateFile={handleExplorerCreateFile}
+                  onCreateCsvFile={handleExplorerCreateCsvFile}
+                  onCreateDrawing={handleExplorerCreateDrawing}
+                  onCreateLink={handleExplorerCreateLink}
+                  onCopyRelativePath={handleExplorerCopyRelativePath}
+                  onCopyAbsolutePath={handleExplorerCopyAbsolutePath}
+                  onOpenInNewTab={handleExplorerOpenInNewTab}
+                  onOpenInNewWindow={handleExplorerOpenInNewWindow}
+                  onDuplicateFile={handleExplorerDuplicateFile}
+                  onRenamePath={handleExplorerRenamePath}
+                  onDeleteFile={handleExplorerDeleteFile}
+                  onDeleteFolder={handleExplorerDeleteFolder}
+                  onOpenInFinder={handleExplorerOpenInFinder}
+                  onMovePath={handleExplorerMovePath}
+                  draggableFiles
+                  draggableFolders
+                  title=""
+                />
+              </div>
+            )}
+            <div className="shrink-0 border-t border-border/50 px-2 py-1.5">
+              <button
+                type="button"
+                onClick={() => setRssPanelOpen(prev => !prev)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
+                  rssPanelOpen
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted/70',
+                )}
+              >
+                <RssIcon className="h-3.5 w-3.5" />
+                RSS Feeds
+              </button>
             </div>
           </aside>
         </>
       )}
+      {linkPromptOpen && (
+        <LinkUrlPromptOverlay
+          onSubmit={(url) => { linkPromptResolveRef.current?.(url); linkPromptResolveRef.current = null }}
+          onCancel={() => { linkPromptResolveRef.current?.(null); linkPromptResolveRef.current = null }}
+        />
+      )}
+    </div>
+  )
+}
+
+function LinkUrlPromptOverlay({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (url: string) => void
+  onCancel: () => void
+}) {
+  const [value, setValue] = useState('')
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  const handleSubmit = () => {
+    const trimmed = value.trim()
+    if (trimmed) onSubmit(trimmed)
+    else onCancel()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <div
+        className="mx-4 w-full max-w-sm rounded-xl border border-border bg-background p-4 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="mb-3 text-sm font-medium">Add Link</p>
+        <input
+          ref={inputRef}
+          type="url"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); handleSubmit() }
+            if (e.key === 'Escape') { e.preventDefault(); onCancel() }
+          }}
+          placeholder="https://example.com"
+          className="mb-3 h-9 w-full rounded-md border border-input bg-muted/40 px-3 text-sm outline-none focus:border-ring"
+        />
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/70"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!value.trim()}
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-40 hover:bg-primary/90"
+          >
+            Add
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

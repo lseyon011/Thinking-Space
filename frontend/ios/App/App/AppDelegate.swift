@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import UniformTypeIdentifiers
+import WebKit
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -48,6 +49,7 @@ class LTMBridgeViewController: CAPBridgeViewController {
         configureShellSurface()
         bridge?.registerPluginInstance(FolderPickerPlugin())
         bridge?.registerPluginInstance(PencilEventsPlugin())
+        bridge?.registerPluginInstance(InlineWebViewPlugin())
     }
 
     private func configureShellSurface() {
@@ -348,5 +350,88 @@ private final class PencilSamplingGestureRecognizer: UIGestureRecognizer {
     private func handleTouches(_ touches: Set<UITouch>, phase: String) {
         guard let touch = touches.first(where: { $0.type == .pencil }) else { return }
         onSample?(touch, phase)
+    }
+}
+
+// MARK: - InlineWebViewPlugin
+
+/// Native Capacitor plugin that overlays a real WKWebView over a React layout
+/// slot, positioned using coordinates from getBoundingClientRect() in JS.
+/// This lets the iOS app display external web pages inline (like Electron's
+/// <webview>) without the cross-origin restrictions that block iframes in
+/// WKWebView.
+///
+/// Coordinate mapping: JS getBoundingClientRect() returns CSS logical pixels
+/// relative to the viewport. UIKit uses points. On iOS both are the same unit.
+/// We add safeAreaInsets.top so that JS y=0 (top of visible content) maps to
+/// the correct native y (below the status bar).
+@objc(InlineWebViewPlugin)
+public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDelegate {
+    public let identifier = "InlineWebViewPlugin"
+    public let jsName = "InlineWebView"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "updateFrame", returnType: CAPPluginReturnPromise),
+    ]
+
+    private var inlineWebView: WKWebView?
+
+    // Convert JS viewport rect → UIKit frame, accounting for safe area.
+    private func nativeFrame(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) -> CGRect {
+        let safeTop = bridge?.viewController?.view.safeAreaInsets.top ?? 0
+        return CGRect(x: x, y: y + safeTop, width: width, height: height)
+    }
+
+    @objc func open(_ call: CAPPluginCall) {
+        guard let urlString = call.getString("url"), let url = URL(string: urlString) else {
+            call.reject("Invalid URL"); return
+        }
+        let x = CGFloat(call.getFloat("x") ?? 0)
+        let y = CGFloat(call.getFloat("y") ?? 0)
+        let w = CGFloat(call.getFloat("width") ?? 0)
+        let h = CGFloat(call.getFloat("height") ?? 0)
+
+        DispatchQueue.main.async {
+            guard let parentView = self.bridge?.viewController?.view else {
+                call.reject("No parent view"); return
+            }
+            let frame = self.nativeFrame(x: x, y: y, width: w, height: h)
+
+            if self.inlineWebView == nil {
+                let config = WKWebViewConfiguration()
+                config.allowsInlineMediaPlayback = true
+                let wkView = WKWebView(frame: frame, configuration: config)
+                wkView.navigationDelegate = self
+                wkView.allowsBackForwardNavigationGestures = true
+                wkView.backgroundColor = .systemBackground
+                parentView.addSubview(wkView)
+                self.inlineWebView = wkView
+            } else {
+                self.inlineWebView?.frame = frame
+            }
+
+            self.inlineWebView?.load(URLRequest(url: url))
+            call.resolve()
+        }
+    }
+
+    @objc func close(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            self.inlineWebView?.removeFromSuperview()
+            self.inlineWebView = nil
+            call.resolve()
+        }
+    }
+
+    @objc func updateFrame(_ call: CAPPluginCall) {
+        let x = CGFloat(call.getFloat("x") ?? 0)
+        let y = CGFloat(call.getFloat("y") ?? 0)
+        let w = CGFloat(call.getFloat("width") ?? 0)
+        let h = CGFloat(call.getFloat("height") ?? 0)
+        DispatchQueue.main.async {
+            self.inlineWebView?.frame = self.nativeFrame(x: x, y: y, width: w, height: h)
+            call.resolve()
+        }
     }
 }

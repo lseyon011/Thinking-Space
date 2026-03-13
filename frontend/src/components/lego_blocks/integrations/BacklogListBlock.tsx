@@ -79,6 +79,7 @@ export interface BacklogListBlockProps {
   loadEpics: (program: NodeRecord) => Promise<NodeRecord[]>
   loadChildren: (node: NodeRecord) => Promise<NodeRecord[]>
   treeRevision?: number
+  externallyUpdatedNode?: NodeRecord | null
   selectedNodeId: string | null
   readOnly?: boolean
   onSelectNode: (node: NodeRecord) => void
@@ -148,6 +149,7 @@ export default function BacklogListBlock({
   loadEpics,
   loadChildren,
   treeRevision = 0,
+  externallyUpdatedNode,
   selectedNodeId,
   readOnly = false,
   onSelectNode,
@@ -537,6 +539,11 @@ export default function BacklogListBlock({
       return changed ? next : prev
     })
   }, [])
+
+  useEffect(() => {
+    if (!externallyUpdatedNode) return
+    patchCachedNode(externallyUpdatedNode)
+  }, [externallyUpdatedNode, patchCachedNode])
 
   const relatedNodeOptionsByPath = useMemo(() => {
     const map = new Map<string, BacklogRelatedNodeOptionBlock>()

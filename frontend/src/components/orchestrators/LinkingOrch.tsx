@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
@@ -25,13 +25,15 @@ function errorMessage(value: unknown, fallback: string): string {
 export default function LinkingOrch() {
   const { openFile } = useMarkdownViewer()
   const [programs, setPrograms] = useState<NodeRecord[]>([])
+  const programsRef = useRef<NodeRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
 
   const loadPrograms = useCallback(async () => {
-    setLoading(true)
+    const isFirstLoad = programsRef.current.length === 0
+    if (isFirstLoad) setLoading(true)
     setError(null)
     try {
       const { nodes: roots } = await invokeCapabilityOrThrow({
@@ -39,11 +41,13 @@ export default function LinkingOrch() {
         input: { typeFilter: 'program' },
         actor: LINKING_ACTOR,
       })
-      setPrograms(roots.sort((a, b) => a.title.localeCompare(b.title)))
+      const sorted = roots.sort((a, b) => a.title.localeCompare(b.title))
+      programsRef.current = sorted
+      setPrograms(sorted)
     } catch (err) {
       setError(errorMessage(err, 'Failed to load programs'))
     } finally {
-      setLoading(false)
+      if (isFirstLoad) setLoading(false)
     }
   }, [])
 
