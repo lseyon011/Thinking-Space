@@ -24,7 +24,11 @@ import type { RssFeedItemBlock, RssFeedResultBlock } from '@/services/lego_block
 import { cn } from '@/lib/utils'
 
 interface RssFeedPanelBlockProps {
-  onOpenArticle: (item: RssFeedItemBlock, onItemUpdate: (updated: RssFeedItemBlock) => void) => void
+  onOpenArticle: (
+    item: RssFeedItemBlock,
+    onItemUpdate: (updated: RssFeedItemBlock) => void,
+    onItemRemove: () => void,
+  ) => void
   onClose: () => void
   className?: string
 }
@@ -104,12 +108,22 @@ export default function RssFeedPanelBlock({
       })))
     }
     if (!item.link) return
-    onOpenArticle(item, (updated) => {
-      setFeeds(prev => prev.map(f => ({
-        ...f,
-        items: f.items.map(i => i.id === updated.id ? updated : i),
-      })))
-    })
+    onOpenArticle(
+      item,
+      (updated) => {
+        setFeeds(prev => prev.map(f => ({
+          ...f,
+          items: f.items.map(i => i.id === updated.id ? updated : i),
+        })))
+      },
+      () => {
+        setFeeds(prev => prev.map(f => ({
+          ...f,
+          items: f.items.filter(i => i.id !== item.id),
+        })))
+        setSelectedItemId(null)
+      },
+    )
   }, [deleteMode, onOpenArticle])
 
   const handleMarkAllRead = useCallback((feedId?: string) => {

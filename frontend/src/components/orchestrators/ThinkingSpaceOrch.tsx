@@ -35,6 +35,7 @@ import {
 } from '@/services/lego_blocks/units/thinkingSpaceGoogleWorkspaceChromeBlock'
 import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import { createUrlShortcutOrch } from '@/services/orchestrators/urlShortcutOrch'
+import { getNodeByPath } from '@/services/lego_blocks/integrations/dbBlock'
 import RssFeedPanelBlock from '@/components/lego_blocks/integrations/RssFeedPanelBlock'
 import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
 import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentBlock'
@@ -98,6 +99,7 @@ export default function ThinkingSpaceOrch() {
   const [rssActiveArticle, setRssActiveArticle] = useState<{
     item: RssFeedItemBlock
     onItemUpdate: (updated: RssFeedItemBlock) => void
+    onItemRemove: () => void
   } | null>(null)
   const [linkPromptOpen, setLinkPromptOpen] = useState(false)
   const linkPromptResolveRef = useRef<((url: string | null) => void) | null>(null)
@@ -292,8 +294,9 @@ export default function ThinkingSpaceOrch() {
   const handleRssOpenArticle = useCallback((
     item: RssFeedItemBlock,
     onItemUpdate: (updated: RssFeedItemBlock) => void,
+    onItemRemove: () => void,
   ) => {
-    setRssActiveArticle({ item, onItemUpdate })
+    setRssActiveArticle({ item, onItemUpdate, onItemRemove })
     setBrowserUrl(null)
     setMobileExplorerOpen(false)
   }, [])
@@ -382,6 +385,11 @@ export default function ThinkingSpaceOrch() {
   const handleExplorerOpenInFinder = useCallback(async (path: string): Promise<boolean> => {
     await revealVaultPathOrch(path)
     return true
+  }, [])
+
+  const handleExplorerLoadFileTags = useCallback(async (path: string): Promise<string[]> => {
+    const node = await getNodeByPath(path)
+    return node?.tags ?? []
   }, [])
 
   const handleExplorerMovePath = useCallback(async (
@@ -650,6 +658,7 @@ export default function ThinkingSpaceOrch() {
             onDeleteFile={handleExplorerDeleteFile}
             onDeleteFolder={handleExplorerDeleteFolder}
             onOpenInFinder={handleExplorerOpenInFinder}
+            loadFileTags={handleExplorerLoadFileTags}
             onMovePath={handleExplorerMovePath}
             draggableFiles
             draggableFolders
@@ -800,6 +809,11 @@ export default function ThinkingSpaceOrch() {
                 onItemUpdate={(updated) => {
                   setRssActiveArticle(prev => prev ? { ...prev, item: updated } : null)
                   rssActiveArticle.onItemUpdate(updated)
+                }}
+                onMoved={(newPath) => {
+                  rssActiveArticle.onItemRemove()
+                  setRssActiveArticle(null)
+                  setInlinePathAndSyncUrl(newPath)
                 }}
               />
             </div>

@@ -35,7 +35,8 @@ function UrlDocumentBlock({
   const webviewRef = useRef<HTMLElement | null>(null)
   const contentAreaRef = useRef<HTMLDivElement | null>(null)
   const isElectronRuntime = Boolean(window.electronAPI?.isElectron)
-  const isCapacitorRuntime = isCapacitorNative()
+  // InlineWebView is iOS-only; exclude Electron even though Capacitor reports isNativePlatform() there
+  const isCapacitorRuntime = isCapacitorNative() && !isElectronRuntime
 
   // Resolve URL from .url file
   useEffect(() => {

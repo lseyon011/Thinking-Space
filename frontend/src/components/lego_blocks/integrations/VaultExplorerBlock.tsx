@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronRight,
   File,
   FileText,
   Folder,
   FolderOpen,
+  FilePlus,
+  FolderPlus,
+  Info,
+  Link,
   Link2,
   Loader2,
+  PenLine,
   Plus,
 } from 'lucide-react'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
@@ -80,6 +85,7 @@ interface VaultExplorerBlockProps {
   onDeleteFile?: (path: string) => ExplorerActionResult
   onDeleteFolder?: (path: string) => ExplorerActionResult
   onOpenInFinder?: (path: string) => ExplorerActionResult
+  loadFileTags?: (path: string) => Promise<string[]>
   selectedPath?: string | null
   onSelectFile?: (path: string) => void
   onDropNode?: (nodeUuid: string, targetPath: string) => Promise<void>
@@ -138,6 +144,7 @@ export default function VaultExplorerBlock({
   onDeleteFile,
   onDeleteFolder,
   onOpenInFinder,
+  loadFileTags,
   selectedPath = null,
   onSelectFile,
   onDropNode,
@@ -173,6 +180,9 @@ export default function VaultExplorerBlock({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [pendingRename, setPendingRename] = useState<PendingRenameState | null>(null)
   const [inlineRename, setInlineRename] = useState<InlineRenameState | null>(null)
+  const [showInfoPanel, setShowInfoPanel] = useState(false)
+  const [infoPanelTags, setInfoPanelTags] = useState<string[] | null>(null)
+  const [infoPanelLoading, setInfoPanelLoading] = useState(false)
   const iPhoneHandset = useMemo(
     () => typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent || ''),
     [],
@@ -288,6 +298,28 @@ export default function VaultExplorerBlock({
       // Ignore persistence failures; explorer should still work in-memory.
     }
   }, [expandedPaths, selectedFilePath, selectedFolderPath, storageKey])
+
+  const activeFilePath = selectedFilePath ?? selectedPath ?? null
+  useEffect(() => {
+    if (!showInfoPanel || !activeFilePath || !loadFileTags) {
+      setInfoPanelTags(null)
+      return
+    }
+    let cancelled = false
+    setInfoPanelLoading(true)
+    void loadFileTags(activeFilePath).then(tags => {
+      if (!cancelled) {
+        setInfoPanelTags(tags)
+        setInfoPanelLoading(false)
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setInfoPanelTags([])
+        setInfoPanelLoading(false)
+      }
+    })
+    return () => { cancelled = true }
+  }, [showInfoPanel, activeFilePath, loadFileTags])
 
   const normalizedQuery = query.trim().toLowerCase()
   const hasTitle = title.trim().length > 0
@@ -1007,6 +1039,101 @@ export default function VaultExplorerBlock({
             className="w-full"
           />
         </div>
+
+        <div className="mt-1.5 flex items-center gap-0.5">
+          {(() => {
+            const parentPath = selectedFolderPath ?? (selectedFilePath ? getParentPath(selectedFilePath) : '')
+            const ToolbarBtn = ({
+              icon: Icon,
+              label,
+              onClick,
+              disabled = false,
+              active = false,
+            }: {
+              icon: ComponentType<{ className?: string }>
+              label: string
+              onClick: () => void
+              disabled?: boolean
+              active?: boolean
+            }) => (
+              <button
+                type="button"
+                title={label}
+                disabled={disabled}
+                onClick={onClick}
+                className={cn(
+                  'flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors',
+                  !disabled && !active && 'hover:bg-muted hover:text-foreground',
+                  !disabled && active && 'bg-muted text-foreground',
+                  disabled && 'cursor-not-allowed opacity-40',
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </button>
+            )
+            return (
+              <>
+                <ToolbarBtn
+                  icon={FolderPlus}
+                  label="New Folder"
+                  disabled={!onCreateFolder}
+                  onClick={() => { void runContextAction(onCreateFolder ? () => onCreateFolder(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'folder' }) }}
+                />
+                <ToolbarBtn
+                  icon={FilePlus}
+                  label="New File"
+                  disabled={!onCreateFile}
+                  onClick={() => { void runContextAction(onCreateFile ? () => onCreateFile(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) }}
+                />
+                <ToolbarBtn
+                  icon={Link}
+                  label="Add Link Here"
+                  disabled={!onCreateLink}
+                  onClick={() => { void runContextAction(onCreateLink ? () => onCreateLink(parentPath) : undefined, { refreshPath: parentPath }) }}
+                />
+                <ToolbarBtn
+                  icon={PenLine}
+                  label="New Drawing"
+                  disabled={!onCreateDrawing}
+                  onClick={() => { void runContextAction(onCreateDrawing ? () => onCreateDrawing(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) }}
+                />
+                <div className="ml-auto">
+                  <ToolbarBtn
+                    icon={Info}
+                    label="File info"
+                    disabled={!loadFileTags || !activeFilePath}
+                    active={showInfoPanel}
+                    onClick={() => setShowInfoPanel(prev => !prev)}
+                  />
+                </div>
+              </>
+            )
+          })()}
+        </div>
+
+        {showInfoPanel && loadFileTags && activeFilePath && (
+          <div className="mt-1.5 min-h-[24px] rounded-md border border-border/60 bg-muted/40 px-2 py-1.5">
+            {infoPanelLoading ? (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>Loading tags…</span>
+              </div>
+            ) : infoPanelTags && infoPanelTags.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {infoPanelTags.map(tag => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <span className="text-xs text-muted-foreground">No tags</span>
+            )}
+          </div>
+        )}
       </div>
 
       {iPhoneHandset && (onCreateFile || onCreateFolder) && (

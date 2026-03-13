@@ -346,6 +346,45 @@ function writeRssReadItemIdsOrch(ids: Set<string>): void {
   setJsonStorageItem(STORAGE_KEYS.rssReadItemIds, arr)
 }
 
+/**
+ * Moves an RSS article file from the RSS articles dir to a vault folder chosen
+ * by the user. All frontmatter (tags, keep, important, link, etc.) is preserved.
+ * Returns the new vault-relative path.
+ */
+export async function moveRssArticleToVaultOrch(
+  item: RssFeedItemBlock,
+  destinationFolderPath: string,
+): Promise<string> {
+  const fs = getVaultFS()
+  const feedId = item.id.split('::')[0]
+  const sourcePath = `${RSS_ARTICLES_DIR}/${feedId}/${itemFilenameBlock(item.id)}`
+
+  // Read the stored file; fall back to generating content if not yet persisted.
+  let content: string
+  try {
+    content = await fs.read(sourcePath)
+  } catch {
+    content = serializeRssItemFileBlock(item, item.feedId, new Date().toISOString())
+  }
+
+  // Build a readable destination filename from the article title.
+  const safeTitle = item.title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 60) || 'article'
+  const shortHash = item.id.split('::')[1]?.slice(0, 6) ?? Date.now().toString(36)
+  const filename = `${safeTitle}-${shortHash}.md`
+  const destPath = destinationFolderPath ? `${destinationFolderPath}/${filename}` : filename
+
+  await fs.write(destPath, content)
+  try { await fs.delete(sourcePath) } catch { /* already gone */ }
+
+  return destPath
+}
+
 export async function removeRssItemsOrch(itemIds: string[]): Promise<void> {
   const fs = getVaultFS()
   await Promise.all(itemIds.map(async itemId => {
