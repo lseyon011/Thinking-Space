@@ -471,6 +471,8 @@ function App() {
   const showLeftAlignedGoogleWorkspaceChromeControls = showGoogleWorkspaceChromeControls && isElectronDesktopSurface
   const showRightAlignedGoogleWorkspaceChromeControls = showGoogleWorkspaceChromeControls
     && !showLeftAlignedGoogleWorkspaceChromeControls
+    && layout.surface !== 'capacitor-ios'
+    && layout.surface !== 'capacitor-android'
   const showThinkingSpaceHeaderToggle = showGoogleWorkspaceChromeControls
     && thinkingSpaceGoogleWorkspaceChromeState.showHeaderToggle
 
@@ -1556,7 +1558,7 @@ function App() {
               style={{ width: `${phoneMode ? topChromeLeftWidth : topChromeBalancedWidth}px` }}
             >
               {showCapacitorTopChromeMenu && (
-                <div ref={topChromeMenuRef} className="inline-flex">
+                <div ref={topChromeMenuRef} className="inline-flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setDrawerOpen(true)}
@@ -1568,6 +1570,34 @@ function App() {
                     <Menu className="h-3 w-3" />
                     {!phoneMode && <span>Menu</span>}
                   </button>
+
+                  {showGoogleWorkspaceChromeControls && (
+                    <button
+                      type="button"
+                      onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}
+                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
+                      title={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
+                    >
+                      {thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed
+                        ? <PanelLeft className="h-3.5 w-3.5" />
+                        : <PanelLeftClose className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
+
+                  {showThinkingSpaceHeaderToggle && (
+                    <button
+                      type="button"
+                      onClick={dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock}
+                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar'}
+                      title={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar'}
+                    >
+                      {thinkingSpaceGoogleWorkspaceChromeState.headerVisible
+                        ? <EyeOff className="h-3.5 w-3.5" />
+                        : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
                 </div>
               )}
 

@@ -129,6 +129,7 @@ export default function ThinkingSpaceOrch() {
 
   const hideDocumentHeaderInFocusedMode = focusedDocumentMode && !focusedHeaderVisible
   const isIosSurface = layout.surface === 'capacitor-ios'
+  const [rssUrlBarVisible, setRssUrlBarVisible] = useState(!isIosSurface)
   const headerOffsetClass = showExplorerTrigger && !hideDocumentHeaderInFocusedMode
     ? (isIosSurface
       ? '[&_.ts-doc-header]:pl-20 sm:[&_.ts-doc-header]:pl-24'
@@ -301,6 +302,7 @@ export default function ThinkingSpaceOrch() {
     tagColors: Record<string, string>,
   ) => {
     setRssActiveArticle({ item, onItemUpdate, onItemRemove, presetTags, tagColors })
+    setRssUrlBarVisible(!isIosSurface)
     setBrowserUrl(null)
     setMobileExplorerOpen(false)
   }, [])
@@ -498,6 +500,28 @@ export default function ThinkingSpaceOrch() {
   }, [focusedDocumentMode])
 
   useEffect(() => {
+    // On iOS, explorer is driven by mobileExplorerOpen (drawer), not explorerCollapsed
+    const explorerCollapsedForChrome = isIosSurface ? !mobileExplorerOpen : explorerCollapsed
+
+    if (rssActiveArticle) {
+      dispatchThinkingSpaceGoogleWorkspaceChromeStateBlock({
+        enabled: true,
+        explorerCollapsed: explorerCollapsedForChrome,
+        headerVisible: rssUrlBarVisible,
+        showHeaderToggle: true,
+      })
+      return
+    }
+    if (isIosSurface) {
+      // Always show explorer toggle in top chrome on iOS
+      dispatchThinkingSpaceGoogleWorkspaceChromeStateBlock({
+        enabled: true,
+        explorerCollapsed: explorerCollapsedForChrome,
+        headerVisible: true,
+        showHeaderToggle: false,
+      })
+      return
+    }
     const headerVisible = !hideDocumentHeaderInFocusedMode
     dispatchThinkingSpaceGoogleWorkspaceChromeStateBlock({
       enabled: focusedDocumentMode,
@@ -505,7 +529,7 @@ export default function ThinkingSpaceOrch() {
       headerVisible,
       showHeaderToggle: focusedDocumentMode && Boolean(inlinePath),
     })
-  }, [explorerCollapsed, hideDocumentHeaderInFocusedMode, focusedDocumentMode, inlinePath])
+  }, [explorerCollapsed, hideDocumentHeaderInFocusedMode, focusedDocumentMode, inlinePath, rssActiveArticle, rssUrlBarVisible, isIosSurface, mobileExplorerOpen])
 
   useEffect(() => {
     return () => {
@@ -527,6 +551,10 @@ export default function ThinkingSpaceOrch() {
       setMobileExplorerOpen(prev => !prev)
     }
     const onToggleHeader = () => {
+      if (rssActiveArticle) {
+        setRssUrlBarVisible(prev => !prev)
+        return
+      }
       if (!focusedDocumentMode) return
       setFocusedHeaderVisible(prev => !prev)
     }
@@ -537,7 +565,7 @@ export default function ThinkingSpaceOrch() {
       window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_EXPLORER_EVENT_BLOCK, onToggleExplorer as EventListener)
       window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_HEADER_EVENT_BLOCK, onToggleHeader as EventListener)
     }
-  }, [focusedDocumentMode, showInlineSidebar])
+  }, [focusedDocumentMode, showInlineSidebar, rssActiveArticle])
 
   useEffect(() => {
     const handleResize = () => {
@@ -770,7 +798,7 @@ export default function ThinkingSpaceOrch() {
             className={cn(
               'ltm-shell-action ltm-motion-fast ltm-touch-target absolute left-6 top-6 z-20 h-11 items-center gap-1.5',
               isIosSurface ? 'w-11 justify-center px-0' : 'px-3',
-              showExplorerTrigger && !showInlineSidebar ? 'inline-flex' : 'hidden',
+              showExplorerTrigger && !showInlineSidebar && !isIosSurface ? 'inline-flex' : 'hidden',
             )}
             title="Open explorer"
             aria-label="Open explorer"
@@ -797,6 +825,7 @@ export default function ThinkingSpaceOrch() {
                 presetTags={rssActiveArticle.presetTags}
                 tagColors={rssActiveArticle.tagColors}
                 suspended={mobileExplorerOpen}
+                hideUrlBar={!rssUrlBarVisible}
               />
             </div>
           ) : browserUrl ? (

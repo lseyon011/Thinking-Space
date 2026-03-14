@@ -8,6 +8,11 @@ __pycache__/
 dist/
 build/
 frontend/public/fonts/
+frontend/electron/dist/
+frontend/electron/dist-*/
+
+# Local tooling outputs
+.vite/
 
 # IDE
 .idea/

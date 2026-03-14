@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ExternalLink, Globe, Loader2, RotateCw, X } from 'lucide-react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ChevronLeft, ExternalLink, Globe, Loader2, RotateCw, X } from 'lucide-react'
 import { readUrlShortcutOrch } from '@/services/orchestrators/urlShortcutOrch'
 import { isValidHttpUrlBlock } from '@/services/lego_blocks/units/urlShortcutBlock'
 import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
@@ -42,6 +42,7 @@ function UrlDocumentBlock({
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
+  const [canGoBack, setCanGoBack] = useState(false)
   const webviewRef = useRef<HTMLElement | null>(null)
   const contentAreaRef = useRef<HTMLDivElement | null>(null)
   const isElectronRuntime = Boolean(window.electronAPI?.isElectron)
@@ -100,6 +101,13 @@ function UrlDocumentBlock({
     catch { return 'Website' }
   }, [displayUrl])
 
+  // iOS: close the native WKWebView immediately (before paint) when suspended so
+  // it doesn't bleed over overlays/drawers that open on top of the content area.
+  useLayoutEffect(() => {
+    if (!isCapacitorRuntime || !isTrusted || !resolvedUrl || !suspended) return
+    void closeInlineWebViewBlock()
+  }, [isCapacitorRuntime, isTrusted, resolvedUrl, suspended])
+
   // iOS: overlay a native WKWebView over the content area div, kept in sync
   // via ResizeObserver so it survives panel resizes and layout changes.
   useEffect(() => {
@@ -122,9 +130,10 @@ function UrlDocumentBlock({
     }
   }, [isCapacitorRuntime, isTrusted, resolvedUrl, suspended])
 
-  // Webview error handling (Electron only)
+  // Webview error handling + back-state tracking (Electron only)
   useEffect(() => {
     setLoadError(null)
+    setCanGoBack(false)
   }, [resolvedUrl])
 
   useEffect(() => {
@@ -139,11 +148,23 @@ function UrlDocumentBlock({
       setLoadError(message)
     }
 
+    const updateCanGoBack = () => {
+      setCanGoBack(Boolean((webview as unknown as { canGoBack?: () => boolean }).canGoBack?.()))
+    }
+
     webview.addEventListener('did-fail-load', handleFailLoad as EventListener)
+    webview.addEventListener('did-navigate', updateCanGoBack)
+    webview.addEventListener('did-navigate-in-page', updateCanGoBack)
     return () => {
       webview.removeEventListener('did-fail-load', handleFailLoad as EventListener)
+      webview.removeEventListener('did-navigate', updateCanGoBack)
+      webview.removeEventListener('did-navigate-in-page', updateCanGoBack)
     }
   }, [isElectronRuntime, isTrusted, resolvedUrl])
+
+  const handleGoBack = useCallback(() => {
+    ;(webviewRef.current as unknown as { goBack?: () => void } | null)?.goBack?.()
+  }, [])
 
   const handleReload = useCallback(() => {
     if (isElectronRuntime) {
@@ -189,6 +210,17 @@ function UrlDocumentBlock({
       {/* URL bar */}
       {!hideHeader && (
         <div className="ts-doc-header flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-2">
+          {isElectronRuntime && (
+            <button
+              type="button"
+              onClick={handleGoBack}
+              disabled={!canGoBack}
+              className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+              title="Go back"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+          )}
           <Globe className="h-3.5 w-3.5 shrink-0 text-blue-500" />
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{displayUrl}</span>
           <button

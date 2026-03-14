@@ -26,6 +26,7 @@ interface RssArticleViewBlockProps {
   tagColors?: Record<string, string>
   className?: string
   suspended?: boolean
+  hideUrlBar?: boolean
 }
 
 export default function RssArticleViewBlock({
@@ -37,6 +38,7 @@ export default function RssArticleViewBlock({
   tagColors = {},
   className,
   suspended,
+  hideUrlBar,
 }: RssArticleViewBlockProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
@@ -99,13 +101,14 @@ export default function RssArticleViewBlock({
   const hasAnything = keep || important || tags.length > 0
 
   return (
-    <div className={cn('relative flex h-full min-h-0 flex-col', isIos && 'flex-col-reverse', className)}>
-      {/* Meta bar — top by default, bottom on iOS (flex-col-reverse) */}
-      <div className={cn(
-        'flex shrink-0 flex-wrap items-center gap-1.5 px-3 py-1.5',
-        isIos ? 'border-t border-border/40' : 'border-b border-border/40',
-        hasAnything ? 'bg-muted/20' : 'bg-muted/10',
-      )}>
+    <div className={cn('relative flex h-full min-h-0 flex-col', className)}>
+      {/* Meta bar */}
+      <div
+        className={cn(
+          'flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border/40 px-3 py-1.5',
+          hasAnything ? 'bg-muted/20' : 'bg-muted/10',
+        )}
+      >
         {/* Keep */}
         <button
           type="button"
@@ -198,7 +201,7 @@ export default function RssArticleViewBlock({
           url={item.link}
           onClose={onClose}
           showCloseButton={!isIos}
-          hideHeader={isIos}
+          hideHeader={hideUrlBar}
           suspended={suspended}
           className="absolute inset-0"
         />
