@@ -107,6 +107,11 @@ const appMenuBarMenuTemplate: (MenuItemConstructorOptions | MenuItem)[] = [
 ];
 
 // Get Config options from capacitor.config
+// Enable 2-finger trackpad swipe-to-navigate in webviews (same as Chrome/Safari).
+// Must be set before app.whenReady(). The React app is unaffected because
+// index.css already sets overscroll-behavior: none on html/body/#root.
+app.commandLine.appendSwitch('enable-features', 'OverscrollHistoryNavigation');
+
 const capacitorFileConfig: CapacitorElectronConfig = getCapacitorElectronConfig();
 
 // Initialize our app. You can pass menu templates into the app here.
