@@ -112,6 +112,41 @@ const appMenuBarMenuTemplate: (MenuItemConstructorOptions | MenuItem)[] = [
 // index.css already sets overscroll-behavior: none on html/body/#root.
 app.commandLine.appendSwitch('enable-features', 'OverscrollHistoryNavigation');
 
+// Register Widevine CDM from the system Chrome installation so that
+// DRM-protected audio (Spotify, etc.) plays in <webview> tags.
+// Must be called before app.whenReady().
+(function registerSystemWidevineCdm() {
+  try {
+    const arch = process.arch === 'arm64' ? 'mac_arm64' : 'mac_x64';
+    const chromeVersionsDir = '/Applications/Google Chrome.app/Contents/Versions';
+    if (!fs.existsSync(chromeVersionsDir)) return;
+
+    const versions = fs.readdirSync(chromeVersionsDir)
+      .filter(v => /^\d+\./.test(v))
+      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+
+    for (const ver of versions) {
+      const cdmDir = path.join(
+        chromeVersionsDir, ver,
+        'Google Chrome Framework.framework', 'Libraries',
+        'WidevineCdm', '_platform_specific', arch,
+      );
+      const cdmLib = path.join(cdmDir, 'libwidevinecdm.dylib');
+      if (!fs.existsSync(cdmLib)) continue;
+
+      let cdmVersion = ver;
+      try {
+        const manifest = JSON.parse(fs.readFileSync(path.join(cdmDir, 'manifest.json'), 'utf-8'));
+        if (typeof manifest.version === 'string') cdmVersion = manifest.version;
+      } catch { /* use Chrome version as fallback */ }
+
+      app.commandLine.appendSwitch('widevine-cdm-path', cdmLib);
+      app.commandLine.appendSwitch('widevine-cdm-version', cdmVersion);
+      break;
+    }
+  } catch { /* silently skip if Chrome is not installed */ }
+})();
+
 const capacitorFileConfig: CapacitorElectronConfig = getCapacitorElectronConfig();
 
 // Initialize our app. You can pass menu templates into the app here.
