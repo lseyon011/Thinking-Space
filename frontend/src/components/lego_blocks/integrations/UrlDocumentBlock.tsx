@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ExternalLink, Globe, Loader2, X } from 'lucide-react'
+import { ExternalLink, Globe, Loader2, RotateCw, X } from 'lucide-react'
 import { readUrlShortcutOrch } from '@/services/orchestrators/urlShortcutOrch'
 import { isValidHttpUrlBlock } from '@/services/lego_blocks/units/urlShortcutBlock'
 import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
@@ -19,6 +19,12 @@ interface UrlDocumentBlockProps {
   onClose?: () => void
   showCloseButton?: boolean
   className?: string
+  /** Override the Electron webview partition. Defaults to the shared links partition. */
+  partition?: string
+  /** Hide the URL bar (e.g. when top chrome provides a header toggle). */
+  hideHeader?: boolean
+  /** Suspend the native WKWebView (iOS) — use when a native-layer overlay (e.g. drawer) is open. */
+  suspended?: boolean
 }
 
 function UrlDocumentBlock({
@@ -27,11 +33,15 @@ function UrlDocumentBlock({
   onClose,
   showCloseButton,
   className,
+  partition,
+  hideHeader,
+  suspended,
 }: UrlDocumentBlockProps) {
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(directUrl ?? null)
   const [loading, setLoading] = useState(!directUrl)
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
   const webviewRef = useRef<HTMLElement | null>(null)
   const contentAreaRef = useRef<HTMLDivElement | null>(null)
   const isElectronRuntime = Boolean(window.electronAPI?.isElectron)
@@ -75,6 +85,15 @@ function UrlDocumentBlock({
     [resolvedUrl],
   )
 
+  // Strip Electron/app tokens so webview looks like a plain Chrome browser to sites like Gmail.
+  const webviewUserAgent = useMemo(() => {
+    if (!isElectronRuntime) return undefined
+    return navigator.userAgent
+      .replace(/\s*Electron\/[\d.]+/g, '')
+      .replace(/\s*Thinking Space\/[\d.]+/g, '')
+      .trim()
+  }, [isElectronRuntime])
+
   const displayUrl = resolvedUrl ?? ''
   const displayTitle = useMemo(() => {
     try { return new URL(displayUrl).hostname }
@@ -84,7 +103,7 @@ function UrlDocumentBlock({
   // iOS: overlay a native WKWebView over the content area div, kept in sync
   // via ResizeObserver so it survives panel resizes and layout changes.
   useEffect(() => {
-    if (!isCapacitorRuntime || !isTrusted || !resolvedUrl) return
+    if (!isCapacitorRuntime || !isTrusted || !resolvedUrl || suspended) return
     const el = contentAreaRef.current
     if (!el) return
 
@@ -101,7 +120,7 @@ function UrlDocumentBlock({
       observer.disconnect()
       void closeInlineWebViewBlock()
     }
-  }, [isCapacitorRuntime, isTrusted, resolvedUrl])
+  }, [isCapacitorRuntime, isTrusted, resolvedUrl, suspended])
 
   // Webview error handling (Electron only)
   useEffect(() => {
@@ -125,6 +144,14 @@ function UrlDocumentBlock({
       webview.removeEventListener('did-fail-load', handleFailLoad as EventListener)
     }
   }, [isElectronRuntime, isTrusted, resolvedUrl])
+
+  const handleReload = useCallback(() => {
+    if (isElectronRuntime) {
+      ;(webviewRef.current as unknown as { reload?: () => void } | null)?.reload?.()
+    } else {
+      setReloadKey(k => k + 1)
+    }
+  }, [isElectronRuntime])
 
   const openExternal = useCallback(() => {
     if (!resolvedUrl) return
@@ -160,31 +187,41 @@ function UrlDocumentBlock({
   return (
     <div className={cn('flex h-full min-h-0 flex-col', className)}>
       {/* URL bar */}
-      <div className="ts-doc-header flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-2">
-        <Globe className="h-3.5 w-3.5 shrink-0 text-blue-500" />
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{displayUrl}</span>
-        <button
-          type="button"
-          onClick={openExternal}
-          className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-          title="Open in external browser"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </button>
-        {showCloseButton && onClose && (
+      {!hideHeader && (
+        <div className="ts-doc-header flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-2">
+          <Globe className="h-3.5 w-3.5 shrink-0 text-blue-500" />
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{displayUrl}</span>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleReload}
             className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-            title="Close"
+            title="Reload"
           >
-            <X className="h-3.5 w-3.5" />
+            <RotateCw className="h-3.5 w-3.5" />
           </button>
-        )}
-      </div>
+          <button
+            type="button"
+            onClick={openExternal}
+            className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+            title="Open in external browser"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </button>
+          {showCloseButton && onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+              title="Close"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Content area */}
-      <div ref={contentAreaRef} className="relative min-h-0 flex-1">
+      <div ref={contentAreaRef} className="relative min-h-0 flex-1 overflow-hidden">
         {loadError && (
           <div className="absolute left-3 right-3 top-3 z-10 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             {loadError}
@@ -195,19 +232,21 @@ function UrlDocumentBlock({
             ref={webviewRef}
             title={displayTitle}
             src={resolvedUrl!}
-            partition={LINK_WEBVIEW_PARTITION}
+            partition={partition ?? LINK_WEBVIEW_PARTITION}
+            useragent={webviewUserAgent}
             allowpopups
-            className="h-full min-h-0 w-full bg-background"
+            className="absolute inset-0 bg-background"
           />
         ) : isCapacitorRuntime ? (
           // Native WKWebView is overlaid by the plugin — render a transparent
           // placeholder so the React layout reserves the same space.
-          <div className="h-full w-full" />
+          <div className="absolute inset-0" />
         ) : (
           <iframe
+            key={reloadKey}
             title={displayTitle}
             src={resolvedUrl!}
-            className="h-full min-h-0 w-full bg-background"
+            className="absolute inset-0 bg-background"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           />
         )}

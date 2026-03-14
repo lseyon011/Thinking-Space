@@ -129,3 +129,13 @@ export async function setExplorerFolderColorPreferencesOrch(
     explorerFolderColorRules: normalizeExplorerFolderColorPreferencesBlock(rules),
   })
 }
+
+export async function setF9TabPreferencesOrch(
+  label: string,
+  iconText: string,
+): Promise<VaultUiPreferencesBlock> {
+  return updateVaultUiPreferencesOrch({
+    f9TabLabel: label.trim() || 'Webull',
+    f9TabIconText: iconText.trim(),
+  })
+}

@@ -100,6 +100,8 @@ export default function ThinkingSpaceOrch() {
     item: RssFeedItemBlock
     onItemUpdate: (updated: RssFeedItemBlock) => void
     onItemRemove: () => void
+    presetTags: string[]
+    tagColors: Record<string, string>
   } | null>(null)
   const [linkPromptOpen, setLinkPromptOpen] = useState(false)
   const linkPromptResolveRef = useRef<((url: string | null) => void) | null>(null)
@@ -124,7 +126,7 @@ export default function ThinkingSpaceOrch() {
   const isGoogleWorkspaceInlinePath = isGoogleWorkspacePathBlock(inlinePath)
   const useInstantExplorerToggle = showInlineSidebar && isGoogleWorkspaceInlinePath
   const focusedDocumentMode = showInlineSidebar && showExplorerTrigger
-  const focusedGoogleWorkspaceMode = focusedDocumentMode && isGoogleWorkspaceInlinePath
+
   const hideDocumentHeaderInFocusedMode = focusedDocumentMode && !focusedHeaderVisible
   const isIosSurface = layout.surface === 'capacitor-ios'
   const headerOffsetClass = showExplorerTrigger && !hideDocumentHeaderInFocusedMode
@@ -295,8 +297,10 @@ export default function ThinkingSpaceOrch() {
     item: RssFeedItemBlock,
     onItemUpdate: (updated: RssFeedItemBlock) => void,
     onItemRemove: () => void,
+    presetTags: string[],
+    tagColors: Record<string, string>,
   ) => {
-    setRssActiveArticle({ item, onItemUpdate, onItemRemove })
+    setRssActiveArticle({ item, onItemUpdate, onItemRemove, presetTags, tagColors })
     setBrowserUrl(null)
     setMobileExplorerOpen(false)
   }, [])
@@ -496,11 +500,12 @@ export default function ThinkingSpaceOrch() {
   useEffect(() => {
     const headerVisible = !hideDocumentHeaderInFocusedMode
     dispatchThinkingSpaceGoogleWorkspaceChromeStateBlock({
-      enabled: isGoogleWorkspaceInlinePath,
+      enabled: focusedDocumentMode,
       explorerCollapsed,
       headerVisible,
+      showHeaderToggle: focusedDocumentMode && Boolean(inlinePath),
     })
-  }, [explorerCollapsed, hideDocumentHeaderInFocusedMode, isGoogleWorkspaceInlinePath])
+  }, [explorerCollapsed, hideDocumentHeaderInFocusedMode, focusedDocumentMode, inlinePath])
 
   useEffect(() => {
     return () => {
@@ -508,13 +513,13 @@ export default function ThinkingSpaceOrch() {
         enabled: false,
         explorerCollapsed: false,
         headerVisible: true,
+        showHeaderToggle: false,
       })
     }
   }, [])
 
   useEffect(() => {
     const onToggleExplorer = () => {
-      if (!isGoogleWorkspaceInlinePath) return
       if (showInlineSidebar) {
         setExplorerCollapsed(prev => !prev)
         return
@@ -522,7 +527,7 @@ export default function ThinkingSpaceOrch() {
       setMobileExplorerOpen(prev => !prev)
     }
     const onToggleHeader = () => {
-      if (!isGoogleWorkspaceInlinePath || !focusedDocumentMode) return
+      if (!focusedDocumentMode) return
       setFocusedHeaderVisible(prev => !prev)
     }
 
@@ -532,7 +537,7 @@ export default function ThinkingSpaceOrch() {
       window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_EXPLORER_EVENT_BLOCK, onToggleExplorer as EventListener)
       window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_HEADER_EVENT_BLOCK, onToggleHeader as EventListener)
     }
-  }, [focusedDocumentMode, isGoogleWorkspaceInlinePath, showInlineSidebar])
+  }, [focusedDocumentMode, showInlineSidebar])
 
   useEffect(() => {
     const handleResize = () => {
@@ -758,52 +763,26 @@ export default function ThinkingSpaceOrch() {
         )}
 
         <section className="ltm-thinking-space-document-stage relative min-h-0 flex-1">
+          {/* Explorer trigger — only for mobile/compact (desktop uses the top chrome button) */}
           <Button
             variant="outline"
             size="sm"
             className={cn(
-              'ltm-shell-action ltm-motion-fast ltm-touch-target absolute z-20 h-11 items-center gap-1.5',
-              focusedGoogleWorkspaceMode
-                ? 'left-4 top-1/2 -translate-y-1/2'
-                : 'left-6 top-6',
+              'ltm-shell-action ltm-motion-fast ltm-touch-target absolute left-6 top-6 z-20 h-11 items-center gap-1.5',
               isIosSurface ? 'w-11 justify-center px-0' : 'px-3',
-              showExplorerTrigger && !focusedGoogleWorkspaceMode ? 'inline-flex' : 'hidden',
+              showExplorerTrigger && !showInlineSidebar ? 'inline-flex' : 'hidden',
             )}
             title="Open explorer"
             aria-label="Open explorer"
-            onClick={() => {
-              if (showInlineSidebar) {
-                setExplorerCollapsed(false)
-                return
-              }
-              setMobileExplorerOpen(true)
-            }}
+            onClick={() => setMobileExplorerOpen(true)}
           >
             <PanelLeft className="h-4 w-4" />
             {!isIosSurface && <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">Explorer</span>}
           </Button>
-          {focusedDocumentMode && inlinePath && !focusedGoogleWorkspaceMode && (
-            <Button
-              variant="outline"
-              size="sm"
-              className={cn(
-                'ltm-shell-action ltm-motion-fast ltm-touch-target absolute z-20 h-11 px-3',
-                focusedGoogleWorkspaceMode
-                  ? 'right-4 top-1/2 -translate-y-1/2'
-                  : 'right-6 top-6',
-              )}
-              title={focusedHeaderVisible ? 'Hide header' : 'Show header'}
-              aria-label={focusedHeaderVisible ? 'Hide header' : 'Show header'}
-              onClick={() => setFocusedHeaderVisible((prev) => !prev)}
-            >
-              <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">
-                {focusedHeaderVisible ? 'Hide Header' : 'Show Header'}
-              </span>
-            </Button>
-          )}
           {rssActiveArticle ? (
             <div className="h-full min-h-0">
               <RssArticleViewBlock
+                key={rssActiveArticle.item.id}
                 item={rssActiveArticle.item}
                 onClose={() => setRssActiveArticle(null)}
                 onItemUpdate={(updated) => {
@@ -815,6 +794,9 @@ export default function ThinkingSpaceOrch() {
                   setRssActiveArticle(null)
                   setInlinePathAndSyncUrl(newPath)
                 }}
+                presetTags={rssActiveArticle.presetTags}
+                tagColors={rssActiveArticle.tagColors}
+                suspended={mobileExplorerOpen}
               />
             </div>
           ) : browserUrl ? (

@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   Circle,
+  FolderOpen,
   Loader2,
   RefreshCw,
   Rss,
@@ -13,14 +14,27 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useExpandedSetBlock'
+import SidebarGroupHeaderBlock from '@/components/lego_blocks/units/ui/SidebarGroupHeaderBlock'
 import {
   fetchAllRssFeedsOrch,
   markRssItemReadOrch,
   markRssItemsReadOrch,
-  readRssFeedConfigsOrch,
+  readRssFeedPreferencesOrch,
   removeRssItemsOrch,
 } from '@/services/orchestrators/rssFeedOrch'
-import type { RssFeedItemBlock, RssFeedResultBlock } from '@/services/lego_blocks/units/rssFeedBlock'
+import {
+  buildFeedGroupTreeBlock,
+  type RssFeedGroupTreeNodeBlock,
+  type RssFeedItemBlock,
+  type RssFeedPreferencesBlock,
+  type RssFeedResultBlock,
+} from '@/services/lego_blocks/units/rssFeedBlock'
+import {
+  tagColorClassBlock,
+  tagColorStyleBlock,
+  tagLookupKeyBlock,
+} from '@/services/lego_blocks/units/tagBlock'
 import { cn } from '@/lib/utils'
 
 interface RssFeedPanelBlockProps {
@@ -28,6 +42,8 @@ interface RssFeedPanelBlockProps {
     item: RssFeedItemBlock,
     onItemUpdate: (updated: RssFeedItemBlock) => void,
     onItemRemove: () => void,
+    presetTags: string[],
+    tagColors: Record<string, string>,
   ) => void
   onClose: () => void
   className?: string
@@ -59,9 +75,13 @@ export default function RssFeedPanelBlock({
   className,
 }: RssFeedPanelBlockProps) {
   const [feeds, setFeeds] = useState<RssFeedResultBlock[]>([])
+  const [preferences, setPreferences] = useState<RssFeedPreferencesBlock | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [collapsedFeedIds, setCollapsedFeedIds] = useState<Set<string>>(new Set())
+  // Feeds/groups are collapsed by default; only those explicitly expanded are in these sets.
+  // Persisted in localStorage so the state survives navigation.
+  const { expanded: expandedFeedIds, toggle: toggleFeedExpanded } = useExpandedSetBlock('ltm-rss-expanded-feeds')
+  const { expanded: expandedGroupIds, toggle: toggleGroupExpanded } = useExpandedSetBlock('ltm-rss-expanded-groups')
   const [focusedFeedId, setFocusedFeedId] = useState<string | null>(null)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   // Delete-preview mode
@@ -69,12 +89,21 @@ export default function RssFeedPanelBlock({
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set())
   const hasFeedsConfigured = useRef(false)
 
+
+  const presetTags = preferences?.presetTags ?? []
+  const tagColors = preferences?.tagColors ?? {}
+
   const loadFeeds = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
     try {
-      const results = await fetchAllRssFeedsOrch()
+      const [results, prefs] = await Promise.all([
+        fetchAllRssFeedsOrch(),
+        readRssFeedPreferencesOrch(),
+      ])
       setFeeds(results)
+      setPreferences(prefs)
+      hasFeedsConfigured.current = prefs.feeds.length > 0
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -82,11 +111,17 @@ export default function RssFeedPanelBlock({
   }, [])
 
   useEffect(() => {
-    void readRssFeedConfigsOrch().then(configs => {
-      hasFeedsConfigured.current = configs.length > 0
-    })
     void loadFeeds()
   }, [loadFeeds])
+
+  const groupTree = useMemo<RssFeedGroupTreeNodeBlock[]>(() => {
+    if (!preferences) return []
+    return buildFeedGroupTreeBlock(preferences.groups, preferences.feeds)
+  }, [preferences])
+
+  const toggleGroupCollapsed = useCallback((groupId: string) => {
+    toggleGroupExpanded(groupId)
+  }, [toggleGroupExpanded])
 
   const handleItemClick = useCallback((item: RssFeedItemBlock) => {
     if (deleteMode) {
@@ -123,8 +158,10 @@ export default function RssFeedPanelBlock({
         })))
         setSelectedItemId(null)
       },
+      presetTags,
+      tagColors,
     )
-  }, [deleteMode, onOpenArticle])
+  }, [deleteMode, onOpenArticle, presetTags, tagColors])
 
   const handleMarkAllRead = useCallback((feedId?: string) => {
     const itemIds = feeds
@@ -171,13 +208,8 @@ export default function RssFeedPanelBlock({
   }, [])
 
   const toggleCollapsed = useCallback((feedId: string) => {
-    setCollapsedFeedIds(prev => {
-      const next = new Set(prev)
-      if (next.has(feedId)) next.delete(feedId)
-      else next.add(feedId)
-      return next
-    })
-  }, [])
+    toggleFeedExpanded(feedId)
+  }, [toggleFeedExpanded])
 
   const visibleFeeds = useMemo(() => {
     if (!focusedFeedId) return feeds
@@ -251,143 +283,40 @@ export default function RssFeedPanelBlock({
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {visibleFeeds.map(feed => {
-          const collapsed = collapsedFeedIds.has(feed.feedId)
-          const unread = feed.items.filter(i => !i.read).length
-          return (
-            <div key={feed.feedId}>
-              {/* Feed header */}
-              <button
-                type="button"
-                onClick={() => !deleteMode && toggleCollapsed(feed.feedId)}
-                onDoubleClick={() => !deleteMode && setFocusedFeedId(prev => prev === feed.feedId ? null : feed.feedId)}
-                className="flex w-full items-center gap-1.5 border-b border-border/30 px-3 py-3 text-left text-xs hover:bg-muted/50"
-              >
-                {collapsed
-                  ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  : <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-                <Rss className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-                <span className="min-w-0 flex-1 truncate font-medium">{feed.feedTitle}</span>
-                {unread > 0 && (
-                  <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                    {unread}
-                  </span>
-                )}
-              </button>
-              {feed.error && (
-                <div className="border-b border-border/30 bg-destructive/5 px-3 py-1.5 text-[10px] text-destructive">
-                  {feed.error}
-                </div>
-              )}
-              {/* Items */}
-              {!collapsed && feed.items.map((item, idx) => {
-                const isSelected = selectedItemId === item.id
-                const isPendingDelete = pendingDeleteIds.has(item.id)
-                const hasMeta = item.keep || item.important || (item.tags?.length ?? 0) > 0
-
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleItemClick(item)}
-                    className={cn(
-                      'flex w-full items-start gap-2 border-b border-border/40 px-3 py-3 text-left text-xs transition-colors duration-200',
-                      // Delete-preview states
-                      deleteMode && isPendingDelete && 'border-destructive/30 bg-destructive/10 hover:bg-destructive/15',
-                      deleteMode && !isPendingDelete && 'opacity-40',
-                      // Normal states (not in delete mode)
-                      !deleteMode && isSelected && 'border-[#c73773]/95 bg-[#c73773] text-white hover:bg-[#c73773]',
-                      !deleteMode && !isSelected && 'hover:bg-muted/40',
-                      !deleteMode && !isSelected && item.read && 'opacity-55',
-                    )}
-                  >
-                    {/* Number + indicator stacked */}
-                    <span className="flex shrink-0 flex-col items-center gap-0.5 pt-0.5">
-                      {deleteMode ? (
-                        <Trash2 className={cn(
-                          'h-3.5 w-3.5 transition-colors duration-200',
-                          isPendingDelete ? 'text-destructive animate-pulse' : 'text-muted-foreground/30',
-                        )} />
-                      ) : (
-                        <>
-                          <span className={cn(
-                            'text-[9px] font-medium leading-none tabular-nums',
-                            isSelected ? 'text-white/70' : 'text-muted-foreground/50',
-                          )}>
-                            {idx + 1}
-                          </span>
-                          {item.read
-                            ? <Check className={cn('h-3 w-3', isSelected ? 'text-white/70' : 'text-muted-foreground/50')} />
-                            : <Circle className={cn('h-3 w-3', isSelected ? 'fill-white text-white' : 'fill-primary/70 text-primary/70')} />}
-                        </>
-                      )}
-                    </span>
-
-                    <div className="min-w-0 flex-1">
-                      <div className={cn(
-                        'line-clamp-2 leading-snug',
-                        deleteMode && isPendingDelete && 'line-through text-destructive/70',
-                        !deleteMode && (!item.read && !isSelected) && 'font-medium',
-                        !deleteMode && isSelected && 'font-medium',
-                      )}>
-                        {item.title || '(Untitled)'}
-                      </div>
-                      {item.description && !isPendingDelete && (
-                        <div className={cn(
-                          'mt-0.5 line-clamp-2 text-[11px] leading-snug',
-                          isSelected ? 'text-white/75' : 'text-muted-foreground',
-                        )}>
-                          {item.description}
-                        </div>
-                      )}
-                      {/* Meta badges */}
-                      {hasMeta && !isPendingDelete && (
-                        <div className="mt-1 flex flex-wrap items-center gap-1">
-                          {item.keep && (
-                            <Bookmark className={cn(
-                              'h-3 w-3 shrink-0',
-                              isSelected ? 'fill-white/80 text-white/80' : 'fill-amber-500 text-amber-500',
-                            )} />
-                          )}
-                          {item.important && (
-                            <Star className={cn(
-                              'h-3 w-3 shrink-0',
-                              isSelected ? 'fill-white/80 text-white/80' : 'fill-rose-500 text-rose-500',
-                            )} />
-                          )}
-                          {item.tags?.map(tag => (
-                            <span
-                              key={tag}
-                              className={cn(
-                                'inline-flex items-center rounded-full px-1.5 py-px text-[10px] font-medium',
-                                isSelected ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary',
-                              )}
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <span className={cn(
-                      'shrink-0 whitespace-nowrap text-[10px]',
-                      deleteMode && isPendingDelete ? 'text-destructive/50' : '',
-                      !deleteMode && isSelected ? 'text-white/70' : 'text-muted-foreground',
-                    )}>
-                      {formatRelativeDate(item.pubDate)}
-                    </span>
-                  </button>
-                )
-              })}
-              {!collapsed && feed.items.length === 0 && !feed.error && (
-                <div className="border-b border-border/40 px-3 py-3 text-center text-[11px] text-muted-foreground">
-                  No items.
-                </div>
-              )}
-            </div>
-          )
-        })}
+        {/* Group tree rendering */}
+        {preferences && preferences.groups.length > 0 && !focusedFeedId && (
+          <GroupTreeRenderer
+            tree={groupTree}
+            feedResults={feeds}
+            expandedFeedIds={expandedFeedIds}
+            expandedGroupIds={expandedGroupIds}
+            toggleFeedCollapsed={toggleCollapsed}
+            toggleGroupCollapsed={toggleGroupCollapsed}
+            setFocusedFeedId={setFocusedFeedId}
+            deleteMode={deleteMode}
+            selectedItemId={selectedItemId}
+            pendingDeleteIds={pendingDeleteIds}
+            handleItemClick={handleItemClick}
+            tagColors={tagColors}
+            depth={0}
+          />
+        )}
+        {/* Flat rendering (no groups or focused on single feed) */}
+        {(!preferences || preferences.groups.length === 0 || focusedFeedId) && visibleFeeds.map(feed => (
+          <FeedSection
+            key={feed.feedId}
+            feed={feed}
+            collapsed={!expandedFeedIds.has(feed.feedId)}
+            toggleCollapsed={toggleCollapsed}
+            setFocusedFeedId={setFocusedFeedId}
+            deleteMode={deleteMode}
+            selectedItemId={selectedItemId}
+            pendingDeleteIds={pendingDeleteIds}
+            handleItemClick={handleItemClick}
+            tagColors={tagColors}
+            depth={0}
+          />
+        ))}
       </div>
     </div>
   )
@@ -509,5 +438,346 @@ function PanelHeader({
         </>
       )}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Group tree renderer — recursive component for nested feed groups
+// ---------------------------------------------------------------------------
+
+function GroupTreeRenderer({
+  tree,
+  feedResults,
+  expandedFeedIds,
+  expandedGroupIds,
+  toggleFeedCollapsed,
+  toggleGroupCollapsed,
+  setFocusedFeedId,
+  deleteMode,
+  selectedItemId,
+  pendingDeleteIds,
+  handleItemClick,
+  tagColors,
+  depth,
+}: {
+  tree: RssFeedGroupTreeNodeBlock[]
+  feedResults: RssFeedResultBlock[]
+  expandedFeedIds: Set<string>
+  expandedGroupIds: Set<string>
+  toggleFeedCollapsed: (feedId: string) => void
+  toggleGroupCollapsed: (groupId: string) => void
+  setFocusedFeedId: (id: string | null) => void
+  deleteMode: boolean
+  selectedItemId: string | null
+  pendingDeleteIds: Set<string>
+  handleItemClick: (item: RssFeedItemBlock) => void
+  tagColors: Record<string, string>
+  depth: number
+}) {
+  const feedResultMap = useMemo(() => {
+    const map = new Map<string, RssFeedResultBlock>()
+    for (const f of feedResults) map.set(f.feedId, f)
+    return map
+  }, [feedResults])
+
+  return (
+    <>
+      {tree.map(node => {
+        // Root node (group === null) — just render its feeds and children
+        if (!node.group) {
+          return (
+            <div key="__root__">
+              {node.feeds.map(feedConfig => {
+                const feed = feedResultMap.get(feedConfig.id)
+                if (!feed) return null
+                return (
+                  <FeedSection
+                    key={feed.feedId}
+                    feed={feed}
+                    collapsed={!expandedFeedIds.has(feed.feedId)}
+                    toggleCollapsed={toggleFeedCollapsed}
+                    setFocusedFeedId={setFocusedFeedId}
+                    deleteMode={deleteMode}
+                    selectedItemId={selectedItemId}
+                    pendingDeleteIds={pendingDeleteIds}
+                    handleItemClick={handleItemClick}
+                    tagColors={tagColors}
+                    depth={depth}
+                  />
+                )
+              })}
+              {node.children.length > 0 && (
+                <GroupTreeRenderer
+                  tree={node.children}
+                  feedResults={feedResults}
+                  expandedFeedIds={expandedFeedIds}
+                  expandedGroupIds={expandedGroupIds}
+                  toggleFeedCollapsed={toggleFeedCollapsed}
+                  toggleGroupCollapsed={toggleGroupCollapsed}
+                  setFocusedFeedId={setFocusedFeedId}
+                  deleteMode={deleteMode}
+                  selectedItemId={selectedItemId}
+                  pendingDeleteIds={pendingDeleteIds}
+                  handleItemClick={handleItemClick}
+                  tagColors={tagColors}
+                  depth={depth}
+                />
+              )}
+            </div>
+          )
+        }
+
+        const groupCollapsed = !expandedGroupIds.has(node.group.id)
+        const groupFeedIds = new Set<string>()
+        function collectFeedIds(n: RssFeedGroupTreeNodeBlock) {
+          for (const fc of n.feeds) groupFeedIds.add(fc.id)
+          for (const child of n.children) collectFeedIds(child)
+        }
+        collectFeedIds(node)
+        const totalUnread = feedResults
+          .filter(f => groupFeedIds.has(f.feedId))
+          .reduce((acc, f) => acc + f.items.filter(i => !i.read).length, 0)
+
+        return (
+          <div key={node.group.id}>
+            <SidebarGroupHeaderBlock
+              name={node.group.name}
+              expanded={!groupCollapsed}
+              onToggle={() => toggleGroupCollapsed(node.group!.id)}
+              icon={<FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+              badge={totalUnread > 0 ? totalUnread : undefined}
+              depth={depth}
+            />
+            {/* Group content */}
+            {!groupCollapsed && (
+              <>
+                {node.feeds.map(feedConfig => {
+                  const feed = feedResultMap.get(feedConfig.id)
+                  if (!feed) return null
+                  return (
+                    <FeedSection
+                      key={feed.feedId}
+                      feed={feed}
+                      collapsed={!expandedFeedIds.has(feed.feedId)}
+                      toggleCollapsed={toggleFeedCollapsed}
+                      setFocusedFeedId={setFocusedFeedId}
+                      deleteMode={deleteMode}
+                      selectedItemId={selectedItemId}
+                      pendingDeleteIds={pendingDeleteIds}
+                      handleItemClick={handleItemClick}
+                      tagColors={tagColors}
+                      depth={depth + 1}
+                    />
+                  )
+                })}
+                {node.children.length > 0 && (
+                  <GroupTreeRenderer
+                    tree={node.children}
+                    feedResults={feedResults}
+                    expandedFeedIds={expandedFeedIds}
+                    expandedGroupIds={expandedGroupIds}
+                    toggleFeedCollapsed={toggleFeedCollapsed}
+                    toggleGroupCollapsed={toggleGroupCollapsed}
+                    setFocusedFeedId={setFocusedFeedId}
+                    deleteMode={deleteMode}
+                    selectedItemId={selectedItemId}
+                    pendingDeleteIds={pendingDeleteIds}
+                    handleItemClick={handleItemClick}
+                    tagColors={tagColors}
+                    depth={depth + 1}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Feed section — renders a single feed header + items (used in both flat and grouped modes)
+// ---------------------------------------------------------------------------
+
+function FeedSection({
+  feed,
+  collapsed,
+  toggleCollapsed,
+  setFocusedFeedId,
+  deleteMode,
+  selectedItemId,
+  pendingDeleteIds,
+  handleItemClick,
+  tagColors,
+  depth,
+}: {
+  feed: RssFeedResultBlock
+  collapsed: boolean
+  toggleCollapsed: (feedId: string) => void
+  setFocusedFeedId: (id: string | null) => void
+  deleteMode: boolean
+  selectedItemId: string | null
+  pendingDeleteIds: Set<string>
+  handleItemClick: (item: RssFeedItemBlock) => void
+  tagColors: Record<string, string>
+  depth: number
+}) {
+  const unread = feed.items.filter(i => !i.read).length
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => !deleteMode && toggleCollapsed(feed.feedId)}
+        onDoubleClick={() => !deleteMode && setFocusedFeedId(feed.feedId)}
+        className="flex w-full items-center gap-1.5 border-b border-border/30 px-3 py-3 text-left text-xs hover:bg-muted/50"
+        style={depth > 0 ? { paddingLeft: `${12 + depth * 12}px` } : undefined}
+      >
+        {collapsed
+          ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          : <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+        <Rss className="h-3.5 w-3.5 shrink-0 text-orange-400" />
+        <span className="min-w-0 flex-1 truncate font-medium">{feed.feedTitle}</span>
+        {unread > 0 && (
+          <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+            {unread}
+          </span>
+        )}
+      </button>
+      {feed.error && (
+        <div className="border-b border-border/30 bg-destructive/5 px-3 py-1.5 text-[10px] text-destructive">
+          {feed.error}
+        </div>
+      )}
+      {!collapsed && feed.items.map((item, idx) => (
+        <FeedItemRow
+          key={item.id}
+          item={item}
+          idx={idx}
+          isSelected={selectedItemId === item.id}
+          isPendingDelete={pendingDeleteIds.has(item.id)}
+          deleteMode={deleteMode}
+          handleItemClick={handleItemClick}
+          tagColors={tagColors}
+        />
+      ))}
+      {!collapsed && feed.items.length === 0 && !feed.error && (
+        <div className="border-b border-border/40 px-3 py-3 text-center text-[11px] text-muted-foreground">
+          No items.
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Feed item row — single article row
+// ---------------------------------------------------------------------------
+
+function FeedItemRow({
+  item,
+  idx,
+  isSelected,
+  isPendingDelete,
+  deleteMode,
+  handleItemClick,
+  tagColors,
+}: {
+  item: RssFeedItemBlock
+  idx: number
+  isSelected: boolean
+  isPendingDelete: boolean
+  deleteMode: boolean
+  handleItemClick: (item: RssFeedItemBlock) => void
+  tagColors: Record<string, string>
+}) {
+  const hasMeta = item.keep || item.important || (item.tags?.length ?? 0) > 0
+  return (
+    <button
+      type="button"
+      onClick={() => handleItemClick(item)}
+      className={cn(
+        'flex w-full items-start gap-2 border-b border-border/40 px-3 py-3 text-left text-xs transition-colors duration-200',
+        deleteMode && isPendingDelete && 'border-destructive/30 bg-destructive/10 hover:bg-destructive/15',
+        deleteMode && !isPendingDelete && 'opacity-40',
+        !deleteMode && isSelected && 'border-[#c73773]/95 bg-[#c73773] text-white hover:bg-[#c73773]',
+        !deleteMode && !isSelected && 'hover:bg-muted/40',
+        !deleteMode && !isSelected && item.read && 'opacity-55',
+      )}
+    >
+      <span className="flex shrink-0 flex-col items-center gap-0.5 pt-0.5">
+        {deleteMode ? (
+          <Trash2 className={cn(
+            'h-3.5 w-3.5 transition-colors duration-200',
+            isPendingDelete ? 'text-destructive animate-pulse' : 'text-muted-foreground/30',
+          )} />
+        ) : (
+          <>
+            <span className={cn(
+              'text-[9px] font-medium leading-none tabular-nums',
+              isSelected ? 'text-white/70' : 'text-muted-foreground/50',
+            )}>
+              {idx + 1}
+            </span>
+            {item.read
+              ? <Check className={cn('h-3 w-3', isSelected ? 'text-white/70' : 'text-muted-foreground/50')} />
+              : <Circle className={cn('h-3 w-3', isSelected ? 'fill-white text-white' : 'fill-primary/70 text-primary/70')} />}
+          </>
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className={cn(
+          'line-clamp-2 leading-snug',
+          deleteMode && isPendingDelete && 'line-through text-destructive/70',
+          !deleteMode && (!item.read && !isSelected) && 'font-medium',
+          !deleteMode && isSelected && 'font-medium',
+        )}>
+          {item.title || '(Untitled)'}
+        </div>
+        {item.description && !isPendingDelete && (
+          <div className={cn(
+            'mt-0.5 line-clamp-2 text-[11px] leading-snug',
+            isSelected ? 'text-white/75' : 'text-muted-foreground',
+          )}>
+            {item.description}
+          </div>
+        )}
+        {hasMeta && !isPendingDelete && (
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            {item.keep && (
+              <Bookmark className={cn(
+                'h-3 w-3 shrink-0',
+                isSelected ? 'fill-white/80 text-white/80' : 'fill-amber-500 text-amber-500',
+              )} />
+            )}
+            {item.important && (
+              <Star className={cn(
+                'h-3 w-3 shrink-0',
+                isSelected ? 'fill-white/80 text-white/80' : 'fill-rose-500 text-rose-500',
+              )} />
+            )}
+            {item.tags?.map(tag => (
+              <span
+                key={tag}
+                className={cn(
+                  'inline-flex items-center rounded-full border px-1.5 py-px text-[10px] font-medium',
+                  isSelected ? 'border-white/20 bg-white/20 text-white' : tagColorClassBlock(tag, 'solid'),
+                )}
+                style={isSelected ? undefined : tagColorStyleBlock(tag, 'solid', tagColors[tagLookupKeyBlock(tag)])}
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <span className={cn(
+        'shrink-0 whitespace-nowrap text-[10px]',
+        deleteMode && isPendingDelete ? 'text-destructive/50' : '',
+        !deleteMode && isSelected ? 'text-white/70' : 'text-muted-foreground',
+      )}>
+        {formatRelativeDate(item.pubDate)}
+      </span>
+    </button>
   )
 }

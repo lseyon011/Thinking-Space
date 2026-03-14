@@ -1,10 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
-import { Loader2, Send, AlertCircle } from 'lucide-react'
+import { Loader2, Send, AlertCircle, PanelLeftClose } from 'lucide-react'
+import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useExpandedSetBlock'
+import SidebarGroupHeaderBlock from '@/components/lego_blocks/units/ui/SidebarGroupHeaderBlock'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent } from '@/components/lego_blocks/units/ui/card'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
+import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentBlock'
+import { cn } from '@/lib/utils'
 import {
   type AiProvider,
   type AiProviderStatus,
@@ -20,6 +24,13 @@ import {
   setAiScopeProviderThinkingOrch,
   setAiSelectedProviderOrch,
 } from '@/services/orchestrators/aiSettingsOrch'
+import { readAiWebsitesOrch } from '@/services/orchestrators/aiWebsiteOrch'
+import type { AiWebsiteBlock } from '@/services/lego_blocks/units/aiWebsiteBlock'
+import {
+  CHAT_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
+  CHAT_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK,
+  dispatchChatSidebarChromeStateBlock,
+} from '@/services/lego_blocks/units/chatSidebarChromeBlock'
 
 interface ChatTimelineMessage extends ChatMessage {
   id: string
@@ -51,6 +62,15 @@ export default function ChatOrch() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [providersLoading, setProvidersLoading] = useState(true)
+  const [aiWebsites, setAiWebsites] = useState<AiWebsiteBlock[]>([])
+  const [selectedWebsiteId, setSelectedWebsiteId] = useState<string | null>(null)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [webviewHeaderVisible, setWebviewHeaderVisible] = useState(true)
+  // Sections start expanded by default (both IDs pre-seeded)
+  const { isExpanded: isSectionExpanded, toggle: toggleSection } = useExpandedSetBlock(
+    'ltm-chat-expanded-sections',
+    ['api', 'web'],
+  )
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -65,6 +85,7 @@ export default function ChatOrch() {
   }
 
   useEffect(() => {
+    void readAiWebsitesOrch().then(setAiWebsites)
     listProvidersOrch()
       .then((p) => {
         setProviders(p)
@@ -99,6 +120,53 @@ export default function ChatOrch() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  const selectedWebsiteForChrome = aiWebsites.find(s => s.id === selectedWebsiteId) ?? null
+
+  // Sync chrome state into the top chrome
+  useEffect(() => {
+    const websiteName = selectedWebsiteForChrome?.name
+    const providerLabel = selectedProvider
+      ? providers.find(p => p.provider === selectedProvider)?.label ?? selectedProvider
+      : null
+    const suffix = websiteName ?? providerLabel
+    const label = suffix ? `AI · ${suffix}` : 'AI'
+
+    dispatchChatSidebarChromeStateBlock({
+      enabled: true,
+      collapsed: sidebarCollapsed,
+      headerVisible: webviewHeaderVisible,
+      showHeaderToggle: selectedWebsiteId !== null,
+      label,
+    })
+  }, [selectedWebsiteId, sidebarCollapsed, webviewHeaderVisible, selectedWebsiteForChrome, selectedProvider, providers])
+
+  // Clean up chrome state when unmounting
+  useEffect(() => {
+    return () => {
+      dispatchChatSidebarChromeStateBlock({
+        enabled: false,
+        collapsed: false,
+        headerVisible: true,
+        showHeaderToggle: false,
+        label: 'AI',
+      })
+    }
+  }, [])
+
+  // Listen for toggle dispatched from the top chrome button
+  useEffect(() => {
+    const handler = () => setSidebarCollapsed(prev => !prev)
+    window.addEventListener(CHAT_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
+    return () => window.removeEventListener(CHAT_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
+  }, [])
+
+  // Listen for header toggle from the top chrome button
+  useEffect(() => {
+    const handler = () => setWebviewHeaderVisible(prev => !prev)
+    window.addEventListener(CHAT_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
+    return () => window.removeEventListener(CHAT_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
+  }, [])
 
   const handleSend = async () => {
     const text = input.trim()
@@ -175,149 +243,249 @@ export default function ChatOrch() {
     }
   }
 
-  const availableProviders = providers.filter((p) => p.available)
-
   return (
-    <div className="flex h-full flex-col">
-      {/* Provider selector */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {providersLoading ? (
-          <span className="text-sm text-muted-foreground">Detecting providers...</span>
-        ) : availableProviders.length === 0 ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <AlertCircle className="h-4 w-4" />
-            No AI providers available. Check credentials.
-          </div>
-        ) : (
-          providers.map((p) => (
-            <button
-              key={p.provider}
-              disabled={!p.available}
-              onClick={() => {
-                setSelectedProvider(p.provider)
-                setAiSelectedProviderOrch(p.provider)
-                if (p.provider === 'opensource-ai') {
-                  setThinkEnabled(resolveAiThinkingForScopeProviderOrch('chat', 'opensource-ai'))
-                }
-              }}
-              className={`rounded-full border px-3 py-1 text-sm transition-colors ${
-                selectedProvider === p.provider
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : p.available
-                    ? 'border-border bg-background text-foreground hover:bg-accent'
-                    : 'border-border/50 bg-muted text-muted-foreground/50 cursor-not-allowed'
-              }`}
-            >
-              {p.label}
-              {!p.available && <span className="ml-1 text-xs opacity-60">unavailable</span>}
-            </button>
-          ))
+    <div className="flex h-full min-h-0">
+      {/* ── Vertical sidebar ── */}
+      <aside
+        className={cn(
+          'flex shrink-0 flex-col border-r border-border/50 overflow-hidden transition-[width,opacity] duration-200 ease-out',
+          sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-48 opacity-100',
         )}
-        {selectedProvider && selectedModel && (
-          <span className="text-xs text-muted-foreground">
-            Model: {selectedModel} (from AI Settings)
+        aria-hidden={sidebarCollapsed}
+      >
+        {/* Sidebar header */}
+        <div className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between px-2">
+          <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Chat
           </span>
-        )}
-        {selectedProvider === 'opensource-ai' && (
-          <label className="ml-1 inline-flex items-center gap-2 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-muted-foreground">
-            <span>Think</span>
-            <Switch
-              checked={thinkEnabled}
-              onCheckedChange={(checked) => {
-                setThinkEnabled(checked)
-                setAiScopeProviderThinkingOrch('chat', 'opensource-ai', checked)
-              }}
-            />
-          </label>
-        )}
-      </div>
-
-      {/* Messages */}
-      <div className="min-h-0 flex-1 overflow-y-auto space-y-4 pb-4">
-        {messages.length === 0 && !loading && (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Start a conversation.
-          </div>
-        )}
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            title="Collapse sidebar"
+            onClick={() => setSidebarCollapsed(true)}
           >
-            <Card
-              className={`max-w-[85%] ${
-                msg.role === 'user'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-card'
-              }`}
-            >
-              <CardContent className="p-3">
-                {msg.role === 'assistant' ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none [&_pre]:overflow-x-auto [&_code]:break-all">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                  </div>
-                ) : (
-                  <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
-                )}
-                <div className="mt-2 text-[11px] leading-relaxed opacity-80">
-                  {msg.role === 'user' ? (
-                    <span>{formatTimestamp(msg.requested_at) ?? 'timestamp unavailable'}</span>
-                  ) : (
-                    <span>
-                      {[formatTimestamp(msg.responded_at), msg.provider, msg.model].filter(Boolean).join(' • ')}
-                      {(msg.latency_ms != null) && ` • ${msg.latency_ms} ms`}
-                      {(msg.input_tokens != null || msg.output_tokens != null || msg.total_tokens != null) && (
-                        ` • tokens in:${msg.input_tokens ?? '-'} out:${msg.output_tokens ?? '-'} total:${msg.total_tokens ?? '-'}`
+            <PanelLeftClose className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Tab list */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {providersLoading ? (
+            <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Detecting...
+            </div>
+          ) : (
+            <>
+              {/* API providers */}
+              {providers.length > 0 && (
+                <div>
+                  <SidebarGroupHeaderBlock
+                    name="API"
+                    expanded={isSectionExpanded('api')}
+                    onToggle={() => toggleSection('api')}
+                    badge={providers.length}
+                  />
+                  {isSectionExpanded('api') && providers.map((p) => (
+                    <button
+                      key={p.provider}
+                      disabled={!p.available}
+                      onClick={() => {
+                        setSelectedWebsiteId(null)
+                        setSelectedProvider(p.provider)
+                        setAiSelectedProviderOrch(p.provider)
+                        if (p.provider === 'opensource-ai') {
+                          setThinkEnabled(resolveAiThinkingForScopeProviderOrch('chat', 'opensource-ai'))
+                        }
+                      }}
+                      className={cn(
+                        'flex w-full items-center border-b border-border/40 px-3 py-2.5 text-left text-xs transition-colors',
+                        selectedWebsiteId === null && selectedProvider === p.provider
+                          ? 'bg-primary text-primary-foreground'
+                          : p.available
+                            ? 'text-foreground hover:bg-muted/40'
+                            : 'text-muted-foreground/50 cursor-not-allowed',
                       )}
-                    </span>
-                  )}
+                      style={{ paddingLeft: '24px' }}
+                    >
+                      <span className="truncate">{p.label}</span>
+                      {!p.available && <span className="ml-1 shrink-0 text-[10px] opacity-60">off</span>}
+                    </button>
+                  ))}
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        ))}
-        {loading && (
-          <div className="flex justify-start">
-            <Card className="bg-card">
-              <CardContent className="flex items-center gap-2 p-3">
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Thinking...</span>
-              </CardContent>
-            </Card>
+              )}
+
+              {/* Web AI sites */}
+              {aiWebsites.length > 0 && (
+                <div>
+                  <SidebarGroupHeaderBlock
+                    name="Web"
+                    expanded={isSectionExpanded('web')}
+                    onToggle={() => toggleSection('web')}
+                    badge={aiWebsites.length}
+                  />
+                  {isSectionExpanded('web') && aiWebsites.map((site) => (
+                    <button
+                      key={site.id}
+                      onClick={() => {
+                        setSelectedWebsiteId(site.id)
+                        setSelectedProvider(null)
+                      }}
+                      className={cn(
+                        'flex w-full items-center border-b border-border/40 px-3 py-2.5 text-left text-xs transition-colors',
+                        selectedWebsiteId === site.id
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-foreground hover:bg-muted/40',
+                      )}
+                      style={{ paddingLeft: '24px' }}
+                    >
+                      <span className="truncate">{site.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {providers.length === 0 && aiWebsites.length === 0 && (
+                <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  No providers. Check AI Settings.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </aside>
+
+      {/* ── Content area ── */}
+      <section className="relative min-h-0 flex-1 overflow-hidden">
+        {/* Web AI site — key forces fresh webview mount per site (Electron ignores
+             partition changes on an already-mounted webview element). */}
+        {selectedWebsiteForChrome && (
+          <UrlDocumentBlock
+            key={selectedWebsiteForChrome.id}
+            url={selectedWebsiteForChrome.url}
+            partition={selectedWebsiteForChrome.partition}
+            hideHeader={!webviewHeaderVisible}
+            className="h-full"
+          />
+        )}
+
+        {/* API chat — only shown when no web site is active */}
+        {!selectedWebsiteForChrome && (
+          <div className="flex h-full flex-col px-4 py-4">
+            {/* Model / think controls */}
+            {selectedProvider && (
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                {selectedModel && (
+                  <span className="text-xs text-muted-foreground">
+                    Model: {selectedModel} (from AI Settings)
+                  </span>
+                )}
+                {selectedProvider === 'opensource-ai' && (
+                  <label className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-muted-foreground">
+                    <span>Think</span>
+                    <Switch
+                      checked={thinkEnabled}
+                      onCheckedChange={(checked) => {
+                        setThinkEnabled(checked)
+                        setAiScopeProviderThinkingOrch('chat', 'opensource-ai', checked)
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+
+            {/* Messages */}
+            <div className="min-h-0 flex-1 overflow-y-auto space-y-4 pb-4">
+              {messages.length === 0 && !loading && (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  {selectedProvider ? 'Start a conversation.' : 'Select a provider from the sidebar.'}
+                </div>
+              )}
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <Card
+                    className={`max-w-[85%] ${
+                      msg.role === 'user'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-card'
+                    }`}
+                  >
+                    <CardContent className="p-3">
+                      {msg.role === 'assistant' ? (
+                        <div className="prose prose-sm dark:prose-invert max-w-none [&_pre]:overflow-x-auto [&_code]:break-all">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                        </div>
+                      ) : (
+                        <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
+                      )}
+                      <div className="mt-2 text-[11px] leading-relaxed opacity-80">
+                        {msg.role === 'user' ? (
+                          <span>{formatTimestamp(msg.requested_at) ?? 'timestamp unavailable'}</span>
+                        ) : (
+                          <span>
+                            {[formatTimestamp(msg.responded_at), msg.provider, msg.model].filter(Boolean).join(' • ')}
+                            {(msg.latency_ms != null) && ` • ${msg.latency_ms} ms`}
+                            {(msg.input_tokens != null || msg.output_tokens != null || msg.total_tokens != null) && (
+                              ` • tokens in:${msg.input_tokens ?? '-'} out:${msg.output_tokens ?? '-'} total:${msg.total_tokens ?? '-'}`
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              ))}
+              {loading && (
+                <div className="flex justify-start">
+                  <Card className="bg-card">
+                    <CardContent className="flex items-center gap-2 p-3">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Thinking...</span>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Error */}
+            {error && (
+              <div className="mb-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+
+            {/* Input */}
+            <div className="flex items-end gap-2 border-t border-border/60 pt-3">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={selectedProvider ? 'Type a message...' : 'Select a provider first'}
+                disabled={!selectedProvider || loading}
+                rows={1}
+                className="min-h-[44px] max-h-[200px] flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
+                style={{ fieldSizing: 'content' } as React.CSSProperties}
+              />
+              <Button
+                onClick={handleSend}
+                disabled={!input.trim() || !selectedProvider || loading}
+                size="icon"
+                className="h-11 w-11 shrink-0"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+            </div>
           </div>
         )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="mb-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
-      {/* Input */}
-      <div className="flex items-end gap-2 border-t border-border/60 pt-3">
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={selectedProvider ? 'Type a message...' : 'Select a provider first'}
-          disabled={!selectedProvider || loading}
-          rows={1}
-          className="min-h-[44px] max-h-[200px] flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
-          style={{ fieldSizing: 'content' } as React.CSSProperties}
-        />
-        <Button
-          onClick={handleSend}
-          disabled={!input.trim() || !selectedProvider || loading}
-          size="icon"
-          className="h-11 w-11 shrink-0"
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-        </Button>
-      </div>
+      </section>
     </div>
   )
 }

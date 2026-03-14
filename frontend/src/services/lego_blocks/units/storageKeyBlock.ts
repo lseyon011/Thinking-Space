@@ -37,6 +37,8 @@ export const STORAGE_KEYS = {
   rssFeedConfigs: 'ltm-rss-feed-configs',
   rssReadItemIds: 'ltm-rss-read-item-ids',
   rssFeedRetentionDays: 'ltm-rss-feed-retention-days',
+  aiWebsites: 'ltm-ai-websites',
+  webSites: 'ltm-web-sites',
 } as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]

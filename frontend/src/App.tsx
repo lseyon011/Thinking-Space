@@ -8,9 +8,9 @@ import {
   FolderKanban,
   FileText,
   GitBranch,
+  Globe,
   Loader2,
   Menu,
-  MessageSquare,
   Eye,
   EyeOff,
   PanelLeft,
@@ -36,6 +36,7 @@ import NewThought from './pages/NewThought'
 import ThinkingSpace from './pages/ThinkingSpace'
 import ThinkingOrganizer from './pages/ThinkingOrganizer'
 import Chat from './pages/Chat'
+import Web from './pages/Web'
 import CapabilityDiscovery from './pages/CapabilityDiscovery'
 import ExtensionBuilder from './pages/ExtensionBuilder'
 import Settings from './pages/Settings'
@@ -80,6 +81,7 @@ import { getUIShellThemeProfileOrch } from './services/orchestrators/uiThemeOrch
 import { readUserProfileOrch } from './services/orchestrators/userProfileOrch'
 import {
   setExplorerFolderColorPreferencesOrch,
+  setF9TabPreferencesOrch,
   type ExplorerFolderColorPreferenceBlock,
   readVaultUiPreferencesOrch,
   setExplorerIconStylePreferenceOrch,
@@ -97,6 +99,18 @@ import {
   THINKING_SPACE_GOOGLE_WORKSPACE_CHROME_STATE_EVENT_BLOCK,
   type ThinkingSpaceGoogleWorkspaceChromeStateBlock,
 } from '@/services/lego_blocks/units/thinkingSpaceGoogleWorkspaceChromeBlock'
+import {
+  CHAT_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
+  dispatchChatSidebarChromeToggleBlock,
+  dispatchChatSidebarChromeToggleHeaderBlock,
+  type ChatSidebarChromeStateBlock,
+} from '@/services/lego_blocks/units/chatSidebarChromeBlock'
+import {
+  WEB_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
+  dispatchWebSidebarChromeToggleBlock,
+  dispatchWebSidebarChromeToggleHeaderBlock,
+  type WebSidebarChromeStateBlock,
+} from '@/services/lego_blocks/units/webSidebarChromeBlock'
 import {
   captureUnhandledRejectionReportBlock,
   captureWindowErrorReportBlock,
@@ -168,8 +182,9 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/thinking-space', label: 'Thinking Space', icon: Compass },
   { to: '/new-thought', label: 'New Note', icon: PlusSquare },
   { to: '/git-insights', label: 'Insights', icon: GitBranch },
-  { to: '/chat', label: 'Chat', icon: MessageSquare },
-  { to: '/f9', label: 'F9', icon: F9NavIcon },
+  { to: '/chat', label: 'AI', icon: AINavIcon },
+  { to: '/web', label: 'Web', icon: Globe },
+  { to: '/f9', label: 'Webull', icon: WebullNavIcon },
   {
     to: '/thinking-organizer',
     label: 'Thinking Organizer',
@@ -198,10 +213,26 @@ function ExcalidrawPlusIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
-function F9NavIcon({ className = 'h-4 w-4' }: { className?: string }) {
+function WebullNavIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 100 70" className={className} fill="currentColor" aria-hidden="true">
+      <path d="M4 8 C4 72 96 72 96 8 C72 52 28 52 4 8 Z" />
+    </svg>
+  )
+}
+
+function F9TextNavIcon({ text, className = 'h-4 w-4' }: { text: string; className?: string }) {
   return (
     <span aria-hidden="true" className={`${className} inline-flex items-center justify-center text-[10px] font-semibold leading-none tracking-tight`}>
-      f9
+      {text}
+    </span>
+  )
+}
+
+function AINavIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <span aria-hidden="true" className={`${className} inline-flex items-center justify-center text-[10px] font-semibold leading-none tracking-tight`}>
+      AI
     </span>
   )
 }
@@ -253,7 +284,7 @@ function safeDecodeURIComponent(value: string): string {
   }
 }
 
-function getTabLabel(route: string, labelByPath: Map<string, string>): string {
+function getTabLabel(route: string, labelByPath: Map<string, string>, chatLabel?: string, webLabel?: string, f9Label?: string): string {
   const { pathname, search } = parseTabRoute(route)
   if (pathname === '/thinking-space') {
     const filePath = search.get('file')?.trim()
@@ -267,6 +298,13 @@ function getTabLabel(route: string, labelByPath: Map<string, string>): string {
     const tab = search.get('tab')?.trim()
     if (tab) return `Organizer · ${toTitleCase(tab)}`
   }
+
+  if (pathname === '/chat' && chatLabel) return chatLabel
+
+  if (pathname === '/web' && webLabel) return webLabel
+
+  if (pathname === '/f9' && f9Label) return f9Label
+
 
   return labelByPath.get(pathname) ?? 'Workspace'
 }
@@ -343,6 +381,23 @@ function App() {
     enabled: false,
     explorerCollapsed: false,
     headerVisible: true,
+    showHeaderToggle: false,
+  })
+  const [chatSidebarChromeState, setChatSidebarChromeState] = useState<ChatSidebarChromeStateBlock>({
+    enabled: false,
+    collapsed: false,
+    headerVisible: true,
+    showHeaderToggle: false,
+    label: 'AI',
+  })
+  const [f9TabLabel, setF9TabLabel] = useState('Webull')
+  const [f9TabIconText, setF9TabIconText] = useState('')
+  const [webSidebarChromeState, setWebSidebarChromeState] = useState<WebSidebarChromeStateBlock>({
+    enabled: false,
+    collapsed: false,
+    headerVisible: true,
+    showHeaderToggle: false,
+    label: 'Web',
   })
   const [syncPanelOpen, setSyncPanelOpen] = useState(false)
   const [syncActionRunning, setSyncActionRunning] = useState<'sync' | 'rebuild' | null>(null)
@@ -404,6 +459,11 @@ function App() {
   )
   const showGoogleWorkspaceChromeControls = location.pathname === '/thinking-space'
     && thinkingSpaceGoogleWorkspaceChromeState.enabled
+  const showChatSidebarChromeControl = location.pathname === '/chat'
+    && chatSidebarChromeState.enabled
+  const showChatHeaderToggle = showChatSidebarChromeControl && chatSidebarChromeState.showHeaderToggle
+  const showWebSidebarChromeControl = location.pathname === '/web' && webSidebarChromeState.enabled
+  const showWebHeaderToggle = showWebSidebarChromeControl && webSidebarChromeState.showHeaderToggle
   const isElectronDesktopSurface = layout.surface === 'electron' && layout.mode === 'desktop'
   const isMacDesktopSurface = isElectronDesktopSurface
     && typeof navigator !== 'undefined'
@@ -411,8 +471,25 @@ function App() {
   const showLeftAlignedGoogleWorkspaceChromeControls = showGoogleWorkspaceChromeControls && isElectronDesktopSurface
   const showRightAlignedGoogleWorkspaceChromeControls = showGoogleWorkspaceChromeControls
     && !showLeftAlignedGoogleWorkspaceChromeControls
-  const canToggleGoogleWorkspaceHeader = showGoogleWorkspaceChromeControls
-    && thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed
+  const showThinkingSpaceHeaderToggle = showGoogleWorkspaceChromeControls
+    && thinkingSpaceGoogleWorkspaceChromeState.showHeaderToggle
+
+  const resolvedF9Icon = useMemo(() => {
+    if (!f9TabIconText) return WebullNavIcon
+    const text = f9TabIconText
+    return function ResolvedF9TextIcon({ className = 'h-4 w-4' }: { className?: string }) {
+      return <F9TextNavIcon text={text} className={className} />
+    }
+  }, [f9TabIconText])
+
+  const primaryNavItems = useMemo(
+    () => PRIMARY_NAV_ITEMS.map(item =>
+      item.to === '/f9'
+        ? { ...item, label: f9TabLabel, icon: resolvedF9Icon }
+        : item,
+    ),
+    [f9TabLabel, resolvedF9Icon],
+  )
 
   const utilityNavItems = useMemo(() => {
     const items: NavItem[] = [
@@ -427,7 +504,7 @@ function App() {
 
   const baseCommandItems = useMemo<CommandItem[]>(() => ([
     { to: '/', label: 'Home', group: 'Core', keywords: 'dashboard start' },
-    ...PRIMARY_NAV_ITEMS.map(item => ({
+    ...primaryNavItems.map(item => ({
       to: item.to,
       label: item.label,
       group: 'Core' as const,
@@ -452,7 +529,7 @@ function App() {
       group: 'Excalidraw++' as const,
       activePaths: [tool.legacyRoute],
     })),
-  ]), [utilityNavItems])
+  ]), [primaryNavItems, utilityNavItems])
 
   const allCommandItems = useMemo<CommandItem[]>(
     () => [...baseCommandItems, ...commandFileItems],
@@ -477,9 +554,9 @@ function App() {
   const workspaceTabItems = useMemo<AppWorkspaceTabBlockModel[]>(
     () => workspaceTabs.map(tab => ({
       id: tab.id,
-      label: getTabLabel(tab.route, routeLabelByPath),
+      label: getTabLabel(tab.route, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, f9TabLabel),
     })),
-    [routeLabelByPath, workspaceTabs],
+    [routeLabelByPath, workspaceTabs, chatSidebarChromeState.label, webSidebarChromeState.label, f9TabLabel],
   )
 
   const shell = useMemo(() => deriveAdaptiveShellStateOrch(layout), [layout])
@@ -719,6 +796,18 @@ function App() {
       await setExplorerFolderColorPreferencesOrch(nextRules)
     } catch (error) {
       console.warn('[App] Failed to persist explorer folder color rules:', error)
+      throw error
+    }
+  }, [])
+
+  const handleF9TabPreferencesChange = useCallback(async (label: string, iconText: string) => {
+    const normalized = label.trim() || 'Webull'
+    setF9TabLabel(normalized)
+    setF9TabIconText(iconText.trim())
+    try {
+      await setF9TabPreferencesOrch(normalized, iconText.trim())
+    } catch (error) {
+      console.warn('[App] Failed to persist F9 tab preferences:', error)
       throw error
     }
   }, [])
@@ -1251,6 +1340,8 @@ function App() {
         if (cancelled) return
         setExplorerIconStyle(preferences.explorerIconStyle)
         setExplorerFolderColorRules(preferences.explorerFolderColorRules)
+        setF9TabLabel(preferences.f9TabLabel || 'Webull')
+        setF9TabIconText(preferences.f9TabIconText || '')
       })
       .catch((error) => {
         if (!cancelled) {
@@ -1350,12 +1441,51 @@ function App() {
         enabled: Boolean(detail.enabled),
         explorerCollapsed: Boolean(detail.explorerCollapsed),
         headerVisible: Boolean(detail.headerVisible),
+        showHeaderToggle: Boolean(detail.showHeaderToggle),
       })
     }
 
     window.addEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_CHROME_STATE_EVENT_BLOCK, handleChromeState as EventListener)
     return () => {
       window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_CHROME_STATE_EVENT_BLOCK, handleChromeState as EventListener)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleChatChromeState = (event: Event) => {
+      const customEvent = event as CustomEvent<ChatSidebarChromeStateBlock>
+      const detail = customEvent.detail
+      if (!detail) return
+      setChatSidebarChromeState({
+        enabled: Boolean(detail.enabled),
+        collapsed: Boolean(detail.collapsed),
+        headerVisible: detail.headerVisible !== false,
+        showHeaderToggle: Boolean(detail.showHeaderToggle),
+        label: typeof detail.label === 'string' ? detail.label : 'AI',
+      })
+    }
+    window.addEventListener(CHAT_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleChatChromeState as EventListener)
+    return () => {
+      window.removeEventListener(CHAT_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleChatChromeState as EventListener)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleWebChromeState = (event: Event) => {
+      const customEvent = event as CustomEvent<WebSidebarChromeStateBlock>
+      const detail = customEvent.detail
+      if (!detail) return
+      setWebSidebarChromeState({
+        enabled: Boolean(detail.enabled),
+        collapsed: Boolean(detail.collapsed),
+        headerVisible: detail.headerVisible !== false,
+        showHeaderToggle: Boolean(detail.showHeaderToggle),
+        label: typeof detail.label === 'string' ? detail.label : 'Web',
+      })
+    }
+    window.addEventListener(WEB_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleWebChromeState as EventListener)
+    return () => {
+      window.removeEventListener(WEB_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleWebChromeState as EventListener)
     }
   }, [])
 
@@ -1441,6 +1571,66 @@ function App() {
                 </div>
               )}
 
+              {showChatSidebarChromeControl && (
+                <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
+                  <button
+                    type="button"
+                    onClick={dispatchChatSidebarChromeToggleBlock}
+                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                    aria-label={chatSidebarChromeState.collapsed ? 'Show chat sidebar' : 'Hide chat sidebar'}
+                    title={chatSidebarChromeState.collapsed ? 'Show chat sidebar' : 'Hide chat sidebar'}
+                  >
+                    {chatSidebarChromeState.collapsed
+                      ? <PanelLeft className="h-3.5 w-3.5" />
+                      : <PanelLeftClose className="h-3.5 w-3.5" />}
+                  </button>
+
+                  {showChatHeaderToggle && (
+                    <button
+                      type="button"
+                      onClick={dispatchChatSidebarChromeToggleHeaderBlock}
+                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label={chatSidebarChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar'}
+                      title={chatSidebarChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar'}
+                    >
+                      {chatSidebarChromeState.headerVisible
+                        ? <EyeOff className="h-3.5 w-3.5" />
+                        : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {showWebSidebarChromeControl && (
+                <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
+                  <button
+                    type="button"
+                    onClick={dispatchWebSidebarChromeToggleBlock}
+                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                    aria-label={webSidebarChromeState.collapsed ? 'Show web sidebar' : 'Hide web sidebar'}
+                    title={webSidebarChromeState.collapsed ? 'Show web sidebar' : 'Hide web sidebar'}
+                  >
+                    {webSidebarChromeState.collapsed
+                      ? <PanelLeft className="h-3.5 w-3.5" />
+                      : <PanelLeftClose className="h-3.5 w-3.5" />}
+                  </button>
+
+                  {showWebHeaderToggle && (
+                    <button
+                      type="button"
+                      onClick={dispatchWebSidebarChromeToggleHeaderBlock}
+                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label={webSidebarChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar'}
+                      title={webSidebarChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar'}
+                    >
+                      {webSidebarChromeState.headerVisible
+                        ? <EyeOff className="h-3.5 w-3.5" />
+                        : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
+                </div>
+              )}
+
               {showLeftAlignedGoogleWorkspaceChromeControls && (
                 <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
                   <button
@@ -1455,20 +1645,19 @@ function App() {
                       : <PanelLeftClose className="h-3.5 w-3.5" />}
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock}
-                    disabled={!canToggleGoogleWorkspaceHeader}
-                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-55"
-                    aria-label={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header'}
-                    title={canToggleGoogleWorkspaceHeader
-                      ? (thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header')
-                      : 'Collapse explorer to toggle document header'}
-                  >
-                    {thinkingSpaceGoogleWorkspaceChromeState.headerVisible
-                      ? <EyeOff className="h-3.5 w-3.5" />
-                      : <Eye className="h-3.5 w-3.5" />}
-                  </button>
+                  {showThinkingSpaceHeaderToggle && (
+                    <button
+                      type="button"
+                      onClick={dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock}
+                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header'}
+                      title={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header'}
+                    >
+                      {thinkingSpaceGoogleWorkspaceChromeState.headerVisible
+                        ? <EyeOff className="h-3.5 w-3.5" />
+                        : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1511,20 +1700,19 @@ function App() {
                         : <PanelLeftClose className="h-3.5 w-3.5" />}
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock}
-                      disabled={!canToggleGoogleWorkspaceHeader}
-                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-55"
-                      aria-label={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header'}
-                      title={canToggleGoogleWorkspaceHeader
-                        ? (thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header')
-                        : 'Collapse explorer to toggle document header'}
-                    >
-                      {thinkingSpaceGoogleWorkspaceChromeState.headerVisible
-                        ? <EyeOff className="h-3.5 w-3.5" />
-                        : <Eye className="h-3.5 w-3.5" />}
-                    </button>
+                    {showThinkingSpaceHeaderToggle && (
+                      <button
+                        type="button"
+                        onClick={dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock}
+                        className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                        aria-label={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header'}
+                        title={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header'}
+                      >
+                        {thinkingSpaceGoogleWorkspaceChromeState.headerVisible
+                          ? <EyeOff className="h-3.5 w-3.5" />
+                          : <Eye className="h-3.5 w-3.5" />}
+                      </button>
+                    )}
                   </>
                 )}
 
@@ -1576,7 +1764,7 @@ function App() {
                         Core
                       </div>
                     )}
-                    {PRIMARY_NAV_ITEMS.map((item) => {
+                    {primaryNavItems.map((item) => {
                       const Icon = item.icon
                       const active = isNavItemActive(location.pathname, item)
                       return (
@@ -1727,7 +1915,8 @@ function App() {
               <Route path="/git-insights" element={<GitInsights />} />
               <Route path="/new-thought" element={<NewThought />} />
               <Route path="/chat" element={<Chat />} />
-              <Route path="/f9" element={<F9Page />} />
+              <Route path="/web" element={<Web />} />
+              <Route path="/f9" element={<F9Page pageLabel={f9TabLabel} />} />
               <Route path="/personal-extension" element={<Navigate to="/f9" replace />} />
               <Route
                 path="/settings"
@@ -1738,6 +1927,9 @@ function App() {
                     explorerFolderColorRules={explorerFolderColorRules}
                     onExplorerFolderColorRulesChange={handleExplorerFolderColorRulesChange}
                     onRequestVaultSwitch={handleRequestVaultSwitch}
+                    f9TabLabel={f9TabLabel}
+                    f9TabIconText={f9TabIconText}
+                    onF9TabPreferencesChange={handleF9TabPreferencesChange}
                   />
                 }
               />
@@ -1809,7 +2001,7 @@ function App() {
                   <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Core
                   </div>
-                  {PRIMARY_NAV_ITEMS.map((item) => {
+                  {primaryNavItems.map((item) => {
                     const Icon = item.icon
                     const active = isNavItemActive(location.pathname, item)
                     return (

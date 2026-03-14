@@ -1,7 +1,13 @@
 import { useCallback, useState } from 'react'
-import { Bookmark, FolderInput, Loader2, Star, Tag, X } from 'lucide-react'
+import { Bookmark, FolderInput, Loader2, Star, X } from 'lucide-react'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { updateRssItemMetaOrch, moveRssArticleToVaultOrch } from '@/services/orchestrators/rssFeedOrch'
-import { splitTagInputBlock } from '@/services/lego_blocks/units/tagBlock'
+import {
+  hasTagBlock,
+  tagColorClassBlock,
+  tagColorStyleBlock,
+  tagLookupKeyBlock,
+} from '@/services/lego_blocks/units/tagBlock'
 import type { RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import CascadingFolderPicker, {
   type CascadingFolderPickerChange,
@@ -16,7 +22,10 @@ interface RssArticleViewBlockProps {
   onClose: () => void
   onItemUpdate: (updated: RssFeedItemBlock) => void
   onMoved: (newPath: string) => void
+  presetTags?: string[]
+  tagColors?: Record<string, string>
   className?: string
+  suspended?: boolean
 }
 
 export default function RssArticleViewBlock({
@@ -24,13 +33,16 @@ export default function RssArticleViewBlock({
   onClose,
   onItemUpdate,
   onMoved,
+  presetTags = [],
+  tagColors = {},
   className,
+  suspended,
 }: RssArticleViewBlockProps) {
+  const { layout } = useUILayoutBlock()
+  const isIos = layout.surface === 'capacitor-ios'
   const [tags, setTags] = useState<string[]>(item.tags ?? [])
   const [keep, setKeep] = useState(item.keep ?? false)
   const [important, setImportant] = useState(item.important ?? false)
-  const [addingTag, setAddingTag] = useState(false)
-  const [tagDraft, setTagDraft] = useState('')
 
   // Move-to-vault state
   const [showMoveDialog, setShowMoveDialog] = useState(false)
@@ -59,22 +71,9 @@ export default function RssArticleViewBlock({
     applyMeta(tags, keep, next)
   }, [important, tags, keep, applyMeta])
 
-  const commitTagDraft = useCallback(() => {
-    const incoming = splitTagInputBlock(tagDraft).filter(t => t && !tags.includes(t))
-    if (incoming.length === 0) {
-      setTagDraft('')
-      setAddingTag(false)
-      return
-    }
-    const next = [...tags, ...incoming]
-    setTags(next)
-    setTagDraft('')
-    setAddingTag(false)
-    applyMeta(next, keep, important)
-  }, [tagDraft, tags, keep, important, applyMeta])
-
-  const removeTag = useCallback((tag: string) => {
-    const next = tags.filter(t => t !== tag)
+  const toggleTag = useCallback((tag: string) => {
+    const has = hasTagBlock(tags, tag)
+    const next = has ? tags.filter(t => t !== tag) : [...tags, tag]
     setTags(next)
     applyMeta(next, keep, important)
   }, [tags, keep, important, applyMeta])
@@ -100,10 +99,11 @@ export default function RssArticleViewBlock({
   const hasAnything = keep || important || tags.length > 0
 
   return (
-    <div className={cn('relative flex h-full min-h-0 flex-col', className)}>
-      {/* Meta bar */}
+    <div className={cn('relative flex h-full min-h-0 flex-col', isIos && 'flex-col-reverse', className)}>
+      {/* Meta bar — top by default, bottom on iOS (flex-col-reverse) */}
       <div className={cn(
-        'flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border/40 px-3 py-1.5',
+        'flex shrink-0 flex-wrap items-center gap-1.5 px-3 py-1.5',
+        isIos ? 'border-t border-border/40' : 'border-b border-border/40',
         hasAnything ? 'bg-muted/20' : 'bg-muted/10',
       )}>
         {/* Keep */}
@@ -132,54 +132,50 @@ export default function RssArticleViewBlock({
           <Star className={cn('h-3.5 w-3.5', important && 'fill-rose-500')} />
         </button>
 
-        {(tags.length > 0 || keep || important) && (
+        {(tags.length > 0 || keep || important || presetTags.length > 0) && (
           <div className="h-4 w-px shrink-0 bg-border/50" />
         )}
 
-        {/* Tag chips */}
-        {tags.map(tag => (
+        {/* Preset tag chips — toggle on/off */}
+        {presetTags.map(tag => {
+          const selected = hasTagBlock(tags, tag)
+          return (
+            <button
+              key={`preset-${tag}`}
+              type="button"
+              onClick={() => toggleTag(tag)}
+              title={selected ? `Remove ${tag}` : `Add ${tag}`}
+              className={cn(
+                'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors',
+                tagColorClassBlock(tag, selected ? 'selected' : 'unselected'),
+              )}
+              style={tagColorStyleBlock(tag, selected ? 'selected' : 'unselected', tagColors[tagLookupKeyBlock(tag)])}
+            >
+              {tag}
+            </button>
+          )
+        })}
+
+        {/* Show any tags not in presets (legacy free-form) as removable chips */}
+        {tags.filter(t => !presetTags.some(p => p.toLowerCase() === t.toLowerCase())).map(tag => (
           <span
-            key={tag}
-            className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
+            key={`extra-${tag}`}
+            className={cn(
+              'inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[10px] font-medium',
+              tagColorClassBlock(tag, 'solid'),
+            )}
+            style={tagColorStyleBlock(tag, 'solid', tagColors[tagLookupKeyBlock(tag)])}
           >
             {tag}
             <button
               type="button"
-              onClick={() => removeTag(tag)}
-              className="ml-0.5 rounded-full text-primary/60 hover:text-primary"
+              onClick={() => toggleTag(tag)}
+              className="ml-0.5 rounded-full opacity-60 hover:opacity-100"
             >
               <X className="h-2.5 w-2.5" />
             </button>
           </span>
         ))}
-
-        {/* Add tag */}
-        {addingTag ? (
-          <input
-            autoFocus
-            value={tagDraft}
-            onChange={e => setTagDraft(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') commitTagDraft()
-              if (e.key === 'Escape') { setTagDraft(''); setAddingTag(false) }
-            }}
-            onBlur={() => {
-              if (!tagDraft.trim()) { setTagDraft(''); setAddingTag(false) }
-              else commitTagDraft()
-            }}
-            placeholder="tag, tag…"
-            className="h-5 w-28 rounded border border-border/70 bg-background px-1.5 text-[11px] outline-none focus:border-ring"
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={() => setAddingTag(true)}
-            title="Add tag"
-            className="shrink-0 rounded p-0.5 text-muted-foreground/50 hover:text-muted-foreground"
-          >
-            <Tag className="h-3 w-3" />
-          </button>
-        )}
 
         {/* Spacer */}
         <div className="flex-1" />
@@ -195,13 +191,18 @@ export default function RssArticleViewBlock({
         </button>
       </div>
 
-      {/* URL content */}
-      <UrlDocumentBlock
-        url={item.link}
-        onClose={onClose}
-        showCloseButton
-        className="min-h-0 flex-1"
-      />
+      {/* URL content — wrapped so h-full inside UrlDocumentBlock resolves to the
+           flex-allocated space, not the full container (fixes iOS WKWebView overlap) */}
+      <div className="relative min-h-0 flex-1">
+        <UrlDocumentBlock
+          url={item.link}
+          onClose={onClose}
+          showCloseButton={!isIos}
+          hideHeader={isIos}
+          suspended={suspended}
+          className="absolute inset-0"
+        />
+      </div>
 
       {/* Move-to-vault overlay */}
       {showMoveDialog && (

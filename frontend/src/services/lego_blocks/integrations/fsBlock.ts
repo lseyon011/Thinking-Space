@@ -54,6 +54,13 @@ function isAlreadyExistsFilesystemErrorBlock(error: unknown): boolean {
 
 interface ElectronAPI {
   isElectron: true
+  versions?: {
+    app: string
+    electron: string
+    chrome: string
+    node: string
+    v8: string
+  }
   capabilitiesList(): Promise<{
     ok: boolean
     capabilities?: Array<{ name: string; description: string; readOnly: boolean }>

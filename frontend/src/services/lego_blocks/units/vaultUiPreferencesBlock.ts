@@ -17,6 +17,8 @@ export interface VaultUiPreferencesBlock {
   explorerIconStyle: ExplorerIconStyleBlock
   newThoughtQuickDestinations: NewThoughtQuickDestinationPreferenceBlock[]
   explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
+  f9TabLabel: string
+  f9TabIconText: string
 }
 
 export const DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK: ExplorerFolderColorPreferenceBlock[] = [
@@ -45,6 +47,8 @@ export const DEFAULT_VAULT_UI_PREFERENCES_BLOCK: VaultUiPreferencesBlock = {
   explorerIconStyle: 'outline',
   newThoughtQuickDestinations: [],
   explorerFolderColorRules: cloneExplorerFolderColorRulesBlock(DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK),
+  f9TabLabel: 'Webull',
+  f9TabIconText: '',
 }
 
 export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock {
@@ -52,6 +56,8 @@ export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock 
     explorerIconStyle: DEFAULT_VAULT_UI_PREFERENCES_BLOCK.explorerIconStyle,
     newThoughtQuickDestinations: [],
     explorerFolderColorRules: cloneExplorerFolderColorRulesBlock(DEFAULT_VAULT_UI_PREFERENCES_BLOCK.explorerFolderColorRules),
+    f9TabLabel: 'Webull',
+    f9TabIconText: '',
   }
 }
 
@@ -169,6 +175,12 @@ export function normalizeVaultUiPreferencesBlock(value: unknown): VaultUiPrefere
     explorerIconStyle: normalizeExplorerIconStyleBlock(record.explorerIconStyle),
     newThoughtQuickDestinations: normalizeNewThoughtQuickDestinationsBlock(record.newThoughtQuickDestinations),
     explorerFolderColorRules: normalizedExplorerFolderColorRules,
+    f9TabLabel: typeof record.f9TabLabel === 'string' && record.f9TabLabel.trim()
+      ? record.f9TabLabel.trim()
+      : 'Webull',
+    f9TabIconText: typeof record.f9TabIconText === 'string'
+      ? record.f9TabIconText.trim()
+      : '',
   }
 }
 

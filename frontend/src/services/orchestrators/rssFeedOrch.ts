@@ -7,9 +7,13 @@ import {
 } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   generateFeedIdBlock,
+  generateGroupIdBlock,
   normalizeRssFeedItemIdBlock,
+  normalizeRssFeedPreferencesBlock,
   type RssFeedConfigBlock,
+  type RssFeedGroupBlock,
   type RssFeedItemBlock,
+  type RssFeedPreferencesBlock,
   type RssFeedResultBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
 import { getVaultFS, isElectron } from '@/services/lego_blocks/integrations/fsBlock'
@@ -256,78 +260,152 @@ export async function updateRssItemMetaOrch(
 // Feed config persistence — vault-backed so configs sync across devices
 // ---------------------------------------------------------------------------
 
-function normalizeRssFeedConfigsBlock(value: unknown): RssFeedConfigBlock[] {
-  if (!Array.isArray(value)) return []
-  return value.filter(
-    (item): item is RssFeedConfigBlock =>
-      item !== null &&
-      typeof item === 'object' &&
-      typeof (item as RssFeedConfigBlock).id === 'string' &&
-      typeof (item as RssFeedConfigBlock).url === 'string' &&
-      typeof (item as RssFeedConfigBlock).title === 'string',
-  )
-}
-
 async function ensureRssDirOrch(): Promise<void> {
   const fs = getVaultFS()
   try { await fs.mkdir('.thinking-space') } catch { /* exists */ }
   try { await fs.mkdir(RSS_DIR) } catch { /* exists */ }
 }
 
-export async function readRssFeedConfigsOrch(): Promise<RssFeedConfigBlock[]> {
+// ---------------------------------------------------------------------------
+// Preferences persistence — single vault file for feeds, groups, preset tags
+// ---------------------------------------------------------------------------
+
+export async function readRssFeedPreferencesOrch(): Promise<RssFeedPreferencesBlock> {
   const fs = getVaultFS()
   try {
     const raw = await fs.read(RSS_FILE)
-    const parsed = normalizeRssFeedConfigsBlock(JSON.parse(raw))
-    return parsed
+    return normalizeRssFeedPreferencesBlock(JSON.parse(raw))
   } catch {
     // File missing or unreadable — check localStorage for a one-time migration.
     const legacy = getJsonStorageItem<RssFeedConfigBlock[]>(STORAGE_KEYS.rssFeedConfigs, [])
     if (legacy.length > 0) {
+      const prefs = normalizeRssFeedPreferencesBlock(legacy)
       try {
         await ensureRssDirOrch()
-        await fs.write(RSS_FILE, JSON.stringify(legacy, null, 2))
+        await fs.write(RSS_FILE, JSON.stringify(prefs, null, 2))
         setJsonStorageItem(STORAGE_KEYS.rssFeedConfigs, [])
       } catch {
         // Migration write failed — just return localStorage data.
       }
-      return legacy
+      return prefs
     }
-    return []
+    return normalizeRssFeedPreferencesBlock(null)
   }
 }
 
-async function writeRssFeedConfigsOrch(configs: RssFeedConfigBlock[]): Promise<void> {
+async function writeRssFeedPreferencesOrch(prefs: RssFeedPreferencesBlock): Promise<void> {
   const fs = getVaultFS()
   await ensureRssDirOrch()
-  await fs.write(RSS_FILE, JSON.stringify(configs, null, 2))
+  await fs.write(RSS_FILE, JSON.stringify(prefs, null, 2))
 }
 
-export async function addRssFeedOrch(url: string, title?: string): Promise<RssFeedConfigBlock> {
-  const configs = await readRssFeedConfigsOrch()
+export async function readRssFeedConfigsOrch(): Promise<RssFeedConfigBlock[]> {
+  const prefs = await readRssFeedPreferencesOrch()
+  return prefs.feeds
+}
+
+export async function addRssFeedOrch(
+  url: string,
+  title?: string,
+  groupId?: string | null,
+): Promise<RssFeedConfigBlock> {
+  const prefs = await readRssFeedPreferencesOrch()
   const entry: RssFeedConfigBlock = {
     id: generateFeedIdBlock(),
     url: url.trim(),
     title: title?.trim() || domainLabel(url),
+    groupId: groupId ?? null,
   }
-  configs.push(entry)
-  await writeRssFeedConfigsOrch(configs)
+  prefs.feeds.push(entry)
+  await writeRssFeedPreferencesOrch(prefs)
   return entry
 }
 
 export async function removeRssFeedOrch(feedId: string): Promise<void> {
-  const configs = (await readRssFeedConfigsOrch()).filter(c => c.id !== feedId)
-  await writeRssFeedConfigsOrch(configs)
+  const prefs = await readRssFeedPreferencesOrch()
+  prefs.feeds = prefs.feeds.filter(c => c.id !== feedId)
+  await writeRssFeedPreferencesOrch(prefs)
 }
 
 export async function updateRssFeedOrch(
   feedId: string,
-  patch: Partial<Pick<RssFeedConfigBlock, 'url' | 'title'>>,
+  patch: Partial<Pick<RssFeedConfigBlock, 'url' | 'title' | 'groupId'>>,
 ): Promise<void> {
-  const configs = (await readRssFeedConfigsOrch()).map(c =>
+  const prefs = await readRssFeedPreferencesOrch()
+  prefs.feeds = prefs.feeds.map(c =>
     c.id === feedId ? { ...c, ...patch } : c,
   )
-  await writeRssFeedConfigsOrch(configs)
+  await writeRssFeedPreferencesOrch(prefs)
+}
+
+// ---------------------------------------------------------------------------
+// Group CRUD
+// ---------------------------------------------------------------------------
+
+export async function addRssFeedGroupOrch(
+  name: string,
+  parentGroupId?: string | null,
+): Promise<RssFeedGroupBlock> {
+  const prefs = await readRssFeedPreferencesOrch()
+  const group: RssFeedGroupBlock = {
+    id: generateGroupIdBlock(),
+    name: name.trim(),
+    parentGroupId: parentGroupId ?? null,
+  }
+  prefs.groups.push(group)
+  await writeRssFeedPreferencesOrch(prefs)
+  return group
+}
+
+export async function removeRssFeedGroupOrch(groupId: string): Promise<void> {
+  const prefs = await readRssFeedPreferencesOrch()
+  // Collect group + all descendant groups
+  const idsToRemove = new Set<string>()
+  function collect(id: string) {
+    idsToRemove.add(id)
+    for (const g of prefs.groups) {
+      if (g.parentGroupId === id) collect(g.id)
+    }
+  }
+  collect(groupId)
+  prefs.groups = prefs.groups.filter(g => !idsToRemove.has(g.id))
+  // Ungroup feeds that were in removed groups
+  prefs.feeds = prefs.feeds.map(f =>
+    f.groupId && idsToRemove.has(f.groupId) ? { ...f, groupId: null } : f,
+  )
+  await writeRssFeedPreferencesOrch(prefs)
+}
+
+export async function updateRssFeedGroupOrch(
+  groupId: string,
+  patch: Partial<Pick<RssFeedGroupBlock, 'name' | 'parentGroupId'>>,
+): Promise<void> {
+  const prefs = await readRssFeedPreferencesOrch()
+  prefs.groups = prefs.groups.map(g =>
+    g.id === groupId ? { ...g, ...patch } : g,
+  )
+  await writeRssFeedPreferencesOrch(prefs)
+}
+
+export async function moveFeedToGroupOrch(
+  feedId: string,
+  groupId: string | null,
+): Promise<void> {
+  await updateRssFeedOrch(feedId, { groupId })
+}
+
+// ---------------------------------------------------------------------------
+// Preset tags CRUD
+// ---------------------------------------------------------------------------
+
+export async function updateRssPresetTagsOrch(
+  presetTags: string[],
+  tagColors: Record<string, string>,
+): Promise<void> {
+  const prefs = await readRssFeedPreferencesOrch()
+  prefs.presetTags = presetTags
+  prefs.tagColors = tagColors
+  await writeRssFeedPreferencesOrch(prefs)
 }
 
 // ---------------------------------------------------------------------------

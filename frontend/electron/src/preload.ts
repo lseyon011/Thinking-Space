@@ -30,8 +30,19 @@ function getPersistedVaultRootBlock(): string | null {
   return persistedVaultRootBlock
 }
 
+const appVersion: string = (() => {
+  try { return ipcRenderer.sendSync('app:version:getSync') as string } catch { return '' }
+})()
+
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
+  versions: {
+    app: appVersion,
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    v8: process.versions.v8,
+  },
 
   // Capability adapter management
   capabilitiesList: () =>

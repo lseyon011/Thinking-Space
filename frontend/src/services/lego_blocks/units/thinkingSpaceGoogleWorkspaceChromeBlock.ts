@@ -2,6 +2,8 @@ export interface ThinkingSpaceGoogleWorkspaceChromeStateBlock {
   enabled: boolean
   explorerCollapsed: boolean
   headerVisible: boolean
+  /** Whether to show the header toggle button (only when a document is open). */
+  showHeaderToggle: boolean
 }
 
 export const THINKING_SPACE_GOOGLE_WORKSPACE_CHROME_STATE_EVENT_BLOCK = 'ltm:thinking-space:google-workspace-chrome-state'

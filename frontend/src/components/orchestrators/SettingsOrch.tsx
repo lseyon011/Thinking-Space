@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
@@ -38,15 +39,42 @@ import {
 import type { UIThemeId } from '@/services/orchestrators/uiThemeOrch'
 import {
   addRssFeedOrch,
+  addRssFeedGroupOrch,
   getRssRetentionDaysOrch,
-  readRssFeedConfigsOrch,
+  readRssFeedPreferencesOrch,
   removeRssFeedOrch,
+  removeRssFeedGroupOrch,
   setRssRetentionDaysOrch,
   updateRssFeedOrch,
+  updateRssFeedGroupOrch,
+  updateRssPresetTagsOrch,
 } from '@/services/orchestrators/rssFeedOrch'
-import type { RssFeedConfigBlock } from '@/services/lego_blocks/units/rssFeedBlock'
+import type { RssFeedPreferencesBlock } from '@/services/lego_blocks/units/rssFeedBlock'
+import {
+  splitTagInputBlock,
+  tagColorClassBlock,
+  tagColorStyleBlock,
+  tagLookupKeyBlock,
+} from '@/services/lego_blocks/units/tagBlock'
+import {
+  addAiWebsiteOrch,
+  readAiWebsitesOrch,
+  removeAiWebsiteOrch,
+  updateAiWebsiteOrch,
+} from '@/services/orchestrators/aiWebsiteOrch'
+import type { AiWebsiteBlock } from '@/services/lego_blocks/units/aiWebsiteBlock'
+import {
+  addWebSiteOrch,
+  addWebSiteGroupOrch,
+  readWebSitePreferencesOrch,
+  removeWebSiteOrch,
+  removeWebSiteGroupOrch,
+  updateWebSiteOrch,
+  updateWebSiteGroupOrch,
+} from '@/services/orchestrators/webSiteOrch'
+import type { WebSitePreferencesBlock } from '@/services/lego_blocks/units/webSiteBlock'
 
-export type SettingsTabId = 'theme' | 'explorer' | 'ai' | 'google_docs_sheets' | 'f9' | 'rss' | 'cache' | 'vault'
+export type SettingsTabId = 'theme' | 'explorer' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'f9' | 'rss' | 'cache' | 'vault' | 'about'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
 
 interface SettingsOrchProps {
@@ -56,6 +84,9 @@ interface SettingsOrchProps {
   onExplorerFolderColorRulesChange: (nextRules: ExplorerFolderColorPreferenceBlock[]) => Promise<void> | void
   onRequestVaultSwitch: () => void
   initialTab?: SettingsTabWithProfileId
+  f9TabLabel?: string
+  f9TabIconText?: string
+  onF9TabPreferencesChange?: (label: string, iconText: string) => Promise<void> | void
 }
 
 function createExplorerColorRuleId(): string {
@@ -75,11 +106,14 @@ const TAB_OPTIONS: Array<{ id: SettingsTabWithProfileId; label: string }> = [
   { id: 'explorer', label: 'Explorer' },
   { id: 'profile', label: 'Profile' },
   { id: 'ai', label: 'AI' },
+  { id: 'ai_websites', label: 'AI Websites' },
+  { id: 'web_bookmarks', label: 'Web' },
   { id: 'google_docs_sheets', label: 'Google Docs and Sheets' },
-  { id: 'f9', label: 'F9' },
+  { id: 'f9', label: 'Webull' },
   { id: 'rss', label: 'RSS Feeds' },
   { id: 'cache', label: 'Clear Cache' },
   { id: 'vault', label: 'Select Thinking Space' },
+  { id: 'about', label: 'About' },
 ]
 
 export default function SettingsOrch({
@@ -89,6 +123,9 @@ export default function SettingsOrch({
   onExplorerFolderColorRulesChange,
   onRequestVaultSwitch,
   initialTab = 'theme',
+  f9TabLabel: f9TabLabelProp = 'Webull',
+  f9TabIconText: f9TabIconTextProp = '',
+  onF9TabPreferencesChange,
 }: SettingsOrchProps) {
   const { profile, loading: profileLoading, saveProfile, reloadProfile } = useUserProfileBlock()
   const { themeId, setThemeId } = useUIThemeBlock()
@@ -103,6 +140,8 @@ export default function SettingsOrch({
   const [f9WebullCredentialsConfigured, setF9WebullCredentialsConfigured] = useState(false)
   const [f9WebullAppKeyHint, setF9WebullAppKeyHint] = useState<string | null>(null)
   const [f9WebullSecureStorageAvailable, setF9WebullSecureStorageAvailable] = useState(false)
+  const [f9TabLabelInput, setF9TabLabelInput] = useState(f9TabLabelProp)
+  const [f9TabIconTextInput, setF9TabIconTextInput] = useState(f9TabIconTextProp)
   const [googleOauthClientIdInput, setGoogleOauthClientIdInput] = useState(() => getGoogleOauthClientIdOrch() ?? '')
   const [googleDriveConnected, setGoogleDriveConnected] = useState(() => Boolean(readGoogleDriveAuthOrch()?.accessToken))
   const [googleDriveAuthBusy, setGoogleDriveAuthBusy] = useState(false)
@@ -128,6 +167,11 @@ export default function SettingsOrch({
   useEffect(() => {
     setActiveTab(initialTab)
   }, [initialTab])
+
+  useEffect(() => {
+    setF9TabLabelInput(f9TabLabelProp)
+    setF9TabIconTextInput(f9TabIconTextProp)
+  }, [f9TabLabelProp, f9TabIconTextProp])
 
   useEffect(() => {
     let cancelled = false
@@ -249,6 +293,21 @@ export default function SettingsOrch({
   const updateMarkdownEditorSettings = (nextSettings: MarkdownEditorSettingsBlock) => {
     setMarkdownEditorSettings(nextSettings)
     writeMarkdownEditorSettingsOrch(nextSettings)
+  }
+
+  const onSaveF9TabPreferences = async () => {
+    if (!onF9TabPreferencesChange) return
+    setBusyAction('f9')
+    setError(null)
+    setMessage(null)
+    try {
+      await onF9TabPreferencesChange(f9TabLabelInput, f9TabIconTextInput)
+      setMessage('Tab label and icon saved.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save tab preferences')
+    } finally {
+      setBusyAction(null)
+    }
   }
 
   const onSaveF9Settings = async () => {
@@ -769,6 +828,12 @@ export default function SettingsOrch({
         <AiSettingsOrch />
       )}
 
+      {activeTab === 'ai_websites' && (
+        <AiWebsitesSettingsSection />
+      )}
+
+      {activeTab === 'web_bookmarks' && <WebSettingsSection />}
+
       {activeTab === 'google_docs_sheets' && (
         <Card>
           <CardHeader>
@@ -833,10 +898,52 @@ export default function SettingsOrch({
           <CardHeader>
             <CardTitle>F9 Settings</CardTitle>
             <CardDescription>
-              Configure secure Webull credentials and where F9 stores execution files.
+              Configure the tab name, icon, Webull credentials, and execution storage for F9.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="space-y-2 rounded-lg border border-border/60 p-3">
+              <h3 className="text-sm font-medium text-foreground">Tab Appearance</h3>
+              <p className="text-xs text-muted-foreground">
+                Customize the label and icon shown in the sidebar and tab strip. Changes sync across devices via your vault.
+              </p>
+              <div className="space-y-2">
+                <label htmlFor="ltm-settings-f9-tab-label" className="text-sm font-medium">
+                  Tab Label
+                </label>
+                <input
+                  id="ltm-settings-f9-tab-label"
+                  type="text"
+                  value={f9TabLabelInput}
+                  onChange={(event) => setF9TabLabelInput(event.target.value)}
+                  placeholder="Webull"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="ltm-settings-f9-tab-icon" className="text-sm font-medium">
+                  Tab Icon (text or emoji)
+                </label>
+                <input
+                  id="ltm-settings-f9-tab-icon"
+                  type="text"
+                  value={f9TabIconTextInput}
+                  onChange={(event) => setF9TabIconTextInput(event.target.value)}
+                  placeholder="Leave blank for Webull crescent icon"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to use the default Webull crescent icon, or enter text/emoji (e.g. 📈, W).
+                </p>
+              </div>
+              <Button
+                type="button"
+                onClick={() => { void onSaveF9TabPreferences() }}
+                disabled={busyAction === 'f9' || !onF9TabPreferencesChange}
+              >
+                {busyAction === 'f9' ? 'Saving...' : 'Save Tab Appearance'}
+              </Button>
+            </div>
             <div className="space-y-2 rounded-lg border border-border/60 p-3">
               <h3 className="text-sm font-medium text-foreground">Webull API Credentials</h3>
               {!f9CredentialEditingSupported && (
@@ -994,6 +1101,8 @@ export default function SettingsOrch({
         </Card>
       )}
 
+      {activeTab === 'about' && <AboutSection />}
+
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
@@ -1001,35 +1110,133 @@ export default function SettingsOrch({
   )
 }
 
+function AboutSection() {
+  const electronVersions = window.electronAPI?.versions
+
+  const rows: Array<{ label: string; value: string }> = electronVersions ? [
+    { label: 'Thinking Space', value: electronVersions.app },
+    { label: 'Electron', value: electronVersions.electron },
+    { label: 'Chromium', value: electronVersions.chrome },
+    { label: 'Node.js', value: electronVersions.node },
+    { label: 'V8', value: electronVersions.v8 },
+  ] : []
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>About</CardTitle>
+        <CardDescription>Runtime and version information.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Version info is only available in the Electron desktop app.</p>
+        ) : (
+          <dl className="space-y-2">
+            {rows.map(({ label, value }) => (
+              <div key={label} className="flex items-center gap-4">
+                <dt className="w-32 shrink-0 text-sm font-medium text-muted-foreground">{label}</dt>
+                <dd className="font-mono text-sm">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 const RETENTION_OPTIONS = [7, 14, 30, 60, 90, 180] as const
 
 function RssFeedSettingsSection() {
-  const [feeds, setFeeds] = useState<RssFeedConfigBlock[]>([])
+  const [prefs, setPrefs] = useState<RssFeedPreferencesBlock | null>(null)
   const [newUrl, setNewUrl] = useState('')
   const [newTitle, setNewTitle] = useState('')
+  const [newGroupName, setNewGroupName] = useState('')
+  const [newGroupParent, setNewGroupParent] = useState<string | null>(null)
+  const [newTagDraft, setNewTagDraft] = useState('')
   const [retentionDays, setRetentionDays] = useState<number>(() => getRssRetentionDaysOrch())
 
+  const feeds = prefs?.feeds ?? []
+  const groups = prefs?.groups ?? []
+  const presetTags = prefs?.presetTags ?? []
+  const presetTagColors = prefs?.tagColors ?? {}
+
   useEffect(() => {
-    void readRssFeedConfigsOrch().then(setFeeds)
+    void readRssFeedPreferencesOrch().then(setPrefs)
   }, [])
 
-  const handleAdd = async () => {
+  const handleAddFeed = async () => {
     const url = newUrl.trim()
     if (!url) return
     const entry = await addRssFeedOrch(url, newTitle.trim() || undefined)
-    setFeeds(prev => [...prev, entry])
+    setPrefs(prev => prev ? { ...prev, feeds: [...prev.feeds, entry] } : prev)
     setNewUrl('')
     setNewTitle('')
   }
 
-  const handleRemove = async (feedId: string) => {
+  const handleRemoveFeed = async (feedId: string) => {
     await removeRssFeedOrch(feedId)
-    setFeeds(prev => prev.filter(f => f.id !== feedId))
+    setPrefs(prev => prev ? { ...prev, feeds: prev.feeds.filter(f => f.id !== feedId) } : prev)
   }
 
-  const handleUpdateTitle = async (feedId: string, title: string) => {
+  const handleUpdateFeedTitle = async (feedId: string, title: string) => {
     await updateRssFeedOrch(feedId, { title })
-    setFeeds(prev => prev.map(f => f.id === feedId ? { ...f, title } : f))
+    setPrefs(prev => prev ? { ...prev, feeds: prev.feeds.map(f => f.id === feedId ? { ...f, title } : f) } : prev)
+  }
+
+  const handleUpdateFeedGroup = async (feedId: string, groupId: string | null) => {
+    await updateRssFeedOrch(feedId, { groupId })
+    setPrefs(prev => prev ? { ...prev, feeds: prev.feeds.map(f => f.id === feedId ? { ...f, groupId } : f) } : prev)
+  }
+
+  const handleAddGroup = async () => {
+    const name = newGroupName.trim()
+    if (!name) return
+    const group = await addRssFeedGroupOrch(name, newGroupParent)
+    setPrefs(prev => prev ? { ...prev, groups: [...prev.groups, group] } : prev)
+    setNewGroupName('')
+    setNewGroupParent(null)
+  }
+
+  const handleRemoveGroup = async (groupId: string) => {
+    await removeRssFeedGroupOrch(groupId)
+    setPrefs(prev => {
+      if (!prev) return prev
+      // Cascade: remove group + ungroup its feeds
+      const idsToRemove = new Set<string>()
+      function collect(id: string) {
+        idsToRemove.add(id)
+        for (const g of prev!.groups) if (g.parentGroupId === id) collect(g.id)
+      }
+      collect(groupId)
+      return {
+        ...prev,
+        groups: prev.groups.filter(g => !idsToRemove.has(g.id)),
+        feeds: prev.feeds.map(f => f.groupId && idsToRemove.has(f.groupId) ? { ...f, groupId: null } : f),
+      }
+    })
+  }
+
+  const handleRenameGroup = async (groupId: string, name: string) => {
+    await updateRssFeedGroupOrch(groupId, { name })
+    setPrefs(prev => prev ? { ...prev, groups: prev.groups.map(g => g.id === groupId ? { ...g, name } : g) } : prev)
+  }
+
+  const handleAddPresetTag = async () => {
+    const incoming = splitTagInputBlock(newTagDraft).filter(t => !presetTags.includes(t))
+    if (incoming.length === 0) { setNewTagDraft(''); return }
+    const next = [...presetTags, ...incoming]
+    await updateRssPresetTagsOrch(next, presetTagColors)
+    setPrefs(prev => prev ? { ...prev, presetTags: next } : prev)
+    setNewTagDraft('')
+  }
+
+  const handleRemovePresetTag = async (tag: string) => {
+    const next = presetTags.filter(t => t !== tag)
+    const nextColors = { ...presetTagColors }
+    delete nextColors[tagLookupKeyBlock(tag)]
+    await updateRssPresetTagsOrch(next, nextColors)
+    setPrefs(prev => prev ? { ...prev, presetTags: next, tagColors: nextColors } : prev)
   }
 
   return (
@@ -1040,7 +1247,8 @@ function RssFeedSettingsSection() {
           Add RSS or Atom feed URLs. They appear in the RSS panel at the bottom of the explorer.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-6">
+        {/* ── Feed list ── */}
         {feeds.length > 0 && (
           <div className="space-y-2">
             {feeds.map(feed => (
@@ -1048,17 +1256,29 @@ function RssFeedSettingsSection() {
                 <div className="min-w-0 flex-1 space-y-1">
                   <input
                     defaultValue={feed.title}
-                    onBlur={e => { void handleUpdateTitle(feed.id, e.target.value) }}
+                    onBlur={e => { void handleUpdateFeedTitle(feed.id, e.target.value) }}
                     className="block w-full bg-transparent text-sm font-medium outline-none placeholder:text-muted-foreground"
                     placeholder="Feed title"
                   />
-                  <div className="truncate text-xs text-muted-foreground">{feed.url}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{feed.url}</span>
+                    <select
+                      value={feed.groupId ?? ''}
+                      onChange={e => { void handleUpdateFeedGroup(feed.id, e.target.value || null) }}
+                      className="shrink-0 rounded border border-border/70 bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground outline-none"
+                    >
+                      <option value="">No group</option>
+                      {groups.map(g => (
+                        <option key={g.id} value={g.id}>{g.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <Button
                   size="sm"
                   variant="ghost"
                   className="h-7 shrink-0 px-2 text-destructive hover:text-destructive"
-                  onClick={() => void handleRemove(feed.id)}
+                  onClick={() => void handleRemoveFeed(feed.id)}
                 >
                   Remove
                 </Button>
@@ -1071,6 +1291,8 @@ function RssFeedSettingsSection() {
             No feeds configured yet.
           </div>
         )}
+
+        {/* ── Add feed ── */}
         <div className="space-y-2 rounded-md border border-border/60 p-3">
           <div className="text-xs font-medium text-muted-foreground">Add Feed</div>
           <input
@@ -1078,19 +1300,121 @@ function RssFeedSettingsSection() {
             onChange={e => setNewUrl(e.target.value)}
             placeholder="https://example.com/feed.xml"
             className="block w-full rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring"
-            onKeyDown={e => { if (e.key === 'Enter') void handleAdd() }}
+            onKeyDown={e => { if (e.key === 'Enter') void handleAddFeed() }}
           />
           <input
             value={newTitle}
             onChange={e => setNewTitle(e.target.value)}
             placeholder="Title (optional — auto-detected from feed)"
             className="block w-full rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring"
-            onKeyDown={e => { if (e.key === 'Enter') void handleAdd() }}
+            onKeyDown={e => { if (e.key === 'Enter') void handleAddFeed() }}
           />
-          <Button size="sm" onClick={() => void handleAdd()} disabled={!newUrl.trim()}>
+          <Button size="sm" onClick={() => void handleAddFeed()} disabled={!newUrl.trim()}>
             Add Feed
           </Button>
         </div>
+
+        {/* ── Feed groups ── */}
+        <div className="space-y-2 rounded-md border border-border/60 p-3">
+          <div className="text-xs font-medium text-muted-foreground">Feed Groups</div>
+          {groups.length > 0 && (
+            <div className="space-y-1.5">
+              {groups.map(g => (
+                <div key={g.id} className="flex items-center gap-2 rounded border border-border/40 px-2 py-1.5">
+                  <input
+                    defaultValue={g.name}
+                    onBlur={e => { void handleRenameGroup(g.id, e.target.value) }}
+                    className="min-w-0 flex-1 bg-transparent text-xs font-medium outline-none"
+                    placeholder="Group name"
+                  />
+                  {g.parentGroupId && (
+                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                      in {groups.find(p => p.id === g.parentGroupId)?.name ?? '?'}
+                    </span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 shrink-0 px-1.5 text-[11px] text-destructive hover:text-destructive"
+                    onClick={() => void handleRemoveGroup(g.id)}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <input
+              value={newGroupName}
+              onChange={e => setNewGroupName(e.target.value)}
+              placeholder="New group name"
+              className="min-w-0 flex-1 rounded-md border border-border/70 bg-background px-2 py-1.5 text-xs outline-none focus:border-ring"
+              onKeyDown={e => { if (e.key === 'Enter') void handleAddGroup() }}
+            />
+            {groups.length > 0 && (
+              <select
+                value={newGroupParent ?? ''}
+                onChange={e => setNewGroupParent(e.target.value || null)}
+                className="shrink-0 rounded border border-border/70 bg-background px-1.5 py-1.5 text-xs outline-none"
+              >
+                <option value="">Root level</option>
+                {groups.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            )}
+            <Button size="sm" variant="outline" className="h-7 shrink-0 text-xs" onClick={() => void handleAddGroup()} disabled={!newGroupName.trim()}>
+              Add
+            </Button>
+          </div>
+        </div>
+
+        {/* ── Preset tags ── */}
+        <div className="space-y-2 rounded-md border border-border/60 p-3">
+          <div className="text-xs font-medium text-muted-foreground">Global Preset Tags</div>
+          <div className="text-[11px] text-muted-foreground">
+            Define tags here to make them available as one-click chips when tagging articles.
+          </div>
+          {presetTags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {presetTags.map(tag => (
+                <span
+                  key={tag}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium',
+                    tagColorClassBlock(tag, 'solid'),
+                  )}
+                  style={tagColorStyleBlock(tag, 'solid', presetTagColors[tagLookupKeyBlock(tag)])}
+                >
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => void handleRemovePresetTag(tag)}
+                    className="opacity-60 hover:opacity-100"
+                    aria-label={`Remove ${tag}`}
+                  >
+                    <span className="text-xs">&times;</span>
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <input
+              value={newTagDraft}
+              onChange={e => setNewTagDraft(e.target.value)}
+              placeholder="Add tags (comma separated)"
+              className="min-w-0 flex-1 rounded-md border border-border/70 bg-background px-2 py-1.5 text-xs outline-none focus:border-ring"
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleAddPresetTag() } }}
+            />
+            <Button size="sm" variant="outline" className="h-7 shrink-0 text-xs" onClick={() => void handleAddPresetTag()} disabled={!newTagDraft.trim()}>
+              Add
+            </Button>
+          </div>
+        </div>
+
+        {/* ── Retention ── */}
         <div className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
           <div>
             <div className="text-sm font-medium">Article Retention</div>
@@ -1117,5 +1441,350 @@ function RssFeedSettingsSection() {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function AiWebsitesSettingsSection() {
+  const [sites, setSites] = useState<AiWebsiteBlock[]>([])
+  const [newUrl, setNewUrl] = useState('')
+  const [newName, setNewName] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editNameDraft, setEditNameDraft] = useState('')
+
+  useEffect(() => { void readAiWebsitesOrch().then(setSites) }, [])
+
+  const handleAdd = async () => {
+    const url = newUrl.trim()
+    if (!url) return
+    const entry = await addAiWebsiteOrch(newName.trim() || url, url)
+    setSites(prev => [...prev, entry])
+    setNewUrl('')
+    setNewName('')
+  }
+
+  const handleRemove = async (id: string) => {
+    await removeAiWebsiteOrch(id)
+    setSites(prev => prev.filter(s => s.id !== id))
+  }
+
+  const handleStartEdit = (site: AiWebsiteBlock) => {
+    setEditingId(site.id)
+    setEditNameDraft(site.name)
+  }
+
+  const handleSaveEdit = async (id: string) => {
+    const name = editNameDraft.trim()
+    if (!name) return
+    await updateAiWebsiteOrch(id, { name })
+    setSites(prev => prev.map(s => s.id === id ? { ...s, name } : s))
+    setEditingId(null)
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>AI Websites</CardTitle>
+        <CardDescription>
+          Add AI chat websites (like grok.com, chatgpt.com) to the Chat tab.
+          Each entry gets its own isolated login session — add the same site twice for two different accounts.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          {sites.length === 0 && (
+            <div className="rounded-md border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
+              No AI websites added yet.
+            </div>
+          )}
+          {sites.map(site => (
+            <div key={site.id} className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2">
+              {editingId === site.id ? (
+                <>
+                  <input
+                    type="text"
+                    value={editNameDraft}
+                    onChange={e => setEditNameDraft(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(site.id) }}
+                    className="h-8 flex-1 rounded border border-input bg-background px-2 text-sm outline-none focus:border-ring"
+                    autoFocus
+                  />
+                  <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleSaveEdit(site.id)}>
+                    Save
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setEditingId(null)}>
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{site.name}</div>
+                    <div className="truncate text-xs text-muted-foreground">{site.url}</div>
+                  </div>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleStartEdit(site)}>
+                    Rename
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => handleRemove(site.id)}>
+                    Remove
+                  </Button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-2 border-t border-border/60 pt-3">
+          <h3 className="text-sm font-medium">Add Website</h3>
+          <input
+            type="text"
+            value={newUrl}
+            onChange={e => setNewUrl(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
+            placeholder="https://grok.com"
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-ring"
+          />
+          <input
+            type="text"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
+            placeholder="Display name (optional, e.g. Grok - Work Account)"
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-ring"
+          />
+          <Button type="button" onClick={handleAdd} disabled={!newUrl.trim()}>
+            Add Website
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function WebSettingsSection() {
+  const [prefs, setPrefs] = useState<WebSitePreferencesBlock>({ bookmarks: [], groups: [] })
+  const [newSiteUrl, setNewSiteUrl] = useState('')
+  const [newSiteName, setNewSiteName] = useState('')
+  const [newSiteGroupId, setNewSiteGroupId] = useState<string>('__none__')
+  const [newGroupName, setNewGroupName] = useState('')
+  const [newGroupParent, setNewGroupParent] = useState<string | null>(null)
+  const [editingSiteId, setEditingSiteId] = useState<string | null>(null)
+  const [editingSiteName, setEditingSiteName] = useState('')
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
+  const [editingGroupName, setEditingGroupName] = useState('')
+
+  useEffect(() => { void readWebSitePreferencesOrch().then(setPrefs) }, [])
+
+  const handleAddSite = async () => {
+    const url = newSiteUrl.trim()
+    if (!url) return
+    const groupId = newSiteGroupId === '__none__' ? null : newSiteGroupId
+    const entry = await addWebSiteOrch(newSiteName.trim() || url, url, groupId)
+    setPrefs(prev => ({ ...prev, bookmarks: [...prev.bookmarks, entry] }))
+    setNewSiteUrl('')
+    setNewSiteName('')
+  }
+
+  const handleRemoveSite = async (id: string) => {
+    await removeWebSiteOrch(id)
+    setPrefs(prev => ({ ...prev, bookmarks: prev.bookmarks.filter(b => b.id !== id) }))
+  }
+
+  const handleSaveSiteName = async (id: string) => {
+    const name = editingSiteName.trim()
+    if (!name) return
+    await updateWebSiteOrch(id, { name })
+    setPrefs(prev => ({ ...prev, bookmarks: prev.bookmarks.map(b => b.id === id ? { ...b, name } : b) }))
+    setEditingSiteId(null)
+  }
+
+  const handleAddGroup = async () => {
+    const name = newGroupName.trim()
+    if (!name) return
+    const group = await addWebSiteGroupOrch(name, newGroupParent)
+    setPrefs(prev => ({ ...prev, groups: [...prev.groups, group] }))
+    setNewGroupName('')
+    setNewGroupParent(null)
+  }
+
+  const handleRemoveGroup = async (groupId: string) => {
+    await removeWebSiteGroupOrch(groupId)
+    setPrefs(prev => {
+      const idsToRemove = new Set<string>()
+      function collect(id: string) {
+        idsToRemove.add(id)
+        for (const g of prev.groups) if (g.parentGroupId === id) collect(g.id)
+      }
+      collect(groupId)
+      return {
+        groups: prev.groups.filter(g => !idsToRemove.has(g.id)),
+        bookmarks: prev.bookmarks.map(b => b.groupId && idsToRemove.has(b.groupId) ? { ...b, groupId: null } : b),
+      }
+    })
+  }
+
+  const handleSaveGroupName = async (groupId: string) => {
+    const name = editingGroupName.trim()
+    if (!name) return
+    await updateWebSiteGroupOrch(groupId, name)
+    setPrefs(prev => ({ ...prev, groups: prev.groups.map(g => g.id === groupId ? { ...g, name } : g) }))
+    setEditingGroupId(null)
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Groups */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Groups</CardTitle>
+          <CardDescription>Organise your web sites into groups (like folders).</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            {prefs.groups.length === 0 && (
+              <div className="rounded-md border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
+                No groups yet.
+              </div>
+            )}
+            {prefs.groups.map(group => (
+              <div key={group.id} className="flex items-center gap-2 rounded-md border border-border/40 px-2 py-1.5">
+                {editingGroupId === group.id ? (
+                  <>
+                    <input
+                      type="text"
+                      value={editingGroupName}
+                      onChange={e => setEditingGroupName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleSaveGroupName(group.id) }}
+                      className="h-8 flex-1 rounded border border-input bg-background px-2 text-sm outline-none focus:border-ring"
+                      autoFocus
+                    />
+                    <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleSaveGroupName(group.id)}>Save</Button>
+                    <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setEditingGroupId(null)}>Cancel</Button>
+                  </>
+                ) : (
+                  <>
+                    <span className="min-w-0 flex-1 truncate text-xs font-medium">{group.name}</span>
+                    {group.parentGroupId && (
+                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                        in {prefs.groups.find(p => p.id === group.parentGroupId)?.name ?? '?'}
+                      </span>
+                    )}
+                    <Button size="sm" variant="ghost" className="h-6 shrink-0 px-1.5 text-[11px]" onClick={() => { setEditingGroupId(group.id); setEditingGroupName(group.name) }}>Rename</Button>
+                    <Button size="sm" variant="ghost" className="h-6 shrink-0 px-1.5 text-[11px] text-destructive hover:text-destructive" onClick={() => handleRemoveGroup(group.id)}>Remove</Button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 border-t border-border/60 pt-3">
+            <input
+              type="text"
+              value={newGroupName}
+              onChange={e => setNewGroupName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddGroup() }}
+              placeholder="New group name"
+              className="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-xs outline-none focus:border-ring"
+            />
+            {prefs.groups.length > 0 && (
+              <select
+                value={newGroupParent ?? ''}
+                onChange={e => setNewGroupParent(e.target.value || null)}
+                className="shrink-0 rounded border border-border/70 bg-background px-1.5 py-1.5 text-xs outline-none"
+              >
+                <option value="">Root level</option>
+                {prefs.groups.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            )}
+            <Button size="sm" variant="outline" className="h-7 shrink-0 text-xs" onClick={handleAddGroup} disabled={!newGroupName.trim()}>Add</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Bookmarks */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Web Sites</CardTitle>
+          <CardDescription>
+            Add any website. Each entry gets its own isolated login session — add the same site twice for two accounts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            {prefs.bookmarks.length === 0 && (
+              <div className="rounded-md border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
+                No sites yet.
+              </div>
+            )}
+            {prefs.bookmarks.map(bm => (
+              <div key={bm.id} className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2">
+                {editingSiteId === bm.id ? (
+                  <>
+                    <input
+                      type="text"
+                      value={editingSiteName}
+                      onChange={e => setEditingSiteName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleSaveSiteName(bm.id) }}
+                      className="h-8 flex-1 rounded border border-input bg-background px-2 text-sm outline-none focus:border-ring"
+                      autoFocus
+                    />
+                    <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleSaveSiteName(bm.id)}>Save</Button>
+                    <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setEditingSiteId(null)}>Cancel</Button>
+                  </>
+                ) : (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{bm.name}</div>
+                      <div className="truncate text-xs text-muted-foreground">{bm.url}</div>
+                      {bm.groupId && (
+                        <div className="text-[11px] text-muted-foreground/60">
+                          {prefs.groups.find(g => g.id === bm.groupId)?.name ?? ''}
+                        </div>
+                      )}
+                    </div>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setEditingSiteId(bm.id); setEditingSiteName(bm.name) }}>Rename</Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => handleRemoveSite(bm.id)}>Remove</Button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="space-y-2 border-t border-border/60 pt-3">
+            <h3 className="text-sm font-medium">Add Site</h3>
+            <input
+              type="url"
+              value={newSiteUrl}
+              onChange={e => setNewSiteUrl(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddSite() }}
+              placeholder="https://github.com"
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-ring"
+            />
+            <input
+              type="text"
+              value={newSiteName}
+              onChange={e => setNewSiteName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddSite() }}
+              placeholder="Name (optional)"
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-ring"
+            />
+            {prefs.groups.length > 0 && (
+              <select
+                value={newSiteGroupId}
+                onChange={e => setNewSiteGroupId(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-ring"
+              >
+                <option value="__none__">No group</option>
+                {prefs.groups.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            )}
+            <Button onClick={handleAddSite} disabled={!newSiteUrl.trim()} className="w-full">
+              Add Site
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   )
 }

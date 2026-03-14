@@ -1016,6 +1016,10 @@ ipcMain.handle('vault:selectFolder', async () => {
 });
 
 // -- Persisted vault root (main-process storage) --
+ipcMain.on('app:version:getSync', (event) => {
+  event.returnValue = app.getVersion();
+});
+
 ipcMain.on('vault:root:getPersistedSync', (event) => {
   event.returnValue = readPersistedVaultRootBlock();
 });

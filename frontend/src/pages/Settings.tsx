@@ -12,6 +12,9 @@ interface SettingsPageProps {
   explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
   onExplorerFolderColorRulesChange: (nextRules: ExplorerFolderColorPreferenceBlock[]) => Promise<void> | void
   onRequestVaultSwitch: () => void
+  f9TabLabel?: string
+  f9TabIconText?: string
+  onF9TabPreferencesChange?: (label: string, iconText: string) => Promise<void> | void
 }
 
 export default function Settings({
@@ -20,6 +23,9 @@ export default function Settings({
   explorerFolderColorRules,
   onExplorerFolderColorRulesChange,
   onRequestVaultSwitch,
+  f9TabLabel,
+  f9TabIconText,
+  onF9TabPreferencesChange,
 }: SettingsPageProps) {
   const [searchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
@@ -63,6 +69,9 @@ export default function Settings({
           onExplorerFolderColorRulesChange={onExplorerFolderColorRulesChange}
           onRequestVaultSwitch={onRequestVaultSwitch}
           initialTab={initialTab}
+          f9TabLabel={f9TabLabel}
+          f9TabIconText={f9TabIconText}
+          onF9TabPreferencesChange={onF9TabPreferencesChange}
         />
       </div>
     </div>
