@@ -673,7 +673,7 @@ export default function ThinkingSpaceOrch() {
         <div className="min-h-0 flex-1">
           <RssFeedPanelBlock
             onOpenArticle={handleRssOpenArticle}
-            onClose={() => setRssPanelOpen(false)}
+            onClose={() => { setRssPanelOpen(false); setRssActiveArticle(null) }}
           />
         </div>
       ) : (
@@ -708,7 +708,7 @@ export default function ThinkingSpaceOrch() {
       <div className="shrink-0 border-t border-border/50 px-2 py-1.5">
         <button
           type="button"
-          onClick={() => setRssPanelOpen(prev => !prev)}
+          onClick={() => setRssPanelOpen(prev => { if (prev) setRssActiveArticle(null); return !prev })}
           className={cn(
             'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
             rssPanelOpen
@@ -895,7 +895,7 @@ export default function ThinkingSpaceOrch() {
               <div className="min-h-0 flex-1">
                 <RssFeedPanelBlock
                   onOpenArticle={handleRssOpenArticle}
-                  onClose={() => setRssPanelOpen(false)}
+                  onClose={() => { setRssPanelOpen(false); setRssActiveArticle(null) }}
                 />
               </div>
             ) : (
@@ -929,7 +929,7 @@ export default function ThinkingSpaceOrch() {
             <div className="shrink-0 border-t border-border/50 px-2 py-1.5">
               <button
                 type="button"
-                onClick={() => setRssPanelOpen(prev => !prev)}
+                onClick={() => setRssPanelOpen(prev => { if (prev) setRssActiveArticle(null); return !prev })}
                 className={cn(
                   'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
                   rssPanelOpen

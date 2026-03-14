@@ -595,7 +595,7 @@ function App() {
   const iPhoneHandsetMode = phoneMode && (iPhoneMode || iPhoneUserAgent)
   const isCapacitorSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
   const showCapacitorTopChromeMenu = compactNav && !drawerOpen && isCapacitorSurface
-  const googleWorkspaceChromeLeftOffsetPx = isMacDesktopSurface ? 72 : 8
+  const googleWorkspaceChromeLeftOffsetPx = isMacDesktopSurface ? 88 : 8
   const leftGoogleWorkspaceChromeControlsWidthPx = showLeftAlignedGoogleWorkspaceChromeControls
     ? googleWorkspaceChromeLeftOffsetPx + 76
     : 0
