@@ -1,4 +1,25 @@
 import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import excalidrawLogo from '@/assets/excalidraw-logo.svg'
+
+function ExcalidrawIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-block ${className}`}
+      style={{
+        backgroundColor: 'currentColor',
+        maskImage: `url(${excalidrawLogo})`,
+        maskRepeat: 'no-repeat',
+        maskPosition: 'center',
+        maskSize: 'contain',
+        WebkitMaskImage: `url(${excalidrawLogo})`,
+        WebkitMaskRepeat: 'no-repeat',
+        WebkitMaskPosition: 'center',
+        WebkitMaskSize: 'contain',
+      }}
+    />
+  )
+}
 import {
   ChevronRight,
   File,
@@ -11,8 +32,6 @@ import {
   Link,
   Link2,
   Loader2,
-  PenLine,
-  Plus,
 } from 'lucide-react'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import {
@@ -183,10 +202,7 @@ export default function VaultExplorerBlock({
   const [showInfoPanel, setShowInfoPanel] = useState(false)
   const [infoPanelTags, setInfoPanelTags] = useState<string[] | null>(null)
   const [infoPanelLoading, setInfoPanelLoading] = useState(false)
-  const iPhoneHandset = useMemo(
-    () => typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent || ''),
-    [],
-  )
+
   const contextMenuRef = useRef<HTMLDivElement | null>(null)
   const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
   const renameInputRef = useRef<HTMLInputElement | null>(null)
@@ -1040,7 +1056,7 @@ export default function VaultExplorerBlock({
           />
         </div>
 
-        <div className="mt-1.5 flex items-center gap-0.5">
+        <div className="mt-2 flex items-center gap-1 px-1">
           {(() => {
             const parentPath = selectedFolderPath ?? (selectedFilePath ? getParentPath(selectedFilePath) : '')
             const ToolbarBtn = ({
@@ -1062,13 +1078,13 @@ export default function VaultExplorerBlock({
                 disabled={disabled}
                 onClick={onClick}
                 className={cn(
-                  'flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors',
+                  'ltm-touch-target flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
                   !disabled && !active && 'hover:bg-muted hover:text-foreground',
                   !disabled && active && 'bg-muted text-foreground',
                   disabled && 'cursor-not-allowed opacity-40',
                 )}
               >
-                <Icon className="h-3.5 w-3.5" />
+                <Icon className="h-4 w-4" />
               </button>
             )
             return (
@@ -1092,7 +1108,7 @@ export default function VaultExplorerBlock({
                   onClick={() => { void runContextAction(onCreateLink ? () => onCreateLink(parentPath) : undefined, { refreshPath: parentPath }) }}
                 />
                 <ToolbarBtn
-                  icon={PenLine}
+                  icon={ExcalidrawIcon}
                   label="New Drawing"
                   disabled={!onCreateDrawing}
                   onClick={() => { void runContextAction(onCreateDrawing ? () => onCreateDrawing(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) }}
@@ -1136,42 +1152,6 @@ export default function VaultExplorerBlock({
         )}
       </div>
 
-      {iPhoneHandset && (onCreateFile || onCreateFolder) && (
-        <div className="flex items-center gap-2 px-3 pb-2">
-          {onCreateFile && (
-            <button
-              type="button"
-              className="ltm-touch-target inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2 text-xs font-medium text-foreground"
-              onClick={() => {
-                const parentPath = selectedFolderPath ?? (selectedFilePath ? getParentPath(selectedFilePath) : '')
-                void runContextAction(() => onCreateFile(parentPath), {
-                  refreshPath: parentPath,
-                  armRenameOnEnterKind: 'file',
-                })
-              }}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              New Note
-            </button>
-          )}
-          {onCreateFolder && (
-            <button
-              type="button"
-              className="ltm-touch-target inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2 text-xs font-medium text-foreground"
-              onClick={() => {
-                const parentPath = selectedFolderPath ?? (selectedFilePath ? getParentPath(selectedFilePath) : '')
-                void runContextAction(() => onCreateFolder(parentPath), {
-                  refreshPath: parentPath,
-                  armRenameOnEnterKind: 'folder',
-                })
-              }}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              New Folder
-            </button>
-          )}
-        </div>
-      )}
 
       <div
         className={cn(

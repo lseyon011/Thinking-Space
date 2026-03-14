@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { PanelLeft, PanelLeftClose, FileText, Rss as RssIcon } from 'lucide-react'
+import { PanelLeftClose, FileText, Rss as RssIcon } from 'lucide-react'
 import VaultExplorerBlock from '@/components/lego_blocks/integrations/VaultExplorerBlock'
 import MarkdownDocumentBlock, { type MarkdownViewerMode } from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
@@ -107,10 +107,8 @@ export default function ThinkingSpaceOrch() {
   const [linkPromptOpen, setLinkPromptOpen] = useState(false)
   const linkPromptResolveRef = useRef<((url: string | null) => void) | null>(null)
   const [isExplorerResizing, setIsExplorerResizing] = useState(false)
-  const [focusedHeaderVisible, setFocusedHeaderVisible] = useState(false)
-  const [explorerCollapsed, setExplorerCollapsed] = useState(
-    () => getStorageItem(STORAGE_KEYS.thinkingSpaceExplorerCollapsed) === '1',
-  )
+  const [explorerCollapsed, setExplorerCollapsed] = useState(false)
+  const [inlineDocHeaderHidden, setInlineDocHeaderHidden] = useState(false)
   const [explorerWidthPx, setExplorerWidthPx] = useState(() => {
     const raw = getStorageItem(STORAGE_KEYS.thinkingSpaceExplorerWidthPx)
     if (!raw) return EXPLORER_DEFAULT_WIDTH_PX
@@ -126,18 +124,10 @@ export default function ThinkingSpaceOrch() {
   // On iOS, always use the inline sidebar regardless of hasSidebar (portrait iPad, etc.)
   const iosInlineMode = isIosSurface && !forceCompactForIosKeyboard
   const showCollapsedInlineExplorer = (showInlineSidebar || iosInlineMode) && !explorerCollapsed
-  const showExplorerTrigger = !showCollapsedInlineExplorer
+
   const isGoogleWorkspaceInlinePath = isGoogleWorkspacePathBlock(inlinePath)
   const useInstantExplorerToggle = showInlineSidebar && isGoogleWorkspaceInlinePath
-  const focusedDocumentMode = showInlineSidebar && showExplorerTrigger
-
-  const hideDocumentHeaderInFocusedMode = focusedDocumentMode && !focusedHeaderVisible
   const [rssUrlBarVisible, setRssUrlBarVisible] = useState(!isIosSurface)
-  const headerOffsetClass = showExplorerTrigger && !hideDocumentHeaderInFocusedMode
-    ? (isIosSurface
-      ? '[&_.ts-doc-header]:pl-20 sm:[&_.ts-doc-header]:pl-24'
-      : '[&_.ts-doc-header]:pl-40 sm:[&_.ts-doc-header]:pl-44')
-    : ''
 
   const rememberMountedInlinePath = useCallback((path: string, initialMode: MarkdownViewerMode) => {
     setMountedInlinePaths((prev) => {
@@ -495,14 +485,6 @@ export default function ThinkingSpaceOrch() {
   }, [explorerWidthPx])
 
   useEffect(() => {
-    if (!focusedDocumentMode) {
-      setFocusedHeaderVisible(true)
-      return
-    }
-    setFocusedHeaderVisible(false)
-  }, [focusedDocumentMode])
-
-  useEffect(() => {
     const explorerCollapsedForChrome = explorerCollapsed
 
     if (rssActiveArticle) {
@@ -524,14 +506,13 @@ export default function ThinkingSpaceOrch() {
       })
       return
     }
-    const headerVisible = !hideDocumentHeaderInFocusedMode
     dispatchThinkingSpaceGoogleWorkspaceChromeStateBlock({
-      enabled: focusedDocumentMode,
+      enabled: true,
       explorerCollapsed,
-      headerVisible,
-      showHeaderToggle: focusedDocumentMode && Boolean(inlinePath),
+      headerVisible: !inlineDocHeaderHidden,
+      showHeaderToggle: Boolean(inlinePath),
     })
-  }, [explorerCollapsed, hideDocumentHeaderInFocusedMode, focusedDocumentMode, inlinePath, rssActiveArticle, rssUrlBarVisible, isIosSurface])
+  }, [explorerCollapsed, inlineDocHeaderHidden, inlinePath, rssActiveArticle, rssUrlBarVisible, isIosSurface])
 
   useEffect(() => {
     return () => {
@@ -557,8 +538,7 @@ export default function ThinkingSpaceOrch() {
         setRssUrlBarVisible(prev => !prev)
         return
       }
-      if (!focusedDocumentMode) return
-      setFocusedHeaderVisible(prev => !prev)
+      setInlineDocHeaderHidden(prev => !prev)
     }
 
     window.addEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_EXPLORER_EVENT_BLOCK, onToggleExplorer as EventListener)
@@ -567,7 +547,7 @@ export default function ThinkingSpaceOrch() {
       window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_EXPLORER_EVENT_BLOCK, onToggleExplorer as EventListener)
       window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_HEADER_EVENT_BLOCK, onToggleHeader as EventListener)
     }
-  }, [focusedDocumentMode, iosInlineMode, showInlineSidebar, rssActiveArticle])
+  }, [iosInlineMode, showInlineSidebar, rssActiveArticle])
 
   useEffect(() => {
     const handleResize = () => {
@@ -752,6 +732,7 @@ export default function ThinkingSpaceOrch() {
           onClose={handleInlineDocumentClose}
           showCloseButton
           className="h-full min-h-0"
+          topBarHidden={inlineDocHeaderHidden}
         />
       </section>
     ))
@@ -759,6 +740,7 @@ export default function ThinkingSpaceOrch() {
     handleInlineDocumentClose,
     handleInlineOpenPath,
     handleInlineOpenPathForEdit,
+    inlineDocHeaderHidden,
     inlineInitialModeByPath,
     inlinePath,
     mountedInlinePaths,
@@ -809,22 +791,6 @@ export default function ThinkingSpaceOrch() {
         )}
 
         <section className="ltm-thinking-space-document-stage relative min-h-0 flex-1">
-          {/* Explorer trigger — only for mobile/compact (desktop uses the top chrome button) */}
-          <Button
-            variant="outline"
-            size="sm"
-            className={cn(
-              'ltm-shell-action ltm-motion-fast ltm-touch-target absolute left-6 top-6 z-20 h-11 items-center gap-1.5',
-              isIosSurface ? 'w-11 justify-center px-0' : 'px-3',
-              showExplorerTrigger && !showInlineSidebar && !isIosSurface ? 'inline-flex' : 'hidden',
-            )}
-            title="Open explorer"
-            aria-label="Open explorer"
-            onClick={() => setMobileExplorerOpen(true)}
-          >
-            <PanelLeft className="h-4 w-4" />
-            {!isIosSurface && <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">Explorer</span>}
-          </Button>
           {rssActiveArticle ? (
             <div className="h-full min-h-0">
               <RssArticleViewBlock
@@ -855,11 +821,7 @@ export default function ThinkingSpaceOrch() {
               />
             </div>
           ) : inlinePath && inlineDocumentContent ? (
-            <div className={cn(
-              'h-full min-h-0',
-              headerOffsetClass,
-              hideDocumentHeaderInFocusedMode && '[&_.ts-doc-header]:hidden',
-            )}>
+            <div className="h-full min-h-0">
               {inlineDocumentContent}
             </div>
           ) : (

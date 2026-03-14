@@ -138,6 +138,9 @@ export function buildExcalidrawInitialDataBlock(
     appState: {
       ...baseAppState,
       viewModeEnabled: !editable,
+      ...(editable && {
+        activeTool: { type: 'hand', customType: null, locked: false, fromSelection: false },
+      }),
     },
     files: scene.files ?? {},
   }

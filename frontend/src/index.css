@@ -458,8 +458,8 @@
       border-radius: var(--ltm-shell-surface-radius);
       border: 1px solid var(--ltm-shell-surface-border);
       background: var(--ltm-shell-surface-bg);
-      box-shadow: var(--ltm-shell-surface-shadow);
-      padding: 0.35rem;
+      box-shadow: var(--ltm-shell-surface-shadow), -3px -3px 10px -2px rgb(0 0 0 / 0.03), -3px 0 10px -2px rgb(0 0 0 / 0.03), 3px 0 10px -2px rgb(0 0 0 / 0.03);
+      padding: 0;
     }
 
     .ltm-shell-sidebar[data-ltm-nav-region='rail'] {

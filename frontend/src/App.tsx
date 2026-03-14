@@ -1639,7 +1639,7 @@ function App() {
                     <button
                       type="button"
                       onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}
-                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                      className="ltm-tab-active ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/90 bg-white text-black transition-colors hover:bg-white/90"
                       aria-label={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
                       title={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
                     >
@@ -1762,7 +1762,7 @@ function App() {
                   <button
                     type="button"
                     onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}
-                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                    className="ltm-tab-active ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/90 bg-white text-black transition-colors hover:bg-white/90"
                     aria-label={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
                     title={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
                   >
@@ -1817,7 +1817,7 @@ function App() {
                     <button
                       type="button"
                       onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}
-                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                      className="ltm-tab-active ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/90 bg-white text-black transition-colors hover:bg-white/90"
                       aria-label={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
                       title={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
                     >

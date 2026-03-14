@@ -268,7 +268,7 @@ export default function ChatOrch() {
         {/* Sidebar header */}
         <div className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between px-2">
           <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Chat
+            AI
           </span>
           <Button
             variant="ghost"

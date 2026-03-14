@@ -10,7 +10,7 @@ import {
 } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X, FileText, ExternalLink, Pencil, Save, Eye, EyeOff, FolderOpen } from 'lucide-react'
+import { X, FileText, ExternalLink, Pencil, Save, FolderOpen } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -53,7 +53,7 @@ import {
   readMarkdownEditorSettingsOrch,
   type MarkdownEditorSettingsBlock,
 } from '@/services/orchestrators/markdownEditorSettingsOrch'
-import { STORAGE_KEYS, getStorageItem, setStorageItem } from '@/services/orchestrators/storageOrch'
+import { STORAGE_KEYS, getStorageItem } from '@/services/orchestrators/storageOrch'
 import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import { type StewardMetadataSuggestion } from '@/services/orchestrators/stewardMetadataOrch'
 import {
@@ -94,6 +94,7 @@ interface MarkdownDocumentBlockProps {
   onClose?: () => void
   showCloseButton?: boolean
   className?: string
+  topBarHidden?: boolean
 }
 
 interface MarkdownEditBaselineState {
@@ -220,6 +221,7 @@ function MarkdownTextDocumentRuntimeBlock({
   onClose,
   showCloseButton = false,
   className,
+  topBarHidden: topBarHiddenProp,
 }: MarkdownDocumentBlockProps) {
   const { layout } = useUILayoutBlock()
   const isIosSurface = layout.surface === 'capacitor-ios'
@@ -242,7 +244,7 @@ function MarkdownTextDocumentRuntimeBlock({
   const [navigationError, setNavigationError] = useState<string | null>(null)
   const [conflict, setConflict] = useState<MarkdownDocumentConflictError | null>(null)
   const [showMeta, setShowMeta] = useState(false)
-  const [topBarHiddenInViewMode, setTopBarHiddenInViewMode] = useState<boolean>(
+  const [topBarHiddenInViewMode] = useState<boolean>(
     () => getStorageItem(STORAGE_KEYS.markdownDocumentTopBarHidden) === '1',
   )
   const [showAiPanel, setShowAiPanel] = useState(false)
@@ -377,7 +379,8 @@ function MarkdownTextDocumentRuntimeBlock({
   ), [])
 
   const isEditing = mode === 'edit'
-  const hideTopBarInView = !isEditing && topBarHiddenInViewMode
+  const effectiveTopBarHidden = topBarHiddenProp !== undefined ? topBarHiddenProp : topBarHiddenInViewMode
+  const hideTopBarInView = !isEditing && effectiveTopBarHidden
   const hasTextChanges = isEditing && content !== null && draft !== content
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
   const saveButtonLabel = saving ? 'Saving...' : manualSaveFeedbackVisible ? 'Saved' : 'Save'
@@ -1021,13 +1024,6 @@ function MarkdownTextDocumentRuntimeBlock({
     saving,
   ])
 
-  const toggleTopBarHiddenInViewMode = useCallback(() => {
-    setTopBarHiddenInViewMode((prev) => {
-      const next = !prev
-      setStorageItem(STORAGE_KEYS.markdownDocumentTopBarHidden, next ? '1' : '0')
-      return next
-    })
-  }, [])
 
   const handleOpenInSystem = useCallback(() => {
     if (!canOpenInSystem) return
@@ -1043,18 +1039,6 @@ function MarkdownTextDocumentRuntimeBlock({
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
       <div className="relative min-h-0 flex-1">
-        {hideTopBarInView && (
-          <div className="absolute right-3 top-3 z-40">
-            <button
-              type="button"
-              onClick={toggleTopBarHiddenInViewMode}
-              className="rounded-lg border border-border/70 bg-background/95 p-1.5 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
-              title="Show top bar"
-            >
-              <Eye className="h-4 w-4" />
-            </button>
-          </div>
-        )}
         <div
           ref={contentScrollRef}
           className={cn(
@@ -1122,20 +1106,6 @@ function MarkdownTextDocumentRuntimeBlock({
                 'flex shrink-0 items-center gap-1',
                 isIosPhone && 'w-full min-w-0 flex-wrap justify-start gap-1.5',
               )}>
-                {!isEditing && (
-                  <button
-                    type="button"
-                    onClick={toggleTopBarHiddenInViewMode}
-                    className={cn(
-                      'text-muted-foreground hover:bg-muted hover:text-foreground',
-                      isIosPhone ? 'rounded-md p-1.5' : 'rounded-lg p-1.5',
-                    )}
-                    title="Hide top bar"
-                  >
-                    <EyeOff className="h-4 w-4" />
-                  </button>
-                )}
-
                 <InfoPanelToggleButtonBlock active={showMeta} onToggle={() => setShowMeta(v => !v)} />
 
                 {!isEditing && (
