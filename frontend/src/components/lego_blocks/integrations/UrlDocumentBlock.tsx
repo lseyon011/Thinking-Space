@@ -162,6 +162,19 @@ function UrlDocumentBlock({
     }
   }, [isElectronRuntime, isTrusted, resolvedUrl])
 
+  // macOS 2-finger swipe gesture forwarded from BrowserWindow 'swipe' event
+  useEffect(() => {
+    if (!isElectronRuntime) return
+    const cleanup = (window.electronAPI as unknown as {
+      onWebviewSwipe?: (cb: (dir: 'left' | 'right') => void) => () => void
+    })?.onWebviewSwipe?.((direction) => {
+      const wv = webviewRef.current as unknown as { goBack?: () => void; goForward?: () => void } | null
+      if (direction === 'left') wv?.goBack?.()
+      else wv?.goForward?.()
+    })
+    return cleanup
+  }, [isElectronRuntime])
+
   const handleGoBack = useCallback(() => {
     ;(webviewRef.current as unknown as { goBack?: () => void } | null)?.goBack?.()
   }, [])

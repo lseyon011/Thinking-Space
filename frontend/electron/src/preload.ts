@@ -75,6 +75,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Window management
   newWindow: (route?: string) => ipcRenderer.invoke('window:new', route),
+  // Webview swipe navigation (macOS 2-finger swipe via BrowserWindow 'swipe' event)
+  onWebviewSwipe: (handler: (direction: 'left' | 'right') => void) => {
+    const channel = 'webview:swipe'
+    const listener = (_: unknown, dir: string) => handler(dir as 'left' | 'right')
+    ipcRenderer.on(channel, listener)
+    return () => { ipcRenderer.removeListener(channel, listener) }
+  },
+
   markdownEditorOnPasteAsTable: (handler: () => void) => {
     const channel = 'markdown-editor:paste-as-table'
     const listener = () => {

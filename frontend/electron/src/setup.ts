@@ -287,6 +287,7 @@ export class ElectronCapacitorApp {
     this.applyMacWindowButtonVisibility(newWindow);
     this.applyNativeMenuBarVisibility(newWindow);
     this.attachNativeContextMenu(newWindow);
+    setupWindowSwipeNavigation(newWindow);
 
     if (this.CapacitorFileConfig.backgroundColor && this.shouldApplyConfiguredBackgroundColor()) {
       newWindow.setBackgroundColor(this.CapacitorFileConfig.electron.backgroundColor);
@@ -358,6 +359,7 @@ export class ElectronCapacitorApp {
     this.applyNativeMenuBarVisibility(mainWindow);
     this.windows = [mainWindow];
     this.attachNativeContextMenu(mainWindow);
+    setupWindowSwipeNavigation(mainWindow);
 
     if (this.CapacitorFileConfig.backgroundColor && this.shouldApplyConfiguredBackgroundColor()) {
       mainWindow.setBackgroundColor(this.CapacitorFileConfig.electron.backgroundColor);
@@ -459,6 +461,22 @@ export class ElectronCapacitorApp {
 // The partition used by all <webview> tags in the web tab.
 // Must match LINK_WEBVIEW_PARTITION in UrlDocumentBlock.tsx.
 const WEBVIEW_PARTITION = 'persist:thinking-space-links';
+
+/**
+ * Forward the native macOS 2-finger swipe gesture (left/right) to the
+ * renderer so webviews can call goBack() / goForward().
+ *
+ * The 'swipe' event fires when "Swipe between pages" is enabled in
+ * System Preferences → Trackpad → More Gestures (the macOS default).
+ */
+export function setupWindowSwipeNavigation(win: BrowserWindow): void {
+  if (process.platform !== 'darwin') return;
+  win.on('swipe', (_event, direction: string) => {
+    if (direction === 'left' || direction === 'right') {
+      win.webContents.send('webview:swipe', direction);
+    }
+  });
+}
 
 /**
  * Allow media-related permissions for the shared webview partition so that

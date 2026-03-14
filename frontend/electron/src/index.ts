@@ -116,35 +116,54 @@ app.commandLine.appendSwitch('enable-features', 'OverscrollHistoryNavigation');
 // DRM-protected audio (Spotify, etc.) plays in <webview> tags.
 // Must be called before app.whenReady().
 (function registerSystemWidevineCdm() {
+  if (process.platform !== 'darwin') return;
   try {
-    const arch = process.arch === 'arm64' ? 'mac_arm64' : 'mac_x64';
-    const chromeVersionsDir = '/Applications/Google Chrome.app/Contents/Versions';
-    if (!fs.existsSync(chromeVersionsDir)) return;
+    // Try both arch names Chrome has used across versions
+    const archCandidates = process.arch === 'arm64'
+      ? ['mac_arm64', 'mac_x64']   // try native first, Intel fallback
+      : ['mac_x64', 'mac_arm64'];
 
-    const versions = fs.readdirSync(chromeVersionsDir)
-      .filter(v => /^\d+\./.test(v))
-      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    // Chrome may be installed in multiple locations
+    const chromeCandidates = [
+      '/Applications/Google Chrome.app',
+      `${process.env.HOME}/Applications/Google Chrome.app`,
+    ].filter(p => fs.existsSync(p));
 
-    for (const ver of versions) {
-      const cdmDir = path.join(
-        chromeVersionsDir, ver,
-        'Google Chrome Framework.framework', 'Libraries',
-        'WidevineCdm', '_platform_specific', arch,
-      );
-      const cdmLib = path.join(cdmDir, 'libwidevinecdm.dylib');
-      if (!fs.existsSync(cdmLib)) continue;
+    for (const chromeApp of chromeCandidates) {
+      const versionsDir = path.join(chromeApp, 'Contents', 'Versions');
+      if (!fs.existsSync(versionsDir)) continue;
 
-      let cdmVersion = ver;
-      try {
-        const manifest = JSON.parse(fs.readFileSync(path.join(cdmDir, 'manifest.json'), 'utf-8'));
-        if (typeof manifest.version === 'string') cdmVersion = manifest.version;
-      } catch { /* use Chrome version as fallback */ }
+      const versions = fs.readdirSync(versionsDir)
+        .filter(v => /^\d+\./.test(v))
+        .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
 
-      app.commandLine.appendSwitch('widevine-cdm-path', cdmLib);
-      app.commandLine.appendSwitch('widevine-cdm-version', cdmVersion);
-      break;
+      for (const ver of versions) {
+        for (const arch of archCandidates) {
+          const cdmDir = path.join(
+            versionsDir, ver,
+            'Google Chrome Framework.framework', 'Libraries',
+            'WidevineCdm', '_platform_specific', arch,
+          );
+          const cdmLib = path.join(cdmDir, 'libwidevinecdm.dylib');
+          if (!fs.existsSync(cdmLib)) continue;
+
+          let cdmVersion = ver;
+          try {
+            const manifest = JSON.parse(fs.readFileSync(path.join(cdmDir, 'manifest.json'), 'utf-8')) as { version?: string };
+            if (typeof manifest.version === 'string') cdmVersion = manifest.version;
+          } catch { /* use Chrome version as fallback */ }
+
+          app.commandLine.appendSwitch('widevine-cdm-path', cdmLib);
+          app.commandLine.appendSwitch('widevine-cdm-version', cdmVersion);
+          if (electronIsDev) console.log(`[widevine] loaded ${cdmLib} v${cdmVersion}`);
+          return; // found — stop searching
+        }
+      }
     }
-  } catch { /* silently skip if Chrome is not installed */ }
+    if (electronIsDev) console.log('[widevine] Chrome not found — Widevine unavailable');
+  } catch (e) {
+    if (electronIsDev) console.warn('[widevine] search failed:', e);
+  }
 })();
 
 const capacitorFileConfig: CapacitorElectronConfig = getCapacitorElectronConfig();
