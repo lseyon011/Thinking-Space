@@ -13,7 +13,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationWillResignActive(_ application: UIApplication) {}
-    func applicationDidEnterBackground(_ application: UIApplication) {}
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        // Dismiss any inline WKWebView overlay so it doesn't persist
+        // over the iOS app switcher or home screen.
+        if let vc = window?.rootViewController as? LTMBridgeViewController {
+            vc.dismissInlineWebView()
+        }
+    }
     func applicationWillEnterForeground(_ application: UIApplication) {}
     func applicationDidBecomeActive(_ application: UIApplication) {}
     func applicationWillTerminate(_ application: UIApplication) {}
@@ -39,6 +45,8 @@ class LTMBridgeViewController: CAPBridgeViewController {
         alpha: 1.0
     )
 
+    private var inlineWebViewPlugin: InlineWebViewPlugin?
+
     override open func viewDidLoad() {
         super.viewDidLoad()
         configureShellSurface()
@@ -49,7 +57,13 @@ class LTMBridgeViewController: CAPBridgeViewController {
         configureShellSurface()
         bridge?.registerPluginInstance(FolderPickerPlugin())
         bridge?.registerPluginInstance(PencilEventsPlugin())
-        bridge?.registerPluginInstance(InlineWebViewPlugin())
+        let webViewPlugin = InlineWebViewPlugin()
+        inlineWebViewPlugin = webViewPlugin
+        bridge?.registerPluginInstance(webViewPlugin)
+    }
+
+    func dismissInlineWebView() {
+        inlineWebViewPlugin?.closeWebView()
     }
 
     private func configureShellSurface() {
@@ -377,10 +391,13 @@ public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDeleg
 
     private var inlineWebView: WKWebView?
 
-    // Convert JS viewport rect → UIKit frame, accounting for safe area.
+    // Convert JS viewport rect → UIKit frame.
+    // getBoundingClientRect() returns coordinates in the WKWebView coordinate space,
+    // which starts at y=0 = top of screen (the WKWebView extends behind the status bar).
+    // The React app accounts for the safe area via env(safe-area-inset-top) CSS padding,
+    // so all y values already include the status bar offset — do NOT add safeAreaInsets.top.
     private func nativeFrame(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) -> CGRect {
-        let safeTop = bridge?.viewController?.view.safeAreaInsets.top ?? 0
-        return CGRect(x: x, y: y + safeTop, width: width, height: height)
+        return CGRect(x: x, y: y, width: width, height: height)
     }
 
     @objc func open(_ call: CAPPluginCall) {
@@ -417,10 +434,14 @@ public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDeleg
     }
 
     @objc func close(_ call: CAPPluginCall) {
+        closeWebView()
+        call.resolve()
+    }
+
+    func closeWebView() {
         DispatchQueue.main.async {
             self.inlineWebView?.removeFromSuperview()
             self.inlineWebView = nil
-            call.resolve()
         }
     }
 
