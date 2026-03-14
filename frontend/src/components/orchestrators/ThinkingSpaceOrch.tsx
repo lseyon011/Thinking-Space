@@ -119,16 +119,18 @@ export default function ThinkingSpaceOrch() {
   const edgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const explorerResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
-  const forceCompactForIosKeyboard = layout.surface === 'capacitor-ios' && layout.keyboardVisible
+  const isIosSurface = layout.surface === 'capacitor-ios'
+  const forceCompactForIosKeyboard = isIosSurface && layout.keyboardVisible
   const showInlineSidebar = layout.hasSidebar && !forceCompactForIosKeyboard
-  const showCollapsedInlineExplorer = showInlineSidebar && !explorerCollapsed
+  // On iOS, always use the inline sidebar regardless of hasSidebar (portrait iPad, etc.)
+  const iosInlineMode = isIosSurface && !forceCompactForIosKeyboard
+  const showCollapsedInlineExplorer = (showInlineSidebar || iosInlineMode) && !explorerCollapsed
   const showExplorerTrigger = !showCollapsedInlineExplorer
   const isGoogleWorkspaceInlinePath = isGoogleWorkspacePathBlock(inlinePath)
   const useInstantExplorerToggle = showInlineSidebar && isGoogleWorkspaceInlinePath
   const focusedDocumentMode = showInlineSidebar && showExplorerTrigger
 
   const hideDocumentHeaderInFocusedMode = focusedDocumentMode && !focusedHeaderVisible
-  const isIosSurface = layout.surface === 'capacitor-ios'
   const [rssUrlBarVisible, setRssUrlBarVisible] = useState(!isIosSurface)
   const headerOffsetClass = showExplorerTrigger && !hideDocumentHeaderInFocusedMode
     ? (isIosSurface
@@ -500,8 +502,7 @@ export default function ThinkingSpaceOrch() {
   }, [focusedDocumentMode])
 
   useEffect(() => {
-    // On iOS, explorer is driven by mobileExplorerOpen (drawer), not explorerCollapsed
-    const explorerCollapsedForChrome = isIosSurface ? !mobileExplorerOpen : explorerCollapsed
+    const explorerCollapsedForChrome = explorerCollapsed
 
     if (rssActiveArticle) {
       dispatchThinkingSpaceGoogleWorkspaceChromeStateBlock({
@@ -529,7 +530,7 @@ export default function ThinkingSpaceOrch() {
       headerVisible,
       showHeaderToggle: focusedDocumentMode && Boolean(inlinePath),
     })
-  }, [explorerCollapsed, hideDocumentHeaderInFocusedMode, focusedDocumentMode, inlinePath, rssActiveArticle, rssUrlBarVisible, isIosSurface, mobileExplorerOpen])
+  }, [explorerCollapsed, hideDocumentHeaderInFocusedMode, focusedDocumentMode, inlinePath, rssActiveArticle, rssUrlBarVisible, isIosSurface])
 
   useEffect(() => {
     return () => {
@@ -544,7 +545,7 @@ export default function ThinkingSpaceOrch() {
 
   useEffect(() => {
     const onToggleExplorer = () => {
-      if (showInlineSidebar) {
+      if (showInlineSidebar || iosInlineMode) {
         setExplorerCollapsed(prev => !prev)
         return
       }
@@ -565,7 +566,7 @@ export default function ThinkingSpaceOrch() {
       window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_EXPLORER_EVENT_BLOCK, onToggleExplorer as EventListener)
       window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_HEADER_EVENT_BLOCK, onToggleHeader as EventListener)
     }
-  }, [focusedDocumentMode, showInlineSidebar, rssActiveArticle])
+  }, [focusedDocumentMode, iosInlineMode, showInlineSidebar, rssActiveArticle])
 
   useEffect(() => {
     const handleResize = () => {
@@ -582,7 +583,8 @@ export default function ThinkingSpaceOrch() {
   }, [stopExplorerResize])
 
   useEffect(() => {
-    if (showInlineSidebar || mobileExplorerOpen || layout.keyboardVisible) {
+    const explorerOpen = (showInlineSidebar || iosInlineMode) ? !explorerCollapsed : mobileExplorerOpen
+    if (explorerOpen || layout.keyboardVisible) {
       edgeSwipeStartRef.current = null
       return
     }
@@ -605,7 +607,11 @@ export default function ThinkingSpaceOrch() {
       if (!touch) return
       if (shouldOpenDrawerFromSwipeBlock(touch.clientX - start.x, touch.clientY - start.y)) {
         edgeSwipeStartRef.current = null
-        setMobileExplorerOpen(true)
+        if (showInlineSidebar || iosInlineMode) {
+          setExplorerCollapsed(false)
+        } else {
+          setMobileExplorerOpen(true)
+        }
       }
     }
 
@@ -624,7 +630,7 @@ export default function ThinkingSpaceOrch() {
       window.removeEventListener('touchend', clearGesture)
       window.removeEventListener('touchcancel', clearGesture)
     }
-  }, [layout.keyboardVisible, mobileExplorerOpen, showInlineSidebar])
+  }, [explorerCollapsed, iosInlineMode, layout.keyboardVisible, mobileExplorerOpen, showInlineSidebar])
 
   const handleExplorerDrawerTouchStart = (event: React.TouchEvent<HTMLElement>) => {
     const touch = event.touches[0]
@@ -752,10 +758,10 @@ export default function ThinkingSpaceOrch() {
       data-ltm-explorer-open={showCollapsedInlineExplorer ? 'true' : 'false'}
     >
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {showInlineSidebar && (
+        {(showInlineSidebar || iosInlineMode) && (
           <aside
             className={cn(
-              'ltm-thinking-space-explorer-surface min-h-0 shrink-0 overflow-hidden md:flex md:flex-col',
+              'ltm-thinking-space-explorer-surface flex min-h-0 shrink-0 flex-col overflow-hidden',
               (isExplorerResizing || useInstantExplorerToggle)
                 ? 'transition-none'
                 : 'transition-[width,opacity] duration-200 ease-out',
@@ -775,7 +781,7 @@ export default function ThinkingSpaceOrch() {
           </aside>
         )}
 
-        {showInlineSidebar && showCollapsedInlineExplorer && (
+        {(showInlineSidebar || iosInlineMode) && showCollapsedInlineExplorer && (
           <div
             role="separator"
             aria-label="Resize explorer"
