@@ -5,6 +5,10 @@ import {
   shouldOpenDrawerFromSwipeBlock,
   shouldStartEdgeSwipeOpenBlock,
 } from '@/services/lego_blocks/units/uiGestureBlock'
+import {
+  addInlineWebViewSwipeOpenListenerBlock,
+  addInlineWebViewSwipeCloseListenerBlock,
+} from '@/services/lego_blocks/units/inlineWebViewBlock'
 
 interface UseIosSidebarSwipeOptions {
   /** Only attach gestures on iOS Capacitor. */
@@ -74,7 +78,18 @@ export function useIosSidebarSwipeBlock({
     window.addEventListener('touchend', clear)
     window.addEventListener('touchcancel', clear)
 
+    // Also handle swipes that start on the native WKWebView overlay (InlineWebViewPlugin).
+    // The overlay's left-edge strip fires this event when a rightward swipe is detected natively.
+    let capHandle: import('@capacitor/core').PluginListenerHandle | null = null
+    let mounted = true
+    void addInlineWebViewSwipeOpenListenerBlock(onToggle).then(h => {
+      if (mounted) capHandle = h
+      else void h.remove()
+    })
+
     return () => {
+      mounted = false
+      void capHandle?.remove()
       window.removeEventListener('touchstart', handleTouchStart)
       window.removeEventListener('touchmove', handleTouchMove)
       window.removeEventListener('touchend', clear)
@@ -113,7 +128,17 @@ export function useIosSidebarSwipeBlock({
     window.addEventListener('touchend', clear)
     window.addEventListener('touchcancel', clear)
 
+    // Also handle close swipes that start on the native WKWebView overlay.
+    let capHandle: import('@capacitor/core').PluginListenerHandle | null = null
+    let mounted = true
+    void addInlineWebViewSwipeCloseListenerBlock(onToggle).then(h => {
+      if (mounted) capHandle = h
+      else void h.remove()
+    })
+
     return () => {
+      mounted = false
+      void capHandle?.remove()
       window.removeEventListener('touchstart', handleTouchStart)
       window.removeEventListener('touchmove', handleTouchMove)
       window.removeEventListener('touchend', clear)

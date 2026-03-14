@@ -380,7 +380,7 @@ private final class PencilSamplingGestureRecognizer: UIGestureRecognizer {
 /// We add safeAreaInsets.top so that JS y=0 (top of visible content) maps to
 /// the correct native y (below the status bar).
 @objc(InlineWebViewPlugin)
-public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDelegate {
+public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDelegate, UIGestureRecognizerDelegate {
     public let identifier = "InlineWebViewPlugin"
     public let jsName = "InlineWebView"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -389,7 +389,16 @@ public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDeleg
         CAPPluginMethod(name: "updateFrame", returnType: CAPPluginReturnPromise),
     ]
 
+    // Swipe gesture thresholds matching uiGestureBlock.ts DEFAULT_DRAWER_SWIPE_THRESHOLDS
+    private let edgeStartMaxX: CGFloat = 24
+    private let openDeltaXMin: CGFloat = 72
+    private let closeDeltaXMax: CGFloat = -56
+    private let maxVerticalDrift: CGFloat = 44
+
     private var inlineWebView: WKWebView?
+    /// Transparent 28pt-wide overlay on the left edge — intercepts open-swipe touches
+    /// before the WKWebView can consume them.
+    private var edgeSwipeOverlay: UIView?
 
     // Convert JS viewport rect → UIKit frame.
     // getBoundingClientRect() returns coordinates in the WKWebView coordinate space,
@@ -424,11 +433,21 @@ public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDeleg
                 wkView.backgroundColor = .systemBackground
                 parentView.addSubview(wkView)
                 self.inlineWebView = wkView
+
+                // Add close-swipe recognizer directly on the WKWebView.
+                // cancelsTouchesInView=false + simultaneous delegate lets WKWebView
+                // still receive all scrolling/tapping while we track the gesture.
+                let closePan = UIPanGestureRecognizer(target: self, action: #selector(self.handleCloseSwipe(_:)))
+                closePan.cancelsTouchesInView = false
+                closePan.delaysTouchesBegan = false
+                closePan.delegate = self
+                wkView.addGestureRecognizer(closePan)
             } else {
                 self.inlineWebView?.frame = frame
             }
 
             self.inlineWebView?.load(URLRequest(url: url))
+            self.setupEdgeSwipeOverlay(parentView: parentView, frame: frame)
             call.resolve()
         }
     }
@@ -442,6 +461,8 @@ public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDeleg
         DispatchQueue.main.async {
             self.inlineWebView?.removeFromSuperview()
             self.inlineWebView = nil
+            self.edgeSwipeOverlay?.removeFromSuperview()
+            self.edgeSwipeOverlay = nil
         }
     }
 
@@ -451,8 +472,60 @@ public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDeleg
         let w = CGFloat(call.getFloat("width") ?? 0)
         let h = CGFloat(call.getFloat("height") ?? 0)
         DispatchQueue.main.async {
-            self.inlineWebView?.frame = self.nativeFrame(x: x, y: y, width: w, height: h)
+            let frame = self.nativeFrame(x: x, y: y, width: w, height: h)
+            self.inlineWebView?.frame = frame
+            if let overlay = self.edgeSwipeOverlay {
+                overlay.frame = CGRect(x: 0, y: frame.minY, width: 28, height: frame.height)
+            }
             call.resolve()
         }
+    }
+
+    // MARK: - Sidebar swipe gestures
+
+    /// Adds a transparent 28pt-wide UIView on the left edge of the screen, above the WKWebView.
+    /// Touches on this strip are captured here (not by the WKWebView), allowing us to detect
+    /// the open-sidebar swipe without fighting the WKWebView's own gesture recognizers.
+    private func setupEdgeSwipeOverlay(parentView: UIView, frame: CGRect) {
+        edgeSwipeOverlay?.removeFromSuperview()
+        let overlay = UIView(frame: CGRect(x: 0, y: frame.minY, width: 28, height: frame.height))
+        overlay.backgroundColor = .clear
+        overlay.isUserInteractionEnabled = true
+        parentView.addSubview(overlay)
+        edgeSwipeOverlay = overlay
+
+        let openPan = UIPanGestureRecognizer(target: self, action: #selector(handleOpenSwipe(_:)))
+        openPan.cancelsTouchesInView = false
+        overlay.addGestureRecognizer(openPan)
+    }
+
+    /// Detects rightward swipe on the left-edge overlay → open sidebar.
+    @objc private func handleOpenSwipe(_ pan: UIPanGestureRecognizer) {
+        guard pan.state == .changed else { return }
+        let t = pan.translation(in: pan.view)
+        guard t.x >= openDeltaXMin, abs(t.y) < maxVerticalDrift else { return }
+        // Disable+re-enable resets the recognizer so it fires only once per gesture.
+        pan.isEnabled = false
+        pan.isEnabled = true
+        notifyListeners("inlineWebViewEdgeSwipeOpen", data: [:])
+    }
+
+    /// Detects leftward swipe anywhere on the WKWebView → close sidebar.
+    @objc private func handleCloseSwipe(_ pan: UIPanGestureRecognizer) {
+        guard pan.state == .changed else { return }
+        let t = pan.translation(in: pan.view)
+        guard t.x <= closeDeltaXMax, abs(t.y) < maxVerticalDrift else { return }
+        pan.isEnabled = false
+        pan.isEnabled = true
+        notifyListeners("inlineWebViewEdgeSwipeClose", data: [:])
+    }
+
+    // MARK: - UIGestureRecognizerDelegate
+
+    public func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        return true
     }
 }
