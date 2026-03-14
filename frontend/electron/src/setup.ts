@@ -456,6 +456,26 @@ export class ElectronCapacitorApp {
   }
 }
 
+// The partition used by all <webview> tags in the web tab.
+// Must match LINK_WEBVIEW_PARTITION in UrlDocumentBlock.tsx.
+const WEBVIEW_PARTITION = 'persist:thinking-space-links';
+
+/**
+ * Allow media-related permissions for the shared webview partition so that
+ * sites like Spotify (which use EME/Widevine via the mediaKeySystem API) and
+ * YouTube can play audio/video without silent permission denials.
+ *
+ * We allow: media, mediaKeySystem (DRM/EME), notifications, fullscreen, pointerLock.
+ * We deny:  geolocation, camera, microphone, and anything else.
+ */
+export function setupWebviewSessionPermissions(): void {
+  const webviewSession = session.fromPartition(WEBVIEW_PARTITION);
+  webviewSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    const ALLOWED: string[] = ['media', 'mediaKeySystem', 'notifications', 'fullscreen', 'pointerLock'];
+    callback(ALLOWED.includes(permission));
+  });
+}
+
 // Set a CSP up for our application based on the custom scheme
 export function setupContentSecurityPolicy(customScheme: string): void {
   const aiConnectSrc = [

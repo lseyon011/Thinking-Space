@@ -13,7 +13,7 @@ import { spawn } from 'child_process';
 import { createHash, createHmac, randomUUID } from 'crypto';
 import { brotliDecompressSync, gunzipSync, inflateSync } from 'zlib';
 
-import { ElectronCapacitorApp, setupContentSecurityPolicy, setupReloadWatcher } from './setup';
+import { ElectronCapacitorApp, setupContentSecurityPolicy, setupReloadWatcher, setupWebviewSessionPermissions } from './setup';
 import {
   readClaudeCredentialsBlock,
   refreshClaudeTokenBlock,
@@ -146,6 +146,7 @@ if (electronIsDev) {
   await app.whenReady();
   // Security - Set Content-Security-Policy based on whether or not we are in dev mode.
   setupContentSecurityPolicy(myCapacitorApp.getCustomURLScheme());
+  setupWebviewSessionPermissions();
   // Initialize our app, build windows, and load content.
   await myCapacitorApp.init();
   configureAppIconMenu();
