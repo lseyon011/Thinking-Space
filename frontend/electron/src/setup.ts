@@ -266,11 +266,23 @@ export class ElectronCapacitorApp {
       defaultHeight: 900,
     });
 
+    // Cascade new windows 32px down-right from the frontmost existing window
+    // so they don't land exactly on top of it.
+    const CASCADE_OFFSET = 32;
+    const frontmost = BrowserWindow.getFocusedWindow() ?? this.windows[this.windows.length - 1];
+    let spawnX = winState.x;
+    let spawnY = winState.y;
+    if (frontmost && !frontmost.isDestroyed()) {
+      const [fx, fy] = frontmost.getPosition();
+      spawnX = fx + CASCADE_OFFSET;
+      spawnY = fy + CASCADE_OFFSET;
+    }
+
     const newWindow = new BrowserWindow({
       icon,
       show: false,
-      x: winState.x,
-      y: winState.y,
+      x: spawnX,
+      y: spawnY,
       width: winState.width,
       height: winState.height,
       autoHideMenuBar: this.shouldHideNativeMenuBar(),
