@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Loader2, Send, AlertCircle, PanelLeftClose } from 'lucide-react'
 import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useExpandedSetBlock'
 import SidebarGroupHeaderBlock from '@/components/lego_blocks/units/ui/SidebarGroupHeaderBlock'
@@ -9,6 +9,8 @@ import { Card, CardContent } from '@/components/lego_blocks/units/ui/card'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentBlock'
 import { cn } from '@/lib/utils'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
 import {
   type AiProvider,
   type AiProviderStatus,
@@ -53,6 +55,8 @@ function formatTimestamp(value?: string): string | null {
 }
 
 export default function ChatOrch() {
+  const { layout } = useUILayoutBlock()
+  const isIos = layout.surface === 'capacitor-ios'
   const [providers, setProviders] = useState<AiProviderStatus[]>([])
   const [selectedProvider, setSelectedProvider] = useState<AiProvider | null>(null)
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
@@ -167,6 +171,14 @@ export default function ChatOrch() {
     window.addEventListener(CHAT_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
     return () => window.removeEventListener(CHAT_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
   }, [])
+
+  const handleToggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), [])
+  useIosSidebarSwipeBlock({
+    isIos,
+    isOpen: !sidebarCollapsed,
+    keyboardVisible: layout.keyboardVisible,
+    onToggle: handleToggleSidebar,
+  })
 
   const handleSend = async () => {
     const text = input.trim()

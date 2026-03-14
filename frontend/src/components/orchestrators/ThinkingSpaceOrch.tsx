@@ -4,6 +4,7 @@ import { PanelLeft, PanelLeftClose, FileText, Rss as RssIcon } from 'lucide-reac
 import VaultExplorerBlock from '@/components/lego_blocks/integrations/VaultExplorerBlock'
 import MarkdownDocumentBlock, { type MarkdownViewerMode } from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { cn } from '@/lib/utils'
 import {
@@ -582,8 +583,19 @@ export default function ThinkingSpaceOrch() {
     }
   }, [stopExplorerResize])
 
+  // iOS inline sidebar: use shared hook for both open (edge swipe) and close (swipe left)
+  const handleToggleExplorerIos = useCallback(() => setExplorerCollapsed(prev => !prev), [])
+  useIosSidebarSwipeBlock({
+    isIos: iosInlineMode,
+    isOpen: !explorerCollapsed,
+    keyboardVisible: layout.keyboardVisible,
+    onToggle: handleToggleExplorerIos,
+  })
+
+  // Non-iOS: edge swipe to open drawer or inline sidebar
   useEffect(() => {
-    const explorerOpen = (showInlineSidebar || iosInlineMode) ? !explorerCollapsed : mobileExplorerOpen
+    if (iosInlineMode) return
+    const explorerOpen = showInlineSidebar ? !explorerCollapsed : mobileExplorerOpen
     if (explorerOpen || layout.keyboardVisible) {
       edgeSwipeStartRef.current = null
       return
@@ -607,7 +619,7 @@ export default function ThinkingSpaceOrch() {
       if (!touch) return
       if (shouldOpenDrawerFromSwipeBlock(touch.clientX - start.x, touch.clientY - start.y)) {
         edgeSwipeStartRef.current = null
-        if (showInlineSidebar || iosInlineMode) {
+        if (showInlineSidebar) {
           setExplorerCollapsed(false)
         } else {
           setMobileExplorerOpen(true)

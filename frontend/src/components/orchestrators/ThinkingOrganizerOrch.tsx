@@ -33,6 +33,8 @@ import OrganizerIntegrityOrch from '@/components/orchestrators/OrganizerIntegrit
 import StewardQueueOrch from '@/components/orchestrators/StewardQueueOrch'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { cn } from '@/lib/utils'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
 
 type TabMode = 'backlog' | 'view' | 'link' | 'steward' | 'integrity'
 const TAB_QUERY_PARAM = 'tab'
@@ -314,6 +316,8 @@ interface ProjectEntry {
 }
 
 export default function ThinkingOrganizerOrch() {
+  const { layout } = useUILayoutBlock()
+  const isIos = layout.surface === 'capacitor-ios'
   const [tab, setTab] = usePersistentTab()
   const [searchParams, setSearchParams] = useSearchParams()
   const [mountedTabs, setMountedTabs] = useState<Record<TabMode, boolean>>(() => ({
@@ -427,6 +431,14 @@ export default function ThinkingOrganizerOrch() {
     window.addEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
     return () => window.removeEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
   }, [])
+
+  const handleToggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), [])
+  useIosSidebarSwipeBlock({
+    isIos,
+    isOpen: !sidebarCollapsed,
+    keyboardVisible: layout.keyboardVisible,
+    onToggle: handleToggleSidebar,
+  })
 
   return (
     <div className="ltm-page-shell ltm-shell-ultra">

@@ -15,6 +15,8 @@ import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/Backl
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { cn } from '@/lib/utils'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
 import { getAllNodes, type NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services/orchestrators/storageOrch'
 import { readOrganizerUiStateOrch, writeOrganizerUiStateOrch } from '@/services/orchestrators/organizerUiStateOrch'
@@ -720,6 +722,8 @@ export default function F9WorkspaceBlock({
   onSavePositionBody,
   onOpenNodeFile,
 }: F9WorkspaceBlockProps) {
+  const { layout } = useUILayoutBlock()
+  const isIos = layout.surface === 'capacitor-ios'
   const allWarnings = [...warnings, ...executionSyncWarnings]
   const overallRows = asRecordArrayBlock(assetsPositions).length > 0
     ? asRecordArrayBlock(assetsPositions)
@@ -749,6 +753,14 @@ export default function F9WorkspaceBlock({
     window.addEventListener(F9_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
     return () => window.removeEventListener(F9_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
   }, [])
+
+  const handleToggleSidebar = useCallback(() => setSideTabsCollapsed(prev => !prev), [])
+  useIosSidebarSwipeBlock({
+    isIos,
+    isOpen: !sideTabsCollapsed,
+    keyboardVisible: layout.keyboardVisible,
+    onToggle: handleToggleSidebar,
+  })
 
   const selectedCompany = useMemo(
     () => executionOverview?.companies.find((company) => company.companyTicker === activeCompanyTicker) ?? null,

@@ -487,6 +487,13 @@ function App() {
   const showOrganizerSidebarChromeControl = (location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer')
     && organizerSidebarChromeState.enabled
   const showF9SidebarChromeControl = location.pathname === '/f9' && f9SidebarChromeState.enabled
+  // On Capacitor, each of these tabs owns its own edge-swipe gesture.
+  // Suppress the global nav-drawer swipe so they don't conflict.
+  const tabOwnsSidebarSwipe = showGoogleWorkspaceChromeControls
+    || showChatSidebarChromeControl
+    || showWebSidebarChromeControl
+    || showOrganizerSidebarChromeControl
+    || showF9SidebarChromeControl
   const isElectronDesktopSurface = layout.surface === 'electron' && layout.mode === 'desktop'
   const isMacDesktopSurface = isElectronDesktopSurface
     && typeof navigator !== 'undefined'
@@ -1193,7 +1200,7 @@ function App() {
   }, [compactNav])
 
   useEffect(() => {
-    if (!compactNav || drawerOpen || keyboardVisible) {
+    if (!compactNav || drawerOpen || keyboardVisible || tabOwnsSidebarSwipe) {
       drawerEdgeSwipeStartRef.current = null
       return
     }
@@ -1237,7 +1244,7 @@ function App() {
       window.removeEventListener('touchend', clearGesture)
       window.removeEventListener('touchcancel', clearGesture)
     }
-  }, [compactNav, drawerOpen, keyboardVisible])
+  }, [compactNav, drawerOpen, keyboardVisible, tabOwnsSidebarSwipe])
 
   useEffect(() => {
     if (keyboardVisible) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Globe } from 'lucide-react'
 import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentBlock'
 import WebSitePanelBlock from '@/components/lego_blocks/integrations/WebSitePanelBlock'
@@ -10,8 +10,12 @@ import {
   WEB_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
   WEB_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK,
 } from '@/services/lego_blocks/units/webSidebarChromeBlock'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
 
 export default function WebOrch() {
+  const { layout } = useUILayoutBlock()
+  const isIos = layout.surface === 'capacitor-ios'
   const [prefs, setPrefs] = useState<WebSitePreferencesBlock>({ bookmarks: [], groups: [] })
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -59,6 +63,15 @@ export default function WebOrch() {
     window.addEventListener(WEB_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
     return () => window.removeEventListener(WEB_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
   }, [])
+
+  const handleToggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), [])
+
+  useIosSidebarSwipeBlock({
+    isIos,
+    isOpen: !sidebarCollapsed,
+    keyboardVisible: layout.keyboardVisible,
+    onToggle: handleToggleSidebar,
+  })
 
   const handleSelectSite = (site: WebSiteBlock) => {
     setSelectedSiteId(site.id)
