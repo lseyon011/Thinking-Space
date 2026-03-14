@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CalendarDays, Download, Loader2, Plus, X } from 'lucide-react'
+import { CalendarDays, Download, Loader2, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import ProjectMemoryFilesBlock, { type ProjectMemoryFileOptionBlock } from '@/components/lego_blocks/integrations/ProjectMemoryFilesBlock'
@@ -78,6 +78,9 @@ const BACKLOG_ACTOR: CapabilityActor = {
 const PROJECT_DESTINATION_RECENTS_KEY = 'ltm-thinking-organizer-project-destination-recents'
 const PROJECT_ROOT_QUERY_PARAM = 'projectRoot'
 const SELECTED_NODE_QUERY_PARAM = 'selectedNode'
+export const ORGANIZER_OPEN_CREATE_PROJECT_EVENT = 'ltm:organizer:open-create-project'
+export const ORGANIZER_PROJECTS_UPDATED_EVENT = 'ltm:organizer:projects-updated'
+export interface OrganizerProjectsUpdatedDetail { projects: Array<{ name: string; root: string }> }
 
 function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
@@ -973,6 +976,12 @@ export default function BacklogOrch() {
   }, [refreshExecutionProgress])
 
   useEffect(() => {
+    const handler = () => setProjectModalOpen(true)
+    window.addEventListener(ORGANIZER_OPEN_CREATE_PROJECT_EVENT, handler)
+    return () => window.removeEventListener(ORGANIZER_OPEN_CREATE_PROJECT_EVENT, handler)
+  }, [])
+
+  useEffect(() => {
     void refreshEpicTimeline()
   }, [refreshEpicTimeline])
 
@@ -1059,6 +1068,13 @@ export default function BacklogOrch() {
 
     return [...byRoot.values()].sort((a, b) => a.name.localeCompare(b.name))
   }, [projectEntries, programs])
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent<OrganizerProjectsUpdatedDetail>(
+      ORGANIZER_PROJECTS_UPDATED_EVENT,
+      { detail: { projects: availableProjects } },
+    ))
+  }, [availableProjects])
 
   useEffect(() => {
     if (!initialProjectLoadResolved) return
@@ -1623,37 +1639,6 @@ export default function BacklogOrch() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          {availableProjects.map(project => {
-            const isActive = project.root === activeProjectRoot
-            return (
-              <Button
-                key={project.root}
-                size="sm"
-                variant={isActive ? 'default' : 'ghost'}
-                className="h-8 shrink-0 justify-center px-3 text-xs min-w-[6.5rem] sm:min-w-[9rem]"
-                onClick={() => selectProject(project.root)}
-                title={project.name}
-              >
-                <span className="truncate">{project.name}</span>
-              </Button>
-            )
-          })}
-        </div>
-        <Button size="sm" className="ml-auto shrink-0" onClick={() => setProjectModalOpen(true)}>
-          <Plus className="mr-1.5 h-4 w-4" />
-          Create Project
-        </Button>
-
-        {activeProjectRoot && (
-          <div className="basis-full text-xs text-muted-foreground">
-            Active project root:{' '}
-            <span className="font-mono text-foreground">{activeProjectRoot}</span>
-          </div>
-        )}
-      </div>
-
       {(message || error) && (
         <div className="space-y-2">
           {message && (
@@ -1752,7 +1737,7 @@ export default function BacklogOrch() {
             onClick={() => setProgramLayoutEditMode(prev => !prev)}
             disabled={loading}
           >
-            {programLayoutEditMode ? 'Done Organizing Programs' : 'Edit Program Layout'}
+            {programLayoutEditMode ? 'Done Organizing Programs' : 'Edit Layout'}
           </Button>
           {activeProjectRoot && (
             <TagDisclosureButtonBlock

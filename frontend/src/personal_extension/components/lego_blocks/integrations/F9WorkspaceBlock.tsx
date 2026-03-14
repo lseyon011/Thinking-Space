@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { PanelLeft, PanelLeftClose } from 'lucide-react'
+import {
+  dispatchF9SidebarChromeStateBlock,
+  F9_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
+} from '@/personal_extension/services/lego_blocks/units/f9SidebarChromeBlock'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import FileSelectionViewerBlock from '@/components/lego_blocks/integrations/FileSelectionViewerBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
@@ -732,6 +735,20 @@ export default function F9WorkspaceBlock({
     if (typeof window === 'undefined') return
     window.localStorage.setItem(F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK, sideTabsCollapsed ? '1' : '0')
   }, [sideTabsCollapsed])
+
+  useEffect(() => {
+    dispatchF9SidebarChromeStateBlock({
+      enabled: true,
+      collapsed: sideTabsCollapsed,
+      label: 'f9',
+    })
+  }, [sideTabsCollapsed])
+
+  useEffect(() => {
+    const handler = () => setSideTabsCollapsed(prev => !prev)
+    window.addEventListener(F9_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
+    return () => window.removeEventListener(F9_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
+  }, [])
 
   const selectedCompany = useMemo(
     () => executionOverview?.companies.find((company) => company.companyTicker === activeCompanyTicker) ?? null,
@@ -1597,21 +1614,6 @@ export default function F9WorkspaceBlock({
     <div className={cn('grid gap-4', sideTabsCollapsed ? 'grid-cols-1' : 'lg:grid-cols-[200px_minmax(0,1fr)]')}>
       {!sideTabsCollapsed && (
         <aside className="space-y-3">
-          <div className="flex items-center justify-between rounded-xl border bg-background px-3 py-2">
-            <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Side Tabs</p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setSideTabsCollapsed(true)}
-              title="Collapse side tabs"
-              aria-label="Collapse side tabs"
-            >
-              <PanelLeftClose className="h-4 w-4" />
-            </Button>
-          </div>
-
         <div className="space-y-2 rounded-xl border bg-background p-3">
           {subtabs.map((subtab) => {
             const active = activeSubtabId === subtab.id && !showCompanyView
@@ -1705,16 +1707,6 @@ export default function F9WorkspaceBlock({
             <CardDescription>{workspaceDescription}</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            {sideTabsCollapsed && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setSideTabsCollapsed(false)}
-              >
-                <PanelLeft className="mr-2 h-4 w-4" />
-                Show Side Tabs
-              </Button>
-            )}
             <TagDisclosureButtonBlock
               label="Project Tags"
               expanded={projectTagsOpen}

@@ -13,6 +13,7 @@ export interface OrganizerUiStateBlock {
   schemaVersion: number
   updatedAt: string
   projectName?: string
+  missionStatement?: string
   projectQuotesPath?: string
   projectRememberPath?: string
   presetTags: string[]
@@ -97,6 +98,12 @@ function normalizeProjectName(raw: unknown): string | undefined {
   return trimmed || undefined
 }
 
+function normalizeMissionStatement(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined
+  const trimmed = raw.trim()
+  return trimmed || undefined
+}
+
 function normalizeUpdatedAt(raw: unknown): string {
   if (typeof raw !== 'string') return new Date().toISOString()
   const trimmed = raw.trim()
@@ -120,6 +127,7 @@ export function normalizeOrganizerUiStateBlock(raw: unknown): OrganizerUiStateBl
     schemaVersion: ORGANIZER_UI_STATE_SCHEMA_VERSION_BLOCK,
     updatedAt: normalizeUpdatedAt(record.updatedAt),
     projectName: normalizeProjectName(record.projectName),
+    missionStatement: normalizeMissionStatement(record.missionStatement),
     projectQuotesPath: normalizeProjectMemoryPath(record.projectQuotesPath),
     projectRememberPath: normalizeProjectMemoryPath(record.projectRememberPath),
     presetTags: normalizePresetTags(record.presetTags),

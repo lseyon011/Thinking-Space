@@ -112,6 +112,16 @@ import {
   type WebSidebarChromeStateBlock,
 } from '@/services/lego_blocks/units/webSidebarChromeBlock'
 import {
+  ORGANIZER_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
+  dispatchOrganizerSidebarChromeToggleBlock,
+  type OrganizerSidebarChromeStateBlock,
+} from '@/services/lego_blocks/units/organizerSidebarChromeBlock'
+import {
+  F9_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
+  dispatchF9SidebarChromeToggleBlock,
+  type F9SidebarChromeStateBlock,
+} from '@/personal_extension/services/lego_blocks/units/f9SidebarChromeBlock'
+import {
   captureUnhandledRejectionReportBlock,
   captureWindowErrorReportBlock,
   createRuntimeErrorReportBlock,
@@ -399,6 +409,16 @@ function App() {
     showHeaderToggle: false,
     label: 'Web',
   })
+  const [organizerSidebarChromeState, setOrganizerSidebarChromeState] = useState<OrganizerSidebarChromeStateBlock>({
+    enabled: false,
+    collapsed: false,
+    label: 'Organizer',
+  })
+  const [f9SidebarChromeState, setF9SidebarChromeState] = useState<F9SidebarChromeStateBlock>({
+    enabled: false,
+    collapsed: false,
+    label: 'f9',
+  })
   const [syncPanelOpen, setSyncPanelOpen] = useState(false)
   const [syncActionRunning, setSyncActionRunning] = useState<'sync' | 'rebuild' | null>(null)
   const [gitActionRunning, setGitActionRunning] = useState<'commit' | 'push' | null>(null)
@@ -464,6 +484,9 @@ function App() {
   const showChatHeaderToggle = showChatSidebarChromeControl && chatSidebarChromeState.showHeaderToggle
   const showWebSidebarChromeControl = location.pathname === '/web' && webSidebarChromeState.enabled
   const showWebHeaderToggle = showWebSidebarChromeControl && webSidebarChromeState.showHeaderToggle
+  const showOrganizerSidebarChromeControl = (location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer')
+    && organizerSidebarChromeState.enabled
+  const showF9SidebarChromeControl = location.pathname === '/f9' && f9SidebarChromeState.enabled
   const isElectronDesktopSurface = layout.surface === 'electron' && layout.mode === 'desktop'
   const isMacDesktopSurface = isElectronDesktopSurface
     && typeof navigator !== 'undefined'
@@ -1492,6 +1515,40 @@ function App() {
   }, [])
 
   useEffect(() => {
+    const handleOrganizerChromeState = (event: Event) => {
+      const customEvent = event as CustomEvent<OrganizerSidebarChromeStateBlock>
+      const detail = customEvent.detail
+      if (!detail) return
+      setOrganizerSidebarChromeState({
+        enabled: Boolean(detail.enabled),
+        collapsed: Boolean(detail.collapsed),
+        label: typeof detail.label === 'string' ? detail.label : 'Organizer',
+      })
+    }
+    window.addEventListener(ORGANIZER_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleOrganizerChromeState as EventListener)
+    return () => {
+      window.removeEventListener(ORGANIZER_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleOrganizerChromeState as EventListener)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleF9ChromeState = (event: Event) => {
+      const customEvent = event as CustomEvent<F9SidebarChromeStateBlock>
+      const detail = customEvent.detail
+      if (!detail) return
+      setF9SidebarChromeState({
+        enabled: Boolean(detail.enabled),
+        collapsed: Boolean(detail.collapsed),
+        label: typeof detail.label === 'string' ? detail.label : 'f9',
+      })
+    }
+    window.addEventListener(F9_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleF9ChromeState as EventListener)
+    return () => {
+      window.removeEventListener(F9_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleF9ChromeState as EventListener)
+    }
+  }, [])
+
+  useEffect(() => {
     const appShellNode = appShellRef.current
     if (!appShellNode) return
 
@@ -1658,6 +1715,38 @@ function App() {
                         : <Eye className="h-3.5 w-3.5" />}
                     </button>
                   )}
+                </div>
+              )}
+
+              {showOrganizerSidebarChromeControl && (
+                <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
+                  <button
+                    type="button"
+                    onClick={dispatchOrganizerSidebarChromeToggleBlock}
+                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                    aria-label={organizerSidebarChromeState.collapsed ? 'Show organizer sidebar' : 'Hide organizer sidebar'}
+                    title={organizerSidebarChromeState.collapsed ? 'Show organizer sidebar' : 'Hide organizer sidebar'}
+                  >
+                    {organizerSidebarChromeState.collapsed
+                      ? <PanelLeft className="h-3.5 w-3.5" />
+                      : <PanelLeftClose className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              )}
+
+              {showF9SidebarChromeControl && (
+                <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
+                  <button
+                    type="button"
+                    onClick={dispatchF9SidebarChromeToggleBlock}
+                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                    aria-label={f9SidebarChromeState.collapsed ? 'Show sidebar' : 'Hide sidebar'}
+                    title={f9SidebarChromeState.collapsed ? 'Show sidebar' : 'Hide sidebar'}
+                  >
+                    {f9SidebarChromeState.collapsed
+                      ? <PanelLeft className="h-3.5 w-3.5" />
+                      : <PanelLeftClose className="h-3.5 w-3.5" />}
+                  </button>
                 </div>
               )}
 
