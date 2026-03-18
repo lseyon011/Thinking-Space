@@ -115,7 +115,7 @@ export function selectedPresetTagsForNode(
   return (node.tags ?? []).filter(tag => presetLookup.has(normalizeTagBlock(tag).toLowerCase()))
 }
 
-export function compactTagList(tags: string[], limit = 3): { visible: string[]; hiddenCount: number } {
+export function compactTagList(tags: string[], limit = Infinity): { visible: string[]; hiddenCount: number } {
   if (tags.length <= limit) return { visible: tags, hiddenCount: 0 }
   return {
     visible: tags.slice(0, limit),

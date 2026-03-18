@@ -152,6 +152,9 @@ export default function ExcalidrawDocumentBlock({
   const autoCenterRequestedRef = useRef(false)
   const autoCenterAttemptsRef = useRef(0)
   const autoCenterFrameRef = useRef<number | null>(null)
+  // Tracks the "document identity" so we only reset auto-center when a
+  // different document is loaded, not on every content update (edit-save cycle).
+  const lastDocumentKeyRef = useRef<string | null>(null)
   const onChangeLogCountRef = useRef(0)
   const queuedSceneRef = useRef<{
     elements: readonly unknown[]
@@ -790,8 +793,21 @@ export default function ExcalidrawDocumentBlock({
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
-    hasAutoCenteredRef.current = false
-    autoCenterRequestedRef.current = false
+    // Determine whether this is a genuinely new document or just a content
+    // update for the same editable file (e.g. an edit-save-reload cycle).
+    // For editable files with a known path we key on filePath so that
+    // auto-center state is preserved across save cycles.  For read-only
+    // embeds (no filePath) we fall back to using the full content string as
+    // the identity so a completely new scene still triggers a reset.
+    const documentKey = editable && filePath != null ? `${filePath}::editable` : content
+    const isNewDocument = documentKey !== lastDocumentKeyRef.current
+    lastDocumentKeyRef.current = documentKey
+
+    if (isNewDocument) {
+      hasAutoCenteredRef.current = false
+      autoCenterRequestedRef.current = false
+    }
+    // Always reset attempt counter and in-flight work regardless.
     autoCenterAttemptsRef.current = 0
     if (autoCenterFrameRef.current !== null) {
       window.cancelAnimationFrame(autoCenterFrameRef.current)
@@ -826,8 +842,8 @@ export default function ExcalidrawDocumentBlock({
     lastPencilStyleEmitAtRef.current = 0
     pendingPencilAppStateRef.current = null
     setActiveHighlighterPresetId(null)
-    debugLog('scene_reset', { editable, contentLength: content.length })
-  }, [content, debugLog, editable])
+    debugLog('scene_reset', { editable, contentLength: content.length, isNewDocument })
+  }, [content, debugLog, editable, filePath])
 
   // ---------------------------------------------------------------------------
   // Highlighter preset loading

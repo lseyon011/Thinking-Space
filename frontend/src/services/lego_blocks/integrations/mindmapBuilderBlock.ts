@@ -53,6 +53,7 @@ interface MindmapNode {
   parentId: string | null
   kind: 'root' | 'heading' | 'content'
   text: string
+  originalText: string
   depth: number
   order: number
   branchIndex: number
@@ -92,8 +93,8 @@ const BRANCH_PALETTE = [
 ]
 
 const LAYOUT_DEFAULTS = {
-  GAP_X: 120,
-  GAP_Y: 25,
+  GAP_X: 480,
+  GAP_Y: 100,
   GAP_MULTIPLIER: 0.6,
   ROOT_RADIUS_FACTOR: 0.8,
   MIN_RADIUS: 350,
@@ -106,7 +107,7 @@ const LAYOUT_DEFAULTS = {
   RADIUS_PADDING_PER_NODE: 7,
 }
 
-const VERTICAL_EXTRA_GAP = 12
+const VERTICAL_EXTRA_GAP = 48
 const WRAP_WIDTH_MAX = 10000
 
 export const DEFAULT_MINDMAP_BUILD_OPTIONS: MindmapBuildOptions = {
@@ -375,6 +376,7 @@ function createGraphNodes(tree: HeadingTreeNode[], sourcePath: string, options: 
     parentId: null,
     kind: 'root',
     text: toScriptNodeLabel(titleFromPath(sourcePath)),
+    originalText: '',
     depth: 0,
     order: 0,
     branchIndex: 0,
@@ -397,6 +399,7 @@ function createGraphNodes(tree: HeadingTreeNode[], sourcePath: string, options: 
       parentId,
       kind: 'heading',
       text: toScriptNodeLabel(heading.title),
+      originalText: '',
       depth,
       order: nextOrder(parentId),
       branchIndex,
@@ -417,6 +420,7 @@ function createGraphNodes(tree: HeadingTreeNode[], sourcePath: string, options: 
         parentId: headingId,
         kind: 'content',
         text: heading.content,
+        originalText: '',
         depth: depth + 1,
         order: nextOrder(headingId),
         branchIndex,
@@ -476,10 +480,12 @@ function assignTextMetrics(nodes: MindmapNode[], options: MindmapBuildOptions): 
       0,
     )
     const shouldWrap = Number.isFinite(effectiveMaxWidth) && sourceMaxLineWidth > effectiveMaxWidth
+    // Use pre-wrapped text only for height/line-count estimation; the actual node.text
+    // stays as the original (unwrapped) content so Excalidraw can reflow it naturally
+    // inside the fixed-width container, matching how text renders in a markdown document.
     const measuredText = shouldWrap
       ? wrapText(normalizedText, effectiveMaxWidth, fontSize, node.kind === 'content')
       : normalizedText
-    const wrapped = measuredText
     const lines = measuredText ? measuredText.split('\n') : ['']
     const measuredMaxLineWidth = shouldWrap
       ? lines.reduce(
@@ -501,7 +507,8 @@ function assignTextMetrics(nodes: MindmapNode[], options: MindmapBuildOptions): 
       : clamp(baseHeight, 54, 2400)
 
     node.fontSize = fontSize
-    node.text = wrapped
+    node.text = measuredText       // pre-wrapped for correct initial display in Excalidraw
+    node.originalText = normalizedText  // raw text so Excalidraw re-wraps naturally on resize
     node.width = width
     node.height = height
   }
@@ -1079,7 +1086,7 @@ function buildScene(nodes: MindmapNode[], options: MindmapBuildOptions): ParsedE
       textAlign,
       verticalAlign: 'middle',
       lineHeight: 1.25,
-      autoResize: true,
+      autoResize: false,
       strokeColor: '#111827',
       backgroundColor: 'transparent',
       fillStyle: 'solid',
@@ -1090,7 +1097,7 @@ function buildScene(nodes: MindmapNode[], options: MindmapBuildOptions): ParsedE
       containerId: rectId,
       isDeleted: false,
       groupIds: [],
-      originalText: node.text,
+      originalText: node.originalText,
       seed: hashNumber(`seed:${textId}`),
       version: 1,
       versionNonce: hashNumber(`nonce:${textId}`),

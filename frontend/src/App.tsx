@@ -8,7 +8,6 @@ import {
   FolderKanban,
   FileText,
   GitBranch,
-  Globe,
   Loader2,
   Menu,
   Eye,
@@ -193,7 +192,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/new-thought', label: 'New Note', icon: PlusSquare },
   { to: '/git-insights', label: 'Insights', icon: GitBranch },
   { to: '/chat', label: 'AI', icon: AINavIcon },
-  { to: '/web', label: 'Web', icon: Globe },
+  { to: '/web', label: 'Web', icon: WebNavIcon },
   { to: '/f9', label: 'Webull', icon: WebullNavIcon },
   {
     to: '/thinking-organizer',
@@ -243,6 +242,14 @@ function AINavIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <span aria-hidden="true" className={`${className} inline-flex items-center justify-center text-[10px] font-semibold leading-none tracking-tight`}>
       AI
+    </span>
+  )
+}
+
+function WebNavIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <span aria-hidden="true" className={`${className} inline-flex items-center justify-center text-[10px] font-semibold leading-none tracking-tight`}>
+      web
     </span>
   )
 }
@@ -1639,7 +1646,7 @@ function App() {
                     <button
                       type="button"
                       onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}
-                      className="ltm-tab-active ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/90 bg-white text-black transition-colors hover:bg-white/90"
+                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/50 bg-background/75 text-muted-foreground transition-colors hover:bg-background/90 hover:text-foreground"
                       aria-label={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
                       title={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
                     >
@@ -1762,7 +1769,7 @@ function App() {
                   <button
                     type="button"
                     onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}
-                    className="ltm-tab-active ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/90 bg-white text-black transition-colors hover:bg-white/90"
+                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/50 bg-background/75 text-muted-foreground transition-colors hover:bg-background/90 hover:text-foreground"
                     aria-label={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
                     title={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
                   >
@@ -1817,7 +1824,7 @@ function App() {
                     <button
                       type="button"
                       onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}
-                      className="ltm-tab-active ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/90 bg-white text-black transition-colors hover:bg-white/90"
+                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/50 bg-background/75 text-muted-foreground transition-colors hover:bg-background/90 hover:text-foreground"
                       aria-label={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
                       title={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
                     >

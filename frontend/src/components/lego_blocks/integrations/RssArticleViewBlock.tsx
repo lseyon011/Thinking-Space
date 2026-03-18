@@ -102,8 +102,8 @@ export default function RssArticleViewBlock({
 
   return (
     <div className={cn('relative flex h-full min-h-0 flex-col', className)}>
-      {/* Meta bar */}
-      <div
+      {/* Meta bar — hidden together with the URL bar when header is toggled off */}
+      {!hideUrlBar && <div
         className={cn(
           'flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border/40 px-3 py-1.5',
           hasAnything ? 'bg-muted/20' : 'bg-muted/10',
@@ -192,7 +192,7 @@ export default function RssArticleViewBlock({
         >
           <FolderInput className="h-3.5 w-3.5" />
         </button>
-      </div>
+      </div>}
 
       {/* URL content — wrapped so h-full inside UrlDocumentBlock resolves to the
            flex-allocated space, not the full container (fixes iOS WKWebView overlap) */}
