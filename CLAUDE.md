@@ -39,10 +39,12 @@ These are architecture constraints, not optional positioning variants.
 ## Phase Order
 Use `DEVELOPMENT.md` as source of truth for implementation phases and detailed architecture.
 
-Current status (v1.0):
+Current status (v2.0):
 - Phase 0–5: DONE
 - Agent Capability Transport: DONE
 - EPIC-3 (Extension Platform): DONE
+- Embedded Terminal (xterm.js + node-pty): DONE
+- Live Source Mode + Rebuild Pipeline: DONE
 
 Next up:
 - EPIC-5: AI Actions Everywhere
@@ -111,6 +113,12 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - `frontend/src/services/orchestrators/extensionLoaderOrch.ts` — extension discovery/reload/activation lifecycle
 - `frontend/src/services/orchestrators/extensionUiOrch.ts` — UI slot resolve + action invocation orchestration
 - `frontend/src/services/orchestrators/extensionBuilderOrch.ts` — generate/preview/save/activate extension builder workflow
+
+## Key Electron Blocks (main process)
+- `frontend/electron/src/lego_blocks/sourceConfigBlock.ts` — read/write `userData/state/source-config.json` (mode, sourcePath, vitePort)
+- `frontend/electron/src/lego_blocks/viteServerBlock.ts` — spawn Vite dev server from source path, poll readiness (45s timeout)
+- `frontend/electron/src/lego_blocks/viteRebuildBlock.ts` — 5-step rebuild pipeline + detached swap script (`applyRebuildBlock`)
+- `frontend/electron/src/lego_blocks/ptyManagerBlock.ts` — node-pty PTY lifecycle, IPC routing by `webContentsId`, per-window cleanup
 
 ## Startup Sequence (Claude Sessions)
 1. `CLAUDE.md` is auto-loaded — contains architecture, contracts, and locked decisions.

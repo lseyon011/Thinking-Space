@@ -44,7 +44,7 @@ These are architecture requirements, not optional positioning variants.
 ## Phase Order
 Use `DEVELOPMENT.md` as source of truth for implementation phases and detailed architecture.
 
-Current status (v1.0): Phases 0–5, Agent Capability Transport, and EPIC-3 are all complete.
+Current status (v2.0): Phases 0–5, Agent Capability Transport, EPIC-3, Embedded Terminal, and Live Source Mode are all complete.
 
 Upcoming:
 - EPIC-5: AI Actions Everywhere
@@ -63,6 +63,8 @@ If sequence changes, update `DEVELOPMENT.md` first, then align active organizer 
 8. Local-only extensions first; no early remote code execution.
 9. AI local-first: Ollama (Electron) or WASM LLM (web/PWA).
 10. Extension platform rollout is feature-flagged (`extension_host_enabled`, `extension_builder_enabled`) and defaults to disabled until explicitly enabled.
+11. **Embedded Terminal**: xterm.js + node-pty (same stack as VS Code). `TerminalPage.tsx` mounts all tabs simultaneously (`visibility:hidden`) so shells survive tab switches. PTY routing uses `webContentsId` stored in `ptyManagerBlock.ts`.
+12. **Live Source Mode**: source code ships inside the DMG (`Resources/source/`), extracted to `userData/source/` on first launch. Power users can point at their own git repo. Vite dev server is spawned from `viteServerBlock.ts`; renderer switches to `http://127.0.0.1:{port}` without restart. Rebuild via `viteRebuildBlock.ts` → detached swap script replaces the running `.app` and relaunches.
 
 ## Architecture Reference
 Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`

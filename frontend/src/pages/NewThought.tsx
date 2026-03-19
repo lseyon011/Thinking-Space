@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { PenLine, Loader2, CheckCircle2, LayoutList, Eye, CheckSquare, X, PanelLeft, PanelLeftClose, Plus } from 'lucide-react'
+import { Loader2, CheckCircle2, LayoutList, Eye, CheckSquare, X, Plus } from 'lucide-react'
+import {
+  dispatchNewThoughtSidebarChromeStateBlock,
+  NEW_THOUGHT_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
+} from '@/services/lego_blocks/units/webSidebarChromeBlock'
+import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
@@ -214,6 +219,7 @@ interface TargetFileState {
 }
 
 function CreateTab() {
+  const [tab, setTab] = useState<Tab>('create')
   const [pickerDefaultPath, setPickerDefaultPath] = useState<string[]>(DEFAULT_BASE_PATH)
   const [pickerVersion, setPickerVersion] = useState(0)
   const [folderBaseSegments, setFolderBaseSegments] = useState<string[]>([])
@@ -309,6 +315,22 @@ function CreateTab() {
   useEffect(() => {
     writeJsonStorage(LEFT_PANEL_HIDDEN_KEY, leftPanelHidden)
   }, [leftPanelHidden])
+
+  useEffect(() => {
+    dispatchNewThoughtSidebarChromeStateBlock({ enabled: true, collapsed: leftPanelHidden })
+  }, [leftPanelHidden])
+
+  useEffect(() => {
+    return () => {
+      dispatchNewThoughtSidebarChromeStateBlock({ enabled: false, collapsed: false })
+    }
+  }, [])
+
+  useEffect(() => {
+    const handler = () => setLeftPanelHidden(prev => !prev)
+    window.addEventListener(NEW_THOUGHT_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
+    return () => window.removeEventListener(NEW_THOUGHT_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -759,20 +781,36 @@ function CreateTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setLeftPanelHidden(prev => !prev)}
-        >
-          {leftPanelHidden ? <PanelLeft className="mr-1.5 h-3.5 w-3.5" /> : <PanelLeftClose className="mr-1.5 h-3.5 w-3.5" />}
-          {leftPanelHidden ? 'Show Left Panel' : 'Hide Left Panel'}
-        </Button>
-      </div>
-
       <div className={leftPanelHidden ? 'space-y-6' : 'grid gap-6 lg:grid-cols-[clamp(240px,27vw,340px)_minmax(0,1fr)]'}>
       {!leftPanelHidden && (
         <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+        <Card>
+          <CardContent className="p-2">
+            <nav className="space-y-0.5">
+              {([
+                { id: 'create', label: 'Create', icon: LayoutList },
+                { id: 'view', label: 'View Notes', icon: Eye },
+                { id: 'view_todos', label: 'View To Dos', icon: CheckSquare },
+              ] as const).map(item => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors',
+                    tab === item.id
+                      ? 'bg-accent font-medium text-accent-foreground'
+                      : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                  )}
+                  onClick={() => setTab(item.id)}
+                >
+                  <item.icon className="h-3.5 w-3.5 shrink-0" />
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          </CardContent>
+        </Card>
+        {tab === 'create' && (<>
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Destination</CardTitle>
@@ -941,10 +979,202 @@ function CreateTab() {
             )}
           </div>
         )}
+        </>)}
       </div>
       )}
 
-      <div className="space-y-4">
+      {tab === 'view' && <ThoughtsCalendarOrch />}
+      {tab === 'view_todos' && <TodoCalendarOrch />}
+      {tab === 'create' && <div className="space-y-4">
+        <Card className="overflow-hidden">
+            <CardContent className="p-0">
+              <MarkdownRichEditorBlock
+                value={content}
+                onChange={setContent}
+                currentPath={targetPath ?? ''}
+                placeholder={makeThisTodo ? 'One task per line...' : "What's on your mind?"}
+                toolbarAlwaysVisible
+                aiPanelOpen={showAiAssist}
+                onAiPanelOpenChange={setShowAiAssist}
+                aiAssistScope="new_thought"
+                aiAssistUseCase="new_thought.assist"
+                aiAssistDisabled={saving || loadingTargetContent}
+                aiAssistHelperText="Suggestions apply inline. Configure provider/model in AI Settings."
+                onRelatedThoughtOpenPath={(relatedPath) => {
+                  openFileInNewTabOrch(relatedPath)
+                  setMessage(`Opened ${relatedPath} in a new tab.`)
+                }}
+                className="min-h-[520px] rounded-none border-0 border-b border-border/40 md:min-h-[620px]"
+              />
+
+              <div className="space-y-3 p-4">
+                {makeThisTodo && (
+                  <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    Each non-empty line is saved as a checklist item in the selected todo note.
+                  </div>
+                )}
+
+                {showMetaPanel && (
+                  <div className="space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span><strong className="text-foreground/70">{contentMeta.lines}</strong> lines</span>
+                      <span><strong className="text-foreground/70">{contentMeta.words}</strong> words</span>
+                      <span><strong className="text-foreground/70">{contentMeta.headings}</strong> headings</span>
+                      <span>{contentMeta.size}</span>
+                    </div>
+                    <div className="space-y-1.5 border-t border-border/30 pt-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        YAML Metadata
+                      </div>
+                      <textarea
+                        value={frontmatterPreview}
+                        readOnly
+                        spellCheck={false}
+                        className="min-h-[8rem] w-full rounded-md border border-border/60 bg-background px-2.5 py-2 font-mono text-xs text-foreground outline-none"
+                        aria-label="YAML metadata preview"
+                      />
+                      <div className="text-[11px] text-muted-foreground">
+                        Preview only. Final metadata is generated on save.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground">{makeThisTodo ? 'Date' : 'Filename'}</label>
+                    {makeThisTodo ? (
+                      <input
+                        type="date"
+                        value={todoDateStr}
+                        onChange={(event) => setTodoDateStr(event.target.value)}
+                        className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      />
+                    ) : (
+                      <input
+                        value={filename}
+                        onChange={(event) => {
+                          setFilename(event.target.value)
+                          setFilenameTouched(true)
+                        }}
+                        placeholder="2026-02-26.md"
+                        className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      />
+                    )}
+                  </div>
+
+                  <div className="sm:justify-self-end sm:self-end">
+                    <label
+                      htmlFor="compose-make-this-todo"
+                      className="inline-flex h-10 cursor-pointer select-none items-center gap-2 text-sm text-muted-foreground"
+                    >
+                      <input
+                        id="compose-make-this-todo"
+                        type="checkbox"
+                        checked={makeThisTodo}
+                        onChange={(event) => handleMakeThisTodoChange(event.target.checked)}
+                        className="h-4 w-4 rounded border-input accent-primary focus:ring-2 focus:ring-ring"
+                      />
+                      <span>Make this a todo</span>
+                    </label>
+                  </div>
+                </div>
+
+                {!makeThisTodo && (
+                  <p className="text-[11px] text-muted-foreground/70">
+                    Saved as: {normalizedFilename}
+                  </p>
+                )}
+
+                {makeThisTodo ? (
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground">Detected items</label>
+                    <div className="h-10 rounded-lg border border-input bg-background px-3 text-sm flex items-center">
+                      {todoItemCount} item{todoItemCount !== 1 ? 's' : ''}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {useCustomTitle && (
+                      <div className="space-y-2">
+                        <label className="text-xs text-muted-foreground">Custom title</label>
+                        <input
+                          value={title}
+                          onChange={(event) => setTitle(event.target.value)}
+                          placeholder="Becomes the note title + heading"
+                          className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <div className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
+                    {makeThisTodo ? 'Destination todo file' : 'Destination file'}:{' '}
+                    {targetPath ? (
+                      <button
+                        type="button"
+                        onClick={() => openFileInNewTabOrch(targetPath)}
+                        className="font-mono text-foreground break-all underline decoration-dotted underline-offset-2 hover:text-primary"
+                        title="Open in Thinking Space explorer (new tab)"
+                      >
+                        {targetPath}
+                      </button>
+                    ) : (
+                      <span className="font-mono text-foreground break-all">
+                        {makeThisTodo ? '(select destination + date)' : '(select destination + filename)'}
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    onClick={handleSave}
+                    disabled={!canSave}
+                    className={saveFeedbackVisible && !saving
+                      ? 'ltm-animate-fade-in bg-emerald-600 text-white hover:bg-emerald-600'
+                      : undefined}
+                  >
+                    {saving
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : (saveFeedbackVisible ? 'Saved' : 'Save')}
+                  </Button>
+                </div>
+
+                {!makeThisTodo && loadingTargetContent && (
+                  <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    Loading destination note...
+                  </div>
+                )}
+
+                {savedPath && (
+                  <div className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm">
+                    <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                    <span>
+                      {makeThisTodo
+                        ? (
+                          <>
+                            {itemsAdded} task{itemsAdded !== 1 ? 's' : ''} saved to <span className="font-medium text-foreground">{savedPath}</span>
+                          </>
+                        )
+                        : (
+                          <>
+                            Saved to <span className="font-medium text-foreground">{savedPath}</span>
+                          </>
+                        )}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-xs font-medium text-muted-foreground/60">
+                    {makeThisTodo ? 'Compose To Dos' : 'Compose Note'}
+                  </span>
+                  <InfoPanelToggleButtonBlock active={showMetaPanel} onToggle={() => setShowMetaPanel(v => !v)} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1006,198 +1236,7 @@ function CreateTab() {
             )}
           </CardContent>
         </Card>
-
-        <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">{makeThisTodo ? 'Compose To Dos' : 'Compose Note'}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-0">
-            <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
-              <div className="space-y-2">
-                <label className="text-xs text-muted-foreground">{makeThisTodo ? 'Date' : 'Filename'}</label>
-                {makeThisTodo ? (
-                  <input
-                    type="date"
-                    value={todoDateStr}
-                    onChange={(event) => setTodoDateStr(event.target.value)}
-                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  />
-                ) : (
-                  <input
-                    value={filename}
-                    onChange={(event) => {
-                      setFilename(event.target.value)
-                      setFilenameTouched(true)
-                    }}
-                    placeholder="2026-02-26.md"
-                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  />
-                )}
-              </div>
-
-              <div className="sm:justify-self-end sm:self-end">
-                <label
-                  htmlFor="compose-make-this-todo"
-                  className="inline-flex h-10 cursor-pointer select-none items-center gap-2 text-sm text-muted-foreground"
-                >
-                  <input
-                    id="compose-make-this-todo"
-                    type="checkbox"
-                    checked={makeThisTodo}
-                    onChange={(event) => handleMakeThisTodoChange(event.target.checked)}
-                    className="h-4 w-4 rounded border-input accent-primary focus:ring-2 focus:ring-ring"
-                  />
-                  <span>Make this a todo</span>
-                </label>
-              </div>
-            </div>
-            {!makeThisTodo && (
-              <p className="text-[11px] text-muted-foreground/70">
-                Saved as: {normalizedFilename}
-              </p>
-            )}
-
-            {makeThisTodo ? (
-              <div className="space-y-2">
-                <label className="text-xs text-muted-foreground">Detected items</label>
-                <div className="h-10 rounded-lg border border-input bg-background px-3 text-sm flex items-center">
-                  {todoItemCount} item{todoItemCount !== 1 ? 's' : ''}
-                </div>
-              </div>
-            ) : (
-              <>
-                {useCustomTitle && (
-                  <div className="space-y-2">
-                    <label className="text-xs text-muted-foreground">Custom title</label>
-                    <input
-                      value={title}
-                      onChange={(event) => setTitle(event.target.value)}
-                      placeholder="Becomes the note title + heading"
-                      className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                    />
-                  </div>
-                )}
-              </>
-            )}
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <label className="text-xs text-muted-foreground">{makeThisTodo ? 'Tasks' : 'Content'}</label>
-                <div className="flex items-center gap-1">
-                  <InfoPanelToggleButtonBlock active={showMetaPanel} onToggle={() => setShowMetaPanel(v => !v)} />
-                </div>
-              </div>
-
-              {makeThisTodo && (
-                <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                  Each non-empty line is saved as a checklist item in the selected todo note.
-                </div>
-              )}
-
-              {showMetaPanel && (
-                <div className="space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3">
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span><strong className="text-foreground/70">{contentMeta.lines}</strong> lines</span>
-                    <span><strong className="text-foreground/70">{contentMeta.words}</strong> words</span>
-                    <span><strong className="text-foreground/70">{contentMeta.headings}</strong> headings</span>
-                    <span>{contentMeta.size}</span>
-                  </div>
-                  <div className="space-y-1.5 border-t border-border/30 pt-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                      YAML Metadata
-                    </div>
-                    <textarea
-                      value={frontmatterPreview}
-                      readOnly
-                      spellCheck={false}
-                      className="min-h-[8rem] w-full rounded-md border border-border/60 bg-background px-2.5 py-2 font-mono text-xs text-foreground outline-none"
-                      aria-label="YAML metadata preview"
-                    />
-                    <div className="text-[11px] text-muted-foreground">
-                      Preview only. Final metadata is generated on save.
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                <div className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
-                  {makeThisTodo ? 'Destination todo file' : 'Destination file'}:{' '}
-                  {targetPath ? (
-                    <button
-                      type="button"
-                      onClick={() => openFileInNewTabOrch(targetPath)}
-                      className="font-mono text-foreground break-all underline decoration-dotted underline-offset-2 hover:text-primary"
-                      title="Open in Thinking Space explorer (new tab)"
-                    >
-                      {targetPath}
-                    </button>
-                  ) : (
-                    <span className="font-mono text-foreground break-all">
-                      {makeThisTodo ? '(select destination + date)' : '(select destination + filename)'}
-                    </span>
-                  )}
-                </div>
-                <Button
-                  onClick={handleSave}
-                  disabled={!canSave}
-                  className={saveFeedbackVisible && !saving
-                    ? 'ltm-animate-fade-in bg-emerald-600 text-white hover:bg-emerald-600'
-                    : undefined}
-                >
-                  {saving
-                    ? <Loader2 className="h-4 w-4 animate-spin" />
-                    : (saveFeedbackVisible ? 'Saved' : 'Save')}
-                </Button>
-              </div>
-
-              {!makeThisTodo && loadingTargetContent && (
-                <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                  Loading destination note...
-                </div>
-              )}
-
-              <MarkdownRichEditorBlock
-                value={content}
-                onChange={setContent}
-                currentPath={targetPath ?? ''}
-                placeholder={makeThisTodo ? 'One task per line...' : "What's on your mind?"}
-                toolbarAlwaysVisible
-                aiPanelOpen={showAiAssist}
-                onAiPanelOpenChange={setShowAiAssist}
-                aiAssistScope="new_thought"
-                aiAssistUseCase="new_thought.assist"
-                aiAssistDisabled={saving || loadingTargetContent}
-                aiAssistHelperText="Suggestions apply inline. Configure provider/model in AI Settings."
-                onRelatedThoughtOpenPath={(relatedPath) => {
-                  openFileInNewTabOrch(relatedPath)
-                  setMessage(`Opened ${relatedPath} in a new tab.`)
-                }}
-                className="min-h-[520px] md:min-h-[620px]"
-              />
-            </div>
-
-            {savedPath && (
-              <div className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm">
-                <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                <span>
-                  {makeThisTodo
-                    ? (
-                      <>
-                        {itemsAdded} task{itemsAdded !== 1 ? 's' : ''} saved to <span className="font-medium text-foreground">{savedPath}</span>
-                      </>
-                    )
-                    : (
-                      <>
-                        Saved to <span className="font-medium text-foreground">{savedPath}</span>
-                      </>
-                    )}
-                </span>
-              </div>
-            )}
-            </CardContent>
-          </Card>
-      </div>
+      </div>}
       </div>
 
       {quickDestinationModalOpen && (
@@ -1272,71 +1311,9 @@ function CreateTab() {
 }
 
 export default function NewThought() {
-  const [tab, setTab] = useState<Tab>('create')
-
   return (
-    <div className="relative isolate ltm-page overflow-hidden">
-      <div className="ltm-page-fixed-bg-anchor">
-        <div className="ltm-page-fixed-bg-canvas">
-          <div className="absolute inset-0 bg-[radial-gradient(1200px_600px_at_20%_-10%,rgba(59,130,246,0.25),transparent_60%),radial-gradient(900px_500px_at_80%_0%,rgba(168,85,247,0.18),transparent_55%),radial-gradient(800px_500px_at_50%_100%,rgba(16,185,129,0.12),transparent_55%)]" />
-          <div
-            className="absolute inset-0 opacity-28"
-            style={{
-              backgroundImage:
-                'radial-gradient(rgba(31,41,55,0.25) 1px, transparent 1px), radial-gradient(rgba(31,41,55,0.15) 1px, transparent 1px)',
-              backgroundSize: '180px 180px, 300px 300px',
-              backgroundPosition: '0 0, 90px 110px',
-            }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-background/10 via-transparent to-background/60" />
-        </div>
-      </div>
-
-      <div className="relative z-10 ltm-page-shell ltm-shell-wide">
-        <header className="mb-6 sm:mb-8">
-          <div className="flex items-start sm:items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-              <PenLine className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">New Note</h1>
-              <p className="text-sm text-muted-foreground">
-                Capture notes quickly, then refine them in the shared editor.
-              </p>
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Button
-              variant={tab === 'create' ? 'default' : 'secondary'}
-              size="sm"
-              onClick={() => setTab('create')}
-            >
-              <LayoutList className="h-3.5 w-3.5 mr-1.5" />
-              Create
-            </Button>
-            <Button
-              variant={tab === 'view' ? 'default' : 'secondary'}
-              size="sm"
-              onClick={() => setTab('view')}
-            >
-              <Eye className="h-3.5 w-3.5 mr-1.5" />
-              View Notes
-            </Button>
-            <Button
-              variant={tab === 'view_todos' ? 'default' : 'secondary'}
-              size="sm"
-              onClick={() => setTab('view_todos')}
-            >
-              <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
-              View To Dos
-            </Button>
-          </div>
-        </header>
-
-        {tab === 'create' && <CreateTab />}
-        {tab === 'view' && <ThoughtsCalendarOrch />}
-        {tab === 'view_todos' && <TodoCalendarOrch />}
-      </div>
+    <div className="ltm-page-shell ltm-shell-wide">
+      <CreateTab />
     </div>
   )
 }

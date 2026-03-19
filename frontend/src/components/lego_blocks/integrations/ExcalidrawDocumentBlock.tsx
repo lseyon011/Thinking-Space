@@ -1233,6 +1233,8 @@ export default function ExcalidrawDocumentBlock({
     )
   }
 
+  const documentKey = editable && filePath != null ? `${filePath}::editable` : content
+
   return (
     <div
       ref={containerRef}
@@ -1248,6 +1250,7 @@ export default function ExcalidrawDocumentBlock({
       )}
       <Suspense fallback={<div className="px-4 py-3 text-sm text-muted-foreground">Loading Excalidraw canvas...</div>}>
         <ExcalidrawCanvas
+          key={documentKey}
           excalidrawAPI={(api: unknown) => setExcalidrawApi(createExcalidrawCanvasApiOrch(api))}
           initialData={initialData as any}
           viewModeEnabled={!editable}

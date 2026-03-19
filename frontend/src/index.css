@@ -751,28 +751,14 @@
 
   .ltm-shell-tabs .ltm-tab-item {
     touch-action: manipulation;
-    transform: translateY(0) scale(1);
     transition:
       opacity var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
       background-color var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
-      box-shadow var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
-      border-color var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
-      transform var(--ltm-shell-motion-tab-duration, 100ms) var(--ltm-shell-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
-  }
-
-  .ltm-shell-tabs .ltm-tab-item:hover {
-    transform: translateY(-1px);
-  }
-
-  .ltm-shell-tabs .ltm-tab-item:active {
-    transform: translateY(0) scale(0.985);
+      border-color var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1));
   }
 
   .ltm-shell-tabs .ltm-tab-item.ltm-tab-active {
-    transform: translateY(-1px);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.48),
-      0 2px 8px -6px rgb(0 0 0 / 0.35);
+    box-shadow: none;
   }
 
   .ltm-tab-scroll-track {

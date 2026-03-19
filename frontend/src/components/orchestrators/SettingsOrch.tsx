@@ -73,8 +73,9 @@ import {
   updateWebSiteGroupOrch,
 } from '@/services/orchestrators/webSiteOrch'
 import type { WebSitePreferencesBlock } from '@/services/lego_blocks/units/webSiteBlock'
+import DeveloperSetupBlock from '@/components/lego_blocks/integrations/DeveloperSetupBlock'
 
-export type SettingsTabId = 'theme' | 'explorer' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'f9' | 'rss' | 'cache' | 'vault' | 'about'
+export type SettingsTabId = 'theme' | 'explorer' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'f9' | 'rss' | 'cache' | 'vault' | 'about' | 'developer'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
 
 interface SettingsOrchProps {
@@ -114,6 +115,7 @@ const TAB_OPTIONS: Array<{ id: SettingsTabWithProfileId; label: string }> = [
   { id: 'cache', label: 'Clear Cache' },
   { id: 'vault', label: 'Select Thinking Space' },
   { id: 'about', label: 'About' },
+  { id: 'developer', label: 'Developer' },
 ]
 
 export default function SettingsOrch({
@@ -1102,6 +1104,20 @@ export default function SettingsOrch({
       )}
 
       {activeTab === 'about' && <AboutSection />}
+
+      {activeTab === 'developer' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Customize This App</CardTitle>
+            <CardDescription>
+              Modify Thinking Space with AI assistance — see changes live, then build a permanent version.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DeveloperSetupBlock />
+          </CardContent>
+        </Card>
+      )}
 
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}

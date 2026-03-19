@@ -1,0 +1,243 @@
+import { useCallback, useEffect, useState } from 'react'
+import { Button } from '@/components/lego_blocks/units/ui/button'
+import { Switch } from '@/components/lego_blocks/units/ui/switch'
+import { isElectron } from '@/services/orchestrators/runtimeOrch'
+import SourceEnvCheckBlock from './SourceEnvCheckBlock'
+import AppRebuildBlock from './AppRebuildBlock'
+
+interface SourceConfig {
+  mode: 'live-source' | 'locked'
+  sourcePath: string | null
+  vitePort: number
+  viteRunning: boolean
+}
+
+interface EnvStatus {
+  nodeVersion: string | null
+  nodeMeetsMinimum: boolean
+  npmVersion: string | null
+  depsInstalled: boolean
+}
+
+function StepRow({
+  number,
+  done,
+  label,
+  children,
+}: {
+  number: number
+  done: boolean
+  label: string
+  children?: React.ReactNode
+}) {
+  return (
+    <div className="flex gap-4">
+      <div className="flex flex-col items-center pt-0.5">
+        <div
+          className={[
+            'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+            done
+              ? 'bg-emerald-500 text-white'
+              : 'bg-muted text-muted-foreground',
+          ].join(' ')}
+        >
+          {done ? '✓' : number}
+        </div>
+        {children && <div className="mt-1 w-px flex-1 bg-border/50" />}
+      </div>
+      <div className="min-w-0 flex-1 pb-5">
+        <p className={['text-sm font-medium leading-6', done ? 'text-muted-foreground' : 'text-foreground'].join(' ')}>
+          {label}
+        </p>
+        {children && <div className="mt-2">{children}</div>}
+      </div>
+    </div>
+  )
+}
+
+export default function DeveloperSetupBlock() {
+  const [config, setConfig] = useState<SourceConfig | null>(null)
+  const [envStatus, setEnvStatus] = useState<EnvStatus | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [restartNeeded, setRestartNeeded] = useState(false)
+  const [pathError, setPathError] = useState<string | null>(null)
+  const [rebuildOpen, setRebuildOpen] = useState(false)
+
+  // Load config once
+  useEffect(() => {
+    if (!isElectron()) return
+    void window.electronAPI!.sourceConfigGet!().then((c) => setConfig(c as SourceConfig))
+  }, [])
+
+  // Load env status (called after install too)
+  const refreshEnv = useCallback(async () => {
+    if (!isElectron()) return
+    const result = await window.electronAPI!.sourceEnvCheck!()
+    setEnvStatus(result)
+  }, [])
+
+  useEffect(() => { void refreshEnv() }, [refreshEnv])
+
+  const toggleEditMode = async (on: boolean) => {
+    if (!config) return
+    setSaving(true)
+    try {
+      await window.electronAPI!.sourceConfigSet!({ mode: on ? 'live-source' : 'locked' })
+      setConfig(prev => prev ? { ...prev, mode: on ? 'live-source' : 'locked' } : prev)
+      setRestartNeeded(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handlePickPath = async () => {
+    const picked = await window.electronAPI!.selectVaultFolder()
+    if (!picked) return
+    setPathError(null)
+    setSaving(true)
+    try {
+      await window.electronAPI!.sourceConfigSet!({ sourcePath: picked })
+      setConfig(prev => prev ? { ...prev, sourcePath: picked } : prev)
+      setRestartNeeded(true)
+      void refreshEnv()
+    } catch (e) {
+      setPathError(e instanceof Error ? e.message : 'Failed to save path')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!isElectron()) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Developer features are only available in the desktop app.
+      </p>
+    )
+  }
+
+  if (!config) {
+    return <p className="text-sm text-muted-foreground">Loading…</p>
+  }
+
+  const toolsReady = !!(envStatus?.nodeMeetsMinimum && envStatus?.npmVersion && envStatus?.depsInstalled)
+  const editModeOn = config.mode === 'live-source'
+  const fullyReady = toolsReady && editModeOn
+
+  return (
+    <div className="space-y-6">
+      {/* Hero */}
+      <div className="space-y-1">
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Thinking Space ships with its own source code. Open the terminal, run{' '}
+          <code className="rounded bg-muted px-1.5 py-0.5 text-xs">claude</code>, and ask it to
+          change anything — the layout, features, shortcuts. Changes appear instantly.
+        </p>
+      </div>
+
+      {/* Setup steps */}
+      <div className="space-y-0">
+        {/* Step 1: Tools */}
+        <StepRow number={1} done={toolsReady} label="Development tools">
+          <SourceEnvCheckBlock onStatusChange={setEnvStatus} />
+        </StepRow>
+
+        {/* Step 2: Edit Mode */}
+        <StepRow number={2} done={editModeOn} label="Turn on Edit Mode">
+          <div className="space-y-3">
+            <label className="flex cursor-pointer items-center justify-between gap-4 rounded-md border border-border/60 bg-background px-3 py-2.5">
+              <div className="space-y-0.5">
+                <div className="text-sm font-medium">Edit Mode</div>
+                <div className="text-xs text-muted-foreground">
+                  Loads the app from your source files. Changes appear instantly — no rebuild needed.
+                </div>
+              </div>
+              <Switch
+                checked={editModeOn}
+                onCheckedChange={(checked) => void toggleEditMode(checked)}
+                disabled={saving}
+                aria-label="Edit Mode"
+              />
+            </label>
+
+            {restartNeeded && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Restart the app to apply this change.
+              </p>
+            )}
+          </div>
+        </StepRow>
+
+        {/* Step 3: Use it */}
+        <div className="flex gap-4">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground mt-0.5">
+            3
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className={['text-sm font-medium leading-6', !fullyReady ? 'text-muted-foreground' : 'text-foreground'].join(' ')}>
+              Open the terminal and run Claude Code
+            </p>
+            {fullyReady && (
+              <div className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 space-y-2">
+                <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                  You&apos;re all set
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Open the <strong>Terminal</strong> tab and run:
+                </p>
+                <code className="block rounded bg-black/20 px-2 py-1 text-xs font-mono text-emerald-700 dark:text-emerald-300">
+                  claude
+                </code>
+                <p className="text-xs text-muted-foreground">
+                  Then describe what you want to change. Claude Code will edit the source files,
+                  and you&apos;ll see the result live.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Source path (advanced) */}
+      <details className="rounded-md border border-border/50 [&>summary]:cursor-pointer">
+        <summary className="px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground select-none">
+          Source files location
+        </summary>
+        <div className="border-t border-border/50 px-3 py-3 space-y-2">
+          <p className="text-xs text-muted-foreground">
+            By default the app uses the copy bundled inside it. You can point it at your own git
+            repo instead.
+          </p>
+          <div className="flex gap-2">
+            <div className="flex-1 rounded-md border border-input bg-muted/30 px-3 py-2 text-xs font-mono truncate text-foreground">
+              {config.sourcePath ?? (
+                <span className="text-muted-foreground">Not set</span>
+              )}
+            </div>
+            <Button size="sm" variant="outline" onClick={() => void handlePickPath()} disabled={saving}>
+              Change
+            </Button>
+          </div>
+          {pathError && <p className="text-xs text-destructive">{pathError}</p>}
+        </div>
+      </details>
+
+      {/* Rebuild (advanced) */}
+      <details
+        className="rounded-md border border-border/50 [&>summary]:cursor-pointer"
+        open={rebuildOpen}
+        onToggle={(e) => setRebuildOpen((e.currentTarget as HTMLDetailsElement).open)}
+      >
+        <summary className="px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground select-none">
+          Build a permanent version
+        </summary>
+        <div className="border-t border-border/50 px-3 py-3">
+          <p className="mb-3 text-xs text-muted-foreground">
+            Compiles your edited source into a new app bundle and replaces the running app.
+            Takes about 2 minutes. macOS only.
+          </p>
+          <AppRebuildBlock />
+        </div>
+      </details>
+    </div>
+  )
+}

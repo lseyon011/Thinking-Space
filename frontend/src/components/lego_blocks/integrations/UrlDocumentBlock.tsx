@@ -8,6 +8,7 @@ import {
   closeInlineWebViewBlock,
   updateInlineWebViewFrameBlock,
 } from '@/services/lego_blocks/units/inlineWebViewBlock'
+import { logError } from '@/services/lego_blocks/units/debugLogBlock'
 import { cn } from '@/lib/utils'
 
 const LINK_WEBVIEW_PARTITION = 'persist:thinking-space-links'
@@ -142,10 +143,14 @@ function UrlDocumentBlock({
     if (!webview) return
 
     const handleFailLoad = (event: unknown) => {
-      const message = typeof event === 'object' && event !== null
-        ? String((event as { errorDescription?: unknown }).errorDescription ?? 'Failed to load page.')
-        : 'Failed to load page.'
-      setLoadError(message)
+      const ev = event as { errorCode?: number; errorDescription?: unknown; validatedURL?: string } | null
+      const errorCode = ev?.errorCode ?? 0
+      // ERR_ABORTED (-3) fires on normal navigation cancellations — not a real error
+      if (errorCode === -3) return
+      const description = String(ev?.errorDescription ?? 'Failed to load page.')
+      const failedUrl = ev?.validatedURL ?? resolvedUrl ?? ''
+      setLoadError(description)
+      logError(description, failedUrl ? `URL: ${failedUrl}` : undefined, 'webview')
     }
 
     const updateCanGoBack = () => {

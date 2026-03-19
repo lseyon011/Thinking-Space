@@ -77,6 +77,7 @@ export class ElectronCapacitorApp {
   private mainWindowState;
   private loadWebApp;
   private customScheme: string;
+  private liveSourceUrl: string | null = null;
 
   constructor(
     capacitorFileConfig: CapacitorElectronConfig,
@@ -103,8 +104,12 @@ export class ElectronCapacitorApp {
   }
 
   // Helper function to load in the app.
-  private async loadMainWindow(thisRef: any) {
-    await thisRef.loadWebApp(thisRef.windows[0]);
+  private async loadMainWindow(thisRef: ElectronCapacitorApp) {
+    if (thisRef.liveSourceUrl) {
+      await thisRef.windows[0].loadURL(thisRef.liveSourceUrl);
+    } else {
+      await thisRef.loadWebApp(thisRef.windows[0]);
+    }
   }
 
   // Expose the first window for backward compatibility.
@@ -118,6 +123,30 @@ export class ElectronCapacitorApp {
 
   getCustomURLScheme(): string {
     return this.customScheme;
+  }
+
+  setLiveSourceUrl(url: string | null): void {
+    this.liveSourceUrl = url;
+  }
+
+  getLiveSourceUrl(): string | null {
+    return this.liveSourceUrl;
+  }
+
+  reloadAllWindows(): void {
+    for (const win of this.windows) {
+      if (win.isDestroyed()) continue;
+      if (this.liveSourceUrl) {
+        void win.loadURL(this.liveSourceUrl);
+      } else {
+        void this.loadWebApp(win);
+      }
+    }
+  }
+
+  private isLiveSourceUrl(url: string): boolean {
+    if (!this.liveSourceUrl) return false;
+    return url.startsWith('http://127.0.0.1:') || url.startsWith('http://localhost:');
   }
 
   private getWindowChromeOptions() {
@@ -320,7 +349,8 @@ export class ElectronCapacitorApp {
       return { action: 'deny' };
     });
     newWindow.webContents.on('will-navigate', (event, _newURL) => {
-      if (!newWindow.webContents.getURL().includes(this.customScheme)) {
+      const currentUrl = newWindow.webContents.getURL();
+      if (!currentUrl.includes(this.customScheme) && !this.isLiveSourceUrl(currentUrl)) {
         event.preventDefault();
       }
     });
@@ -334,7 +364,11 @@ export class ElectronCapacitorApp {
     });
 
     this.routeWindowAfterLoad(newWindow, route);
-    await this.loadWebApp(newWindow);
+    if (this.liveSourceUrl) {
+      await newWindow.loadURL(this.liveSourceUrl);
+    } else {
+      await this.loadWebApp(newWindow);
+    }
     return newWindow;
   }
 
@@ -444,7 +478,8 @@ export class ElectronCapacitorApp {
       return { action: 'deny' };
     });
     mainWindow.webContents.on('will-navigate', (event, _newURL) => {
-      if (!mainWindow.webContents.getURL().includes(this.customScheme)) {
+      const currentUrl = mainWindow.webContents.getURL();
+      if (!currentUrl.includes(this.customScheme) && !this.isLiveSourceUrl(currentUrl)) {
         event.preventDefault();
       }
     });

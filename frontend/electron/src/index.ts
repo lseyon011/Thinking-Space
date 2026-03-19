@@ -36,6 +36,30 @@ import {
   writePersistedVaultRootBlock,
 } from './lego_blocks/vaultRootPersistenceBlock';
 import {
+  readSourceConfigBlock,
+  writeSourceConfigBlock,
+} from './lego_blocks/sourceConfigBlock';
+import {
+  isViteServerRunningBlock,
+  startViteServerBlock,
+  stopViteServerBlock,
+} from './lego_blocks/viteServerBlock';
+import {
+  applyRebuildBlock,
+  runRebuildPipelineBlock,
+} from './lego_blocks/viteRebuildBlock';
+import {
+  checkNodeEnvBlock,
+  installDepsBlock,
+} from './lego_blocks/nodeEnvCheckBlock';
+import {
+  createPtyBlock,
+  killPtysForWebContentsBlock,
+  killPtyBlock,
+  resizePtyBlock,
+  writePtyBlock,
+} from './lego_blocks/ptyManagerBlock';
+import {
   createHierarchyEdgeOrch,
   createHierarchyNodeOrch,
   createHierarchyThoughtLinkOrch,
@@ -206,6 +230,20 @@ if (electronIsDev) {
   // Security - Set Content-Security-Policy based on whether or not we are in dev mode.
   setupContentSecurityPolicy(myCapacitorApp.getCustomURLScheme());
   setupWebviewSessionPermissions();
+  // Phase 5: If no source path is configured yet and bundled source exists,
+  // extract it to a writable userData location for regular users.
+  await ensureDefaultSourcePathBlock();
+  // Apply live-source mode if configured.
+  const sourceConfig = readSourceConfigBlock();
+  if (sourceConfig.mode === 'live-source' && sourceConfig.sourcePath) {
+    try {
+      await startViteServerBlock(sourceConfig.sourcePath, sourceConfig.vitePort);
+      myCapacitorApp.setLiveSourceUrl(`http://127.0.0.1:${sourceConfig.vitePort}`);
+    } catch (err) {
+      console.error('[live-source] Failed to start Vite server:', err);
+      // Fall back to locked mode — don't block startup
+    }
+  }
   // Initialize our app, build windows, and load content.
   await myCapacitorApp.init();
   configureAppIconMenu();
@@ -216,6 +254,18 @@ if (electronIsDev) {
     });
   }
 })();
+
+// Stop Vite dev server when quitting.
+app.on('will-quit', () => {
+  stopViteServerBlock();
+});
+
+// Clean up PTYs when a window is closed.
+app.on('web-contents-created', (_event, wc) => {
+  wc.on('destroyed', () => {
+    killPtysForWebContentsBlock(wc.id);
+  });
+});
 
 // Handle when all of our windows are close (platforms have their own expectations).
 app.on('window-all-closed', function () {
@@ -241,6 +291,121 @@ ipcMain.handle('window:new', async (_event, route?: string) => {
 });
 
 // =====================================================================
+// IPC Handlers — Embedded Terminal (node-pty)
+// =====================================================================
+
+ipcMain.handle('terminal:create', (event, opts: { cwd?: string; cols: number; rows: number }) => {
+  const id = createPtyBlock({
+    cwd: opts.cwd,
+    cols: opts.cols,
+    rows: opts.rows,
+    webContentsId: event.sender.id,
+  });
+  return { id };
+});
+
+ipcMain.handle('terminal:input', (_event, { id, data }: { id: string; data: string }) => {
+  writePtyBlock(id, data);
+});
+
+ipcMain.handle('terminal:resize', (_event, { id, cols, rows }: { id: string; cols: number; rows: number }) => {
+  resizePtyBlock(id, cols, rows);
+});
+
+ipcMain.handle('terminal:kill', (_event, { id }: { id: string }) => {
+  killPtyBlock(id);
+});
+
+// =====================================================================
+// IPC Handlers — Live Source Config
+// =====================================================================
+
+ipcMain.handle('source:config:get', () => {
+  return { ...readSourceConfigBlock(), viteRunning: isViteServerRunningBlock() };
+});
+
+// =====================================================================
+// IPC Handlers — App Rebuild
+// =====================================================================
+
+ipcMain.handle('source:rebuild:start', async (event) => {
+  const config = readSourceConfigBlock();
+  if (!config.sourcePath) {
+    return { ok: false, error: 'No source path configured. Set one in Settings → Developer.' };
+  }
+
+  // Fire-and-forget: stream progress events back to the renderer window
+  void runRebuildPipelineBlock(config.sourcePath, (progress) => {
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('source:rebuild:progress', progress);
+    }
+  }).then(({ newAppPath }) => {
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('source:rebuild:done', { ok: true, newAppPath });
+    }
+  }).catch((err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('source:rebuild:done', { ok: false, error: message });
+    }
+  });
+
+  return { ok: true, started: true };
+});
+
+ipcMain.handle('source:rebuild:apply', async (_event, newAppPath: string) => {
+  try {
+    applyRebuildBlock(newAppPath);
+    setTimeout(() => app.quit(), 500);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
+ipcMain.handle('source:config:set', async (_event, config: { mode?: string; sourcePath?: string | null; vitePort?: number }) => {
+  const next = writeSourceConfigBlock({
+    ...(config.mode === 'live-source' || config.mode === 'locked' ? { mode: config.mode } : {}),
+    ...(config.sourcePath !== undefined ? { sourcePath: config.sourcePath } : {}),
+    ...(config.vitePort !== undefined ? { vitePort: config.vitePort } : {}),
+  });
+  return { ...next, requiresRestart: true };
+});
+
+// =====================================================================
+// IPC Handlers — Node / Dependency Environment Check
+// =====================================================================
+
+ipcMain.handle('source:env:check', () => {
+  const config = readSourceConfigBlock();
+  return checkNodeEnvBlock(config.sourcePath);
+});
+
+ipcMain.handle('source:install:deps', async (event) => {
+  const config = readSourceConfigBlock();
+  if (!config.sourcePath) {
+    return { ok: false, error: 'No source path configured. Set one in Settings → Developer.' };
+  }
+  try {
+    await installDepsBlock(config.sourcePath, (progress) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('source:install:progress', progress);
+      }
+    });
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('source:install:done', { ok: true });
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('source:install:done', { ok: false, error: message });
+    }
+    return { ok: false, error: message };
+  }
+});
+
+// =====================================================================
 // CLI Install
 // =====================================================================
 
@@ -261,6 +426,28 @@ function getCliTargetPath(): string {
     return path.join(appData, 'thinkspc', 'thinkspc.cmd');
   }
   return '/usr/local/bin/thinkspc';
+}
+
+// =====================================================================
+// Phase 5: Bundled Source Extraction
+// =====================================================================
+
+async function ensureDefaultSourcePathBlock(): Promise<void> {
+  const config = readSourceConfigBlock();
+  if (config.sourcePath) return; // already configured — power user or previously set
+
+  // Check if bundled source was included in the app package
+  const bundledSource = path.join(process.resourcesPath, 'source');
+  if (!fs.existsSync(path.join(bundledSource, 'package.json'))) return;
+
+  // Copy to a writable userData location so the user can npm install and modify
+  const userDataSource = path.join(app.getPath('userData'), 'source');
+  if (!fs.existsSync(path.join(userDataSource, 'package.json'))) {
+    await fsPromises.cp(bundledSource, userDataSource, { recursive: true });
+  }
+
+  // Record the path (mode stays 'locked' — user opts in by enabling live-source)
+  writeSourceConfigBlock({ sourcePath: userDataSource });
 }
 
 async function installCliTool(): Promise<{ targetPath: string }> {

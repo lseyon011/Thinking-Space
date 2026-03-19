@@ -103,6 +103,22 @@ interface ElectronAPI {
   vaultRootSetPersisted?(vaultRoot: string | null): Promise<void>
   newWindow?(route?: string): Promise<void>
   markdownEditorOnPasteAsTable?(handler: () => void): () => void
+  sourceConfigGet?(): Promise<{ mode: string; sourcePath: string | null; vitePort: number; viteRunning: boolean }>
+  sourceConfigSet?(config: { mode?: string; sourcePath?: string | null; vitePort?: number }): Promise<{ mode: string; sourcePath: string | null; vitePort: number; requiresRestart: boolean }>
+  sourceEnvCheck?(): Promise<{ nodeVersion: string | null; nodeMeetsMinimum: boolean; npmVersion: string | null; depsInstalled: boolean }>
+  sourceInstallDeps?(): Promise<{ ok: boolean; error?: string }>
+  onSourceInstallProgress?(handler: (entry: { step: string; message: string; type: string }) => void): () => void
+  onSourceInstallDone?(handler: (result: { ok: boolean; error?: string }) => void): () => void
+  sourceRebuildStart?(): Promise<{ ok: boolean; started?: boolean; error?: string }>
+  sourceRebuildApply?(newAppPath: string): Promise<{ ok: boolean; error?: string }>
+  onSourceRebuildProgress?(handler: (event: { step: string; message: string; type: string }) => void): () => void
+  onSourceRebuildDone?(handler: (result: { ok: boolean; newAppPath?: string; error?: string }) => void): () => void
+  terminalCreate?(opts: { cwd?: string; cols: number; rows: number }): Promise<{ id: string }>
+  terminalInput?(id: string, data: string): Promise<void>
+  terminalResize?(id: string, cols: number, rows: number): Promise<void>
+  terminalKill?(id: string): Promise<void>
+  onTerminalData?(id: string, handler: (data: string) => void): () => void
+  onTerminalExit?(id: string, handler: (exitCode: number) => void): () => void
   read(vaultRoot: string, relPath: string): Promise<string>
   write(vaultRoot: string, relPath: string, data: string): Promise<void>
   readBytesBase64?(vaultRoot: string, relPath: string): Promise<string>

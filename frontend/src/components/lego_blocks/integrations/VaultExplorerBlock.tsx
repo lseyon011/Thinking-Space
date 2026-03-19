@@ -209,9 +209,13 @@ export default function VaultExplorerBlock({
   const renameSubmittingRef = useRef(false)
   // Prevents the Enter keydown that opened the rename from immediately committing it
   const renameJustOpenedRef = useRef(false)
+  // Tracks the latest inlineRename state as a ref so commitInlineRename always
+  // reads the current value even when called from onBlur after unmount (stale closure).
+  const inlineRenameRef = useRef<InlineRenameState | null>(null)
   const queryMatchCacheRef = useRef<Map<string, boolean>>(new Map())
   const nodesRef = useRef<Record<string, NodeState>>({})
   nodesRef.current = nodes
+  inlineRenameRef.current = inlineRename
 
   const getNode = useCallback(
     (path: string): NodeState =>
@@ -542,10 +546,13 @@ export default function VaultExplorerBlock({
   }, [inlineRename, rowRefKey])
 
   const commitInlineRename = useCallback(async () => {
-    if (!inlineRename || renameSubmittingRef.current) return
-    const currentPath = inlineRename.path
-    const currentKind = inlineRename.kind
-    const trimmed = inlineRename.value.trim()
+    // Use inlineRenameRef.current (not inlineRename from closure) so that if onBlur
+    // fires after a successful Enter-commit (when the input unmounts while focused),
+    // we see the already-cleared null and bail out instead of double-committing.
+    if (!inlineRenameRef.current || renameSubmittingRef.current) return
+    const currentPath = inlineRenameRef.current.path
+    const currentKind = inlineRenameRef.current.kind
+    const trimmed = inlineRenameRef.current.value.trim()
     const original = getLeafName(currentPath)
 
     if (!trimmed || trimmed === original) {
@@ -577,7 +584,7 @@ export default function VaultExplorerBlock({
     } finally {
       renameSubmittingRef.current = false
     }
-  }, [cancelInlineRename, inlineRename, loadPath, onRenamePath])
+  }, [cancelInlineRename, loadPath, onRenamePath])
 
   const runContextAction = useCallback(
     async (
@@ -597,6 +604,16 @@ export default function VaultExplorerBlock({
           } else {
             setSelectedFolderPath(createdPath)
           }
+          // Ensure parent folder (and all its ancestors) are expanded so the
+          // newly created item is immediately visible without manual clicking.
+          const ancestorsToExpand = collectRefreshPaths(createdParent).filter(p => p !== '')
+          if (ancestorsToExpand.length > 0) {
+            setExpandedPaths(prev => {
+              const set = new Set(prev)
+              for (const p of ancestorsToExpand) set.add(p)
+              return set.size === prev.length ? prev : [...set]
+            })
+          }
         } else if (result === false) {
           setPendingRename(null)
         }
@@ -615,7 +632,7 @@ export default function VaultExplorerBlock({
         setContextMenu(null)
       }
     },
-    [loadPath, refreshRoot],
+    [loadPath, refreshRoot, setExpandedPaths],
   )
 
   const openContextMenu = useCallback(
@@ -755,7 +772,7 @@ export default function VaultExplorerBlock({
                   }
                 }}
                 onBlur={() => { void commitInlineRename() }}
-                className="h-6 flex-1 rounded border border-input bg-background px-1.5 text-xs outline-none focus:border-ring"
+                className="h-6 flex-1 rounded border border-transparent bg-transparent px-1.5 text-xs outline-none focus:border-ring focus:bg-background"
                 aria-label="Rename folder"
               />
             </div>,
@@ -892,7 +909,7 @@ export default function VaultExplorerBlock({
                   }
                 }}
                 onBlur={() => { void commitInlineRename() }}
-                className="h-6 flex-1 rounded border border-white/45 bg-black/20 px-1.5 text-xs text-white outline-none placeholder:text-white/70 focus:border-white"
+                className="h-6 flex-1 rounded border border-transparent bg-transparent px-1.5 text-xs text-white outline-none placeholder:text-white/70 focus:border-white/50"
                 aria-label="Rename file"
               />
             </div>,

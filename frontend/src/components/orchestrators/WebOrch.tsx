@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Globe } from 'lucide-react'
 import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentBlock'
 import WebSitePanelBlock from '@/components/lego_blocks/integrations/WebSitePanelBlock'
@@ -16,10 +17,12 @@ import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/u
 export default function WebOrch() {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
+  const [searchParams, setSearchParams] = useSearchParams()
   const [prefs, setPrefs] = useState<WebSitePreferencesBlock>({ bookmarks: [], groups: [] })
-  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [webviewHeaderVisible, setWebviewHeaderVisible] = useState(true)
+
+  const selectedSiteId = searchParams.get('site')
 
   useEffect(() => { void readWebSitePreferencesOrch().then(setPrefs) }, [])
 
@@ -28,14 +31,16 @@ export default function WebOrch() {
   // Dispatch chrome state on changes
   useEffect(() => {
     const label = selectedSite ? `Web · ${selectedSite.name}` : 'Web'
+    const siteLabels = Object.fromEntries(prefs.bookmarks.map(b => [b.id, b.name]))
     dispatchWebSidebarChromeStateBlock({
       enabled: true,
       collapsed: sidebarCollapsed,
       headerVisible: webviewHeaderVisible,
       showHeaderToggle: selectedSite !== null,
       label,
+      siteLabels,
     })
-  }, [selectedSiteId, sidebarCollapsed, webviewHeaderVisible, selectedSite])
+  }, [selectedSiteId, sidebarCollapsed, webviewHeaderVisible, selectedSite, prefs.bookmarks])
 
   // Clean up chrome on unmount
   useEffect(() => {
@@ -74,7 +79,7 @@ export default function WebOrch() {
   })
 
   const handleSelectSite = (site: WebSiteBlock) => {
-    setSelectedSiteId(site.id)
+    setSearchParams({ site: site.id }, { replace: true })
   }
 
   return (

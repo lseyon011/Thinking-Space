@@ -856,12 +856,16 @@ export async function renameVaultPathOrch(path: string, nextName: string): Promi
     const api = window.electronAPI
     if (!api?.rename) throw new Error('Rename is unavailable in this desktop build')
     await api.rename(getElectronVaultRoot(), currentPath, targetPath)
-    await rewriteMovedPathReferencesOrch(currentPath, targetPath)
+    // Link rewriting is best-effort and expensive — run in background, don't block rename
+    rewriteMovedPathReferencesOrch(currentPath, targetPath)
+      .catch(err => console.error('[rename] link rewrite failed (non-fatal):', err))
     return targetPath
   }
 
   await postVaultApi('/api/tools/vault/rename', { from_path: currentPath, to_path: targetPath })
-  await rewriteMovedPathReferencesOrch(currentPath, targetPath)
+  // Link rewriting is best-effort and expensive — run in background, don't block rename
+  rewriteMovedPathReferencesOrch(currentPath, targetPath)
+    .catch(err => console.error('[rename] link rewrite failed (non-fatal):', err))
   return targetPath
 }
 

@@ -207,6 +207,12 @@ Completed: 55-capability registry with typed I/O contracts, capability router wi
 ### EPIC-3: Local-Only Extension Platform — Done
 Completed: extension manifest parser/validator + compatibility contract, extension loader/registry lifecycle orchestration, declarative action schema + slot routing, runtime extension UI slot integration, Electron JS/TS runtime sandbox with capability-bridge permission checks + audit propagation, in-app extension builder flow with permission approval gate.
 
+### Embedded Terminal — Done
+Completed: `ptyManagerBlock.ts` (node-pty PTY lifecycle, per-window cleanup), `TerminalBlock.tsx` (xterm.js renderer with VS Code dark theme, FitAddon, WebLinksAddon, ResizeObserver auto-fit), `TerminalPage.tsx` (multi-tab terminal — all tabs stay mounted with `visibility:hidden` so shells keep running), Terminal nav item in `App.tsx`. Electron IPC channels: `terminal:create`, `terminal:input`, `terminal:resize`, `terminal:kill`, `terminal:data`, `terminal:exit`. Defaults working directory to configured source path.
+
+### Live Source Mode — Done
+Completed: `sourceConfigBlock.ts` (reads/writes `userData/state/source-config.json`; mode: `live-source` | `locked`, sourcePath, vitePort), `viteServerBlock.ts` (spawns Vite dev server from source path, polls readiness with 45s timeout), `viteRebuildBlock.ts` (5-step pipeline: npm install → Vite build → cap sync → electron npm install+build → electron-builder `--dir`; `applyRebuildBlock()` writes detached bash swap script that sleeps 3s, moves new `.app` into place, relaunches). Settings → Developer tab (`LiveSourceSettingsBlock.tsx`, `AppRebuildBlock.tsx`). Source code bundled in DMG `Resources/source/` and extracted to writable `userData/source/` on first launch.
+
 ### Future Work
 - **EPIC-5: AI Actions Everywhere** — Shared text action component for all text surfaces, Summarize/Cleanup/Related actions with preview-before-apply
 - **EPIC-6: Optional Remote/Agent Backends** — Optional remote task execution/provider connectors, local-first behavior stays default

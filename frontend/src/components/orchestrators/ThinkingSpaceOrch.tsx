@@ -246,8 +246,11 @@ export default function ThinkingSpaceOrch() {
 
   const handleExplorerCreateFolder = useCallback(async (parentPath: string): Promise<string> => {
     // Avoid prompt dependency in Electron; create then rename inline.
+    // Note: do NOT dispatch a global sync refresh here — VaultExplorerBlock's
+    // runContextAction already reloads the parent path directly.  Firing a
+    // global refresh on top causes every loaded folder to be re-read in
+    // parallel (iCloud FS), which is what makes the UI hang.
     const outputPath = await createFolderOrch(parentPath, 'New Folder')
-    dispatchFileOpRefresh()
     return outputPath
   }, [])
 

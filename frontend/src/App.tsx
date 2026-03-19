@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, 
 import { createPortal } from 'react-dom'
 import {
   Bot,
+  Bug,
   ChevronDown,
   Compass,
   FolderKanban,
@@ -19,6 +20,7 @@ import {
   Search,
   Settings as SettingsIcon,
   Sparkles,
+  Terminal,
   X,
 } from 'lucide-react'
 import treeOfLifeLogo from './assets/tree-of-life-logo.jpg'
@@ -39,6 +41,7 @@ import Web from './pages/Web'
 import CapabilityDiscovery from './pages/CapabilityDiscovery'
 import ExtensionBuilder from './pages/ExtensionBuilder'
 import Settings from './pages/Settings'
+import TerminalPage from './pages/TerminalPage'
 import F9Page from './personal_extension/pages/F9Page'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import AppTabsBlock, { type AppWorkspaceTabBlockModel } from './components/lego_blocks/units/AppTabsBlock'
@@ -46,6 +49,13 @@ import { copyTextToClipboard } from './components/lego_blocks/units/BacklogListD
 import { Button } from './components/lego_blocks/units/ui/button'
 import RuntimeErrorBoundaryBlock from './components/lego_blocks/integrations/RuntimeErrorBoundaryBlock'
 import RuntimeErrorSurfaceBlock from './components/lego_blocks/integrations/RuntimeErrorSurfaceBlock'
+import DebugPanelBlock from './components/lego_blocks/integrations/DebugPanelBlock'
+import DebugToastBlock from './components/lego_blocks/units/DebugToastBlock'
+import {
+  addDebugLogListenerBlock,
+  installConsoleInterceptBlock,
+  type DebugLogEntryBlock,
+} from './services/lego_blocks/units/debugLogBlock'
 import {
   EXCALIDRAW_PLUS_ROOT_ROUTE,
   EXCALIDRAW_PLUS_TOOL_ROUTES,
@@ -106,8 +116,10 @@ import {
 } from '@/services/lego_blocks/units/chatSidebarChromeBlock'
 import {
   WEB_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
+  NEW_THOUGHT_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
   dispatchWebSidebarChromeToggleBlock,
   dispatchWebSidebarChromeToggleHeaderBlock,
+  dispatchNewThoughtSidebarChromeToggleBlock,
   type WebSidebarChromeStateBlock,
 } from '@/services/lego_blocks/units/webSidebarChromeBlock'
 import {
@@ -200,6 +212,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
     icon: FolderKanban,
     activePaths: ['/file-organizer'],
   },
+  { to: '/terminal', label: 'Terminal', icon: Terminal },
 ]
 
 function ExcalidrawPlusIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -272,7 +285,7 @@ function createWorkspaceTabId(): string {
 
 function normalizeTabRoute(route: string): string {
   const trimmed = route.trim()
-  if (!trimmed) return '/thinking-space'
+  if (!trimmed) return '/'
   return trimmed.startsWith('/') ? trimmed : `/${trimmed}`
 }
 
@@ -281,7 +294,7 @@ function parseTabRoute(route: string): { pathname: string; search: URLSearchPara
     const parsed = new URL(normalizeTabRoute(route), 'https://ltm.local')
     return { pathname: parsed.pathname, search: parsed.searchParams }
   } catch {
-    return { pathname: '/thinking-space', search: new URLSearchParams() }
+    return { pathname: '/', search: new URLSearchParams() }
   }
 }
 
@@ -301,7 +314,7 @@ function safeDecodeURIComponent(value: string): string {
   }
 }
 
-function getTabLabel(route: string, labelByPath: Map<string, string>, chatLabel?: string, webLabel?: string, f9Label?: string): string {
+function getTabLabel(route: string, labelByPath: Map<string, string>, chatLabel?: string, webLabel?: string, f9Label?: string, webSiteLabels?: Record<string, string>): string {
   const { pathname, search } = parseTabRoute(route)
   if (pathname === '/thinking-space') {
     const filePath = search.get('file')?.trim()
@@ -318,7 +331,14 @@ function getTabLabel(route: string, labelByPath: Map<string, string>, chatLabel?
 
   if (pathname === '/chat' && chatLabel) return chatLabel
 
-  if (pathname === '/web' && webLabel) return webLabel
+  if (pathname === '/web') {
+    const siteId = search.get('site')
+    if (siteId && webSiteLabels) {
+      const siteName = webSiteLabels[siteId]
+      if (siteName) return `Web · ${siteName}`
+    }
+    if (webLabel) return webLabel
+  }
 
   if (pathname === '/f9' && f9Label) return f9Label
 
@@ -415,6 +435,7 @@ function App() {
     headerVisible: true,
     showHeaderToggle: false,
     label: 'Web',
+    siteLabels: undefined,
   })
   const [organizerSidebarChromeState, setOrganizerSidebarChromeState] = useState<OrganizerSidebarChromeStateBlock>({
     enabled: false,
@@ -426,6 +447,7 @@ function App() {
     collapsed: false,
     label: 'f9',
   })
+  const [newThoughtSidebarChromeState, setNewThoughtSidebarChromeState] = useState({ enabled: false, collapsed: false })
   const [syncPanelOpen, setSyncPanelOpen] = useState(false)
   const [syncActionRunning, setSyncActionRunning] = useState<'sync' | 'rebuild' | null>(null)
   const [gitActionRunning, setGitActionRunning] = useState<'commit' | 'push' | null>(null)
@@ -442,6 +464,11 @@ function App() {
   const [gitCommitMessageDraft, setGitCommitMessageDraft] = useState('')
   const [runtimeErrorReports, setRuntimeErrorReports] = useState<RuntimeErrorReportBlock[]>([])
   const [runtimeErrorCopiedToken, setRuntimeErrorCopiedToken] = useState<string | null>(null)
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false)
+  const [debugLogEntries, setDebugLogEntries] = useState<DebugLogEntryBlock[]>([])
+  const [debugToast, setDebugToast] = useState<DebugLogEntryBlock | null>(null)
+  const [debugUnreadCount, setDebugUnreadCount] = useState(0)
+  const debugToastTimerRef = useRef<number | null>(null)
   const commandInputRef = useRef<HTMLInputElement | null>(null)
   const gitCommitMessageInputRef = useRef<HTMLInputElement | null>(null)
   const syncToolsRef = useRef<HTMLDivElement | null>(null)
@@ -494,6 +521,7 @@ function App() {
   const showOrganizerSidebarChromeControl = (location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer')
     && organizerSidebarChromeState.enabled
   const showF9SidebarChromeControl = location.pathname === '/f9' && f9SidebarChromeState.enabled
+  const showNewThoughtSidebarChromeControl = location.pathname === '/new-thought' && newThoughtSidebarChromeState.enabled
   // On Capacitor, each of these tabs owns its own edge-swipe gesture.
   // Suppress the global nav-drawer swipe so they don't conflict.
   const tabOwnsSidebarSwipe = showGoogleWorkspaceChromeControls
@@ -501,6 +529,7 @@ function App() {
     || showWebSidebarChromeControl
     || showOrganizerSidebarChromeControl
     || showF9SidebarChromeControl
+    || showNewThoughtSidebarChromeControl
   const isElectronDesktopSurface = layout.surface === 'electron' && layout.mode === 'desktop'
   const isMacDesktopSurface = isElectronDesktopSurface
     && typeof navigator !== 'undefined'
@@ -593,9 +622,9 @@ function App() {
   const workspaceTabItems = useMemo<AppWorkspaceTabBlockModel[]>(
     () => workspaceTabs.map(tab => ({
       id: tab.id,
-      label: getTabLabel(tab.route, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, f9TabLabel),
+      label: getTabLabel(tab.route, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, f9TabLabel, webSidebarChromeState.siteLabels),
     })),
-    [routeLabelByPath, workspaceTabs, chatSidebarChromeState.label, webSidebarChromeState.label, f9TabLabel],
+    [routeLabelByPath, workspaceTabs, chatSidebarChromeState.label, webSidebarChromeState.label, webSidebarChromeState.siteLabels, f9TabLabel],
   )
 
   const shell = useMemo(() => deriveAdaptiveShellStateOrch(layout), [layout])
@@ -750,6 +779,10 @@ function App() {
         window.clearTimeout(runtimeErrorCopyResetTimeoutRef.current)
         runtimeErrorCopyResetTimeoutRef.current = null
       }
+      if (debugToastTimerRef.current !== null) {
+        window.clearTimeout(debugToastTimerRef.current)
+        debugToastTimerRef.current = null
+      }
     }
   }, [])
 
@@ -786,6 +819,33 @@ function App() {
       },
     ))
   }, [pushRuntimeErrorReport])
+
+  // Install console intercept + subscribe to debug log events
+  useEffect(() => {
+    installConsoleInterceptBlock()
+    return addDebugLogListenerBlock((entry) => {
+      setDebugLogEntries(prev => [...prev, entry].slice(-500))
+      if (entry.level === 'error' || entry.level === 'warn') {
+        setDebugUnreadCount(prev => prev + 1)
+        setDebugToast(entry)
+        if (debugToastTimerRef.current !== null) window.clearTimeout(debugToastTimerRef.current)
+        debugToastTimerRef.current = window.setTimeout(() => {
+          setDebugToast(null)
+          debugToastTimerRef.current = null
+        }, 5000)
+      }
+    })
+  }, [])
+
+  const openDebugPanel = useCallback(() => {
+    setDebugPanelOpen(true)
+    setDebugUnreadCount(0)
+    setDebugToast(null)
+    if (debugToastTimerRef.current !== null) {
+      window.clearTimeout(debugToastTimerRef.current)
+      debugToastTimerRef.current = null
+    }
+  }, [])
 
   const openCommandPalette = useCallback(() => {
     setCommandQuery('')
@@ -1084,7 +1144,7 @@ function App() {
   const handleCreateWorkspaceTab = useCallback(() => {
     const tab: AppWorkspaceTab = {
       id: createWorkspaceTabId(),
-      route: '/thinking-space',
+      route: '/',
     }
     pendingWorkspaceTabNavigationRef.current = {
       tabId: tab.id,
@@ -1455,7 +1515,7 @@ function App() {
   useEffect(() => {
     const onOpenRouteInNewTab = (event: Event) => {
       const customEvent = event as CustomEvent<string>
-      const route = normalizeTabRoute(customEvent.detail ?? '/thinking-space')
+      const route = normalizeTabRoute(customEvent.detail ?? '/')
       const tab: AppWorkspaceTab = {
         id: createWorkspaceTabId(),
         route,
@@ -1514,13 +1574,14 @@ function App() {
       const customEvent = event as CustomEvent<WebSidebarChromeStateBlock>
       const detail = customEvent.detail
       if (!detail) return
-      setWebSidebarChromeState({
+      setWebSidebarChromeState(prev => ({
         enabled: Boolean(detail.enabled),
         collapsed: Boolean(detail.collapsed),
         headerVisible: detail.headerVisible !== false,
         showHeaderToggle: Boolean(detail.showHeaderToggle),
         label: typeof detail.label === 'string' ? detail.label : 'Web',
-      })
+        siteLabels: (detail.siteLabels && typeof detail.siteLabels === 'object') ? detail.siteLabels : prev.siteLabels,
+      }))
     }
     window.addEventListener(WEB_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleWebChromeState as EventListener)
     return () => {
@@ -1559,6 +1620,18 @@ function App() {
     window.addEventListener(F9_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleF9ChromeState as EventListener)
     return () => {
       window.removeEventListener(F9_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleF9ChromeState as EventListener)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleNewThoughtChromeState = (event: Event) => {
+      const detail = (event as CustomEvent<{ enabled: boolean; collapsed: boolean }>).detail
+      if (!detail) return
+      setNewThoughtSidebarChromeState({ enabled: Boolean(detail.enabled), collapsed: Boolean(detail.collapsed) })
+    }
+    window.addEventListener(NEW_THOUGHT_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleNewThoughtChromeState as EventListener)
+    return () => {
+      window.removeEventListener(NEW_THOUGHT_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleNewThoughtChromeState as EventListener)
     }
   }, [])
 
@@ -1764,6 +1837,22 @@ function App() {
                 </div>
               )}
 
+              {showNewThoughtSidebarChromeControl && (
+                <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
+                  <button
+                    type="button"
+                    onClick={dispatchNewThoughtSidebarChromeToggleBlock}
+                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                    aria-label={newThoughtSidebarChromeState.collapsed ? 'Show left panel' : 'Hide left panel'}
+                    title={newThoughtSidebarChromeState.collapsed ? 'Show left panel' : 'Hide left panel'}
+                  >
+                    {newThoughtSidebarChromeState.collapsed
+                      ? <PanelLeft className="h-3.5 w-3.5" />
+                      : <PanelLeftClose className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              )}
+
               {showLeftAlignedGoogleWorkspaceChromeControls && (
                 <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
                   <button
@@ -1848,6 +1937,22 @@ function App() {
                     )}
                   </>
                 )}
+
+                {/* Debug console toggle */}
+                <button
+                  type="button"
+                  onClick={openDebugPanel}
+                  className="ltm-motion-fast relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label="Open debug console"
+                  title="Debug console"
+                >
+                  <Bug className="h-3.5 w-3.5" />
+                  {debugUnreadCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold text-white">
+                      {debugUnreadCount > 99 ? '99+' : debugUnreadCount}
+                    </span>
+                  )}
+                </button>
 
                 <button
                   type="button"
@@ -2046,6 +2151,7 @@ function App() {
               <Route path="/pdf-to-markdown" element={<Navigate to="/excalidraw-plus/pdf" replace />} />
               <Route path="/transcript-cleaner" element={<Navigate to="/excalidraw-plus/transcript" replace />} />
               <Route path="/git-insights" element={<GitInsights />} />
+              <Route path="/terminal" element={<TerminalPage />} />
               <Route path="/new-thought" element={<NewThought />} />
               <Route path="/chat" element={<Chat />} />
               <Route path="/web" element={<Web />} />
@@ -2581,6 +2687,27 @@ function App() {
           onDismissReport={handleDismissRuntimeErrorReport}
           onClearReports={handleClearRuntimeErrors}
         />
+        <DebugPanelBlock
+          entries={debugLogEntries}
+          isOpen={debugPanelOpen}
+          onClose={() => setDebugPanelOpen(false)}
+          onClear={() => { setDebugLogEntries([]); setDebugUnreadCount(0) }}
+        />
+        {debugToast && (
+          <div className="pointer-events-none fixed bottom-4 right-4 z-[100]">
+            <DebugToastBlock
+              entry={debugToast}
+              onDismiss={() => {
+                setDebugToast(null)
+                if (debugToastTimerRef.current !== null) {
+                  window.clearTimeout(debugToastTimerRef.current)
+                  debugToastTimerRef.current = null
+                }
+              }}
+              onOpenPanel={openDebugPanel}
+            />
+          </div>
+        )}
       </>
     </RuntimeErrorBoundaryBlock>
   )

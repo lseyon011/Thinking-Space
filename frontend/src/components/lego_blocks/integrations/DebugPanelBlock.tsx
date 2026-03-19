@@ -1,0 +1,432 @@
+import { useState, useRef, useEffect } from 'react'
+import { X, Trash2, Copy, Check, ChevronDown, ChevronRight, AlertCircle, AlertTriangle, Info, Bug, Cpu } from 'lucide-react'
+import type { DebugLogEntryBlock, DebugLogLevel } from '@/services/lego_blocks/units/debugLogBlock'
+
+interface DebugPanelBlockProps {
+  entries: DebugLogEntryBlock[]
+  isOpen: boolean
+  onClose: () => void
+  onClear: () => void
+}
+
+type TabFilter = 'all' | 'error' | 'warn' | 'info' | 'debug' | 'performance'
+
+const LEVEL_CONFIG: Record<DebugLogLevel, { icon: typeof AlertCircle; badge: string; text: string; dot: string }> = {
+  error: { icon: AlertCircle, badge: 'bg-red-500/20 text-red-400 border-red-500/30', text: 'text-red-400', dot: 'bg-red-500' },
+  warn:  { icon: AlertTriangle, badge: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', text: 'text-yellow-400', dot: 'bg-yellow-400' },
+  info:  { icon: Info, badge: 'bg-blue-500/20 text-blue-400 border-blue-500/30', text: 'text-blue-400', dot: 'bg-blue-400' },
+  debug: { icon: Info, badge: 'bg-muted/60 text-muted-foreground border-border/40', text: 'text-muted-foreground', dot: 'bg-muted-foreground/50' },
+}
+
+function formatTime(ts: number): string {
+  const d = new Date(ts)
+  const hh = d.getHours().toString().padStart(2, '0')
+  const mm = d.getMinutes().toString().padStart(2, '0')
+  const ss = d.getSeconds().toString().padStart(2, '0')
+  const ms = d.getMilliseconds().toString().padStart(3, '0')
+  return `${hh}:${mm}:${ss}.${ms}`
+}
+
+function LogEntry({ entry }: { entry: DebugLogEntryBlock }) {
+  const [expanded, setExpanded] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const cfg = LEVEL_CONFIG[entry.level] ?? LEVEL_CONFIG.debug
+  const Icon = cfg.icon
+  const hasExtra = !!(entry.details || entry.stack)
+
+  const handleCopy = async () => {
+    const text = [
+      `[${entry.level.toUpperCase()}] ${formatTime(entry.timestamp)}${entry.source ? ` (${entry.source})` : ''}`,
+      entry.message,
+      entry.details ? `Details: ${entry.details}` : '',
+      entry.stack ? `Stack:\n${entry.stack}` : '',
+    ].filter(Boolean).join('\n')
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // clipboard unavailable
+    }
+  }
+
+  return (
+    <div className="group border-b border-border/30 px-3 py-2 hover:bg-muted/30">
+      <div className="flex items-start gap-2">
+        {/* Level indicator */}
+        <div className="mt-0.5 flex shrink-0 items-center gap-1.5">
+          <Icon className={`h-3.5 w-3.5 ${cfg.text}`} />
+        </div>
+
+        {/* Main content */}
+        <div className="min-w-0 flex-1">
+          {/* Meta row */}
+          <div className="mb-0.5 flex items-center gap-1.5 flex-wrap">
+            <span className="font-mono text-[10px] text-muted-foreground/70 tabular-nums">
+              {formatTime(entry.timestamp)}
+            </span>
+            <span className={`inline-flex items-center rounded border px-1 py-px text-[10px] font-semibold uppercase tracking-wide ${cfg.badge}`}>
+              {entry.level}
+            </span>
+            {entry.source && (
+              <span className="rounded bg-muted/50 px-1.5 py-px text-[10px] text-muted-foreground">
+                {entry.source}
+              </span>
+            )}
+          </div>
+
+          {/* Message */}
+          <p className="text-xs leading-relaxed text-foreground/90 break-words">{entry.message}</p>
+
+          {/* Expandable extra */}
+          {hasExtra && (
+            <button
+              type="button"
+              onClick={() => setExpanded(v => !v)}
+              className={`mt-1 flex items-center gap-0.5 text-[11px] ${cfg.text} hover:opacity-80`}
+            >
+              {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              {expanded ? 'Hide details' : 'Show details'}
+            </button>
+          )}
+
+          {expanded && (
+            <div className="mt-2 space-y-2">
+              {entry.details && (
+                <pre className="whitespace-pre-wrap break-all rounded bg-muted/50 px-2.5 py-2 font-mono text-[11px] text-muted-foreground">
+                  {entry.details}
+                </pre>
+              )}
+              {entry.stack && (
+                <pre className="whitespace-pre-wrap break-all rounded bg-red-950/30 px-2.5 py-2 font-mono text-[11px] text-red-300/80">
+                  {entry.stack}
+                </pre>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Copy button — visible on hover */}
+        <button
+          type="button"
+          onClick={handleCopy}
+          aria-label="Copy entry"
+          className="mt-0.5 shrink-0 rounded p-1 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
+        >
+          {copied ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const TABS: { id: TabFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'error', label: 'Errors' },
+  { id: 'warn', label: 'Warnings' },
+  { id: 'info', label: 'Info' },
+  { id: 'debug', label: 'Debug' },
+  { id: 'performance', label: 'Performance' },
+]
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const perfMemory = (): { used: number; total: number; limit: number } | null => {
+  const mem = (performance as any).memory
+  if (!mem) return null
+  return { used: mem.usedJSHeapSize, total: mem.totalJSHeapSize, limit: mem.jsHeapSizeLimit }
+}
+
+function fmtBytes(b: number): string {
+  if (b >= 1024 * 1024 * 1024) return (b / (1024 * 1024 * 1024)).toFixed(1) + ' GB'
+  if (b >= 1024 * 1024) return (b / (1024 * 1024)).toFixed(1) + ' MB'
+  if (b >= 1024) return (b / 1024).toFixed(1) + ' KB'
+  return b + ' B'
+}
+
+function fmtUptime(ms: number): string {
+  const s = Math.floor(ms / 1000)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  if (h > 0) return `${h}h ${m}m ${sec}s`
+  if (m > 0) return `${m}m ${sec}s`
+  return `${sec}s`
+}
+
+function MetricRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="flex items-baseline justify-between py-1.5">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div className="text-right">
+        <span className="font-mono text-xs text-foreground/90">{value}</span>
+        {sub && <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/60">{sub}</span>}
+      </div>
+    </div>
+  )
+}
+
+function MetricSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-border/40 bg-muted/20 px-3 py-2">
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">{title}</p>
+      <div className="divide-y divide-border/30">{children}</div>
+    </div>
+  )
+}
+
+function HeapBar({ used, total, limit }: { used: number; total: number; limit: number }) {
+  const usedPct = Math.round((used / limit) * 100)
+  const totalPct = Math.round((total / limit) * 100)
+  const usedColor = usedPct > 80 ? 'bg-red-500' : usedPct > 60 ? 'bg-yellow-400' : 'bg-blue-400'
+  return (
+    <div className="mt-2 space-y-1">
+      <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted/50">
+        <div className={`absolute left-0 top-0 h-full rounded-full opacity-30 ${usedColor}`} style={{ width: `${totalPct}%` }} />
+        <div className={`absolute left-0 top-0 h-full rounded-full ${usedColor}`} style={{ width: `${usedPct}%` }} />
+      </div>
+      <div className="flex justify-between text-[10px] text-muted-foreground/60">
+        <span>{fmtBytes(used)} used</span>
+        <span>{usedPct}% of {fmtBytes(limit)}</span>
+      </div>
+    </div>
+  )
+}
+
+function PerformanceTab() {
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const mem = perfMemory()
+  const uptime = performance.now()
+  const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+  const resources = performance.getEntriesByType('resource')
+  const transferTotal = resources.reduce((s, r) => s + ((r as PerformanceResourceTiming).transferSize ?? 0), 0)
+
+  return (
+    <div className="space-y-3 p-3">
+      {/* Memory */}
+      {mem ? (
+        <MetricSection title="Memory">
+          <MetricRow label="JS Heap Used" value={fmtBytes(mem.used)} sub={`/ ${fmtBytes(mem.total)} allocated`} />
+          <MetricRow label="Heap Limit" value={fmtBytes(mem.limit)} />
+          <div className="pb-1.5 pt-0.5">
+            <HeapBar used={mem.used} total={mem.total} limit={mem.limit} />
+          </div>
+        </MetricSection>
+      ) : (
+        <MetricSection title="Memory">
+          <div className="py-2 text-xs text-muted-foreground/50">Not available in this environment</div>
+        </MetricSection>
+      )}
+
+      {/* Runtime */}
+      <MetricSection title="Runtime">
+        <MetricRow label="Uptime" value={fmtUptime(uptime)} />
+        <MetricRow label="Resources loaded" value={String(resources.length)} sub={transferTotal > 0 ? fmtBytes(transferTotal) + ' transferred' : undefined} />
+      </MetricSection>
+
+      {/* Navigation timing */}
+      {nav && (
+        <MetricSection title="Navigation Timing">
+          <MetricRow label="DNS lookup" value={`${Math.round(nav.domainLookupEnd - nav.domainLookupStart)} ms`} />
+          <MetricRow label="TCP connect" value={`${Math.round(nav.connectEnd - nav.connectStart)} ms`} />
+          <MetricRow label="TTFB" value={`${Math.round(nav.responseStart - nav.requestStart)} ms`} />
+          <MetricRow label="DOM interactive" value={`${Math.round(nav.domInteractive)} ms`} />
+          <MetricRow label="DOM complete" value={`${Math.round(nav.domComplete)} ms`} />
+          <MetricRow label="Load event" value={`${Math.round(nav.loadEventEnd)} ms`} />
+        </MetricSection>
+      )}
+
+      <p className="text-right text-[10px] text-muted-foreground/40">Refreshes every second · tick {tick}</p>
+    </div>
+  )
+}
+
+export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: DebugPanelBlockProps) {
+  const [activeTab, setActiveTab] = useState<TabFilter>('all')
+  const [copiedAll, setCopiedAll] = useState(false)
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const [autoScroll, setAutoScroll] = useState(true)
+  const isPerfTab = activeTab === 'performance'
+
+  // Auto-scroll to bottom when new entries arrive
+  useEffect(() => {
+    if (!autoScroll || !listRef.current) return
+    listRef.current.scrollTop = listRef.current.scrollHeight
+  }, [entries, autoScroll])
+
+  const filtered = activeTab === 'all'
+    ? entries
+    : entries.filter(e => e.level === activeTab)
+
+  const countFor = (tab: TabFilter) => {
+    if (tab === 'performance') return 0
+    return tab === 'all' ? entries.length : entries.filter(e => e.level === tab).length
+  }
+
+  const handleCopyAll = async () => {
+    const text = filtered.map(e => [
+      `[${e.level.toUpperCase()}] ${formatTime(e.timestamp)}${e.source ? ` (${e.source})` : ''}`,
+      e.message,
+      e.details ? `Details: ${e.details}` : '',
+      e.stack ? `Stack:\n${e.stack}` : '',
+    ].filter(Boolean).join('\n')).join('\n\n---\n\n')
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedAll(true)
+      setTimeout(() => setCopiedAll(false), 1500)
+    } catch {
+      // clipboard unavailable
+    }
+  }
+
+  const handleScroll = () => {
+    if (!listRef.current) return
+    const { scrollTop, scrollHeight, clientHeight } = listRef.current
+    setAutoScroll(scrollHeight - scrollTop - clientHeight < 40)
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-[88] bg-black/20 backdrop-blur-[1px]"
+          onClick={onClose}
+          aria-hidden
+        />
+      )}
+
+      {/* Panel */}
+      <div
+        role="dialog"
+        aria-label="Debug console"
+        aria-hidden={!isOpen}
+        className={`fixed right-0 top-0 z-[89] flex h-full w-[420px] max-w-[92vw] flex-col border-l border-border/60 bg-background/95 shadow-2xl backdrop-blur-xl transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* Header */}
+        <div className="flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-3">
+          <Bug className="h-4 w-4 text-muted-foreground" />
+          <span className="flex-1 text-sm font-semibold text-foreground">Debug Console</span>
+          {!isPerfTab && (
+            <>
+              <button
+                type="button"
+                onClick={handleCopyAll}
+                disabled={filtered.length === 0}
+                title="Copy visible entries"
+                aria-label="Copy visible entries"
+                className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {copiedAll ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+              <button
+                type="button"
+                onClick={onClear}
+                disabled={entries.length === 0}
+                title="Clear all entries"
+                aria-label="Clear all entries"
+                className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close debug panel"
+            className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex shrink-0 gap-0 border-b border-border/50 px-1 pt-1">
+          {TABS.map(tab => {
+            const count = countFor(tab.id)
+            const isActive = activeTab === tab.id
+            const hasErrors = tab.id === 'error' && count > 0
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`relative flex items-center gap-1.5 rounded-t px-3 py-2 text-xs font-medium transition-colors ${
+                  isActive
+                    ? 'text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-px after:bg-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {tab.id === 'performance' && <Cpu className="h-3 w-3 shrink-0" />}
+                {tab.label}
+                {count > 0 && (
+                  <span className={`rounded px-1 py-px text-[10px] tabular-nums font-semibold ${
+                    hasErrors
+                      ? 'bg-red-500/20 text-red-400'
+                      : isActive
+                        ? 'bg-muted text-muted-foreground'
+                        : 'bg-muted/50 text-muted-foreground'
+                  }`}>
+                    {count > 999 ? '999+' : count}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Content */}
+        {isPerfTab ? (
+          <div ref={listRef} className="ltm-nav-scroll min-h-0 flex-1 overflow-y-auto">
+            <PerformanceTab />
+          </div>
+        ) : (
+          <>
+            <div
+              ref={listRef}
+              onScroll={handleScroll}
+              className="ltm-nav-scroll min-h-0 flex-1 overflow-y-auto"
+            >
+              {filtered.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+                  <Bug className="h-8 w-8 text-muted-foreground/30" />
+                  <p className="text-sm text-muted-foreground/60">No {activeTab === 'all' ? '' : activeTab + ' '}entries yet</p>
+                </div>
+              ) : (
+                <div>
+                  {filtered.map(entry => <LogEntry key={entry.id} entry={entry} />)}
+                </div>
+              )}
+            </div>
+
+            {/* Footer — auto-scroll toggle */}
+            <div className="flex shrink-0 items-center justify-between border-t border-border/40 px-4 py-2">
+              <span className="text-[11px] text-muted-foreground/60">
+                {filtered.length} entr{filtered.length === 1 ? 'y' : 'ies'}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setAutoScroll(v => {
+                    if (!v && listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
+                    return !v
+                  })
+                }}
+                className={`text-[11px] transition-colors ${autoScroll ? 'text-blue-400 hover:text-blue-300' : 'text-muted-foreground/60 hover:text-muted-foreground'}`}
+              >
+                {autoScroll ? 'Auto-scroll on' : 'Auto-scroll off'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  )
+}

@@ -36,7 +36,7 @@ Thinking Space is built as three product pillars:
 
 **A place where humans and AI work together.** AI writing assistance lives directly in your workspace — grammar, clarity, structure, and tone actions right where you're writing. Chat with AI models, configure providers, and track usage with built-in telemetry.
 
-**An AI agent management space.** Manage agent tasks, track runs and handoffs, and integrate AI output with your own thinking. A full capability system with 55+ typed operations, audit logging, and policy controls.
+**An AI agent management space.** Manage agent tasks, track runs and handoffs, and integrate AI output with your own thinking. A full capability system with 55+ typed operations, audit logging, and policy controls. Run AI agents (including Claude Code) inside the app's own terminal — and let them modify and rebuild the app itself.
 
 ---
 
@@ -93,6 +93,19 @@ Thinking Space is built as three product pillars:
 - [x] AI-powered extension builder (describe what you want, generate it)
 - [x] Permission-gated capability bridge with audit logging
 - [x] Feature-flagged rollout controls
+
+### Embedded Terminal
+- [x] Full VS Code-style terminal (xterm.js + node-pty) as a first-class nav item
+- [x] Multi-tab terminal — all tabs stay alive when switching (shells keep running)
+- [x] Defaults working directory to the configured source path
+- [x] VS Code dark theme with clickable URLs (WebLinksAddon)
+
+### Live Source Mode & Self-Modifying App
+- [x] Ship source code bundled inside the DMG — extracted to writable storage on first launch
+- [x] Configurable source path: point at your own git repo or use the bundled copy
+- [x] Live HMR: toggle Live Source Mode to load the renderer from a Vite dev server (Settings → Developer)
+- [x] 5-step rebuild pipeline: npm install → Vite build → cap sync → electron build → electron-builder
+- [x] Apply & Relaunch: detached swap script replaces the running `.app` and relaunches automatically
 
 ### Agent Capabilities
 - [x] 55+ typed capability operations with policy enforcement
@@ -170,6 +183,7 @@ Opens at `http://localhost:5173` — pick a local folder as your vault and you'r
 | AI | OpenAI, Anthropic, Open Source AI (LM Studio/OpenAI-compatible local), Codex CLI |
 | Drawing | Excalidraw |
 | Editor | CodeMirror |
+| Terminal | xterm.js (`@xterm/xterm`) + node-pty (same stack as VS Code) |
 | Backend | FastAPI + Python (optional, thin proxy) |
 
 ---

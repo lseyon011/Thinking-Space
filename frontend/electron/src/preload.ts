@@ -73,6 +73,74 @@ contextBridge.exposeInMainWorld('electronAPI', {
     dryRun?: boolean
   }) => ipcRenderer.invoke('extension-runtime:invoke', payload),
 
+  // Live source config
+  sourceConfigGet: (): Promise<{ mode: string; sourcePath: string | null; vitePort: number; viteRunning: boolean }> =>
+    ipcRenderer.invoke('source:config:get'),
+  sourceConfigSet: (config: { mode?: string; sourcePath?: string | null; vitePort?: number }): Promise<{ mode: string; sourcePath: string | null; vitePort: number; requiresRestart: boolean }> =>
+    ipcRenderer.invoke('source:config:set', config),
+
+  // Node / dependency environment check
+  sourceEnvCheck: (): Promise<{ nodeVersion: string | null; nodeMeetsMinimum: boolean; npmVersion: string | null; depsInstalled: boolean }> =>
+    ipcRenderer.invoke('source:env:check'),
+  sourceInstallDeps: (): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('source:install:deps'),
+  onSourceInstallProgress: (handler: (entry: { step: string; message: string; type: string }) => void) => {
+    const channel = 'source:install:progress';
+    const listener = (_: unknown, data: unknown) => handler(data as { step: string; message: string; type: string });
+    ipcRenderer.on(channel, listener);
+    return () => { ipcRenderer.removeListener(channel, listener); };
+  },
+  onSourceInstallDone: (handler: (result: { ok: boolean; error?: string }) => void) => {
+    const channel = 'source:install:done';
+    const listener = (_: unknown, data: unknown) => handler(data as { ok: boolean; error?: string });
+    ipcRenderer.on(channel, listener);
+    return () => { ipcRenderer.removeListener(channel, listener); };
+  },
+
+  // App rebuild
+  sourceRebuildStart: (): Promise<{ ok: boolean; started?: boolean; error?: string }> =>
+    ipcRenderer.invoke('source:rebuild:start'),
+  sourceRebuildApply: (newAppPath: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('source:rebuild:apply', newAppPath),
+  onSourceRebuildProgress: (handler: (event: { step: string; message: string; type: string }) => void) => {
+    const channel = 'source:rebuild:progress';
+    const listener = (_: unknown, data: unknown) => handler(data as { step: string; message: string; type: string });
+    ipcRenderer.on(channel, listener);
+    return () => { ipcRenderer.removeListener(channel, listener); };
+  },
+  onSourceRebuildDone: (handler: (result: { ok: boolean; newAppPath?: string; error?: string }) => void) => {
+    const channel = 'source:rebuild:done';
+    const listener = (_: unknown, data: unknown) => handler(data as { ok: boolean; newAppPath?: string; error?: string });
+    ipcRenderer.on(channel, listener);
+    return () => { ipcRenderer.removeListener(channel, listener); };
+  },
+
+  // Embedded terminal
+  terminalCreate: (opts: { cwd?: string; cols: number; rows: number }): Promise<{ id: string }> =>
+    ipcRenderer.invoke('terminal:create', opts),
+  terminalInput: (id: string, data: string): Promise<void> =>
+    ipcRenderer.invoke('terminal:input', { id, data }),
+  terminalResize: (id: string, cols: number, rows: number): Promise<void> =>
+    ipcRenderer.invoke('terminal:resize', { id, cols, rows }),
+  terminalKill: (id: string): Promise<void> =>
+    ipcRenderer.invoke('terminal:kill', { id }),
+  onTerminalData: (id: string, handler: (data: string) => void) => {
+    const channel = 'terminal:data';
+    const listener = (_: unknown, payload: { id: string; data: string }) => {
+      if (payload.id === id) handler(payload.data);
+    };
+    ipcRenderer.on(channel, listener);
+    return () => { ipcRenderer.removeListener(channel, listener); };
+  },
+  onTerminalExit: (id: string, handler: (exitCode: number) => void) => {
+    const channel = 'terminal:exit';
+    const listener = (_: unknown, payload: { id: string; exitCode: number }) => {
+      if (payload.id === id) handler(payload.exitCode);
+    };
+    ipcRenderer.on(channel, listener);
+    return () => { ipcRenderer.removeListener(channel, listener); };
+  },
+
   // Window management
   newWindow: (route?: string) => ipcRenderer.invoke('window:new', route),
   // Webview swipe navigation (macOS 2-finger swipe via BrowserWindow 'swipe' event)

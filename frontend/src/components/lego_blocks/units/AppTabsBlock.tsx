@@ -38,7 +38,7 @@ export default function AppTabsBlock({
                     'ltm-tab-item ltm-tab-fade group inline-flex h-8 max-w-[236px] items-center gap-1.5 rounded-full border px-2.5 transition-colors',
                     active
                       ? 'ltm-tab-active border-white/90 bg-white text-black'
-                      : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground',
+                      : 'border-transparent bg-transparent text-muted-foreground hover:bg-zinc-300/15 hover:border-transparent hover:text-foreground',
                   )}
                 >
                   <button
