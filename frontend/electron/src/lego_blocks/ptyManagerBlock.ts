@@ -25,7 +25,12 @@ export function createPtyBlock(opts: CreatePtyOptsBlock): string {
   const id = randomUUID();
   const shell = getShell();
 
-  const ptyProcess = pty.spawn(shell, [], {
+  // Spawn as a login shell (-l) so it sources ~/.zprofile / ~/.bash_profile
+  // and gets the user's full PATH (Homebrew, nvm, volta, npm globals, etc.)
+  // This matches VS Code's behaviour when launched from the Dock.
+  const shellArgs = process.platform === 'win32' ? [] : ['-l'];
+
+  const ptyProcess = pty.spawn(shell, shellArgs, {
     name: 'xterm-color',
     cols: opts.cols,
     rows: opts.rows,
