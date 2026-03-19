@@ -5,30 +5,30 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { isElectron } from '@/services/orchestrators/runtimeOrch'
 
-// VS Code dark terminal theme
+// VS Code integrated terminal color palette (distinct from syntax-highlight colors)
 const VSCODE_THEME = {
   background: '#1e1e1e',
-  foreground: '#d4d4d4',
-  cursor: '#d4d4d4',
+  foreground: '#cccccc',
+  cursor: '#cccccc',
   cursorAccent: '#1e1e1e',
   selectionBackground: '#264f78',
   selectionForeground: '#ffffff',
-  black: '#1e1e1e',
-  red: '#f44747',
-  green: '#6a9955',
-  yellow: '#dcdcaa',
-  blue: '#569cd6',
-  magenta: '#c678dd',
-  cyan: '#4ec9b0',
-  white: '#d4d4d4',
-  brightBlack: '#808080',
-  brightRed: '#f44747',
-  brightGreen: '#6a9955',
-  brightYellow: '#dcdcaa',
-  brightBlue: '#569cd6',
-  brightMagenta: '#c678dd',
-  brightCyan: '#4ec9b0',
-  brightWhite: '#ffffff',
+  black:          '#000000',
+  red:            '#cd3131',
+  green:          '#0dbc79',
+  yellow:         '#e5e510',
+  blue:           '#2472c8',
+  magenta:        '#bc3fbc',
+  cyan:           '#11a8cd',
+  white:          '#e5e5e5',
+  brightBlack:    '#666666',
+  brightRed:      '#f14c4c',
+  brightGreen:    '#23d18b',
+  brightYellow:   '#f5f543',
+  brightBlue:     '#3b8eea',
+  brightMagenta:  '#d670d6',
+  brightCyan:     '#29b8db',
+  brightWhite:    '#e5e5e5',
 }
 
 export interface TerminalBlockProps {
