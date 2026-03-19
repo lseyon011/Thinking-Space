@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarDays, Download, Loader2, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
-import ProjectMemoryFilesBlock, { type ProjectMemoryFileOptionBlock } from '@/components/lego_blocks/integrations/ProjectMemoryFilesBlock'
+import PinBoardBlock, { type PinBoardFileOptionBlock } from '@/components/lego_blocks/integrations/PinBoardBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import ExecutionProgressBlock from '@/components/lego_blocks/units/ExecutionProgressBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
@@ -51,6 +51,7 @@ import {
   type OrganizerProgramGroupEntryOrch,
   type OrganizerUiStateOrch,
 } from '@/services/orchestrators/organizerUiStateOrch'
+import type { PinBoardPanelBlock } from '@/services/lego_blocks/integrations/organizerUiStateBlock'
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 
 interface ProjectEntry {
@@ -59,10 +60,7 @@ interface ProjectEntry {
 }
 type ProjectPresetTagsByRoot = Record<string, string[]>
 type ProjectTagColorsByRoot = Record<string, Record<string, string>>
-type ProjectMemoryFilesByRoot = Record<string, {
-  quotesPath: string | null
-  rememberPath: string | null
-}>
+type PinBoardByRoot = Record<string, { panels: PinBoardPanelBlock[] }>
 interface ProgramGroupEntry extends OrganizerProgramGroupEntryOrch {
   id: string
   name: string
@@ -201,8 +199,7 @@ function normalizeTagColorMap(colors: Record<string, string>): Record<string, st
 function projectUiStateSignature(state: OrganizerUiStateOrch): string {
   return JSON.stringify({
     projectName: state.projectName ?? null,
-    projectQuotesPath: state.projectQuotesPath ?? null,
-    projectRememberPath: state.projectRememberPath ?? null,
+    pinBoardPanels: state.pinBoardPanels ?? [],
     presetTags: normalizeTagListBlock(state.presetTags ?? []),
     tagColors: normalizeTagColorMap(state.tagColors ?? {}),
     programGroups: normalizeProgramGroups(state.programGroups ?? []),
@@ -212,8 +209,7 @@ function projectUiStateSignature(state: OrganizerUiStateOrch): string {
 function hasProjectUiStateData(state: OrganizerUiStateOrch): boolean {
   return Boolean(
     (state.projectName && state.projectName.trim())
-    || (state.projectQuotesPath && state.projectQuotesPath.trim())
-    || (state.projectRememberPath && state.projectRememberPath.trim())
+    || (state.pinBoardPanels && state.pinBoardPanels.length > 0)
     || state.presetTags.length > 0
     || Object.keys(state.tagColors).length > 0
     || state.programGroups.length > 0,
@@ -381,8 +377,8 @@ export default function BacklogOrch() {
   const [projectProgramGroupsByRoot, setProjectProgramGroupsByRoot] = useState<ProjectProgramGroupsByRoot>(
     () => getJsonStorageItem<ProjectProgramGroupsByRoot>(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, {}),
   )
-  const [projectMemoryFilesByRoot, setProjectMemoryFilesByRoot] = useState<ProjectMemoryFilesByRoot>({})
-  const [projectMemoryFileOptions, setProjectMemoryFileOptions] = useState<ProjectMemoryFileOptionBlock[]>([])
+  const [pinBoardByRoot, setPinBoardByRoot] = useState<PinBoardByRoot>({})
+  const [pinBoardFileOptions, setPinBoardFileOptions] = useState<PinBoardFileOptionBlock[]>([])
   const projectUiStateHydratedRootsRef = useRef<Set<string>>(new Set())
   const projectUiStatePersistedSignatureByRootRef = useRef<Record<string, string>>({})
   const [initialProjectLoadResolved, setInitialProjectLoadResolved] = useState(false)
@@ -411,7 +407,7 @@ export default function BacklogOrch() {
   const buildProjectUiState = useCallback((projectRoot: string): OrganizerUiStateOrch => {
     const normalizedRoot = normalizePath(projectRoot)
     const projectEntry = projectEntries.find(entry => normalizePath(entry.root) === normalizedRoot)
-    const projectMemoryFiles = projectMemoryFilesByRoot[normalizedRoot] ?? { quotesPath: null, rememberPath: null }
+    const projectPinBoard = pinBoardByRoot[normalizedRoot] ?? { panels: [] }
     const projectPrograms = programs.filter(
       program => normalizePath(program.projectRoot ?? '') === normalizedRoot && program.type === 'program',
     )
@@ -423,21 +419,19 @@ export default function BacklogOrch() {
       schemaVersion: 1,
       updatedAt: new Date().toISOString(),
       projectName: projectEntry?.name?.trim() || undefined,
-      projectQuotesPath: normalizePath(projectMemoryFiles.quotesPath ?? '') || undefined,
-      projectRememberPath: normalizePath(projectMemoryFiles.rememberPath ?? '') || undefined,
+      pinBoardPanels: projectPinBoard.panels,
       presetTags: normalizeTagListBlock(projectPresetTagsByRoot[normalizedRoot] ?? []),
       tagColors: normalizeTagColorMap(projectTagColorsByRoot[normalizedRoot] ?? {}),
       programGroups: mergedProgramGroups,
     }
-  }, [programs, projectEntries, projectMemoryFilesByRoot, projectPresetTagsByRoot, projectProgramGroupsByRoot, projectTagColorsByRoot])
+  }, [programs, projectEntries, pinBoardByRoot, projectPresetTagsByRoot, projectProgramGroupsByRoot, projectTagColorsByRoot])
 
   const applyProjectUiStateToCache = useCallback((projectRoot: string, state: OrganizerUiStateOrch) => {
     const normalizedRoot = normalizePath(projectRoot)
     if (!normalizedRoot) return
     const normalizedState: OrganizerUiStateOrch = {
       ...state,
-      projectQuotesPath: normalizePath(state.projectQuotesPath ?? '') || undefined,
-      projectRememberPath: normalizePath(state.projectRememberPath ?? '') || undefined,
+      pinBoardPanels: state.pinBoardPanels ?? [],
       presetTags: normalizeTagListBlock(state.presetTags ?? []),
       tagColors: normalizeTagColorMap(state.tagColors ?? {}),
       programGroups: normalizeProgramGroups(state.programGroups ?? []),
@@ -479,11 +473,10 @@ export default function BacklogOrch() {
       return next
     })
 
-    setProjectMemoryFilesByRoot((prev) => {
-      const next: ProjectMemoryFilesByRoot = { ...prev }
-      const quotesPath = normalizePath(normalizedState.projectQuotesPath ?? '') || null
-      const rememberPath = normalizePath(normalizedState.projectRememberPath ?? '') || null
-      if (quotesPath || rememberPath) next[normalizedRoot] = { quotesPath, rememberPath }
+    setPinBoardByRoot((prev) => {
+      const next: PinBoardByRoot = { ...prev }
+      const panels = normalizedState.pinBoardPanels ?? []
+      if (panels.length > 0) next[normalizedRoot] = { panels }
       else delete next[normalizedRoot]
       return next
     })
@@ -606,11 +599,11 @@ export default function BacklogOrch() {
       )
 
       if (markdownResult.status !== 'fulfilled') {
-        setProjectMemoryFileOptions([])
+        setPinBoardFileOptions([])
         return
       }
 
-      const options: ProjectMemoryFileOptionBlock[] = []
+      const options: PinBoardFileOptionBlock[] = []
       for (const entry of markdownResult.value) {
         const path = normalizePath(entry.path)
         if (!path) continue
@@ -623,7 +616,7 @@ export default function BacklogOrch() {
       }
 
       options.sort((a, b) => a.label.localeCompare(b.label))
-      setProjectMemoryFileOptions(options)
+      setPinBoardFileOptions(options)
     })
     return () => {
       cancelled = true
@@ -707,36 +700,43 @@ export default function BacklogOrch() {
     if (!activeProjectRoot) return {}
     return projectTagColorsByRoot[activeProjectRoot] ?? {}
   }, [activeProjectRoot, projectTagColorsByRoot])
-  const activeProjectMemoryFiles = useMemo(() => {
-    if (!activeProjectRoot) return { quotesPath: null, rememberPath: null }
-    return projectMemoryFilesByRoot[activeProjectRoot] ?? { quotesPath: null, rememberPath: null }
-  }, [activeProjectRoot, projectMemoryFilesByRoot])
+  const activeProjectPanels = useMemo(() => {
+    if (!activeProjectRoot) return []
+    return pinBoardByRoot[activeProjectRoot]?.panels ?? []
+  }, [activeProjectRoot, pinBoardByRoot])
 
-  const setActiveProjectQuotesPath = useCallback((path: string | null) => {
+  const updateActiveProjectPanel = useCallback((id: string, updates: Partial<PinBoardPanelBlock>) => {
     if (!activeProjectRoot) return
-    const normalizedPath = normalizePath(path ?? '') || null
-    setProjectMemoryFilesByRoot((prev) => {
-      const current = prev[activeProjectRoot] ?? { quotesPath: null, rememberPath: null }
-      if (current.quotesPath === normalizedPath) return prev
-      const next: ProjectMemoryFilesByRoot = { ...prev }
-      const nextEntry = { ...current, quotesPath: normalizedPath }
-      if (nextEntry.quotesPath || nextEntry.rememberPath) next[activeProjectRoot] = nextEntry
-      else delete next[activeProjectRoot]
-      return next
+    setPinBoardByRoot((prev) => {
+      const current = prev[activeProjectRoot]?.panels ?? []
+      const next = current.map(p => p.id === id ? { ...p, ...updates } : p)
+      return { ...prev, [activeProjectRoot]: { panels: next } }
     })
   }, [activeProjectRoot])
 
-  const setActiveProjectRememberPath = useCallback((path: string | null) => {
+  const addActiveProjectPanel = useCallback((type: 'markdown' | 'todos') => {
     if (!activeProjectRoot) return
-    const normalizedPath = normalizePath(path ?? '') || null
-    setProjectMemoryFilesByRoot((prev) => {
-      const current = prev[activeProjectRoot] ?? { quotesPath: null, rememberPath: null }
-      if (current.rememberPath === normalizedPath) return prev
-      const next: ProjectMemoryFilesByRoot = { ...prev }
-      const nextEntry = { ...current, rememberPath: normalizedPath }
-      if (nextEntry.quotesPath || nextEntry.rememberPath) next[activeProjectRoot] = nextEntry
-      else delete next[activeProjectRoot]
-      return next
+    const newPanel: PinBoardPanelBlock = {
+      id: `panel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type,
+      colSpan: type === 'todos' ? 3 : 1,
+      heightPreset: type === 'todos' ? 'lg' : 'md',
+    }
+    setPinBoardByRoot((prev) => {
+      const current = prev[activeProjectRoot]?.panels ?? []
+      return { ...prev, [activeProjectRoot]: { panels: [...current, newPanel] } }
+    })
+  }, [activeProjectRoot])
+
+  const removeActiveProjectPanel = useCallback((id: string) => {
+    if (!activeProjectRoot) return
+    setPinBoardByRoot((prev) => {
+      const current = prev[activeProjectRoot]?.panels ?? []
+      const next = current.filter(p => p.id !== id)
+      const updated: PinBoardByRoot = { ...prev }
+      if (next.length > 0) updated[activeProjectRoot] = { panels: next }
+      else delete updated[activeProjectRoot]
+      return updated
     })
   }, [activeProjectRoot])
 
@@ -1708,7 +1708,7 @@ export default function BacklogOrch() {
           }`}
           onClick={() => setActiveBacklogSubTab('memory')}
         >
-          Quotes + Remember
+          Pin Board
         </button>
       </div>
 
@@ -1900,20 +1900,19 @@ export default function BacklogOrch() {
 
       {activeBacklogSubTab === 'memory' && (
         activeProjectRoot ? (
-          <ProjectMemoryFilesBlock
-            markdownOptions={projectMemoryFileOptions}
-            quotesPath={activeProjectMemoryFiles.quotesPath}
-            rememberPath={activeProjectMemoryFiles.rememberPath}
-            onSelectQuotesPath={setActiveProjectQuotesPath}
-            onSelectRememberPath={setActiveProjectRememberPath}
+          <PinBoardBlock
+            markdownOptions={pinBoardFileOptions}
+            panels={activeProjectPanels}
+            onUpdatePanel={updateActiveProjectPanel}
+            onAddPanel={addActiveProjectPanel}
+            onRemovePanel={removeActiveProjectPanel}
             onOpenFile={openFile}
             disabled={working || syncing || creatingProject}
-            viewerHeightClassName="h-[760px]"
           />
         ) : (
           <Card>
             <CardContent className="py-6 text-sm text-muted-foreground">
-              Select a project to manage quotes and things to remember.
+              Select a project to manage the pin board.
             </CardContent>
           </Card>
         )

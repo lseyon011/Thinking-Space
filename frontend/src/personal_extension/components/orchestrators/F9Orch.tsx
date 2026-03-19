@@ -30,7 +30,7 @@ type F9SubtabId = 'overall' | 'memory'
 
 const F9_SUBTABS: Array<{ id: F9SubtabId; label: string }> = [
   { id: 'overall', label: 'Overall Positions' },
-  { id: 'memory', label: 'Quotes + Remember' },
+  { id: 'memory', label: 'Pin Board' },
 ]
 
 function toSnapshotFromCacheBlock(

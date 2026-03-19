@@ -8,7 +8,7 @@ import FileSelectionViewerBlock from '@/components/lego_blocks/integrations/File
 import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
-import ProjectMemoryFilesBlock from '@/components/lego_blocks/integrations/ProjectMemoryFilesBlock'
+import PinBoardBlock from '@/components/lego_blocks/integrations/PinBoardBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
@@ -23,6 +23,7 @@ import { readOrganizerUiStateOrch, writeOrganizerUiStateOrch } from '@/services/
 import {
   normalizeOrganizerUiStateBlock,
   type OrganizerProgramGroupEntryBlock,
+  type PinBoardPanelBlock,
 } from '@/services/lego_blocks/integrations/organizerUiStateBlock'
 import { normalizeTagBlock, normalizeTagListBlock, splitTagInputBlock, tagsEqualBlock } from '@/services/lego_blocks/units/tagBlock'
 import type { NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
@@ -133,10 +134,7 @@ const F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK = 'f9_workspace_side_tabs_collaps
 const F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK = 'min-w-[1360px]'
 type F9ProjectPresetTagsByRootBlock = Record<string, string[]>
 type F9ProjectProgramGroupsByRootBlock = Record<string, OrganizerProgramGroupEntryBlock[]>
-type F9ProjectMemoryFilesByRootBlock = Record<string, {
-  quotesPath: string | null
-  rememberPath: string | null
-}>
+type F9ProjectMemoryFilesByRootBlock = Record<string, { panels: PinBoardPanelBlock[] }>
 type F9OverallRememberByProjectRootBlock = Record<string, string>
 
 function makeProgramGroupIdBlock(): string {
@@ -1492,11 +1490,10 @@ export default function F9WorkspaceBlock({
       try {
         const state = await readOrganizerUiStateOrch(normalizedRoot)
         if (cancelled) return
-        const quotesPath = normalizeRelativePathBlock(state?.projectQuotesPath ?? '') || null
-        const rememberPath = normalizeRelativePathBlock(state?.projectRememberPath ?? '') || null
+        const panels = state?.pinBoardPanels ?? []
         setProjectMemoryFilesByRoot((prev) => {
           const next: F9ProjectMemoryFilesByRootBlock = { ...prev }
-          if (quotesPath || rememberPath) next[normalizedRoot] = { quotesPath, rememberPath }
+          if (panels.length > 0) next[normalizedRoot] = { panels }
           else delete next[normalizedRoot]
           return next
         })
@@ -1511,32 +1508,19 @@ export default function F9WorkspaceBlock({
     }
   }, [projectRootKey])
 
-  const activeProjectMemoryFiles = useMemo(() => {
+  const activeProjectPanels = useMemo(() => {
     const normalizedRoot = normalizeRelativePathBlock(projectRootKey)
-    if (!normalizedRoot) return { quotesPath: null, rememberPath: null }
-    return projectMemoryFilesByRoot[normalizedRoot] ?? { quotesPath: null, rememberPath: null }
+    if (!normalizedRoot) return []
+    return projectMemoryFilesByRoot[normalizedRoot]?.panels ?? []
   }, [projectMemoryFilesByRoot, projectRootKey])
 
-  const updateActiveProjectMemoryFiles = useCallback(async (updates: {
-    quotesPath?: string | null
-    rememberPath?: string | null
-  }) => {
+  const updateActiveProjectPanels = useCallback(async (nextPanels: PinBoardPanelBlock[]) => {
     const normalizedRoot = normalizeRelativePathBlock(projectRootKey)
     if (!normalizedRoot) return
 
-    const current = projectMemoryFilesByRoot[normalizedRoot] ?? { quotesPath: null, rememberPath: null }
-    const next = {
-      quotesPath: updates.quotesPath !== undefined
-        ? (normalizeRelativePathBlock(updates.quotesPath ?? '') || null)
-        : current.quotesPath,
-      rememberPath: updates.rememberPath !== undefined
-        ? (normalizeRelativePathBlock(updates.rememberPath ?? '') || null)
-        : current.rememberPath,
-    }
-
     setProjectMemoryFilesByRoot((prev) => {
       const draft: F9ProjectMemoryFilesByRootBlock = { ...prev }
-      if (next.quotesPath || next.rememberPath) draft[normalizedRoot] = next
+      if (nextPanels.length > 0) draft[normalizedRoot] = { panels: nextPanels }
       else delete draft[normalizedRoot]
       return draft
     })
@@ -1547,21 +1531,13 @@ export default function F9WorkspaceBlock({
       const persisted = await writeOrganizerUiStateOrch(normalizedRoot, {
         ...baseState,
         updatedAt: new Date().toISOString(),
-        projectQuotesPath: next.quotesPath || undefined,
-        projectRememberPath: next.rememberPath || undefined,
+        pinBoardPanels: nextPanels,
       })
-      const persistedQuotesPath = normalizeRelativePathBlock(persisted.projectQuotesPath ?? '') || null
-      const persistedRememberPath = normalizeRelativePathBlock(persisted.projectRememberPath ?? '') || null
+      const persistedPanels = persisted.pinBoardPanels ?? []
       setProjectMemoryFilesByRoot((prev) => {
         const draft: F9ProjectMemoryFilesByRootBlock = { ...prev }
-        if (persistedQuotesPath || persistedRememberPath) {
-          draft[normalizedRoot] = {
-            quotesPath: persistedQuotesPath,
-            rememberPath: persistedRememberPath,
-          }
-        } else {
-          delete draft[normalizedRoot]
-        }
+        if (persistedPanels.length > 0) draft[normalizedRoot] = { panels: persistedPanels }
+        else delete draft[normalizedRoot]
         return draft
       })
       projectMemoryHydratedRootsRef.current.add(normalizedRoot)
@@ -1615,11 +1591,11 @@ export default function F9WorkspaceBlock({
   const overallTabActive = !showCompanyView && activeSubtabId === 'overall'
   const workspaceTitle = showCompanyView && selectedCompany
     ? `${selectedCompany.companyTicker} Positions`
-    : (memoryTabActive ? 'Quotes + Things To Remember' : 'Overall Positions')
+    : (memoryTabActive ? 'Pin Board' : 'Overall Positions')
   const workspaceDescription = showCompanyView && selectedCompany
     ? 'Company-specific position rows and overlay edits.'
     : (memoryTabActive
-      ? 'Project-level files for quotes and things to remember.'
+      ? 'Project-level pinned notes files.'
       : 'Canonical overall positions from Webull sync.')
 
   return (
@@ -1748,15 +1724,27 @@ export default function F9WorkspaceBlock({
           )}
 
           {memoryTabActive && (
-            <ProjectMemoryFilesBlock
+            <PinBoardBlock
               markdownOptions={linkOptions}
-              quotesPath={activeProjectMemoryFiles.quotesPath}
-              rememberPath={activeProjectMemoryFiles.rememberPath}
-              onSelectQuotesPath={(path) => { void updateActiveProjectMemoryFiles({ quotesPath: path }) }}
-              onSelectRememberPath={(path) => { void updateActiveProjectMemoryFiles({ rememberPath: path }) }}
+              panels={activeProjectPanels}
+              onUpdatePanel={(id, updates) => {
+                const next = activeProjectPanels.map(p => p.id === id ? { ...p, ...updates } : p)
+                void updateActiveProjectPanels(next)
+              }}
+              onAddPanel={(type) => {
+                const newPanel: PinBoardPanelBlock = {
+                  id: `panel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                  type,
+                  colSpan: type === 'todos' ? 3 : 1,
+                  heightPreset: type === 'todos' ? 'lg' : 'md',
+                }
+                void updateActiveProjectPanels([...activeProjectPanels, newPanel])
+              }}
+              onRemovePanel={(id) => {
+                void updateActiveProjectPanels(activeProjectPanels.filter(p => p.id !== id))
+              }}
               onOpenFile={onOpenNodeFile}
               disabled={workspaceBusy}
-              viewerHeightClassName="h-[700px]"
             />
           )}
 

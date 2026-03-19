@@ -9,13 +9,20 @@ export interface OrganizerProgramGroupEntryBlock {
   collapsed?: boolean
 }
 
+export interface PinBoardPanelBlock {
+  id: string
+  type: 'markdown' | 'todos'
+  path?: string
+  colSpan?: 1 | 2 | 3
+  heightPreset?: 'sm' | 'md' | 'lg' | 'xl'
+}
+
 export interface OrganizerUiStateBlock {
   schemaVersion: number
   updatedAt: string
   projectName?: string
   missionStatement?: string
-  projectQuotesPath?: string
-  projectRememberPath?: string
+  pinBoardPanels?: PinBoardPanelBlock[]
   presetTags: string[]
   tagColors: Record<string, string>
   programGroups: OrganizerProgramGroupEntryBlock[]
@@ -119,6 +126,53 @@ function normalizeProjectMemoryPath(raw: unknown): string | undefined {
   return normalized || undefined
 }
 
+function generatePanelId(): string {
+  return `panel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function normalizeColSpan(raw: unknown): 1 | 2 | 3 | undefined {
+  if (raw === 1 || raw === 2 || raw === 3) return raw
+  return undefined
+}
+
+function normalizeHeightPreset(raw: unknown): 'sm' | 'md' | 'lg' | 'xl' | undefined {
+  if (raw === 'sm' || raw === 'md' || raw === 'lg' || raw === 'xl') return raw
+  return undefined
+}
+
+function normalizePinBoardPanels(record: Record<string, unknown>): PinBoardPanelBlock[] | undefined {
+  // Current format: pinBoardPanels array
+  if (Array.isArray(record.pinBoardPanels)) {
+    const panels: PinBoardPanelBlock[] = []
+    for (const raw of record.pinBoardPanels) {
+      if (!raw || typeof raw !== 'object') continue
+      const p = raw as Record<string, unknown>
+      const id = String(p.id ?? '').trim() || generatePanelId()
+      const type = p.type === 'todos' ? 'todos' : 'markdown'
+      const path = typeof p.path === 'string' ? normalizePath(p.path) || undefined : undefined
+      panels.push({ id, type, path, colSpan: normalizeColSpan(p.colSpan), heightPreset: normalizeHeightPreset(p.heightPreset) })
+    }
+    return panels.length > 0 ? panels : undefined
+  }
+  // Migrate from pinnedNotesPaths array
+  if (Array.isArray(record.pinnedNotesPaths)) {
+    const panels: PinBoardPanelBlock[] = record.pinnedNotesPaths
+      .map((p: unknown) => (typeof p === 'string' ? normalizePath(p) : ''))
+      .filter(Boolean)
+      .map((path): PinBoardPanelBlock => ({ id: generatePanelId(), type: 'markdown', path }))
+    return panels.length > 0 ? panels : undefined
+  }
+  // Migrate from legacy projectQuotesPath / projectRememberPath
+  const legacyPaths = [
+    normalizeProjectMemoryPath(record.projectQuotesPath),
+    normalizeProjectMemoryPath(record.projectRememberPath),
+  ].filter((p): p is string => Boolean(p))
+  if (legacyPaths.length > 0) {
+    return legacyPaths.map((path): PinBoardPanelBlock => ({ id: generatePanelId(), type: 'markdown', path }))
+  }
+  return undefined
+}
+
 export function normalizeOrganizerUiStateBlock(raw: unknown): OrganizerUiStateBlock {
   const record = raw && typeof raw === 'object'
     ? (raw as Record<string, unknown>)
@@ -128,8 +182,7 @@ export function normalizeOrganizerUiStateBlock(raw: unknown): OrganizerUiStateBl
     updatedAt: normalizeUpdatedAt(record.updatedAt),
     projectName: normalizeProjectName(record.projectName),
     missionStatement: normalizeMissionStatement(record.missionStatement),
-    projectQuotesPath: normalizeProjectMemoryPath(record.projectQuotesPath),
-    projectRememberPath: normalizeProjectMemoryPath(record.projectRememberPath),
+    pinBoardPanels: normalizePinBoardPanels(record),
     presetTags: normalizePresetTags(record.presetTags),
     tagColors: normalizeTagColors(record.tagColors),
     programGroups: normalizeProgramGroups(record.programGroups),
