@@ -126,18 +126,22 @@ export default function DeveloperSetupBlock() {
   return (
     <div className="space-y-6">
       {/* Hero */}
-      <div className="space-y-1">
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Thinking Space ships with its own source code. Open the terminal, run{' '}
-          <code className="rounded bg-muted px-1.5 py-0.5 text-xs">claude</code>, and ask it to
-          change anything — the layout, features, shortcuts. Changes appear instantly.
+      <div className="space-y-3 rounded-md border border-border/40 bg-muted/20 px-3 py-3 text-xs text-muted-foreground leading-relaxed space-y-2">
+        <p>
+          This app ships with its own source code. You can use Claude Code in the terminal to
+          change anything — the layout, features, shortcuts — and see the result instantly.
+        </p>
+        <p>
+          When you&apos;re happy with your changes, <strong className="text-foreground">Build a permanent version</strong> below.
+          That compiles everything into a production app (same as a fresh install) and replaces
+          the one running right now. Edit Mode is then no longer needed — your changes are baked in.
         </p>
       </div>
 
       {/* Setup steps */}
       <div className="space-y-0">
         {/* Step 1: Tools */}
-        <StepRow number={1} done={toolsReady} label="Development tools">
+        <StepRow number={1} done={toolsReady} label="Install development tools">
           <SourceEnvCheckBlock onStatusChange={setEnvStatus} />
         </StepRow>
 
@@ -148,7 +152,8 @@ export default function DeveloperSetupBlock() {
               <div className="space-y-0.5">
                 <div className="text-sm font-medium">Edit Mode</div>
                 <div className="text-xs text-muted-foreground">
-                  Loads the app from your source files. Changes appear instantly — no rebuild needed.
+                  The app loads directly from your source files. Every change Claude Code makes
+                  appears in the app immediately — no rebuild needed.
                 </div>
               </div>
               <Switch
@@ -174,22 +179,26 @@ export default function DeveloperSetupBlock() {
           </div>
           <div className="min-w-0 flex-1">
             <p className={['text-sm font-medium leading-6', !fullyReady ? 'text-muted-foreground' : 'text-foreground'].join(' ')}>
-              Open the terminal and run Claude Code
+              Open the terminal and ask Claude to make changes
             </p>
             {fullyReady && (
-              <div className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 space-y-2">
+              <div className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-3 space-y-2.5">
                 <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
-                  You&apos;re all set
+                  Ready — Edit Mode is on
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Open the <strong>Terminal</strong> tab and run:
                 </p>
-                <code className="block rounded bg-black/20 px-2 py-1 text-xs font-mono text-emerald-700 dark:text-emerald-300">
+                <code className="block rounded bg-black/20 px-2 py-1.5 text-xs font-mono text-emerald-700 dark:text-emerald-300">
                   claude
                 </code>
                 <p className="text-xs text-muted-foreground">
-                  Then describe what you want to change. Claude Code will edit the source files,
-                  and you&apos;ll see the result live.
+                  Tell Claude what you want to change. It will edit the source files and you&apos;ll
+                  see the result live in this window.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Once you&apos;re happy, use <strong className="text-foreground">Build a permanent version</strong> below
+                  to bake your changes into a production app.
                 </p>
               </div>
             )}
@@ -205,7 +214,7 @@ export default function DeveloperSetupBlock() {
         <div className="border-t border-border/50 px-3 py-3 space-y-2">
           <p className="text-xs text-muted-foreground">
             By default the app uses the copy bundled inside it. You can point it at your own git
-            repo instead.
+            repo instead — useful if you want version control over your changes.
           </p>
           <div className="flex gap-2">
             <div className="flex-1 rounded-md border border-input bg-muted/30 px-3 py-2 text-xs font-mono truncate text-foreground">
@@ -221,7 +230,7 @@ export default function DeveloperSetupBlock() {
         </div>
       </details>
 
-      {/* Rebuild (advanced) */}
+      {/* Rebuild */}
       <details
         className="rounded-md border border-border/50 [&>summary]:cursor-pointer"
         open={rebuildOpen}
@@ -230,10 +239,16 @@ export default function DeveloperSetupBlock() {
         <summary className="px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground select-none">
           Build a permanent version
         </summary>
-        <div className="border-t border-border/50 px-3 py-3">
-          <p className="mb-3 text-xs text-muted-foreground">
-            Compiles your edited source into a new app bundle and replaces the running app.
-            Takes about 2 minutes. macOS only.
+        <div className="border-t border-border/50 px-3 py-3 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Compiles your source files into a full production app — the same as a clean install,
+            with your changes baked in. Takes about 2 minutes. When done, click{' '}
+            <strong className="text-foreground">Apply & Relaunch</strong> and the new version
+            replaces this one automatically.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            After this, Edit Mode is no longer needed. Turn it off and the app runs entirely from
+            the built bundle.
           </p>
           <AppRebuildBlock />
         </div>
