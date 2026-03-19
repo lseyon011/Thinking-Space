@@ -80,7 +80,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('source:config:set', config),
 
   // Node / dependency environment check
-  sourceEnvCheck: (): Promise<{ nodeVersion: string | null; nodeMeetsMinimum: boolean; npmVersion: string | null; depsInstalled: boolean }> =>
+  sourceEnvCheck: (): Promise<{ nodeVersion: string | null; nodeMeetsMinimum: boolean; npmVersion: string | null; depsInstalled: boolean; isGitRepo: boolean; gitBranch: string | null }> =>
     ipcRenderer.invoke('source:env:check'),
   sourceInstallDeps: (): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('source:install:deps'),

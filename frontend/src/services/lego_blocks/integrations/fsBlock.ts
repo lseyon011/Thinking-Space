@@ -105,7 +105,7 @@ interface ElectronAPI {
   markdownEditorOnPasteAsTable?(handler: () => void): () => void
   sourceConfigGet?(): Promise<{ mode: string; sourcePath: string | null; vitePort: number; viteRunning: boolean }>
   sourceConfigSet?(config: { mode?: string; sourcePath?: string | null; vitePort?: number }): Promise<{ mode: string; sourcePath: string | null; vitePort: number; requiresRestart: boolean }>
-  sourceEnvCheck?(): Promise<{ nodeVersion: string | null; nodeMeetsMinimum: boolean; npmVersion: string | null; depsInstalled: boolean }>
+  sourceEnvCheck?(): Promise<{ nodeVersion: string | null; nodeMeetsMinimum: boolean; npmVersion: string | null; depsInstalled: boolean; isGitRepo: boolean; gitBranch: string | null }>
   sourceInstallDeps?(): Promise<{ ok: boolean; error?: string }>
   onSourceInstallProgress?(handler: (entry: { step: string; message: string; type: string }) => void): () => void
   onSourceInstallDone?(handler: (result: { ok: boolean; error?: string }) => void): () => void

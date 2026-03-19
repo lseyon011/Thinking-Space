@@ -7,6 +7,8 @@ interface EnvStatus {
   nodeMeetsMinimum: boolean
   npmVersion: string | null
   depsInstalled: boolean
+  isGitRepo: boolean
+  gitBranch: string | null
 }
 
 interface LogEntry {

@@ -17,6 +17,8 @@ interface EnvStatus {
   nodeMeetsMinimum: boolean
   npmVersion: string | null
   depsInstalled: boolean
+  isGitRepo: boolean
+  gitBranch: string | null
 }
 
 function StepRow({
@@ -226,6 +228,22 @@ export default function DeveloperSetupBlock() {
               Change
             </Button>
           </div>
+          {config.sourcePath && envStatus && (
+            <div className="flex items-center gap-2 text-xs">
+              {envStatus.isGitRepo ? (
+                <>
+                  <span className="text-emerald-600 dark:text-emerald-400">git repo</span>
+                  {envStatus.gitBranch && (
+                    <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-muted-foreground">
+                      {envStatus.gitBranch}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="text-muted-foreground">no git repo found at this path</span>
+              )}
+            </div>
+          )}
           {pathError && <p className="text-xs text-destructive">{pathError}</p>}
         </div>
       </details>

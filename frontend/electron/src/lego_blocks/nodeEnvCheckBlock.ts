@@ -9,6 +9,8 @@ export interface NodeEnvStatusBlock {
   nodeMeetsMinimum: boolean;       // node >= 18
   npmVersion: string | null;       // e.g. "10.2.4" or null if not found
   depsInstalled: boolean;          // node_modules/.bin/vite exists at sourcePath
+  isGitRepo: boolean;              // .git exists at sourcePath
+  gitBranch: string | null;        // current branch, or null
 }
 
 export interface NodeEnvProgressBlock {
@@ -56,12 +58,21 @@ export function checkNodeEnvBlock(sourcePath: string | null): NodeEnvStatusBlock
     : false;
 
   let depsInstalled = false;
+  let isGitRepo = false;
+  let gitBranch: string | null = null;
+
   if (sourcePath) {
     const viteBin = path.join(sourcePath, 'node_modules', '.bin', 'vite');
     depsInstalled = fs.existsSync(viteBin);
+
+    // .git can be a directory (normal repo) or a file (worktree/submodule)
+    isGitRepo = fs.existsSync(path.join(sourcePath, '.git'));
+    if (isGitRepo) {
+      gitBranch = tryExecBlock(`git -C "${sourcePath}" rev-parse --abbrev-ref HEAD`);
+    }
   }
 
-  return { nodeVersion, nodeMeetsMinimum, npmVersion, depsInstalled };
+  return { nodeVersion, nodeMeetsMinimum, npmVersion, depsInstalled, isGitRepo, gitBranch };
 }
 
 export function installDepsBlock(
