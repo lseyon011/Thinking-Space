@@ -297,39 +297,39 @@ contextBridge.exposeInMainWorld('electronAPI', {
     model?: string,
   ) => ipcRenderer.invoke('ai:chat:codex', messages, accessToken, accountId, model),
 
-  // F9 / Webull bridge (main-process network to bypass renderer CORS limits)
-  f9WebullGet: (payload: {
+  // Webull / Webull bridge (main-process network to bypass renderer CORS limits)
+  webullGet: (payload: {
     url: string
     headers: Record<string, string>
     method?: 'GET' | 'POST'
     body?: string
-  }) => ipcRenderer.invoke('f9:webull:get', payload),
-  f9WebullAccountList: (payload: {
+  }) => ipcRenderer.invoke('webull:get', payload),
+  webullAccountList: (payload: {
     url: string
     headers: Record<string, string>
     method?: 'GET' | 'POST'
     body?: string
-  }) => ipcRenderer.invoke('f9:webull:accountList', payload),
-  f9WebullSignedRequest: (payload: {
+  }) => ipcRenderer.invoke('webull:accountList', payload),
+  webullSignedRequest: (payload: {
     method: 'GET' | 'POST'
     url: string
     version?: string
     accessToken?: string
     body?: string
-  }) => ipcRenderer.invoke('f9:webull:signedRequest', payload),
-  f9WebullCredentialStatus: () =>
-    ipcRenderer.invoke('f9:webull:credentials:status'),
-  f9WebullCredentialSet: (payload: {
+  }) => ipcRenderer.invoke('webull:signedRequest', payload),
+  webullCredentialStatus: () =>
+    ipcRenderer.invoke('webull:credentials:status'),
+  webullCredentialSet: (payload: {
     appKey: string
     appSecret: string
-  }) => ipcRenderer.invoke('f9:webull:credentials:set', payload),
-  f9WebullCredentialClear: () =>
-    ipcRenderer.invoke('f9:webull:credentials:clear'),
-  f9WebullTokenGet: () =>
-    ipcRenderer.invoke('f9:webull:token:get'),
-  f9WebullTokenSet: (payload: {
+  }) => ipcRenderer.invoke('webull:credentials:set', payload),
+  webullCredentialClear: () =>
+    ipcRenderer.invoke('webull:credentials:clear'),
+  webullTokenGet: () =>
+    ipcRenderer.invoke('webull:token:get'),
+  webullTokenSet: (payload: {
     token: string
     expires: number | null
     status: string | null
-  } | null) => ipcRenderer.invoke('f9:webull:token:set', payload),
+  } | null) => ipcRenderer.invoke('webull:token:set', payload),
 });

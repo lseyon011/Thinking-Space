@@ -34,6 +34,7 @@ import AiAssistReviewBlock from '@/components/lego_blocks/integrations/AiAssistR
 import AiStewardPanelBlock from '@/components/lego_blocks/integrations/AiStewardPanelBlock'
 import RelatedThoughtsPanelBlock from '@/components/lego_blocks/integrations/RelatedThoughtsPanelBlock'
 import ExcalidrawDocumentBlock from '@/components/lego_blocks/integrations/ExcalidrawDocumentBlock'
+import MarkdownTableOfContentsBlock from '@/components/lego_blocks/integrations/MarkdownTableOfContentsBlock'
 import { useAiAssistRuntimeBlock } from '@/components/lego_blocks/hooks/integrations/useAiAssistRuntimeBlock'
 import type { StewardMetadataSuggestion } from '@/services/orchestrators/stewardMetadataOrch'
 import {
@@ -83,6 +84,7 @@ interface MarkdownRichEditorBlockProps {
   currentPath?: string
   className?: string
   editorClassName?: string
+  toolbarClassName?: string
   placeholder?: string
   compactMobile?: boolean
   /** When true the toolbar is always visible (legacy behavior). When false a toggle button is shown. Default: false. */
@@ -475,6 +477,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   currentPath = '',
   className,
   editorClassName,
+  toolbarClassName,
   placeholder = 'Write markdown...',
   compactMobile = false,
   toolbarAlwaysVisible = false,
@@ -508,6 +511,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   }, [layout.mode, layout.surface])
   const editorViewRef = useRef<EditorView | null>(null)
   const [toolbarOpen, setToolbarOpen] = useState(false)
+  const [currentCursorLine, setCurrentCursorLine] = useState(1)
   const [internalAiPanelOpen, setInternalAiPanelOpen] = useState(defaultAiPanelOpen)
   const [wikilinkPickerOpen, setWikilinkPickerOpen] = useState(false)
   const [wikilinkQuery, setWikilinkQuery] = useState('')
@@ -1008,6 +1012,9 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       '.cm-focused': {
         outline: 'none',
       },
+      '&.cm-focused': {
+        outline: 'none',
+      },
       '.ts-ai-inline-diff-widget': {
         margin: compactMobile ? '0.2rem 0.2rem 0.35rem 0' : '0.25rem 0.3rem 0.4rem 0',
         border: '1px solid hsl(var(--border) / 0.8)',
@@ -1127,6 +1134,8 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       ...(inlineDiffRender ? [EditorState.readOnly.of(true)] : []),
       ...(inlineDiffDecorations ? [EditorView.decorations.of(inlineDiffDecorations)] : []),
       EditorView.updateListener.of((update) => {
+        const nextLine = update.state.doc.lineAt(update.state.selection.main.head).number
+        setCurrentCursorLine((prev) => (prev === nextLine ? prev : nextLine))
         const query = getWikilinkCompletionQueryFromState(update.state)
         if (!query) {
           setWikilinkPickerOpen(false)
@@ -1162,6 +1171,21 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     })
     view.focus()
   }
+
+  const jumpToHeadingLine = useCallback((lineNumber: number) => {
+    const view = editorViewRef.current
+    if (!view) return
+    const boundedLine = Math.max(1, Math.min(lineNumber, view.state.doc.lines))
+    const line = view.state.doc.line(boundedLine)
+    view.dispatch({
+      selection: {
+        anchor: line.from,
+        head: line.from,
+      },
+      effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+    })
+    view.focus()
+  }, [])
 
   const handleEditorChange = useCallback((next: string) => {
     onChange(next)
@@ -1250,7 +1274,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
 
       {/* Formatting toolbar */}
       {showToolbar && (
-        <div className="sticky top-0 z-30 flex flex-wrap items-center gap-1 border-b border-border/20 bg-background/95 p-2 backdrop-blur">
+        <div className={cn("sticky top-0 z-30 flex flex-wrap items-center gap-1 border-b border-border/20 bg-background p-2", toolbarClassName)}>
           <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '# ', '', 'Heading'))} className={TOOLBAR_BTN} title="Heading">
             <Heading1 className="h-4 w-4" />
           </button>
@@ -1294,6 +1318,12 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           <button type="button" onClick={() => applyPatch((text, from, to) => prefixSelectionLines(text, from, to, (line, i) => `${i + 1}. ${line}`))} className={TOOLBAR_BTN} title="Numbered list">
             <ListOrdered className="h-4 w-4" />
           </button>
+          <MarkdownTableOfContentsBlock
+            content={value}
+            currentLine={currentCursorLine}
+            compact={compactMobile}
+            onSelectHeading={(heading) => jumpToHeadingLine(heading.line)}
+          />
           <button type="button" onClick={undoEditor} className={TOOLBAR_BTN} title="Undo">
             <RotateCcw className="h-4 w-4" />
           </button>
@@ -1814,6 +1844,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           extensions={extensions}
           onCreateEditor={(view) => {
             editorViewRef.current = view
+            setCurrentCursorLine(view.state.doc.lineAt(view.state.selection.main.head).number)
           }}
           onChange={handleEditorChange}
         />

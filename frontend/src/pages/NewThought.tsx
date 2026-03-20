@@ -798,7 +798,7 @@ function CreateTab() {
                   className={cn(
                     'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors',
                     tab === item.id
-                      ? 'bg-accent font-medium text-accent-foreground'
+                      ? 'bg-foreground font-medium text-background'
                       : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
                   )}
                   onClick={() => setTab(item.id)}
@@ -1004,6 +1004,7 @@ function CreateTab() {
                   openFileInNewTabOrch(relatedPath)
                   setMessage(`Opened ${relatedPath} in a new tab.`)
                 }}
+                toolbarClassName="rounded-tl-lg rounded-tr-lg"
                 className="min-h-[520px] rounded-none border-0 border-b border-border/40 md:min-h-[620px]"
               />
 
@@ -1109,6 +1110,64 @@ function CreateTab() {
                   </>
                 )}
 
+                <div className="space-y-2">
+                  <label className="text-xs text-muted-foreground">Quick destinations</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {quickDestinations.length === 0 ? (
+                      <span className="text-xs text-muted-foreground">
+                        No quick destinations yet.
+                      </span>
+                    ) : (
+                      quickDestinations.map((destination) => {
+                        const destinationPathValue = destination.pathSegments.join('/')
+                        const active = destinationPathValue === destinationPath
+                        return (
+                          <div
+                            key={destination.id}
+                            className={`inline-flex items-center rounded-full border px-1 py-1 ${
+                              active
+                                ? 'border-primary/80 bg-primary text-primary-foreground'
+                                : 'border-border/60 bg-background text-foreground'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              className="rounded-full px-2.5 py-1 text-xs font-medium transition-colors hover:opacity-90"
+                              title={destinationPathValue}
+                              onClick={() => applyDestinationSegments(destination.pathSegments)}
+                            >
+                              {destination.label}
+                            </button>
+                            <button
+                              type="button"
+                              className={`rounded-full p-1 transition-colors ${
+                                active
+                                  ? 'text-primary-foreground/90 hover:bg-primary-foreground/20'
+                                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                              }`}
+                              title={`Remove quick destination ${destination.label}`}
+                              onClick={() => handleDeleteQuickDestination(destination.id)}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )
+                      })
+                    )}
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-7 w-7 rounded-full"
+                      onClick={openQuickDestinationModal}
+                      title="Add quick destination"
+                      aria-label="Add quick destination"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+
                 <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                   <div className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
                     {makeThisTodo ? 'Destination todo file' : 'Destination file'}:{' '}
@@ -1175,67 +1234,6 @@ function CreateTab() {
             </CardContent>
           </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-sm">Quick Destinations</CardTitle>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={openQuickDestinationModal}
-              >
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Add Destination
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {quickDestinations.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No quick destinations yet.
-              </p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {quickDestinations.map((destination) => {
-                  const destinationPathValue = destination.pathSegments.join('/')
-                  const active = destinationPathValue === destinationPath
-                  return (
-                    <div
-                      key={destination.id}
-                      className={`inline-flex items-center rounded-full border px-1 py-1 ${
-                        active
-                          ? 'border-primary/80 bg-primary text-primary-foreground'
-                          : 'border-border/60 bg-background text-foreground'
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        className="rounded-full px-2.5 py-1 text-xs font-medium transition-colors hover:opacity-90"
-                        title={destinationPathValue}
-                        onClick={() => applyDestinationSegments(destination.pathSegments)}
-                      >
-                        {destination.label}
-                      </button>
-                      <button
-                        type="button"
-                        className={`rounded-full p-1 transition-colors ${
-                          active
-                            ? 'text-primary-foreground/90 hover:bg-primary-foreground/20'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        }`}
-                        title={`Remove quick destination ${destination.label}`}
-                        onClick={() => handleDeleteQuickDestination(destination.id)}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>}
       </div>
 
@@ -1252,7 +1250,7 @@ function CreateTab() {
                   <div>
                     <CardTitle>Add Quick Destination</CardTitle>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Create a top-panel destination button (for example, F9 Thoughts).
+                      Create a top-panel destination button (for example, Webull Thoughts).
                     </p>
                   </div>
                   <button
@@ -1270,7 +1268,7 @@ function CreateTab() {
                   <input
                     value={quickDestinationLabel}
                     onChange={(event) => setQuickDestinationLabel(event.target.value)}
-                    placeholder="F9 Thoughts"
+                    placeholder="Webull Thoughts"
                     className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                   />
                 </div>

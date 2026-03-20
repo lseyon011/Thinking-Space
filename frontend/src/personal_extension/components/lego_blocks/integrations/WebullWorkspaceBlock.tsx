@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  dispatchF9SidebarChromeStateBlock,
-  F9_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
-} from '@/personal_extension/services/lego_blocks/units/f9SidebarChromeBlock'
+  dispatchWebullSidebarChromeStateBlock,
+  Webull_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
+} from '@/personal_extension/services/lego_blocks/units/webullSidebarChromeBlock'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import FileSelectionViewerBlock from '@/components/lego_blocks/integrations/FileSelectionViewerBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
@@ -29,39 +29,39 @@ import {
 import { normalizeTagBlock, normalizeTagListBlock, splitTagInputBlock, tagsEqualBlock } from '@/services/lego_blocks/units/tagBlock'
 import type { NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { listMarkdownEntries, listPdfFiles } from '@/services/orchestrators/fileSystemOrch'
-import type { F9RuntimeSurfaceOrch, F9SelectedAccountOrch } from '@/personal_extension/services/orchestrators/f9OverallOrch'
+import type { WebullRuntimeSurfaceOrch, WebullSelectedAccountOrch } from '@/personal_extension/services/orchestrators/webullOverallOrch'
 import type {
-  F9CompanyOverviewBlock,
-  F9ExecutionOverviewBlock,
-  F9PositionDetailBlock,
-  F9PositionSummaryBlock,
-} from '@/personal_extension/services/orchestrators/f9ExecutionOrch'
+  WebullCompanyOverviewBlock,
+  WebullExecutionOverviewBlock,
+  WebullPositionDetailBlock,
+  WebullPositionSummaryBlock,
+} from '@/personal_extension/services/orchestrators/webullExecutionOrch'
 
-interface F9SubtabBlock {
+interface WebullSubtabBlock {
   id: 'overall' | 'memory'
   label: string
 }
 
-interface F9LinkOptionBlock {
+interface WebullLinkOptionBlock {
   path: string
   label: string
   summary?: string
 }
 
-interface F9PdfOptionBlock {
+interface WebullPdfOptionBlock {
   path: string
   label: string
 }
 
-interface F9WorkspaceBlockProps {
-  subtabs: F9SubtabBlock[]
+interface WebullWorkspaceBlockProps {
+  subtabs: WebullSubtabBlock[]
   activeSubtabId: 'overall' | 'memory'
   onSelectSubtab: (id: 'overall' | 'memory') => void
   hasConfig: boolean
   liveRefreshAvailable: boolean
   error: string | null
-  runtime: F9RuntimeSurfaceOrch | null
-  lastRefreshRuntime: F9RuntimeSurfaceOrch | null
+  runtime: WebullRuntimeSurfaceOrch | null
+  lastRefreshRuntime: WebullRuntimeSurfaceOrch | null
   fetchedAt: string | null
   endpoints: {
     accountList: string | null
@@ -71,7 +71,7 @@ interface F9WorkspaceBlockProps {
     assetsPositions: string | null
     marketQuotes: string | null
   }
-  selectedAccount: F9SelectedAccountOrch | null
+  selectedAccount: WebullSelectedAccountOrch | null
   accountList: unknown
   accountBalanceLegacy: unknown | null
   accountPositionsLegacy: unknown | null
@@ -86,12 +86,12 @@ interface F9WorkspaceBlockProps {
   executionSyncSource: 'assets_positions' | 'legacy_positions' | 'none'
   executionSyncWarnings: string[]
   executionSyncError: string | null
-  executionOverview: F9ExecutionOverviewBlock | null
+  executionOverview: WebullExecutionOverviewBlock | null
   activeCompanyTicker: string | null
   onSelectCompanyTicker: (companyTicker: string | null) => void
   activePositionFileName: string | null
   onSelectPositionFileName: (fileName: string) => void
-  activePositionDetail: F9PositionDetailBlock | null
+  activePositionDetail: WebullPositionDetailBlock | null
   positionDetailLoading: boolean
   positionDetailError: string | null
   workspaceBusy: boolean
@@ -131,12 +131,12 @@ interface F9WorkspaceBlockProps {
   onOpenNodeFile: (filePath: string) => void
 }
 
-const F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK = 'f9_workspace_side_tabs_collapsed'
-const F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK = 'min-w-[1360px]'
-type F9ProjectPresetTagsByRootBlock = Record<string, string[]>
-type F9ProjectProgramGroupsByRootBlock = Record<string, OrganizerProgramGroupEntryBlock[]>
-type F9ProjectMemoryFilesByRootBlock = Record<string, { panels: PinBoardPanelBlock[] }>
-type F9OverallRememberByProjectRootBlock = Record<string, string>
+const Webull_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK = 'webull_workspace_side_tabs_collapsed'
+const Webull_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK = 'min-w-[1360px]'
+type WebullProjectPresetTagsByRootBlock = Record<string, string[]>
+type WebullProjectProgramGroupsByRootBlock = Record<string, OrganizerProgramGroupEntryBlock[]>
+type WebullProjectMemoryFilesByRootBlock = Record<string, { panels: PinBoardPanelBlock[] }>
+type WebullOverallRememberByProjectRootBlock = Record<string, string>
 
 function makeProgramGroupIdBlock(): string {
   return `program-group-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -195,7 +195,7 @@ function mergeProgramGroupsWithAssignmentsBlock(
   })
 }
 
-function formatRuntimeLabelBlock(value: F9RuntimeSurfaceOrch | null): string {
+function formatRuntimeLabelBlock(value: WebullRuntimeSurfaceOrch | null): string {
   if (value === 'electron') return 'Electron'
   if (value === 'capacitor') return 'Capacitor'
   if (value === 'web') return 'Web'
@@ -380,7 +380,7 @@ function asYamlCommentsBlock(value: unknown): YAMLCommentEntry[] {
   })
 }
 
-function positionTitleFromSummaryBlock(position: F9PositionSummaryBlock): string {
+function positionTitleFromSummaryBlock(position: WebullPositionSummaryBlock): string {
   const symbol = firstStringBlock(position.symbol) || 'UNKNOWN'
   const optionType = firstStringBlock(position.optionType).toUpperCase()
   const optionExpireDate = firstStringBlock(position.optionExpireDate)
@@ -397,7 +397,7 @@ function positionTitleFromSummaryBlock(position: F9PositionSummaryBlock): string
   return symbol
 }
 
-function compareF9PositionsAscendingBlock(a: F9PositionSummaryBlock, b: F9PositionSummaryBlock): number {
+function compareWebullPositionsAscendingBlock(a: WebullPositionSummaryBlock, b: WebullPositionSummaryBlock): number {
   const byTitle = positionTitleFromSummaryBlock(a).localeCompare(
     positionTitleFromSummaryBlock(b),
     undefined,
@@ -407,12 +407,12 @@ function compareF9PositionsAscendingBlock(a: F9PositionSummaryBlock, b: F9Positi
   return a.fileName.localeCompare(b.fileName, undefined, { numeric: true, sensitivity: 'base' })
 }
 
-function sortF9PositionsAscendingBlock(positions: F9PositionSummaryBlock[]): F9PositionSummaryBlock[] {
-  return [...positions].sort(compareF9PositionsAscendingBlock)
+function sortWebullPositionsAscendingBlock(positions: WebullPositionSummaryBlock[]): WebullPositionSummaryBlock[] {
+  return [...positions].sort(compareWebullPositionsAscendingBlock)
 }
 
-function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, unknown>>): F9CompanyOverviewBlock[] {
-  const grouped = new Map<string, F9PositionSummaryBlock[]>()
+function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, unknown>>): WebullCompanyOverviewBlock[] {
+  const grouped = new Map<string, WebullPositionSummaryBlock[]>()
   for (const row of rows) {
     const ticker = firstStringBlock(row.symbol, row.ticker, row.position_symbol, row.stock_code).toUpperCase()
     if (!ticker) continue
@@ -454,7 +454,7 @@ function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, u
       programGroupId: null,
       valuationNotePath: null,
       companyPdfReportPath: null,
-      positions: sortF9PositionsAscendingBlock(positions),
+      positions: sortWebullPositionsAscendingBlock(positions),
     }))
 }
 
@@ -537,7 +537,7 @@ function resolveUnrealizedProfitLossBlock(payload: Record<string, unknown> | nul
   return readNumberFromRecordBlock(payload, 'unrealized_profit_loss', 'unrealizedProfitLoss', 'upl')
 }
 
-function positionPayloadFromSummaryBlock(position: F9PositionSummaryBlock): Record<string, unknown> {
+function positionPayloadFromSummaryBlock(position: WebullPositionSummaryBlock): Record<string, unknown> {
   return {
     id: position.id,
     file_name: position.fileName,
@@ -558,7 +558,7 @@ function positionPayloadFromSummaryBlock(position: F9PositionSummaryBlock): Reco
   }
 }
 
-function computeCompanyTotalsBlock(positions: F9PositionSummaryBlock[]): {
+function computeCompanyTotalsBlock(positions: WebullPositionSummaryBlock[]): {
   totalCost: number | null
   avgUnitCost: number | null
   totalUnrealizedProfitLoss: number | null
@@ -605,7 +605,7 @@ function computeCompanyTotalsBlock(positions: F9PositionSummaryBlock[]): {
   }
 }
 
-function isOptionPositionBlock(position: F9PositionSummaryBlock): boolean {
+function isOptionPositionBlock(position: WebullPositionSummaryBlock): boolean {
   const instrumentType = firstStringBlock(position.instrumentType).toUpperCase()
   if (instrumentType === 'OPTION') return true
   if (instrumentType === 'STOCK') return false
@@ -617,7 +617,7 @@ function percentOfBlock(part: number | null, total: number | null): number | nul
   return (part / total) * 100
 }
 
-function computeCompanySummaryMetricsBlock(positions: F9PositionSummaryBlock[]): {
+function computeCompanySummaryMetricsBlock(positions: WebullPositionSummaryBlock[]): {
   totalCost: number | null
   stockCost: number | null
   optionCost: number | null
@@ -680,7 +680,7 @@ function computeCompanySummaryMetricsBlock(positions: F9PositionSummaryBlock[]):
   }
 }
 
-export default function F9WorkspaceBlock({
+export default function WebullWorkspaceBlock({
   subtabs,
   activeSubtabId,
   onSelectSubtab,
@@ -720,7 +720,7 @@ export default function F9WorkspaceBlock({
   onUpdateCompanyOverlay,
   onSavePositionBody,
   onOpenNodeFile,
-}: F9WorkspaceBlockProps) {
+}: WebullWorkspaceBlockProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
   const allWarnings = [...warnings, ...executionSyncWarnings]
@@ -730,27 +730,27 @@ export default function F9WorkspaceBlock({
   const [preserveOverallContext, setPreserveOverallContext] = useState(false)
   const [sideTabsCollapsed, setSideTabsCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false
-    return window.localStorage.getItem(F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK) === '1'
+    return window.localStorage.getItem(Webull_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK) === '1'
   })
-  const projectRootKey = normalizeRelativePathBlock(executionRoot ?? 'f9-execution') || 'f9-execution'
+  const projectRootKey = normalizeRelativePathBlock(executionRoot ?? 'webull-execution') || 'webull-execution'
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    window.localStorage.setItem(F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK, sideTabsCollapsed ? '1' : '0')
+    window.localStorage.setItem(Webull_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK, sideTabsCollapsed ? '1' : '0')
   }, [sideTabsCollapsed])
 
   useEffect(() => {
-    dispatchF9SidebarChromeStateBlock({
+    dispatchWebullSidebarChromeStateBlock({
       enabled: true,
       collapsed: sideTabsCollapsed,
-      label: 'f9',
+      label: 'webull',
     })
   }, [sideTabsCollapsed])
 
   useEffect(() => {
     const handler = () => setSideTabsCollapsed(prev => !prev)
-    window.addEventListener(F9_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
-    return () => window.removeEventListener(F9_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
+    window.addEventListener(Webull_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
+    return () => window.removeEventListener(Webull_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
   }, [])
 
   const handleToggleSidebar = useCallback(() => setSideTabsCollapsed(prev => !prev), [])
@@ -783,7 +783,7 @@ export default function F9WorkspaceBlock({
     return hasAny ? total : null
   }, [executionOverview])
 
-  const companiesForTable = useMemo<F9CompanyOverviewBlock[]>(() => {
+  const companiesForTable = useMemo<WebullCompanyOverviewBlock[]>(() => {
     const sourceCompanies = (() => {
       if (showCompanyView && selectedCompany) return [selectedCompany]
       if ((executionOverview?.companies.length ?? 0) > 0) return executionOverview?.companies ?? []
@@ -791,7 +791,7 @@ export default function F9WorkspaceBlock({
     })()
     return sourceCompanies.map(company => ({
       ...company,
-      positions: sortF9PositionsAscendingBlock(company.positions),
+      positions: sortWebullPositionsAscendingBlock(company.positions),
     }))
   }, [executionOverview?.companies, overallRows, selectedCompany, showCompanyView])
 
@@ -806,7 +806,7 @@ export default function F9WorkspaceBlock({
 
     for (const company of companiesForTable) {
       const companyTicker = company.companyTicker.toUpperCase()
-      const programUuid = `f9-company-${normalizeKeyFragmentBlock(companyTicker)}`
+      const programUuid = `webull-company-${normalizeKeyFragmentBlock(companyTicker)}`
       const companyTotals = computeCompanyTotalsBlock(company.positions)
       companyTickerByProgramUuid.set(programUuid, companyTicker)
       const programNode: NodeRecord = {
@@ -815,19 +815,19 @@ export default function F9WorkspaceBlock({
         title: `${companyTicker} Positions`,
         type: 'program',
         level: 0,
-        filePath: company.indexFilePath || `f9/${companyTicker}/${companyTicker}-index.md`,
-        projectRoot: executionRoot ?? 'f9-execution',
-        tags: ['f9', 'execution', companyTicker.toLowerCase()],
+        filePath: company.indexFilePath || `webull/${companyTicker}/${companyTicker}-index.md`,
+        projectRoot: executionRoot ?? 'webull-execution',
+        tags: ['webull', 'execution', companyTicker.toLowerCase()],
         status: 'active',
         createdAt: now,
         updatedAt: now,
         metadata: {
-          f9_company_ticker: companyTicker,
-          f9_position_count: company.positions.length,
-          f9_total_cost: companyTotals.totalCost,
-          f9_avg_unit_cost: companyTotals.avgUnitCost,
-          f9_total_unrealized_profit_loss: companyTotals.totalUnrealizedProfitLoss,
-          f9_total_current_price: companyTotals.totalCurrentPrice,
+          webull_company_ticker: companyTicker,
+          webull_position_count: company.positions.length,
+          webull_total_cost: companyTotals.totalCost,
+          webull_avg_unit_cost: companyTotals.avgUnitCost,
+          webull_total_unrealized_profit_loss: companyTotals.totalUnrealizedProfitLoss,
+          webull_total_current_price: companyTotals.totalCurrentPrice,
           program_group: company.programGroupId,
         },
       }
@@ -837,13 +837,13 @@ export default function F9WorkspaceBlock({
       const nodes = company.positions.map((position, index) => {
         const positionStatus = normalizePositionStatusBlock(position.status)
         const fileName = position.fileName
-        const nodeUuid = `f9-pos-${normalizeKeyFragmentBlock(companyTicker)}-${normalizeKeyFragmentBlock(fileName)}`
+        const nodeUuid = `webull-pos-${normalizeKeyFragmentBlock(companyTicker)}-${normalizeKeyFragmentBlock(fileName)}`
         const positionProjectPresetTags = normalizeTagListBlock(position.projectPresetTags ?? [])
         const positionRelatedNodes = (position.relatedNodes ?? [])
           .map(path => path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
           .filter(Boolean)
         const positionTags = normalizeTagListBlock([
-          'f9',
+          'webull',
           'execution',
           companyTicker.toLowerCase(),
           firstStringBlock(position.instrumentType).toLowerCase() || 'position',
@@ -862,8 +862,8 @@ export default function F9WorkspaceBlock({
           parentType: 'program',
           filePath: executionRoot
             ? `${executionRoot}/${companyTicker}/positions/${fileName}`
-            : `f9/${companyTicker}/positions/${fileName}`,
-          projectRoot: executionRoot ?? 'f9-execution',
+            : `webull/${companyTicker}/positions/${fileName}`,
+          projectRoot: executionRoot ?? 'webull-execution',
           description: undefined,
           tags: positionTags,
           projectPresetTags: positionProjectPresetTags,
@@ -873,11 +873,11 @@ export default function F9WorkspaceBlock({
           createdAt: now,
           updatedAt: now,
           metadata: {
-            f9_company_ticker: companyTicker,
-            f9_position_file_name: fileName,
-            f9_position_status: positionStatus,
-            f9_linked_idea_id: position.linkedIdeaId ?? '',
-            f9_position_payload: positionPayloadFromSummaryBlock(position),
+            webull_company_ticker: companyTicker,
+            webull_position_file_name: fileName,
+            webull_position_status: positionStatus,
+            webull_linked_idea_id: position.linkedIdeaId ?? '',
+            webull_position_payload: positionPayloadFromSummaryBlock(position),
           },
         }
         nodeByUuid.set(nodeUuid, nodeRecord)
@@ -898,19 +898,19 @@ export default function F9WorkspaceBlock({
   }, [companiesForTable, executionRoot])
 
   const [detailPanelNodeId, setDetailPanelNodeId] = useState<string | null>(null)
-  const [projectPresetTagsByRoot, setProjectPresetTagsByRoot] = useState<F9ProjectPresetTagsByRootBlock>(
-    () => getJsonStorageItem<F9ProjectPresetTagsByRootBlock>(STORAGE_KEYS.f9ProjectPresetTags, {}),
+  const [projectPresetTagsByRoot, setProjectPresetTagsByRoot] = useState<WebullProjectPresetTagsByRootBlock>(
+    () => getJsonStorageItem<WebullProjectPresetTagsByRootBlock>(STORAGE_KEYS.webullProjectPresetTags, {}),
   )
-  const [projectProgramGroupsByRoot, setProjectProgramGroupsByRoot] = useState<F9ProjectProgramGroupsByRootBlock>(
-    () => getJsonStorageItem<F9ProjectProgramGroupsByRootBlock>(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, {}),
+  const [projectProgramGroupsByRoot, setProjectProgramGroupsByRoot] = useState<WebullProjectProgramGroupsByRootBlock>(
+    () => getJsonStorageItem<WebullProjectProgramGroupsByRootBlock>(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, {}),
   )
-  const [projectMemoryFilesByRoot, setProjectMemoryFilesByRoot] = useState<F9ProjectMemoryFilesByRootBlock>({})
-  const [overallRememberByProjectRoot, setOverallRememberByProjectRoot] = useState<F9OverallRememberByProjectRootBlock>(
-    () => getJsonStorageItem<F9OverallRememberByProjectRootBlock>(STORAGE_KEYS.f9OverallRememberByProjectRoot, {}),
+  const [projectMemoryFilesByRoot, setProjectMemoryFilesByRoot] = useState<WebullProjectMemoryFilesByRootBlock>({})
+  const [overallRememberByProjectRoot, setOverallRememberByProjectRoot] = useState<WebullOverallRememberByProjectRootBlock>(
+    () => getJsonStorageItem<WebullOverallRememberByProjectRootBlock>(STORAGE_KEYS.webullOverallRememberByProjectRoot, {}),
   )
   const projectMemoryHydratedRootsRef = useRef<Set<string>>(new Set())
-  const [linkOptions, setLinkOptions] = useState<F9LinkOptionBlock[]>([])
-  const [pdfOptions, setPdfOptions] = useState<F9PdfOptionBlock[]>([])
+  const [linkOptions, setLinkOptions] = useState<WebullLinkOptionBlock[]>([])
+  const [pdfOptions, setPdfOptions] = useState<WebullPdfOptionBlock[]>([])
   const [companyFilePickerOpen, setCompanyFilePickerOpen] = useState(false)
   const [companyFileQuery, setCompanyFileQuery] = useState('')
   const [companyFileViewerNonce, setCompanyFileViewerNonce] = useState(0)
@@ -1142,7 +1142,7 @@ export default function F9WorkspaceBlock({
         )
 
         if (markdownResult.status === 'fulfilled') {
-          const options: F9LinkOptionBlock[] = []
+          const options: WebullLinkOptionBlock[] = []
           for (const entry of markdownResult.value) {
             const path = normalizeRelativePathBlock(entry.path)
             if (!path) continue
@@ -1166,7 +1166,7 @@ export default function F9WorkspaceBlock({
               return {
                 path: normalizedPath,
                 label: path.split('/').pop() || normalizedPath,
-              } satisfies F9PdfOptionBlock
+              } satisfies WebullPdfOptionBlock
             })
             .filter((option) => option.path.length > 0)
             .sort((a, b) => a.label.localeCompare(b.label))
@@ -1219,7 +1219,7 @@ export default function F9WorkspaceBlock({
     setCompanyPdfViewerNonce((prev) => prev + 1)
   }, [onUpdateCompanyOverlay, selectedCompany])
 
-  const f9RowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
+  const webullRowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
     return [
       {
         id: 'cost',
@@ -1228,8 +1228,8 @@ export default function F9WorkspaceBlock({
         align: 'right',
         render: (node) => {
           const metadata = asMetadataRecordBlock(node)
-          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.f9_total_cost)
-          const payload = metadata.f9_position_payload as Record<string, unknown> | undefined
+          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.webull_total_cost)
+          const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
           return formatCurrencyBlock(resolveTotalCostBlock(payload))
         },
       },
@@ -1240,8 +1240,8 @@ export default function F9WorkspaceBlock({
         align: 'right',
         render: (node) => {
           const metadata = asMetadataRecordBlock(node)
-          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.f9_avg_unit_cost)
-          const payload = metadata.f9_position_payload as Record<string, unknown> | undefined
+          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.webull_avg_unit_cost)
+          const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
           return formatCurrencyBlock(resolveUnitCostBlock(payload))
         },
       },
@@ -1252,8 +1252,8 @@ export default function F9WorkspaceBlock({
         align: 'right',
         render: (node) => {
           const metadata = asMetadataRecordBlock(node)
-          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.f9_total_unrealized_profit_loss)
-          const payload = metadata.f9_position_payload as Record<string, unknown> | undefined
+          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.webull_total_unrealized_profit_loss)
+          const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
           return formatCurrencyFromUnknownBlock(payload?.unrealized_profit_loss)
         },
       },
@@ -1264,8 +1264,8 @@ export default function F9WorkspaceBlock({
         align: 'right',
         render: (node) => {
           const metadata = asMetadataRecordBlock(node)
-          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.f9_total_current_price)
-          const payload = metadata.f9_position_payload as Record<string, unknown> | undefined
+          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.webull_total_current_price)
+          const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
           return formatCurrencyFromUnknownBlock(payload?.last_price)
         },
       },
@@ -1273,7 +1273,7 @@ export default function F9WorkspaceBlock({
   }, [])
 
   const linkOptionsByPath = useMemo(() => {
-    const map = new Map<string, F9LinkOptionBlock>()
+    const map = new Map<string, WebullLinkOptionBlock>()
     for (const option of linkOptions) {
       const normalizedPath = normalizeRelativePathBlock(option.path)
       if (!normalizedPath || map.has(normalizedPath)) continue
@@ -1282,19 +1282,19 @@ export default function F9WorkspaceBlock({
     return map
   }, [linkOptions])
 
-  const renderF9InlineDetails = useCallback((node: NodeRecord) => {
+  const renderWebullInlineDetails = useCallback((node: NodeRecord) => {
     if (node.type !== 'epic') return null
     const metadata = asMetadataRecordBlock(node)
-    const payload = metadata.f9_position_payload as Record<string, unknown> | undefined
+    const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
     const metadataWithoutPayload = Object.fromEntries(
-      Object.entries(metadata).filter(([key]) => key !== 'f9_position_payload'),
+      Object.entries(metadata).filter(([key]) => key !== 'webull_position_payload'),
     ) as Record<string, unknown>
     const metadataEntries = metadataEntriesFromRecordBlock(metadataWithoutPayload)
     const payloadEntries = metadataEntriesFromRecordBlock(payload)
-    const status = normalizePositionStatusBlock(firstStringBlock(metadata.f9_position_status, payload?.status))
+    const status = normalizePositionStatusBlock(firstStringBlock(metadata.webull_position_status, payload?.status))
     const instrumentType = firstStringBlock(payload?.instrument_type, payload?.type) || '—'
-    const linkedIdeaId = firstStringBlock(metadata.f9_linked_idea_id, payload?.linked_idea_id)
-    const tags = normalizeTagListBlock(node.tags ?? []).filter(tag => tag !== 'f9' && tag !== 'execution')
+    const linkedIdeaId = firstStringBlock(metadata.webull_linked_idea_id, payload?.linked_idea_id)
+    const tags = normalizeTagListBlock(node.tags ?? []).filter(tag => tag !== 'webull' && tag !== 'execution')
     const relatedNodePaths = (node.relatedNodes ?? asStringArrayBlock(payload?.related_nodes))
       .map(path => normalizeRelativePathBlock(path))
       .filter(Boolean)
@@ -1416,10 +1416,10 @@ export default function F9WorkspaceBlock({
     setProjectPresetTagsByRoot((prev) => {
       const existingTags = normalizeTagListBlock(prev[normalizedRoot] ?? [])
       if (tagsEqualBlock(existingTags, normalizedTags)) return prev
-      const next: F9ProjectPresetTagsByRootBlock = { ...prev }
+      const next: WebullProjectPresetTagsByRootBlock = { ...prev }
       if (normalizedTags.length > 0) next[normalizedRoot] = normalizedTags
       else delete next[normalizedRoot]
-      setJsonStorageItem(STORAGE_KEYS.f9ProjectPresetTags, next)
+      setJsonStorageItem(STORAGE_KEYS.webullProjectPresetTags, next)
       return next
     })
   }, [])
@@ -1493,7 +1493,7 @@ export default function F9WorkspaceBlock({
         if (cancelled) return
         const panels = state?.pinBoardPanels ?? []
         setProjectMemoryFilesByRoot((prev) => {
-          const next: F9ProjectMemoryFilesByRootBlock = { ...prev }
+          const next: WebullProjectMemoryFilesByRootBlock = { ...prev }
           if (panels.length > 0) next[normalizedRoot] = { panels }
           else delete next[normalizedRoot]
           return next
@@ -1520,7 +1520,7 @@ export default function F9WorkspaceBlock({
     if (!normalizedRoot) return
 
     setProjectMemoryFilesByRoot((prev) => {
-      const draft: F9ProjectMemoryFilesByRootBlock = { ...prev }
+      const draft: WebullProjectMemoryFilesByRootBlock = { ...prev }
       if (nextPanels.length > 0) draft[normalizedRoot] = { panels: nextPanels }
       else delete draft[normalizedRoot]
       return draft
@@ -1536,7 +1536,7 @@ export default function F9WorkspaceBlock({
       })
       const persistedPanels = persisted.pinBoardPanels ?? []
       setProjectMemoryFilesByRoot((prev) => {
-        const draft: F9ProjectMemoryFilesByRootBlock = { ...prev }
+        const draft: WebullProjectMemoryFilesByRootBlock = { ...prev }
         if (persistedPanels.length > 0) draft[normalizedRoot] = { panels: persistedPanels }
         else delete draft[normalizedRoot]
         return draft
@@ -1555,10 +1555,10 @@ export default function F9WorkspaceBlock({
     setOverallRememberByProjectRoot((prev) => {
       const current = normalizeRelativePathBlock(prev[normalizedRoot] ?? '')
       if (current === normalizedPath) return prev
-      const next: F9OverallRememberByProjectRootBlock = { ...prev }
+      const next: WebullOverallRememberByProjectRootBlock = { ...prev }
       if (normalizedPath) next[normalizedRoot] = normalizedPath
       else delete next[normalizedRoot]
-      setJsonStorageItem(STORAGE_KEYS.f9OverallRememberByProjectRoot, next)
+      setJsonStorageItem(STORAGE_KEYS.webullOverallRememberByProjectRoot, next)
       return next
     })
   }, [projectRootKey])
@@ -1897,10 +1897,10 @@ export default function F9WorkspaceBlock({
 
               <div className="rounded-xl border bg-background p-3">
                 <ScrollableZoomSurfaceBlock
-                  minWidthClassName={F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
+                  minWidthClassName={Webull_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
                   controlsLabel="Table zoom"
                   showFitColumnsToWidthButton
-                  persistStateKey="f9-table-viewport-fit"
+                  persistStateKey="webull-table-viewport-fit"
                 >
                   <BacklogListBlock
                     programs={backlogTableModel.programs}
@@ -1925,7 +1925,7 @@ export default function F9WorkspaceBlock({
                     programGroupLabelSingular="company group"
                     projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
                     canOpenNodeDetails={(node) => node.type === 'epic'}
-                    rowColumns={f9RowColumns}
+                    rowColumns={webullRowColumns}
                     showRowColumnsOnCompact
                     rowPresetTagLimit={5}
                     rowPresetTagsClassName="ml-auto w-[18rem] justify-end"
@@ -1936,7 +1936,7 @@ export default function F9WorkspaceBlock({
                     linksColumnPaddingClassName="px-0"
                     linksBeforeTags
                     statusRightAligned={false}
-                    rowDetailsRenderer={renderF9InlineDetails}
+                    rowDetailsRenderer={renderWebullInlineDetails}
                     titleColumnClassName="w-[20rem]"
                     wrapTitleText
                     actionsRightEdge
@@ -2094,10 +2094,10 @@ export default function F9WorkspaceBlock({
           ) : overallTabActive ? (
             <div className="rounded-xl border bg-background p-3">
               <ScrollableZoomSurfaceBlock
-                minWidthClassName={F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
+                minWidthClassName={Webull_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
                 controlsLabel="Table zoom"
                 showFitColumnsToWidthButton
-                persistStateKey="f9-table-viewport-fit"
+                persistStateKey="webull-table-viewport-fit"
               >
                 <BacklogListBlock
                   programs={backlogTableModel.programs}
@@ -2122,7 +2122,7 @@ export default function F9WorkspaceBlock({
                   programGroupLabelSingular="company group"
                   projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
                   canOpenNodeDetails={(node) => node.type === 'epic'}
-                  rowColumns={f9RowColumns}
+                  rowColumns={webullRowColumns}
                   showRowColumnsOnCompact
                   rowPresetTagLimit={5}
                   rowPresetTagsClassName="ml-auto w-[18rem] justify-end"
@@ -2133,7 +2133,7 @@ export default function F9WorkspaceBlock({
                   linksColumnPaddingClassName="px-0"
                   linksBeforeTags
                   statusRightAligned={false}
-                  rowDetailsRenderer={renderF9InlineDetails}
+                  rowDetailsRenderer={renderWebullInlineDetails}
                   titleColumnClassName="w-[20rem]"
                   wrapTitleText
                   actionsRightEdge
@@ -2156,12 +2156,12 @@ export default function F9WorkspaceBlock({
             <div className="space-y-2 p-3 text-xs text-muted-foreground">
               {!liveRefreshAvailable && (
                 <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
-                  Live Webull refresh is available only in the Electron app. This runtime shows saved F9 data from your last Electron refresh.
+                  Live Webull refresh is available only in the Electron app. This runtime shows saved Webull data from your last Electron refresh.
                 </div>
               )}
               {liveRefreshAvailable && !hasConfig && (
                 <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
-                  Missing Webull credentials. Open Settings {'>'} F9 and save your Webull app key + app secret to secure device storage.
+                  Missing Webull credentials. Open Settings {'>'} Webull and save your Webull app key + app secret to secure device storage.
                 </div>
               )}
               <p><span className="font-medium text-foreground">Runtime:</span> {formatRuntimeLabelBlock(runtime)}</p>

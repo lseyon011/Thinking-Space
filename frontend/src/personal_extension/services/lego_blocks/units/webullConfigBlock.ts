@@ -1,4 +1,4 @@
-export interface F9WebullConfigBlock {
+export interface WebullConfigBlock {
   baseUrl: string
   openApiBaseUrl: string
   accountListPath?: string
@@ -9,13 +9,13 @@ export interface F9WebullConfigBlock {
   quoteSymbols: string[]
 }
 
-export interface F9WebullCredentialStatusBlock {
+export interface WebullCredentialStatusBlock {
   secureStorageAvailable: boolean
   configured: boolean
   appKeyHint: string | null
 }
 
-export interface F9WebullAccessTokenBlock {
+export interface WebullAccessTokenBlock {
   token: string
   expires: number | null
   status: string | null
@@ -29,22 +29,22 @@ function normalizeValueBlock(value: string | undefined): string {
   return value?.trim() ?? ''
 }
 
-function assertElectronF9BridgeBlock(): NonNullable<Window['electronAPI']> {
+function assertElectronWebullBridgeBlock(): NonNullable<Window['electronAPI']> {
   if (!window.electronAPI?.isElectron) {
     throw new Error('Webull secure credential storage is currently available only in Electron runtime.')
   }
   return window.electronAPI
 }
 
-function readConfigBlock(): F9WebullConfigBlock {
-  const baseUrl = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_BASE_URL) || DEFAULT_WEBULL_BASE_URL_BLOCK
-  const openApiBaseUrl = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_OPENAPI_BASE_URL) || DEFAULT_WEBULL_OPENAPI_BASE_URL_BLOCK
-  const accountListPath = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_ACCOUNT_LIST_PATH)
-  const accountBalancePath = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_ACCOUNT_BALANCE_PATH)
-  const accountPositionsPath = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_ACCOUNT_POSITIONS_PATH)
-  const marketSnapshotPath = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_MARKET_SNAPSHOT_PATH)
-  const marketQuotesPath = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_MARKET_QUOTES_PATH)
-  const quoteSymbolsRaw = normalizeValueBlock(import.meta.env.VITE_F9_WEBULL_QUOTE_SYMBOLS)
+function readConfigBlock(): WebullConfigBlock {
+  const baseUrl = normalizeValueBlock(import.meta.env.VITE_WEBULL_BASE_URL) || DEFAULT_WEBULL_BASE_URL_BLOCK
+  const openApiBaseUrl = normalizeValueBlock(import.meta.env.VITE_WEBULL_OPENAPI_BASE_URL) || DEFAULT_WEBULL_OPENAPI_BASE_URL_BLOCK
+  const accountListPath = normalizeValueBlock(import.meta.env.VITE_WEBULL_ACCOUNT_LIST_PATH)
+  const accountBalancePath = normalizeValueBlock(import.meta.env.VITE_WEBULL_ACCOUNT_BALANCE_PATH)
+  const accountPositionsPath = normalizeValueBlock(import.meta.env.VITE_WEBULL_ACCOUNT_POSITIONS_PATH)
+  const marketSnapshotPath = normalizeValueBlock(import.meta.env.VITE_WEBULL_MARKET_SNAPSHOT_PATH)
+  const marketQuotesPath = normalizeValueBlock(import.meta.env.VITE_WEBULL_MARKET_QUOTES_PATH)
+  const quoteSymbolsRaw = normalizeValueBlock(import.meta.env.VITE_WEBULL_QUOTE_SYMBOLS)
   const quoteSymbols = quoteSymbolsRaw
     ? quoteSymbolsRaw
       .split(',')
@@ -64,45 +64,45 @@ function readConfigBlock(): F9WebullConfigBlock {
   }
 }
 
-export async function readF9WebullCredentialStatusBlock(): Promise<F9WebullCredentialStatusBlock> {
-  if (!window.electronAPI?.isElectron || !window.electronAPI.f9WebullCredentialStatus) {
+export async function readWebullCredentialStatusBlock(): Promise<WebullCredentialStatusBlock> {
+  if (!window.electronAPI?.isElectron || !window.electronAPI.webullCredentialStatus) {
     return {
       secureStorageAvailable: false,
       configured: false,
       appKeyHint: null,
     }
   }
-  return window.electronAPI.f9WebullCredentialStatus()
+  return window.electronAPI.webullCredentialStatus()
 }
 
-export async function saveF9WebullCredentialsBlock(input: {
+export async function saveWebullCredentialsBlock(input: {
   appKey: string
   appSecret: string
-}): Promise<F9WebullCredentialStatusBlock> {
-  const api = assertElectronF9BridgeBlock()
-  if (!api.f9WebullCredentialSet) {
+}): Promise<WebullCredentialStatusBlock> {
+  const api = assertElectronWebullBridgeBlock()
+  if (!api.webullCredentialSet) {
     throw new Error('Webull secure credential bridge is unavailable in this Electron build.')
   }
-  return api.f9WebullCredentialSet({
+  return api.webullCredentialSet({
     appKey: input.appKey,
     appSecret: input.appSecret,
   })
 }
 
-export async function clearF9WebullCredentialsBlock(): Promise<F9WebullCredentialStatusBlock> {
-  const api = assertElectronF9BridgeBlock()
-  if (!api.f9WebullCredentialClear) {
+export async function clearWebullCredentialsBlock(): Promise<WebullCredentialStatusBlock> {
+  const api = assertElectronWebullBridgeBlock()
+  if (!api.webullCredentialClear) {
     throw new Error('Webull secure credential bridge is unavailable in this Electron build.')
   }
-  return api.f9WebullCredentialClear()
+  return api.webullCredentialClear()
 }
 
-export async function readStoredF9WebullAccessTokenBlock(): Promise<F9WebullAccessTokenBlock | null> {
-  const api = assertElectronF9BridgeBlock()
-  if (!api.f9WebullTokenGet) {
+export async function readStoredWebullAccessTokenBlock(): Promise<WebullAccessTokenBlock | null> {
+  const api = assertElectronWebullBridgeBlock()
+  if (!api.webullTokenGet) {
     throw new Error('Webull secure token bridge is unavailable in this Electron build.')
   }
-  const token = await api.f9WebullTokenGet()
+  const token = await api.webullTokenGet()
   if (!token || typeof token !== 'object') return null
   const normalizedToken = typeof token.token === 'string' ? token.token.trim() : ''
   if (!normalizedToken) return null
@@ -113,59 +113,59 @@ export async function readStoredF9WebullAccessTokenBlock(): Promise<F9WebullAcce
   }
 }
 
-export async function writeStoredF9WebullAccessTokenBlock(
-  token: F9WebullAccessTokenBlock | null,
+export async function writeStoredWebullAccessTokenBlock(
+  token: WebullAccessTokenBlock | null,
 ): Promise<void> {
-  const api = assertElectronF9BridgeBlock()
-  if (!api.f9WebullTokenSet) {
+  const api = assertElectronWebullBridgeBlock()
+  if (!api.webullTokenSet) {
     throw new Error('Webull secure token bridge is unavailable in this Electron build.')
   }
   if (!token) {
-    await api.f9WebullTokenSet(null)
+    await api.webullTokenSet(null)
     return
   }
-  await api.f9WebullTokenSet({
+  await api.webullTokenSet({
     token: token.token,
     expires: token.expires,
     status: token.status,
   })
 }
 
-export function getF9WebullConfigBlock(): F9WebullConfigBlock {
+export function getWebullConfigBlock(): WebullConfigBlock {
   const config = readConfigBlock()
 
   try {
     // Validate URL early so error handling in the UI is clearer.
     new URL(config.baseUrl)
   } catch {
-    throw new Error('VITE_F9_WEBULL_BASE_URL must be a valid absolute URL.')
+    throw new Error('VITE_WEBULL_BASE_URL must be a valid absolute URL.')
   }
   try {
     new URL(config.openApiBaseUrl)
   } catch {
-    throw new Error('VITE_F9_WEBULL_OPENAPI_BASE_URL must be a valid absolute URL.')
+    throw new Error('VITE_WEBULL_OPENAPI_BASE_URL must be a valid absolute URL.')
   }
 
   if (config.accountListPath) {
     if (!config.accountListPath.startsWith('/')) {
-      throw new Error('VITE_F9_WEBULL_ACCOUNT_LIST_PATH must start with "/".')
+      throw new Error('VITE_WEBULL_ACCOUNT_LIST_PATH must start with "/".')
     }
   }
 
   if (config.accountBalancePath && !config.accountBalancePath.startsWith('/')) {
-    throw new Error('VITE_F9_WEBULL_ACCOUNT_BALANCE_PATH must start with "/".')
+    throw new Error('VITE_WEBULL_ACCOUNT_BALANCE_PATH must start with "/".')
   }
   if (config.accountPositionsPath && !config.accountPositionsPath.startsWith('/')) {
-    throw new Error('VITE_F9_WEBULL_ACCOUNT_POSITIONS_PATH must start with "/".')
+    throw new Error('VITE_WEBULL_ACCOUNT_POSITIONS_PATH must start with "/".')
   }
   if (config.marketSnapshotPath && !config.marketSnapshotPath.startsWith('/')) {
-    throw new Error('VITE_F9_WEBULL_MARKET_SNAPSHOT_PATH must start with "/".')
+    throw new Error('VITE_WEBULL_MARKET_SNAPSHOT_PATH must start with "/".')
   }
   if (config.marketQuotesPath && !config.marketQuotesPath.startsWith('/')) {
-    throw new Error('VITE_F9_WEBULL_MARKET_QUOTES_PATH must start with "/".')
+    throw new Error('VITE_WEBULL_MARKET_QUOTES_PATH must start with "/".')
   }
   if (config.quoteSymbols.length === 0) {
-    throw new Error('VITE_F9_WEBULL_QUOTE_SYMBOLS must include at least one symbol.')
+    throw new Error('VITE_WEBULL_QUOTE_SYMBOLS must include at least one symbol.')
   }
 
   return config

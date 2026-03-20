@@ -20,7 +20,7 @@ export interface TodoDayGroup {
 const TODOS_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.todos-panel' }
 
 const SECTION_COLORS: Record<string, { accent: string; dot: string }> = {
-  F9: { accent: '#3b82f6', dot: 'bg-blue-500' },
+  Webull: { accent: '#3b82f6', dot: 'bg-blue-500' },
   sfdl: { accent: '#10b981', dot: 'bg-emerald-500' },
   sfw: { accent: '#eab308', dot: 'bg-yellow-500' },
   sfj: { accent: '#f97316', dot: 'bg-orange-500' },

@@ -1,4 +1,4 @@
-export interface BuildF9WebullHeadersInputBlock {
+export interface BuildWebullHeadersInputBlock {
   method: string
   url: string
   appKey: string
@@ -8,7 +8,7 @@ export interface BuildF9WebullHeadersInputBlock {
   accessToken?: string
 }
 
-export interface BuildF9WebullHeadersResultBlock {
+export interface BuildWebullHeadersResultBlock {
   headers: Record<string, string>
   timestamp: string
   nonce: string
@@ -19,7 +19,7 @@ function createNonceBlock(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
   }
-  return `f9-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  return `webull-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 function formatTimestampUtcBlock(): string {
@@ -93,9 +93,9 @@ async function signHmacSha1Base64Block(secret: string, payload: string): Promise
   return bytesToBase64Block(new Uint8Array(signatureBuffer))
 }
 
-export async function buildF9WebullHeadersBlock(
-  input: BuildF9WebullHeadersInputBlock,
-): Promise<BuildF9WebullHeadersResultBlock> {
+export async function buildWebullHeadersBlock(
+  input: BuildWebullHeadersInputBlock,
+): Promise<BuildWebullHeadersResultBlock> {
   const normalizedMethod = input.method.trim().toUpperCase()
   if (!normalizedMethod) {
     throw new Error('HTTP method is required for Webull signing.')
@@ -118,7 +118,7 @@ export async function buildF9WebullHeadersBlock(
     uri,
     queryEntries,
     headerEntries,
-    undefined, // No request body for current F9 Overall GET flow.
+    undefined, // No request body for current Webull Overall GET flow.
   )
   const encoded = encodeSignatureSourceBlock(source)
   const signature = await signHmacSha1Base64Block(input.appSecret, encoded)
@@ -140,7 +140,7 @@ export async function buildF9WebullHeadersBlock(
       'Content-Type': 'application/json',
       Accept: 'application/json',
       ...(input.accessToken ? { 'x-access-token': input.accessToken } : {}),
-      'User-Agent': 'think-space-f9',
+      'User-Agent': 'think-space-webull',
     },
   }
 }

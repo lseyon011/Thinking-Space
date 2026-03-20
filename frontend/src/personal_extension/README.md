@@ -15,9 +15,9 @@ without mixing directly into shared product folders.
 
 ## Current Feature
 
-- Route: `/f9`
-- UI orchestrator: `components/orchestrators/F9Orch.tsx`
-- Service workflow: `services/orchestrators/f9OverallOrch.ts`
+- Route: `/webull`
+- UI orchestrator: `components/orchestrators/WebullOrch.tsx`
+- Service workflow: `services/orchestrators/webullOverallOrch.ts`
 - Subtab layout: vertical left rail (stacked subtabs)
 - First subtab: `Overall` (loads Webull account list data)
 - Runtime note: `Overall` currently calls Webull through Electron main-process IPC (renderer/browser CORS-safe).
@@ -26,16 +26,16 @@ without mixing directly into shared product folders.
 
 Set these optional route/runtime values in your frontend env file (for example `frontend/.env.local`):
 
-- `VITE_F9_WEBULL_BASE_URL` (optional, defaults to `https://api.webull.com`)
-- `VITE_F9_WEBULL_OPENAPI_BASE_URL` (optional, defaults to `https://us-openapi-alb.uat.webullbroker.com`)
-- `VITE_F9_WEBULL_ACCOUNT_LIST_PATH` (optional, override account-list route if your account uses a non-default path)
-- `VITE_F9_WEBULL_ACCOUNT_BALANCE_PATH` (optional)
-- `VITE_F9_WEBULL_ACCOUNT_POSITIONS_PATH` (optional)
-- `VITE_F9_WEBULL_MARKET_SNAPSHOT_PATH` (optional)
-- `VITE_F9_WEBULL_MARKET_QUOTES_PATH` (optional)
-- `VITE_F9_WEBULL_QUOTE_SYMBOLS` (optional CSV, default: `SPY,QQQ,AAPL,TSLA,NVDA`)
+- `VITE_WEBULL_BASE_URL` (optional, defaults to `https://api.webull.com`)
+- `VITE_WEBULL_OPENAPI_BASE_URL` (optional, defaults to `https://us-openapi-alb.uat.webullbroker.com`)
+- `VITE_WEBULL_ACCOUNT_LIST_PATH` (optional, override account-list route if your account uses a non-default path)
+- `VITE_WEBULL_ACCOUNT_BALANCE_PATH` (optional)
+- `VITE_WEBULL_ACCOUNT_POSITIONS_PATH` (optional)
+- `VITE_WEBULL_MARKET_SNAPSHOT_PATH` (optional)
+- `VITE_WEBULL_MARKET_QUOTES_PATH` (optional)
+- `VITE_WEBULL_QUOTE_SYMBOLS` (optional CSV, default: `SPY,QQQ,AAPL,TSLA,NVDA`)
 
-Webull app key/secret are no longer read from env. Enter them in `Settings > F9`; Electron stores them in encrypted device storage.
+Webull app key/secret are no longer read from env. Enter them in `Settings > Webull`; Electron stores them in encrypted device storage.
 
 ## Notes
 

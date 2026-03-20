@@ -12,9 +12,9 @@ interface SettingsPageProps {
   explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
   onExplorerFolderColorRulesChange: (nextRules: ExplorerFolderColorPreferenceBlock[]) => Promise<void> | void
   onRequestVaultSwitch: () => void
-  f9TabLabel?: string
-  f9TabIconText?: string
-  onF9TabPreferencesChange?: (label: string, iconText: string) => Promise<void> | void
+  webullTabLabel?: string
+  webullTabIconText?: string
+  onWebullTabPreferencesChange?: (label: string, iconText: string) => Promise<void> | void
 }
 
 export default function Settings({
@@ -23,9 +23,9 @@ export default function Settings({
   explorerFolderColorRules,
   onExplorerFolderColorRulesChange,
   onRequestVaultSwitch,
-  f9TabLabel,
-  f9TabIconText,
-  onF9TabPreferencesChange,
+  webullTabLabel,
+  webullTabIconText,
+  onWebullTabPreferencesChange,
 }: SettingsPageProps) {
   const [searchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
@@ -34,8 +34,8 @@ export default function Settings({
       ? 'profile'
       : requestedTab === 'ai'
         ? 'ai'
-        : requestedTab === 'f9'
-          ? 'f9'
+        : requestedTab === 'webull'
+          ? 'webull'
           : requestedTab === 'google-docs-sheets'
             ? 'google_docs_sheets'
           : requestedTab === 'explorer'
@@ -57,7 +57,7 @@ export default function Settings({
             <div>
               <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Settings</h1>
               <p className="text-sm text-muted-foreground">
-                Manage profile, theme, markdown editor behavior, AI configuration, F9 execution storage, cache reset, and Thinking Space switching.
+                Manage profile, theme, markdown editor behavior, AI configuration, Webull execution storage, cache reset, and Thinking Space switching.
               </p>
             </div>
           </div>
@@ -69,9 +69,9 @@ export default function Settings({
           onExplorerFolderColorRulesChange={onExplorerFolderColorRulesChange}
           onRequestVaultSwitch={onRequestVaultSwitch}
           initialTab={initialTab}
-          f9TabLabel={f9TabLabel}
-          f9TabIconText={f9TabIconText}
-          onF9TabPreferencesChange={onF9TabPreferencesChange}
+          webullTabLabel={webullTabLabel}
+          webullTabIconText={webullTabIconText}
+          onWebullTabPreferencesChange={onWebullTabPreferencesChange}
         />
       </div>
     </div>

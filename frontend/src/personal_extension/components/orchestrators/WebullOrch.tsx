@@ -1,49 +1,49 @@
 import { useCallback, useEffect, useState } from 'react'
-import F9WorkspaceBlock from '../lego_blocks/integrations/F9WorkspaceBlock'
+import WebullWorkspaceBlock from '../lego_blocks/integrations/WebullWorkspaceBlock'
 import {
-  fetchF9OverallSnapshotOrch,
-  getF9RuntimeSurfaceOrch,
-  type F9RuntimeSurfaceOrch,
-  type F9OverallSnapshotOrch,
-} from '../../services/orchestrators/f9OverallOrch'
+  fetchWebullOverallSnapshotOrch,
+  getWebullRuntimeSurfaceOrch,
+  type WebullRuntimeSurfaceOrch,
+  type WebullOverallSnapshotOrch,
+} from '../../services/orchestrators/webullOverallOrch'
 import {
-  createF9CompanyOrch,
-  createF9ManualPositionOrch,
-  loadF9OverallCacheOrch,
-  loadF9ExecutionOverviewOrch,
-  loadF9PositionDetailOrch,
-  saveF9PositionBodyOrch,
-  syncF9ExecutionFromOverallOrch,
-  updateF9CompanyOverlayOrch,
-  updateF9PositionOverlayOrch,
-  type F9CompanyOverviewBlock,
-  type F9ExecutionOverviewBlock,
-  type F9OverallCacheBlock,
-  type F9PositionDetailBlock,
-  type SyncF9ExecutionResultBlock,
-} from '../../services/orchestrators/f9ExecutionOrch'
-import { readF9WebullCredentialStatusBlock } from '../../services/lego_blocks/units/f9WebullConfigBlock'
+  createWebullCompanyOrch,
+  createWebullManualPositionOrch,
+  loadWebullOverallCacheOrch,
+  loadWebullExecutionOverviewOrch,
+  loadWebullPositionDetailOrch,
+  saveWebullPositionBodyOrch,
+  syncWebullExecutionFromOverallOrch,
+  updateWebullCompanyOverlayOrch,
+  updateWebullPositionOverlayOrch,
+  type WebullCompanyOverviewBlock,
+  type WebullExecutionOverviewBlock,
+  type WebullOverallCacheBlock,
+  type WebullPositionDetailBlock,
+  type SyncWebullExecutionResultBlock,
+} from '../../services/orchestrators/webullExecutionOrch'
+import { readWebullCredentialStatusBlock } from '../../services/lego_blocks/units/webullConfigBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 
-type F9SubtabId = 'overall' | 'memory'
+type WebullSubtabId = 'overall' | 'memory'
 
-const F9_SUBTABS: Array<{ id: F9SubtabId; label: string }> = [
+const Webull_SUBTABS: Array<{ id: WebullSubtabId; label: string }> = [
   { id: 'overall', label: 'Overall Positions' },
   { id: 'memory', label: 'Pin Board' },
 ]
 
 function toSnapshotFromCacheBlock(
-  cache: F9OverallCacheBlock,
-  runtime: F9RuntimeSurfaceOrch,
-): F9OverallSnapshotOrch {
+  cache: WebullOverallCacheBlock,
+  runtime: WebullRuntimeSurfaceOrch,
+): WebullOverallSnapshotOrch {
   const refreshRuntime = cache.runtime === 'electron' || cache.runtime === 'capacitor' || cache.runtime === 'web'
     ? cache.runtime
     : null
   const runtimeHint = refreshRuntime ?? 'unknown runtime'
   const warning = runtime === 'electron'
-    ? `Loaded saved F9 data from ${cache.overallPath}.`
-    : `Showing saved F9 data from ${cache.overallPath}. Refresh from Electron app (last refresh runtime: ${runtimeHint}).`
+    ? `Loaded saved Webull data from ${cache.overallPath}.`
+    : `Showing saved Webull data from ${cache.overallPath}. Refresh from Electron app (last refresh runtime: ${runtimeHint}).`
   const selectedAccountRecord = (cache.selectedAccount && typeof cache.selectedAccount === 'object')
     ? cache.selectedAccount as Record<string, unknown>
     : null
@@ -84,22 +84,22 @@ function toSnapshotFromCacheBlock(
   }
 }
 
-export default function F9Orch() {
+export default function WebullOrch() {
   const { openFile } = useMarkdownViewer()
-  const [activeSubtabId, setActiveSubtabId] = useState<F9SubtabId>('overall')
-  const [snapshot, setSnapshot] = useState<F9OverallSnapshotOrch | null>(null)
-  const [executionOverview, setExecutionOverview] = useState<F9ExecutionOverviewBlock | null>(null)
-  const [executionSync, setExecutionSync] = useState<SyncF9ExecutionResultBlock | null>(null)
+  const [activeSubtabId, setActiveSubtabId] = useState<WebullSubtabId>('overall')
+  const [snapshot, setSnapshot] = useState<WebullOverallSnapshotOrch | null>(null)
+  const [executionOverview, setExecutionOverview] = useState<WebullExecutionOverviewBlock | null>(null)
+  const [executionSync, setExecutionSync] = useState<SyncWebullExecutionResultBlock | null>(null)
   const [, setExecutionOverviewLoading] = useState(false)
   const [activeCompanyTicker, setActiveCompanyTicker] = useState<string | null>(null)
   const [activePositionFileName, setActivePositionFileName] = useState<string | null>(null)
-  const [activePositionDetail, setActivePositionDetail] = useState<F9PositionDetailBlock | null>(null)
+  const [activePositionDetail, setActivePositionDetail] = useState<WebullPositionDetailBlock | null>(null)
   const [positionDetailLoading, setPositionDetailLoading] = useState(false)
   const [positionDetailError, setPositionDetailError] = useState<string | null>(null)
   const [workspaceBusy, setWorkspaceBusy] = useState(false)
   const [workspaceMessage, setWorkspaceMessage] = useState<string | null>(null)
   const [executionSyncError, setExecutionSyncError] = useState<string | null>(null)
-  const [runtime] = useState<F9RuntimeSurfaceOrch>(getF9RuntimeSurfaceOrch())
+  const [runtime] = useState<WebullRuntimeSurfaceOrch>(getWebullRuntimeSurfaceOrch())
   const [hasConfig, setHasConfig] = useState(false)
   const [, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -107,21 +107,21 @@ export default function F9Orch() {
     ? executionOverview.executionRoot
     : (executionSync?.executionRoot?.trim() ? executionSync.executionRoot : null)
 
-  const activeCompany: F9CompanyOverviewBlock | null = executionOverview?.companies.find(
+  const activeCompany: WebullCompanyOverviewBlock | null = executionOverview?.companies.find(
     (company) => company.companyTicker === activeCompanyTicker,
   ) ?? null
 
-  const loadExecutionOverview = useCallback(async (): Promise<F9ExecutionOverviewBlock | null> => {
+  const loadExecutionOverview = useCallback(async (): Promise<WebullExecutionOverviewBlock | null> => {
     setExecutionOverviewLoading(true)
     try {
-      const overview = await loadF9ExecutionOverviewOrch()
+      const overview = await loadWebullExecutionOverviewOrch()
       setExecutionOverview(overview)
       return overview
     } catch (overviewErr) {
       setExecutionSyncError(
         overviewErr instanceof Error
           ? overviewErr.message
-          : 'Failed to read F9 execution company index files.',
+          : 'Failed to read Webull execution company index files.',
       )
       return null
     } finally {
@@ -129,15 +129,15 @@ export default function F9Orch() {
     }
   }, [])
 
-  const loadSavedOverallSnapshot = useCallback(async (): Promise<F9OverallSnapshotOrch | null> => {
+  const loadSavedOverallSnapshot = useCallback(async (): Promise<WebullOverallSnapshotOrch | null> => {
     try {
-      const cached = await loadF9OverallCacheOrch()
+      const cached = await loadWebullOverallCacheOrch()
       if (!cached) return null
       const cachedSnapshot = toSnapshotFromCacheBlock(cached, runtime)
       setSnapshot(cachedSnapshot)
       return cachedSnapshot
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to read saved F9 overall.json cache.')
+      setError(err instanceof Error ? err.message : 'Failed to read saved Webull overall.json cache.')
       return null
     }
   }, [runtime])
@@ -154,35 +154,35 @@ export default function F9Orch() {
         if (cachedSnapshot) {
           setWorkspaceMessage(null)
         } else {
-          setError('No saved F9 data found. Refresh once from the Electron app to generate overall.json.')
+          setError('No saved Webull data found. Refresh once from the Electron app to generate overall.json.')
         }
         return
       }
 
-      const next = await fetchF9OverallSnapshotOrch()
+      const next = await fetchWebullOverallSnapshotOrch()
       setSnapshot(next)
       let syncErrorMessage: string | null = null
       try {
-        const syncResult = await syncF9ExecutionFromOverallOrch(next)
+        const syncResult = await syncWebullExecutionFromOverallOrch(next)
         setExecutionSync(syncResult)
       } catch (syncErr) {
-        syncErrorMessage = syncErr instanceof Error ? syncErr.message : 'Failed to sync F9 execution files.'
+        syncErrorMessage = syncErr instanceof Error ? syncErr.message : 'Failed to sync Webull execution files.'
         setExecutionSyncError(syncErrorMessage)
       }
       try {
-        const overview = await loadF9ExecutionOverviewOrch()
+        const overview = await loadWebullExecutionOverviewOrch()
         setExecutionOverview(overview)
       } catch (overviewErr) {
         if (!syncErrorMessage) {
           setExecutionSyncError(
             overviewErr instanceof Error
               ? overviewErr.message
-              : 'Failed to read F9 execution company index files.',
+              : 'Failed to read Webull execution company index files.',
           )
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load F9 Overall data.')
+      setError(err instanceof Error ? err.message : 'Failed to load Webull Overall data.')
     } finally {
       setLoading(false)
     }
@@ -191,9 +191,9 @@ export default function F9Orch() {
   useEffect(() => {
     let cancelled = false
     void Promise.all([
-      loadF9ExecutionOverviewOrch(),
-      loadF9OverallCacheOrch(),
-      readF9WebullCredentialStatusBlock(),
+      loadWebullExecutionOverviewOrch(),
+      loadWebullOverallCacheOrch(),
+      readWebullCredentialStatusBlock(),
     ])
       .then(([overview, cached, credentialStatus]) => {
         if (cancelled) return
@@ -217,7 +217,7 @@ export default function F9Orch() {
   useEffect(() => {
     if (activeSubtabId !== 'overall') return
     let cancelled = false
-    void readF9WebullCredentialStatusBlock()
+    void readWebullCredentialStatusBlock()
       .then((status) => {
         if (!cancelled) {
           setHasConfig(status.configured)
@@ -283,7 +283,7 @@ export default function F9Orch() {
     let cancelled = false
     setPositionDetailLoading(true)
     setPositionDetailError(null)
-    void loadF9PositionDetailOrch(activeCompanyTicker, activePositionFileName)
+    void loadWebullPositionDetailOrch(activeCompanyTicker, activePositionFileName)
       .then((detail) => {
         if (cancelled) return
         setActivePositionDetail(detail)
@@ -306,7 +306,7 @@ export default function F9Orch() {
     setWorkspaceMessage(null)
     setExecutionSyncError(null)
     try {
-      const company = await createF9CompanyOrch(companyTicker)
+      const company = await createWebullCompanyOrch(companyTicker)
       await loadExecutionOverview()
       setActiveCompanyTicker(company.companyTicker)
       setWorkspaceMessage(`Added company ${company.companyTicker}.`)
@@ -332,7 +332,7 @@ export default function F9Orch() {
     setWorkspaceMessage(null)
     setExecutionSyncError(null)
     try {
-      const created = await createF9ManualPositionOrch({
+      const created = await createWebullManualPositionOrch({
         companyTicker: activeCompanyTicker,
         ...input,
       })
@@ -369,7 +369,7 @@ export default function F9Orch() {
     setWorkspaceMessage(null)
     setExecutionSyncError(null)
     try {
-      const detail = await updateF9PositionOverlayOrch({
+      const detail = await updateWebullPositionOverlayOrch({
         companyTicker: activeCompanyTicker,
         fileName,
         ...input,
@@ -399,7 +399,7 @@ export default function F9Orch() {
     setWorkspaceMessage(null)
     setExecutionSyncError(null)
     try {
-      const company = await updateF9CompanyOverlayOrch({
+      const company = await updateWebullCompanyOverlayOrch({
         ...input,
         companyTicker: targetCompanyTicker,
       })
@@ -421,7 +421,7 @@ export default function F9Orch() {
     setWorkspaceMessage(null)
     setExecutionSyncError(null)
     try {
-      const detail = await saveF9PositionBodyOrch({
+      const detail = await saveWebullPositionBodyOrch({
         companyTicker: activeCompanyTicker,
         fileName: activePositionFileName,
         body,
@@ -449,8 +449,8 @@ export default function F9Orch() {
   }, [activeSubtabId, hasConfig, loadSavedOverallSnapshot, refreshOverall, runtime])
 
   return (
-    <F9WorkspaceBlock
-      subtabs={F9_SUBTABS}
+    <WebullWorkspaceBlock
+      subtabs={Webull_SUBTABS}
       activeSubtabId={activeSubtabId}
       onSelectSubtab={setActiveSubtabId}
       hasConfig={hasConfig}

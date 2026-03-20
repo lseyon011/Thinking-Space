@@ -296,7 +296,7 @@ export default function VaultSetup({ onComplete }: Props) {
               </div>
               <div className="flex items-start gap-2">
                 <Check className="mt-1 h-3 w-3 shrink-0 text-green-500" />
-                <span>Electron F9 secure credentials are kept unless you clear them from F9 settings</span>
+                <span>Electron Webull secure credentials are kept unless you clear them from Webull settings</span>
               </div>
               {hasBrowserFS && (
                 <div className="flex items-start gap-2">

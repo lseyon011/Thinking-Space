@@ -199,31 +199,31 @@ interface ElectronAPI {
     accountId?: string,
     model?: string,
   ): Promise<{ text: string; model: string; inputTokens?: number; outputTokens?: number; totalTokens?: number }>
-  f9WebullGet?(payload: {
+  webullGet?(payload: {
     url: string
     headers: Record<string, string>
     method?: 'GET' | 'POST'
     body?: string
   }): Promise<{ status: number; body: string }>
-  f9WebullAccountList?(payload: {
+  webullAccountList?(payload: {
     url: string
     headers: Record<string, string>
     method?: 'GET' | 'POST'
     body?: string
   }): Promise<{ status: number; body: string }>
-  f9WebullSignedRequest?(payload: {
+  webullSignedRequest?(payload: {
     method: 'GET' | 'POST'
     url: string
     version?: string
     accessToken?: string
     body?: string
   }): Promise<{ status: number; body: string }>
-  f9WebullCredentialStatus?(): Promise<{
+  webullCredentialStatus?(): Promise<{
     secureStorageAvailable: boolean
     configured: boolean
     appKeyHint: string | null
   }>
-  f9WebullCredentialSet?(payload: {
+  webullCredentialSet?(payload: {
     appKey: string
     appSecret: string
   }): Promise<{
@@ -231,17 +231,17 @@ interface ElectronAPI {
     configured: boolean
     appKeyHint: string | null
   }>
-  f9WebullCredentialClear?(): Promise<{
+  webullCredentialClear?(): Promise<{
     secureStorageAvailable: boolean
     configured: boolean
     appKeyHint: string | null
   }>
-  f9WebullTokenGet?(): Promise<{
+  webullTokenGet?(): Promise<{
     token: string
     expires: number | null
     status: string | null
   } | null>
-  f9WebullTokenSet?(payload: {
+  webullTokenSet?(payload: {
     token: string
     expires: number | null
     status: string | null

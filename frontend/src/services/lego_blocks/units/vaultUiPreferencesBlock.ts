@@ -17,13 +17,13 @@ export interface VaultUiPreferencesBlock {
   explorerIconStyle: ExplorerIconStyleBlock
   newThoughtQuickDestinations: NewThoughtQuickDestinationPreferenceBlock[]
   explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
-  f9TabLabel: string
-  f9TabIconText: string
+  webullTabLabel: string
+  webullTabIconText: string
 }
 
 export const DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK: ExplorerFolderColorPreferenceBlock[] = [
   { id: 'explorer-color-acceleration-core', folderPath: 'acceleration_core', color: '#1491d4', includeDescendants: false },
-  { id: 'explorer-color-acceleration-core-f9', folderPath: 'acceleration_core/F9', color: '#2e9fe5', includeDescendants: true },
+  { id: 'explorer-color-acceleration-core-webull', folderPath: 'acceleration_core/Webull', color: '#2e9fe5', includeDescendants: true },
   { id: 'explorer-color-acceleration-core-ideas-ai', folderPath: 'acceleration_core/ideas.ai', color: '#29ab87', includeDescendants: true },
   { id: 'explorer-color-acceleration-core-sfai', folderPath: 'acceleration_core/sfai', color: '#705cca', includeDescendants: true },
   { id: 'explorer-color-acceleration-core-sfj', folderPath: 'acceleration_core/sfj', color: '#e76f51', includeDescendants: true },
@@ -47,8 +47,8 @@ export const DEFAULT_VAULT_UI_PREFERENCES_BLOCK: VaultUiPreferencesBlock = {
   explorerIconStyle: 'outline',
   newThoughtQuickDestinations: [],
   explorerFolderColorRules: cloneExplorerFolderColorRulesBlock(DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK),
-  f9TabLabel: 'Webull',
-  f9TabIconText: '',
+  webullTabLabel: 'Webull',
+  webullTabIconText: '',
 }
 
 export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock {
@@ -56,8 +56,8 @@ export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock 
     explorerIconStyle: DEFAULT_VAULT_UI_PREFERENCES_BLOCK.explorerIconStyle,
     newThoughtQuickDestinations: [],
     explorerFolderColorRules: cloneExplorerFolderColorRulesBlock(DEFAULT_VAULT_UI_PREFERENCES_BLOCK.explorerFolderColorRules),
-    f9TabLabel: 'Webull',
-    f9TabIconText: '',
+    webullTabLabel: 'Webull',
+    webullTabIconText: '',
   }
 }
 
@@ -175,11 +175,11 @@ export function normalizeVaultUiPreferencesBlock(value: unknown): VaultUiPrefere
     explorerIconStyle: normalizeExplorerIconStyleBlock(record.explorerIconStyle),
     newThoughtQuickDestinations: normalizeNewThoughtQuickDestinationsBlock(record.newThoughtQuickDestinations),
     explorerFolderColorRules: normalizedExplorerFolderColorRules,
-    f9TabLabel: typeof record.f9TabLabel === 'string' && record.f9TabLabel.trim()
-      ? record.f9TabLabel.trim()
+    webullTabLabel: typeof record.webullTabLabel === 'string' && record.webullTabLabel.trim()
+      ? record.webullTabLabel.trim()
       : 'Webull',
-    f9TabIconText: typeof record.f9TabIconText === 'string'
-      ? record.f9TabIconText.trim()
+    webullTabIconText: typeof record.webullTabIconText === 'string'
+      ? record.webullTabIconText.trim()
       : '',
   }
 }

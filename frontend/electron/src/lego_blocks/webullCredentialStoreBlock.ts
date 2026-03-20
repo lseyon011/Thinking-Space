@@ -2,44 +2,44 @@ import { app, safeStorage } from 'electron';
 import * as fsPromises from 'fs/promises';
 import * as path from 'path';
 
-export interface F9WebullCredentialStatusBlock {
+export interface WebullCredentialStatusBlock {
   secureStorageAvailable: boolean;
   configured: boolean;
   appKeyHint: string | null;
 }
 
-export interface F9WebullStoredCredentialsBlock {
+export interface WebullStoredCredentialsBlock {
   appKey: string;
   appSecret: string;
 }
 
-export interface F9WebullStoredAccessTokenBlock {
+export interface WebullStoredAccessTokenBlock {
   token: string;
   expires: number | null;
   status: string | null;
 }
 
-interface F9WebullSecureStoreCredentialsRecordBlock extends F9WebullStoredCredentialsBlock {
+interface WebullSecureStoreCredentialsRecordBlock extends WebullStoredCredentialsBlock {
   updatedAt: string;
 }
 
-interface F9WebullSecureStoreAccessTokenRecordBlock extends F9WebullStoredAccessTokenBlock {
+interface WebullSecureStoreAccessTokenRecordBlock extends WebullStoredAccessTokenBlock {
   updatedAt: string;
 }
 
-interface F9WebullSecureStoreStateBlock {
-  credentials: F9WebullSecureStoreCredentialsRecordBlock | null;
-  accessToken: F9WebullSecureStoreAccessTokenRecordBlock | null;
+interface WebullSecureStoreStateBlock {
+  credentials: WebullSecureStoreCredentialsRecordBlock | null;
+  accessToken: WebullSecureStoreAccessTokenRecordBlock | null;
 }
 
-interface F9WebullSecureStoreEnvelopeBlock {
+interface WebullSecureStoreEnvelopeBlock {
   version: 1;
   ciphertextBase64: string;
 }
 
-const F9_WEBULL_SECURE_STORE_RELATIVE_PATH_BLOCK = path.join('secure-storage', 'f9-webull.v1.json');
+const WEBULL_SECURE_STORE_RELATIVE_PATH_BLOCK = path.join('secure-storage', 'webull.v1.json');
 
-const EMPTY_F9_WEBULL_STATE_BLOCK: F9WebullSecureStoreStateBlock = {
+const EMPTY_WEBULL_STATE_BLOCK: WebullSecureStoreStateBlock = {
   credentials: null,
   accessToken: null,
 };
@@ -55,7 +55,7 @@ function assertEncryptionAvailableBlock(): void {
 }
 
 function getStorePathBlock(): string {
-  return path.join(app.getPath('userData'), F9_WEBULL_SECURE_STORE_RELATIVE_PATH_BLOCK);
+  return path.join(app.getPath('userData'), WEBULL_SECURE_STORE_RELATIVE_PATH_BLOCK);
 }
 
 function normalizeStatusValueBlock(value: unknown): string | null {
@@ -73,9 +73,9 @@ function normalizeExpiresValueBlock(value: unknown): number | null {
   return null;
 }
 
-function normalizeCredentialsRecordBlock(value: unknown): F9WebullSecureStoreCredentialsRecordBlock | null {
+function normalizeCredentialsRecordBlock(value: unknown): WebullSecureStoreCredentialsRecordBlock | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const row = value as Partial<F9WebullSecureStoreCredentialsRecordBlock>;
+  const row = value as Partial<WebullSecureStoreCredentialsRecordBlock>;
   const appKey = typeof row.appKey === 'string' ? row.appKey.trim() : '';
   const appSecret = typeof row.appSecret === 'string' ? row.appSecret.trim() : '';
   if (!appKey || !appSecret) return null;
@@ -86,9 +86,9 @@ function normalizeCredentialsRecordBlock(value: unknown): F9WebullSecureStoreCre
   };
 }
 
-function normalizeAccessTokenRecordBlock(value: unknown): F9WebullSecureStoreAccessTokenRecordBlock | null {
+function normalizeAccessTokenRecordBlock(value: unknown): WebullSecureStoreAccessTokenRecordBlock | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const row = value as Partial<F9WebullSecureStoreAccessTokenRecordBlock>;
+  const row = value as Partial<WebullSecureStoreAccessTokenRecordBlock>;
   const token = typeof row.token === 'string' ? row.token.trim() : '';
   if (!token) return null;
   return {
@@ -99,28 +99,28 @@ function normalizeAccessTokenRecordBlock(value: unknown): F9WebullSecureStoreAcc
   };
 }
 
-function normalizeStateBlock(value: unknown): F9WebullSecureStoreStateBlock {
+function normalizeStateBlock(value: unknown): WebullSecureStoreStateBlock {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return EMPTY_F9_WEBULL_STATE_BLOCK;
+    return EMPTY_WEBULL_STATE_BLOCK;
   }
-  const row = value as Partial<F9WebullSecureStoreStateBlock>;
+  const row = value as Partial<WebullSecureStoreStateBlock>;
   return {
     credentials: normalizeCredentialsRecordBlock(row.credentials),
     accessToken: normalizeAccessTokenRecordBlock(row.accessToken),
   };
 }
 
-function encodeStateBlock(state: F9WebullSecureStoreStateBlock): string {
+function encodeStateBlock(state: WebullSecureStoreStateBlock): string {
   assertEncryptionAvailableBlock();
   const encrypted = safeStorage.encryptString(JSON.stringify(state));
-  const envelope: F9WebullSecureStoreEnvelopeBlock = {
+  const envelope: WebullSecureStoreEnvelopeBlock = {
     version: 1,
     ciphertextBase64: encrypted.toString('base64'),
   };
   return JSON.stringify(envelope);
 }
 
-function decodeStateBlock(raw: string): F9WebullSecureStoreStateBlock {
+function decodeStateBlock(raw: string): WebullSecureStoreStateBlock {
   assertEncryptionAvailableBlock();
   let envelope: unknown = null;
   try {
@@ -131,7 +131,7 @@ function decodeStateBlock(raw: string): F9WebullSecureStoreStateBlock {
   if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) {
     throw new Error('Secure Webull store payload is malformed.');
   }
-  const parsedEnvelope = envelope as Partial<F9WebullSecureStoreEnvelopeBlock>;
+  const parsedEnvelope = envelope as Partial<WebullSecureStoreEnvelopeBlock>;
   if (parsedEnvelope.version !== 1) {
     throw new Error(`Unsupported secure Webull store version: ${String(parsedEnvelope.version)}`);
   }
@@ -154,8 +154,8 @@ function decodeStateBlock(raw: string): F9WebullSecureStoreStateBlock {
   return normalizeStateBlock(parsedState);
 }
 
-async function readStateBlock(): Promise<F9WebullSecureStoreStateBlock> {
-  if (!isEncryptionAvailableBlock()) return EMPTY_F9_WEBULL_STATE_BLOCK;
+async function readStateBlock(): Promise<WebullSecureStoreStateBlock> {
+  if (!isEncryptionAvailableBlock()) return EMPTY_WEBULL_STATE_BLOCK;
   const storePath = getStorePathBlock();
   let raw: string;
   try {
@@ -165,15 +165,15 @@ async function readStateBlock(): Promise<F9WebullSecureStoreStateBlock> {
       ? String((error as { code?: unknown }).code)
       : '';
     if (code === 'ENOENT') {
-      return EMPTY_F9_WEBULL_STATE_BLOCK;
+      return EMPTY_WEBULL_STATE_BLOCK;
     }
     throw error;
   }
-  if (!raw.trim()) return EMPTY_F9_WEBULL_STATE_BLOCK;
+  if (!raw.trim()) return EMPTY_WEBULL_STATE_BLOCK;
   return decodeStateBlock(raw);
 }
 
-async function writeStateBlock(state: F9WebullSecureStoreStateBlock): Promise<void> {
+async function writeStateBlock(state: WebullSecureStoreStateBlock): Promise<void> {
   assertEncryptionAvailableBlock();
   const storePath = getStorePathBlock();
   const directoryPath = path.dirname(storePath);
@@ -193,7 +193,7 @@ function maskAppKeyBlock(appKey: string): string {
   return `${normalized.slice(0, 3)}...${normalized.slice(-3)}`;
 }
 
-export async function readF9WebullCredentialStatusBlock(): Promise<F9WebullCredentialStatusBlock> {
+export async function readWebullCredentialStatusBlock(): Promise<WebullCredentialStatusBlock> {
   if (!isEncryptionAvailableBlock()) {
     return {
       secureStorageAvailable: false,
@@ -210,7 +210,7 @@ export async function readF9WebullCredentialStatusBlock(): Promise<F9WebullCrede
   };
 }
 
-export async function readF9WebullCredentialsBlock(): Promise<F9WebullStoredCredentialsBlock | null> {
+export async function readWebullCredentialsBlock(): Promise<WebullStoredCredentialsBlock | null> {
   if (!isEncryptionAvailableBlock()) return null;
   const state = await readStateBlock();
   if (!state.credentials) return null;
@@ -220,10 +220,10 @@ export async function readF9WebullCredentialsBlock(): Promise<F9WebullStoredCred
   };
 }
 
-export async function saveF9WebullCredentialsBlock(
+export async function saveWebullCredentialsBlock(
   appKey: string,
   appSecret: string,
-): Promise<F9WebullCredentialStatusBlock> {
+): Promise<WebullCredentialStatusBlock> {
   const normalizedKey = appKey.trim();
   const normalizedSecret = appSecret.trim();
   if (!normalizedKey) throw new Error('Webull app key cannot be empty.');
@@ -239,10 +239,10 @@ export async function saveF9WebullCredentialsBlock(
     },
     accessToken: null,
   });
-  return readF9WebullCredentialStatusBlock();
+  return readWebullCredentialStatusBlock();
 }
 
-export async function clearF9WebullCredentialsBlock(): Promise<F9WebullCredentialStatusBlock> {
+export async function clearWebullCredentialsBlock(): Promise<WebullCredentialStatusBlock> {
   if (!isEncryptionAvailableBlock()) {
     return {
       secureStorageAvailable: false,
@@ -256,10 +256,10 @@ export async function clearF9WebullCredentialsBlock(): Promise<F9WebullCredentia
     credentials: null,
     accessToken: null,
   });
-  return readF9WebullCredentialStatusBlock();
+  return readWebullCredentialStatusBlock();
 }
 
-export async function readF9WebullAccessTokenBlock(): Promise<F9WebullStoredAccessTokenBlock | null> {
+export async function readWebullAccessTokenBlock(): Promise<WebullStoredAccessTokenBlock | null> {
   if (!isEncryptionAvailableBlock()) return null;
   const state = await readStateBlock();
   if (!state.accessToken) return null;
@@ -270,8 +270,8 @@ export async function readF9WebullAccessTokenBlock(): Promise<F9WebullStoredAcce
   };
 }
 
-export async function saveF9WebullAccessTokenBlock(
-  token: F9WebullStoredAccessTokenBlock | null,
+export async function saveWebullAccessTokenBlock(
+  token: WebullStoredAccessTokenBlock | null,
 ): Promise<void> {
   if (!isEncryptionAvailableBlock()) {
     throw new Error('Secure storage is unavailable on this device/runtime.');

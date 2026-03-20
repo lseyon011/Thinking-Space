@@ -42,7 +42,7 @@ import CapabilityDiscovery from './pages/CapabilityDiscovery'
 import ExtensionBuilder from './pages/ExtensionBuilder'
 import Settings from './pages/Settings'
 import TerminalPage from './pages/TerminalPage'
-import F9Page from './personal_extension/pages/F9Page'
+import WebullPage from './personal_extension/pages/WebullPage'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import AppTabsBlock, { type AppWorkspaceTabBlockModel } from './components/lego_blocks/units/AppTabsBlock'
 import { copyTextToClipboard } from './components/lego_blocks/units/BacklogListDomainBlock'
@@ -88,7 +88,7 @@ import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from '@/ser
 import { readUserProfileOrch } from './services/orchestrators/userProfileOrch'
 import {
   setExplorerFolderColorPreferencesOrch,
-  setF9TabPreferencesOrch,
+  setWebullTabPreferencesOrch,
   type ExplorerFolderColorPreferenceBlock,
   readVaultUiPreferencesOrch,
   setExplorerIconStylePreferenceOrch,
@@ -127,10 +127,10 @@ import {
   type OrganizerSidebarChromeStateBlock,
 } from '@/services/lego_blocks/units/organizerSidebarChromeBlock'
 import {
-  F9_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
-  dispatchF9SidebarChromeToggleBlock,
-  type F9SidebarChromeStateBlock,
-} from '@/personal_extension/services/lego_blocks/units/f9SidebarChromeBlock'
+  Webull_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
+  dispatchWebullSidebarChromeToggleBlock,
+  type WebullSidebarChromeStateBlock,
+} from '@/personal_extension/services/lego_blocks/units/webullSidebarChromeBlock'
 import {
   captureUnhandledRejectionReportBlock,
   captureWindowErrorReportBlock,
@@ -204,7 +204,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/git-insights', label: 'Insights', icon: GitBranch },
   { to: '/chat', label: 'AI', icon: AINavIcon },
   { to: '/web', label: 'Web', icon: WebNavIcon },
-  { to: '/f9', label: 'Webull', icon: WebullNavIcon },
+  { to: '/webull', label: 'Webull', icon: WebullNavIcon },
   {
     to: '/thinking-organizer',
     label: 'Thinking Organizer',
@@ -241,7 +241,7 @@ function WebullNavIcon({ className = 'h-4 w-4' }: { className?: string }) {
   )
 }
 
-function F9TextNavIcon({ text, className = 'h-4 w-4' }: { text: string; className?: string }) {
+function WebullTextNavIcon({ text, className = 'h-4 w-4' }: { text: string; className?: string }) {
   return (
     <span aria-hidden="true" className={`${className} inline-flex items-center justify-center text-[10px] font-semibold leading-none tracking-tight`}>
       {text}
@@ -312,7 +312,7 @@ function safeDecodeURIComponent(value: string): string {
   }
 }
 
-function getTabLabel(route: string, labelByPath: Map<string, string>, chatLabel?: string, webLabel?: string, f9Label?: string, webSiteLabels?: Record<string, string>): string {
+function getTabLabel(route: string, labelByPath: Map<string, string>, chatLabel?: string, webLabel?: string, webullLabel?: string, webSiteLabels?: Record<string, string>): string {
   const { pathname, search } = parseTabRoute(route)
   if (pathname === '/thinking-space') {
     const filePath = search.get('file')?.trim()
@@ -338,7 +338,7 @@ function getTabLabel(route: string, labelByPath: Map<string, string>, chatLabel?
     if (webLabel) return webLabel
   }
 
-  if (pathname === '/f9' && f9Label) return f9Label
+  if (pathname === '/webull' && webullLabel) return webullLabel
 
 
   return labelByPath.get(pathname) ?? 'Workspace'
@@ -423,8 +423,8 @@ function App() {
     showHeaderToggle: false,
     label: 'AI',
   })
-  const [f9TabLabel, setF9TabLabel] = useState('Webull')
-  const [f9TabIconText, setF9TabIconText] = useState('')
+  const [webullTabLabel, setWebullTabLabel] = useState('Webull')
+  const [webullTabIconText, setWebullTabIconText] = useState('')
   const [webSidebarChromeState, setWebSidebarChromeState] = useState<WebSidebarChromeStateBlock>({
     enabled: false,
     collapsed: false,
@@ -440,10 +440,10 @@ function App() {
     headerVisible: true,
     showHeaderToggle: false,
   })
-  const [f9SidebarChromeState, setF9SidebarChromeState] = useState<F9SidebarChromeStateBlock>({
+  const [webullSidebarChromeState, setWebullSidebarChromeState] = useState<WebullSidebarChromeStateBlock>({
     enabled: false,
     collapsed: false,
-    label: 'f9',
+    label: 'webull',
   })
   const [newThoughtSidebarChromeState, setNewThoughtSidebarChromeState] = useState({ enabled: false, collapsed: false })
   const [syncPanelOpen, setSyncPanelOpen] = useState(false)
@@ -519,7 +519,7 @@ function App() {
   const showOrganizerSidebarChromeControl = (location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer')
     && organizerSidebarChromeState.enabled
   const showOrganizerHeaderToggle = showOrganizerSidebarChromeControl && organizerSidebarChromeState.showHeaderToggle
-  const showF9SidebarChromeControl = location.pathname === '/f9' && f9SidebarChromeState.enabled
+  const showWebullSidebarChromeControl = location.pathname === '/webull' && webullSidebarChromeState.enabled
   const showNewThoughtSidebarChromeControl = location.pathname === '/new-thought' && newThoughtSidebarChromeState.enabled
   // On Capacitor, each of these tabs owns its own edge-swipe gesture.
   // Suppress the global nav-drawer swipe so they don't conflict.
@@ -527,7 +527,7 @@ function App() {
     || showChatSidebarChromeControl
     || showWebSidebarChromeControl
     || showOrganizerSidebarChromeControl
-    || showF9SidebarChromeControl
+    || showWebullSidebarChromeControl
     || showNewThoughtSidebarChromeControl
   const isElectronDesktopSurface = layout.surface === 'electron' && layout.mode === 'desktop'
   const isMacDesktopSurface = isElectronDesktopSurface
@@ -541,21 +541,21 @@ function App() {
   const showThinkingSpaceHeaderToggle = showGoogleWorkspaceChromeControls
     && thinkingSpaceGoogleWorkspaceChromeState.showHeaderToggle
 
-  const resolvedF9Icon = useMemo(() => {
-    if (!f9TabIconText) return WebullNavIcon
-    const text = f9TabIconText
-    return function ResolvedF9TextIcon({ className = 'h-4 w-4' }: { className?: string }) {
-      return <F9TextNavIcon text={text} className={className} />
+  const resolvedWebullIcon = useMemo(() => {
+    if (!webullTabIconText) return WebullNavIcon
+    const text = webullTabIconText
+    return function ResolvedWebullTextIcon({ className = 'h-4 w-4' }: { className?: string }) {
+      return <WebullTextNavIcon text={text} className={className} />
     }
-  }, [f9TabIconText])
+  }, [webullTabIconText])
 
   const primaryNavItems = useMemo(
     () => PRIMARY_NAV_ITEMS.map(item =>
-      item.to === '/f9'
-        ? { ...item, label: f9TabLabel, icon: resolvedF9Icon }
+      item.to === '/webull'
+        ? { ...item, label: webullTabLabel, icon: resolvedWebullIcon }
         : item,
     ),
-    [f9TabLabel, resolvedF9Icon],
+    [webullTabLabel, resolvedWebullIcon],
   )
 
   const utilityNavItems = useMemo(() => {
@@ -622,9 +622,9 @@ function App() {
   const workspaceTabItems = useMemo<AppWorkspaceTabBlockModel[]>(
     () => workspaceTabs.map(tab => ({
       id: tab.id,
-      label: getTabLabel(tab.route, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, f9TabLabel, webSidebarChromeState.siteLabels),
+      label: getTabLabel(tab.route, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, webullTabLabel, webSidebarChromeState.siteLabels),
     })),
-    [routeLabelByPath, workspaceTabs, chatSidebarChromeState.label, webSidebarChromeState.label, webSidebarChromeState.siteLabels, f9TabLabel],
+    [routeLabelByPath, workspaceTabs, chatSidebarChromeState.label, webSidebarChromeState.label, webSidebarChromeState.siteLabels, webullTabLabel],
   )
 
   const shell = useMemo(() => deriveAdaptiveShellStateOrch(layout), [layout])
@@ -899,14 +899,14 @@ function App() {
     }
   }, [])
 
-  const handleF9TabPreferencesChange = useCallback(async (label: string, iconText: string) => {
+  const handleWebullTabPreferencesChange = useCallback(async (label: string, iconText: string) => {
     const normalized = label.trim() || 'Webull'
-    setF9TabLabel(normalized)
-    setF9TabIconText(iconText.trim())
+    setWebullTabLabel(normalized)
+    setWebullTabIconText(iconText.trim())
     try {
-      await setF9TabPreferencesOrch(normalized, iconText.trim())
+      await setWebullTabPreferencesOrch(normalized, iconText.trim())
     } catch (error) {
-      console.warn('[App] Failed to persist F9 tab preferences:', error)
+      console.warn('[App] Failed to persist Webull tab preferences:', error)
       throw error
     }
   }, [])
@@ -1439,8 +1439,8 @@ function App() {
         if (cancelled) return
         setExplorerIconStyle(preferences.explorerIconStyle)
         setExplorerFolderColorRules(preferences.explorerFolderColorRules)
-        setF9TabLabel(preferences.f9TabLabel || 'Webull')
-        setF9TabIconText(preferences.f9TabIconText || '')
+        setWebullTabLabel(preferences.webullTabLabel || 'Webull')
+        setWebullTabIconText(preferences.webullTabIconText || '')
       })
       .catch((error) => {
         if (!cancelled) {
@@ -1610,19 +1610,19 @@ function App() {
 
 
   useEffect(() => {
-    const handleF9ChromeState = (event: Event) => {
-      const customEvent = event as CustomEvent<F9SidebarChromeStateBlock>
+    const handleWebullChromeState = (event: Event) => {
+      const customEvent = event as CustomEvent<WebullSidebarChromeStateBlock>
       const detail = customEvent.detail
       if (!detail) return
-      setF9SidebarChromeState({
+      setWebullSidebarChromeState({
         enabled: Boolean(detail.enabled),
         collapsed: Boolean(detail.collapsed),
-        label: typeof detail.label === 'string' ? detail.label : 'f9',
+        label: typeof detail.label === 'string' ? detail.label : 'webull',
       })
     }
-    window.addEventListener(F9_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleF9ChromeState as EventListener)
+    window.addEventListener(Webull_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleWebullChromeState as EventListener)
     return () => {
-      window.removeEventListener(F9_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleF9ChromeState as EventListener)
+      window.removeEventListener(Webull_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleWebullChromeState as EventListener)
     }
   }, [])
 
@@ -1835,16 +1835,16 @@ function App() {
                 </div>
               )}
 
-              {showF9SidebarChromeControl && (
+              {showWebullSidebarChromeControl && (
                 <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
                   <button
                     type="button"
-                    onClick={dispatchF9SidebarChromeToggleBlock}
+                    onClick={dispatchWebullSidebarChromeToggleBlock}
                     className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
-                    aria-label={f9SidebarChromeState.collapsed ? 'Show sidebar' : 'Hide sidebar'}
-                    title={f9SidebarChromeState.collapsed ? 'Show sidebar' : 'Hide sidebar'}
+                    aria-label={webullSidebarChromeState.collapsed ? 'Show sidebar' : 'Hide sidebar'}
+                    title={webullSidebarChromeState.collapsed ? 'Show sidebar' : 'Hide sidebar'}
                   >
-                    {f9SidebarChromeState.collapsed
+                    {webullSidebarChromeState.collapsed
                       ? <PanelLeft className="h-3.5 w-3.5" />
                       : <PanelLeftClose className="h-3.5 w-3.5" />}
                   </button>
@@ -2010,7 +2010,7 @@ function App() {
               }`} data-ltm-nav-region="rail">
                 <div className={`flex h-full flex-col py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
                 <div className="ltm-nav-scroll ltm-sidebar-nav-scroll min-h-0 flex-1 overflow-y-auto">
-                  <div className="space-y-1">
+                  <div className="ltm-sidebar-nav-group space-y-1">
                     {!sidebarCollapsed && (
                       <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         Core
@@ -2037,7 +2037,7 @@ function App() {
                     })}
                   </div>
 
-                  <div className="mt-5 space-y-1">
+                  <div className="ltm-sidebar-nav-group space-y-1">
                     {!sidebarCollapsed && (
                       <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         Excalidraw++
@@ -2166,8 +2166,8 @@ function App() {
               <Route path="/new-thought" element={<NewThought />} />
               <Route path="/chat" element={<Chat />} />
               <Route path="/web" element={<Web />} />
-              <Route path="/f9" element={<F9Page pageLabel={f9TabLabel} />} />
-              <Route path="/personal-extension" element={<Navigate to="/f9" replace />} />
+              <Route path="/webull" element={<WebullPage pageLabel={webullTabLabel} />} />
+              <Route path="/personal-extension" element={<Navigate to="/webull" replace />} />
               <Route
                 path="/settings"
                 element={
@@ -2177,9 +2177,9 @@ function App() {
                     explorerFolderColorRules={explorerFolderColorRules}
                     onExplorerFolderColorRulesChange={handleExplorerFolderColorRulesChange}
                     onRequestVaultSwitch={handleRequestVaultSwitch}
-                    f9TabLabel={f9TabLabel}
-                    f9TabIconText={f9TabIconText}
-                    onF9TabPreferencesChange={handleF9TabPreferencesChange}
+                    webullTabLabel={webullTabLabel}
+                    webullTabIconText={webullTabIconText}
+                    onWebullTabPreferencesChange={handleWebullTabPreferencesChange}
                   />
                 }
               />

@@ -130,12 +130,12 @@ export async function setExplorerFolderColorPreferencesOrch(
   })
 }
 
-export async function setF9TabPreferencesOrch(
+export async function setWebullTabPreferencesOrch(
   label: string,
   iconText: string,
 ): Promise<VaultUiPreferencesBlock> {
   return updateVaultUiPreferencesOrch({
-    f9TabLabel: label.trim() || 'Webull',
-    f9TabIconText: iconText.trim(),
+    webullTabLabel: label.trim() || 'Webull',
+    webullTabIconText: iconText.trim(),
   })
 }

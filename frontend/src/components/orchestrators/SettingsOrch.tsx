@@ -15,15 +15,15 @@ import {
 } from '@/services/orchestrators/markdownEditorSettingsOrch'
 import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeOrch'
 import {
-  getDefaultF9ExecutionSettingsOrch,
-  readF9ExecutionSettingsOrch,
-  writeF9ExecutionSettingsOrch,
-} from '@/personal_extension/services/orchestrators/f9ExecutionSettingsOrch'
+  getDefaultWebullExecutionSettingsOrch,
+  readWebullExecutionSettingsOrch,
+  writeWebullExecutionSettingsOrch,
+} from '@/personal_extension/services/orchestrators/webullExecutionSettingsOrch'
 import {
-  clearF9WebullCredentialsBlock,
-  readF9WebullCredentialStatusBlock,
-  saveF9WebullCredentialsBlock,
-} from '@/personal_extension/services/lego_blocks/units/f9WebullConfigBlock'
+  clearWebullCredentialsBlock,
+  readWebullCredentialStatusBlock,
+  saveWebullCredentialsBlock,
+} from '@/personal_extension/services/lego_blocks/units/webullConfigBlock'
 import {
   clearGoogleDriveAuthOrch,
   connectGoogleDriveAuthOrch,
@@ -74,7 +74,7 @@ import {
 import type { WebSitePreferencesBlock } from '@/services/lego_blocks/units/webSiteBlock'
 import DeveloperSetupBlock from '@/components/lego_blocks/integrations/DeveloperSetupBlock'
 
-export type SettingsTabId = 'theme' | 'explorer' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'f9' | 'rss' | 'cache' | 'vault' | 'about' | 'developer'
+export type SettingsTabId = 'theme' | 'explorer' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
 
 interface SettingsOrchProps {
@@ -84,9 +84,9 @@ interface SettingsOrchProps {
   onExplorerFolderColorRulesChange: (nextRules: ExplorerFolderColorPreferenceBlock[]) => Promise<void> | void
   onRequestVaultSwitch: () => void
   initialTab?: SettingsTabWithProfileId
-  f9TabLabel?: string
-  f9TabIconText?: string
-  onF9TabPreferencesChange?: (label: string, iconText: string) => Promise<void> | void
+  webullTabLabel?: string
+  webullTabIconText?: string
+  onWebullTabPreferencesChange?: (label: string, iconText: string) => Promise<void> | void
 }
 
 function createExplorerColorRuleId(): string {
@@ -109,7 +109,7 @@ const TAB_OPTIONS: Array<{ id: SettingsTabWithProfileId; label: string }> = [
   { id: 'ai_websites', label: 'AI Websites' },
   { id: 'web_bookmarks', label: 'Web' },
   { id: 'google_docs_sheets', label: 'Google Docs and Sheets' },
-  { id: 'f9', label: 'Webull' },
+  { id: 'webull', label: 'Webull' },
   { id: 'rss', label: 'RSS Feeds' },
   { id: 'cache', label: 'Clear Cache' },
   { id: 'vault', label: 'Select Thinking Space' },
@@ -124,9 +124,9 @@ export default function SettingsOrch({
   onExplorerFolderColorRulesChange,
   onRequestVaultSwitch,
   initialTab = 'theme',
-  f9TabLabel: f9TabLabelProp = 'Webull',
-  f9TabIconText: f9TabIconTextProp = '',
-  onF9TabPreferencesChange,
+  webullTabLabel: webullTabLabelProp = 'Webull',
+  webullTabIconText: webullTabIconTextProp = '',
+  onWebullTabPreferencesChange,
 }: SettingsOrchProps) {
   const { profile, loading: profileLoading, saveProfile, reloadProfile } = useUserProfileBlock()
   const { colorModeId, setColorModeId, themeId } = useUIThemeBlock()
@@ -134,15 +134,15 @@ export default function SettingsOrch({
   const [markdownEditorSettings, setMarkdownEditorSettings] = useState<MarkdownEditorSettingsBlock>(
     () => readMarkdownEditorSettingsOrch(),
   )
-  const [f9ExecutionFolderPathInput, setF9ExecutionFolderPathInput] = useState<string>('')
-  const [f9SavedExecutionFolderPath, setF9SavedExecutionFolderPath] = useState<string>('')
-  const [f9WebullAppKeyInput, setF9WebullAppKeyInput] = useState('')
-  const [f9WebullAppSecretInput, setF9WebullAppSecretInput] = useState('')
-  const [f9WebullCredentialsConfigured, setF9WebullCredentialsConfigured] = useState(false)
-  const [f9WebullAppKeyHint, setF9WebullAppKeyHint] = useState<string | null>(null)
-  const [f9WebullSecureStorageAvailable, setF9WebullSecureStorageAvailable] = useState(false)
-  const [f9TabLabelInput, setF9TabLabelInput] = useState(f9TabLabelProp)
-  const [f9TabIconTextInput, setF9TabIconTextInput] = useState(f9TabIconTextProp)
+  const [webullExecutionFolderPathInput, setWebullExecutionFolderPathInput] = useState<string>('')
+  const [webullSavedExecutionFolderPath, setWebullSavedExecutionFolderPath] = useState<string>('')
+  const [webullAppKeyInput, setWebullAppKeyInput] = useState('')
+  const [webullAppSecretInput, setWebullAppSecretInput] = useState('')
+  const [webullCredentialsConfigured, setWebullCredentialsConfigured] = useState(false)
+  const [webullAppKeyHint, setWebullAppKeyHint] = useState<string | null>(null)
+  const [webullSecureStorageAvailable, setWebullSecureStorageAvailable] = useState(false)
+  const [webullTabLabelInput, setWebullTabLabelInput] = useState(webullTabLabelProp)
+  const [webullTabIconTextInput, setWebullTabIconTextInput] = useState(webullTabIconTextProp)
   const [googleOauthClientIdInput, setGoogleOauthClientIdInput] = useState(() => getGoogleOauthClientIdOrch() ?? '')
   const [googleDriveConnected, setGoogleDriveConnected] = useState(() => Boolean(readGoogleDriveAuthOrch()?.accessToken))
   const [googleDriveAuthBusy, setGoogleDriveAuthBusy] = useState(false)
@@ -163,32 +163,32 @@ export default function SettingsOrch({
     if (isCapacitorNative()) return 'mobile'
     return 'web'
   }, [])
-  const f9CredentialEditingSupported = isElectron()
+  const webullCredentialEditingSupported = isElectron()
 
   useEffect(() => {
     setActiveTab(initialTab)
   }, [initialTab])
 
   useEffect(() => {
-    setF9TabLabelInput(f9TabLabelProp)
-    setF9TabIconTextInput(f9TabIconTextProp)
-  }, [f9TabLabelProp, f9TabIconTextProp])
+    setWebullTabLabelInput(webullTabLabelProp)
+    setWebullTabIconTextInput(webullTabIconTextProp)
+  }, [webullTabLabelProp, webullTabIconTextProp])
 
   useEffect(() => {
     let cancelled = false
-    if (activeTab !== 'f9') return
-    void readF9WebullCredentialStatusBlock()
+    if (activeTab !== 'webull') return
+    void readWebullCredentialStatusBlock()
       .then((status) => {
         if (cancelled) return
-        setF9WebullCredentialsConfigured(status.configured)
-        setF9WebullAppKeyHint(status.appKeyHint)
-        setF9WebullSecureStorageAvailable(status.secureStorageAvailable)
+        setWebullCredentialsConfigured(status.configured)
+        setWebullAppKeyHint(status.appKeyHint)
+        setWebullSecureStorageAvailable(status.secureStorageAvailable)
       })
       .catch(() => {
         if (cancelled) return
-        setF9WebullCredentialsConfigured(false)
-        setF9WebullAppKeyHint(null)
-        setF9WebullSecureStorageAvailable(false)
+        setWebullCredentialsConfigured(false)
+        setWebullAppKeyHint(null)
+        setWebullSecureStorageAvailable(false)
       })
     return () => {
       cancelled = true
@@ -209,15 +209,15 @@ export default function SettingsOrch({
 
   useEffect(() => {
     let cancelled = false
-    void readF9ExecutionSettingsOrch()
+    void readWebullExecutionSettingsOrch()
       .then((settings) => {
         if (cancelled) return
-        setF9ExecutionFolderPathInput(settings.executionFolderPath)
-        setF9SavedExecutionFolderPath(settings.executionFolderPath)
+        setWebullExecutionFolderPathInput(settings.executionFolderPath)
+        setWebullSavedExecutionFolderPath(settings.executionFolderPath)
       })
       .catch((err) => {
         if (cancelled) return
-        setError(err instanceof Error ? err.message : 'Failed to load F9 settings')
+        setError(err instanceof Error ? err.message : 'Failed to load Webull settings')
       })
     return () => {
       cancelled = true
@@ -296,13 +296,13 @@ export default function SettingsOrch({
     writeMarkdownEditorSettingsOrch(nextSettings)
   }
 
-  const onSaveF9TabPreferences = async () => {
-    if (!onF9TabPreferencesChange) return
-    setBusyAction('f9')
+  const onSaveWebullTabPreferences = async () => {
+    if (!onWebullTabPreferencesChange) return
+    setBusyAction('webull')
     setError(null)
     setMessage(null)
     try {
-      await onF9TabPreferencesChange(f9TabLabelInput, f9TabIconTextInput)
+      await onWebullTabPreferencesChange(webullTabLabelInput, webullTabIconTextInput)
       setMessage('Tab label and icon saved.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save tab preferences')
@@ -311,49 +311,49 @@ export default function SettingsOrch({
     }
   }
 
-  const onSaveF9Settings = async () => {
-    const normalized = f9ExecutionFolderPathInput.trim()
-    setBusyAction('f9')
+  const onSaveWebullSettings = async () => {
+    const normalized = webullExecutionFolderPathInput.trim()
+    setBusyAction('webull')
     setError(null)
     setMessage(null)
     try {
-      const saved = await writeF9ExecutionSettingsOrch({ executionFolderPath: normalized })
-      setF9ExecutionFolderPathInput(saved.executionFolderPath)
-      setF9SavedExecutionFolderPath(saved.executionFolderPath)
+      const saved = await writeWebullExecutionSettingsOrch({ executionFolderPath: normalized })
+      setWebullExecutionFolderPathInput(saved.executionFolderPath)
+      setWebullSavedExecutionFolderPath(saved.executionFolderPath)
       setMessage(saved.executionFolderPath
-        ? 'F9 execution folder path saved.'
-        : 'F9 execution folder path cleared. Execution file sync is disabled until a path is set.')
+        ? 'Webull execution folder path saved.'
+        : 'Webull execution folder path cleared. Execution file sync is disabled until a path is set.')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save F9 settings')
+      setError(err instanceof Error ? err.message : 'Failed to save Webull settings')
     } finally {
       setBusyAction(null)
     }
   }
 
-  const onResetF9Settings = async () => {
-    setBusyAction('f9')
+  const onResetWebullSettings = async () => {
+    setBusyAction('webull')
     setError(null)
     setMessage(null)
     try {
-      const defaults = getDefaultF9ExecutionSettingsOrch()
-      const saved = await writeF9ExecutionSettingsOrch(defaults)
-      setF9ExecutionFolderPathInput(saved.executionFolderPath)
-      setF9SavedExecutionFolderPath(saved.executionFolderPath)
-      setMessage('F9 execution folder path reset to default (not configured).')
+      const defaults = getDefaultWebullExecutionSettingsOrch()
+      const saved = await writeWebullExecutionSettingsOrch(defaults)
+      setWebullExecutionFolderPathInput(saved.executionFolderPath)
+      setWebullSavedExecutionFolderPath(saved.executionFolderPath)
+      setMessage('Webull execution folder path reset to default (not configured).')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reset F9 settings')
+      setError(err instanceof Error ? err.message : 'Failed to reset Webull settings')
     } finally {
       setBusyAction(null)
     }
   }
 
-  const onSaveF9WebullCredentials = async () => {
-    if (!f9CredentialEditingSupported) {
+  const onSaveWebullCredentials = async () => {
+    if (!webullCredentialEditingSupported) {
       setError('Webull secure credentials are currently supported only in Electron desktop runtime.')
       return
     }
-    const appKey = f9WebullAppKeyInput.trim()
-    const appSecret = f9WebullAppSecretInput.trim()
+    const appKey = webullAppKeyInput.trim()
+    const appSecret = webullAppSecretInput.trim()
     if (!appKey) {
       setError('Webull app key cannot be empty.')
       return
@@ -362,15 +362,15 @@ export default function SettingsOrch({
       setError('Webull app secret cannot be empty.')
       return
     }
-    setBusyAction('f9')
+    setBusyAction('webull')
     setError(null)
     setMessage(null)
     try {
-      const status = await saveF9WebullCredentialsBlock({ appKey, appSecret })
-      setF9WebullCredentialsConfigured(status.configured)
-      setF9WebullAppKeyHint(status.appKeyHint)
-      setF9WebullSecureStorageAvailable(status.secureStorageAvailable)
-      setF9WebullAppSecretInput('')
+      const status = await saveWebullCredentialsBlock({ appKey, appSecret })
+      setWebullCredentialsConfigured(status.configured)
+      setWebullAppKeyHint(status.appKeyHint)
+      setWebullSecureStorageAvailable(status.secureStorageAvailable)
+      setWebullAppSecretInput('')
       setMessage('Webull credentials saved to secure device storage.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save Webull credentials')
@@ -424,21 +424,21 @@ export default function SettingsOrch({
     setMessage('Google Drive disconnected.')
   }
 
-  const onClearF9WebullCredentials = async () => {
-    if (!f9CredentialEditingSupported) {
+  const onClearWebullCredentials = async () => {
+    if (!webullCredentialEditingSupported) {
       setError('Webull secure credentials are currently supported only in Electron desktop runtime.')
       return
     }
-    setBusyAction('f9')
+    setBusyAction('webull')
     setError(null)
     setMessage(null)
     try {
-      const status = await clearF9WebullCredentialsBlock()
-      setF9WebullCredentialsConfigured(status.configured)
-      setF9WebullAppKeyHint(status.appKeyHint)
-      setF9WebullSecureStorageAvailable(status.secureStorageAvailable)
-      setF9WebullAppKeyInput('')
-      setF9WebullAppSecretInput('')
+      const status = await clearWebullCredentialsBlock()
+      setWebullCredentialsConfigured(status.configured)
+      setWebullAppKeyHint(status.appKeyHint)
+      setWebullSecureStorageAvailable(status.secureStorageAvailable)
+      setWebullAppKeyInput('')
+      setWebullAppSecretInput('')
       setMessage('Webull credentials cleared from secure device storage.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to clear Webull credentials')
@@ -907,12 +907,12 @@ export default function SettingsOrch({
         </Card>
       )}
 
-      {activeTab === 'f9' && (
+      {activeTab === 'webull' && (
         <Card>
           <CardHeader>
-            <CardTitle>F9 Settings</CardTitle>
+            <CardTitle>Webull Settings</CardTitle>
             <CardDescription>
-              Configure the tab name, icon, Webull credentials, and execution storage for F9.
+              Configure the tab name, icon, Webull credentials, and execution storage for Webull.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -922,27 +922,27 @@ export default function SettingsOrch({
                 Customize the label and icon shown in the sidebar and tab strip. Changes sync across devices via your vault.
               </p>
               <div className="space-y-2">
-                <label htmlFor="ltm-settings-f9-tab-label" className="text-sm font-medium">
+                <label htmlFor="ltm-settings-webull-tab-label" className="text-sm font-medium">
                   Tab Label
                 </label>
                 <input
-                  id="ltm-settings-f9-tab-label"
+                  id="ltm-settings-webull-tab-label"
                   type="text"
-                  value={f9TabLabelInput}
-                  onChange={(event) => setF9TabLabelInput(event.target.value)}
+                  value={webullTabLabelInput}
+                  onChange={(event) => setWebullTabLabelInput(event.target.value)}
                   placeholder="Webull"
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
                 />
               </div>
               <div className="space-y-2">
-                <label htmlFor="ltm-settings-f9-tab-icon" className="text-sm font-medium">
+                <label htmlFor="ltm-settings-webull-tab-icon" className="text-sm font-medium">
                   Tab Icon (text or emoji)
                 </label>
                 <input
-                  id="ltm-settings-f9-tab-icon"
+                  id="ltm-settings-webull-tab-icon"
                   type="text"
-                  value={f9TabIconTextInput}
-                  onChange={(event) => setF9TabIconTextInput(event.target.value)}
+                  value={webullTabIconTextInput}
+                  onChange={(event) => setWebullTabIconTextInput(event.target.value)}
                   placeholder="Leave blank for Webull crescent icon"
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
                 />
@@ -952,68 +952,68 @@ export default function SettingsOrch({
               </div>
               <Button
                 type="button"
-                onClick={() => { void onSaveF9TabPreferences() }}
-                disabled={busyAction === 'f9' || !onF9TabPreferencesChange}
+                onClick={() => { void onSaveWebullTabPreferences() }}
+                disabled={busyAction === 'webull' || !onWebullTabPreferencesChange}
               >
-                {busyAction === 'f9' ? 'Saving...' : 'Save Tab Appearance'}
+                {busyAction === 'webull' ? 'Saving...' : 'Save Tab Appearance'}
               </Button>
             </div>
             <div className="space-y-2 rounded-lg border border-border/60 p-3">
               <h3 className="text-sm font-medium text-foreground">Webull API Credentials</h3>
-              {!f9CredentialEditingSupported && (
+              {!webullCredentialEditingSupported && (
                 <p className="text-xs text-muted-foreground">
                   Secure credential entry is currently available only in the Electron desktop app.
                 </p>
               )}
-              {f9CredentialEditingSupported && !f9WebullSecureStorageAvailable && (
+              {webullCredentialEditingSupported && !webullSecureStorageAvailable && (
                 <p className="text-xs text-destructive">
                   Secure storage is unavailable on this device/runtime. Webull credentials cannot be saved safely.
                 </p>
               )}
               <div className="space-y-2">
-                <label htmlFor="ltm-settings-f9-webull-app-key" className="text-sm font-medium">
+                <label htmlFor="ltm-settings-webull-webull-app-key" className="text-sm font-medium">
                   Webull App Key
                 </label>
                 <input
-                  id="ltm-settings-f9-webull-app-key"
+                  id="ltm-settings-webull-webull-app-key"
                   type="text"
-                  value={f9WebullAppKeyInput}
-                  onChange={(event) => setF9WebullAppKeyInput(event.target.value)}
+                  value={webullAppKeyInput}
+                  onChange={(event) => setWebullAppKeyInput(event.target.value)}
                   placeholder="Enter app key"
-                  disabled={!f9CredentialEditingSupported}
+                  disabled={!webullCredentialEditingSupported}
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </div>
               <div className="space-y-2">
-                <label htmlFor="ltm-settings-f9-webull-app-secret" className="text-sm font-medium">
+                <label htmlFor="ltm-settings-webull-webull-app-secret" className="text-sm font-medium">
                   Webull App Secret
                 </label>
                 <input
-                  id="ltm-settings-f9-webull-app-secret"
+                  id="ltm-settings-webull-webull-app-secret"
                   type="password"
-                  value={f9WebullAppSecretInput}
-                  onChange={(event) => setF9WebullAppSecretInput(event.target.value)}
+                  value={webullAppSecretInput}
+                  onChange={(event) => setWebullAppSecretInput(event.target.value)}
                   placeholder="Enter app secret"
-                  disabled={!f9CredentialEditingSupported}
+                  disabled={!webullCredentialEditingSupported}
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Current status: {f9WebullCredentialsConfigured ? `configured (${f9WebullAppKeyHint ?? 'saved'})` : 'not configured'}
+                Current status: {webullCredentialsConfigured ? `configured (${webullAppKeyHint ?? 'saved'})` : 'not configured'}
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
-                  onClick={() => { void onSaveF9WebullCredentials() }}
-                  disabled={busyAction === 'f9' || !f9CredentialEditingSupported}
+                  onClick={() => { void onSaveWebullCredentials() }}
+                  disabled={busyAction === 'webull' || !webullCredentialEditingSupported}
                 >
-                  {busyAction === 'f9' ? 'Saving...' : 'Save Credentials'}
+                  {busyAction === 'webull' ? 'Saving...' : 'Save Credentials'}
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => { void onClearF9WebullCredentials() }}
-                  disabled={busyAction === 'f9' || !f9CredentialEditingSupported || !f9WebullCredentialsConfigured}
+                  onClick={() => { void onClearWebullCredentials() }}
+                  disabled={busyAction === 'webull' || !webullCredentialEditingSupported || !webullCredentialsConfigured}
                 >
                   Clear Credentials
                 </Button>
@@ -1023,41 +1023,41 @@ export default function SettingsOrch({
             <div className="space-y-2 border-t border-border/60 pt-3">
               <h3 className="text-sm font-medium text-foreground">Execution Storage</h3>
               <p className="text-xs text-muted-foreground">
-                Configure where F9 stores `overall.json`, company index files, and per-position markdown files.
+                Configure where Webull stores `overall.json`, company index files, and per-position markdown files.
               </p>
             </div>
             <div className="space-y-2">
-              <label htmlFor="ltm-settings-f9-execution-folder" className="text-sm font-medium">
+              <label htmlFor="ltm-settings-webull-execution-folder" className="text-sm font-medium">
                 Execution Folder Path
               </label>
               <input
-                id="ltm-settings-f9-execution-folder"
+                id="ltm-settings-webull-execution-folder"
                 type="text"
-                value={f9ExecutionFolderPathInput}
-                onChange={(event) => setF9ExecutionFolderPathInput(event.target.value)}
+                value={webullExecutionFolderPathInput}
+                onChange={(event) => setWebullExecutionFolderPathInput(event.target.value)}
                 placeholder="Optional. Leave blank to disable execution file sync."
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
               />
             </div>
             <p className="text-xs text-muted-foreground">
               Current saved value:{' '}
-              {f9SavedExecutionFolderPath
-                ? <span className="font-mono">{f9SavedExecutionFolderPath}</span>
+              {webullSavedExecutionFolderPath
+                ? <span className="font-mono">{webullSavedExecutionFolderPath}</span>
                 : <span className="italic">Not configured</span>}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
-                onClick={() => { void onSaveF9Settings() }}
-                disabled={busyAction === 'f9'}
+                onClick={() => { void onSaveWebullSettings() }}
+                disabled={busyAction === 'webull'}
               >
-                {busyAction === 'f9' ? 'Saving...' : 'Save F9 Path'}
+                {busyAction === 'webull' ? 'Saving...' : 'Save Webull Path'}
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => { void onResetF9Settings() }}
-                disabled={busyAction === 'f9'}
+                onClick={() => { void onResetWebullSettings() }}
+                disabled={busyAction === 'webull'}
               >
                 Reset to Default
               </Button>

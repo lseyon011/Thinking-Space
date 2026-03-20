@@ -23,14 +23,14 @@ import {
   readAzureTokenBlock,
 } from './lego_blocks/aiCredentialBlock';
 import {
-  clearF9WebullCredentialsBlock,
-  readF9WebullAccessTokenBlock,
-  readF9WebullCredentialStatusBlock,
-  readF9WebullCredentialsBlock,
-  saveF9WebullAccessTokenBlock,
-  saveF9WebullCredentialsBlock,
-  type F9WebullStoredAccessTokenBlock,
-} from './lego_blocks/f9WebullCredentialStoreBlock';
+  clearWebullCredentialsBlock,
+  readWebullAccessTokenBlock,
+  readWebullCredentialStatusBlock,
+  readWebullCredentialsBlock,
+  saveWebullAccessTokenBlock,
+  saveWebullCredentialsBlock,
+  type WebullStoredAccessTokenBlock,
+} from './lego_blocks/webullCredentialStoreBlock';
 import {
   readPersistedVaultRootBlock,
   writePersistedVaultRootBlock,
@@ -582,19 +582,19 @@ interface ElectronCapabilityInvokePayload {
   apiBaseUrl?: string;
 }
 
-interface F9WebullGetPayload {
+interface WebullGetPayload {
   url: string;
   headers: Record<string, string>;
   method?: 'GET' | 'POST';
   body?: string;
 }
 
-interface F9WebullGetResponse {
+interface WebullGetResponse {
   status: number;
   body: string;
 }
 
-interface F9WebullSignedRequestPayload {
+interface WebullSignedRequestPayload {
   method: 'GET' | 'POST';
   url: string;
   version?: string;
@@ -602,12 +602,12 @@ interface F9WebullSignedRequestPayload {
   body?: string;
 }
 
-interface F9WebullSetCredentialsPayload {
+interface WebullSetCredentialsPayload {
   appKey: string;
   appSecret: string;
 }
 
-interface F9WebullTokenPayload {
+interface WebullTokenPayload {
   token: string;
   expires: number | null;
   status: string | null;
@@ -772,7 +772,7 @@ function fetchBuffer(url: string, headers: Record<string, string> = {}, redirect
   });
 }
 
-function assertAllowedF9WebullUrl(url: string): URL {
+function assertAllowedWebullUrl(url: string): URL {
   const parsed = new URL(url);
   const host = parsed.hostname.toLowerCase();
   const allowedHosts = new Set([
@@ -781,7 +781,7 @@ function assertAllowedF9WebullUrl(url: string): URL {
     'us-openapi-alb.uat.webullbroker.com',
   ]);
   if (!allowedHosts.has(host)) {
-    throw new Error(`Unsupported F9 Webull host: ${parsed.hostname}`);
+    throw new Error(`Unsupported Webull Webull host: ${parsed.hostname}`);
   }
   return parsed;
 }
@@ -796,10 +796,10 @@ function encodeWebullSignatureSourceBlock(value: string): string {
 }
 
 function buildWebullSignedHeadersBlock(
-  payload: F9WebullSignedRequestPayload,
+  payload: WebullSignedRequestPayload,
   credentials: { appKey: string; appSecret: string },
 ): Record<string, string> {
-  const parsed = assertAllowedF9WebullUrl(payload.url);
+  const parsed = assertAllowedWebullUrl(payload.url);
   const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
   const nonce = randomUUID();
 
@@ -848,7 +848,7 @@ function buildWebullSignedHeadersBlock(
     'Content-Type': 'application/json',
     Accept: 'application/json',
     ...(payload.accessToken ? { 'x-access-token': payload.accessToken } : {}),
-    'User-Agent': 'think-space-f9',
+    'User-Agent': 'think-space-webull',
   };
 }
 
@@ -858,9 +858,9 @@ function requestTextOverHttps(
   headers: Record<string, string>,
   body = '',
   redirects = 0,
-): Promise<F9WebullGetResponse> {
+): Promise<WebullGetResponse> {
   return new Promise((resolve, reject) => {
-    const parsed = assertAllowedF9WebullUrl(url);
+    const parsed = assertAllowedWebullUrl(url);
     const request = https.request(
       parsed,
       {
@@ -950,7 +950,7 @@ function requestGoogleTextOverHttpsBlock(
   headers: Record<string, string>,
   body = '',
   redirects = 0,
-): Promise<F9WebullGetResponse> {
+): Promise<WebullGetResponse> {
   return new Promise((resolve, reject) => {
     const parsed = assertAllowedGoogleApiUrlBlock(url);
     const request = https.request(
@@ -1193,96 +1193,96 @@ ipcMain.handle('extension-runtime:invoke', async (_event, payload: ExtensionRunt
   });
 });
 
-// -- F9 Webull GET bridge (main-process network bridge) --
-ipcMain.handle('f9:webull:get', async (_event, payload: F9WebullGetPayload) => {
+// -- Webull Webull GET bridge (main-process network bridge) --
+ipcMain.handle('webull:get', async (_event, payload: WebullGetPayload) => {
   if (!payload || typeof payload !== 'object') {
-    throw new Error('F9 Webull payload must be an object.');
+    throw new Error('Webull Webull payload must be an object.');
   }
   if (typeof payload.url !== 'string' || payload.url.trim().length === 0) {
-    throw new Error('F9 Webull payload requires a non-empty "url".');
+    throw new Error('Webull Webull payload requires a non-empty "url".');
   }
   if (!payload.headers || typeof payload.headers !== 'object') {
-    throw new Error('F9 Webull payload requires a "headers" object.');
+    throw new Error('Webull Webull payload requires a "headers" object.');
   }
   const method = payload.method === 'POST' ? 'POST' : 'GET';
   const body = typeof payload.body === 'string' ? payload.body : '';
   return requestTextOverHttps(method, payload.url, payload.headers, body);
 });
 
-// Backward-compatible alias for the initial F9 account-list bridge.
-ipcMain.handle('f9:webull:accountList', async (_event, payload: F9WebullGetPayload) => {
+// Backward-compatible alias for the initial Webull account-list bridge.
+ipcMain.handle('webull:accountList', async (_event, payload: WebullGetPayload) => {
   const method = payload.method === 'POST' ? 'POST' : 'GET';
   const body = typeof payload.body === 'string' ? payload.body : '';
   return requestTextOverHttps(method, payload.url, payload.headers, body);
 });
 
-ipcMain.handle('f9:webull:credentials:status', async () => {
-  return readF9WebullCredentialStatusBlock();
+ipcMain.handle('webull:credentials:status', async () => {
+  return readWebullCredentialStatusBlock();
 });
 
-ipcMain.handle('f9:webull:credentials:set', async (_event, payload: F9WebullSetCredentialsPayload) => {
+ipcMain.handle('webull:credentials:set', async (_event, payload: WebullSetCredentialsPayload) => {
   if (!payload || typeof payload !== 'object') {
-    throw new Error('F9 Webull credentials payload must be an object.');
+    throw new Error('Webull Webull credentials payload must be an object.');
   }
   if (typeof payload.appKey !== 'string' || payload.appKey.trim().length === 0) {
-    throw new Error('F9 Webull credentials payload requires a non-empty "appKey".');
+    throw new Error('Webull Webull credentials payload requires a non-empty "appKey".');
   }
   if (typeof payload.appSecret !== 'string' || payload.appSecret.trim().length === 0) {
-    throw new Error('F9 Webull credentials payload requires a non-empty "appSecret".');
+    throw new Error('Webull Webull credentials payload requires a non-empty "appSecret".');
   }
-  return saveF9WebullCredentialsBlock(payload.appKey, payload.appSecret);
+  return saveWebullCredentialsBlock(payload.appKey, payload.appSecret);
 });
 
-ipcMain.handle('f9:webull:credentials:clear', async () => {
-  return clearF9WebullCredentialsBlock();
+ipcMain.handle('webull:credentials:clear', async () => {
+  return clearWebullCredentialsBlock();
 });
 
-ipcMain.handle('f9:webull:token:get', async () => {
-  return readF9WebullAccessTokenBlock();
+ipcMain.handle('webull:token:get', async () => {
+  return readWebullAccessTokenBlock();
 });
 
-ipcMain.handle('f9:webull:token:set', async (_event, payload: F9WebullTokenPayload | null) => {
+ipcMain.handle('webull:token:set', async (_event, payload: WebullTokenPayload | null) => {
   if (payload === null) {
-    await saveF9WebullAccessTokenBlock(null);
+    await saveWebullAccessTokenBlock(null);
     return;
   }
   if (!payload || typeof payload !== 'object') {
-    throw new Error('F9 Webull token payload must be an object or null.');
+    throw new Error('Webull Webull token payload must be an object or null.');
   }
   if (typeof payload.token !== 'string' || payload.token.trim().length === 0) {
-    throw new Error('F9 Webull token payload requires a non-empty "token".');
+    throw new Error('Webull Webull token payload requires a non-empty "token".');
   }
   if (payload.expires !== null && (typeof payload.expires !== 'number' || !Number.isFinite(payload.expires))) {
-    throw new Error('F9 Webull token payload "expires" must be a number or null.');
+    throw new Error('Webull Webull token payload "expires" must be a number or null.');
   }
   if (payload.status !== null && typeof payload.status !== 'string') {
-    throw new Error('F9 Webull token payload "status" must be a string or null.');
+    throw new Error('Webull Webull token payload "status" must be a string or null.');
   }
-  const normalized: F9WebullStoredAccessTokenBlock = {
+  const normalized: WebullStoredAccessTokenBlock = {
     token: payload.token.trim(),
     expires: payload.expires,
     status: payload.status ? payload.status.trim() : null,
   };
-  await saveF9WebullAccessTokenBlock(normalized);
+  await saveWebullAccessTokenBlock(normalized);
 });
 
 // SDK-style signed request helper for v2 APIs (token + account_v2 parity).
-ipcMain.handle('f9:webull:signedRequest', async (_event, payload: F9WebullSignedRequestPayload) => {
+ipcMain.handle('webull:signedRequest', async (_event, payload: WebullSignedRequestPayload) => {
   if (!payload || typeof payload !== 'object') {
-    throw new Error('F9 Webull signed payload must be an object.');
+    throw new Error('Webull Webull signed payload must be an object.');
   }
   if (typeof payload.url !== 'string' || payload.url.trim().length === 0) {
-    throw new Error('F9 Webull signed payload requires a non-empty "url".');
+    throw new Error('Webull Webull signed payload requires a non-empty "url".');
   }
   if (payload.method !== 'GET' && payload.method !== 'POST') {
-    throw new Error('F9 Webull signed payload requires method GET or POST.');
+    throw new Error('Webull Webull signed payload requires method GET or POST.');
   }
   if (payload.body !== undefined && typeof payload.body !== 'string') {
-    throw new Error('F9 Webull signed payload body must be a string when provided.');
+    throw new Error('Webull Webull signed payload body must be a string when provided.');
   }
-  const credentials = await readF9WebullCredentialsBlock();
+  const credentials = await readWebullCredentialsBlock();
   if (!credentials) {
-    throw new Error('Webull credentials are not configured. Open Settings > F9 and save your app key/secret.');
+    throw new Error('Webull credentials are not configured. Open Settings > Webull and save your app key/secret.');
   }
 
   const headers = buildWebullSignedHeadersBlock(payload, credentials);

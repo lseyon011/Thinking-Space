@@ -1,12 +1,12 @@
 import { getJsonStorageItem, setJsonStorageItem, STORAGE_KEYS } from '@/services/lego_blocks/units/storageKeyBlock'
 
-export interface F9ExecutionSettingsBlock {
+export interface WebullExecutionSettingsBlock {
   executionFolderPath: string
 }
 
-export const DEFAULT_F9_EXECUTION_FOLDER_PATH_BLOCK = ''
+export const DEFAULT_Webull_EXECUTION_FOLDER_PATH_BLOCK = ''
 
-const F9_RELATIVE_ROOT_HINTS_BLOCK = [
+const Webull_RELATIVE_ROOT_HINTS_BLOCK = [
   'acceleration_core/',
   'coding-projects/',
   'operations/',
@@ -23,7 +23,7 @@ function trimSlashesBlock(value: string): string {
 function deriveRelativeExecutionPathBlock(value: string): string | null {
   const normalized = normalizeSlashPathBlock(value)
   const lowered = normalized.toLowerCase()
-  for (const hint of F9_RELATIVE_ROOT_HINTS_BLOCK) {
+  for (const hint of Webull_RELATIVE_ROOT_HINTS_BLOCK) {
     const idx = lowered.indexOf(`/${hint}`)
     if (idx >= 0) {
       const rel = trimSlashesBlock(normalized.slice(idx + 1))
@@ -34,9 +34,9 @@ function deriveRelativeExecutionPathBlock(value: string): string | null {
 }
 
 function sanitizeExecutionFolderPathBlock(value: unknown): string {
-  if (typeof value !== 'string') return DEFAULT_F9_EXECUTION_FOLDER_PATH_BLOCK
+  if (typeof value !== 'string') return DEFAULT_Webull_EXECUTION_FOLDER_PATH_BLOCK
   const normalized = value.trim()
-  if (!normalized) return DEFAULT_F9_EXECUTION_FOLDER_PATH_BLOCK
+  if (!normalized) return DEFAULT_Webull_EXECUTION_FOLDER_PATH_BLOCK
   const withoutTrailing = normalizeSlashPathBlock(normalized).replace(/\/+$/, '')
   if (withoutTrailing.startsWith('/')) {
     return deriveRelativeExecutionPathBlock(withoutTrailing) ?? withoutTrailing
@@ -44,32 +44,32 @@ function sanitizeExecutionFolderPathBlock(value: unknown): string {
   return withoutTrailing
 }
 
-export function normalizeF9ExecutionSettingsBlock(
-  value: Partial<F9ExecutionSettingsBlock> | null | undefined,
-): F9ExecutionSettingsBlock {
+export function normalizeWebullExecutionSettingsBlock(
+  value: Partial<WebullExecutionSettingsBlock> | null | undefined,
+): WebullExecutionSettingsBlock {
   return {
     executionFolderPath: sanitizeExecutionFolderPathBlock(value?.executionFolderPath),
   }
 }
 
-export function getDefaultF9ExecutionSettingsBlock(): F9ExecutionSettingsBlock {
+export function getDefaultWebullExecutionSettingsBlock(): WebullExecutionSettingsBlock {
   return {
-    executionFolderPath: DEFAULT_F9_EXECUTION_FOLDER_PATH_BLOCK,
+    executionFolderPath: DEFAULT_Webull_EXECUTION_FOLDER_PATH_BLOCK,
   }
 }
 
-export function readF9ExecutionSettingsBlock(): F9ExecutionSettingsBlock {
-  const raw = getJsonStorageItem<Partial<F9ExecutionSettingsBlock> | null>(
-    STORAGE_KEYS.f9ExecutionSettings,
+export function readWebullExecutionSettingsBlock(): WebullExecutionSettingsBlock {
+  const raw = getJsonStorageItem<Partial<WebullExecutionSettingsBlock> | null>(
+    STORAGE_KEYS.webullExecutionSettings,
     null,
   )
-  return normalizeF9ExecutionSettingsBlock(raw)
+  return normalizeWebullExecutionSettingsBlock(raw)
 }
 
-export function writeF9ExecutionSettingsBlock(
-  settings: F9ExecutionSettingsBlock,
-): F9ExecutionSettingsBlock {
-  const sanitized = normalizeF9ExecutionSettingsBlock(settings)
-  setJsonStorageItem(STORAGE_KEYS.f9ExecutionSettings, sanitized)
+export function writeWebullExecutionSettingsBlock(
+  settings: WebullExecutionSettingsBlock,
+): WebullExecutionSettingsBlock {
+  const sanitized = normalizeWebullExecutionSettingsBlock(settings)
+  setJsonStorageItem(STORAGE_KEYS.webullExecutionSettings, sanitized)
   return sanitized
 }

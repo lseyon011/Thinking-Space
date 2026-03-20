@@ -14,7 +14,7 @@ const POSITION_PAYLOAD_KEYS_BLOCK = [
   'result',
 ] as const
 
-const F9_RELATIVE_ROOT_HINTS_BLOCK = [
+const Webull_RELATIVE_ROOT_HINTS_BLOCK = [
   'acceleration_core/',
   'coding-projects/',
   'operations/',
@@ -36,7 +36,7 @@ const DEFAULT_COMPANY_INDEX_BODY_BLOCK = [
   '',
 ].join('\n')
 
-function comparePositionSummariesAscendingBlock(a: F9PositionSummaryBlock, b: F9PositionSummaryBlock): number {
+function comparePositionSummariesAscendingBlock(a: WebullPositionSummaryBlock, b: WebullPositionSummaryBlock): number {
   const bySymbol = a.symbol.localeCompare(b.symbol, undefined, { numeric: true, sensitivity: 'base' })
   if (bySymbol !== 0) return bySymbol
   const byFileName = a.fileName.localeCompare(b.fileName, undefined, { numeric: true, sensitivity: 'base' })
@@ -44,11 +44,11 @@ function comparePositionSummariesAscendingBlock(a: F9PositionSummaryBlock, b: F9
   return a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' })
 }
 
-function sortPositionSummariesAscendingBlock(list: F9PositionSummaryBlock[]): F9PositionSummaryBlock[] {
+function sortPositionSummariesAscendingBlock(list: WebullPositionSummaryBlock[]): WebullPositionSummaryBlock[] {
   return [...list].sort(comparePositionSummariesAscendingBlock)
 }
 
-export interface F9PositionSummaryBlock {
+export interface WebullPositionSummaryBlock {
   id: string
   fileName: string
   symbol: string
@@ -69,7 +69,7 @@ export interface F9PositionSummaryBlock {
   projectPresetTags: string[]
 }
 
-export interface F9CompanyOverviewBlock {
+export interface WebullCompanyOverviewBlock {
   companyTicker: string
   indexFilePath: string
   indexId: string
@@ -78,25 +78,25 @@ export interface F9CompanyOverviewBlock {
   programGroupId: string | null
   valuationNotePath: string | null
   companyPdfReportPath: string | null
-  positions: F9PositionSummaryBlock[]
+  positions: WebullPositionSummaryBlock[]
 }
 
-export interface F9ExecutionOverviewBlock {
+export interface WebullExecutionOverviewBlock {
   executionRoot: string
   companyCount: number
   positionCount: number
-  companies: F9CompanyOverviewBlock[]
+  companies: WebullCompanyOverviewBlock[]
 }
 
-export interface F9PositionDetailBlock {
+export interface WebullPositionDetailBlock {
   companyTicker: string
   filePath: string
-  summary: F9PositionSummaryBlock
+  summary: WebullPositionSummaryBlock
   frontmatter: Record<string, unknown>
   body: string
 }
 
-export interface F9OverallCacheBlock {
+export interface WebullOverallCacheBlock {
   overallPath: string
   fetchedAt: string
   runtime: string
@@ -108,7 +108,7 @@ export interface F9OverallCacheBlock {
   source: 'assets_positions' | 'legacy_positions' | 'none'
 }
 
-export interface SyncF9ExecutionInputBlock {
+export interface SyncWebullExecutionInputBlock {
   executionFolderPath: string
   fetchedAt: string
   runtime: string
@@ -120,7 +120,7 @@ export interface SyncF9ExecutionInputBlock {
   fs?: VaultFS
 }
 
-export interface SyncF9ExecutionResultBlock {
+export interface SyncWebullExecutionResultBlock {
   executionRoot: string
   overallPath: string
   companyCount: number
@@ -129,13 +129,13 @@ export interface SyncF9ExecutionResultBlock {
   warnings: string[]
 }
 
-export interface CreateF9CompanyInputBlock {
+export interface CreateWebullCompanyInputBlock {
   executionFolderPath: string
   companyTicker: string
   fs?: VaultFS
 }
 
-export interface CreateF9ManualPositionInputBlock {
+export interface CreateWebullManualPositionInputBlock {
   executionFolderPath: string
   companyTicker: string
   title?: string
@@ -149,7 +149,7 @@ export interface CreateF9ManualPositionInputBlock {
   fs?: VaultFS
 }
 
-export interface UpdateF9PositionOverlayInputBlock {
+export interface UpdateWebullPositionOverlayInputBlock {
   executionFolderPath: string
   companyTicker: string
   fileName: string
@@ -165,7 +165,7 @@ export interface UpdateF9PositionOverlayInputBlock {
   fs?: VaultFS
 }
 
-export interface UpdateF9CompanyOverlayInputBlock {
+export interface UpdateWebullCompanyOverlayInputBlock {
   executionFolderPath: string
   companyTicker: string
   strategyNotes?: string | null
@@ -176,7 +176,7 @@ export interface UpdateF9CompanyOverlayInputBlock {
   fs?: VaultFS
 }
 
-export interface SaveF9PositionBodyInputBlock {
+export interface SaveWebullPositionBodyInputBlock {
   executionFolderPath: string
   companyTicker: string
   fileName: string
@@ -195,13 +195,13 @@ interface ExistingPositionRecordBlock {
   filePath: string
   frontmatter: Record<string, unknown>
   body: string
-  summary: F9PositionSummaryBlock
+  summary: WebullPositionSummaryBlock
 }
 
-export function resolveF9ExecutionRootForVaultBlock(executionFolderPath: string): string {
+export function resolveWebullExecutionRootForVaultBlock(executionFolderPath: string): string {
   const normalizedInput = normalizeSlashPathBlock(removeFileSchemeBlock(executionFolderPath).trim())
   if (!normalizedInput) {
-    throw new Error('F9 execution folder path is required.')
+    throw new Error('Webull execution folder path is required.')
   }
 
   if (!normalizedInput.startsWith('/')) {
@@ -213,13 +213,13 @@ export function resolveF9ExecutionRootForVaultBlock(executionFolderPath: string)
   const storedVaultRoot = getStoredVaultRoot()
   if (!storedVaultRoot) {
     if (inferredRelativePath) return inferredRelativePath
-    throw new Error('Vault root is not selected yet. Set a vault root or configure a relative F9 execution folder path.')
+    throw new Error('Vault root is not selected yet. Set a vault root or configure a relative Webull execution folder path.')
   }
 
   const normalizedVaultRoot = normalizeSlashPathBlock(removeFileSchemeBlock(storedVaultRoot).trim())
   if (!normalizedVaultRoot.startsWith('/')) {
     if (inferredRelativePath) return inferredRelativePath
-    throw new Error('Absolute F9 execution folder requires an absolute vault root.')
+    throw new Error('Absolute Webull execution folder requires an absolute vault root.')
   }
 
   if (normalizedInput === normalizedVaultRoot) {
@@ -228,14 +228,14 @@ export function resolveF9ExecutionRootForVaultBlock(executionFolderPath: string)
   const vaultPrefix = `${normalizedVaultRoot}/`
   if (!normalizedInput.startsWith(vaultPrefix)) {
     if (inferredRelativePath) return inferredRelativePath
-    throw new Error(`F9 execution folder must be inside the selected vault root: ${normalizedVaultRoot}`)
+    throw new Error(`Webull execution folder must be inside the selected vault root: ${normalizedVaultRoot}`)
   }
   return normalizedInput.slice(vaultPrefix.length)
 }
 
 function deriveRelativeExecutionPathFromAbsoluteBlock(absolutePath: string): string | null {
   const lowered = absolutePath.toLowerCase()
-  for (const hint of F9_RELATIVE_ROOT_HINTS_BLOCK) {
+  for (const hint of Webull_RELATIVE_ROOT_HINTS_BLOCK) {
     const idx = lowered.indexOf(`/${hint}`)
     if (idx < 0) continue
     const candidate = trimSlashesBlock(absolutePath.slice(idx + 1))
@@ -244,11 +244,11 @@ function deriveRelativeExecutionPathFromAbsoluteBlock(absolutePath: string): str
   return null
 }
 
-export async function syncF9ExecutionStorageBlock(
-  input: SyncF9ExecutionInputBlock,
-): Promise<SyncF9ExecutionResultBlock> {
+export async function syncWebullExecutionStorageBlock(
+  input: SyncWebullExecutionInputBlock,
+): Promise<SyncWebullExecutionResultBlock> {
   const fs = input.fs ?? getVaultFS()
-  const executionRoot = resolveF9ExecutionRootForVaultBlock(input.executionFolderPath)
+  const executionRoot = resolveWebullExecutionRootForVaultBlock(input.executionFolderPath)
   const warnings: string[] = []
   await ensureDirBlock(fs, executionRoot)
 
@@ -340,12 +340,12 @@ export async function syncF9ExecutionStorageBlock(
   }
 }
 
-export async function readF9ExecutionOverviewBlock(
+export async function readWebullExecutionOverviewBlock(
   executionFolderPath: string,
   fsParam?: VaultFS,
-): Promise<F9ExecutionOverviewBlock> {
+): Promise<WebullExecutionOverviewBlock> {
   const fs = fsParam ?? getVaultFS()
-  const executionRoot = resolveF9ExecutionRootForVaultBlock(executionFolderPath)
+  const executionRoot = resolveWebullExecutionRootForVaultBlock(executionFolderPath)
   const exists = await fs.exists(executionRoot)
   if (!exists) {
     return {
@@ -357,7 +357,7 @@ export async function readF9ExecutionOverviewBlock(
   }
 
   const listedRoot = await fs.list(executionRoot)
-  const companies: F9CompanyOverviewBlock[] = []
+  const companies: WebullCompanyOverviewBlock[] = []
 
   for (const folder of listedRoot.folders) {
     const ticker = normalizeTickerBlock(folder)
@@ -406,12 +406,12 @@ export async function readF9ExecutionOverviewBlock(
   }
 }
 
-export async function readF9OverallCacheBlock(
+export async function readWebullOverallCacheBlock(
   executionFolderPath: string,
   fsParam?: VaultFS,
-): Promise<F9OverallCacheBlock | null> {
+): Promise<WebullOverallCacheBlock | null> {
   const fs = fsParam ?? getVaultFS()
-  const executionRoot = resolveF9ExecutionRootForVaultBlock(executionFolderPath)
+  const executionRoot = resolveWebullExecutionRootForVaultBlock(executionFolderPath)
   const overallPath = joinPathBlock(executionRoot, 'overall.json')
   if (!(await fs.exists(overallPath))) return null
 
@@ -425,8 +425,8 @@ export async function readF9OverallCacheBlock(
   } catch (err) {
     throw new Error(
       err instanceof Error
-        ? `Failed to parse F9 overall cache at ${overallPath}: ${err.message}`
-        : `Failed to parse F9 overall cache at ${overallPath}.`,
+        ? `Failed to parse Webull overall cache at ${overallPath}: ${err.message}`
+        : `Failed to parse Webull overall cache at ${overallPath}.`,
     )
   }
 
@@ -452,16 +452,16 @@ export async function readF9OverallCacheBlock(
   }
 }
 
-export async function readF9PositionDetailBlock(
+export async function readWebullPositionDetailBlock(
   input: {
     executionFolderPath: string
     companyTicker: string
     fileName: string
     fs?: VaultFS
   },
-): Promise<F9PositionDetailBlock> {
+): Promise<WebullPositionDetailBlock> {
   const fs = input.fs ?? getVaultFS()
-  const executionRoot = resolveF9ExecutionRootForVaultBlock(input.executionFolderPath)
+  const executionRoot = resolveWebullExecutionRootForVaultBlock(input.executionFolderPath)
   const ticker = normalizeTickerBlock(input.companyTicker)
   if (!ticker) {
     throw new Error(`Invalid company ticker: ${input.companyTicker}`)
@@ -479,11 +479,11 @@ export async function readF9PositionDetailBlock(
   }
 }
 
-export async function createF9CompanyBlock(
-  input: CreateF9CompanyInputBlock,
-): Promise<F9CompanyOverviewBlock> {
+export async function createWebullCompanyBlock(
+  input: CreateWebullCompanyInputBlock,
+): Promise<WebullCompanyOverviewBlock> {
   const fs = input.fs ?? getVaultFS()
-  const executionRoot = resolveF9ExecutionRootForVaultBlock(input.executionFolderPath)
+  const executionRoot = resolveWebullExecutionRootForVaultBlock(input.executionFolderPath)
   const ticker = normalizeTickerBlock(input.companyTicker)
   if (!ticker) throw new Error(`Invalid company ticker: ${input.companyTicker}`)
   const companyDir = joinPathBlock(executionRoot, ticker)
@@ -498,7 +498,7 @@ export async function createF9CompanyBlock(
     indexId: `${ticker}-index`,
     summaries: await readExistingPositionRecordsBlock(fs, positionsDir).then((records) => records.map((record) => record.summary)),
   })
-  const overview = await readF9ExecutionOverviewBlock(input.executionFolderPath, fs)
+  const overview = await readWebullExecutionOverviewBlock(input.executionFolderPath, fs)
   const company = overview.companies.find((row) => row.companyTicker === ticker)
   if (!company) {
     throw new Error(`Failed to create company index for ${ticker}`)
@@ -506,19 +506,19 @@ export async function createF9CompanyBlock(
   return company
 }
 
-export async function createF9ManualPositionBlock(
-  input: CreateF9ManualPositionInputBlock,
-): Promise<F9PositionSummaryBlock> {
+export async function createWebullManualPositionBlock(
+  input: CreateWebullManualPositionInputBlock,
+): Promise<WebullPositionSummaryBlock> {
   const fs = input.fs ?? getVaultFS()
   const ticker = normalizeTickerBlock(input.companyTicker)
   if (!ticker) throw new Error(`Invalid company ticker: ${input.companyTicker}`)
 
-  const company = await createF9CompanyBlock({
+  const company = await createWebullCompanyBlock({
     executionFolderPath: input.executionFolderPath,
     companyTicker: ticker,
     fs,
   })
-  const executionRoot = resolveF9ExecutionRootForVaultBlock(input.executionFolderPath)
+  const executionRoot = resolveWebullExecutionRootForVaultBlock(input.executionFolderPath)
   const companyDir = joinPathBlock(executionRoot, ticker)
   const positionsDir = joinPathBlock(companyDir, 'positions')
   const existingRecords = await readExistingPositionRecordsBlock(fs, positionsDir)
@@ -573,7 +573,7 @@ export async function createF9ManualPositionBlock(
         at: now,
         type: 'create',
         source: 'manual',
-        note: 'Created manually from F9 workspace.',
+        note: 'Created manually from Webull workspace.',
       },
     ],
   }
@@ -599,11 +599,11 @@ export async function createF9ManualPositionBlock(
   return createdSummary
 }
 
-export async function updateF9PositionOverlayBlock(
-  input: UpdateF9PositionOverlayInputBlock,
-): Promise<F9PositionDetailBlock> {
+export async function updateWebullPositionOverlayBlock(
+  input: UpdateWebullPositionOverlayInputBlock,
+): Promise<WebullPositionDetailBlock> {
   const fs = input.fs ?? getVaultFS()
-  const detail = await readF9PositionDetailBlock({
+  const detail = await readWebullPositionDetailBlock({
     executionFolderPath: input.executionFolderPath,
     companyTicker: input.companyTicker,
     fileName: input.fileName,
@@ -675,8 +675,8 @@ export async function updateF9PositionOverlayBlock(
     type: 'overlay_update',
     source: 'manual',
     note: changedFields.length > 0
-      ? `Updated ${changedFields.join(', ')} in F9 workspace.`
-      : 'Updated metadata in F9 workspace.',
+      ? `Updated ${changedFields.join(', ')} in Webull workspace.`
+      : 'Updated metadata in Webull workspace.',
   })
   nextFrontmatter.history = history.slice(-80)
   await fs.write(detail.filePath, stringifyMarkdownFrontmatterBlock(nextFrontmatter, detail.body))
@@ -692,18 +692,18 @@ export async function updateF9PositionOverlayBlock(
   }
 }
 
-export async function updateF9CompanyOverlayBlock(
-  input: UpdateF9CompanyOverlayInputBlock,
-): Promise<F9CompanyOverviewBlock> {
+export async function updateWebullCompanyOverlayBlock(
+  input: UpdateWebullCompanyOverlayInputBlock,
+): Promise<WebullCompanyOverviewBlock> {
   const fs = input.fs ?? getVaultFS()
-  const executionRoot = resolveF9ExecutionRootForVaultBlock(input.executionFolderPath)
+  const executionRoot = resolveWebullExecutionRootForVaultBlock(input.executionFolderPath)
   const ticker = normalizeTickerBlock(input.companyTicker)
   if (!ticker) throw new Error(`Invalid company ticker: ${input.companyTicker}`)
 
   const companyDir = joinPathBlock(executionRoot, ticker)
   const indexFilePath = joinPathBlock(companyDir, `${ticker}-index.md`)
   if (!(await fs.exists(indexFilePath))) {
-    await createF9CompanyBlock({
+    await createWebullCompanyBlock({
       executionFolderPath: input.executionFolderPath,
       companyTicker: ticker,
       fs,
@@ -754,7 +754,7 @@ export async function updateF9CompanyOverlayBlock(
   const body = parsed.body.trim() ? parsed.body : DEFAULT_COMPANY_INDEX_BODY_BLOCK
   await fs.write(indexFilePath, stringifyMarkdownFrontmatterBlock(nextFrontmatter, body))
 
-  const overview = await readF9ExecutionOverviewBlock(input.executionFolderPath, fs)
+  const overview = await readWebullExecutionOverviewBlock(input.executionFolderPath, fs)
   const company = overview.companies.find((row) => row.companyTicker === ticker)
   if (!company) {
     throw new Error(`Failed to update company index for ${ticker}`)
@@ -762,11 +762,11 @@ export async function updateF9CompanyOverlayBlock(
   return company
 }
 
-export async function saveF9PositionBodyBlock(
-  input: SaveF9PositionBodyInputBlock,
-): Promise<F9PositionDetailBlock> {
+export async function saveWebullPositionBodyBlock(
+  input: SaveWebullPositionBodyInputBlock,
+): Promise<WebullPositionDetailBlock> {
   const fs = input.fs ?? getVaultFS()
-  const detail = await readF9PositionDetailBlock({
+  const detail = await readWebullPositionDetailBlock({
     executionFolderPath: input.executionFolderPath,
     companyTicker: input.companyTicker,
     fileName: input.fileName,
@@ -782,7 +782,7 @@ export async function saveF9PositionBodyBlock(
     at: now,
     type: 'body_update',
     source: 'manual',
-    note: 'Updated notes/comments body in F9 workspace.',
+    note: 'Updated notes/comments body in Webull workspace.',
   })
   nextFrontmatter.history = history.slice(-80)
   const body = input.body ?? ''
@@ -799,7 +799,7 @@ async function upsertCompanyIndexBlock(input: {
   companyDir: string
   ticker: string
   indexId: string
-  summaries: F9PositionSummaryBlock[]
+  summaries: WebullPositionSummaryBlock[]
 }): Promise<void> {
   const { fs, companyDir, ticker, indexId, summaries } = input
   const orderedSummaries = sortPositionSummariesAscendingBlock(summaries)
@@ -820,7 +820,7 @@ async function upsertCompanyIndexBlock(input: {
     parent_id: null,
     title: `${ticker} index`,
     company_ticker: ticker,
-    source: 'f9-execution-sync',
+    source: 'webull-execution-sync',
     strategy_notes: readStringFieldBlock(existingFrontmatter.strategy_notes),
     related_idea_ids: readStringArrayFieldBlock(existingFrontmatter.related_idea_ids),
     valuation_note_path: (() => {
@@ -908,7 +908,7 @@ async function upsertPositionRecordBlock(input: {
     at: now,
     type: 'sync',
     source: 'webull-overall',
-    note: 'Synced from F9 overall positions payload.',
+    note: 'Synced from Webull overall positions payload.',
   })
 
   const nextFrontmatter: Record<string, unknown> = {
@@ -1009,7 +1009,7 @@ async function refreshCompanyIndexFromPositionsBlock(input: {
   companyTicker: string
 }): Promise<void> {
   const { fs } = input
-  const executionRoot = resolveF9ExecutionRootForVaultBlock(input.executionFolderPath)
+  const executionRoot = resolveWebullExecutionRootForVaultBlock(input.executionFolderPath)
   const ticker = normalizeTickerBlock(input.companyTicker)
   if (!ticker) return
   const companyDir = joinPathBlock(executionRoot, ticker)
@@ -1028,7 +1028,7 @@ function buildPositionSummaryFromFrontmatterBlock(
   frontmatter: Record<string, unknown>,
   fileName: string,
   fallbackTicker?: string,
-): F9PositionSummaryBlock {
+): WebullPositionSummaryBlock {
   const symbol = normalizeTickerBlock(
     frontmatter.symbol
     ?? frontmatter.position_symbol
@@ -1065,9 +1065,9 @@ function buildPositionSummaryFromFrontmatterBlock(
   }
 }
 
-function asPositionSummaryListBlock(value: unknown): F9PositionSummaryBlock[] {
+function asPositionSummaryListBlock(value: unknown): WebullPositionSummaryBlock[] {
   if (!Array.isArray(value)) return []
-  const list: F9PositionSummaryBlock[] = []
+  const list: WebullPositionSummaryBlock[] = []
   for (const row of value) {
     if (!row || typeof row !== 'object') continue
     const record = row as Record<string, unknown>

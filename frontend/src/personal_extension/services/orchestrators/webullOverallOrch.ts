@@ -1,22 +1,22 @@
 import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeOrch'
 import {
-  fetchF9WebullAssetsPositionsBlock,
-  fetchF9WebullAccountBalanceBlock,
-  fetchF9WebullAccountListBlock,
-  fetchF9WebullAccountPositionsBlock,
-  type F9WebullApiResultBlock,
-} from '../lego_blocks/integrations/f9WebullApiBlock'
+  fetchWebullAssetsPositionsBlock,
+  fetchWebullAccountBalanceBlock,
+  fetchWebullAccountListBlock,
+  fetchWebullAccountPositionsBlock,
+  type WebullApiResultBlock,
+} from '../lego_blocks/integrations/webullApiBlock'
 
-export type F9RuntimeSurfaceOrch = 'electron' | 'capacitor' | 'web'
+export type WebullRuntimeSurfaceOrch = 'electron' | 'capacitor' | 'web'
 
-export interface F9SelectedAccountOrch {
+export interface WebullSelectedAccountOrch {
   accountId: string
   accountNumber: string | null
   subscriptionId: string | null
 }
 
-export interface F9OverallSnapshotOrch {
-  runtime: F9RuntimeSurfaceOrch
+export interface WebullOverallSnapshotOrch {
+  runtime: WebullRuntimeSurfaceOrch
   fetchedAt: string
   endpoints: {
     accountList: string | null
@@ -26,7 +26,7 @@ export interface F9OverallSnapshotOrch {
     assetsPositions: string | null
     marketQuotes: string | null
   }
-  selectedAccount: F9SelectedAccountOrch | null
+  selectedAccount: WebullSelectedAccountOrch | null
   accountList: unknown
   accountBalanceLegacy: unknown | null
   accountPositionsLegacy: unknown | null
@@ -67,7 +67,7 @@ function firstNonEmptyStringBlock(...candidates: unknown[]): string | null {
   return null
 }
 
-function resolveSelectedAccountBlock(accountListData: unknown): F9SelectedAccountOrch | null {
+function resolveSelectedAccountBlock(accountListData: unknown): WebullSelectedAccountOrch | null {
   const rows = asRecordArrayBlock(accountListData)
   if (rows.length === 0) return null
   const first = rows[0]
@@ -86,7 +86,7 @@ function resolveSelectedAccountBlock(accountListData: unknown): F9SelectedAccoun
 }
 
 function mergeAttemptsBlock(
-  ...sources: Array<F9WebullApiResultBlock | null | undefined>
+  ...sources: Array<WebullApiResultBlock | null | undefined>
 ): string[] {
   const merged: string[] = []
   for (const source of sources) {
@@ -96,14 +96,14 @@ function mergeAttemptsBlock(
   return merged
 }
 
-export function getF9RuntimeSurfaceOrch(): F9RuntimeSurfaceOrch {
+export function getWebullRuntimeSurfaceOrch(): WebullRuntimeSurfaceOrch {
   if (isElectron()) return 'electron'
   if (isCapacitorNative()) return 'capacitor'
   return 'web'
 }
 
-export async function fetchF9OverallSnapshotOrch(): Promise<F9OverallSnapshotOrch> {
-  const accountListResult = await fetchF9WebullAccountListBlock()
+export async function fetchWebullOverallSnapshotOrch(): Promise<WebullOverallSnapshotOrch> {
+  const accountListResult = await fetchWebullAccountListBlock()
   const selectedAccount = resolveSelectedAccountBlock(accountListResult.data)
   const warnings: string[] = []
   const hasAccountId = !!selectedAccount?.accountId
@@ -113,14 +113,14 @@ export async function fetchF9OverallSnapshotOrch(): Promise<F9OverallSnapshotOrc
 
   const [legacyBalanceSettled, legacyPositionsSettled, assetsPositionsSettled] = await Promise.allSettled([
     hasAccountId && selectedAccount
-      ? fetchF9WebullAccountBalanceBlock(selectedAccount.accountId)
-      : Promise.resolve<F9WebullApiResultBlock | null>(null),
+      ? fetchWebullAccountBalanceBlock(selectedAccount.accountId)
+      : Promise.resolve<WebullApiResultBlock | null>(null),
     hasAccountId && selectedAccount
-      ? fetchF9WebullAccountPositionsBlock(selectedAccount.accountId)
-      : Promise.resolve<F9WebullApiResultBlock | null>(null),
+      ? fetchWebullAccountPositionsBlock(selectedAccount.accountId)
+      : Promise.resolve<WebullApiResultBlock | null>(null),
     hasAccountId && selectedAccount
-      ? fetchF9WebullAssetsPositionsBlock(selectedAccount.accountId)
-      : Promise.resolve<F9WebullApiResultBlock | null>(null),
+      ? fetchWebullAssetsPositionsBlock(selectedAccount.accountId)
+      : Promise.resolve<WebullApiResultBlock | null>(null),
   ])
 
   const legacyAccountBalanceResult = legacyBalanceSettled.status === 'fulfilled'
@@ -144,7 +144,7 @@ export async function fetchF9OverallSnapshotOrch(): Promise<F9OverallSnapshotOrc
   }
 
   return {
-    runtime: getF9RuntimeSurfaceOrch(),
+    runtime: getWebullRuntimeSurfaceOrch(),
     fetchedAt: accountListResult.requestedAt,
     endpoints: {
       accountList: accountListResult.endpoint,

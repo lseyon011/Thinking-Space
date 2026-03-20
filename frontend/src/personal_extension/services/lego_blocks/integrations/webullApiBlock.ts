@@ -1,12 +1,12 @@
 import { isElectron } from '@/services/orchestrators/runtimeOrch'
 import {
-  getF9WebullConfigBlock,
-  readStoredF9WebullAccessTokenBlock,
-  writeStoredF9WebullAccessTokenBlock,
-  type F9WebullConfigBlock,
-} from '../units/f9WebullConfigBlock'
+  getWebullConfigBlock,
+  readStoredWebullAccessTokenBlock,
+  writeStoredWebullAccessTokenBlock,
+  type WebullConfigBlock,
+} from '../units/webullConfigBlock'
 
-export interface F9WebullApiResultBlock {
+export interface WebullApiResultBlock {
   endpoint: string
   requestedAt: string
   data: unknown
@@ -71,7 +71,7 @@ const TRADE_INSTRUMENT_QUERY_VARIANTS_BLOCK: Array<(instrumentId: string) => Rec
   instrumentId => ({ id: instrumentId }),
 ]
 
-interface F9WebullAccessTokenBlock {
+interface WebullAccessTokenBlock {
   token: string
   expires: number | null
   status: string | null
@@ -80,7 +80,7 @@ interface F9WebullAccessTokenBlock {
 const WEBULL_TOKEN_EXPIRY_SAFETY_MS_BLOCK = 60_000
 const WEBULL_TOKEN_CHECK_DURATION_MS_BLOCK = 300_000
 const WEBULL_TOKEN_CHECK_INTERVAL_MS_BLOCK = 5_000
-let cachedWebullAccessTokenBlock: F9WebullAccessTokenBlock | null = null
+let cachedWebullAccessTokenBlock: WebullAccessTokenBlock | null = null
 let pendingWebullTokenInitPromiseBlock: Promise<string> | null = null
 let hydratedWebullAccessTokenCacheBlock = false
 
@@ -100,7 +100,7 @@ function buildErrorPreviewBlock(parsed: unknown): string {
 
 function assertElectronRuntimeBlock(): void {
   if (!isElectron()) {
-    throw new Error('F9 Webull API currently requires Electron runtime because browser requests are blocked by CORS.')
+    throw new Error('Webull Webull API currently requires Electron runtime because browser requests are blocked by CORS.')
   }
 }
 
@@ -136,7 +136,7 @@ function buildEndpointBlock(
   return url.toString()
 }
 
-function withOpenApiBaseUrlBlock(config: F9WebullConfigBlock): F9WebullConfigBlock {
+function withOpenApiBaseUrlBlock(config: WebullConfigBlock): WebullConfigBlock {
   return {
     ...config,
     baseUrl: config.openApiBaseUrl,
@@ -152,10 +152,10 @@ async function signedRequestBlock(
     body?: string
   },
 ): Promise<{ status: number; data: unknown }> {
-  if (!window.electronAPI?.f9WebullSignedRequest) {
-    throw new Error('F9 Webull signed bridge is unavailable in this Electron build.')
+  if (!window.electronAPI?.webullSignedRequest) {
+    throw new Error('Webull Webull signed bridge is unavailable in this Electron build.')
   }
-  const response = await window.electronAPI.f9WebullSignedRequest({
+  const response = await window.electronAPI.webullSignedRequest({
     method,
     url: endpoint,
     version: options?.version,
@@ -183,7 +183,7 @@ async function signedV2RequestBlock(
   })
 }
 
-function parseAccessTokenBlock(value: unknown): F9WebullAccessTokenBlock | null {
+function parseAccessTokenBlock(value: unknown): WebullAccessTokenBlock | null {
   const row = asRecordBlock(value)
   if (!row) return null
 
@@ -209,34 +209,34 @@ function parseAccessTokenBlock(value: unknown): F9WebullAccessTokenBlock | null 
   }
 }
 
-function normalizeAccessTokenStatusBlock(token: F9WebullAccessTokenBlock | null): string {
+function normalizeAccessTokenStatusBlock(token: WebullAccessTokenBlock | null): string {
   if (!token?.status) return ''
   return token.status.trim().toUpperCase()
 }
 
-function isAccessTokenExpiredBlock(token: F9WebullAccessTokenBlock): boolean {
+function isAccessTokenExpiredBlock(token: WebullAccessTokenBlock): boolean {
   if (token.expires === null) return false
   return token.expires <= (Date.now() + WEBULL_TOKEN_EXPIRY_SAFETY_MS_BLOCK)
 }
 
-function isCachedAccessTokenUsableBlock(token: F9WebullAccessTokenBlock | null): boolean {
+function isCachedAccessTokenUsableBlock(token: WebullAccessTokenBlock | null): boolean {
   if (!token?.token) return false
   if (isAccessTokenExpiredBlock(token)) return false
   return normalizeAccessTokenStatusBlock(token) === 'NORMAL'
 }
 
-function isCachedPendingAccessTokenBlock(token: F9WebullAccessTokenBlock | null): boolean {
+function isCachedPendingAccessTokenBlock(token: WebullAccessTokenBlock | null): boolean {
   if (!token?.token) return false
   if (isAccessTokenExpiredBlock(token)) return false
   return normalizeAccessTokenStatusBlock(token) === 'PENDING'
 }
 
 async function setCachedWebullAccessTokenBlock(
-  token: F9WebullAccessTokenBlock | null,
+  token: WebullAccessTokenBlock | null,
 ): Promise<void> {
   cachedWebullAccessTokenBlock = token
   try {
-    await writeStoredF9WebullAccessTokenBlock(token)
+    await writeStoredWebullAccessTokenBlock(token)
   } catch {
     // Token persistence is best-effort; auth flow should continue when secure storage writes fail.
   }
@@ -246,7 +246,7 @@ async function hydrateCachedWebullAccessTokenFromSecureStoreBlock(): Promise<voi
   if (hydratedWebullAccessTokenCacheBlock) return
   hydratedWebullAccessTokenCacheBlock = true
   try {
-    const parsed = await readStoredF9WebullAccessTokenBlock()
+    const parsed = await readStoredWebullAccessTokenBlock()
     if (!parsed) return
     if (isAccessTokenExpiredBlock(parsed)) return
     cachedWebullAccessTokenBlock = parsed
@@ -262,7 +262,7 @@ function waitForMsBlock(ms: number): Promise<void> {
 }
 
 async function pollWebullTokenUntilNormalBlock(
-  config: F9WebullConfigBlock,
+  config: WebullConfigBlock,
   token: string,
 ): Promise<string> {
   const normalizedToken = token.trim()
@@ -307,7 +307,7 @@ async function pollWebullTokenUntilNormalBlock(
   }
 }
 
-async function ensureWebullAccessTokenInnerBlock(config: F9WebullConfigBlock): Promise<string> {
+async function ensureWebullAccessTokenInnerBlock(config: WebullConfigBlock): Promise<string> {
   await hydrateCachedWebullAccessTokenFromSecureStoreBlock()
 
   if (isCachedAccessTokenUsableBlock(cachedWebullAccessTokenBlock)) {
@@ -346,7 +346,7 @@ async function ensureWebullAccessTokenInnerBlock(config: F9WebullConfigBlock): P
   throw new Error(`Webull token create returned unsupported status: ${parsed.status ?? 'unknown'}`)
 }
 
-async function ensureWebullAccessTokenBlock(config: F9WebullConfigBlock): Promise<string> {
+async function ensureWebullAccessTokenBlock(config: WebullConfigBlock): Promise<string> {
   if (pendingWebullTokenInitPromiseBlock) {
     return pendingWebullTokenInitPromiseBlock
   }
@@ -473,11 +473,11 @@ function splitIntoChunksBlock<T>(items: T[], chunkSize: number): T[][] {
 }
 
 async function fetchPaginatedPositionsByCandidatePathsBlock(
-  config: F9WebullConfigBlock,
+  config: WebullConfigBlock,
   candidatePaths: string[],
   accountId: string,
   errorLabel: string,
-): Promise<F9WebullApiResultBlock> {
+): Promise<WebullApiResultBlock> {
   const requestedAt = new Date().toISOString()
   const attempts: string[] = []
 
@@ -563,11 +563,11 @@ async function fetchPaginatedPositionsByCandidatePathsBlock(
 }
 
 async function fetchInstrumentByTickerIdsBlock(
-  config: F9WebullConfigBlock,
+  config: WebullConfigBlock,
   candidatePaths: string[],
   ids: string[],
   errorLabel: string,
-): Promise<F9WebullApiResultBlock> {
+): Promise<WebullApiResultBlock> {
   const normalizedIds = Array.from(new Set(
     ids
       .map(value => value.trim())
@@ -631,14 +631,14 @@ async function fetchInstrumentByTickerIdsBlock(
 }
 
 async function fetchByPathCandidatesBlock(
-  config: F9WebullConfigBlock,
+  config: WebullConfigBlock,
   candidatePaths: string[],
   options?: {
     query?: Record<string, string | number | boolean | null | undefined>
     continueStatuses?: number[]
     errorLabel?: string
   },
-): Promise<F9WebullApiResultBlock> {
+): Promise<WebullApiResultBlock> {
   const continueStatuses = new Set(options?.continueStatuses ?? [404])
   const requestedAt = new Date().toISOString()
   const attempts: string[] = []
@@ -671,9 +671,9 @@ async function fetchByPathCandidatesBlock(
   throw new Error(`${label} route not found for candidate paths: ${attempts.join(', ')}`)
 }
 
-export async function fetchF9WebullAccountListBlock(): Promise<F9WebullApiResultBlock> {
+export async function fetchWebullAccountListBlock(): Promise<WebullApiResultBlock> {
   assertElectronRuntimeBlock()
-  const config = getF9WebullConfigBlock()
+  const config = getWebullConfigBlock()
   const accessToken = await ensureWebullAccessTokenBlock(config)
   const requestedAt = new Date().toISOString()
   const path = '/openapi/account/list'
@@ -693,14 +693,14 @@ export async function fetchF9WebullAccountListBlock(): Promise<F9WebullApiResult
   }
 }
 
-export async function fetchF9WebullAccountBalanceBlock(accountId: string): Promise<F9WebullApiResultBlock> {
+export async function fetchWebullAccountBalanceBlock(accountId: string): Promise<WebullApiResultBlock> {
   assertElectronRuntimeBlock()
   const normalizedAccountId = accountId.trim()
   if (!normalizedAccountId) {
     throw new Error('Account id is required for account balance request.')
   }
 
-  const config = getF9WebullConfigBlock()
+  const config = getWebullConfigBlock()
   const accessToken = await ensureWebullAccessTokenBlock(config)
   const requestedAt = new Date().toISOString()
   const path = '/openapi/assets/balance'
@@ -720,14 +720,14 @@ export async function fetchF9WebullAccountBalanceBlock(accountId: string): Promi
   }
 }
 
-export async function fetchF9WebullAccountPositionsBlock(accountId: string): Promise<F9WebullApiResultBlock> {
+export async function fetchWebullAccountPositionsBlock(accountId: string): Promise<WebullApiResultBlock> {
   assertElectronRuntimeBlock()
   const normalizedAccountId = accountId.trim()
   if (!normalizedAccountId) {
     throw new Error('Account id is required for positions request.')
   }
 
-  const config = getF9WebullConfigBlock()
+  const config = getWebullConfigBlock()
   const candidatePaths = resolvePathCandidatesBlock(config.accountPositionsPath, DEFAULT_ACCOUNT_POSITIONS_CANDIDATE_PATHS_BLOCK)
   return fetchPaginatedPositionsByCandidatePathsBlock(
     config,
@@ -737,14 +737,14 @@ export async function fetchF9WebullAccountPositionsBlock(accountId: string): Pro
   )
 }
 
-export async function fetchF9WebullAssetsAccountBlock(accountId: string): Promise<F9WebullApiResultBlock> {
+export async function fetchWebullAssetsAccountBlock(accountId: string): Promise<WebullApiResultBlock> {
   assertElectronRuntimeBlock()
   const normalizedAccountId = accountId.trim()
   if (!normalizedAccountId) {
     throw new Error('Account id is required for assets account request.')
   }
 
-  const config = withOpenApiBaseUrlBlock(getF9WebullConfigBlock())
+  const config = withOpenApiBaseUrlBlock(getWebullConfigBlock())
   const candidatePaths = resolvePathCandidatesBlock(undefined, DEFAULT_ASSETS_ACCOUNT_CANDIDATE_PATHS_BLOCK)
   try {
     return await fetchByPathCandidatesBlock(config, candidatePaths, {
@@ -760,7 +760,7 @@ export async function fetchF9WebullAssetsAccountBlock(accountId: string): Promis
   }
 }
 
-export async function fetchF9WebullAssetsPositionsBlock(accountId: string): Promise<F9WebullApiResultBlock> {
+export async function fetchWebullAssetsPositionsBlock(accountId: string): Promise<WebullApiResultBlock> {
   assertElectronRuntimeBlock()
   const normalizedAccountId = accountId.trim()
   if (!normalizedAccountId) {
@@ -769,7 +769,7 @@ export async function fetchF9WebullAssetsPositionsBlock(accountId: string): Prom
 
   // Match Python SDK TradeClient.account_v2.get_account_position(account_id):
   // single signed request, no fallback routes, raw payload passthrough.
-  const config = getF9WebullConfigBlock()
+  const config = getWebullConfigBlock()
   const accessToken = await ensureWebullAccessTokenBlock(config)
   const requestedAt = new Date().toISOString()
   const path = '/openapi/assets/positions'
@@ -791,27 +791,27 @@ export async function fetchF9WebullAssetsPositionsBlock(accountId: string): Prom
   }
 }
 
-export async function fetchF9WebullStockInstrumentsByTickerIdsBlock(
+export async function fetchWebullStockInstrumentsByTickerIdsBlock(
   tickerIds: string[],
-): Promise<F9WebullApiResultBlock> {
+): Promise<WebullApiResultBlock> {
   assertElectronRuntimeBlock()
-  const config = getF9WebullConfigBlock()
+  const config = getWebullConfigBlock()
   const candidatePaths = resolvePathCandidatesBlock(undefined, DEFAULT_INSTRUMENT_STOCK_BY_TICKER_IDS_CANDIDATE_PATHS_BLOCK)
   return fetchInstrumentByTickerIdsBlock(config, candidatePaths, tickerIds, 'Webull stock instrument lookup')
 }
 
-export async function fetchF9WebullOptionInstrumentsByTickerIdsBlock(
+export async function fetchWebullOptionInstrumentsByTickerIdsBlock(
   tickerIds: string[],
-): Promise<F9WebullApiResultBlock> {
+): Promise<WebullApiResultBlock> {
   assertElectronRuntimeBlock()
-  const config = getF9WebullConfigBlock()
+  const config = getWebullConfigBlock()
   const candidatePaths = resolvePathCandidatesBlock(undefined, DEFAULT_INSTRUMENT_OPTION_BY_TICKER_IDS_CANDIDATE_PATHS_BLOCK)
   return fetchInstrumentByTickerIdsBlock(config, candidatePaths, tickerIds, 'Webull option instrument lookup')
 }
 
-export async function fetchF9WebullTradeInstrumentsByIdsBlock(
+export async function fetchWebullTradeInstrumentsByIdsBlock(
   instrumentIds: string[],
-): Promise<F9WebullApiResultBlock> {
+): Promise<WebullApiResultBlock> {
   assertElectronRuntimeBlock()
   const normalizedIds = Array.from(new Set(
     instrumentIds
@@ -822,7 +822,7 @@ export async function fetchF9WebullTradeInstrumentsByIdsBlock(
     throw new Error('Webull trade instrument lookup requires at least one instrument id.')
   }
 
-  const config = getF9WebullConfigBlock()
+  const config = getWebullConfigBlock()
   const candidatePaths = resolvePathCandidatesBlock(undefined, DEFAULT_TRADE_INSTRUMENT_CANDIDATE_PATHS_BLOCK)
   const requestedAt = new Date().toISOString()
   const attempts: string[] = []
@@ -915,7 +915,7 @@ export async function fetchF9WebullTradeInstrumentsByIdsBlock(
   }
 }
 
-export async function fetchF9WebullMarketQuotesBlock(symbols: string[]): Promise<F9WebullApiResultBlock> {
+export async function fetchWebullMarketQuotesBlock(symbols: string[]): Promise<WebullApiResultBlock> {
   assertElectronRuntimeBlock()
   const normalizedSymbols = symbols
     .map(symbol => symbol.trim().toUpperCase())
@@ -925,7 +925,7 @@ export async function fetchF9WebullMarketQuotesBlock(symbols: string[]): Promise
     throw new Error('At least one quote symbol is required.')
   }
 
-  const config = getF9WebullConfigBlock()
+  const config = getWebullConfigBlock()
   const candidatePaths = resolvePathCandidatesBlock(
     config.marketSnapshotPath,
     [

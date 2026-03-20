@@ -206,6 +206,7 @@ export default function NodeDetailPanelBlock({
   onOpenFile,
   onDelete,
 }: NodeDetailPanelBlockProps) {
+  const separatorBorderClassName = 'border-border/70'
   const [titleDraft, setTitleDraft] = useState(node.title)
   const [busy, setBusy] = useState(false)
   const [descriptionDraft, setDescriptionDraft] = useState('')
@@ -638,7 +639,7 @@ export default function NodeDetailPanelBlock({
       />
 
       {/* Panel */}
-      <div className="fixed inset-y-0 right-0 z-[121] w-[min(96vw,58rem)] overflow-auto border-l border-border bg-background pt-[max(env(safe-area-inset-top),3.5rem)] shadow-2xl animate-slide-in sm:pt-0">
+      <div className={`fixed inset-y-0 right-0 z-[121] w-[min(96vw,58rem)] overflow-auto border-l bg-background pt-[max(env(safe-area-inset-top),3.5rem)] shadow-2xl animate-slide-in sm:pt-0 ${separatorBorderClassName}`}>
         <div className="flex flex-col gap-5 p-5">
           {/* Header */}
           <div className="flex items-start justify-between gap-3">
@@ -667,11 +668,11 @@ export default function NodeDetailPanelBlock({
               }
             }}
             rows={2}
-            className="w-full resize-none border-b border-border bg-transparent pb-1 text-lg font-semibold leading-snug outline-none transition-colors focus:border-primary"
+            className={`w-full resize-none border-b bg-transparent pb-1 text-lg font-semibold leading-snug outline-none transition-colors focus:border-primary ${separatorBorderClassName}`}
             disabled={busy}
           />
 
-          <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
+          <div className={`flex flex-wrap items-center gap-2 border-b pb-3 ${separatorBorderClassName}`}>
             <Button
               size="sm"
               variant="outline"

@@ -7,6 +7,7 @@ declare global {
         src?: string
         partition?: string
         allowpopups?: boolean
+        plugins?: boolean
         preload?: string
         webpreferences?: string
         useragent?: string

@@ -14,7 +14,7 @@ export const DATE_FILENAME_RE = /^\d{4}-\d{2}-\d{2}\.md$/
  * Extract the meaningful section name from a vault-relative path.
  *
  * For nested roots (acceleration_core, lifeblood_systems, operations),
- * uses the 2nd path segment (e.g. F9, sfdl, sfw).
+ * uses the 2nd path segment (e.g. Webull, sfdl, sfw).
  * For everything else, uses the 1st segment.
  * Root-level files go into "Other".
  */

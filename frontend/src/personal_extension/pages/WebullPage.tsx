@@ -1,10 +1,10 @@
-import F9Orch from '../components/orchestrators/F9Orch'
+import WebullOrch from '../components/orchestrators/WebullOrch'
 
-interface F9PageProps {
+interface WebullPageProps {
   pageLabel?: string
 }
 
-export default function F9Page({ pageLabel }: F9PageProps) {
+export default function WebullPage({ pageLabel }: WebullPageProps) {
   const title = pageLabel?.trim() || 'Webull'
   return (
     <div className="ltm-page">
@@ -17,7 +17,7 @@ export default function F9Page({ pageLabel }: F9PageProps) {
             </p>
           </div>
         </header>
-        <F9Orch />
+        <WebullOrch />
       </div>
     </div>
   )

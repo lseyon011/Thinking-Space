@@ -284,6 +284,9 @@ function UrlDocumentBlock({
             src={resolvedUrl!}
             partition={partition ?? LINK_WEBVIEW_PARTITION}
             useragent={webviewUserAgent}
+            // Spotify relies on Widevine/EME, which Electron only exposes to
+            // guest content when browser plugins are explicitly enabled.
+            plugins
             allowpopups
             className="absolute inset-0 bg-background"
           />

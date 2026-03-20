@@ -1,46 +1,46 @@
 import {
-  createF9CompanyBlock,
-  createF9ManualPositionBlock,
-  readF9OverallCacheBlock,
-  readF9ExecutionOverviewBlock,
-  readF9PositionDetailBlock,
-  saveF9PositionBodyBlock,
-  syncF9ExecutionStorageBlock,
-  updateF9CompanyOverlayBlock,
-  updateF9PositionOverlayBlock,
-  type F9CompanyOverviewBlock,
-  type F9ExecutionOverviewBlock,
-  type F9OverallCacheBlock,
-  type F9PositionDetailBlock,
-  type F9PositionSummaryBlock,
-  type SyncF9ExecutionResultBlock,
-} from '../lego_blocks/integrations/f9ExecutionStorageBlock'
-import { readF9ExecutionSettingsOrch } from './f9ExecutionSettingsOrch'
-import type { F9OverallSnapshotOrch } from './f9OverallOrch'
+  createWebullCompanyBlock,
+  createWebullManualPositionBlock,
+  readWebullOverallCacheBlock,
+  readWebullExecutionOverviewBlock,
+  readWebullPositionDetailBlock,
+  saveWebullPositionBodyBlock,
+  syncWebullExecutionStorageBlock,
+  updateWebullCompanyOverlayBlock,
+  updateWebullPositionOverlayBlock,
+  type WebullCompanyOverviewBlock,
+  type WebullExecutionOverviewBlock,
+  type WebullOverallCacheBlock,
+  type WebullPositionDetailBlock,
+  type WebullPositionSummaryBlock,
+  type SyncWebullExecutionResultBlock,
+} from '../lego_blocks/integrations/webullExecutionStorageBlock'
+import { readWebullExecutionSettingsOrch } from './webullExecutionSettingsOrch'
+import type { WebullOverallSnapshotOrch } from './webullOverallOrch'
 
 export type {
-  F9CompanyOverviewBlock,
-  F9ExecutionOverviewBlock,
-  F9OverallCacheBlock,
-  F9PositionDetailBlock,
-  F9PositionSummaryBlock,
-  SyncF9ExecutionResultBlock,
+  WebullCompanyOverviewBlock,
+  WebullExecutionOverviewBlock,
+  WebullOverallCacheBlock,
+  WebullPositionDetailBlock,
+  WebullPositionSummaryBlock,
+  SyncWebullExecutionResultBlock,
 }
 
 async function readConfiguredExecutionFolderPathOrNullOrch(): Promise<string | null> {
-  const normalized = (await readF9ExecutionSettingsOrch()).executionFolderPath.trim()
+  const normalized = (await readWebullExecutionSettingsOrch()).executionFolderPath.trim()
   return normalized || null
 }
 
 async function requireConfiguredExecutionFolderPathOrch(): Promise<string> {
   const executionFolderPath = await readConfiguredExecutionFolderPathOrNullOrch()
   if (executionFolderPath) return executionFolderPath
-  throw new Error('F9 execution folder path is not configured. Set it in Settings > F9 first.')
+  throw new Error('Webull execution folder path is not configured. Set it in Settings > Webull first.')
 }
 
-export async function syncF9ExecutionFromOverallOrch(
-  snapshot: F9OverallSnapshotOrch,
-): Promise<SyncF9ExecutionResultBlock> {
+export async function syncWebullExecutionFromOverallOrch(
+  snapshot: WebullOverallSnapshotOrch,
+): Promise<SyncWebullExecutionResultBlock> {
   const executionFolderPath = await readConfiguredExecutionFolderPathOrNullOrch()
   if (!executionFolderPath) {
     return {
@@ -52,7 +52,7 @@ export async function syncF9ExecutionFromOverallOrch(
       warnings: [],
     }
   }
-  return syncF9ExecutionStorageBlock({
+  return syncWebullExecutionStorageBlock({
     executionFolderPath,
     fetchedAt: snapshot.fetchedAt,
     runtime: snapshot.runtime,
@@ -64,7 +64,7 @@ export async function syncF9ExecutionFromOverallOrch(
   })
 }
 
-export async function loadF9ExecutionOverviewOrch(): Promise<F9ExecutionOverviewBlock> {
+export async function loadWebullExecutionOverviewOrch(): Promise<WebullExecutionOverviewBlock> {
   const executionFolderPath = await readConfiguredExecutionFolderPathOrNullOrch()
   if (!executionFolderPath) {
     return {
@@ -74,36 +74,36 @@ export async function loadF9ExecutionOverviewOrch(): Promise<F9ExecutionOverview
       companies: [],
     }
   }
-  return readF9ExecutionOverviewBlock(executionFolderPath)
+  return readWebullExecutionOverviewBlock(executionFolderPath)
 }
 
-export async function loadF9OverallCacheOrch(): Promise<F9OverallCacheBlock | null> {
+export async function loadWebullOverallCacheOrch(): Promise<WebullOverallCacheBlock | null> {
   const executionFolderPath = await readConfiguredExecutionFolderPathOrNullOrch()
   if (!executionFolderPath) return null
-  return readF9OverallCacheBlock(executionFolderPath)
+  return readWebullOverallCacheBlock(executionFolderPath)
 }
 
-export async function loadF9PositionDetailOrch(
+export async function loadWebullPositionDetailOrch(
   companyTicker: string,
   fileName: string,
-): Promise<F9PositionDetailBlock> {
+): Promise<WebullPositionDetailBlock> {
   const executionFolderPath = await requireConfiguredExecutionFolderPathOrch()
-  return readF9PositionDetailBlock({
+  return readWebullPositionDetailBlock({
     executionFolderPath,
     companyTicker,
     fileName,
   })
 }
 
-export async function createF9CompanyOrch(companyTicker: string): Promise<F9CompanyOverviewBlock> {
+export async function createWebullCompanyOrch(companyTicker: string): Promise<WebullCompanyOverviewBlock> {
   const executionFolderPath = await requireConfiguredExecutionFolderPathOrch()
-  return createF9CompanyBlock({
+  return createWebullCompanyBlock({
     executionFolderPath,
     companyTicker,
   })
 }
 
-export async function createF9ManualPositionOrch(input: {
+export async function createWebullManualPositionOrch(input: {
   companyTicker: string
   title?: string
   status?: 'taken' | 'planned' | 'watchlist'
@@ -113,15 +113,15 @@ export async function createF9ManualPositionOrch(input: {
   optionExercisePrice?: string | null
   linkedIdeaId?: string | null
   notes?: string
-}): Promise<F9PositionSummaryBlock> {
+}): Promise<WebullPositionSummaryBlock> {
   const executionFolderPath = await requireConfiguredExecutionFolderPathOrch()
-  return createF9ManualPositionBlock({
+  return createWebullManualPositionBlock({
     executionFolderPath,
     ...input,
   })
 }
 
-export async function updateF9PositionOverlayOrch(input: {
+export async function updateWebullPositionOverlayOrch(input: {
   companyTicker: string
   fileName: string
   status?: 'taken' | 'planned' | 'watchlist'
@@ -137,36 +137,36 @@ export async function updateF9PositionOverlayOrch(input: {
   relatedNodes?: string[]
   tags?: string[]
   projectPresetTags?: string[]
-}): Promise<F9PositionDetailBlock> {
+}): Promise<WebullPositionDetailBlock> {
   const executionFolderPath = await requireConfiguredExecutionFolderPathOrch()
-  return updateF9PositionOverlayBlock({
+  return updateWebullPositionOverlayBlock({
     executionFolderPath,
     ...input,
   })
 }
 
-export async function updateF9CompanyOverlayOrch(input: {
+export async function updateWebullCompanyOverlayOrch(input: {
   companyTicker: string
   strategyNotes?: string | null
   relatedIdeaIds?: string[]
   programGroupId?: string | null
   valuationNotePath?: string | null
   companyPdfReportPath?: string | null
-}): Promise<F9CompanyOverviewBlock> {
+}): Promise<WebullCompanyOverviewBlock> {
   const executionFolderPath = await requireConfiguredExecutionFolderPathOrch()
-  return updateF9CompanyOverlayBlock({
+  return updateWebullCompanyOverlayBlock({
     executionFolderPath,
     ...input,
   })
 }
 
-export async function saveF9PositionBodyOrch(input: {
+export async function saveWebullPositionBodyOrch(input: {
   companyTicker: string
   fileName: string
   body: string
-}): Promise<F9PositionDetailBlock> {
+}): Promise<WebullPositionDetailBlock> {
   const executionFolderPath = await requireConfiguredExecutionFolderPathOrch()
-  return saveF9PositionBodyBlock({
+  return saveWebullPositionBodyBlock({
     executionFolderPath,
     ...input,
   })

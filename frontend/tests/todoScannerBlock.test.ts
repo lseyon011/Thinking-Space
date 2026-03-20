@@ -179,13 +179,13 @@ describe('todoScannerBlock (VaultFS abstraction)', () => {
         },
         acceleration_core: {
           files: [],
-          folders: ['F9'],
+          folders: ['Webull'],
         },
-        'acceleration_core/F9': {
+        'acceleration_core/Webull': {
           files: [],
           folders: ['todos'],
         },
-        'acceleration_core/F9/todos': {
+        'acceleration_core/Webull/todos': {
           files: ['2026-02-14.md'],
           folders: [],
         },
@@ -199,7 +199,7 @@ describe('todoScannerBlock (VaultFS abstraction)', () => {
         },
       },
       {
-        'acceleration_core/F9/todos/2026-02-14.md': '- [x] done one\n- [ ] pending one\n',
+        'acceleration_core/Webull/todos/2026-02-14.md': '- [x] done one\n- [ ] pending one\n',
         '.obsidian/todos/2026-02-14.md': '- [ ] should be excluded\n',
       },
     )
@@ -208,18 +208,18 @@ describe('todoScannerBlock (VaultFS abstraction)', () => {
     expect(result.total).toBe(2)
     expect(result.done).toBe(1)
     expect(result.pending).toBe(1)
-    expect(result.sections.map(s => s.name)).toEqual(['F9'])
+    expect(result.sections.map(s => s.name)).toEqual(['Webull'])
   })
 
   it('creates new todo files with YAML frontmatter metadata', async () => {
     const fs = new MutableVaultFS()
-    const result = await createTodo(fs, 'acceleration_core/F9/todos', '2026-02-15', ['First task', 'Second task'])
+    const result = await createTodo(fs, 'acceleration_core/Webull/todos', '2026-02-15', ['First task', 'Second task'])
 
-    expect(result.output_path).toBe('acceleration_core/F9/todos/2026-02-15.md')
+    expect(result.output_path).toBe('acceleration_core/Webull/todos/2026-02-15.md')
     expect(result.items_added).toBe(2)
     expect(result.appended).toBe(false)
 
-    const content = await fs.read('acceleration_core/F9/todos/2026-02-15.md')
+    const content = await fs.read('acceleration_core/Webull/todos/2026-02-15.md')
     const note = parseNote(content)
     expect(note).not.toBeNull()
     expect(note!.frontmatter.type).toBe('thought')
