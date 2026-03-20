@@ -1,7 +1,8 @@
 import { Button } from '@/components/lego_blocks/units/ui/button'
+import TagChipListBlock from '@/components/lego_blocks/units/TagChipListBlock'
 import { cn } from '@/lib/utils'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
-import { normalizeTagListBlock, tagColorClassBlock, tagColorStyleBlock } from '@/services/lego_blocks/units/tagBlock'
+import { normalizeTagListBlock } from '@/services/lego_blocks/units/tagBlock'
 import type { YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
 
 interface BacklogInlineNotesEditorBlockProps {
@@ -53,24 +54,14 @@ export function BacklogInlineNotesEditorBlock({
       <div className="space-y-2">
         <div className="space-y-1">
           <label className="text-[11px] font-medium text-muted-foreground">Tags</label>
-          {inlineTags.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {inlineTags.map(tag => (
-                <span
-                  key={`${node.uuid}-inline-tag-${tag}`}
-                  className={cn(
-                    'rounded-full border px-1.5 py-0.5 text-[10px] leading-none',
-                    tagColorClassBlock(tag, 'solid'),
-                  )}
-                  style={tagColorStyleBlock(tag, 'solid', lookupTagColor(node, tag))}
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <div className="text-[11px] text-muted-foreground">No tags yet.</div>
-          )}
+          <TagChipListBlock
+            tags={inlineTags}
+            variant="solid"
+            getTagColor={(tag) => lookupTagColor(node, tag)}
+            emptyMessage="No tags yet."
+            emptyClassName="text-[11px]"
+            keyPrefix={`${node.uuid}-inline-tag`}
+          />
         </div>
 
         <div className="space-y-1">

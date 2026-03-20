@@ -38,6 +38,7 @@ import {
   buildPathSearchCandidatesBlock,
   UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK,
 } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
+import TagChipListBlock from '@/components/lego_blocks/units/TagChipListBlock'
 import {
   EXPLORER_PERSISTENCE_PREFIX,
   getLeafName,
@@ -1151,19 +1152,13 @@ export default function VaultExplorerBlock({
                 <Loader2 className="h-3 w-3 animate-spin" />
                 <span>Loading tags…</span>
               </div>
-            ) : infoPanelTags && infoPanelTags.length > 0 ? (
-              <div className="flex flex-wrap gap-1">
-                {infoPanelTags.map(tag => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
             ) : (
-              <span className="text-xs text-muted-foreground">No tags</span>
+              <TagChipListBlock
+                tags={infoPanelTags ?? []}
+                variant="solid"
+                emptyMessage="No tags"
+                keyPrefix={`explorer-info-${activeFilePath}`}
+              />
             )}
           </div>
         )}

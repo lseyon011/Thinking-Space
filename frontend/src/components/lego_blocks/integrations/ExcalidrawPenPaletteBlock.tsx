@@ -1,22 +1,12 @@
 import { useCallback, useState } from 'react'
 import { Settings2 } from 'lucide-react'
+import ColorPaletteGridBlock from '@/components/lego_blocks/units/ColorPaletteGridBlock'
 import type { ExcalidrawHighlighterPresetBlock } from '@/services/orchestrators/excalidrawHighlighterOrch'
 import type { ExcalidrawPenDefaultsOrch } from '@/services/orchestrators/excalidrawPenDefaultsOrch'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import { cn } from '@/lib/utils'
 
 const STROKE_WIDTH_OPTIONS = [1, 2, 4, 8, 12] as const
-
-// Excalidraw color palette — open-color values at shade indexes [0, 2, 4, 6, 8]
-// Columns: gray | red | pink | grape | violet | indigo | blue | cyan | teal | green | lime | yellow | orange
-const EXCALIDRAW_COLOR_PALETTE: readonly (readonly string[])[] = [
-  ['#f8f9fa', '#fff5f5', '#fff0f6', '#f8f0fc', '#f3f0ff', '#edf2ff', '#e7f5ff', '#e3fafc', '#e6fcf5', '#ebfbee', '#f4fce3', '#fff9db', '#fff4e6'],
-  ['#dee2e6', '#ffc9c9', '#fcc2d7', '#eebefa', '#d0bfff', '#bac8ff', '#a5d8ff', '#99e9f2', '#96f2d7', '#b2f2bb', '#d8f5a2', '#ffec99', '#ffd8a8'],
-  ['#adb5bd', '#ff8787', '#f783ac', '#da77f2', '#9775fa', '#748ffc', '#4dabf7', '#3bc9db', '#38d9a9', '#69db7c', '#a9e34b', '#ffd43b', '#ffa94d'],
-  ['#495057', '#f03e3e', '#d6336c', '#be4bdb', '#7048e8', '#4263eb', '#1c7ed6', '#1098ad', '#0ca678', '#40c057', '#74b816', '#f59f00', '#f76707'],
-  ['#212529', '#c92a2a', '#a61e4d', '#862e9c', '#5f3dc4', '#364fc7', '#1864ab', '#0b7285', '#087f5b', '#2b8a3e', '#5c940d', '#e67700', '#d9480f'],
-]
-const NEUTRAL_ROW = ['#ffffff', '#1e1e1e'] as const
 
 function clampOpacity(value: number): number {
   return Math.min(Math.max(Math.round(value), 1), 100)
@@ -170,38 +160,9 @@ export default function ExcalidrawPenPaletteBlock({
 
                 <div className="mb-2">
                   <label className="mb-1 block text-muted-foreground">Color</label>
-                  {/* Black / white extras */}
-                  <div className="mb-0.5 flex gap-[3px]">
-                    {NEUTRAL_ROW.map((color) => (
-                      <ColorSwatch
-                        key={color}
-                        color={color}
-                        selected={penDefaults.strokeColor.toLowerCase() === color.toLowerCase()}
-                        onClick={() => updateDefaults({ strokeColor: color })}
-                      />
-                    ))}
-                  </div>
-                  {/* Excalidraw color grid: 13 cols × 12px + 1px gap = 168px < 176px inner width */}
-                  <div className="flex flex-col gap-[1px]">
-                    {EXCALIDRAW_COLOR_PALETTE.map((row, rowIndex) => (
-                      <div key={rowIndex} className="flex gap-[1px]">
-                        {row.map((color) => (
-                          <ColorSwatch
-                            key={color}
-                            color={color}
-                            selected={penDefaults.strokeColor.toLowerCase() === color.toLowerCase()}
-                            onClick={() => updateDefaults({ strokeColor: color })}
-                          />
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                  <input
-                    type="color"
+                  <ColorPaletteGridBlock
                     value={penDefaults.strokeColor}
-                    onChange={(event) => updateDefaults({ strokeColor: event.target.value })}
-                    className="mt-1.5 h-6 w-full rounded border border-border/70 bg-background px-1"
-                    title="Choose color"
+                    onChange={(nextColor) => updateDefaults({ strokeColor: nextColor })}
                   />
                 </div>
 
@@ -267,23 +228,6 @@ export default function ExcalidrawPenPaletteBlock({
         )}
       </div>
     </div>
-  )
-}
-
-function ColorSwatch({ color, selected, onClick }: { color: string; selected: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'h-3 w-3 shrink-0 rounded-sm border',
-        selected
-          ? 'border-primary ring-1 ring-primary ring-offset-1 ring-offset-background'
-          : 'border-border/50 hover:border-border',
-      )}
-      style={{ backgroundColor: color }}
-      title={color}
-    />
   )
 }
 

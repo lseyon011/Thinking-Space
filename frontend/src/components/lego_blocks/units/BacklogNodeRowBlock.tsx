@@ -27,9 +27,9 @@ import {
   NodeStatusBadgeBlock,
   NodeStatusSelectBlock,
 } from '@/components/lego_blocks/units/NodeStatusBlock'
+import TagChipListBlock from '@/components/lego_blocks/units/TagChipListBlock'
 import { scaledWidthStyleFromClassBlock, type BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { cn } from '@/lib/utils'
-import { tagColorClassBlock, tagColorStyleBlock } from '@/services/lego_blocks/units/tagBlock'
 
 interface BacklogNodeRowBlockProps {
   node: NodeRecord
@@ -232,23 +232,15 @@ export function BacklogNodeRowBlock({
         )} style={scaledWidthStyleFromClassBlock(
           rowPresetTagsClassName ?? (actionsRightEdge ? 'min-w-0 flex-1 justify-end' : 'max-w-[35%]'),
         )}>
-          {rowPresetTags.visible.map(tag => (
-            <span
-              key={`${node.uuid}-preset-row-tag-${tag}`}
-              className={cn(
-                'truncate rounded-full border px-1.5 py-0.5 text-[10px] leading-none',
-                tagColorClassBlock(tag, 'solid'),
-              )}
-              style={tagColorStyleBlock(tag, 'solid', lookupTagColor(node, tag))}
-            >
-              {tag}
-            </span>
-          ))}
-          {rowPresetTags.hiddenCount > 0 && (
-            <span className="rounded-full border border-border/70 bg-muted/20 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
-              +{rowPresetTags.hiddenCount}
-            </span>
-          )}
+          <TagChipListBlock
+            tags={rowPresetTags.visible}
+            variant="solid"
+            className="flex-nowrap"
+            chipClassName="truncate"
+            overflowCount={rowPresetTags.hiddenCount}
+            getTagColor={(tag) => lookupTagColor(node, tag)}
+            keyPrefix={`${node.uuid}-preset-row-tag`}
+          />
         </div>
       )}
       {!linksBeforeTags && linksSlot}
