@@ -6,10 +6,12 @@ __pycache__/
 
 # Build outputs
 dist/
+dist*/
 build/
 frontend/public/fonts/
 frontend/electron/dist/
 frontend/electron/dist-*/
+frontend/electron/app/
 
 # Local tooling outputs
 .vite/
