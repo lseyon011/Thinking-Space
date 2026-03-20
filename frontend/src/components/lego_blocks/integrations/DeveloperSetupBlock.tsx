@@ -123,7 +123,8 @@ export default function DeveloperSetupBlock() {
 
   const toolsReady = !!(envStatus?.nodeMeetsMinimum && envStatus?.npmVersion && envStatus?.depsInstalled)
   const editModeOn = config.mode === 'live-source'
-  const fullyReady = toolsReady && editModeOn
+  const liveChangesWorking = editModeOn && config.viteRunning
+  const fullyReady = toolsReady && liveChangesWorking
 
   return (
     <div className="space-y-6">
@@ -131,7 +132,7 @@ export default function DeveloperSetupBlock() {
       <div className="space-y-3 rounded-md border border-border/40 bg-muted/20 px-3 py-3 text-xs text-muted-foreground leading-relaxed space-y-2">
         <p>
           This app ships with its own source code. You can use Claude Code in the terminal to
-          change anything — the layout, features, shortcuts — and see the result instantly.
+          change anything — the layout, features, shortcuts — and see the result live after Edit Mode is fully set up.
         </p>
         <p>
           When you&apos;re happy with your changes, <strong className="text-foreground">Build a permanent version</strong> below.
@@ -154,8 +155,8 @@ export default function DeveloperSetupBlock() {
               <div className="space-y-0.5">
                 <div className="text-sm font-medium">Edit Mode</div>
                 <div className="text-xs text-muted-foreground">
-                  The app loads directly from your source files. Every change Claude Code makes
-                  appears in the app immediately — no rebuild needed.
+                  The app loads from your source files instead of the built-in copy.
+                  Turn this on, then restart the app once.
                 </div>
               </div>
               <Switch
@@ -166,10 +167,29 @@ export default function DeveloperSetupBlock() {
               />
             </label>
 
-            {restartNeeded && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                Restart the app to apply this change.
-              </p>
+            {editModeOn ? (
+              liveChangesWorking ? (
+                <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300 space-y-1">
+                  <p className="font-medium">No restart needed</p>
+                  <p>Edit Mode is active right now. Screen changes should show up live.</p>
+                </div>
+              ) : (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                  <p className="font-medium">Restart needed</p>
+                  <p>Edit Mode is turned on, but this window is still using the old app.</p>
+                  <p>Close and open the app again before testing your change.</p>
+                </div>
+              )
+            ) : restartNeeded ? (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                <p className="font-medium">Restart needed</p>
+                <p>Close and open the app again to finish applying this change.</p>
+              </div>
+            ) : (
+              <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground">Restart not needed</p>
+                <p>Edit Mode is off.</p>
+              </div>
             )}
           </div>
         </StepRow>
@@ -195,9 +215,15 @@ export default function DeveloperSetupBlock() {
                   claude
                 </code>
                 <p className="text-xs text-muted-foreground">
-                  Tell Claude what you want to change. It will edit the source files and you&apos;ll
-                  see the result live in this window.
+                  Tell Claude what you want to change. If the change is on an app screen, you should
+                  usually see it live in this window.
                 </p>
+                <div className="rounded-md border border-emerald-500/20 bg-background/60 px-3 py-2 text-xs text-muted-foreground space-y-1.5">
+                  <p className="font-medium text-foreground">If you do not see your change</p>
+                  <p>1. Make sure you restarted the app after turning on Edit Mode.</p>
+                  <p>2. Make sure Claude edited the same folder shown in <strong>Source files location</strong> below.</p>
+                  <p>3. Changes to the app screens usually show up live. Some deeper desktop changes still need a restart.</p>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Once you&apos;re happy, use <strong className="text-foreground">Build a permanent version</strong> below
                   to bake your changes into a production app.
@@ -217,6 +243,9 @@ export default function DeveloperSetupBlock() {
           <p className="text-xs text-muted-foreground">
             By default the app uses the copy bundled inside it. You can point it at your own git
             repo instead — useful if you want version control over your changes.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Claude must edit this exact folder for live changes to appear.
           </p>
           <div className="flex gap-2">
             <div className="flex-1 rounded-md border border-input bg-muted/30 px-3 py-2 text-xs font-mono truncate text-foreground">

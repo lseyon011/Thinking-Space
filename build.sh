@@ -1,107 +1,200 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ─── Thinking Space Build Script ───
+# ─── Thinking Space Build Script ─────────────────────────────────────────────
 # Usage: ./build.sh [command]
 #
 # Commands:
-#   dev            Start frontend dev server (default)
-#   web            Build web/PWA bundle
-#   electron       Build & launch Electron app
-#   electron:pack  Package Electron app (unpacked, for testing)
-#   mac            Package Electron .dmg for macOS
-#   win            Package Electron .nsis for Windows
-#   linux          Package Electron .AppImage for Linux
-#   ios            Build for iOS and open Xcode
-#   backend        Start FastAPI backend dev server
-#   test           Run frontend tests
-#   test:watch     Run frontend tests in watch mode
-#   clean          Remove build artifacts
-#   install        Install all dependencies
-#   help           Show this help message
+#   dev              Start frontend dev server (default)
+#   web              Build web/PWA bundle
+#   electron         Build & launch Electron app
+#   electron:pack    Package Electron app (unpacked, for testing)
+#   mac              Package Electron .dmg for macOS
+#   win              Package Electron .nsis for Windows
+#   linux            Package Electron .AppImage for Linux
+#   ios              Build for iOS and open Xcode
+#   backend          Start FastAPI backend dev server
+#   typecheck        Run TypeScript type check only (no build)
+#   test             Run frontend tests
+#   test:watch       Run frontend tests in watch mode
+#   clean            Remove build artifacts
+#   install          Install all dependencies
+#   help             Show this help message
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 ELECTRON_DIR="$FRONTEND_DIR/electron"
 BACKEND_DIR="$ROOT_DIR/backend"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
+# ─── Colors ──────────────────────────────────────────────────────────────────
+R='\033[0;31m'   # red
+G='\033[0;32m'   # green
+B='\033[0;34m'   # blue
+Y='\033[0;33m'   # yellow
+DIM='\033[2m'
 BOLD='\033[1m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-info()  { echo -e "${BLUE}${BOLD}▸${NC} $*"; }
-ok()    { echo -e "${GREEN}${BOLD}✓${NC} $*"; }
-err()   { echo -e "${RED}${BOLD}✗${NC} $*" >&2; }
+# ─── Spinner ──────────────────────────────────────────────────────────────────
+_SPIN_FRAMES=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+_spin_pid=""
+_spin_label=""
+_spin_start=0
+_build_start=0
 
-# ─── Dependency checks ───
+_start_spinner() {
+  _spin_label="$1"
+  _spin_start=$(date +%s)
+  local start=$_spin_start label=$_spin_label
+  (
+    i=0
+    while true; do
+      elapsed=$(( $(date +%s) - start ))
+      frame=${_SPIN_FRAMES[$((i % 10))]}
+      printf "\r  \033[0;34m%s\033[0m  %-26s \033[2m%ds\033[0m  " "$frame" "$label" "$elapsed"
+      sleep 0.08
+      i=$(( i + 1 ))
+    done
+  ) &
+  _spin_pid=$!
+}
 
-check_node() {
-  if ! command -v node &>/dev/null; then
-    err "Node.js not found. Install it from https://nodejs.org"
-    exit 1
+_stop_spinner() {
+  local ok="$1"   # 0 = success, 1 = failure
+  local elapsed=$(( $(date +%s) - _spin_start ))
+  if [ -n "$_spin_pid" ]; then
+    kill "$_spin_pid" 2>/dev/null || true
+    wait "$_spin_pid" 2>/dev/null || true
+    _spin_pid=""
+  fi
+  if [ "$ok" = "0" ]; then
+    printf "\r  ${G}✓${NC}  %-26s ${DIM}%ds${NC}\n" "$_spin_label" "$elapsed"
+  else
+    printf "\r  ${R}✗${NC}  %-26s ${R}failed${NC}  ${DIM}%ds${NC}\n" "$_spin_label" "$elapsed"
   fi
 }
 
-check_npm() {
-  if ! command -v npm &>/dev/null; then
-    err "npm not found. Install Node.js from https://nodejs.org"
-    exit 1
+# Clean up spinner on exit / interrupt
+_on_exit() {
+  if [ -n "$_spin_pid" ]; then
+    kill "$_spin_pid" 2>/dev/null || true
+    wait "$_spin_pid" 2>/dev/null || true
+    echo ""
+  fi
+}
+trap _on_exit EXIT INT TERM
+
+# ─── Output noise filter ──────────────────────────────────────────────────────
+_NOISE='^> [a-z@]|^Unable to find node_modules|Are you sure .* is installed\?|^dist\/assets\/|dynamic import will not move|Some chunks are larger|Consider:$|- Using dynamic import|- Use build\.rollup|- Adjust chunk size|@electron\/rebuild already|To ensure your native|simply add.*postinstall|executing @electron|preparing.*node-pty|finished.*node-pty|installing native dep|^\s*•\s*(electron-builder|loaded config|packaging|signing|skipped|building block|Detected arm64|writing effective|@electron\/rebuild already)|^[[:space:]]*$'
+
+# ─── Step runner ─────────────────────────────────────────────────────────────
+# do_step "Label" cmd [args...]
+#   Runs cmd with a live spinner. On failure, dumps filtered error output.
+do_step() {
+  local label="$1"; shift
+
+  _start_spinner "$label"
+
+  local tmp exit_code=0
+  tmp=$(mktemp)
+  "$@" >"$tmp" 2>&1 || exit_code=$?
+
+  _stop_spinner "$exit_code"
+
+  if [ $exit_code -ne 0 ]; then
+    local filtered
+    filtered=$(grep -Ev "$_NOISE" "$tmp" 2>/dev/null || true)
+    if [ -n "$filtered" ]; then
+      echo "$filtered" | sed 's/^/     /'
+    else
+      sed 's/^/     /' "$tmp"
+    fi
+    rm -f "$tmp"
+    echo ""
+    return 1
+  fi
+
+  rm -f "$tmp"
+}
+
+# ─── Helpers ─────────────────────────────────────────────────────────────────
+ok()  { echo -e "  ${G}✓${NC}  $*"; }
+err() { echo -e "  ${R}✗${NC}  $*" >&2; }
+
+_total_time() {
+  local elapsed=$(( $(date +%s) - _build_start ))
+  if [ $elapsed -ge 60 ]; then
+    printf "%dm %ds" $(( elapsed / 60 )) $(( elapsed % 60 ))
+  else
+    printf "%ds" "$elapsed"
   fi
 }
 
-check_poetry() {
-  if ! command -v poetry &>/dev/null; then
-    err "Poetry not found. Install it: https://python-poetry.org/docs/#installation"
-    exit 1
-  fi
+_divider() {
+  printf "  ${DIM}%-46s${NC}\n" "──────────────────────────────────────────────"
 }
+
+# ─── Dependency checks ────────────────────────────────────────────────────────
+check_node()   { command -v node   &>/dev/null || { err "Node.js not found — https://nodejs.org"; exit 1; }; }
+check_npm()    { command -v npm    &>/dev/null || { err "npm not found — https://nodejs.org"; exit 1; }; }
+check_poetry() { command -v poetry &>/dev/null || { err "Poetry not found — https://python-poetry.org"; exit 1; }; }
 
 ensure_frontend_deps() {
-  if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
-    info "Installing frontend dependencies..."
-    (cd "$FRONTEND_DIR" && npm install)
-    ok "Frontend dependencies installed"
-  fi
+  [ -d "$FRONTEND_DIR/node_modules" ] && return
+  do_step "Install frontend deps" npm --prefix "$FRONTEND_DIR" install
 }
 
 ensure_electron_deps() {
-  if [ ! -d "$ELECTRON_DIR/node_modules" ]; then
-    info "Installing Electron dependencies..."
-    (cd "$ELECTRON_DIR" && npm install)
-    ok "Electron dependencies installed"
-  fi
+  [ -d "$ELECTRON_DIR/node_modules" ] && return
+  do_step "Install electron deps" npm --prefix "$ELECTRON_DIR" install
 }
 
-ensure_backend_deps() {
-  if [ ! -d "$BACKEND_DIR/.venv" ] && [ ! -f "$BACKEND_DIR/poetry.lock" ] 2>/dev/null; then
-    info "Installing backend dependencies..."
-    (cd "$BACKEND_DIR" && poetry install)
-    ok "Backend dependencies installed"
-  fi
+# ─── Core build steps ─────────────────────────────────────────────────────────
+
+_build_frontend() {
+  do_step "Sync fonts" \
+    node "$FRONTEND_DIR/scripts/syncExcalidrawFonts.mjs"
+
+  do_step "Vite build" \
+    bash -c "cd '$FRONTEND_DIR' && BUILD_TARGET=electron npx vite build --logLevel warn"
+
+  do_step "Capacitor sync" \
+    bash -c "cd '$FRONTEND_DIR' && npx cap sync @capacitor-community/electron"
 }
 
-# ─── Commands ───
+_build_electron_main() {
+  do_step "Electron compile" \
+    bash -c "cd '$ELECTRON_DIR' && npx tsc"
+
+  do_step "Native rebuild" \
+    bash -c "cd '$ELECTRON_DIR' && npx electron-rebuild -f"
+}
+
+# ─── Commands ─────────────────────────────────────────────────────────────────
 
 cmd_dev() {
-  info "Starting frontend dev server..."
   check_node && check_npm
   ensure_frontend_deps
   (cd "$FRONTEND_DIR" && npm run dev)
 }
 
 cmd_web() {
-  info "Building web bundle..."
   check_node && check_npm
   ensure_frontend_deps
-  (cd "$FRONTEND_DIR" && npm run build:web)
-  ok "Web build complete → frontend/dist/"
+  _build_start=$(date +%s)
+  echo ""
+  echo -e "  ${BOLD}Thinking Space${NC}  ${DIM}›  web build${NC}"
+  echo ""
+  do_step "Sync fonts"  node "$FRONTEND_DIR/scripts/syncExcalidrawFonts.mjs"
+  do_step "Type check"  bash -c "cd '$FRONTEND_DIR' && npx tsc --noEmit"
+  do_step "Vite build"  bash -c "cd '$FRONTEND_DIR' && npx vite build --logLevel warn"
+  echo ""
+  _divider
+  ok "frontend/dist/  ${DIM}in $(_total_time)${NC}"
+  echo ""
 }
 
 cmd_electron() {
-  info "Building & launching Electron app..."
   check_node && check_npm
   ensure_frontend_deps
   ensure_electron_deps
@@ -109,127 +202,159 @@ cmd_electron() {
 }
 
 cmd_electron_pack() {
-  info "Packaging Electron app (unpacked)..."
   check_node && check_npm
   ensure_frontend_deps
   ensure_electron_deps
-  (cd "$FRONTEND_DIR" && npm run electron:sync)
-  (cd "$ELECTRON_DIR" && npm run electron:pack)
-  ok "Electron pack complete"
+  _build_start=$(date +%s)
+  echo ""
+  echo -e "  ${BOLD}Thinking Space${NC}  ${DIM}›  electron pack${NC}"
+  echo ""
+  _build_frontend
+  _build_electron_main
+  do_step "Pack (unpacked)" \
+    bash -c "cd '$ELECTRON_DIR' && npx electron-builder build --dir --publish never -c electron-builder.config.json"
+  echo ""
+  _divider
+  ok "electron/dist/  ${DIM}in $(_total_time)${NC}"
+  echo ""
 }
 
-cmd_mac() {
-  info "Packaging Electron for macOS..."
+_cmd_platform() {
+  local eb_flag="$1" label="$2" artifact_glob="$3"
+
   check_node && check_npm
   ensure_frontend_deps
   ensure_electron_deps
-  (cd "$FRONTEND_DIR" && npm run package:mac)
-  ok "macOS package complete"
+  _build_start=$(date +%s)
+  echo ""
+  echo -e "  ${BOLD}Thinking Space${NC}  ${DIM}›  ${label} build${NC}"
+  echo ""
+  _build_frontend
+  _build_electron_main
+  do_step "Package" \
+    bash -c "cd '$ELECTRON_DIR' && npx electron-builder build $eb_flag --publish never -c electron-builder.config.json"
+  echo ""
+  _divider
+  local artifact
+  artifact=$(ls "$ELECTRON_DIR/dist/"${artifact_glob} 2>/dev/null | head -1 || true)
+  if [ -n "$artifact" ]; then
+    ok "${BOLD}$(basename "$artifact")${NC}  ${DIM}in $(_total_time)${NC}"
+  else
+    ok "electron/dist/  ${DIM}in $(_total_time)${NC}"
+  fi
+  echo ""
 }
 
-cmd_win() {
-  info "Packaging Electron for Windows..."
-  check_node && check_npm
-  ensure_frontend_deps
-  ensure_electron_deps
-  (cd "$FRONTEND_DIR" && npm run package:win)
-  ok "Windows package complete"
-}
-
-cmd_linux() {
-  info "Packaging Electron for Linux..."
-  check_node && check_npm
-  ensure_frontend_deps
-  ensure_electron_deps
-  (cd "$FRONTEND_DIR" && npm run package:linux)
-  ok "Linux package complete"
-}
+cmd_mac()   { _cmd_platform "--mac"   "macOS"   "*.dmg"; }
+cmd_win()   { _cmd_platform "--win"   "Windows" "*.exe"; }
+cmd_linux() { _cmd_platform "--linux" "Linux"   "*.AppImage"; }
 
 cmd_ios() {
-  info "Building for iOS..."
   check_node && check_npm
   ensure_frontend_deps
-  (cd "$FRONTEND_DIR" && npm run package:ios)
-  ok "iOS build synced — Xcode should open"
+  _build_start=$(date +%s)
+  echo ""
+  echo -e "  ${BOLD}Thinking Space${NC}  ${DIM}›  iOS build${NC}"
+  echo ""
+  do_step "Sync fonts" \
+    node "$FRONTEND_DIR/scripts/syncExcalidrawFonts.mjs"
+  do_step "Vite build" \
+    bash -c "cd '$FRONTEND_DIR' && BUILD_TARGET=capacitor npx vite build --logLevel warn"
+  do_step "Capacitor iOS sync" \
+    bash -c "cd '$FRONTEND_DIR' && npx cap sync ios"
+  do_step "Open Xcode" \
+    bash -c "cd '$FRONTEND_DIR' && npx cap open ios"
+  echo ""
+  _divider
+  ok "Xcode open  ${DIM}in $(_total_time)${NC}"
+  echo ""
 }
 
 cmd_backend() {
-  info "Starting backend dev server..."
   check_poetry
-  ensure_backend_deps
   (cd "$BACKEND_DIR" && poetry run uvicorn app.main:app --reload --port 8000)
 }
 
+cmd_typecheck() {
+  check_node && check_npm
+  ensure_frontend_deps
+  _build_start=$(date +%s)
+  echo ""
+  echo -e "  ${BOLD}Thinking Space${NC}  ${DIM}›  type check${NC}"
+  echo ""
+  do_step "Frontend" bash -c "cd '$FRONTEND_DIR' && npx tsc --noEmit"
+  do_step "Electron" bash -c "cd '$ELECTRON_DIR' && npx tsc --noEmit"
+  echo ""
+  _divider
+  ok "No type errors  ${DIM}in $(_total_time)${NC}"
+  echo ""
+}
+
 cmd_test() {
-  info "Running frontend tests..."
   check_node && check_npm
   ensure_frontend_deps
   (cd "$FRONTEND_DIR" && npm test)
 }
 
 cmd_test_watch() {
-  info "Running frontend tests (watch mode)..."
   check_node && check_npm
   ensure_frontend_deps
   (cd "$FRONTEND_DIR" && npm run test:watch)
 }
 
 cmd_clean() {
-  info "Cleaning build artifacts..."
-  rm -rf "$FRONTEND_DIR/dist"
-  rm -rf "$ELECTRON_DIR/build"
-  rm -rf "$ELECTRON_DIR/dist"
-  rm -rf "$ELECTRON_DIR/app"
+  echo ""
+  do_step "Clean artifacts" \
+    rm -rf "$FRONTEND_DIR/dist" "$ELECTRON_DIR/build" "$ELECTRON_DIR/dist" "$ELECTRON_DIR/app"
+  echo ""
   ok "Clean complete"
+  echo ""
 }
 
 cmd_install() {
-  info "Installing all dependencies..."
   check_node && check_npm
-
-  info "Frontend..."
-  (cd "$FRONTEND_DIR" && npm install)
-
-  info "Electron..."
-  (cd "$ELECTRON_DIR" && npm install)
-
-  if [ -d "$BACKEND_DIR" ]; then
-    if command -v poetry &>/dev/null; then
-      info "Backend..."
-      (cd "$BACKEND_DIR" && poetry install)
-    else
-      info "Skipping backend (poetry not installed)"
-    fi
+  _build_start=$(date +%s)
+  echo ""
+  echo -e "  ${BOLD}Thinking Space${NC}  ${DIM}›  install${NC}"
+  echo ""
+  do_step "Frontend" npm --prefix "$FRONTEND_DIR" install
+  do_step "Electron" npm --prefix "$ELECTRON_DIR" install
+  if [ -d "$BACKEND_DIR" ] && command -v poetry &>/dev/null; then
+    do_step "Backend" bash -c "cd '$BACKEND_DIR' && poetry install"
   fi
-
-  ok "All dependencies installed"
+  echo ""
+  _divider
+  ok "All dependencies installed  ${DIM}in $(_total_time)${NC}"
+  echo ""
 }
 
 cmd_help() {
   echo ""
-  echo -e "${BOLD}Thinking Space Build Script${NC}"
+  echo -e "  ${BOLD}Thinking Space${NC}"
   echo ""
-  echo "Usage: ./build.sh [command]"
+  echo "  Usage: ./build.sh <command>"
   echo ""
-  echo "Commands:"
-  echo "  dev              Start frontend dev server (default)"
-  echo "  web              Build web/PWA bundle"
-  echo "  electron         Build & launch Electron app"
-  echo "  electron:pack    Package Electron app (unpacked)"
-  echo "  mac              Package .dmg for macOS"
-  echo "  win              Package .nsis for Windows"
-  echo "  linux            Package .AppImage for Linux"
-  echo "  ios              Build for iOS and open Xcode"
-  echo "  backend          Start FastAPI backend dev server"
-  echo "  test             Run frontend tests"
-  echo "  test:watch       Run frontend tests (watch mode)"
-  echo "  clean            Remove build artifacts"
-  echo "  install          Install all dependencies"
-  echo "  help             Show this help"
+  printf "  ${DIM}%-18s  %s${NC}\n" "Command" "Description"
+  _divider
+  printf "  %-18s  %s\n" "dev"           "Start frontend dev server"
+  printf "  %-18s  %s\n" "web"           "Build web/PWA bundle"
+  printf "  %-18s  %s\n" "electron"      "Build & launch Electron app"
+  printf "  %-18s  %s\n" "electron:pack" "Package app unpacked (for testing)"
+  printf "  %-18s  %s\n" "mac"           "Package .dmg for macOS"
+  printf "  %-18s  %s\n" "win"           "Package .exe for Windows"
+  printf "  %-18s  %s\n" "linux"         "Package .AppImage for Linux"
+  printf "  %-18s  %s\n" "ios"           "Build for iOS and open Xcode"
+  printf "  %-18s  %s\n" "backend"       "Start FastAPI backend dev server"
+  printf "  %-18s  %s\n" "typecheck"     "Run TypeScript type check (no build)"
+  printf "  %-18s  %s\n" "test"          "Run frontend tests"
+  printf "  %-18s  %s\n" "test:watch"    "Run tests in watch mode"
+  printf "  %-18s  %s\n" "clean"         "Remove build artifacts"
+  printf "  %-18s  %s\n" "install"       "Install all dependencies"
+  printf "  %-18s  %s\n" "help"          "Show this message"
   echo ""
 }
 
-# ─── Entrypoint ───
+# ─── Entrypoint ───────────────────────────────────────────────────────────────
 
 COMMAND="${1:-dev}"
 
@@ -243,6 +368,7 @@ case "$COMMAND" in
   linux)          cmd_linux ;;
   ios)            cmd_ios ;;
   backend)        cmd_backend ;;
+  typecheck)      cmd_typecheck ;;
   test)           cmd_test ;;
   test:watch)     cmd_test_watch ;;
   clean)          cmd_clean ;;

@@ -1,7 +1,7 @@
 import type { CapacitorElectronConfig } from '@capacitor-community/electron';
 import { getCapacitorElectronConfig, setupElectronDeepLinking } from '@capacitor-community/electron';
 import type { MenuItemConstructorOptions } from 'electron';
-import { app, dialog, ipcMain, Menu, MenuItem, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, MenuItem, shell } from 'electron';
 import electronIsDev from 'electron-is-dev';
 import unhandled from 'electron-unhandled';
 import { autoUpdater } from 'electron-updater';
@@ -51,11 +51,15 @@ import {
 import {
   checkNodeEnvBlock,
   installDepsBlock,
+  MIN_APP_BUILD_NODE_MAJOR_BLOCK,
+  nodeMeetsAppBuildMinimumBlock,
 } from './lego_blocks/nodeEnvCheckBlock';
 import {
   createPtyBlock,
+  detachPtyBlock,
   killPtysForWebContentsBlock,
   killPtyBlock,
+  reattachPtyBlock,
   resizePtyBlock,
   writePtyBlock,
 } from './lego_blocks/ptyManagerBlock';
@@ -196,6 +200,20 @@ const capacitorFileConfig: CapacitorElectronConfig = getCapacitorElectronConfig(
 // const myCapacitorApp = new ElectronCapacitorApp(capacitorFileConfig);
 const myCapacitorApp = new ElectronCapacitorApp(capacitorFileConfig, trayMenuTemplate, appMenuBarMenuTemplate);
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const existingWindow = BrowserWindow.getAllWindows().find(win => !win.isDestroyed());
+    if (!existingWindow) return;
+    if (existingWindow.isMinimized()) existingWindow.restore();
+    if (!existingWindow.isVisible()) existingWindow.show();
+    existingWindow.focus();
+  });
+}
+
 function configureAppIconMenu(): void {
   if (process.platform !== 'darwin') return;
   app.dock?.setMenu(
@@ -224,36 +242,38 @@ if (electronIsDev) {
 }
 
 // Run Application
-(async () => {
-  // Wait for electron app to be ready.
-  await app.whenReady();
-  // Security - Set Content-Security-Policy based on whether or not we are in dev mode.
-  setupContentSecurityPolicy(myCapacitorApp.getCustomURLScheme());
-  setupWebviewSessionPermissions();
-  // Phase 5: If no source path is configured yet and bundled source exists,
-  // extract it to a writable userData location for regular users.
-  await ensureDefaultSourcePathBlock();
-  // Apply live-source mode if configured.
-  const sourceConfig = readSourceConfigBlock();
-  if (sourceConfig.mode === 'live-source' && sourceConfig.sourcePath) {
-    try {
-      await startViteServerBlock(sourceConfig.sourcePath, sourceConfig.vitePort);
-      myCapacitorApp.setLiveSourceUrl(`http://127.0.0.1:${sourceConfig.vitePort}`);
-    } catch (err) {
-      console.error('[live-source] Failed to start Vite server:', err);
-      // Fall back to locked mode — don't block startup
+if (hasSingleInstanceLock) {
+  (async () => {
+    // Wait for electron app to be ready.
+    await app.whenReady();
+    // Security - Set Content-Security-Policy based on whether or not we are in dev mode.
+    setupContentSecurityPolicy(myCapacitorApp.getCustomURLScheme());
+    setupWebviewSessionPermissions();
+    // Phase 5: If no source path is configured yet and bundled source exists,
+    // extract it to a writable userData location for regular users.
+    await ensureDefaultSourcePathBlock();
+    // Apply live-source mode if configured.
+    const sourceConfig = readSourceConfigBlock();
+    if (sourceConfig.mode === 'live-source' && sourceConfig.sourcePath) {
+      try {
+        await startViteServerBlock(sourceConfig.sourcePath, sourceConfig.vitePort);
+        myCapacitorApp.setLiveSourceUrl(`http://127.0.0.1:${sourceConfig.vitePort}`);
+      } catch (err) {
+        console.error('[live-source] Failed to start Vite server:', err);
+        // Fall back to locked mode — don't block startup
+      }
     }
-  }
-  // Initialize our app, build windows, and load content.
-  await myCapacitorApp.init();
-  configureAppIconMenu();
-  // Check for updates if we are in a packaged app (skip in dev or if no valid publish config).
-  if (!electronIsDev) {
-    autoUpdater.checkForUpdatesAndNotify().catch(() => {
-      // Silently ignore update check failures (e.g. no releases published yet)
-    });
-  }
-})();
+    // Initialize our app, build windows, and load content.
+    await myCapacitorApp.init();
+    configureAppIconMenu();
+    // Check for updates if we are in a packaged app (skip in dev or if no valid publish config).
+    if (!electronIsDev) {
+      autoUpdater.checkForUpdatesAndNotify().catch(() => {
+        // Silently ignore update check failures (e.g. no releases published yet)
+      });
+    }
+  })();
+}
 
 // Stop Vite dev server when quitting.
 app.on('will-quit', () => {
@@ -316,6 +336,14 @@ ipcMain.handle('terminal:kill', (_event, { id }: { id: string }) => {
   killPtyBlock(id);
 });
 
+ipcMain.handle('terminal:detach', (_event, { id }: { id: string }) => {
+  detachPtyBlock(id);
+});
+
+ipcMain.handle('terminal:reattach', (event, { id }: { id: string }) => {
+  return reattachPtyBlock(id, event.sender.id);
+});
+
 // =====================================================================
 // IPC Handlers — Live Source Config
 // =====================================================================
@@ -332,6 +360,16 @@ ipcMain.handle('source:rebuild:start', async (event) => {
   const config = readSourceConfigBlock();
   if (!config.sourcePath) {
     return { ok: false, error: 'No source path configured. Set one in Settings → Developer.' };
+  }
+
+  const envStatus = checkNodeEnvBlock(config.sourcePath);
+  if (!nodeMeetsAppBuildMinimumBlock(envStatus.nodeVersion)) {
+    return {
+      ok: false,
+      error: envStatus.nodeVersion
+        ? `Build App needs Node.js ${MIN_APP_BUILD_NODE_MAJOR_BLOCK} or newer. You have ${envStatus.nodeVersion}. Update Node.js, then try again.`
+        : `Build App needs Node.js ${MIN_APP_BUILD_NODE_MAJOR_BLOCK} or newer. Node.js was not found on this Mac.`,
+    };
   }
 
   // Fire-and-forget: stream progress events back to the renderer window

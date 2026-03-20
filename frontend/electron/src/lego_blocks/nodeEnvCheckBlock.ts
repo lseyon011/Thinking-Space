@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const MIN_NODE_MAJOR = 18;
+export const MIN_APP_BUILD_NODE_MAJOR_BLOCK = 22;
 
 export interface NodeEnvStatusBlock {
   nodeVersion: string | null;      // e.g. "v20.11.0" or null if not found
@@ -45,9 +46,13 @@ function tryExecBlock(cmd: string): string | null {
   }
 }
 
-function parseNodeMajorBlock(version: string): number {
+export function parseNodeMajorBlock(version: string): number {
   const m = version.match(/v?(\d+)/);
   return m ? parseInt(m[1], 10) : 0;
+}
+
+export function nodeMeetsAppBuildMinimumBlock(version: string | null): boolean {
+  return version ? parseNodeMajorBlock(version) >= MIN_APP_BUILD_NODE_MAJOR_BLOCK : false;
 }
 
 export function checkNodeEnvBlock(sourcePath: string | null): NodeEnvStatusBlock {

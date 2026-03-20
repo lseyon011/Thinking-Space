@@ -5,41 +5,61 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { isElectron } from '@/services/orchestrators/runtimeOrch'
 
-// VS Code integrated terminal color palette (distinct from syntax-highlight colors)
-const VSCODE_THEME = {
-  background: '#1e1e1e',
-  foreground: '#cccccc',
-  cursor: '#cccccc',
-  cursorAccent: '#1e1e1e',
-  selectionBackground: '#264f78',
-  selectionForeground: '#ffffff',
-  black:          '#000000',
-  red:            '#cd3131',
-  green:          '#0dbc79',
-  yellow:         '#e5e510',
-  blue:           '#2472c8',
-  magenta:        '#bc3fbc',
-  cyan:           '#11a8cd',
-  white:          '#e5e5e5',
-  brightBlack:    '#666666',
-  brightRed:      '#f14c4c',
-  brightGreen:    '#23d18b',
-  brightYellow:   '#f5f543',
-  brightBlue:     '#3b8eea',
-  brightMagenta:  '#d670d6',
-  brightCyan:     '#29b8db',
-  brightWhite:    '#e5e5e5',
+const ITERM2_THEME = {
+  background: '#1a1d24',
+  foreground: '#ffffff',
+  cursor: '#d20a5d',
+  cursorAccent: '#ffffff',
+  selectionBackground: '#1d89b4',
+  black: '#073642',
+  red: '#dc322f',
+  green: '#409900',
+  yellow: '#b58900',
+  blue: '#268bd2',
+  magenta: '#d33682',
+  cyan: '#2aa198',
+  white: '#eee8d5',
+  brightBlack: '#002b36',
+  brightRed: '#cb4b16',
+  brightGreen: '#586e75',
+  brightYellow: '#657b83',
+  brightBlue: '#839496',
+  brightMagenta: '#6c71c4',
+  brightCyan: '#93a1a1',
+  brightWhite: '#fdf6e3',
+}
+
+// Module-level session store: sessionKey → terminalId
+// Survives React unmount/remount within the same Electron window JS context,
+// so navigating away and back reattaches to the same live PTY.
+const sessions = new Map<string, string>()
+
+/**
+ * Explicitly kill a terminal session (e.g. when closing a tab).
+ * Call this before removing the sessionKey from the DOM so the PTY is cleaned up.
+ */
+export function releaseTerminalSession(sessionKey: string): void {
+  const terminalId = sessions.get(sessionKey)
+  if (terminalId) {
+    sessions.delete(sessionKey)
+    void window.electronAPI?.terminalKill?.(terminalId)
+  }
 }
 
 export interface TerminalBlockProps {
   cwd?: string
   className?: string
   onExit?: (exitCode: number) => void
+  /**
+   * Stable key for this terminal session. When provided, the PTY is kept alive
+   * across React unmount/remount (e.g. page navigation) and reattached on return.
+   * If omitted, the PTY is killed when the component unmounts.
+   */
+  sessionKey?: string
 }
 
-export default function TerminalBlock({ cwd, className = '', onExit }: TerminalBlockProps) {
+export default function TerminalBlock({ cwd, className = '', onExit, sessionKey }: TerminalBlockProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  // Stable refs so effects don't re-run on prop changes
   const cwdRef = useRef(cwd)
   const onExitRef = useRef(onExit)
   useEffect(() => { cwdRef.current = cwd }, [cwd])
@@ -53,9 +73,9 @@ export default function TerminalBlock({ cwd, className = '', onExit }: TerminalB
 
     // -- xterm setup --
     const term = new Terminal({
-      theme: VSCODE_THEME,
-      fontFamily: "'Menlo', 'Cascadia Code', 'Courier New', monospace",
-      fontSize: 13,
+      theme: ITERM2_THEME,
+      fontFamily: "'MesloLGS NF', 'MesloLGS-NF-Regular', 'Menlo', 'Cascadia Code', 'Courier New', monospace",
+      fontSize: 15,
       lineHeight: 1.2,
       cursorBlink: true,
       cursorStyle: 'block',
@@ -69,10 +89,6 @@ export default function TerminalBlock({ cwd, className = '', onExit }: TerminalB
     term.loadAddon(webLinksAddon)
     term.open(container)
 
-    // Fit after a frame so the container has rendered dimensions
-    requestAnimationFrame(() => { fitAddon.fit() })
-
-    // -- PTY lifecycle --
     let terminalId: string | null = null
     let unsubData: (() => void) | null = null
     let unsubExit: (() => void) | null = null
@@ -80,41 +96,79 @@ export default function TerminalBlock({ cwd, className = '', onExit }: TerminalB
     let resizeDisposable: { dispose(): void } | null = null
     let destroyed = false
 
-    const { cols, rows } = term
+    const fitTerminal = () => {
+      fitAddon.fit()
+      return { cols: term.cols, rows: term.rows }
+    }
 
-    api.terminalCreate!({ cwd: cwdRef.current, cols, rows }).then(({ id }) => {
-      if (destroyed) {
-        void api.terminalKill!(id)
-        return
-      }
+    const syncTerminalSize = (id: string) => {
+      const { cols, rows } = fitTerminal()
+      void api.terminalResize!(id, cols, rows)
+    }
 
+    const attach = (id: string) => {
       terminalId = id
+      if (sessionKey) sessions.set(sessionKey, id)
 
-      // PTY → xterm
       unsubData = api.onTerminalData!(id, (data) => { term.write(data) })
-
-      // PTY exit
       unsubExit = api.onTerminalExit!(id, (exitCode) => {
         term.writeln(`\r\n\x1b[2m[Process exited with code ${exitCode}]\x1b[0m`)
+        if (sessionKey) sessions.delete(sessionKey)
         onExitRef.current?.(exitCode)
       })
+      inputDisposable = term.onData((data) => { void api.terminalInput!(id, data) })
+      resizeDisposable = term.onResize(({ cols: c, rows: r }) => { void api.terminalResize!(id, c, r) })
+      syncTerminalSize(id)
+    }
 
-      // xterm input → PTY
-      inputDisposable = term.onData((data) => {
-        void api.terminalInput!(id, data)
-      })
+    const existingId = sessionKey ? sessions.get(sessionKey) : undefined
 
-      // xterm resize → PTY
-      resizeDisposable = term.onResize(({ cols: c, rows: r }) => {
-        void api.terminalResize!(id, c, r)
+    if (existingId) {
+      // Reattach to live PTY and replay buffered output into the fresh xterm
+      api.terminalReattach!(existingId).then((result) => {
+        if (destroyed) {
+          // Unmounted before reattach resolved — detach again to keep PTY idle
+          void api.terminalDetach!(existingId)
+          return
+        }
+        if (!result) {
+          // PTY exited while we were away — start a fresh one
+          sessions.delete(sessionKey!)
+          return api.terminalCreate!({ cwd: cwdRef.current, ...fitTerminal() }).then(({ id }) => {
+            if (destroyed) { void api.terminalKill!(id); return }
+            attach(id)
+          })
+        }
+        // Replay history so the terminal looks exactly as left
+        if (result.buffer) term.write(result.buffer)
+        attach(existingId)
+      }).catch((err: unknown) => {
+        term.writeln(`\r\n\x1b[31m[Failed to reattach terminal: ${err instanceof Error ? err.message : String(err)}]\x1b[0m`)
       })
-    }).catch((err: unknown) => {
-      term.writeln(`\r\n\x1b[31m[Failed to create terminal: ${err instanceof Error ? err.message : String(err)}]\x1b[0m`)
-    })
+    } else {
+      api.terminalCreate!({ cwd: cwdRef.current, ...fitTerminal() }).then(({ id }) => {
+        if (destroyed) { void api.terminalKill!(id); return }
+        attach(id)
+      }).catch((err: unknown) => {
+        term.writeln(`\r\n\x1b[31m[Failed to create terminal: ${err instanceof Error ? err.message : String(err)}]\x1b[0m`)
+      })
+    }
 
     // Resize observer: refit when container dimensions change
-    const resizeObserver = new ResizeObserver(() => { fitAddon.fit() })
+    const resizeObserver = new ResizeObserver(() => {
+      if (!terminalId) {
+        fitTerminal()
+        return
+      }
+      syncTerminalSize(terminalId)
+    })
     resizeObserver.observe(container)
+
+    if ('fonts' in document) {
+      void document.fonts.ready.then(() => {
+        if (!destroyed && terminalId) syncTerminalSize(terminalId)
+      })
+    }
 
     return () => {
       destroyed = true
@@ -123,7 +177,12 @@ export default function TerminalBlock({ cwd, className = '', onExit }: TerminalB
       resizeDisposable?.dispose()
       unsubData?.()
       unsubExit?.()
-      if (terminalId) void api.terminalKill!(terminalId)
+      if (terminalId) {
+        // With sessionKey: detach (keep PTY alive for reattach on return)
+        // Without: kill (no one will reclaim this PTY)
+        if (sessionKey) void api.terminalDetach!(terminalId)
+        else void api.terminalKill!(terminalId)
+      }
       term.dispose()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

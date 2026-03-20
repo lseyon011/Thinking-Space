@@ -2,9 +2,12 @@ import * as pty from 'node-pty';
 import { webContents } from 'electron';
 import { randomUUID } from 'crypto';
 
+const MAX_BUFFER_BYTES = 512 * 1024; // 512 KB scrollback buffer per session
+
 interface PtyEntry {
   pty: pty.IPty;
-  webContentsId: number;
+  webContentsId: number | null; // null while detached (page navigated away)
+  buffer: string;               // accumulated output for replay on reattach
 }
 
 const ptys = new Map<string, PtyEntry>();
@@ -43,22 +46,33 @@ export function createPtyBlock(opts: CreatePtyOptsBlock): string {
     } as Record<string, string>,
   });
 
+  const entry: PtyEntry = { pty: ptyProcess, webContentsId: opts.webContentsId, buffer: '' };
+  ptys.set(id, entry);
+
   ptyProcess.onData((data) => {
-    const wc = webContents.fromId(opts.webContentsId);
+    // Buffer output so it can be replayed when the renderer reattaches
+    entry.buffer += data;
+    if (entry.buffer.length > MAX_BUFFER_BYTES) {
+      entry.buffer = entry.buffer.slice(entry.buffer.length - MAX_BUFFER_BYTES);
+    }
+    // Route to renderer only when attached
+    if (entry.webContentsId === null) return;
+    const wc = webContents.fromId(entry.webContentsId);
     if (wc && !wc.isDestroyed()) {
       wc.send('terminal:data', { id, data });
     }
   });
 
   ptyProcess.onExit(({ exitCode }) => {
-    const wc = webContents.fromId(opts.webContentsId);
-    if (wc && !wc.isDestroyed()) {
-      wc.send('terminal:exit', { id, exitCode });
+    if (entry.webContentsId !== null) {
+      const wc = webContents.fromId(entry.webContentsId);
+      if (wc && !wc.isDestroyed()) {
+        wc.send('terminal:exit', { id, exitCode });
+      }
     }
     ptys.delete(id);
   });
 
-  ptys.set(id, { pty: ptyProcess, webContentsId: opts.webContentsId });
   return id;
 }
 
@@ -76,6 +90,24 @@ export function killPtyBlock(id: string): void {
     try { entry.pty.kill(); } catch { /* already dead */ }
     ptys.delete(id);
   }
+}
+
+/** Stop routing PTY output to any renderer (e.g. page navigated away). PTY keeps running. */
+export function detachPtyBlock(id: string): void {
+  const entry = ptys.get(id);
+  if (entry) entry.webContentsId = null;
+}
+
+/**
+ * Re-route PTY output to a (possibly new) webContents and return the buffered
+ * output so the renderer can replay it into a fresh xterm instance.
+ * Returns null if the PTY no longer exists (process already exited).
+ */
+export function reattachPtyBlock(id: string, webContentsId: number): { buffer: string } | null {
+  const entry = ptys.get(id);
+  if (!entry) return null;
+  entry.webContentsId = webContentsId;
+  return { buffer: entry.buffer };
 }
 
 /** Kill all PTYs belonging to a given webContents (called on window close). */

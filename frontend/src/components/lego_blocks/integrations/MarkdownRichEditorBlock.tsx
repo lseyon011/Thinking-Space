@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
 import type { AiSettingsScope } from '@/services/lego_blocks/integrations/aiSettingsBlock'
 import type { AiProvider } from '@/services/orchestrators/chatOrch'
 import AiAssistControlsBlock from '@/components/lego_blocks/integrations/AiAssistControlsBlock'
@@ -497,6 +498,8 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   onRelatedThoughtOpenPathInNewTab,
 }, ref) {
   const { layout } = useUILayoutBlock()
+  const { colorModeId } = useUIThemeBlock()
+  const editorCanvasClassName = colorModeId === 'dark' ? 'bg-background' : 'bg-white'
   const isIphoneRuntime = useMemo(() => {
     const isIosPhoneSurface = layout.surface === 'capacitor-ios' && layout.mode === 'phone'
     if (isIosPhoneSurface) return true
@@ -964,6 +967,8 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
         backgroundColor: 'transparent',
         maxWidth: '100%',
         overflow: 'hidden',
+        color: 'hsl(var(--foreground))',
+        caretColor: 'hsl(var(--foreground))',
       },
       '.cm-scroller': {
         height: '100%',
@@ -989,6 +994,10 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
         minHeight: '100%',
         marginRight: compactMobile ? '0.25rem' : '0.4rem',
         paddingLeft: compactMobile ? '0.1rem' : '0.25rem',
+        color: 'hsl(var(--muted-foreground))',
+      },
+      '.cm-cursor, .cm-dropCursor': {
+        borderLeftColor: 'hsl(var(--foreground))',
       },
       '.cm-lineNumbers .cm-gutterElement': {
         padding: '0 0.35rem 0 0',
@@ -1193,7 +1202,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   }, [pasteClipboardAsMarkdownTable])
 
   return (
-    <div className={cn('ltm-markdown-rich-editor relative flex min-h-0 flex-col bg-white', className)}>
+    <div className={cn('ltm-markdown-rich-editor relative flex min-h-0 flex-col', editorCanvasClassName, className)}>
       {/* Toolbar toggle button (only when not always visible) */}
       {enableFormattingToolbar && !toolbarAlwaysVisible && (
         <div className="flex items-center justify-end gap-1 px-2 pt-1.5">
@@ -1783,11 +1792,12 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
         </div>
       )}
 
-      <div className={cn('ltm-markdown-rich-editor-surface flex min-h-0 flex-1 flex-col overflow-hidden bg-white', editorClassName)}>
+      <div className={cn('ltm-markdown-rich-editor-surface flex min-h-0 flex-1 flex-col overflow-hidden', editorCanvasClassName, editorClassName)}>
         <CodeMirror
           value={value}
           height="100%"
-          className="h-full bg-white"
+          theme={colorModeId === 'dark' ? 'dark' : 'light'}
+          className={cn('h-full', editorCanvasClassName)}
           basicSetup={{
             lineNumbers: !isIphoneRuntime,
             highlightActiveLine: false,

@@ -38,6 +38,9 @@ export default function LiveSourceSettingsBlock() {
     return <p className="text-sm text-muted-foreground">Loading...</p>
   }
 
+  const liveSourceOn = config.mode === 'live-source'
+  const liveChangesWorking = liveSourceOn && config.viteRunning
+
   const handlePickPath = async () => {
     const picked = await window.electronAPI!.selectVaultFolder()
     if (picked) {
@@ -69,11 +72,11 @@ export default function LiveSourceSettingsBlock() {
         <div className="space-y-0.5">
           <div className="text-sm text-foreground">Live Source Mode</div>
           <div className="text-xs text-muted-foreground">
-            Load the app from a local source directory with Vite HMR. Changes appear instantly without a rebuild.
+            Load the app from a local source folder instead of the built-in copy. After you save this, restart the app once.
           </div>
         </div>
         <Switch
-          checked={config.mode === 'live-source'}
+          checked={liveSourceOn}
           onCheckedChange={(checked) =>
             setConfig(prev => prev ? { ...prev, mode: checked ? 'live-source' : 'locked' } : prev)
           }
@@ -81,7 +84,27 @@ export default function LiveSourceSettingsBlock() {
         />
       </label>
 
-      {config.mode === 'live-source' && (
+      {liveSourceOn ? (
+        liveChangesWorking ? (
+          <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300 space-y-1">
+            <p className="font-medium">No restart needed</p>
+            <p>Live Source Mode is active right now.</p>
+          </div>
+        ) : (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 space-y-1">
+            <p className="font-medium">Restart needed</p>
+            <p>Live Source Mode is turned on, but this window is still using the old app.</p>
+            <p>Close and open the app again.</p>
+          </div>
+        )
+      ) : (
+        <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-1">
+          <p className="font-medium text-foreground">Restart not needed</p>
+          <p>Live Source Mode is off.</p>
+        </div>
+      )}
+
+      {liveSourceOn && (
         <div className="space-y-3">
           <div>
             <p className="mb-1.5 text-sm font-medium">Source Path</p>
@@ -98,6 +121,9 @@ export default function LiveSourceSettingsBlock() {
             <p className="mt-1.5 text-xs text-muted-foreground">
               Point to the <code className="rounded bg-muted px-1">frontend/</code> directory of the Thinking Space repo.
               Vite will start on port <strong>{config.vitePort}</strong> when the app launches.
+            </p>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Live updates only appear when Claude edits this exact folder.
             </p>
           </div>
 
@@ -143,8 +169,10 @@ export default function LiveSourceSettingsBlock() {
 
       <div className="rounded-md border border-border/40 bg-muted/20 px-3 py-2.5 text-xs text-muted-foreground space-y-1">
         <p className="font-medium text-foreground">How it works</p>
-        <p>When Live Source Mode is on, the app runs a Vite dev server from your source directory instead of serving a pre-built bundle. Edits made in that directory reflect immediately via HMR.</p>
-        <p>Point to your git repo&apos;s <code className="rounded bg-muted px-1">frontend/</code> folder to use your dev codebase as the live app.</p>
+        <p>When this is on, the app loads from the folder above instead of the built-in copy.</p>
+        <p>After turning it on or changing the folder, restart the app once.</p>
+        <p>Changes to app screens usually show up live. Some deeper desktop changes still need a restart.</p>
+        <p>Point to your git repo&apos;s <code className="rounded bg-muted px-1">frontend/</code> folder if you want that repo to be your live app.</p>
       </div>
     </div>
   )

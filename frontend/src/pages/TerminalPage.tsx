@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus, X } from 'lucide-react'
-import TerminalBlock from '@/components/lego_blocks/integrations/TerminalBlock'
+import TerminalBlock, { releaseTerminalSession } from '@/components/lego_blocks/integrations/TerminalBlock'
 import { isElectron } from '@/services/orchestrators/runtimeOrch'
 import { useNavigate } from 'react-router-dom'
 
@@ -10,21 +10,54 @@ interface TerminalTab {
   exitCode: number | null
 }
 
+interface TerminalPageSessionState {
+  tabs: TerminalTab[]
+  activeTabId: string
+}
+
 let tabCounter = 1
+let terminalPageSessionState: TerminalPageSessionState | null = null
 
 function createTab(): TerminalTab {
   return { id: `tab-${Date.now()}-${tabCounter++}`, label: `Terminal ${tabCounter - 1}`, exitCode: null }
 }
 
+function getInitialTerminalPageSessionState(): TerminalPageSessionState {
+  if (terminalPageSessionState && terminalPageSessionState.tabs.length > 0) {
+    const activeTabStillExists = terminalPageSessionState.tabs.some(tab => tab.id === terminalPageSessionState.activeTabId)
+    return {
+      tabs: terminalPageSessionState.tabs,
+      activeTabId: activeTabStillExists ? terminalPageSessionState.activeTabId : terminalPageSessionState.tabs[0].id,
+    }
+  }
+
+  const firstTab = createTab()
+  return {
+    tabs: [firstTab],
+    activeTabId: firstTab.id,
+  }
+}
+
 type EditModeStatus = 'unknown' | 'not-set-up' | 'off' | 'active'
 
 export default function TerminalPage() {
-  const [tabs, setTabs] = useState<TerminalTab[]>(() => [createTab()])
-  const [activeTabId, setActiveTabId] = useState<string>(() => tabs[0].id)
+  const initialSessionStateRef = useRef<TerminalPageSessionState>(getInitialTerminalPageSessionState())
+  const [tabs, setTabs] = useState<TerminalTab[]>(() => initialSessionStateRef.current.tabs)
+  const [activeTabId, setActiveTabId] = useState<string>(() => initialSessionStateRef.current.activeTabId)
   const [defaultCwd, setDefaultCwd] = useState<string | undefined>()
   const [editModeStatus, setEditModeStatus] = useState<EditModeStatus>('unknown')
   const initialized = useRef(false)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (tabs.length === 0) return
+    const nextActiveTabId = tabs.some(tab => tab.id === activeTabId) ? activeTabId : tabs[0].id
+    if (nextActiveTabId !== activeTabId) {
+      setActiveTabId(nextActiveTabId)
+      return
+    }
+    terminalPageSessionState = { tabs, activeTabId: nextActiveTabId }
+  }, [activeTabId, tabs])
 
   // Resolve default cwd and edit mode status from source config on first render
   useEffect(() => {
@@ -45,6 +78,8 @@ export default function TerminalPage() {
   }
 
   const closeTab = (id: string) => {
+    // Kill the PTY for this tab before removing it
+    releaseTerminalSession(id)
     setTabs(prev => {
       const next = prev.filter(t => t.id !== id)
       if (next.length === 0) {
@@ -65,7 +100,7 @@ export default function TerminalPage() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-[#1e1e1e]">
+    <div className="flex h-full min-h-0 flex-col bg-[#1e1e1e]">
       {/* Edit mode banner */}
       {editModeStatus === 'active' && (
         <div className="shrink-0 flex items-center gap-2 border-b border-emerald-500/20 bg-emerald-950/40 px-4 py-2 text-xs text-emerald-400">
@@ -152,6 +187,7 @@ export default function TerminalPage() {
           >
             <TerminalBlock
               cwd={defaultCwd}
+              sessionKey={tab.id}
               className="h-full w-full px-1 pt-1"
               onExit={(code) => markExited(tab.id, code)}
             />

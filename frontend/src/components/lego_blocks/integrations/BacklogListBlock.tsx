@@ -173,7 +173,7 @@ export default function BacklogListBlock({
   canOpenNodeDetails,
   rowColumns = [],
   showRowColumnsOnCompact = false,
-  rowPresetTagLimit = 3,
+  rowPresetTagLimit = Infinity,
   rowPresetTagsClassName,
   reserveTagsSlotWhenEmpty = false,
   linksColumnLabel,

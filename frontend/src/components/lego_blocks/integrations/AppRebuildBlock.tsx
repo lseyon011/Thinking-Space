@@ -98,6 +98,12 @@ export default function AppRebuildBlock() {
           Runs the full build pipeline from the configured source path, then swaps the running
           app bundle and relaunches. macOS only.
         </p>
+        <p className="text-xs text-muted-foreground">
+          This uses the normal frontend build, then also syncs Capacitor, rebuilds Electron, and packages a new app.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Node.js 22 or newer is required for this full app build.
+        </p>
       </div>
 
       <div className="flex items-center gap-2">
@@ -161,9 +167,14 @@ export default function AppRebuildBlock() {
       )}
 
       {isError && (
-        <p className="text-sm text-destructive">
-          Build failed. See log above for details.
-        </p>
+        <div className="space-y-1">
+          <p className="text-sm text-destructive">
+            Build failed. See log above for details.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            If the log mentions Capacitor or a Node.js version problem, update Node.js and try again.
+          </p>
+        </div>
       )}
     </div>
   )

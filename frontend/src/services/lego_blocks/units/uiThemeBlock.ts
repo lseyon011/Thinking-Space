@@ -1,12 +1,5 @@
-export type UIThemeId = 'classic' | 'modern-classic' | 'modern'
-
-export type UIShellMaterialProfileBlock = 'baseline' | 'glass'
-export type UIShellMotionProfileBlock = 'baseline' | 'cupertino'
-
-export interface UIShellThemeProfileBlock {
-  material: UIShellMaterialProfileBlock
-  motion: UIShellMotionProfileBlock
-}
+export type UIThemeId = 'classic'
+export type UIColorModeId = 'light' | 'dark'
 
 export interface UIThemeOptionBlock {
   id: UIThemeId
@@ -14,27 +7,38 @@ export interface UIThemeOptionBlock {
   description: string
 }
 
+export interface UIColorModeOptionBlock {
+  id: UIColorModeId
+  label: string
+  description: string
+}
+
 export const DEFAULT_UI_THEME_ID_BLOCK: UIThemeId = 'classic'
+export const DEFAULT_UI_COLOR_MODE_ID_BLOCK: UIColorModeId = 'light'
 
 export const UI_THEME_OPTIONS_BLOCK: readonly UIThemeOptionBlock[] = Object.freeze([
   {
     id: 'classic',
-    label: 'Classic',
-    description: 'Current Thinking Space visual language.',
+    label: 'Thinking Space Default Theme',
+    description: 'The current supported Thinking Space visual language.',
+  },
+])
+
+export const UI_COLOR_MODE_OPTIONS_BLOCK: readonly UIColorModeOptionBlock[] = Object.freeze([
+  {
+    id: 'light',
+    label: 'Light',
+    description: 'Bright interface for daytime use.',
   },
   {
-    id: 'modern-classic',
-    label: 'Modern Classic',
-    description: 'Balanced native glass styling inspired by Cupertino.',
-  },
-  {
-    id: 'modern',
-    label: 'Modern',
-    description: 'Full modern Cupertino treatment with stronger surfaces.',
+    id: 'dark',
+    label: 'Dark',
+    description: 'Low-light interface across the full app.',
   },
 ])
 
 const VALID_THEME_IDS = new Set<UIThemeId>(UI_THEME_OPTIONS_BLOCK.map(option => option.id))
+const VALID_COLOR_MODE_IDS = new Set<UIColorModeId>(UI_COLOR_MODE_OPTIONS_BLOCK.map(option => option.id))
 
 export function isUIThemeIdBlock(value: unknown): value is UIThemeId {
   return typeof value === 'string' && VALID_THEME_IDS.has(value as UIThemeId)
@@ -45,16 +49,11 @@ export function normalizeUIThemeIdBlock(value: unknown): UIThemeId {
   return DEFAULT_UI_THEME_ID_BLOCK
 }
 
-export function getUIShellThemeProfileBlock(themeId: UIThemeId): UIShellThemeProfileBlock {
-  if (themeId === 'modern-classic' || themeId === 'modern') {
-    return {
-      material: 'glass',
-      motion: 'cupertino',
-    }
-  }
+export function isUIColorModeIdBlock(value: unknown): value is UIColorModeId {
+  return typeof value === 'string' && VALID_COLOR_MODE_IDS.has(value as UIColorModeId)
+}
 
-  return {
-    material: 'baseline',
-    motion: 'baseline',
-  }
+export function normalizeUIColorModeIdBlock(value: unknown): UIColorModeId {
+  if (isUIColorModeIdBlock(value)) return value
+  return DEFAULT_UI_COLOR_MODE_ID_BLOCK
 }

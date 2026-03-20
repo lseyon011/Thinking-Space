@@ -24,4 +24,12 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    // Skip gzip size computation — saves ~3s per build and removes the size wall in output
+    reportCompressedSize: false,
+    // Suppress chunk-size warnings (large deps like Excalidraw/heic2any are expected)
+    chunkSizeWarningLimit: 10000,
+    // Use esnext for local builds — Electron ships a recent Chromium, no legacy transforms needed
+    target: isLocalBuild ? 'esnext' : undefined,
+  },
 })

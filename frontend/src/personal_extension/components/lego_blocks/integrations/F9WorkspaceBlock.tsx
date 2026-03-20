@@ -21,6 +21,7 @@ import { getAllNodes, type NodeRecord } from '@/services/lego_blocks/integration
 import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services/orchestrators/storageOrch'
 import { readOrganizerUiStateOrch, writeOrganizerUiStateOrch } from '@/services/orchestrators/organizerUiStateOrch'
 import {
+  createPinBoardPanelBlock,
   normalizeOrganizerUiStateBlock,
   type OrganizerProgramGroupEntryBlock,
   type PinBoardPanelBlock,
@@ -1732,12 +1733,7 @@ export default function F9WorkspaceBlock({
                 void updateActiveProjectPanels(next)
               }}
               onAddPanel={(type) => {
-                const newPanel: PinBoardPanelBlock = {
-                  id: `panel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                  type,
-                  colSpan: type === 'todos' ? 3 : 1,
-                  heightPreset: type === 'todos' ? 'lg' : 'md',
-                }
+                const newPanel = createPinBoardPanelBlock(type, activeProjectPanels)
                 void updateActiveProjectPanels([...activeProjectPanels, newPanel])
               }}
               onRemovePanel={(id) => {

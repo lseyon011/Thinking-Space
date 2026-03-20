@@ -7,7 +7,7 @@ export default function Home() {
   const { profile } = useUserProfileBlock()
 
   return (
-    <div className="relative isolate ltm-page overflow-hidden">
+    <div className="relative isolate ltm-page">
       <div className="ltm-page-fixed-bg-anchor">
         <div className="ltm-page-fixed-bg-canvas">
           <div className="absolute inset-0 bg-[radial-gradient(1200px_600px_at_20%_-10%,rgba(59,130,246,0.25),transparent_60%),radial-gradient(900px_500px_at_80%_0%,rgba(168,85,247,0.18),transparent_55%),radial-gradient(800px_500px_at_50%_100%,rgba(16,185,129,0.12),transparent_55%)]" />

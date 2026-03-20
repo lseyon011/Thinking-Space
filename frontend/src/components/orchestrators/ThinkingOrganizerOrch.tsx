@@ -17,6 +17,7 @@ import {
 import {
   dispatchOrganizerSidebarChromeStateBlock,
   ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
+  ORGANIZER_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK,
 } from '@/services/lego_blocks/units/organizerSidebarChromeBlock'
 import {
   readOrganizerUiStateOrch,
@@ -332,6 +333,8 @@ export default function ThinkingOrganizerOrch() {
     const stored = window.localStorage.getItem(ORGANIZER_SIDEBAR_COLLAPSED_KEY)
     return stored === '1'
   })
+  const [pinBoardHeaderVisible, setPinBoardHeaderVisible] = useState(true)
+  const [pinBoardActive, setPinBoardActive] = useState(false)
 
   // Project context
   const projectRoot = useMemo(
@@ -394,6 +397,7 @@ export default function ThinkingOrganizerOrch() {
       const base: OrganizerUiStateOrch = current ?? {
         schemaVersion: 2,
         updatedAt: new Date().toISOString(),
+        pinBoardGroups: [],
         presetTags: [],
         tagColors: {},
         programGroups: [],
@@ -423,13 +427,21 @@ export default function ThinkingOrganizerOrch() {
       enabled: true,
       collapsed: sidebarCollapsed,
       label: 'Organizer',
+      headerVisible: pinBoardHeaderVisible,
+      showHeaderToggle: tab === 'backlog' && pinBoardActive,
     })
-  }, [sidebarCollapsed])
+  }, [pinBoardActive, pinBoardHeaderVisible, sidebarCollapsed, tab])
 
   useEffect(() => {
     const handler = () => setSidebarCollapsed(prev => !prev)
     window.addEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
     return () => window.removeEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
+  }, [])
+
+  useEffect(() => {
+    const handler = () => setPinBoardHeaderVisible(prev => !prev)
+    window.addEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
+    return () => window.removeEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
   }, [])
 
   const handleToggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), [])
@@ -569,7 +581,12 @@ export default function ThinkingOrganizerOrch() {
 
         <div className="min-w-0">
           <section hidden={tab !== 'backlog'} aria-hidden={tab !== 'backlog'}>
-            {mountedTabs.backlog ? <BacklogOrch /> : null}
+            {mountedTabs.backlog ? (
+              <BacklogOrch
+                pinBoardHeaderVisible={pinBoardHeaderVisible}
+                onPinBoardActiveChange={setPinBoardActive}
+              />
+            ) : null}
           </section>
           <section hidden={tab !== 'view'} aria-hidden={tab !== 'view'}>
             {mountedTabs.view ? <ViewTab /> : null}

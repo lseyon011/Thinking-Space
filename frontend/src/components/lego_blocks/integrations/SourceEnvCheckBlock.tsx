@@ -18,7 +18,14 @@ interface LogEntry {
 
 type InstallState = 'idle' | 'running' | 'done' | 'error'
 
+const MIN_APP_BUILD_NODE_MAJOR = 22
 const NODE_DOWNLOAD_URL = 'https://nodejs.org/en/download'
+
+function parseNodeMajor(version: string | null): number {
+  if (!version) return 0
+  const match = version.match(/v?(\d+)/)
+  return match ? parseInt(match[1], 10) : 0
+}
 
 function StatusRow({
   ok,
@@ -123,6 +130,7 @@ export default function SourceEnvCheckBlock({ onStatusChange }: SourceEnvCheckBl
   if (!isElectron()) return null
 
   const isLoading = checking && !status
+  const nodeSupportsAppBuild = status?.nodeVersion ? parseNodeMajor(status.nodeVersion) >= MIN_APP_BUILD_NODE_MAJOR : false
 
   return (
     <div className="space-y-1 rounded-md border border-border/50 bg-muted/20 px-3 py-2">
@@ -164,6 +172,30 @@ export default function SourceEnvCheckBlock({ onStatusChange }: SourceEnvCheckBl
                   className="h-7 text-xs"
                 >
                   Download Node.js →
+                </Button>
+              ) : undefined
+            }
+          />
+
+          <StatusRow
+            ok={status.nodeVersion !== null && nodeSupportsAppBuild}
+            label="Permanent app build"
+            detail={
+              status.nodeVersion
+                ? nodeSupportsAppBuild
+                  ? `${status.nodeVersion} — ready to build the full app`
+                  : `${status.nodeVersion} — Node.js ${MIN_APP_BUILD_NODE_MAJOR}+ is required to build the full app`
+                : `Not found — Node.js ${MIN_APP_BUILD_NODE_MAJOR}+ is required to build the full app`
+            }
+            action={
+              (!status.nodeVersion || !nodeSupportsAppBuild) ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handleOpenNodeDownload()}
+                  className="h-7 text-xs"
+                >
+                  Update Node.js →
                 </Button>
               ) : undefined
             }
@@ -222,8 +254,15 @@ export default function SourceEnvCheckBlock({ onStatusChange }: SourceEnvCheckBl
 
           {/* All-good summary */}
           {status.nodeMeetsMinimum && status.npmVersion && status.depsInstalled && (
-            <div className="pt-2 text-xs text-emerald-600 dark:text-emerald-400">
-              Everything is ready. You can enable Live Source Mode above.
+            <div className="pt-2 text-xs space-y-1">
+              <p className="text-emerald-600 dark:text-emerald-400">
+                Live editing is ready.
+              </p>
+              {!nodeSupportsAppBuild && (
+                <p className="text-muted-foreground">
+                  Building a permanent app still needs Node.js 22 or newer.
+                </p>
+              )}
             </div>
           )}
         </div>

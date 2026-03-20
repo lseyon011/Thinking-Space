@@ -124,6 +124,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('terminal:resize', { id, cols, rows }),
   terminalKill: (id: string): Promise<void> =>
     ipcRenderer.invoke('terminal:kill', { id }),
+  terminalDetach: (id: string): Promise<void> =>
+    ipcRenderer.invoke('terminal:detach', { id }),
+  terminalReattach: (id: string): Promise<{ buffer: string } | null> =>
+    ipcRenderer.invoke('terminal:reattach', { id }),
   onTerminalData: (id: string, handler: (data: string) => void) => {
     const channel = 'terminal:data';
     const listener = (_: unknown, payload: { id: string; data: string }) => {

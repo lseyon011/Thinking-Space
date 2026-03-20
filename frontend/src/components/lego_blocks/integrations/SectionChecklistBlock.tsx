@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FileText, Info } from 'lucide-react'
+import { Info } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import MonthCalendar, { type DayData } from '@/components/lego_blocks/integrations/MonthCalendarBlock'
 import SectionBreakdown, { type TagSelectorItem } from '@/components/lego_blocks/integrations/SectionBreakdownBlock'
-import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { useFileStats } from '@/components/lego_blocks/hooks/shared/useFileStatsBlock'
 import MetricBlock from '@/components/lego_blocks/units/MetricBlock'
+import TodoListPanelBlock, { type TodoDayGroup, type TodoDisplayItem } from '@/components/lego_blocks/integrations/TodoListPanelBlock'
 
 interface ChecklistItem {
   text: string
@@ -52,7 +52,7 @@ interface ChecklistSectionMonthData {
 
 interface SectionCardGroup {
   section: string
-  days: Array<{ date: string; items: ChecklistItem[] }>
+  days: TodoDayGroup[]
 }
 
 interface SectionChecklistBlockProps {
@@ -66,26 +66,6 @@ interface SectionChecklistBlockProps {
   ) => Promise<ChecklistSectionMonthData>
   onToggleItem?: (item: ChecklistItem) => Promise<void>
   renderItemTextClassName?: (item: ChecklistItem) => string
-}
-
-const SECTION_COLORS: Record<string, { accent: string; dot: string }> = {
-  F9: { accent: '#3b82f6', dot: 'bg-blue-500' },
-  sfdl: { accent: '#10b981', dot: 'bg-emerald-500' },
-  sfw: { accent: '#eab308', dot: 'bg-yellow-500' },
-  sfj: { accent: '#f97316', dot: 'bg-orange-500' },
-  sfai: { accent: '#a855f7', dot: 'bg-purple-500' },
-  sflc: { accent: '#ef4444', dot: 'bg-red-500' },
-}
-
-const DEFAULT_COLOR = { accent: '#8b5cf6', dot: 'bg-violet-500' }
-
-function getSectionColor(section: string) {
-  return SECTION_COLORS[section] ?? DEFAULT_COLOR
-}
-
-function formatDate(dateStr: string) {
-  const d = new Date(dateStr + 'T12:00:00')
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
 function toTagItems(sections: ChecklistSection[]): TagSelectorItem[] {
@@ -142,7 +122,7 @@ function groupCards(
 ): SectionCardGroup[] {
   if (!sectionData) return []
 
-  const bySection: Record<string, Array<{ date: string; items: ChecklistItem[] }>> = {}
+  const bySection: Record<string, Array<{ date: string; items: TodoDayGroup['items'] }>> = {}
   for (const day of sectionData.days) {
     if (selectedDate && day.date !== selectedDate) continue
     for (const item of day.items) {
@@ -163,7 +143,7 @@ function groupCards(
 
 function toggleItemState(
   data: ChecklistSectionMonthData | null,
-  target: ChecklistItem,
+  target: TodoDisplayItem,
 ): ChecklistSectionMonthData | null {
   if (!data) return data
   return {
@@ -185,10 +165,7 @@ export default function SectionChecklistBlock({
   fetchMonthData,
   fetchSectionMonthData,
   onToggleItem,
-  renderItemTextClassName,
 }: SectionChecklistBlockProps) {
-  const { openFile } = useMarkdownViewer()
-
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
@@ -214,7 +191,7 @@ export default function SectionChecklistBlock({
         setMonthData(data)
         setSelectedSections(data.sections.map((section) => section.name))
       })
-      .catch((err) => setError(err.message || 'Failed to load data'))
+      .catch((err) => setError((err as Error).message || 'Failed to load data'))
       .finally(() => setMonthLoading(false))
   }, [fetchMonthData, month, year])
 
@@ -279,11 +256,12 @@ export default function SectionChecklistBlock({
   const fileStats = useFileStats(filePaths)
 
   const handleToggle = useCallback(
-    async (item: ChecklistItem) => {
+    async (item: TodoDisplayItem) => {
       if (!onToggleItem) return
       setSectionData((prev) => toggleItemState(prev, item))
       try {
-        await onToggleItem(item)
+        // ChecklistItem is a superset of TodoDisplayItem; safe cast since section is not needed for toggle
+        await onToggleItem(item as ChecklistItem)
       } catch {
         setSectionData((prev) => toggleItemState(prev, item))
       }
@@ -291,12 +269,10 @@ export default function SectionChecklistBlock({
     [onToggleItem],
   )
 
-  const itemTextClass = useCallback(
-    (item: ChecklistItem) =>
-      renderItemTextClassName?.(item) ??
-      'text-sm leading-snug text-foreground/90 group-hover:text-foreground transition-colors',
-    [renderItemTextClassName],
-  )
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr + 'T12:00:00')
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  }
 
   return (
     <div className="flex gap-6 items-start">
@@ -444,65 +420,19 @@ export default function SectionChecklistBlock({
 
             {sectionData && !sectionLoading && sectionCards.length > 0 && (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {sectionCards.map(({ section, days }) => {
-                  const color = getSectionColor(section)
-                  return (
-                    <Card key={section} className="overflow-hidden">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <span className={`inline-block h-2.5 w-2.5 rounded-full ${color.dot}`} />
-                          {section}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        {days.map(({ date, items }) => {
-                          const stat = showStats && items[0] ? fileStats[items[0].file] : null
-                          return (
-                            <div key={date}>
-                              <div className="text-xs font-medium text-muted-foreground mb-1">
-                                {formatDate(date)}
-                              </div>
-                              <div className="space-y-0.5">
-                                {items.map((item) => (
-                                  <div
-                                    key={`${item.file}:${item.line}`}
-                                    className="flex items-start gap-2 py-0.5 group"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={item.checked}
-                                      disabled={!onToggleItem}
-                                      onChange={onToggleItem ? () => void handleToggle(item) : undefined}
-                                      className={`mt-0.5 h-4 w-4 rounded border-border shrink-0 ${
-                                        onToggleItem ? 'cursor-pointer' : 'cursor-default'
-                                      }`}
-                                      style={{ accentColor: color.accent }}
-                                    />
-                                    <button
-                                      onClick={() => openFile(item.file)}
-                                      className="flex items-center gap-1.5 flex-1 min-w-0 text-left cursor-pointer"
-                                      title="View file"
-                                    >
-                                      <span className={itemTextClass(item)}>
-                                        {item.text}
-                                      </span>
-                                      <FileText className="h-3.5 w-3.5 opacity-0 group-hover:opacity-60 transition-opacity shrink-0" />
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                              {stat && (
-                                <div className="mt-1 text-[10px] text-muted-foreground/50 tabular-nums pl-6">
-                                  {stat.lines} lines · {stat.words} words
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </CardContent>
-                    </Card>
-                  )
-                })}
+                {sectionCards.map(({ section, days }) => (
+                  <Card key={section} className="overflow-hidden">
+                    <CardContent className="pt-4 pb-4">
+                      <TodoListPanelBlock
+                        section={section}
+                        days={days}
+                        onToggle={onToggleItem ? handleToggle : undefined}
+                        showStats={showStats}
+                        fileStats={fileStats}
+                      />
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             )}
           </div>

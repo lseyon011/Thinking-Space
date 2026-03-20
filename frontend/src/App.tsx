@@ -64,7 +64,6 @@ import {
 import UniversalSearchBlock from './components/lego_blocks/integrations/UniversalSearchBlock'
 import { UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK } from './components/lego_blocks/integrations/universalSearchPresetBlock'
 import { useUILayoutBlock } from './components/lego_blocks/hooks/shared/useUILayoutBlock'
-import { useUIThemeBlock } from './components/lego_blocks/units/UIThemeBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { fullSync, getLastSyncTimestamp, setLastSyncTimestamp, smartSync, type SyncResult } from './services/orchestrators/vaultSyncOrch'
@@ -86,7 +85,6 @@ import {
 } from './services/orchestrators/storageOrch'
 import { getCapabilityFeatureFlags } from './services/orchestrators/capabilityFeatureFlagsOrch'
 import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from '@/services/lego_blocks/integrations/fsBlock'
-import { getUIShellThemeProfileOrch } from './services/orchestrators/uiThemeOrch'
 import { readUserProfileOrch } from './services/orchestrators/userProfileOrch'
 import {
   setExplorerFolderColorPreferencesOrch,
@@ -125,6 +123,7 @@ import {
 import {
   ORGANIZER_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
   dispatchOrganizerSidebarChromeToggleBlock,
+  dispatchOrganizerSidebarChromeToggleHeaderBlock,
   type OrganizerSidebarChromeStateBlock,
 } from '@/services/lego_blocks/units/organizerSidebarChromeBlock'
 import {
@@ -212,7 +211,6 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
     icon: FolderKanban,
     activePaths: ['/file-organizer'],
   },
-  { to: '/terminal', label: 'Terminal', icon: Terminal },
 ]
 
 function ExcalidrawPlusIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -393,8 +391,6 @@ function App() {
   const location = useLocation()
   const navigate = useNavigate()
   const { layout } = useUILayoutBlock()
-  const { themeId } = useUIThemeBlock()
-  const shellThemeProfile = useMemo(() => getUIShellThemeProfileOrch(themeId), [themeId])
   const currentRoute = `${location.pathname}${location.search}${location.hash}`
 
   const featureFlags = getCapabilityFeatureFlags()
@@ -441,6 +437,8 @@ function App() {
     enabled: false,
     collapsed: false,
     label: 'Organizer',
+    headerVisible: true,
+    showHeaderToggle: false,
   })
   const [f9SidebarChromeState, setF9SidebarChromeState] = useState<F9SidebarChromeStateBlock>({
     enabled: false,
@@ -520,6 +518,7 @@ function App() {
   const showWebHeaderToggle = showWebSidebarChromeControl && webSidebarChromeState.showHeaderToggle
   const showOrganizerSidebarChromeControl = (location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer')
     && organizerSidebarChromeState.enabled
+  const showOrganizerHeaderToggle = showOrganizerSidebarChromeControl && organizerSidebarChromeState.showHeaderToggle
   const showF9SidebarChromeControl = location.pathname === '/f9' && f9SidebarChromeState.enabled
   const showNewThoughtSidebarChromeControl = location.pathname === '/new-thought' && newThoughtSidebarChromeState.enabled
   // On Capacitor, each of these tabs owns its own edge-swipe gesture.
@@ -561,6 +560,7 @@ function App() {
 
   const utilityNavItems = useMemo(() => {
     const items: NavItem[] = [
+      { to: '/terminal', label: 'Terminal', icon: Terminal },
       { to: '/settings', label: 'Settings', icon: SettingsIcon },
       { to: '/capabilities', label: 'Capabilities', icon: Bot },
     ]
@@ -1598,6 +1598,8 @@ function App() {
         enabled: Boolean(detail.enabled),
         collapsed: Boolean(detail.collapsed),
         label: typeof detail.label === 'string' ? detail.label : 'Organizer',
+        headerVisible: detail.headerVisible !== false,
+        showHeaderToggle: Boolean(detail.showHeaderToggle),
       })
     }
     window.addEventListener(ORGANIZER_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleOrganizerChromeState as EventListener)
@@ -1605,6 +1607,7 @@ function App() {
       window.removeEventListener(ORGANIZER_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleOrganizerChromeState as EventListener)
     }
   }, [])
+
 
   useEffect(() => {
     const handleF9ChromeState = (event: Event) => {
@@ -1681,9 +1684,6 @@ function App() {
       data-ltm-mode={layout.mode}
       data-ltm-surface={layout.surface}
       data-ltm-route={location.pathname}
-      data-ltm-shell-material={shellThemeProfile.material}
-      data-ltm-shell-motion={shellThemeProfile.motion}
-      data-ltm-theme={themeId}
       data-ltm-explorer-icon-style={explorerIconStyle}
       data-ltm-ios-phone={iPhoneHandsetMode ? 'true' : 'false'}
     >
@@ -1818,6 +1818,20 @@ function App() {
                       ? <PanelLeft className="h-3.5 w-3.5" />
                       : <PanelLeftClose className="h-3.5 w-3.5" />}
                   </button>
+
+                  {showOrganizerHeaderToggle && (
+                    <button
+                      type="button"
+                      onClick={dispatchOrganizerSidebarChromeToggleHeaderBlock}
+                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label={organizerSidebarChromeState.headerVisible ? 'Hide document headers' : 'Show document headers'}
+                      title={organizerSidebarChromeState.headerVisible ? 'Hide document headers' : 'Show document headers'}
+                    >
+                      {organizerSidebarChromeState.headerVisible
+                        ? <EyeOff className="h-3.5 w-3.5" />
+                        : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -2026,33 +2040,6 @@ function App() {
                   <div className="mt-5 space-y-1">
                     {!sidebarCollapsed && (
                       <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                        Workspace
-                      </div>
-                    )}
-                    {utilityNavItems.map((item) => {
-                      const Icon = item.icon
-                      const active = isNavItemActive(location.pathname, item)
-                      return (
-                        <Link
-                          key={item.to}
-                          to={item.to}
-                          title={sidebarCollapsed ? item.label : undefined}
-                          className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
-                            sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                          } ${
-                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                          }`}
-                        >
-                          <Icon className="h-4 w-4" />
-                          {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
-                        </Link>
-                      )
-                    })}
-                  </div>
-
-                  <div className="mt-5 space-y-1">
-                    {!sidebarCollapsed && (
-                      <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         Excalidraw++
                       </div>
                     )}
@@ -2084,46 +2071,70 @@ function App() {
                   </div>
                 </div>
 
-                <div className="ltm-sidebar-actions space-y-2">
-                  <button
-                    type="button"
-                    onClick={openCommandPalette}
-                    className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
-                      sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                    }`}
-                    aria-label="Open quick search"
-                  >
-                    <Search className="h-4 w-4" />
-                    {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">Search</span>}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSidebarCollapsed(prev => !prev)}
-                    className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
-                      sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                    }`}
-                    title={sidebarCollapsed ? 'Expand sidebar (Cmd/Ctrl+\\)' : 'Collapse sidebar (Cmd/Ctrl+\\)'}
-                    aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                  >
-                    {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-                    {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">{sidebarCollapsed ? 'Expand drawer' : 'Collapse drawer'}</span>}
-                  </button>
+                <div className="ltm-sidebar-actions">
+                  <div className="ltm-sidebar-actions-group space-y-1">
+                    {utilityNavItems.map((item) => {
+                      const Icon = item.icon
+                      const active = isNavItemActive(location.pathname, item)
+                      return (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          title={sidebarCollapsed ? item.label : undefined}
+                          className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
+                            sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                          } ${
+                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                        </Link>
+                      )
+                    })}
+                  </div>
 
-                  <Link
-                    to="/"
-                    title={sidebarCollapsed ? 'Home' : undefined}
-                    aria-label="Home"
-                    className={`ltm-shell-logo ltm-motion-fast mt-2 inline-flex items-center rounded-lg ${
-                      sidebarCollapsed
-                        ? 'h-10 w-full justify-center'
-                        : 'gap-2 px-2.5 py-2 text-sm font-semibold tracking-tight'
-                    }`}
-                  >
-                    <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full">
-                      <AppBrandGlyph className="h-full w-full" />
-                    </span>
-                    {!sidebarCollapsed && <span>Home</span>}
-                  </Link>
+                  <div className="ltm-sidebar-actions-group space-y-2">
+                    <button
+                      type="button"
+                      onClick={openCommandPalette}
+                      className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
+                        sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                      }`}
+                      aria-label="Open quick search"
+                    >
+                      <Search className="h-4 w-4" />
+                      {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">Search</span>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSidebarCollapsed(prev => !prev)}
+                      className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
+                        sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                      }`}
+                      title={sidebarCollapsed ? 'Expand sidebar (Cmd/Ctrl+\\)' : 'Collapse sidebar (Cmd/Ctrl+\\)'}
+                      aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                    >
+                      {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                      {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">{sidebarCollapsed ? 'Expand drawer' : 'Collapse drawer'}</span>}
+                    </button>
+
+                    <Link
+                      to="/"
+                      title={sidebarCollapsed ? 'Home' : undefined}
+                      aria-label="Home"
+                      className={`ltm-shell-logo ltm-motion-fast mt-2 inline-flex items-center rounded-lg ${
+                        sidebarCollapsed
+                          ? 'h-10 w-full justify-center'
+                          : 'gap-2 px-2.5 py-2 text-sm font-semibold tracking-tight'
+                      }`}
+                    >
+                      <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full">
+                        <AppBrandGlyph className="h-full w-full" />
+                      </span>
+                      {!sidebarCollapsed && <span>Home</span>}
+                    </Link>
+                  </div>
                 </div>
                 </div>
               </aside>

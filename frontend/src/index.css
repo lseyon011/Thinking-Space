@@ -349,32 +349,6 @@
     --ltm-shell-main-panel-radius: clamp(0.9rem, 3.2vw, 1.18rem);
   }
 
-  .ltm-app-shell[data-ltm-shell-material='glass'] {
-    --ltm-shell-surface-bg: hsl(var(--card) / 0.72);
-    --ltm-shell-surface-muted-bg: hsl(var(--card) / 0.62);
-    --ltm-shell-surface-border: hsl(var(--border) / 0.4);
-    --ltm-shell-surface-shadow: 0 24px 54px -34px rgb(0 0 0 / 0.62);
-    --ltm-shell-surface-blur: 18px;
-    --ltm-shell-stage-bg: hsl(var(--background) / 0.62);
-    --ltm-shell-divider-strong: hsl(var(--border) / 0.4);
-    --ltm-shell-divider-soft: hsl(var(--border) / 0.26);
-    --ltm-shell-section-highlight: rgb(255 255 255 / 0.2);
-  }
-
-  .ltm-app-shell[data-ltm-shell-motion='cupertino'] {
-    --ltm-anim-baseline: cubic-bezier(0.32, 0.72, 0, 1);
-    --ltm-anim-fast: 120ms;
-    --ltm-anim-moderate: 200ms;
-    --ltm-anim-slow: 320ms;
-    --ltm-shell-motion-ease: var(--ltm-anim-baseline);
-    --ltm-shell-motion-chrome-duration: var(--ltm-anim-moderate);
-    --ltm-shell-motion-overlay-duration: var(--ltm-anim-fast);
-    --ltm-shell-motion-drawer-duration: var(--ltm-anim-moderate);
-    --ltm-shell-motion-modal-duration: var(--ltm-anim-moderate);
-    --ltm-shell-motion-capsule-duration: var(--ltm-anim-fast);
-    --ltm-shell-motion-tab-duration: var(--ltm-anim-fast);
-  }
-
   .ltm-shell-layer-base {
     @apply min-h-0 min-w-0 flex flex-1 w-full max-w-full;
   }
@@ -781,10 +755,17 @@
 
   .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions {
     margin-top: 0.75rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--ltm-shell-divider-soft);
     background: transparent;
     box-shadow: none;
+  }
+
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions-group {
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--ltm-shell-divider-soft);
+  }
+
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions-group + .ltm-sidebar-actions-group {
+    margin-top: 0.75rem;
   }
 
   .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-nav-action,
@@ -864,8 +845,11 @@
 
   .ltm-page-fixed-bg-canvas {
     position: relative;
-    width: 100%;
+    left: 50%;
+    width: 100vw;
     height: 100dvh;
+    overflow: hidden;
+    transform: translateX(-50%);
   }
 
   .ltm-page-shell {
@@ -1037,47 +1021,6 @@
   to { opacity: 1; transform: scale(1); }
 }
 
-/* Apply Cupertino animations to shell profiles with cupertino motion */
-.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-animate-slide-up {
-  animation: ltm-modal-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
-}
-
-.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-animate-slide-in-left {
-  animation: ltm-leaf-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
-}
-
-.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-animate-fade-in {
-  animation: ltm-fade-scale-in var(--ltm-anim-fast, 160ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
-}
-
-.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-modern-animate-menu {
-  animation: ltm-menu-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
-}
-
-.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-modern-animate-modal {
-  animation: ltm-modal-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
-}
-
-.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-modern-animate-leaf {
-  animation: ltm-leaf-in var(--ltm-anim-moderate, 320ms) var(--ltm-anim-baseline, cubic-bezier(0.32, 0.72, 0, 1));
-}
-
-.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-shell-motion-overlay {
-  animation: ltm-fade-scale-in var(--ltm-shell-motion-overlay-duration, 160ms) var(--ltm-shell-motion-ease, cubic-bezier(0.32, 0.72, 0, 1));
-}
-
-.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-shell-motion-drawer {
-  animation: ltm-leaf-in var(--ltm-shell-motion-drawer-duration, 320ms) var(--ltm-shell-motion-ease, cubic-bezier(0.32, 0.72, 0, 1));
-}
-
-.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-shell-motion-modal {
-  animation: ltm-modal-in var(--ltm-shell-motion-modal-duration, 320ms) var(--ltm-shell-motion-ease, cubic-bezier(0.32, 0.72, 0, 1));
-}
-
-.ltm-app-shell[data-ltm-shell-motion='cupertino'] .ltm-shell-motion-capsule {
-  animation: ltm-modal-in var(--ltm-shell-motion-capsule-duration, 160ms) var(--ltm-shell-motion-ease, cubic-bezier(0.32, 0.72, 0, 1));
-}
-
 @media (pointer: coarse) {
   .ltm-touch-target {
     min-width: 2.75rem !important;
@@ -1112,9 +1055,6 @@
   .ltm-shell-motion-overlay,
   .ltm-shell-motion-drawer,
   .ltm-shell-motion-modal,
-  .ltm-modern-animate-menu,
-  .ltm-modern-animate-modal,
-  .ltm-modern-animate-leaf,
   .animate-slide-in {
     animation: none !important;
   }

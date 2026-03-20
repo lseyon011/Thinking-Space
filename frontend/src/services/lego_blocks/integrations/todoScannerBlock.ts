@@ -13,6 +13,13 @@ interface TodoItem {
   line_number: number
 }
 
+export interface TodoFileItem {
+  text: string
+  checked: boolean
+  line: number
+  file: string
+}
+
 // ── Find todo folders ──
 
 async function findTodoFolders(fs: VaultFS): Promise<string[]> {
@@ -233,6 +240,23 @@ export async function getTodosSectionMonth(
     .sort((a, b) => b.date.localeCompare(a.date))
 
   return { sections: targetSections, days }
+}
+
+export async function getTodoFile(
+  fs: VaultFS,
+  filePath: string,
+): Promise<{ section: string; date: string; items: TodoFileItem[] }> {
+  const content = await fs.read(filePath)
+  const fileName = filePath.split('/').pop() ?? filePath
+  const date = DATE_FILENAME_RE.test(fileName) ? fileName.replace(/\.md$/i, '') : fileName
+  const section = extractSection(filePath)
+  const items = parseTodoFile(content).map((item) => ({
+    text: item.text,
+    checked: item.checked,
+    line: item.line_number,
+    file: filePath,
+  }))
+  return { section, date, items }
 }
 
 // ── Toggle a todo checkbox ──

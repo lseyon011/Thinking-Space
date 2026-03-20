@@ -1,6 +1,7 @@
 import type { TodoMonthData, TodoSectionMonthData } from '@/services/lego_blocks/units/typesBlock'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
+  getTodoFile as scanTodoFile,
   getTodosMonth as scanTodosMonth,
   getTodosSectionMonth as scanTodosSectionMonth,
   toggleTodo as scanToggleTodo,
@@ -20,6 +21,15 @@ export async function getTodosSectionMonth(
 ): Promise<TodoSectionMonthData> {
   const fs = getVaultFS()
   return scanTodosSectionMonth(fs, year, month, sections)
+}
+
+export async function getTodoFile(filePath: string): Promise<{
+  section: string
+  date: string
+  items: Array<{ text: string; checked: boolean; line: number; file: string }>
+}> {
+  const fs = getVaultFS()
+  return scanTodoFile(fs, filePath)
 }
 
 export async function toggleTodo(filePath: string, lineNumber: number): Promise<void> {

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import AiSettingsOrch from '@/components/orchestrators/AiSettingsOrch'
 import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
-import { UI_THEME_OPTIONS_BLOCK, useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
+import { UI_COLOR_MODE_OPTIONS_BLOCK, UI_THEME_OPTIONS_BLOCK, useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
 import { USER_PROFILE_FILE_PATH_BLOCK, deriveUserProfileSymbolBlock } from '@/services/lego_blocks/units/userProfileBlock'
 import { clearAppCacheOrch, hardRefreshOrch } from '@/services/orchestrators/appCacheOrch'
 import {
@@ -36,7 +36,6 @@ import {
   type ExplorerFolderColorPreferenceBlock,
   type ExplorerIconStyleBlock,
 } from '@/services/orchestrators/vaultUiPreferencesOrch'
-import type { UIThemeId } from '@/services/orchestrators/uiThemeOrch'
 import {
   addRssFeedOrch,
   addRssFeedGroupOrch,
@@ -130,7 +129,7 @@ export default function SettingsOrch({
   onF9TabPreferencesChange,
 }: SettingsOrchProps) {
   const { profile, loading: profileLoading, saveProfile, reloadProfile } = useUserProfileBlock()
-  const { themeId, setThemeId } = useUIThemeBlock()
+  const { colorModeId, setColorModeId, themeId } = useUIThemeBlock()
   const [activeTab, setActiveTab] = useState<SettingsTabWithProfileId>(initialTab)
   const [markdownEditorSettings, setMarkdownEditorSettings] = useState<MarkdownEditorSettingsBlock>(
     () => readMarkdownEditorSettingsOrch(),
@@ -569,25 +568,38 @@ export default function SettingsOrch({
         <Card>
           <CardHeader>
             <CardTitle>Theme</CardTitle>
-            <CardDescription>Personalize the interface look.</CardDescription>
+            <CardDescription>Thinking Space currently ships with one interface theme and selectable light or dark overall color modes.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <label htmlFor="ltm-settings-theme-select" className="text-sm font-medium">
-                App Theme
+              {UI_THEME_OPTIONS_BLOCK
+                .filter((option) => option.id === themeId)
+                .map((option) => (
+                  <div key={option.id} className="rounded-md border border-border/60 bg-background px-3 py-3">
+                    <div className="text-sm font-medium text-foreground">{option.label}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{option.description}</div>
+                  </div>
+                ))}
+            </div>
+            <div className="space-y-2 border-t border-border/50 pt-4">
+              <label htmlFor="ltm-settings-color-mode-select" className="text-sm font-medium">
+                Overall Color Mode
               </label>
               <select
-                id="ltm-settings-theme-select"
-                value={themeId}
-                onChange={(event) => setThemeId(event.target.value as UIThemeId)}
+                id="ltm-settings-color-mode-select"
+                value={colorModeId}
+                onChange={(event) => setColorModeId(event.target.value as typeof colorModeId)}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
               >
-                {UI_THEME_OPTIONS_BLOCK.map((option) => (
+                {UI_COLOR_MODE_OPTIONS_BLOCK.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.label}
                   </option>
                 ))}
               </select>
+              <p className="text-xs text-muted-foreground">
+                {UI_COLOR_MODE_OPTIONS_BLOCK.find((option) => option.id === colorModeId)?.description}
+              </p>
             </div>
             <div className="space-y-2 border-t border-border/50 pt-4">
               <h3 className="text-sm font-medium text-foreground">Markdown Editor</h3>
