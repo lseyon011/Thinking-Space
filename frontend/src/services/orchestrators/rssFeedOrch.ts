@@ -30,6 +30,7 @@ const RSS_FILE = `${RSS_DIR}/rss-feeds.json`
 // ---------------------------------------------------------------------------
 
 const RSS_ARTICLES_DIR = '.thinking-space/rss-feeds'
+const RSS_FETCH_TIMEOUT_MS = 12_000
 
 /** Stable filename for an article derived from its item ID. */
 function itemFilenameBlock(itemId: string): string {
@@ -318,6 +319,7 @@ export async function addRssFeedOrch(
   }
   prefs.feeds.push(entry)
   await writeRssFeedPreferencesOrch(prefs)
+  await ensureRssArticleDirOrch(entry.id)
   return entry
 }
 
@@ -492,23 +494,44 @@ export function markRssItemsReadOrch(itemIds: string[]): void {
 
 async function fetchRssFeedTextBlock(url: string): Promise<{ status: number; body: string }> {
   if (isElectron() && window.electronAPI?.fetchText) {
-    return window.electronAPI.fetchText(url)
+    return await raceTimeoutBlock(
+      window.electronAPI.fetchText(url),
+      RSS_FETCH_TIMEOUT_MS,
+      `RSS fetch timed out after ${Math.round(RSS_FETCH_TIMEOUT_MS / 1000)}s`,
+    )
   }
-  const response = await fetch(url)
-  return { status: response.status, body: await response.text() }
+
+  const controller = new AbortController()
+  const timeoutHandle = window.setTimeout(() => controller.abort(), RSS_FETCH_TIMEOUT_MS)
+  try {
+    const response = await fetch(url, { signal: controller.signal })
+    return { status: response.status, body: await response.text() }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(`RSS fetch timed out after ${Math.round(RSS_FETCH_TIMEOUT_MS / 1000)}s`)
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timeoutHandle)
+  }
 }
 
 export async function fetchAndParseRssFeedOrch(
   config: RssFeedConfigBlock,
+  options?: { onStoredResult?: (result: RssFeedResultBlock) => void },
 ): Promise<RssFeedResultBlock> {
+  // On iOS, Capacitor can surface raw readdir plugin errors for missing folders
+  // even when the rejection is handled. Create the per-feed cache directory first.
+  await ensureRssArticleDirOrch(config.id)
   // Always load stored items first — used for merging and as offline fallback.
   const storedItems = await loadStoredFeedItemsOrch(config.id)
+  options?.onStoredResult?.(buildStoredResultBlock(config, storedItems, null))
   const readIds = readRssReadItemIdsOrch() // localStorage fallback for not-yet-stored items
 
   try {
     const response = await fetchRssFeedTextBlock(config.url)
     if (response.status < 200 || response.status >= 300) {
-      return buildResultFromStored(config, storedItems, `HTTP ${response.status}`)
+      return buildStoredResultBlock(config, storedItems, `HTTP ${response.status}`)
     }
 
     const { format, feed } = parseFeed(response.body)
@@ -576,7 +599,7 @@ export async function fetchAndParseRssFeedOrch(
   } catch (err) {
     // Offline or fetch failed — return whatever we have stored.
     if (storedItems.size > 0) {
-      return buildResultFromStored(config, storedItems, err instanceof Error ? err.message : 'Fetch failed')
+      return buildStoredResultBlock(config, storedItems, err instanceof Error ? err.message : 'Fetch failed')
     }
     return {
       feedId: config.id,
@@ -591,6 +614,14 @@ function buildResultFromStored(
   config: RssFeedConfigBlock,
   storedItems: Map<string, RssFeedItemBlock>,
   error: string,
+): RssFeedResultBlock {
+  return buildStoredResultBlock(config, storedItems, error)
+}
+
+function buildStoredResultBlock(
+  config: RssFeedConfigBlock,
+  storedItems: Map<string, RssFeedItemBlock>,
+  error: string | null,
 ): RssFeedResultBlock {
   const items = [...storedItems.values()]
   sortByPubDateDesc(items)
@@ -644,4 +675,24 @@ function extractDateBlock(value: unknown): string | null {
 
 function stripHtmlBlock(html: string): string {
   return html.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim()
+}
+
+async function raceTimeoutBlock<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timeoutHandle: number | null = null
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = window.setTimeout(() => reject(new Error(message)), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeoutHandle !== null) {
+      window.clearTimeout(timeoutHandle)
+    }
+  }
 }

@@ -66,6 +66,7 @@ Thinking Space is built as three product pillars:
 - [x] Thought capture with emotion tags and AI writing assistance
 - [x] Todo management with date-based organization
 - [x] Hierarchical organizer (Programs > Epics > Ideas > Thoughts) with drag-and-drop, create, reparent
+- [x] Cross-device password manager with passphrase-encrypted vault storage inside your Thinking Space folder
 - [x] Conflict-safe file editing with mtime/hash checks
 - [x] Command palette (Cmd/Ctrl+K) with fuzzy file search
 - [x] Obsidian wikilink navigation

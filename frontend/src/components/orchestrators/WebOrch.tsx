@@ -14,7 +14,17 @@ import {
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
 
-export default function WebOrch() {
+interface WebOrchProps {
+  active?: boolean
+  selectedSiteId?: string | null
+  onSelectSiteId?: (siteId: string) => void
+}
+
+export default function WebOrch({
+  active = true,
+  selectedSiteId: controlledSelectedSiteId,
+  onSelectSiteId,
+}: WebOrchProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
   const [searchParams, setSearchParams] = useSearchParams()
@@ -22,14 +32,24 @@ export default function WebOrch() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [webviewHeaderVisible, setWebviewHeaderVisible] = useState(true)
 
-  const selectedSiteId = searchParams.get('site')
+  const selectedSiteId = controlledSelectedSiteId ?? searchParams.get('site')
 
   useEffect(() => { void readWebSitePreferencesOrch().then(setPrefs) }, [])
 
   const selectedSite = prefs.bookmarks.find(b => b.id === selectedSiteId) ?? null
 
-  // Dispatch chrome state on changes
   useEffect(() => {
+    if (!active) {
+      dispatchWebSidebarChromeStateBlock({
+        enabled: false,
+        collapsed: false,
+        headerVisible: true,
+        showHeaderToggle: false,
+        label: 'Web',
+      })
+      return
+    }
+
     const label = selectedSite ? `Web · ${selectedSite.name}` : 'Web'
     const siteLabels = Object.fromEntries(prefs.bookmarks.map(b => [b.id, b.name]))
     dispatchWebSidebarChromeStateBlock({
@@ -40,9 +60,8 @@ export default function WebOrch() {
       label,
       siteLabels,
     })
-  }, [selectedSiteId, sidebarCollapsed, webviewHeaderVisible, selectedSite, prefs.bookmarks])
+  }, [active, selectedSiteId, sidebarCollapsed, webviewHeaderVisible, selectedSite, prefs.bookmarks])
 
-  // Clean up chrome on unmount
   useEffect(() => {
     return () => {
       dispatchWebSidebarChromeStateBlock({
@@ -55,30 +74,34 @@ export default function WebOrch() {
     }
   }, [])
 
-  // Sidebar toggle
   useEffect(() => {
+    if (!active) return
     const handler = () => setSidebarCollapsed(prev => !prev)
     window.addEventListener(WEB_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
     return () => window.removeEventListener(WEB_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
-  }, [])
+  }, [active])
 
-  // Header toggle
   useEffect(() => {
+    if (!active) return
     const handler = () => setWebviewHeaderVisible(prev => !prev)
     window.addEventListener(WEB_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
     return () => window.removeEventListener(WEB_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
-  }, [])
+  }, [active])
 
   const handleToggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), [])
 
   useIosSidebarSwipeBlock({
-    isIos,
-    isOpen: !sidebarCollapsed,
+    isIos: isIos && active,
+    isOpen: active && !sidebarCollapsed,
     keyboardVisible: layout.keyboardVisible,
     onToggle: handleToggleSidebar,
   })
 
   const handleSelectSite = (site: WebSiteBlock) => {
+    if (onSelectSiteId) {
+      onSelectSiteId(site.id)
+      return
+    }
     setSearchParams({ site: site.id }, { replace: true })
   }
 
@@ -109,6 +132,7 @@ export default function WebOrch() {
             url={selectedSite.url}
             partition={selectedSite.partition}
             hideHeader={!webviewHeaderVisible}
+            suspended={!active}
             className="h-full"
           />
         ) : (

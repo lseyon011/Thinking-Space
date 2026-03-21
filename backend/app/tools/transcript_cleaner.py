@@ -33,7 +33,13 @@ class TranscriptOptions:
 HEADING_LINE_RE = re.compile(r"^(?:\d{1,2}:)?\d{1,2}:\d{2}\s+.+$")
 TIMESTAMP_LINE_RE = re.compile(r"^\(([^)]+)\):\s*(.*)$")
 TIMESTAMP_ONLY_LINE_RE = re.compile(r"^((?:\d{1,2}:)?\d{1,2}:\d{2})\s*$")
+COMPACT_TIMESTAMP_LINE_RE = re.compile(r"^((?:\d{1,2}:)?\d{1,2}:\d{2})(.*)$")
 INLINE_TIMESTAMP_RE = re.compile(r"^\s*(?:\(\s*[^)]+\s*\)|\d{1,2}:\d{2}:\d{2}|\d{1,2}:\d{2})\s*:?\\s*")
+COMPACT_TIMESTAMP_FRAGMENT_RE = re.compile(
+    r"(^|[\s([{\"'“‘.,!?;:-])"
+    r"(?:(?:\d{1,2}:)?\d{1,2}:\d{2})(?:\d{1,4}\s*seconds?)?"
+    r"(?=[A-Za-z])"
+)
 TIMESTAMP_ANY_RE = re.compile(
     r"\(\s*\d+\s*h\s*\d+\s*m\s*\d+\s*s\s*\)"
     r"|\(\s*\d+\s*m\s*\d+\s*s\s*\)"
@@ -91,6 +97,30 @@ def _format_time(seconds: int) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
+def _strip_repeated_duration_prefix(raw: str) -> str:
+    next_value = re.sub(r"^[\s:,-]+", "", raw)
+    repeated_duration_match = re.match(r"^(\d{1,4})(?:\s*)seconds?", next_value, flags=re.IGNORECASE)
+    if repeated_duration_match:
+        next_value = next_value[repeated_duration_match.end():]
+    return re.sub(r"^[\s:,-]+", "", next_value)
+
+
+def _parse_compact_timestamp_line(line: str) -> Optional[tuple[int, str]]:
+    match = COMPACT_TIMESTAMP_LINE_RE.match(line)
+    if not match:
+        return None
+    timestamp = _parse_time_to_seconds(match.group(1))
+    if timestamp is None:
+        return None
+    return timestamp, _strip_repeated_duration_prefix(match.group(2))
+
+
+def _strip_timestamp_fragments(raw: str) -> str:
+    next_value = COMPACT_TIMESTAMP_FRAGMENT_RE.sub(r"\1", raw)
+    next_value = TIMESTAMP_ANY_RE.sub("", next_value)
+    return re.sub(r"\s{2,}", " ", next_value).strip()
+
+
 def _extract_heading_lines(lines: list[str]) -> tuple[list[str], list[str]]:
     heading_lines: list[str] = []
     content_lines = lines[:]
@@ -131,7 +161,9 @@ def _extract_heading_lines(lines: list[str]) -> tuple[list[str], list[str]]:
             j += 1
         remaining = lines[j:]
         has_timestamp_blocks = any(
-            TIMESTAMP_LINE_RE.match(line.strip()) or TIMESTAMP_ONLY_LINE_RE.match(line.strip())
+            TIMESTAMP_LINE_RE.match(line.strip())
+            or TIMESTAMP_ONLY_LINE_RE.match(line.strip())
+            or _parse_compact_timestamp_line(line.strip()) is not None
             for line in remaining
         )
         if has_timestamp_blocks:
@@ -213,6 +245,14 @@ def clean_transcript(
             current_ts = ts_seconds if ts_seconds is not None else None
             continue
 
+        compact_match = _parse_compact_timestamp_line(stripped)
+        if compact_match:
+            flush()
+            current_ts, remainder = compact_match
+            if remainder:
+                current_lines.append(remainder)
+            continue
+
         if current_ts is None:
             continue
         cleaned_line = INLINE_TIMESTAMP_RE.sub("", line)
@@ -227,7 +267,7 @@ def clean_transcript(
         heading = _closest_heading(headings, ts)
         heading_key = heading[0] if heading else None
         title = heading[1].strip() if heading else ""
-        title = TIMESTAMP_ANY_RE.sub("", title).strip()
+        title = _strip_timestamp_fragments(title)
         if not title:
             title = "Section"
         if heading_key != last_heading_key:
@@ -235,8 +275,7 @@ def clean_transcript(
             last_heading_key = heading_key
         if block_lines:
             paragraph = " ".join(block_lines)
-            paragraph = TIMESTAMP_ANY_RE.sub("", paragraph)
-            paragraph = re.sub(r"\s{2,}", " ", paragraph).strip()
+            paragraph = _strip_timestamp_fragments(paragraph)
             output_lines.append(f"• {paragraph}")
         output_lines.append("")
 

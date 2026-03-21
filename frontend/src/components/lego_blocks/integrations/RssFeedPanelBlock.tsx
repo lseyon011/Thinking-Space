@@ -17,7 +17,7 @@ import {
 import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useExpandedSetBlock'
 import SidebarGroupHeaderBlock from '@/components/lego_blocks/units/ui/SidebarGroupHeaderBlock'
 import {
-  fetchAllRssFeedsOrch,
+  fetchAndParseRssFeedOrch,
   markRssItemReadOrch,
   markRssItemsReadOrch,
   readRssFeedPreferencesOrch,
@@ -25,6 +25,7 @@ import {
 } from '@/services/orchestrators/rssFeedOrch'
 import {
   buildFeedGroupTreeBlock,
+  type RssFeedConfigBlock,
   type RssFeedGroupTreeNodeBlock,
   type RssFeedItemBlock,
   type RssFeedPreferencesBlock,
@@ -88,27 +89,74 @@ export default function RssFeedPanelBlock({
   const [deleteMode, setDeleteMode] = useState(false)
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set())
   const hasFeedsConfigured = useRef(false)
+  const rssLoadRequestIdRef = useRef(0)
+  const [loadingFeedIds, setLoadingFeedIds] = useState<Set<string>>(new Set())
 
 
   const presetTags = preferences?.presetTags ?? []
   const tagColors = preferences?.tagColors ?? {}
 
+  const mergeFeedResult = useCallback((feedConfigs: RssFeedConfigBlock[], nextResult: RssFeedResultBlock) => {
+    setFeeds((previous) => {
+      const byFeedId = new Map(previous.map((feed) => [feed.feedId, feed]))
+      byFeedId.set(nextResult.feedId, nextResult)
+      return feedConfigs.map((config) => (
+        byFeedId.get(config.id) ?? {
+          feedId: config.id,
+          feedTitle: config.title,
+          items: [],
+          error: null,
+        }
+      ))
+    })
+  }, [])
+
   const loadFeeds = useCallback(async (isRefresh = false) => {
+    const requestId = rssLoadRequestIdRef.current + 1
+    rssLoadRequestIdRef.current = requestId
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
     try {
-      const [results, prefs] = await Promise.all([
-        fetchAllRssFeedsOrch(),
-        readRssFeedPreferencesOrch(),
-      ])
-      setFeeds(results)
+      const prefs = await readRssFeedPreferencesOrch()
+      if (requestId !== rssLoadRequestIdRef.current) return
+
       setPreferences(prefs)
       hasFeedsConfigured.current = prefs.feeds.length > 0
+      const feedConfigs = prefs.feeds
+      setFeeds(feedConfigs.map((config) => ({
+        feedId: config.id,
+        feedTitle: config.title,
+        items: [],
+        error: null,
+      })))
+      setLoadingFeedIds(new Set(feedConfigs.map((config) => config.id)))
+      setLoading(false)
+
+      await Promise.all(feedConfigs.map(async (config) => {
+        try {
+          const result = await fetchAndParseRssFeedOrch(config, {
+            onStoredResult: (storedResult) => {
+              if (requestId !== rssLoadRequestIdRef.current) return
+              mergeFeedResult(feedConfigs, storedResult)
+            },
+          })
+          if (requestId !== rssLoadRequestIdRef.current) return
+          mergeFeedResult(feedConfigs, result)
+        } finally {
+          if (requestId !== rssLoadRequestIdRef.current) return
+          setLoadingFeedIds((previous) => {
+            if (!previous.has(config.id)) return previous
+            const next = new Set(previous)
+            next.delete(config.id)
+            return next
+          })
+        }
+      }))
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [])
+  }, [mergeFeedResult])
 
   useEffect(() => {
     void loadFeeds()
@@ -288,6 +336,7 @@ export default function RssFeedPanelBlock({
           <GroupTreeRenderer
             tree={groupTree}
             feedResults={feeds}
+            loadingFeedIds={loadingFeedIds}
             expandedFeedIds={expandedFeedIds}
             expandedGroupIds={expandedGroupIds}
             toggleFeedCollapsed={toggleCollapsed}
@@ -306,6 +355,7 @@ export default function RssFeedPanelBlock({
           <FeedSection
             key={feed.feedId}
             feed={feed}
+            loading={loadingFeedIds.has(feed.feedId)}
             collapsed={!expandedFeedIds.has(feed.feedId)}
             toggleCollapsed={toggleCollapsed}
             setFocusedFeedId={setFocusedFeedId}
@@ -448,6 +498,7 @@ function PanelHeader({
 function GroupTreeRenderer({
   tree,
   feedResults,
+  loadingFeedIds,
   expandedFeedIds,
   expandedGroupIds,
   toggleFeedCollapsed,
@@ -462,6 +513,7 @@ function GroupTreeRenderer({
 }: {
   tree: RssFeedGroupTreeNodeBlock[]
   feedResults: RssFeedResultBlock[]
+  loadingFeedIds: Set<string>
   expandedFeedIds: Set<string>
   expandedGroupIds: Set<string>
   toggleFeedCollapsed: (feedId: string) => void
@@ -494,6 +546,7 @@ function GroupTreeRenderer({
                   <FeedSection
                     key={feed.feedId}
                     feed={feed}
+                    loading={loadingFeedIds.has(feed.feedId)}
                     collapsed={!expandedFeedIds.has(feed.feedId)}
                     toggleCollapsed={toggleFeedCollapsed}
                     setFocusedFeedId={setFocusedFeedId}
@@ -510,6 +563,7 @@ function GroupTreeRenderer({
                 <GroupTreeRenderer
                   tree={node.children}
                   feedResults={feedResults}
+                  loadingFeedIds={loadingFeedIds}
                   expandedFeedIds={expandedFeedIds}
                   expandedGroupIds={expandedGroupIds}
                   toggleFeedCollapsed={toggleFeedCollapsed}
@@ -558,6 +612,7 @@ function GroupTreeRenderer({
                     <FeedSection
                       key={feed.feedId}
                       feed={feed}
+                      loading={loadingFeedIds.has(feed.feedId)}
                       collapsed={!expandedFeedIds.has(feed.feedId)}
                       toggleCollapsed={toggleFeedCollapsed}
                       setFocusedFeedId={setFocusedFeedId}
@@ -574,6 +629,7 @@ function GroupTreeRenderer({
                   <GroupTreeRenderer
                     tree={node.children}
                     feedResults={feedResults}
+                    loadingFeedIds={loadingFeedIds}
                     expandedFeedIds={expandedFeedIds}
                     expandedGroupIds={expandedGroupIds}
                     toggleFeedCollapsed={toggleFeedCollapsed}
@@ -602,6 +658,7 @@ function GroupTreeRenderer({
 
 function FeedSection({
   feed,
+  loading,
   collapsed,
   toggleCollapsed,
   setFocusedFeedId,
@@ -613,6 +670,7 @@ function FeedSection({
   depth,
 }: {
   feed: RssFeedResultBlock
+  loading: boolean
   collapsed: boolean
   toggleCollapsed: (feedId: string) => void
   setFocusedFeedId: (id: string | null) => void
@@ -638,6 +696,9 @@ function FeedSection({
           : <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
         <Rss className="h-3.5 w-3.5 shrink-0 text-orange-400" />
         <span className="min-w-0 flex-1 truncate font-medium">{feed.feedTitle}</span>
+        {loading && (
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+        )}
         {unread > 0 && (
           <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
             {unread}
@@ -663,7 +724,7 @@ function FeedSection({
       ))}
       {!collapsed && feed.items.length === 0 && !feed.error && (
         <div className="border-b border-border/40 px-3 py-3 text-center text-[11px] text-muted-foreground">
-          No items.
+          {loading ? 'Loading feed...' : 'No items.'}
         </div>
       )}
     </div>

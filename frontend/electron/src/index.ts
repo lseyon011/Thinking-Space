@@ -23,6 +23,10 @@ import {
   readAzureTokenBlock,
 } from './lego_blocks/aiCredentialBlock';
 import {
+  activateCodexProfileBlock,
+  listCodexProfilesBlock,
+} from './lego_blocks/codexProfileBlock';
+import {
   clearWebullCredentialsBlock,
   readWebullAccessTokenBlock,
   readWebullCredentialStatusBlock,
@@ -158,33 +162,50 @@ app.commandLine.appendSwitch('enable-features', 'OverscrollHistoryNavigation');
     ].filter(p => fs.existsSync(p));
 
     for (const chromeApp of chromeCandidates) {
-      const versionsDir = path.join(chromeApp, 'Contents', 'Versions');
-      if (!fs.existsSync(versionsDir)) continue;
+      const versionsDirCandidates = [
+        // Current Chrome layout on macOS.
+        path.join(chromeApp, 'Contents', 'Frameworks', 'Google Chrome Framework.framework', 'Versions'),
+        // Older layout kept as a fallback.
+        path.join(chromeApp, 'Contents', 'Versions'),
+      ].filter(dir => fs.existsSync(dir));
 
-      const versions = fs.readdirSync(versionsDir)
-        .filter(v => /^\d+\./.test(v))
-        .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+      for (const versionsDir of versionsDirCandidates) {
+        const versions = fs.readdirSync(versionsDir)
+          .filter(v => /^\d+\./.test(v))
+          .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
 
-      for (const ver of versions) {
-        for (const arch of archCandidates) {
-          const cdmDir = path.join(
-            versionsDir, ver,
-            'Google Chrome Framework.framework', 'Libraries',
-            'WidevineCdm', '_platform_specific', arch,
-          );
-          const cdmLib = path.join(cdmDir, 'libwidevinecdm.dylib');
-          if (!fs.existsSync(cdmLib)) continue;
+        for (const ver of versions) {
+          const widevineRootCandidates = [
+            path.join(versionsDir, ver, 'Libraries', 'WidevineCdm'),
+            path.join(versionsDir, ver, 'Google Chrome Framework.framework', 'Libraries', 'WidevineCdm'),
+          ].filter(dir => fs.existsSync(dir));
 
-          let cdmVersion = ver;
-          try {
-            const manifest = JSON.parse(fs.readFileSync(path.join(cdmDir, 'manifest.json'), 'utf-8')) as { version?: string };
-            if (typeof manifest.version === 'string') cdmVersion = manifest.version;
-          } catch { /* use Chrome version as fallback */ }
+          for (const widevineRoot of widevineRootCandidates) {
+            for (const arch of archCandidates) {
+              const cdmLib = path.join(
+                widevineRoot,
+                '_platform_specific',
+                arch,
+                'libwidevinecdm.dylib',
+              );
+              if (!fs.existsSync(cdmLib)) continue;
 
-          app.commandLine.appendSwitch('widevine-cdm-path', cdmLib);
-          app.commandLine.appendSwitch('widevine-cdm-version', cdmVersion);
-          if (electronIsDev) console.log(`[widevine] loaded ${cdmLib} v${cdmVersion}`);
-          return; // found — stop searching
+              let cdmVersion = ver;
+              try {
+                const manifest = JSON.parse(
+                  fs.readFileSync(path.join(widevineRoot, 'manifest.json'), 'utf-8'),
+                ) as { version?: string };
+                if (typeof manifest.version === 'string') cdmVersion = manifest.version;
+              } catch {
+                /* use Chrome version as fallback */
+              }
+
+              app.commandLine.appendSwitch('widevine-cdm-path', cdmLib);
+              app.commandLine.appendSwitch('widevine-cdm-version', cdmVersion);
+              if (electronIsDev) console.log(`[widevine] loaded ${cdmLib} v${cdmVersion}`);
+              return; // found — stop searching
+            }
+          }
         }
       }
     }
@@ -342,6 +363,14 @@ ipcMain.handle('terminal:detach', (_event, { id }: { id: string }) => {
 
 ipcMain.handle('terminal:reattach', (event, { id }: { id: string }) => {
   return reattachPtyBlock(id, event.sender.id);
+});
+
+ipcMain.handle('codex:profiles:list', (_event, siteIds: string[]) => {
+  return listCodexProfilesBlock(Array.isArray(siteIds) ? siteIds : []);
+});
+
+ipcMain.handle('codex:profiles:activate', (_event, siteId: string) => {
+  return activateCodexProfileBlock(siteId);
 });
 
 // =====================================================================

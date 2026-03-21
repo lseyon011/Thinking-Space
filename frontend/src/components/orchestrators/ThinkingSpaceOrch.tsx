@@ -396,7 +396,7 @@ export default function ThinkingSpaceOrch() {
 
   const handleExplorerMovePath = useCallback(async (
     sourcePath: string,
-    sourceKind: 'file' | 'folder',
+    _sourceKind: 'file' | 'folder',
     targetFolderPath: string,
   ): Promise<string> => {
     const nextPath = await moveVaultPathOrch(sourcePath, targetFolderPath)
@@ -426,8 +426,7 @@ export default function ThinkingSpaceOrch() {
       }
     }
 
-    // Preserve existing file-only behavior while also supporting folder moves.
-    if (sourceKind === 'file') return nextPath
+    dispatchFileOpRefresh()
     return nextPath
   }, [inlinePath, setInlinePathAndSyncUrl])
 

@@ -128,6 +128,47 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('terminal:detach', { id }),
   terminalReattach: (id: string): Promise<{ buffer: string } | null> =>
     ipcRenderer.invoke('terminal:reattach', { id }),
+  codexProfilesList: (siteIds: string[]): Promise<{
+    activeHomePath: string
+    launchctlHomePath: string | null
+    profileRootPath: string
+    profiles: Array<{
+      siteId: string
+      profileId: string
+      homePath: string
+      active: boolean
+      exists: boolean
+      hasAuthFile: boolean
+      accountId: string | null
+      authMode: string | null
+      lastRefresh: string | null
+      expiresAt: string | null
+      authFileUpdatedAt: string | null
+      launchctlMatches: boolean
+      error?: string
+    }>
+  }> => ipcRenderer.invoke('codex:profiles:list', siteIds),
+  codexProfileActivate: (siteId: string): Promise<{
+    activeHomePath: string
+    launchctlHomePath: string | null
+    launchctlApplied: boolean
+    warning: string | null
+    profile: {
+      siteId: string
+      profileId: string
+      homePath: string
+      active: boolean
+      exists: boolean
+      hasAuthFile: boolean
+      accountId: string | null
+      authMode: string | null
+      lastRefresh: string | null
+      expiresAt: string | null
+      authFileUpdatedAt: string | null
+      launchctlMatches: boolean
+      error?: string
+    }
+  }> => ipcRenderer.invoke('codex:profiles:activate', siteId),
   onTerminalData: (id: string, handler: (data: string) => void) => {
     const channel = 'terminal:data';
     const listener = (_: unknown, payload: { id: string; data: string }) => {

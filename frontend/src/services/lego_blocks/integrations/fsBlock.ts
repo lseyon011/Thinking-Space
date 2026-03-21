@@ -117,6 +117,47 @@ interface ElectronAPI {
   terminalInput?(id: string, data: string): Promise<void>
   terminalResize?(id: string, cols: number, rows: number): Promise<void>
   terminalKill?(id: string): Promise<void>
+  codexProfilesList?(siteIds: string[]): Promise<{
+    activeHomePath: string
+    launchctlHomePath: string | null
+    profileRootPath: string
+    profiles: Array<{
+      siteId: string
+      profileId: string
+      homePath: string
+      active: boolean
+      exists: boolean
+      hasAuthFile: boolean
+      accountId: string | null
+      authMode: string | null
+      lastRefresh: string | null
+      expiresAt: string | null
+      authFileUpdatedAt: string | null
+      launchctlMatches: boolean
+      error?: string
+    }>
+  }>
+  codexProfileActivate?(siteId: string): Promise<{
+    activeHomePath: string
+    launchctlHomePath: string | null
+    launchctlApplied: boolean
+    warning: string | null
+    profile: {
+      siteId: string
+      profileId: string
+      homePath: string
+      active: boolean
+      exists: boolean
+      hasAuthFile: boolean
+      accountId: string | null
+      authMode: string | null
+      lastRefresh: string | null
+      expiresAt: string | null
+      authFileUpdatedAt: string | null
+      launchctlMatches: boolean
+      error?: string
+    }
+  }>
   onTerminalData?(id: string, handler: (data: string) => void): () => void
   onTerminalExit?(id: string, handler: (exitCode: number) => void): () => void
   read(vaultRoot: string, relPath: string): Promise<string>
@@ -377,9 +418,23 @@ class WebVaultFS implements VaultFS {
   }
 
   async exists(path: string): Promise<boolean> {
+    if (!path) return true
+
+    const normalized = path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    if (!normalized) return true
+
+    const slashIndex = normalized.lastIndexOf('/')
+    const parent = slashIndex >= 0 ? normalized.slice(0, slashIndex) : ''
+    const name = slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized
+    if (!name) return true
+
+    const { Filesystem, Directory } = await import('@capacitor/filesystem')
     try {
-      await this.stat(path)
-      return true
+      const parentOpts = this.isAbsolute
+        ? { path: parent ? this.resolve(parent) : this.resolve('') }
+        : { path: parent ? this.resolve(parent) : this.vaultRoot, directory: Directory.Documents }
+      const listed = await Filesystem.readdir(parentOpts)
+      return listed.files.some((entry) => entry.name === name)
     } catch {
       return false
     }
@@ -561,6 +616,8 @@ class CapacitorVaultFS implements VaultFS {
 
   async list(path: string): Promise<ListedFiles> {
     const { Filesystem } = await import('@capacitor/filesystem')
+    const exists = await this.exists(path).catch(() => false)
+    if (!exists) return { files: [], folders: [] }
     const opts = await this.fsOpts(path)
     const result = await Filesystem.readdir(opts)
     const files: string[] = []
@@ -638,9 +695,23 @@ class CapacitorVaultFS implements VaultFS {
   }
 
   async exists(path: string): Promise<boolean> {
+    if (!path) return true
+
+    const normalized = path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    if (!normalized) return true
+
+    const slashIndex = normalized.lastIndexOf('/')
+    const parent = slashIndex >= 0 ? normalized.slice(0, slashIndex) : ''
+    const name = slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized
+    if (!name) return true
+
+    const { Filesystem, Directory } = await import('@capacitor/filesystem')
     try {
-      await this.stat(path)
-      return true
+      const parentOpts = this.isAbsolute
+        ? { path: parent ? this.resolve(parent) : this.resolve('') }
+        : { path: parent ? this.resolve(parent) : this.vaultRoot, directory: Directory.Documents }
+      const listed = await Filesystem.readdir(parentOpts)
+      return listed.files.some((entry) => entry.name === name)
     } catch {
       return false
     }

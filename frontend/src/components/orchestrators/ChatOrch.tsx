@@ -33,6 +33,9 @@ import {
   CHAT_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK,
   dispatchChatSidebarChromeStateBlock,
 } from '@/services/lego_blocks/units/chatSidebarChromeBlock'
+import CodexUsageDashboardOrch from '@/components/orchestrators/CodexUsageDashboardOrch'
+
+const USAGE_DASHBOARD_SITE_ID_BLOCK = '__usage_dashboard__'
 
 interface ChatTimelineMessage extends ChatMessage {
   id: string
@@ -54,7 +57,11 @@ function formatTimestamp(value?: string): string | null {
   return d.toLocaleString()
 }
 
-export default function ChatOrch() {
+interface ChatOrchProps {
+  active?: boolean
+}
+
+export default function ChatOrch({ active = true }: ChatOrchProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
   const [providers, setProviders] = useState<AiProviderStatus[]>([])
@@ -73,7 +80,7 @@ export default function ChatOrch() {
   // Sections start expanded by default (both IDs pre-seeded)
   const { isExpanded: isSectionExpanded, toggle: toggleSection } = useExpandedSetBlock(
     'ltm-chat-expanded-sections',
-    ['api', 'web'],
+    ['tools', 'api', 'web'],
   )
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -125,11 +132,25 @@ export default function ChatOrch() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const selectedWebsiteForChrome = aiWebsites.find(s => s.id === selectedWebsiteId) ?? null
+  const dashboardSelected = selectedWebsiteId === USAGE_DASHBOARD_SITE_ID_BLOCK
+  const selectedWebsiteForChrome = dashboardSelected
+    ? null
+    : aiWebsites.find(s => s.id === selectedWebsiteId) ?? null
 
   // Sync chrome state into the top chrome
   useEffect(() => {
-    const websiteName = selectedWebsiteForChrome?.name
+    if (!active) {
+      dispatchChatSidebarChromeStateBlock({
+        enabled: false,
+        collapsed: false,
+        headerVisible: true,
+        showHeaderToggle: false,
+        label: 'AI',
+      })
+      return
+    }
+
+    const websiteName = dashboardSelected ? 'Usage Dashboard' : selectedWebsiteForChrome?.name
     const providerLabel = selectedProvider
       ? providers.find(p => p.provider === selectedProvider)?.label ?? selectedProvider
       : null
@@ -140,12 +161,11 @@ export default function ChatOrch() {
       enabled: true,
       collapsed: sidebarCollapsed,
       headerVisible: webviewHeaderVisible,
-      showHeaderToggle: selectedWebsiteId !== null,
+      showHeaderToggle: selectedWebsiteForChrome !== null,
       label,
     })
-  }, [selectedWebsiteId, sidebarCollapsed, webviewHeaderVisible, selectedWebsiteForChrome, selectedProvider, providers])
+  }, [active, dashboardSelected, selectedWebsiteForChrome, sidebarCollapsed, webviewHeaderVisible, selectedProvider, providers])
 
-  // Clean up chrome state when unmounting
   useEffect(() => {
     return () => {
       dispatchChatSidebarChromeStateBlock({
@@ -158,24 +178,24 @@ export default function ChatOrch() {
     }
   }, [])
 
-  // Listen for toggle dispatched from the top chrome button
   useEffect(() => {
+    if (!active) return
     const handler = () => setSidebarCollapsed(prev => !prev)
     window.addEventListener(CHAT_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
     return () => window.removeEventListener(CHAT_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
-  }, [])
+  }, [active])
 
-  // Listen for header toggle from the top chrome button
   useEffect(() => {
+    if (!active) return
     const handler = () => setWebviewHeaderVisible(prev => !prev)
     window.addEventListener(CHAT_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
     return () => window.removeEventListener(CHAT_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
-  }, [])
+  }, [active])
 
   const handleToggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), [])
   useIosSidebarSwipeBlock({
-    isIos,
-    isOpen: !sidebarCollapsed,
+    isIos: isIos && active,
+    isOpen: active && !sidebarCollapsed,
     keyboardVisible: layout.keyboardVisible,
     onToggle: handleToggleSidebar,
   })
@@ -291,6 +311,34 @@ export default function ChatOrch() {
           ) : (
             <>
               {/* API providers */}
+              <div>
+                <SidebarGroupHeaderBlock
+                  name="Tools"
+                  expanded={isSectionExpanded('tools')}
+                  onToggle={() => toggleSection('tools')}
+                  badge={1}
+                />
+                {isSectionExpanded('tools') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedWebsiteId(USAGE_DASHBOARD_SITE_ID_BLOCK)
+                      setSelectedProvider(null)
+                    }}
+                    className={cn(
+                      'flex w-full items-center border-b border-border/40 px-3 py-2.5 text-left text-xs transition-colors',
+                      dashboardSelected
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-foreground hover:bg-muted/40',
+                    )}
+                    style={{ paddingLeft: '24px' }}
+                  >
+                    <span className="truncate">Usage Dashboard</span>
+                  </button>
+                )}
+              </div>
+
+              {/* API providers */}
               {providers.length > 0 && (
                 <div>
                   <SidebarGroupHeaderBlock
@@ -373,18 +421,23 @@ export default function ChatOrch() {
       <section className="relative min-h-0 flex-1 overflow-hidden">
         {/* Web AI site — key forces fresh webview mount per site (Electron ignores
              partition changes on an already-mounted webview element). */}
-        {selectedWebsiteForChrome && (
+        {dashboardSelected && (
+          <CodexUsageDashboardOrch />
+        )}
+
+        {!dashboardSelected && selectedWebsiteForChrome && (
           <UrlDocumentBlock
             key={selectedWebsiteForChrome.id}
             url={selectedWebsiteForChrome.url}
             partition={selectedWebsiteForChrome.partition}
             hideHeader={!webviewHeaderVisible}
+            suspended={!active}
             className="h-full"
           />
         )}
 
         {/* API chat — only shown when no web site is active */}
-        {!selectedWebsiteForChrome && (
+        {!dashboardSelected && !selectedWebsiteForChrome && (
           <div className="flex h-full flex-col px-4 py-4">
             {/* Model / think controls */}
             {selectedProvider && (

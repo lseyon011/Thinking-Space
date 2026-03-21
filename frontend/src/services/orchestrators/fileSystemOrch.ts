@@ -741,14 +741,6 @@ export async function getVaultPathKind(path: string): Promise<VaultPathKind> {
   if (!normalized) return 'folder'
 
   const fs = getVaultFS()
-  try {
-    const stat = await fs.stat(normalized)
-    if (stat.isDirectory === true) return 'folder'
-    if (stat.isDirectory === false) return 'file'
-  } catch {
-    // fall through to parent listing fallback
-  }
-
   const { parent, name } = splitParent(normalized)
   try {
     const listed = await fs.list(parent)

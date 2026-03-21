@@ -5,7 +5,7 @@ import {
   setupCapacitorElectronPlugins,
 } from '@capacitor-community/electron';
 import chokidar from 'chokidar';
-import type { MenuItemConstructorOptions } from 'electron';
+import type { MenuItemConstructorOptions, Session } from 'electron';
 import { app, BrowserWindow, Menu, MenuItem, nativeImage, Tray, session, shell } from 'electron';
 import electronIsDev from 'electron-is-dev';
 import electronServe from 'electron-serve';
@@ -508,6 +508,27 @@ export class ElectronCapacitorApp {
 // The partition used by all <webview> tags in the web tab.
 // Must match LINK_WEBVIEW_PARTITION in UrlDocumentBlock.tsx.
 const WEBVIEW_PARTITION = 'persist:thinking-space-links';
+const WEBVIEW_ALLOWED_PERMISSIONS = new Set([
+  'media',
+  'mediaKeySystem',
+  'notifications',
+  'fullscreen',
+  'pointerLock',
+]);
+const configuredWebviewSessions = new WeakSet<Session>();
+
+function configureWebviewSessionPermissions(targetSession: Session): void {
+  if (configuredWebviewSessions.has(targetSession)) return;
+  configuredWebviewSessions.add(targetSession);
+
+  targetSession.setPermissionCheckHandler((_webContents, permission) => {
+    return WEBVIEW_ALLOWED_PERMISSIONS.has(permission);
+  });
+
+  targetSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(WEBVIEW_ALLOWED_PERMISSIONS.has(permission));
+  });
+}
 
 /**
  * Forward the native macOS 2-finger swipe gesture (left/right) to the
@@ -526,7 +547,7 @@ export function setupWindowSwipeNavigation(win: BrowserWindow): void {
 }
 
 /**
- * Allow media-related permissions for the shared webview partition so that
+ * Allow media-related permissions for webview sessions so that
  * sites like Spotify (which use EME/Widevine via the mediaKeySystem API) and
  * YouTube can play audio/video without silent permission denials.
  *
@@ -534,10 +555,11 @@ export function setupWindowSwipeNavigation(win: BrowserWindow): void {
  * We deny:  geolocation, camera, microphone, and anything else.
  */
 export function setupWebviewSessionPermissions(): void {
-  const webviewSession = session.fromPartition(WEBVIEW_PARTITION);
-  webviewSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    const ALLOWED: string[] = ['media', 'mediaKeySystem', 'notifications', 'fullscreen', 'pointerLock'];
-    callback(ALLOWED.includes(permission));
+  configureWebviewSessionPermissions(session.fromPartition(WEBVIEW_PARTITION));
+
+  app.on('web-contents-created', (_event, webContents) => {
+    if (webContents.getType() !== 'webview') return;
+    configureWebviewSessionPermissions(webContents.session);
   });
 }
 

@@ -4,6 +4,7 @@ import {
   Compass,
   FolderKanban,
   GitBranch,
+  KeyRound,
   MessageSquare,
   PlusSquare,
   Sparkles,
@@ -22,6 +23,7 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/new-thought', label: 'New Note', icon: PlusSquare },
   { to: '/git-insights', label: 'Insights', icon: GitBranch },
   { to: '/chat', label: 'AI', icon: MessageSquare },
+  { to: '/password-manager', label: 'Passwords', icon: KeyRound },
   { to: '/thinking-organizer', label: 'Thinking Organizer', icon: FolderKanban, activePaths: ['/file-organizer'] },
 ]
 

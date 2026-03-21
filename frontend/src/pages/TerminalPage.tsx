@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import TerminalBlock, { releaseTerminalSession } from '@/components/lego_blocks/integrations/TerminalBlock'
 import { isElectron } from '@/services/orchestrators/runtimeOrch'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 interface TerminalTab {
   id: string
@@ -19,7 +19,15 @@ let tabCounter = 1
 let terminalPageSessionState: TerminalPageSessionState | null = null
 
 function createTab(): TerminalTab {
-  return { id: `tab-${Date.now()}-${tabCounter++}`, label: `Terminal ${tabCounter - 1}`, exitCode: null }
+  return createNamedTab()
+}
+
+function createNamedTab(label?: string): TerminalTab {
+  return {
+    id: `tab-${Date.now()}-${tabCounter++}`,
+    label: label?.trim() || `Terminal ${tabCounter - 1}`,
+    exitCode: null,
+  }
 }
 
 function getInitialTerminalPageSessionState(): TerminalPageSessionState {
@@ -47,7 +55,9 @@ export default function TerminalPage() {
   const [defaultCwd, setDefaultCwd] = useState<string | undefined>()
   const [editModeStatus, setEditModeStatus] = useState<EditModeStatus>('unknown')
   const initialized = useRef(false)
+  const handledLaunchNonceRef = useRef<string | null>(null)
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     if (tabs.length === 0) return
@@ -72,10 +82,24 @@ export default function TerminalPage() {
   }, [])
 
   const addTab = () => {
-    const tab = createTab()
+    const tab = createNamedTab()
     setTabs(prev => [...prev, tab])
     setActiveTabId(tab.id)
   }
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const nonce = params.get('nonce')
+    const requestedProfile = params.get('codexProfile')
+    if (!nonce || !requestedProfile || handledLaunchNonceRef.current === nonce) return
+
+    handledLaunchNonceRef.current = nonce
+    const requestedLabel = params.get('label')?.trim()
+    const tab = createNamedTab(requestedLabel ? `Codex · ${requestedLabel}` : 'Codex Terminal')
+    setTabs(prev => [...prev, tab])
+    setActiveTabId(tab.id)
+    navigate('/terminal', { replace: true })
+  }, [location.search, navigate])
 
   const closeTab = (id: string) => {
     // Kill the PTY for this tab before removing it

@@ -17,15 +17,7 @@ import {
   readCachedUserProfileBlock,
 } from '@/services/lego_blocks/units/userProfileBlock'
 import { ensureUserProfileOrch } from '@/services/orchestrators/userProfileOrch'
-import { registerPlugin } from '@capacitor/core'
-
-// Native folder picker plugin (defined in AppDelegate.swift)
-interface FolderPickerPluginDef {
-  pickFolder(): Promise<{ url: string; accessing: boolean }>
-  restoreBookmark(): Promise<{ url: string; accessing: boolean }>
-}
-
-const FolderPicker = registerPlugin<FolderPickerPluginDef>('FolderPicker')
+import { folderPickerPluginBlock } from '@/services/lego_blocks/units/folderPickerPluginBlock'
 
 interface Props {
   onComplete: (vaultRoot: string) => void
@@ -84,7 +76,7 @@ export default function VaultSetup({ onComplete }: Props) {
     setSelecting(true)
     setError(null)
     try {
-      const result = await FolderPicker.pickFolder()
+      const result = await folderPickerPluginBlock.pickFolder()
       // Store the absolute path — CapacitorVaultFS will use it directly
       // Prefix with cap-picker: so we know it's a picker-selected absolute path
       const vaultMarker = `cap-picker:${result.url}`

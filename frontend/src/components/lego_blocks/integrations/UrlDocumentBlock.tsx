@@ -1,17 +1,46 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ExternalLink, Globe, Loader2, RotateCw, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useElectronWebviewConsoleMessageBlock } from '@/components/lego_blocks/hooks/shared/useElectronWebviewConsoleMessageBlock'
+import { useElectronWebviewLoadErrorBlock } from '@/components/lego_blocks/hooks/shared/useElectronWebviewLoadErrorBlock'
+import PasswordAutofillOverlayBlock from '@/components/lego_blocks/integrations/PasswordAutofillOverlayBlock'
 import { readUrlShortcutOrch } from '@/services/orchestrators/urlShortcutOrch'
 import { isValidHttpUrlBlock } from '@/services/lego_blocks/units/urlShortcutBlock'
 import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
+import { createPasswordVaultEntryIdOrch } from '@/services/orchestrators/passwordManagerOrch'
+import {
+  getPasswordVaultSessionSnapshotOrch,
+  savePasswordVaultSessionVaultOrch,
+  subscribePasswordVaultSessionOrch,
+  unlockPasswordVaultSessionOrch,
+} from '@/services/orchestrators/passwordManagerSessionOrch'
+import type { PasswordVaultEntryBlock } from '@/services/orchestrators/passwordManagerOrch'
 import {
   openInlineWebViewBlock,
   closeInlineWebViewBlock,
   updateInlineWebViewFrameBlock,
 } from '@/services/lego_blocks/units/inlineWebViewBlock'
-import { logError } from '@/services/lego_blocks/units/debugLogBlock'
+import {
+  derivePasswordEntryTitleBlock,
+  findMatchingPasswordEntriesBlock,
+  findPasswordSaveTargetBlock,
+  type PasswordAutofillWebContextBlock,
+} from '@/services/lego_blocks/units/passwordAutofillMatchBlock'
+import {
+  buildPasswordAutofillFillScriptBlock,
+  probePasswordAutofillContextBlock,
+} from '@/services/lego_blocks/units/passwordAutofillWebviewBlock'
 import { cn } from '@/lib/utils'
 
 const LINK_WEBVIEW_PARTITION = 'persist:thinking-space-links'
+
+interface ElectronWebviewElementBlock extends HTMLElement {
+  canGoBack?: () => boolean
+  goBack?: () => void
+  goForward?: () => void
+  reload?: () => void
+  executeJavaScript?: (script: string, userGesture?: boolean) => Promise<unknown>
+}
 
 interface UrlDocumentBlockProps {
   /** Path to a .url file, OR a direct URL to display. */
@@ -38,14 +67,15 @@ function UrlDocumentBlock({
   hideHeader,
   suspended,
 }: UrlDocumentBlockProps) {
+  const navigate = useNavigate()
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(directUrl ?? null)
   const [loading, setLoading] = useState(!directUrl)
   const [error, setError] = useState<string | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [canGoBack, setCanGoBack] = useState(false)
   const webviewRef = useRef<HTMLElement | null>(null)
   const contentAreaRef = useRef<HTMLDivElement | null>(null)
+  const passwordProbeInFlightRef = useRef(false)
   const isElectronRuntime = Boolean(window.electronAPI?.isElectron)
   // InlineWebView is iOS-only; exclude Electron even though Capacitor reports isNativePlatform() there
   const isCapacitorRuntime = isCapacitorNative() && !isElectronRuntime
@@ -86,6 +116,17 @@ function UrlDocumentBlock({
     () => resolvedUrl !== null && isValidHttpUrlBlock(resolvedUrl),
     [resolvedUrl],
   )
+  useElectronWebviewLoadErrorBlock({
+    enabled: isElectronRuntime && isTrusted,
+    webviewRef,
+    resolvedUrl,
+    logSource: 'webview',
+  })
+  useElectronWebviewConsoleMessageBlock({
+    enabled: isElectronRuntime && isTrusted,
+    webviewRef,
+    resolvedUrl,
+  })
 
   // Strip Electron/app tokens so webview looks like a plain Chrome browser to sites like Gmail.
   const webviewUserAgent = useMemo(() => {
@@ -97,10 +138,58 @@ function UrlDocumentBlock({
   }, [isElectronRuntime])
 
   const displayUrl = resolvedUrl ?? ''
+  const [passwordSession, setPasswordSession] = useState(() => getPasswordVaultSessionSnapshotOrch())
+  const [passwordAutofillContext, setPasswordAutofillContext] = useState<PasswordAutofillWebContextBlock | null>(null)
+  const [passwordAutofillUnlockInput, setPasswordAutofillUnlockInput] = useState('')
+  const [passwordAutofillBusyAction, setPasswordAutofillBusyAction] = useState<'unlock' | 'fill' | 'save' | null>(null)
+  const [passwordAutofillError, setPasswordAutofillError] = useState<string | null>(null)
   const displayTitle = useMemo(() => {
     try { return new URL(displayUrl).hostname }
     catch { return 'Website' }
   }, [displayUrl])
+  const passwordAutofillEnabled = isElectronRuntime && isTrusted && !suspended
+  const passwordAutofillMatches = useMemo(
+    () => passwordAutofillContext && passwordSession.vaultState
+      ? findMatchingPasswordEntriesBlock(passwordSession.vaultState.vault.entries, passwordAutofillContext)
+      : [],
+    [passwordAutofillContext, passwordSession.vaultState],
+  )
+  const passwordAutofillSaveTarget = useMemo(
+    () => passwordAutofillContext && passwordSession.vaultState
+      ? findPasswordSaveTargetBlock(passwordSession.vaultState.vault.entries, passwordAutofillContext)
+      : null,
+    [passwordAutofillContext, passwordSession.vaultState],
+  )
+  const passwordAutofillCanSave = Boolean(
+    passwordSession.unlocked
+    && passwordAutofillContext
+    && passwordAutofillContext.passwordValue.trim(),
+  )
+  const passwordAutofillStyle = useMemo(() => {
+    const containerWidth = contentAreaRef.current?.clientWidth ?? 0
+    const containerHeight = contentAreaRef.current?.clientHeight ?? 0
+    const cardWidth = 320
+    const cardHeight = passwordSession.unlocked ? 260 : 220
+    const fallbackLeft = 16
+    const fallbackTop = 16
+    const rect = passwordAutofillContext?.rect
+    if (!rect || containerWidth <= 0 || containerHeight <= 0) {
+      return { left: fallbackLeft, top: fallbackTop }
+    }
+    const maxLeft = Math.max(fallbackLeft, containerWidth - cardWidth - 12)
+    const maxTop = Math.max(fallbackTop, containerHeight - cardHeight - 12)
+    return {
+      left: Math.min(Math.max(rect.left, fallbackLeft), maxLeft),
+      top: Math.min(Math.max(rect.bottom + 10, fallbackTop), maxTop),
+    }
+  }, [passwordAutofillContext, passwordSession.unlocked])
+
+  const getElectronWebviewBlock = useCallback((): ElectronWebviewElementBlock | null => {
+    if (!isElectronRuntime) return null
+    return webviewRef.current as ElectronWebviewElementBlock | null
+  }, [isElectronRuntime])
+
+  useEffect(() => subscribePasswordVaultSessionOrch(setPasswordSession), [])
 
   // iOS: close the native WKWebView immediately (before paint) when suspended so
   // it doesn't bleed over overlays/drawers that open on top of the content area.
@@ -131,41 +220,29 @@ function UrlDocumentBlock({
     }
   }, [isCapacitorRuntime, isTrusted, resolvedUrl, suspended])
 
-  // Webview error handling + back-state tracking (Electron only)
+  // Webview back-state tracking (Electron only)
   useEffect(() => {
-    setLoadError(null)
     setCanGoBack(false)
   }, [resolvedUrl])
 
   useEffect(() => {
     if (!isElectronRuntime || !isTrusted) return
-    const webview = webviewRef.current
+    const webview = getElectronWebviewBlock()
     if (!webview) return
 
-    const handleFailLoad = (event: unknown) => {
-      const ev = event as { errorCode?: number; errorDescription?: unknown; validatedURL?: string } | null
-      const errorCode = ev?.errorCode ?? 0
-      // ERR_ABORTED (-3) fires on normal navigation cancellations — not a real error
-      if (errorCode === -3) return
-      const description = String(ev?.errorDescription ?? 'Failed to load page.')
-      const failedUrl = ev?.validatedURL ?? resolvedUrl ?? ''
-      setLoadError(description)
-      logError(description, failedUrl ? `URL: ${failedUrl}` : undefined, 'webview')
-    }
-
     const updateCanGoBack = () => {
-      setCanGoBack(Boolean((webview as unknown as { canGoBack?: () => boolean }).canGoBack?.()))
+      setCanGoBack(Boolean(webview.canGoBack?.()))
     }
 
-    webview.addEventListener('did-fail-load', handleFailLoad as EventListener)
     webview.addEventListener('did-navigate', updateCanGoBack)
     webview.addEventListener('did-navigate-in-page', updateCanGoBack)
+    webview.addEventListener('did-finish-load', updateCanGoBack as EventListener)
     return () => {
-      webview.removeEventListener('did-fail-load', handleFailLoad as EventListener)
       webview.removeEventListener('did-navigate', updateCanGoBack)
       webview.removeEventListener('did-navigate-in-page', updateCanGoBack)
+      webview.removeEventListener('did-finish-load', updateCanGoBack as EventListener)
     }
-  }, [isElectronRuntime, isTrusted, resolvedUrl])
+  }, [getElectronWebviewBlock, isElectronRuntime, isTrusted])
 
   // macOS 2-finger swipe gesture forwarded from BrowserWindow 'swipe' event
   useEffect(() => {
@@ -173,24 +250,153 @@ function UrlDocumentBlock({
     const cleanup = (window.electronAPI as unknown as {
       onWebviewSwipe?: (cb: (dir: 'left' | 'right') => void) => () => void
     })?.onWebviewSwipe?.((direction) => {
-      const wv = webviewRef.current as unknown as { goBack?: () => void; goForward?: () => void } | null
+      const wv = getElectronWebviewBlock()
       if (direction === 'left') wv?.goBack?.()
       else wv?.goForward?.()
     })
     return cleanup
-  }, [isElectronRuntime])
+  }, [getElectronWebviewBlock, isElectronRuntime])
 
   const handleGoBack = useCallback(() => {
-    ;(webviewRef.current as unknown as { goBack?: () => void } | null)?.goBack?.()
-  }, [])
+    getElectronWebviewBlock()?.goBack?.()
+  }, [getElectronWebviewBlock])
 
   const handleReload = useCallback(() => {
     if (isElectronRuntime) {
-      ;(webviewRef.current as unknown as { reload?: () => void } | null)?.reload?.()
+      getElectronWebviewBlock()?.reload?.()
     } else {
       setReloadKey(k => k + 1)
     }
-  }, [isElectronRuntime])
+  }, [getElectronWebviewBlock, isElectronRuntime])
+
+  useEffect(() => {
+    if (!passwordAutofillEnabled) {
+      setPasswordAutofillContext(null)
+      setPasswordAutofillError(null)
+      return
+    }
+
+    let cancelled = false
+    const probe = async () => {
+      const webview = getElectronWebviewBlock()
+      if (!webview?.executeJavaScript || passwordProbeInFlightRef.current) return
+      passwordProbeInFlightRef.current = true
+      try {
+        const context = await probePasswordAutofillContextBlock(webview)
+        if (!cancelled) {
+          setPasswordAutofillContext(context)
+        }
+      } catch {
+        if (!cancelled) {
+          setPasswordAutofillContext(null)
+        }
+      } finally {
+        passwordProbeInFlightRef.current = false
+      }
+    }
+
+    const intervalId = window.setInterval(() => { void probe() }, 700)
+    const webview = getElectronWebviewBlock()
+    const handleLoad = () => {
+      setPasswordAutofillError(null)
+      void probe()
+    }
+    webview?.addEventListener('did-finish-load', handleLoad as EventListener)
+    webview?.addEventListener('did-navigate-in-page', handleLoad as EventListener)
+    void probe()
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      webview?.removeEventListener('did-finish-load', handleLoad as EventListener)
+      webview?.removeEventListener('did-navigate-in-page', handleLoad as EventListener)
+    }
+  }, [getElectronWebviewBlock, passwordAutofillEnabled, resolvedUrl])
+
+  const handlePasswordAutofillUnlock = useCallback(async () => {
+    const normalized = passwordAutofillUnlockInput.trim()
+    if (!normalized) {
+      setPasswordAutofillError('Enter your password vault passphrase.')
+      return
+    }
+    setPasswordAutofillBusyAction('unlock')
+    setPasswordAutofillError(null)
+    try {
+      await unlockPasswordVaultSessionOrch(normalized)
+      setPasswordAutofillUnlockInput('')
+    } catch (err) {
+      setPasswordAutofillError(err instanceof Error ? err.message : 'Failed to unlock passwords.')
+    } finally {
+      setPasswordAutofillBusyAction(null)
+    }
+  }, [passwordAutofillUnlockInput])
+
+  const handlePasswordAutofillFill = useCallback(async (entry: PasswordVaultEntryBlock) => {
+    const webview = getElectronWebviewBlock()
+    if (!webview?.executeJavaScript) return
+    setPasswordAutofillBusyAction('fill')
+    setPasswordAutofillError(null)
+    try {
+      const result = await webview.executeJavaScript(
+        buildPasswordAutofillFillScriptBlock({
+          username: entry.username,
+          password: entry.password,
+        }),
+        true,
+      )
+      if (!result) {
+        throw new Error('Could not fill the active login form.')
+      }
+    } catch (err) {
+      setPasswordAutofillError(err instanceof Error ? err.message : 'Failed to fill saved password.')
+    } finally {
+      setPasswordAutofillBusyAction(null)
+    }
+  }, [getElectronWebviewBlock])
+
+  const handlePasswordAutofillSave = useCallback(async () => {
+    if (!passwordSession.vaultState || !passwordAutofillContext) return
+    const password = passwordAutofillContext.passwordValue.trim()
+    if (!password) {
+      setPasswordAutofillError('Type a password in the site first.')
+      return
+    }
+
+    const now = new Date().toISOString()
+    const existing = passwordAutofillSaveTarget
+    const nextEntry: PasswordVaultEntryBlock = {
+      id: existing?.id ?? createPasswordVaultEntryIdOrch(),
+      title: existing?.title ?? derivePasswordEntryTitleBlock(
+        passwordAutofillContext.pageTitle,
+        passwordAutofillContext.hostname,
+      ),
+      username: passwordAutofillContext.usernameValue.trim(),
+      password,
+      website: passwordAutofillContext.origin || passwordAutofillContext.url,
+      notes: existing?.notes,
+      tags: existing?.tags ?? [],
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    }
+
+    const nextEntries = existing
+      ? passwordSession.vaultState.vault.entries.map((entry) => entry.id === existing.id ? nextEntry : entry)
+      : [nextEntry, ...passwordSession.vaultState.vault.entries]
+
+    setPasswordAutofillBusyAction('save')
+    setPasswordAutofillError(null)
+    try {
+      await savePasswordVaultSessionVaultOrch({
+        ...passwordSession.vaultState.vault,
+        updatedAt: now,
+        entries: nextEntries,
+      })
+    } catch (err) {
+      setPasswordAutofillError(err instanceof Error ? err.message : 'Failed to save password.')
+    } finally {
+      setPasswordAutofillBusyAction(null)
+    }
+  }, [passwordAutofillContext, passwordAutofillSaveTarget, passwordSession.vaultState])
 
   const openExternal = useCallback(() => {
     if (!resolvedUrl) return
@@ -272,11 +478,6 @@ function UrlDocumentBlock({
 
       {/* Content area */}
       <div ref={contentAreaRef} className="relative min-h-0 flex-1 overflow-hidden">
-        {loadError && (
-          <div className="absolute left-3 right-3 top-3 z-10 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            {loadError}
-          </div>
-        )}
         {isElectronRuntime ? (
           <webview
             ref={webviewRef}
@@ -302,6 +503,36 @@ function UrlDocumentBlock({
             className="absolute inset-0 bg-background"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           />
+        )}
+        {passwordAutofillEnabled && passwordAutofillContext && (
+          <div className="pointer-events-none absolute inset-0 z-20">
+            <div
+              className="pointer-events-auto absolute"
+              style={{
+                left: `${passwordAutofillStyle.left}px`,
+                top: `${passwordAutofillStyle.top}px`,
+              }}
+            >
+              <PasswordAutofillOverlayBlock
+                hostname={passwordAutofillContext.hostname || displayTitle}
+                locked={!passwordSession.unlocked}
+                unlockPassphrase={passwordAutofillUnlockInput}
+                onUnlockPassphraseChange={setPasswordAutofillUnlockInput}
+                onUnlock={() => { void handlePasswordAutofillUnlock() }}
+                unlocking={passwordAutofillBusyAction === 'unlock'}
+                matches={passwordAutofillMatches}
+                onFill={(entry) => { void handlePasswordAutofillFill(entry) }}
+                filling={passwordAutofillBusyAction === 'fill'}
+                canSave={passwordAutofillCanSave}
+                saveLabel={passwordAutofillSaveTarget ? 'Update' : 'Save'}
+                onSave={() => { void handlePasswordAutofillSave() }}
+                saving={passwordAutofillBusyAction === 'save'}
+                onOpenManager={() => navigate('/password-manager')}
+                usernameValue={passwordAutofillContext.usernameValue}
+                error={passwordAutofillError}
+              />
+            </div>
+          </div>
         )}
       </div>
     </div>

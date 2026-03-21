@@ -8,7 +8,10 @@ export interface TranscriptOptions {
 const HEADING_LINE_RE = /^(?:\d{1,2}:)?\d{1,2}:\d{2}\s+.+$/
 const TIMESTAMP_LINE_RE = /^\(([^)]+)\):\s*(.*)$/
 const TIMESTAMP_ONLY_LINE_RE = /^((?:\d{1,2}:)?\d{1,2}:\d{2})\s*$/
+const COMPACT_TIMESTAMP_LINE_RE = /^((?:\d{1,2}:)?\d{1,2}:\d{2})(.*)$/
 const INLINE_TIMESTAMP_RE = /^\s*(?:\(\s*[^)]+\s*\)|\d{1,2}:\d{2}:\d{2}|\d{1,2}:\d{2})\s*:?\s*/
+const COMPACT_TIMESTAMP_FRAGMENT_RE =
+  /(^|[\s([{"'“‘.,!?;:-])(?:((?:\d{1,2}:)?\d{1,2}:\d{2})(?:\d{1,4}\s*seconds?)?)(?=[A-Za-z])/g
 const TIMESTAMP_ANY_RE =
   /\(\s*\d+\s*h\s*\d+\s*m\s*\d+\s*s\s*\)|\(\s*\d+\s*m\s*\d+\s*s\s*\)|\(\s*\d+\s*s\s*\)|\b\d{1,2}:\d{2}:\d{2}\b|\b\d{1,2}:\d{2}\b/g
 
@@ -39,6 +42,32 @@ function parseTimeToSeconds(value: string): number | null {
   if (/^\d+$/.test(v)) return parseInt(v, 10)
 
   return null
+}
+
+function stripRepeatedDurationPrefix(raw: string): string {
+  let next = raw.replace(/^[\s:,-]+/, '')
+  const repeatedDurationMatch = next.match(/^(\d{1,4})(?:\s*)seconds?/i)
+  if (repeatedDurationMatch) {
+    next = next.slice(repeatedDurationMatch[0].length)
+  }
+  return next.replace(/^[\s:,-]+/, '')
+}
+
+function parseCompactTimestampLine(line: string): { timestamp: number | null; remainder: string } | null {
+  const match = line.match(COMPACT_TIMESTAMP_LINE_RE)
+  if (!match) return null
+  const timestamp = parseTimeToSeconds(match[1] ?? '')
+  if (timestamp === null) return null
+  return {
+    timestamp,
+    remainder: stripRepeatedDurationPrefix(match[2] ?? ''),
+  }
+}
+
+function stripTimestampFragments(raw: string): string {
+  let next = raw.replace(COMPACT_TIMESTAMP_FRAGMENT_RE, '$1')
+  next = next.replace(TIMESTAMP_ANY_RE, '')
+  return next.replace(/\s{2,}/g, ' ').trim()
 }
 
 // Used for future features (currently unused, kept for parity with Python)
@@ -88,7 +117,9 @@ function extractHeadingLines(lines: string[]): [string[], string[]] {
     const remaining = lines.slice(j)
     const hasTimestampBlocks = remaining.some(line => {
       const trimmed = line.trim()
-      return TIMESTAMP_LINE_RE.test(trimmed) || TIMESTAMP_ONLY_LINE_RE.test(trimmed)
+      return TIMESTAMP_LINE_RE.test(trimmed)
+        || TIMESTAMP_ONLY_LINE_RE.test(trimmed)
+        || parseCompactTimestampLine(trimmed) !== null
     })
     if (hasTimestampBlocks) return [remaining, topHeadingLines]
   }
@@ -175,6 +206,14 @@ export function cleanTranscript(
       continue
     }
 
+    const compactMatch = parseCompactTimestampLine(trimmed)
+    if (compactMatch) {
+      flush()
+      currentTs = compactMatch.timestamp
+      if (compactMatch.remainder) currentLines.push(compactMatch.remainder)
+      continue
+    }
+
     if (currentTs === null) continue
     const cleanedLine = line.replace(INLINE_TIMESTAMP_RE, '')
     currentLines.push(cleanedLine)
@@ -189,7 +228,7 @@ export function cleanTranscript(
     const heading = closestHeading(headings, ts)
     const headingKey = heading ? heading[0] : null
     let title = heading ? heading[1].trim() : ''
-    title = title.replace(TIMESTAMP_ANY_RE, '').trim()
+    title = stripTimestampFragments(title)
     if (!title) title = 'Section'
 
     if (headingKey !== lastHeadingKey) {
@@ -199,8 +238,7 @@ export function cleanTranscript(
 
     if (blockLines.length > 0) {
       let paragraph = blockLines.join(' ')
-      paragraph = paragraph.replace(TIMESTAMP_ANY_RE, '')
-      paragraph = paragraph.replace(/\s{2,}/g, ' ').trim()
+      paragraph = stripTimestampFragments(paragraph)
       outputLines.push(`\u2022 ${paragraph}`)
     }
     outputLines.push('')

@@ -1,9 +1,13 @@
 import ChatOrch from '@/components/orchestrators/ChatOrch'
 
-export default function Chat() {
+interface ChatPageProps {
+  active?: boolean
+}
+
+export default function Chat({ active = true }: ChatPageProps) {
   return (
     <div className="h-full min-h-0">
-      <ChatOrch />
+      <ChatOrch active={active} />
     </div>
   )
 }

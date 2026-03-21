@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   PlusSquare,
   RefreshCw,
+  KeyRound,
   Search,
   Settings as SettingsIcon,
   Sparkles,
@@ -40,6 +41,7 @@ import Chat from './pages/Chat'
 import Web from './pages/Web'
 import CapabilityDiscovery from './pages/CapabilityDiscovery'
 import ExtensionBuilder from './pages/ExtensionBuilder'
+import PasswordManager from './pages/PasswordManager'
 import Settings from './pages/Settings'
 import TerminalPage from './pages/TerminalPage'
 import WebullPage from './personal_extension/pages/WebullPage'
@@ -53,6 +55,7 @@ import DebugPanelBlock from './components/lego_blocks/integrations/DebugPanelBlo
 import DebugToastBlock from './components/lego_blocks/units/DebugToastBlock'
 import {
   addDebugLogListenerBlock,
+  dispatchDebugLogBlock,
   installConsoleInterceptBlock,
   type DebugLogEntryBlock,
 } from './services/lego_blocks/units/debugLogBlock'
@@ -140,6 +143,7 @@ import {
   type RuntimeErrorReportBlock,
 } from '@/services/lego_blocks/units/runtimeErrorBlock'
 import { consumeRecentExcalidrawCrashMarkerBlock } from '@/services/lego_blocks/units/excalidrawCrashMarkerBlock'
+import { folderPickerPluginBlock } from '@/services/lego_blocks/units/folderPickerPluginBlock'
 
 type NavIcon = ComponentType<{ className?: string }>
 
@@ -193,6 +197,21 @@ function sameRuntimeErrorReport(left: RuntimeErrorReportBlock, right: RuntimeErr
     && left.location === right.location
 }
 
+function formatRuntimeErrorDebugDetailsBlock(report: RuntimeErrorReportBlock): string {
+  const sections = [
+    `Title: ${report.title}`,
+    report.location ? `Route: ${report.location}` : null,
+    `Captured: ${new Date(report.capturedAt).toLocaleString()}`,
+    '',
+    report.detail,
+    report.stack ? `\nStack:\n${report.stack}` : null,
+    report.componentStack ? `\nComponent Stack:\n${report.componentStack}` : null,
+  ]
+  return sections
+    .filter((part): part is string => typeof part === 'string' && part.length > 0)
+    .join('\n')
+}
+
 function formatSyncTimestamp(value: number | null): string {
   if (!value) return 'none yet'
   return new Date(value).toLocaleString()
@@ -203,6 +222,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/new-thought', label: 'New Note', icon: PlusSquare },
   { to: '/git-insights', label: 'Insights', icon: GitBranch },
   { to: '/chat', label: 'AI', icon: AINavIcon },
+  { to: '/password-manager', label: 'Passwords', icon: KeyRound },
   { to: '/web', label: 'Web', icon: WebNavIcon },
   { to: '/webull', label: 'Webull', icon: WebullNavIcon },
   {
@@ -509,6 +529,15 @@ function App() {
   const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState(
     () => getStorageItem(STORAGE_KEYS.appShellActiveTabId) ?? '',
   )
+  const [persistentRouteMounts, setPersistentRouteMounts] = useState(() => ({
+    chat: location.pathname === '/chat',
+    web: location.pathname === '/web',
+    organizer: location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer',
+    newThought: location.pathname === '/new-thought',
+  }))
+  const [persistentWebSiteId, setPersistentWebSiteId] = useState<string | null>(
+    () => (location.pathname === '/web' ? new URLSearchParams(location.search).get('site') : null),
+  )
   const showGoogleWorkspaceChromeControls = location.pathname === '/thinking-space'
     && thinkingSpaceGoogleWorkspaceChromeState.enabled
   const showChatSidebarChromeControl = location.pathname === '/chat'
@@ -540,6 +569,11 @@ function App() {
     && layout.surface !== 'capacitor-android'
   const showThinkingSpaceHeaderToggle = showGoogleWorkspaceChromeControls
     && thinkingSpaceGoogleWorkspaceChromeState.showHeaderToggle
+  const isChatRoute = location.pathname === '/chat'
+  const isWebRoute = location.pathname === '/web'
+  const isOrganizerRoute = location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer'
+  const isNewThoughtRoute = location.pathname === '/new-thought'
+  const usesPersistentRouteSurface = isChatRoute || isWebRoute || isOrganizerRoute || isNewThoughtRoute
 
   const resolvedWebullIcon = useMemo(() => {
     if (!webullTabIconText) return WebullNavIcon
@@ -556,6 +590,14 @@ function App() {
         : item,
     ),
     [webullTabLabel, resolvedWebullIcon],
+  )
+  const coreNavItems = useMemo(
+    () => primaryNavItems.filter(item => item.to !== '/password-manager'),
+    [primaryNavItems],
+  )
+  const passwordNavItem = useMemo(
+    () => primaryNavItems.find(item => item.to === '/password-manager') ?? { to: '/password-manager', label: 'Passwords', icon: KeyRound },
+    [primaryNavItems],
   )
 
   const utilityNavItems = useMemo(() => {
@@ -684,6 +726,13 @@ function App() {
   const pushRuntimeErrorReport = useCallback((report: RuntimeErrorReportBlock) => {
     setRuntimeErrorReports((prev) => {
       if (prev.some(existing => sameRuntimeErrorReport(existing, report))) return prev
+      dispatchDebugLogBlock({
+        level: 'error',
+        message: report.message,
+        details: formatRuntimeErrorDebugDetailsBlock(report),
+        stack: report.stack ?? report.componentStack ?? undefined,
+        source: `runtime:${report.source}`,
+      })
       return [report, ...prev].slice(0, 12)
     })
   }, [])
@@ -1141,6 +1190,25 @@ function App() {
     navigate(item.to)
   }, [navigate])
 
+  useEffect(() => {
+    setPersistentRouteMounts(prev => (
+      prev.chat === isChatRoute
+        && prev.web === isWebRoute
+        && prev.organizer === isOrganizerRoute
+        && prev.newThought === isNewThoughtRoute
+        ? prev
+        : {
+            chat: prev.chat || isChatRoute,
+            web: prev.web || isWebRoute,
+            organizer: prev.organizer || isOrganizerRoute,
+            newThought: prev.newThought || isNewThoughtRoute,
+          }
+    ))
+    if (isWebRoute) {
+      setPersistentWebSiteId(new URLSearchParams(location.search).get('site'))
+    }
+  }, [isChatRoute, isNewThoughtRoute, isOrganizerRoute, isWebRoute, location.search])
+
   const handleCreateWorkspaceTab = useCallback(() => {
     const tab: AppWorkspaceTab = {
       id: createWorkspaceTabId(),
@@ -1195,6 +1263,13 @@ function App() {
     }
   }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
 
+  const handlePersistentWebSiteSelect = useCallback((siteId: string) => {
+    const nextSearch = new URLSearchParams()
+    nextSearch.set('site', siteId)
+    setPersistentWebSiteId(siteId)
+    navigate(`/web?${nextSearch.toString()}`, { replace: true })
+  }, [navigate])
+
   const handleDrawerTouchStart = useCallback((event: React.TouchEvent<HTMLElement>) => {
     const touch = event.touches[0]
     if (!touch) return
@@ -1224,14 +1299,9 @@ function App() {
     const stored = getStoredVaultRoot()
     if (!stored?.startsWith('cap-picker:')) return
 
-    import('@capacitor/core').then(({ registerPlugin }) => {
-      const FolderPicker = registerPlugin<{
-        restoreBookmark(): Promise<{ url: string; accessing: boolean }>
-      }>('FolderPicker')
-      FolderPicker.restoreBookmark().catch((err: unknown) => {
-        console.warn('[App] Failed to restore bookmark, re-prompting vault setup:', err)
-        setNeedsVaultSetup(true)
-      })
+    folderPickerPluginBlock.restoreBookmark().catch((err: unknown) => {
+      console.warn('[App] Failed to restore bookmark, re-prompting vault setup:', err)
+      setNeedsVaultSetup(true)
     })
   }, [needsVaultSetup])
 
@@ -2016,7 +2086,7 @@ function App() {
                         Core
                       </div>
                     )}
-                    {primaryNavItems.map((item) => {
+                    {coreNavItems.map((item) => {
                       const Icon = item.icon
                       const active = isNavItemActive(location.pathname, item)
                       return (
@@ -2068,6 +2138,24 @@ function App() {
                         <span className="flex-1 truncate text-left">Excalidraw++</span>
                       </Link>
                     )}
+                    {(() => {
+                      const Icon = passwordNavItem.icon
+                      const active = isNavItemActive(location.pathname, passwordNavItem)
+                      return (
+                        <Link
+                          to={passwordNavItem.to}
+                          title={sidebarCollapsed ? passwordNavItem.label : undefined}
+                          className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
+                            sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                          } ${
+                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {!sidebarCollapsed && <span className="truncate">{passwordNavItem.label}</span>}
+                        </Link>
+                      )
+                    })()}
                   </div>
                 </div>
 
@@ -2143,53 +2231,93 @@ function App() {
             className="ltm-app-main ltm-shell-main ltm-shell-content-stage"
             style={mainBottomPadding ? { paddingBottom: `${mainBottomPadding}px` } : undefined}
           >
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/thinking-space" element={<ThinkingSpace />} />
-              <Route path="/thinking-organizer" element={<ThinkingOrganizer />} />
-              <Route path="/file-organizer" element={<ThinkingOrganizer />} />
-              <Route path="/excalidraw-plus" element={<ExcalidrawPlus />}>
-                <Route index element={<Navigate to="plugin" replace />} />
-                <Route path="plugin" element={<ExcalidrawPlugin />} />
-                <Route path="format" element={<FormatExcalidraw />} />
-                <Route path="mindmap" element={<MindmapBuilder />} />
-                <Route path="pdf" element={<PdfToMarkdown />} />
-                <Route path="transcript" element={<TranscriptCleaner />} />
-              </Route>
-              <Route path="/excalidraw-plugin" element={<Navigate to="/excalidraw-plus/plugin" replace />} />
-              <Route path="/format-excalidraw" element={<Navigate to="/excalidraw-plus/format" replace />} />
-              <Route path="/mindmap-builder" element={<Navigate to="/excalidraw-plus/mindmap" replace />} />
-              <Route path="/pdf-to-markdown" element={<Navigate to="/excalidraw-plus/pdf" replace />} />
-              <Route path="/transcript-cleaner" element={<Navigate to="/excalidraw-plus/transcript" replace />} />
-              <Route path="/git-insights" element={<GitInsights />} />
-              <Route path="/terminal" element={<TerminalPage />} />
-              <Route path="/new-thought" element={<NewThought />} />
-              <Route path="/chat" element={<Chat />} />
-              <Route path="/web" element={<Web />} />
-              <Route path="/webull" element={<WebullPage pageLabel={webullTabLabel} />} />
-              <Route path="/personal-extension" element={<Navigate to="/webull" replace />} />
-              <Route
-                path="/settings"
-                element={
-                  <Settings
-                    explorerIconStyle={explorerIconStyle}
-                    onExplorerIconStyleChange={handleExplorerIconStyleChange}
-                    explorerFolderColorRules={explorerFolderColorRules}
-                    onExplorerFolderColorRulesChange={handleExplorerFolderColorRulesChange}
-                    onRequestVaultSwitch={handleRequestVaultSwitch}
-                    webullTabLabel={webullTabLabel}
-                    webullTabIconText={webullTabIconText}
-                    onWebullTabPreferencesChange={handleWebullTabPreferencesChange}
+            <div className="relative h-full min-h-0">
+              {persistentRouteMounts.chat && (
+                <div
+                  className="absolute inset-0"
+                  style={{ visibility: isChatRoute ? 'visible' : 'hidden', pointerEvents: isChatRoute ? 'auto' : 'none' }}
+                  aria-hidden={!isChatRoute}
+                >
+                  <Chat active={isChatRoute} />
+                </div>
+              )}
+              {persistentRouteMounts.web && (
+                <div
+                  className="absolute inset-0"
+                  style={{ visibility: isWebRoute ? 'visible' : 'hidden', pointerEvents: isWebRoute ? 'auto' : 'none' }}
+                  aria-hidden={!isWebRoute}
+                >
+                  <Web
+                    active={isWebRoute}
+                    selectedSiteId={persistentWebSiteId}
+                    onSelectSiteId={handlePersistentWebSiteSelect}
                   />
-                }
-              />
-              <Route path="/ai-settings" element={<Navigate to="/settings?tab=ai" replace />} />
-              <Route
-                path="/extension-builder"
-                element={extensionBuilderEnabled ? <ExtensionBuilder /> : <Navigate to="/capabilities" replace />}
-              />
-              <Route path="/capabilities" element={<CapabilityDiscovery />} />
-            </Routes>
+                </div>
+              )}
+              {persistentRouteMounts.organizer && (
+                <div
+                  className="absolute inset-0"
+                  style={{ visibility: isOrganizerRoute ? 'visible' : 'hidden', pointerEvents: isOrganizerRoute ? 'auto' : 'none' }}
+                  aria-hidden={!isOrganizerRoute}
+                >
+                  <ThinkingOrganizer />
+                </div>
+              )}
+              {persistentRouteMounts.newThought && (
+                <div
+                  className="absolute inset-0"
+                  style={{ visibility: isNewThoughtRoute ? 'visible' : 'hidden', pointerEvents: isNewThoughtRoute ? 'auto' : 'none' }}
+                  aria-hidden={!isNewThoughtRoute}
+                >
+                  <NewThought />
+                </div>
+              )}
+              {!usesPersistentRouteSurface && (
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/thinking-space" element={<ThinkingSpace />} />
+                  <Route path="/excalidraw-plus" element={<ExcalidrawPlus />}>
+                    <Route index element={<Navigate to="plugin" replace />} />
+                    <Route path="plugin" element={<ExcalidrawPlugin />} />
+                    <Route path="format" element={<FormatExcalidraw />} />
+                    <Route path="mindmap" element={<MindmapBuilder />} />
+                    <Route path="pdf" element={<PdfToMarkdown />} />
+                    <Route path="transcript" element={<TranscriptCleaner />} />
+                  </Route>
+                  <Route path="/excalidraw-plugin" element={<Navigate to="/excalidraw-plus/plugin" replace />} />
+                  <Route path="/format-excalidraw" element={<Navigate to="/excalidraw-plus/format" replace />} />
+                  <Route path="/mindmap-builder" element={<Navigate to="/excalidraw-plus/mindmap" replace />} />
+                  <Route path="/pdf-to-markdown" element={<Navigate to="/excalidraw-plus/pdf" replace />} />
+                  <Route path="/transcript-cleaner" element={<Navigate to="/excalidraw-plus/transcript" replace />} />
+                  <Route path="/git-insights" element={<GitInsights />} />
+                  <Route path="/terminal" element={<TerminalPage />} />
+                  <Route path="/password-manager" element={<PasswordManager />} />
+                  <Route path="/webull" element={<WebullPage pageLabel={webullTabLabel} />} />
+                  <Route path="/personal-extension" element={<Navigate to="/webull" replace />} />
+                  <Route
+                    path="/settings"
+                    element={
+                      <Settings
+                        explorerIconStyle={explorerIconStyle}
+                        onExplorerIconStyleChange={handleExplorerIconStyleChange}
+                        explorerFolderColorRules={explorerFolderColorRules}
+                        onExplorerFolderColorRulesChange={handleExplorerFolderColorRulesChange}
+                        onRequestVaultSwitch={handleRequestVaultSwitch}
+                        webullTabLabel={webullTabLabel}
+                        webullTabIconText={webullTabIconText}
+                        onWebullTabPreferencesChange={handleWebullTabPreferencesChange}
+                      />
+                    }
+                  />
+                  <Route path="/ai-settings" element={<Navigate to="/settings?tab=ai" replace />} />
+                  <Route
+                    path="/extension-builder"
+                    element={extensionBuilderEnabled ? <ExtensionBuilder /> : <Navigate to="/capabilities" replace />}
+                  />
+                  <Route path="/capabilities" element={<CapabilityDiscovery />} />
+                </Routes>
+              )}
+            </div>
           </main>
           </div>
           </section>
@@ -2251,7 +2379,7 @@ function App() {
                   <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Core
                   </div>
-                  {primaryNavItems.map((item) => {
+                  {coreNavItems.map((item) => {
                     const Icon = item.icon
                     const active = isNavItemActive(location.pathname, item)
                     return (
@@ -2307,6 +2435,22 @@ function App() {
                     <ExcalidrawPlusIcon className="h-4 w-4" />
                     <span className="truncate">Excalidraw++</span>
                   </Link>
+                  {(() => {
+                    const Icon = passwordNavItem.icon
+                    const active = isNavItemActive(location.pathname, passwordNavItem)
+                    return (
+                      <Link
+                        to={passwordNavItem.to}
+                        onClick={() => setDrawerOpen(false)}
+                        className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span className="truncate">{passwordNavItem.label}</span>
+                      </Link>
+                    )
+                  })()}
                 </div>
               </div>
 
