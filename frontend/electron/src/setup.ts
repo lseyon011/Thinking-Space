@@ -5,8 +5,8 @@ import {
   setupCapacitorElectronPlugins,
 } from '@capacitor-community/electron';
 import chokidar from 'chokidar';
-import type { MenuItemConstructorOptions, Session } from 'electron';
-import { app, BrowserWindow, Menu, MenuItem, nativeImage, Tray, session, shell } from 'electron';
+import type { MenuItemConstructorOptions, Session, WebContents } from 'electron';
+import { app, BrowserWindow, clipboard, Menu, MenuItem, nativeImage, Tray, session, shell } from 'electron';
 import electronIsDev from 'electron-is-dev';
 import electronServe from 'electron-serve';
 import windowStateKeeper from 'electron-window-state';
@@ -21,6 +21,83 @@ const reloadWatcher = {
 };
 
 const MAC_TRAFFIC_LIGHT_POSITION = { x: 14, y: 14 };
+
+function resolveContextMenuOwnerWindowBlock(targetContents: WebContents): BrowserWindow | undefined {
+  const guestHostContents = (targetContents as WebContents & { hostWebContents?: WebContents }).hostWebContents;
+  return BrowserWindow.fromWebContents(guestHostContents ?? targetContents) ?? undefined;
+}
+
+function attachWebviewContextMenuBlock(targetContents: WebContents): void {
+  targetContents.on('context-menu', (_event, params) => {
+    const template: MenuItemConstructorOptions[] = [];
+
+    if (params.isEditable) {
+      template.push(
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut', enabled: params.editFlags.canCut },
+        { role: 'copy', enabled: params.editFlags.canCopy },
+        { role: 'paste', enabled: params.editFlags.canPaste },
+        { role: 'selectAll' },
+      );
+    } else {
+      const linkUrl = params.linkURL?.trim() ?? '';
+      const selectionText = params.selectionText?.trim() ?? '';
+
+      if (linkUrl) {
+        template.push(
+          {
+            label: 'Open Link in Browser',
+            click: () => {
+              void shell.openExternal(linkUrl).catch(() => undefined);
+            },
+          },
+          {
+            label: 'Copy Link',
+            click: () => {
+              clipboard.writeText(linkUrl);
+            },
+          },
+        );
+      }
+
+      if (selectionText) {
+        if (template.length > 0) template.push({ type: 'separator' });
+        template.push(
+          { role: 'copy' },
+          { role: 'selectAll' },
+        );
+      }
+
+      const showNavigationActions = targetContents.canGoBack() || targetContents.canGoForward() || Boolean(params.pageURL?.trim());
+      if (showNavigationActions) {
+        if (template.length > 0) template.push({ type: 'separator' });
+        template.push(
+          {
+            label: 'Back',
+            enabled: targetContents.canGoBack(),
+            click: () => { if (targetContents.canGoBack()) targetContents.goBack(); },
+          },
+          {
+            label: 'Forward',
+            enabled: targetContents.canGoForward(),
+            click: () => { if (targetContents.canGoForward()) targetContents.goForward(); },
+          },
+          {
+            label: 'Reload',
+            click: () => { targetContents.reload(); },
+          },
+        );
+      }
+    }
+
+    if (template.length === 0) return;
+    const ownerWindow = resolveContextMenuOwnerWindowBlock(targetContents);
+    Menu.buildFromTemplate(template).popup(ownerWindow ? { window: ownerWindow } : {});
+  });
+}
+
 function isCustomSchemeUrlBlock(url: string, customScheme: string): boolean {
   return url.startsWith(`${customScheme}://`);
 }
@@ -514,6 +591,9 @@ const WEBVIEW_ALLOWED_PERMISSIONS = new Set([
   'notifications',
   'fullscreen',
   'pointerLock',
+  'clipboard-read',
+  'clipboard-write',
+  'clipboard-sanitized-write',
 ]);
 const configuredWebviewSessions = new WeakSet<Session>();
 
@@ -559,6 +639,7 @@ export function setupWebviewSessionPermissions(): void {
 
   app.on('web-contents-created', (_event, webContents) => {
     if (webContents.getType() !== 'webview') return;
+    attachWebviewContextMenuBlock(webContents);
     configureWebviewSessionPermissions(webContents.session);
   });
 }

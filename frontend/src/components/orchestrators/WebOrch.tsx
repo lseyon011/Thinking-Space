@@ -39,16 +39,7 @@ export default function WebOrch({
   const selectedSite = prefs.bookmarks.find(b => b.id === selectedSiteId) ?? null
 
   useEffect(() => {
-    if (!active) {
-      dispatchWebSidebarChromeStateBlock({
-        enabled: false,
-        collapsed: false,
-        headerVisible: true,
-        showHeaderToggle: false,
-        label: 'Web',
-      })
-      return
-    }
+    if (!active) return
 
     const label = selectedSite ? `Web · ${selectedSite.name}` : 'Web'
     const siteLabels = Object.fromEntries(prefs.bookmarks.map(b => [b.id, b.name]))
@@ -61,18 +52,6 @@ export default function WebOrch({
       siteLabels,
     })
   }, [active, selectedSiteId, sidebarCollapsed, webviewHeaderVisible, selectedSite, prefs.bookmarks])
-
-  useEffect(() => {
-    return () => {
-      dispatchWebSidebarChromeStateBlock({
-        enabled: false,
-        collapsed: false,
-        headerVisible: true,
-        showHeaderToggle: false,
-        label: 'Web',
-      })
-    }
-  }, [])
 
   useEffect(() => {
     if (!active) return

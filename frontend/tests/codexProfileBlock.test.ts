@@ -62,9 +62,14 @@ describe('codexProfileBlock', () => {
   })
 
   it('builds terminal routes that carry the selected profile and label', () => {
-    const route = buildCodexTerminalRouteBlock('site-1', 'Alpha')
+    const route = buildCodexTerminalRouteBlock('site-1', 'Alpha', {
+      homePath: '/tmp/site-1',
+      initialCommand: 'codex login',
+    })
     expect(route).toContain('/terminal?')
     expect(route).toContain('codexProfile=site-1')
     expect(route).toContain('label=Alpha')
+    expect(route).toContain('codexHome=%2Ftmp%2Fsite-1')
+    expect(route).toContain('initialCommand=codex+login')
   })
 })

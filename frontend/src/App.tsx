@@ -166,6 +166,7 @@ interface CommandItem {
 interface AppWorkspaceTab {
   id: string
   route: string
+  label?: string
 }
 
 interface SyncRunSummary {
@@ -520,6 +521,9 @@ function App() {
       .map((candidate) => ({
         id: candidate.id.trim(),
         route: normalizeTabRoute(candidate.route),
+        label: typeof candidate.label === 'string' && candidate.label.trim().length > 0
+          ? candidate.label.trim()
+          : undefined,
       }))
 
     if (savedTabs.length > 0) return savedTabs
@@ -529,15 +533,28 @@ function App() {
   const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState(
     () => getStorageItem(STORAGE_KEYS.appShellActiveTabId) ?? '',
   )
+  const [persistentChatTabIds, setPersistentChatTabIds] = useState<string[]>(
+    () => workspaceTabs
+      .filter((tab) => parseTabRoute(tab.route).pathname === '/chat')
+      .map((tab) => tab.id),
+  )
+  const [persistentWebTabIds, setPersistentWebTabIds] = useState<string[]>(
+    () => workspaceTabs
+      .filter((tab) => parseTabRoute(tab.route).pathname === '/web')
+      .map((tab) => tab.id),
+  )
+  const [persistentWebSiteIdByTabId, setPersistentWebSiteIdByTabId] = useState<Record<string, string | null>>(
+    () => Object.fromEntries(
+      workspaceTabs.map((tab) => {
+        const parsed = parseTabRoute(tab.route)
+        return [tab.id, parsed.pathname === '/web' ? parsed.search.get('site') : null]
+      }),
+    ),
+  )
   const [persistentRouteMounts, setPersistentRouteMounts] = useState(() => ({
-    chat: location.pathname === '/chat',
-    web: location.pathname === '/web',
     organizer: location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer',
     newThought: location.pathname === '/new-thought',
   }))
-  const [persistentWebSiteId, setPersistentWebSiteId] = useState<string | null>(
-    () => (location.pathname === '/web' ? new URLSearchParams(location.search).get('site') : null),
-  )
   const showGoogleWorkspaceChromeControls = location.pathname === '/thinking-space'
     && thinkingSpaceGoogleWorkspaceChromeState.enabled
   const showChatSidebarChromeControl = location.pathname === '/chat'
@@ -661,12 +678,33 @@ function App() {
     [activeWorkspaceTabId, workspaceTabs],
   )
 
+  const activeWorkspaceTabLabel = useMemo(
+    () => getTabLabel(currentRoute, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, webullTabLabel, webSidebarChromeState.siteLabels),
+    [currentRoute, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, webSidebarChromeState.siteLabels, webullTabLabel],
+  )
+  const renderedPersistentChatTabIds = useMemo(
+    () => (isChatRoute && activeWorkspaceTabId && !persistentChatTabIds.includes(activeWorkspaceTabId)
+      ? [...persistentChatTabIds, activeWorkspaceTabId]
+      : persistentChatTabIds),
+    [activeWorkspaceTabId, isChatRoute, persistentChatTabIds],
+  )
+  const renderedPersistentWebTabIds = useMemo(
+    () => (isWebRoute && activeWorkspaceTabId && !persistentWebTabIds.includes(activeWorkspaceTabId)
+      ? [...persistentWebTabIds, activeWorkspaceTabId]
+      : persistentWebTabIds),
+    [activeWorkspaceTabId, isWebRoute, persistentWebTabIds],
+  )
+
   const workspaceTabItems = useMemo<AppWorkspaceTabBlockModel[]>(
     () => workspaceTabs.map(tab => ({
       id: tab.id,
-      label: getTabLabel(tab.route, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, webullTabLabel, webSidebarChromeState.siteLabels),
+      label: tab.id === activeWorkspaceTabId
+        ? activeWorkspaceTabLabel
+        : (typeof tab.label === 'string' && tab.label.trim().length > 0
+            ? tab.label
+            : getTabLabel(tab.route, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, webullTabLabel, webSidebarChromeState.siteLabels)),
     })),
-    [routeLabelByPath, workspaceTabs, chatSidebarChromeState.label, webSidebarChromeState.label, webSidebarChromeState.siteLabels, webullTabLabel],
+    [activeWorkspaceTabId, activeWorkspaceTabLabel, routeLabelByPath, workspaceTabs, chatSidebarChromeState.label, webSidebarChromeState.label, webSidebarChromeState.siteLabels, webullTabLabel],
   )
 
   const shell = useMemo(() => deriveAdaptiveShellStateOrch(layout), [layout])
@@ -1192,22 +1230,34 @@ function App() {
 
   useEffect(() => {
     setPersistentRouteMounts(prev => (
-      prev.chat === isChatRoute
-        && prev.web === isWebRoute
-        && prev.organizer === isOrganizerRoute
+      prev.organizer === isOrganizerRoute
         && prev.newThought === isNewThoughtRoute
         ? prev
         : {
-            chat: prev.chat || isChatRoute,
-            web: prev.web || isWebRoute,
             organizer: prev.organizer || isOrganizerRoute,
             newThought: prev.newThought || isNewThoughtRoute,
           }
     ))
-    if (isWebRoute) {
-      setPersistentWebSiteId(new URLSearchParams(location.search).get('site'))
+    if (!activeWorkspaceTabId) return
+
+    if (isChatRoute) {
+      setPersistentChatTabIds((prev) => (
+        prev.includes(activeWorkspaceTabId) ? prev : [...prev, activeWorkspaceTabId]
+      ))
     }
-  }, [isChatRoute, isNewThoughtRoute, isOrganizerRoute, isWebRoute, location.search])
+
+    if (isWebRoute) {
+      const selectedSiteId = new URLSearchParams(location.search).get('site')
+      setPersistentWebTabIds((prev) => (
+        prev.includes(activeWorkspaceTabId) ? prev : [...prev, activeWorkspaceTabId]
+      ))
+      setPersistentWebSiteIdByTabId((prev) => (
+        prev[activeWorkspaceTabId] === selectedSiteId
+          ? prev
+          : { ...prev, [activeWorkspaceTabId]: selectedSiteId }
+      ))
+    }
+  }, [activeWorkspaceTabId, isChatRoute, isNewThoughtRoute, isOrganizerRoute, isWebRoute, location.search])
 
   const handleCreateWorkspaceTab = useCallback(() => {
     const tab: AppWorkspaceTab = {
@@ -1263,12 +1313,18 @@ function App() {
     }
   }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
 
-  const handlePersistentWebSiteSelect = useCallback((siteId: string) => {
+  const handlePersistentWebSiteSelect = useCallback((tabId: string, siteId: string) => {
     const nextSearch = new URLSearchParams()
     nextSearch.set('site', siteId)
-    setPersistentWebSiteId(siteId)
+    setPersistentWebTabIds((prev) => (
+      prev.includes(tabId) ? prev : [...prev, tabId]
+    ))
+    setPersistentWebSiteIdByTabId((prev) => (
+      prev[tabId] === siteId ? prev : { ...prev, [tabId]: siteId }
+    ))
+    if (tabId !== activeWorkspaceTabId) return
     navigate(`/web?${nextSearch.toString()}`, { replace: true })
-  }, [navigate])
+  }, [activeWorkspaceTabId, navigate])
 
   const handleDrawerTouchStart = useCallback((event: React.TouchEvent<HTMLElement>) => {
     const touch = event.touches[0]
@@ -1538,6 +1594,22 @@ function App() {
   }, [activeWorkspaceTabId, currentRoute, workspaceTabs])
 
   useEffect(() => {
+    const tabIds = new Set(workspaceTabs.map((tab) => tab.id))
+    setPersistentChatTabIds((prev) => {
+      const next = prev.filter((tabId) => tabIds.has(tabId))
+      return next.length === prev.length ? prev : next
+    })
+    setPersistentWebTabIds((prev) => {
+      const next = prev.filter((tabId) => tabIds.has(tabId))
+      return next.length === prev.length ? prev : next
+    })
+    setPersistentWebSiteIdByTabId((prev) => {
+      const nextEntries = Object.entries(prev).filter(([tabId]) => tabIds.has(tabId))
+      return nextEntries.length === Object.keys(prev).length ? prev : Object.fromEntries(nextEntries)
+    })
+  }, [workspaceTabs])
+
+  useEffect(() => {
     if (!activeWorkspaceTabId) return
     setWorkspaceTabs((prev) => {
       const index = prev.findIndex(tab => tab.id === activeWorkspaceTabId)
@@ -1548,12 +1620,12 @@ function App() {
         if (activeWorkspaceTabId !== pending.tabId) return prev
         if (normalizedCurrentRoute !== pending.route) return prev
       }
-      if (prev[index].route === normalizedCurrentRoute) return prev
+      if (prev[index].route === normalizedCurrentRoute && prev[index].label === activeWorkspaceTabLabel) return prev
       const next = prev.slice()
-      next[index] = { ...next[index], route: normalizedCurrentRoute }
+      next[index] = { ...next[index], route: normalizedCurrentRoute, label: activeWorkspaceTabLabel }
       return next
     })
-  }, [activeWorkspaceTabId, currentRoute])
+  }, [activeWorkspaceTabId, activeWorkspaceTabLabel, currentRoute])
 
   useEffect(() => {
     const pending = pendingWorkspaceTabNavigationRef.current
@@ -2232,28 +2304,40 @@ function App() {
             style={mainBottomPadding ? { paddingBottom: `${mainBottomPadding}px` } : undefined}
           >
             <div className="relative h-full min-h-0">
-              {persistentRouteMounts.chat && (
-                <div
-                  className="absolute inset-0"
-                  style={{ visibility: isChatRoute ? 'visible' : 'hidden', pointerEvents: isChatRoute ? 'auto' : 'none' }}
-                  aria-hidden={!isChatRoute}
-                >
-                  <Chat active={isChatRoute} />
-                </div>
-              )}
-              {persistentRouteMounts.web && (
-                <div
-                  className="absolute inset-0"
-                  style={{ visibility: isWebRoute ? 'visible' : 'hidden', pointerEvents: isWebRoute ? 'auto' : 'none' }}
-                  aria-hidden={!isWebRoute}
-                >
-                  <Web
-                    active={isWebRoute}
-                    selectedSiteId={persistentWebSiteId}
-                    onSelectSiteId={handlePersistentWebSiteSelect}
-                  />
-                </div>
-              )}
+              {renderedPersistentChatTabIds.map((tabId) => {
+                const chatTabMounted = workspaceTabs.some((tab) => tab.id === tabId)
+                if (!chatTabMounted) return null
+                const chatSurfaceActive = isChatRoute && activeWorkspaceTabId === tabId
+                return (
+                  <div
+                    key={`chat-surface:${tabId}`}
+                    className="absolute inset-0"
+                    style={{ visibility: chatSurfaceActive ? 'visible' : 'hidden', pointerEvents: chatSurfaceActive ? 'auto' : 'none' }}
+                    aria-hidden={!chatSurfaceActive}
+                  >
+                    <Chat active={chatSurfaceActive} />
+                  </div>
+                )
+              })}
+              {renderedPersistentWebTabIds.map((tabId) => {
+                const webTabMounted = workspaceTabs.some((tab) => tab.id === tabId)
+                if (!webTabMounted) return null
+                const webSurfaceActive = isWebRoute && activeWorkspaceTabId === tabId
+                return (
+                  <div
+                    key={`web-surface:${tabId}`}
+                    className="absolute inset-0"
+                    style={{ visibility: webSurfaceActive ? 'visible' : 'hidden', pointerEvents: webSurfaceActive ? 'auto' : 'none' }}
+                    aria-hidden={!webSurfaceActive}
+                  >
+                    <Web
+                      active={webSurfaceActive}
+                      selectedSiteId={persistentWebSiteIdByTabId[tabId] ?? null}
+                      onSelectSiteId={(siteId) => handlePersistentWebSiteSelect(tabId, siteId)}
+                    />
+                  </div>
+                )
+              })}
               {persistentRouteMounts.organizer && (
                 <div
                   className="absolute inset-0"

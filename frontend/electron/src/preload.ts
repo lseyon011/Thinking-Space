@@ -116,7 +116,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // Embedded terminal
-  terminalCreate: (opts: { cwd?: string; cols: number; rows: number }): Promise<{ id: string }> =>
+  terminalCreate: (opts: { cwd?: string; cols: number; rows: number; env?: Record<string, string> }): Promise<{ id: string }> =>
     ipcRenderer.invoke('terminal:create', opts),
   terminalInput: (id: string, data: string): Promise<void> =>
     ipcRenderer.invoke('terminal:input', { id, data }),

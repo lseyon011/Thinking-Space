@@ -5,8 +5,13 @@ import * as path from 'path';
 
 const CODEX_PROFILE_ROOT = path.join(os.homedir(), '.thinking-space', 'codex-profiles');
 const DEFAULT_CODEX_HOME = path.join(os.homedir(), '.codex');
+const ACTIVE_PROFILE_STATE_PATH = path.join(CODEX_PROFILE_ROOT, 'active-profile.json');
 
 let activeCodexHomeOverrideBlock: string | null = null;
+
+interface PersistedActiveCodexProfileStateBlock {
+  activeHomePath: string;
+}
 
 export interface CodexProfileStatusBlock {
   siteId: string;
@@ -62,9 +67,36 @@ function normalizeComparablePathBlock(input: string | null | undefined): string 
   }
 }
 
+function readPersistedActiveCodexHomeBlock(): string | null {
+  try {
+    const raw = fs.readFileSync(ACTIVE_PROFILE_STATE_PATH, 'utf8');
+    const parsed = JSON.parse(raw) as PersistedActiveCodexProfileStateBlock;
+    return normalizeComparablePathBlock(parsed.activeHomePath);
+  } catch {
+    return null;
+  }
+}
+
+function persistActiveCodexHomeBlock(homePath: string): void {
+  fs.mkdirSync(CODEX_PROFILE_ROOT, { recursive: true });
+  fs.writeFileSync(
+    ACTIVE_PROFILE_STATE_PATH,
+    `${JSON.stringify({ activeHomePath: homePath } satisfies PersistedActiveCodexProfileStateBlock, null, 2)}\n`,
+    'utf8',
+  );
+}
+
+function applyActiveCodexHomeToProcessBlock(homePath: string): string {
+  const normalized = normalizeComparablePathBlock(homePath) ?? homePath;
+  activeCodexHomeOverrideBlock = normalized;
+  process.env.CODEX_HOME = normalized;
+  return normalized;
+}
+
 function resolveActiveCodexHomeBlock(): string {
   return normalizeComparablePathBlock(activeCodexHomeOverrideBlock)
     ?? normalizeComparablePathBlock(process.env.CODEX_HOME)
+    ?? readPersistedActiveCodexHomeBlock()
     ?? normalizeComparablePathBlock(DEFAULT_CODEX_HOME)
     ?? DEFAULT_CODEX_HOME;
 }
@@ -146,6 +178,7 @@ function readCodexProfileStatusBlock(siteId: string, launchctlHomePath: string |
 }
 
 export function listCodexProfilesBlock(siteIds: string[]): CodexProfileRuntimeSummaryBlock {
+  applyActiveCodexHomeToProcessBlock(resolveActiveCodexHomeBlock());
   const launchctlHomePath = readLaunchctlCodexHomeBlock();
   return {
     activeHomePath: resolveActiveCodexHomeBlock(),
@@ -155,12 +188,16 @@ export function listCodexProfilesBlock(siteIds: string[]): CodexProfileRuntimeSu
   };
 }
 
+export function initializeCodexProfileBlock(): void {
+  applyActiveCodexHomeToProcessBlock(resolveActiveCodexHomeBlock());
+}
+
 export function activateCodexProfileBlock(siteId: string): ActivateCodexProfileResultBlock {
   const homePath = buildCodexProfileHomePathBlock(siteId);
   fs.mkdirSync(homePath, { recursive: true });
 
-  activeCodexHomeOverrideBlock = homePath;
-  process.env.CODEX_HOME = homePath;
+  const normalizedHomePath = applyActiveCodexHomeToProcessBlock(homePath);
+  persistActiveCodexHomeBlock(normalizedHomePath);
 
   let launchctlApplied = false;
   let warning: string | null = null;
@@ -178,7 +215,7 @@ export function activateCodexProfileBlock(siteId: string): ActivateCodexProfileR
     }
   }
 
-  const launchctlHomePath = launchctlApplied ? normalizeComparablePathBlock(homePath) : readLaunchctlCodexHomeBlock();
+  const launchctlHomePath = launchctlApplied ? normalizeComparablePathBlock(normalizedHomePath) : readLaunchctlCodexHomeBlock();
   return {
     activeHomePath: resolveActiveCodexHomeBlock(),
     launchctlHomePath,

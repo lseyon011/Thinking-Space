@@ -24,6 +24,7 @@ import {
 } from './lego_blocks/aiCredentialBlock';
 import {
   activateCodexProfileBlock,
+  initializeCodexProfileBlock,
   listCodexProfilesBlock,
 } from './lego_blocks/codexProfileBlock';
 import {
@@ -93,6 +94,7 @@ import {
 
 // Graceful handling of unhandled errors.
 unhandled();
+initializeCodexProfileBlock();
 
 // Define our menu templates (these are optional)
 const trayMenuTemplate: (MenuItemConstructorOptions | MenuItem)[] = [new MenuItem({ label: 'Quit App', role: 'quit' })];
@@ -335,12 +337,13 @@ ipcMain.handle('window:new', async (_event, route?: string) => {
 // IPC Handlers — Embedded Terminal (node-pty)
 // =====================================================================
 
-ipcMain.handle('terminal:create', (event, opts: { cwd?: string; cols: number; rows: number }) => {
+ipcMain.handle('terminal:create', (event, opts: { cwd?: string; cols: number; rows: number; env?: Record<string, string> }) => {
   const id = createPtyBlock({
     cwd: opts.cwd,
     cols: opts.cols,
     rows: opts.rows,
     webContentsId: event.sender.id,
+    env: opts.env,
   });
   return { id };
 });

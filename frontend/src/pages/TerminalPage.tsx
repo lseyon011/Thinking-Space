@@ -8,6 +8,8 @@ interface TerminalTab {
   id: string
   label: string
   exitCode: number | null
+  envPatch?: Record<string, string>
+  initialCommand?: string
 }
 
 interface TerminalPageSessionState {
@@ -22,11 +24,13 @@ function createTab(): TerminalTab {
   return createNamedTab()
 }
 
-function createNamedTab(label?: string): TerminalTab {
+function createNamedTab(label?: string, envPatch?: Record<string, string>, initialCommand?: string): TerminalTab {
   return {
     id: `tab-${Date.now()}-${tabCounter++}`,
     label: label?.trim() || `Terminal ${tabCounter - 1}`,
     exitCode: null,
+    envPatch,
+    initialCommand,
   }
 }
 
@@ -95,7 +99,13 @@ export default function TerminalPage() {
 
     handledLaunchNonceRef.current = nonce
     const requestedLabel = params.get('label')?.trim()
-    const tab = createNamedTab(requestedLabel ? `Codex · ${requestedLabel}` : 'Codex Terminal')
+    const requestedHome = params.get('codexHome')?.trim()
+    const initialCommand = params.get('initialCommand')?.trim()
+    const tab = createNamedTab(
+      requestedLabel ? `Codex · ${requestedLabel}` : 'Codex Terminal',
+      requestedHome ? { CODEX_HOME: requestedHome } : undefined,
+      initialCommand || undefined,
+    )
     setTabs(prev => [...prev, tab])
     setActiveTabId(tab.id)
     navigate('/terminal', { replace: true })
@@ -211,6 +221,8 @@ export default function TerminalPage() {
           >
             <TerminalBlock
               cwd={defaultCwd}
+              envPatch={tab.envPatch}
+              initialCommand={tab.initialCommand}
               sessionKey={tab.id}
               className="h-full w-full px-1 pt-1"
               onExit={(code) => markExited(tab.id, code)}

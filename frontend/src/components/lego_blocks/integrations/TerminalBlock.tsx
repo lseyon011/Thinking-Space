@@ -33,6 +33,7 @@ const ITERM2_THEME = {
 // Survives React unmount/remount within the same Electron window JS context,
 // so navigating away and back reattaches to the same live PTY.
 const sessions = new Map<string, string>()
+const executedInitialCommands = new Set<string>()
 
 /**
  * Explicitly kill a terminal session (e.g. when closing a tab).
@@ -42,6 +43,7 @@ export function releaseTerminalSession(sessionKey: string): void {
   const terminalId = sessions.get(sessionKey)
   if (terminalId) {
     sessions.delete(sessionKey)
+    executedInitialCommands.delete(sessionKey)
     void window.electronAPI?.terminalKill?.(terminalId)
   }
 }
@@ -50,6 +52,8 @@ export interface TerminalBlockProps {
   cwd?: string
   className?: string
   onExit?: (exitCode: number) => void
+  envPatch?: Record<string, string>
+  initialCommand?: string
   /**
    * Stable key for this terminal session. When provided, the PTY is kept alive
    * across React unmount/remount (e.g. page navigation) and reattached on return.
@@ -58,7 +62,7 @@ export interface TerminalBlockProps {
   sessionKey?: string
 }
 
-export default function TerminalBlock({ cwd, className = '', onExit, sessionKey }: TerminalBlockProps) {
+export default function TerminalBlock({ cwd, className = '', onExit, envPatch, initialCommand, sessionKey }: TerminalBlockProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const cwdRef = useRef(cwd)
   const onExitRef = useRef(onExit)
@@ -106,6 +110,14 @@ export default function TerminalBlock({ cwd, className = '', onExit, sessionKey 
       void api.terminalResize!(id, cols, rows)
     }
 
+    const maybeRunInitialCommand = (id: string) => {
+      if (!initialCommand?.trim() || !sessionKey || executedInitialCommands.has(sessionKey)) return
+      executedInitialCommands.add(sessionKey)
+      window.setTimeout(() => {
+        void api.terminalInput!(id, `${initialCommand}\n`)
+      }, 60)
+    }
+
     const attach = (id: string) => {
       terminalId = id
       if (sessionKey) sessions.set(sessionKey, id)
@@ -119,6 +131,7 @@ export default function TerminalBlock({ cwd, className = '', onExit, sessionKey 
       inputDisposable = term.onData((data) => { void api.terminalInput!(id, data) })
       resizeDisposable = term.onResize(({ cols: c, rows: r }) => { void api.terminalResize!(id, c, r) })
       syncTerminalSize(id)
+      maybeRunInitialCommand(id)
     }
 
     const existingId = sessionKey ? sessions.get(sessionKey) : undefined
@@ -134,7 +147,7 @@ export default function TerminalBlock({ cwd, className = '', onExit, sessionKey 
         if (!result) {
           // PTY exited while we were away — start a fresh one
           sessions.delete(sessionKey!)
-          return api.terminalCreate!({ cwd: cwdRef.current, ...fitTerminal() }).then(({ id }) => {
+          return api.terminalCreate!({ cwd: cwdRef.current, env: envPatch, ...fitTerminal() }).then(({ id }) => {
             if (destroyed) { void api.terminalKill!(id); return }
             attach(id)
           })
@@ -146,7 +159,7 @@ export default function TerminalBlock({ cwd, className = '', onExit, sessionKey 
         term.writeln(`\r\n\x1b[31m[Failed to reattach terminal: ${err instanceof Error ? err.message : String(err)}]\x1b[0m`)
       })
     } else {
-      api.terminalCreate!({ cwd: cwdRef.current, ...fitTerminal() }).then(({ id }) => {
+      api.terminalCreate!({ cwd: cwdRef.current, env: envPatch, ...fitTerminal() }).then(({ id }) => {
         if (destroyed) { void api.terminalKill!(id); return }
         attach(id)
       }).catch((err: unknown) => {

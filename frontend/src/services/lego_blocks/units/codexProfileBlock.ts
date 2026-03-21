@@ -97,11 +97,22 @@ export function formatCodexProfileStateLabelBlock(status: CodexProfileRuntimeSta
   return 'Not set up'
 }
 
-export function buildCodexTerminalRouteBlock(siteId: string, siteName: string): string {
+export interface BuildCodexTerminalRouteOptionsBlock {
+  homePath?: string | null
+  initialCommand?: string | null
+}
+
+export function buildCodexTerminalRouteBlock(
+  siteId: string,
+  siteName: string,
+  options: BuildCodexTerminalRouteOptionsBlock = {},
+): string {
   const params = new URLSearchParams({
     codexProfile: siteId,
     label: siteName,
     nonce: String(Date.now()),
   })
+  if (options.homePath?.trim()) params.set('codexHome', options.homePath)
+  if (options.initialCommand?.trim()) params.set('initialCommand', options.initialCommand)
   return `/terminal?${params.toString()}`
 }

@@ -113,7 +113,7 @@ interface ElectronAPI {
   sourceRebuildApply?(newAppPath: string): Promise<{ ok: boolean; error?: string }>
   onSourceRebuildProgress?(handler: (event: { step: string; message: string; type: string }) => void): () => void
   onSourceRebuildDone?(handler: (result: { ok: boolean; newAppPath?: string; error?: string }) => void): () => void
-  terminalCreate?(opts: { cwd?: string; cols: number; rows: number }): Promise<{ id: string }>
+  terminalCreate?(opts: { cwd?: string; cols: number; rows: number; env?: Record<string, string> }): Promise<{ id: string }>
   terminalInput?(id: string, data: string): Promise<void>
   terminalResize?(id: string, cols: number, rows: number): Promise<void>
   terminalKill?(id: string): Promise<void>

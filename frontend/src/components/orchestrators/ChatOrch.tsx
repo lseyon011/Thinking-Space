@@ -139,16 +139,7 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
 
   // Sync chrome state into the top chrome
   useEffect(() => {
-    if (!active) {
-      dispatchChatSidebarChromeStateBlock({
-        enabled: false,
-        collapsed: false,
-        headerVisible: true,
-        showHeaderToggle: false,
-        label: 'AI',
-      })
-      return
-    }
+    if (!active) return
 
     const websiteName = dashboardSelected ? 'Usage Dashboard' : selectedWebsiteForChrome?.name
     const providerLabel = selectedProvider
@@ -165,18 +156,6 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
       label,
     })
   }, [active, dashboardSelected, selectedWebsiteForChrome, sidebarCollapsed, webviewHeaderVisible, selectedProvider, providers])
-
-  useEffect(() => {
-    return () => {
-      dispatchChatSidebarChromeStateBlock({
-        enabled: false,
-        collapsed: false,
-        headerVisible: true,
-        showHeaderToggle: false,
-        label: 'AI',
-      })
-    }
-  }, [])
 
   useEffect(() => {
     if (!active) return

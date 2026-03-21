@@ -22,11 +22,15 @@ export interface CreatePtyOptsBlock {
   cols: number;
   rows: number;
   webContentsId: number;
+  env?: Record<string, string>;
 }
 
 export function createPtyBlock(opts: CreatePtyOptsBlock): string {
   const id = randomUUID();
   const shell = getShell();
+  const envOverrides = Object.fromEntries(
+    Object.entries(opts.env ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+  );
 
   // Spawn as a login shell (-l) so it sources ~/.zprofile / ~/.bash_profile
   // and gets the user's full PATH (Homebrew, nvm, volta, npm globals, etc.)
@@ -40,6 +44,7 @@ export function createPtyBlock(opts: CreatePtyOptsBlock): string {
     cwd: opts.cwd ?? process.env.HOME ?? '/',
     env: {
       ...process.env,
+      ...envOverrides,
       TERM: 'xterm-color',
       COLORTERM: 'truecolor',
       TERM_PROGRAM: 'Thinking Space',

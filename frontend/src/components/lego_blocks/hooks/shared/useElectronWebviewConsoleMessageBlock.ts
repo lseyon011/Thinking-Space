@@ -21,6 +21,25 @@ function getConsoleLevelBlock(level: number): DebugLogLevel | null {
   return null
 }
 
+function shouldDowngradeWebviewConsoleNoiseBlock(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return normalized.includes('permissions-policy header')
+    || normalized.includes("unrecognized feature: 'pointer-lock'")
+    || normalized.includes('react-i18next:: usetranslation')
+    || (normalized.includes('violates the following content security policy directive')
+      && (
+        normalized.includes('appsflyer')
+        || normalized.includes('onelink')
+      ))
+}
+
+function normalizeWebviewConsoleLevelBlock(level: DebugLogLevel, message: string): DebugLogLevel {
+  if ((level === 'warn' || level === 'error') && shouldDowngradeWebviewConsoleNoiseBlock(message)) {
+    return 'info'
+  }
+  return level
+}
+
 function buildConsoleDetailsBlock(
   event: ElectronWebviewConsoleMessageEventBlock | null,
   resolvedUrl?: string | null,
@@ -68,7 +87,7 @@ export function useElectronWebviewConsoleMessageBlock({
       if (!message) return
 
       dispatchDebugLogBlock({
-        level: mappedLevel,
+        level: normalizeWebviewConsoleLevelBlock(mappedLevel, message),
         message,
         details: buildConsoleDetailsBlock(consoleEvent, resolvedUrl),
         source: sourceLabel,
