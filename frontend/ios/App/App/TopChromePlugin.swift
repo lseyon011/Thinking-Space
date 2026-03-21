@@ -19,23 +19,79 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let title = call.getString("title")
         let isVisible = call.getBool("visible")
         let showSearch = call.getBool("showSearch")
-        let showCreate = call.getBool("showCreate")
+        let showTools = call.getBool("showTools")
+        let toolsBadgeCount = call.getInt("toolsBadgeCount")
+        let canToggleSidebar = call.getBool("canToggleSidebar")
+        let sidebarToggleActive = call.getBool("sidebarToggleActive")
+        let sidebarToggleLabel = call.getString("sidebarToggleLabel")
+        let canToggleHeader = call.getBool("canToggleHeader")
+        let headerToggleLabel = call.getString("headerToggleLabel")
+        let tabsPayload = call.getString("tabsPayload")
+        let bottomBarHidden = call.getBool("bottomBarHidden")
+        let canRefresh = call.getBool("canRefresh")
+        let canSync = call.getBool("canSync")
+        let canRebuild = call.getBool("canRebuild")
+        let canGitCommit = call.getBool("canGitCommit")
+        let canGitPush = call.getBool("canGitPush")
 
         DispatchQueue.main.async {
-            if let state = self.chromeState {
-                if let title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    state.title = title
-                }
-                if let isVisible {
-                    state.isVisible = isVisible
-                }
-                if let showSearch {
-                    state.showSearch = showSearch
-                }
-                if let showCreate {
-                    state.showCreate = showCreate
-                }
+            guard let state = self.chromeState else {
+                call.resolve()
+                return
             }
+
+            if let title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                state.title = title
+            }
+            if let isVisible {
+                state.isVisible = isVisible
+            }
+            if let showSearch {
+                state.showSearch = showSearch
+            }
+            if let showTools {
+                state.showTools = showTools
+            }
+            if let toolsBadgeCount {
+                state.toolsBadgeCount = max(0, toolsBadgeCount)
+            }
+            if let canToggleSidebar {
+                state.canToggleSidebar = canToggleSidebar
+            }
+            if let sidebarToggleActive {
+                state.sidebarToggleActive = sidebarToggleActive
+            }
+            if let sidebarToggleLabel, !sidebarToggleLabel.isEmpty {
+                state.sidebarToggleLabel = sidebarToggleLabel
+            }
+            if let canToggleHeader {
+                state.canToggleHeader = canToggleHeader
+            }
+            if let headerToggleLabel, !headerToggleLabel.isEmpty {
+                state.headerToggleLabel = headerToggleLabel
+            }
+            if let tabsPayload {
+                state.tabs = self.decodeTabs(from: tabsPayload)
+            }
+            if let bottomBarHidden {
+                state.isBottomBarHidden = bottomBarHidden
+            }
+            if let canRefresh {
+                state.canRefresh = canRefresh
+            }
+            if let canSync {
+                state.canSync = canSync
+            }
+            if let canRebuild {
+                state.canRebuild = canRebuild
+            }
+            if let canGitCommit {
+                state.canGitCommit = canGitCommit
+            }
+            if let canGitPush {
+                state.canGitPush = canGitPush
+            }
+
             call.resolve()
         }
     }
@@ -62,7 +118,60 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
         notifyListeners("topChromeSearchTap", data: [:])
     }
 
+    func emitOpenDebugTap() {
+        notifyListeners("topChromeOpenDebugTap", data: [:])
+    }
+
+    func emitRefreshTap() {
+        notifyListeners("topChromeRefreshTap", data: [:])
+    }
+
+    func emitSyncTap() {
+        notifyListeners("topChromeSyncTap", data: [:])
+    }
+
+    func emitRebuildTap() {
+        notifyListeners("topChromeRebuildTap", data: [:])
+    }
+
+    func emitGitCommitTap() {
+        notifyListeners("topChromeGitCommitTap", data: [:])
+    }
+
+    func emitGitPushTap() {
+        notifyListeners("topChromeGitPushTap", data: [:])
+    }
+
+    func emitHeaderToggleTap() {
+        notifyListeners("topChromeHeaderToggleTap", data: [:])
+    }
+
+    func emitSidebarToggleTap() {
+        notifyListeners("topChromeSidebarToggleTap", data: [:])
+    }
+
     func emitCreateTap() {
         notifyListeners("topChromeCreateTap", data: [:])
+    }
+
+    func emitSelectTab(tabId: String) {
+        notifyListeners("topChromeSelectTab", data: ["tabId": tabId])
+    }
+
+    func emitCloseTab(tabId: String) {
+        notifyListeners("topChromeCloseTab", data: ["tabId": tabId])
+    }
+
+    private func decodeTabs(from payload: String) -> [TopChromeTabItem] {
+        guard let data = payload.data(using: .utf8) else {
+            return []
+        }
+
+        do {
+            return try JSONDecoder().decode([TopChromeTabItem].self, from: data)
+        } catch {
+            NSLog("[TopChromePlugin] Failed to decode tabs payload: %@", error.localizedDescription)
+            return []
+        }
     }
 }

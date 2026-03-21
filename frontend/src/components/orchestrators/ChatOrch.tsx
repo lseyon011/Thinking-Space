@@ -255,7 +255,7 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
   }
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full min-h-0 overflow-hidden">
       {/* ── Vertical sidebar ── */}
       <aside
         className={cn(

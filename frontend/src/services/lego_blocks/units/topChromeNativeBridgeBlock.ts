@@ -1,26 +1,69 @@
 import { registerPlugin } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 
-interface TopChromeStateBlock {
+export interface NativeTopChromeTabBridgeItem {
+  id: string
+  label: string
+  active: boolean
+}
+
+export interface TopChromeStateBlock {
   title: string
   visible?: boolean
   showSearch?: boolean
-  showCreate?: boolean
+  showTools?: boolean
+  toolsBadgeCount?: number
+  canToggleSidebar?: boolean
+  sidebarToggleActive?: boolean
+  sidebarToggleLabel?: string
+  canToggleHeader?: boolean
+  headerToggleLabel?: string
+  tabs?: NativeTopChromeTabBridgeItem[]
+  bottomBarHidden?: boolean
+  canRefresh?: boolean
+  canSync?: boolean
+  canRebuild?: boolean
+  canGitCommit?: boolean
+  canGitPush?: boolean
 }
 
+export type TopChromeEventPayload = {
+  tabId?: string
+}
+
+export type TopChromeEventName =
+  | 'topChromeMenuTap'
+  | 'topChromeSearchTap'
+  | 'topChromeOpenDebugTap'
+  | 'topChromeRefreshTap'
+  | 'topChromeSyncTap'
+  | 'topChromeRebuildTap'
+  | 'topChromeGitCommitTap'
+  | 'topChromeGitPushTap'
+  | 'topChromeHeaderToggleTap'
+  | 'topChromeSidebarToggleTap'
+  | 'topChromeCreateTap'
+  | 'topChromeSelectTab'
+  | 'topChromeCloseTab'
+
 interface TopChromePluginBlock {
-  setState(options: TopChromeStateBlock): Promise<void>
+  setState(options: Omit<TopChromeStateBlock, 'tabs'> & { tabsPayload?: string }): Promise<void>
   show(): Promise<void>
   hide(): Promise<void>
-  addListener(eventName: 'topChromeMenuTap', listenerFunc: () => void): Promise<PluginListenerHandle>
-  addListener(eventName: 'topChromeSearchTap', listenerFunc: () => void): Promise<PluginListenerHandle>
-  addListener(eventName: 'topChromeCreateTap', listenerFunc: () => void): Promise<PluginListenerHandle>
+  addListener(
+    eventName: TopChromeEventName,
+    listenerFunc: (payload: TopChromeEventPayload) => void,
+  ): Promise<PluginListenerHandle>
 }
 
 const TopChrome = registerPlugin<TopChromePluginBlock>('TopChrome')
 
 export async function setTopChromeStateBlock(options: TopChromeStateBlock): Promise<void> {
-  await TopChrome.setState(options)
+  const { tabs, ...rest } = options
+  await TopChrome.setState({
+    ...rest,
+    tabsPayload: JSON.stringify(tabs ?? []),
+  })
 }
 
 export async function showTopChromeBlock(): Promise<void> {
@@ -31,14 +74,9 @@ export async function hideTopChromeBlock(): Promise<void> {
   await TopChrome.hide()
 }
 
-export async function addTopChromeMenuTapListenerBlock(handler: () => void): Promise<PluginListenerHandle> {
-  return TopChrome.addListener('topChromeMenuTap', handler)
-}
-
-export async function addTopChromeSearchTapListenerBlock(handler: () => void): Promise<PluginListenerHandle> {
-  return TopChrome.addListener('topChromeSearchTap', handler)
-}
-
-export async function addTopChromeCreateTapListenerBlock(handler: () => void): Promise<PluginListenerHandle> {
-  return TopChrome.addListener('topChromeCreateTap', handler)
+export async function addTopChromeListenerBlock(
+  eventName: TopChromeEventName,
+  handler: (payload: TopChromeEventPayload) => void,
+): Promise<PluginListenerHandle> {
+  return TopChrome.addListener(eventName, handler)
 }

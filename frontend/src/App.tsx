@@ -488,6 +488,7 @@ function App() {
   const [debugLogEntries, setDebugLogEntries] = useState<DebugLogEntryBlock[]>([])
   const [debugToast, setDebugToast] = useState<DebugLogEntryBlock | null>(null)
   const [debugUnreadCount, setDebugUnreadCount] = useState(0)
+  const [nativeBottomBarHidden, setNativeBottomBarHidden] = useState(false)
   const debugToastTimerRef = useRef<number | null>(null)
   const commandInputRef = useRef<HTMLInputElement | null>(null)
   const gitCommitMessageInputRef = useRef<HTMLInputElement | null>(null)
@@ -498,6 +499,8 @@ function App() {
   const appShellRef = useRef<HTMLDivElement | null>(null)
   const mainContentRef = useRef<HTMLElement | null>(null)
   const scrollbarActivityTimeoutRef = useRef<number | null>(null)
+  const nativeChromeScrollTargetRef = useRef<EventTarget | null>(null)
+  const nativeChromeLastScrollTopRef = useRef(0)
   const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
   const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerPanelSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -708,6 +711,14 @@ function App() {
     })),
     [activeWorkspaceTabId, activeWorkspaceTabLabel, routeLabelByPath, workspaceTabs, chatSidebarChromeState.label, webSidebarChromeState.label, webSidebarChromeState.siteLabels, webullTabLabel],
   )
+  const nativeTabItems = useMemo(
+    () => workspaceTabItems.map((tab) => ({
+      id: tab.id,
+      label: tab.label,
+      active: tab.id === activeWorkspaceTabId,
+    })),
+    [activeWorkspaceTabId, workspaceTabItems],
+  )
 
   const shell = useMemo(() => deriveAdaptiveShellStateOrch(layout), [layout])
   const keyboardVisible = layout.keyboardVisible
@@ -737,7 +748,7 @@ function App() {
   const bottomInset = shell.bottomInset
   const leftInset = shell.leftInset
   const drawerBottomInset = shell.drawerBottomInset
-  const shouldUsePhoneSafeBottomPadding = layout.surface === 'capacitor-ios' && layout.mode === 'phone' && !keyboardVisible
+  const shouldUsePhoneSafeBottomPadding = layout.surface === 'capacitor-ios' && layout.mode === 'phone' && !keyboardVisible && !useNativeTopChrome
   const mainBottomPadding = keyboardVisible
     ? Math.max(0, Math.round(layout.keyboardInset))
     : (shouldUsePhoneSafeBottomPadding ? Math.max(bottomInset, 14) : 0)
@@ -774,6 +785,129 @@ function App() {
     () => buildExplorerFolderColorCssBlock(explorerFolderColorRules),
     [explorerFolderColorRules],
   )
+  const nativeSidebarControl = useMemo(() => {
+    if (showGoogleWorkspaceChromeControls) {
+      return {
+        kind: 'thinking-space-sidebar',
+        enabled: true,
+        active: !thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed,
+        label: thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show side panel' : 'Hide side panel',
+      }
+    }
+    if (showChatSidebarChromeControl) {
+      return {
+        kind: 'chat-sidebar',
+        enabled: true,
+        active: !chatSidebarChromeState.collapsed,
+        label: chatSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
+      }
+    }
+    if (showWebSidebarChromeControl) {
+      return {
+        kind: 'web-sidebar',
+        enabled: true,
+        active: !webSidebarChromeState.collapsed,
+        label: webSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
+      }
+    }
+    if (showOrganizerSidebarChromeControl) {
+      return {
+        kind: 'organizer-sidebar',
+        enabled: true,
+        active: !organizerSidebarChromeState.collapsed,
+        label: organizerSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
+      }
+    }
+    if (showWebullSidebarChromeControl) {
+      return {
+        kind: 'webull-sidebar',
+        enabled: true,
+        active: !webullSidebarChromeState.collapsed,
+        label: webullSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
+      }
+    }
+    if (showNewThoughtSidebarChromeControl) {
+      return {
+        kind: 'new-thought-sidebar',
+        enabled: true,
+        active: !newThoughtSidebarChromeState.collapsed,
+        label: newThoughtSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
+      }
+    }
+    if (compactNav) {
+      return {
+        kind: 'drawer',
+        enabled: true,
+        active: drawerOpen,
+        label: drawerOpen ? 'Hide navigation' : 'Show navigation',
+      }
+    }
+    return {
+      kind: 'none',
+      enabled: false,
+      active: false,
+      label: 'Side panel',
+    }
+  }, [
+    chatSidebarChromeState.collapsed,
+    compactNav,
+    drawerOpen,
+    newThoughtSidebarChromeState.collapsed,
+    organizerSidebarChromeState.collapsed,
+    showChatSidebarChromeControl,
+    showGoogleWorkspaceChromeControls,
+    showNewThoughtSidebarChromeControl,
+    showOrganizerSidebarChromeControl,
+    showWebSidebarChromeControl,
+    showWebullSidebarChromeControl,
+    thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed,
+    webSidebarChromeState.collapsed,
+    webullSidebarChromeState.collapsed,
+  ])
+  const nativeHeaderToolControl = useMemo(() => {
+    if (showThinkingSpaceHeaderToggle) {
+      return {
+        kind: 'thinking-space-header',
+        enabled: true,
+        label: thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar',
+      }
+    }
+    if (showChatHeaderToggle) {
+      return {
+        kind: 'chat-header',
+        enabled: true,
+        label: chatSidebarChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar',
+      }
+    }
+    if (showWebHeaderToggle) {
+      return {
+        kind: 'web-header',
+        enabled: true,
+        label: webSidebarChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar',
+      }
+    }
+    if (showOrganizerHeaderToggle) {
+      return {
+        kind: 'organizer-header',
+        enabled: true,
+        label: organizerSidebarChromeState.headerVisible ? 'Hide document headers' : 'Show document headers',
+      }
+    }
+    return {
+      kind: 'none',
+      enabled: false,
+      label: 'Toggle Header',
+    }
+  }, [
+    chatSidebarChromeState.headerVisible,
+    organizerSidebarChromeState.headerVisible,
+    showChatHeaderToggle,
+    showOrganizerHeaderToggle,
+    showThinkingSpaceHeaderToggle,
+    showWebHeaderToggle,
+    thinkingSpaceGoogleWorkspaceChromeState.headerVisible,
+    webSidebarChromeState.headerVisible,
+  ])
 
   const pushRuntimeErrorReport = useCallback((report: RuntimeErrorReportBlock) => {
     setRuntimeErrorReports((prev) => {
@@ -1236,6 +1370,18 @@ function App() {
     }
   }, [gitActionRunning, gitSyncToolsSupported, needsVaultSetup])
 
+  const handleNativeSync = useCallback(() => {
+    void runSyncAction('sync')
+  }, [runSyncAction])
+
+  const handleNativeRebuild = useCallback(() => {
+    void runSyncAction('rebuild')
+  }, [runSyncAction])
+
+  const handleNativeGitPush = useCallback(() => {
+    void runGitAction('push')
+  }, [runGitAction])
+
   const runCommandItem = useCallback((item: CommandItem) => {
     setCommandPaletteOpen(false)
     setCommandQuery('')
@@ -1291,6 +1437,53 @@ function App() {
     handleCreateWorkspaceTab()
     navigate('/new-thought')
   }, [handleCreateWorkspaceTab, navigate])
+
+  const handleNativeSidebarToggle = useCallback(() => {
+    switch (nativeSidebarControl.kind) {
+      case 'thinking-space-sidebar':
+        dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock()
+        return
+      case 'chat-sidebar':
+        dispatchChatSidebarChromeToggleBlock()
+        return
+      case 'web-sidebar':
+        dispatchWebSidebarChromeToggleBlock()
+        return
+      case 'organizer-sidebar':
+        dispatchOrganizerSidebarChromeToggleBlock()
+        return
+      case 'webull-sidebar':
+        dispatchWebullSidebarChromeToggleBlock()
+        return
+      case 'new-thought-sidebar':
+        dispatchNewThoughtSidebarChromeToggleBlock()
+        return
+      case 'drawer':
+        setDrawerOpen(prev => !prev)
+        return
+      default:
+        return
+    }
+  }, [nativeSidebarControl.kind])
+
+  const handleNativeHeaderToggle = useCallback(() => {
+    switch (nativeHeaderToolControl.kind) {
+      case 'thinking-space-header':
+        dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock()
+        return
+      case 'chat-header':
+        dispatchChatSidebarChromeToggleHeaderBlock()
+        return
+      case 'web-header':
+        dispatchWebSidebarChromeToggleHeaderBlock()
+        return
+      case 'organizer-header':
+        dispatchOrganizerSidebarChromeToggleHeaderBlock()
+        return
+      default:
+        return
+    }
+  }, [nativeHeaderToolControl.kind])
 
   const handleSelectWorkspaceTab = useCallback((tabId: string) => {
     if (tabId === activeWorkspaceTabId) return
@@ -1473,6 +1666,26 @@ function App() {
   }, [keyboardVisible])
 
   useEffect(() => {
+    if (!useNativeTopChrome) {
+      setNativeBottomBarHidden(false)
+      nativeChromeScrollTargetRef.current = null
+      nativeChromeLastScrollTopRef.current = 0
+      return
+    }
+
+    if (keyboardVisible) {
+      setNativeBottomBarHidden(true)
+      nativeChromeScrollTargetRef.current = null
+      nativeChromeLastScrollTopRef.current = 0
+      return
+    }
+
+    setNativeBottomBarHidden(false)
+    nativeChromeScrollTargetRef.current = null
+    nativeChromeLastScrollTopRef.current = 0
+  }, [currentRoute, keyboardVisible, useNativeTopChrome])
+
+  useEffect(() => {
     setStorageItem(STORAGE_KEYS.appShellSidebarCollapsed, sidebarCollapsed ? '1' : '0')
   }, [sidebarCollapsed])
 
@@ -1540,10 +1753,33 @@ function App() {
     enabled: useNativeTopChrome && !needsVaultSetup,
     title: activeWorkspaceTabLabel,
     showSearch: true,
-    showCreate: true,
+    showTools: true,
+    toolsBadgeCount: debugUnreadCount,
+    canToggleSidebar: nativeSidebarControl.enabled,
+    sidebarToggleActive: nativeSidebarControl.active,
+    sidebarToggleLabel: nativeSidebarControl.label,
+    canToggleHeader: nativeHeaderToolControl.enabled,
+    headerToggleLabel: nativeHeaderToolControl.label,
+    tabs: nativeTabItems,
+    bottomBarHidden: nativeBottomBarHidden || keyboardVisible,
+    canRefresh: !refreshRunning && !needsVaultSetup,
+    canSync: !syncActionRunning && !gitActionRunning && !needsVaultSetup,
+    canRebuild: !syncActionRunning && !gitActionRunning && !needsVaultSetup,
+    canGitCommit: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
+    canGitPush: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
     onMenuTap: () => setDrawerOpen(true),
     onSearchTap: openCommandPalette,
+    onOpenDebugTap: openDebugPanel,
+    onRefreshTap: handleGlobalRefresh,
+    onSyncTap: handleNativeSync,
+    onRebuildTap: handleNativeRebuild,
+    onGitCommitTap: openGitCommitDialog,
+    onGitPushTap: handleNativeGitPush,
+    onHeaderToggleTap: handleNativeHeaderToggle,
+    onSidebarToggleTap: handleNativeSidebarToggle,
     onCreateTap: openNativeCreateSurface,
+    onSelectTab: handleSelectWorkspaceTab,
+    onCloseTab: handleCloseWorkspaceTab,
   })
 
   useEffect(() => {
@@ -1844,6 +2080,46 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    const appShellNode = appShellRef.current
+    if (!appShellNode || !useNativeTopChrome || keyboardVisible) return
+
+    const handleNativeChromeScroll = (event: Event) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+      if (target.scrollHeight <= target.clientHeight + 24) return
+
+      const nextTop = Math.max(0, target.scrollTop)
+      if (nativeChromeScrollTargetRef.current !== target) {
+        nativeChromeScrollTargetRef.current = target
+        nativeChromeLastScrollTopRef.current = nextTop
+        if (nextTop < 24) {
+          setNativeBottomBarHidden(false)
+        }
+        return
+      }
+
+      const delta = nextTop - nativeChromeLastScrollTopRef.current
+      nativeChromeLastScrollTopRef.current = nextTop
+
+      if (nextTop < 24) {
+        setNativeBottomBarHidden(false)
+        return
+      }
+
+      if (delta > 10) {
+        setNativeBottomBarHidden(true)
+      } else if (delta < -10) {
+        setNativeBottomBarHidden(false)
+      }
+    }
+
+    appShellNode.addEventListener('scroll', handleNativeChromeScroll, { capture: true, passive: true })
+    return () => {
+      appShellNode.removeEventListener('scroll', handleNativeChromeScroll, true)
+    }
+  }, [keyboardVisible, useNativeTopChrome])
+
   const appContent = needsVaultSetup ? (
       <VaultSetup
         onComplete={(vaultRoot) => {
@@ -1873,6 +2149,7 @@ function App() {
           style={topInset && !useNativeTopChrome ? { paddingTop: `calc(${topInset}px + var(--ltm-shell-inset))` } : undefined}
         >
         <section className="ltm-shell-main-stage">
+          {!useNativeTopChrome && (
           <header className="ltm-shell-top-chrome ltm-shell-motion-chrome relative">
             <div
               className={`absolute left-0 top-0 z-20 flex h-full items-center justify-start [-webkit-app-region:no-drag] ${
@@ -2180,6 +2457,7 @@ function App() {
               </div>
             </div>
           </header>
+          )}
           <div className="ltm-shell-body-stage">
             {!compactNav && (
               <aside className={`ltm-shell-sidebar ltm-shell-nav-surface hidden shrink-0 transition-[width] duration-200 lg:block ${
