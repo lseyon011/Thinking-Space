@@ -67,6 +67,7 @@ import {
 import UniversalSearchBlock from './components/lego_blocks/integrations/UniversalSearchBlock'
 import { UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK } from './components/lego_blocks/integrations/universalSearchPresetBlock'
 import { useUILayoutBlock } from './components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useNativeTopChromeBlock } from './components/lego_blocks/hooks/shared/useNativeTopChromeBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { fullSync, getLastSyncTimestamp, setLastSyncTimestamp, smartSync, type SyncResult } from './services/orchestrators/vaultSyncOrch'
@@ -495,6 +496,7 @@ function App() {
   const syncPanelRef = useRef<HTMLDivElement | null>(null)
   const syncToggleButtonRef = useRef<HTMLButtonElement | null>(null)
   const appShellRef = useRef<HTMLDivElement | null>(null)
+  const mainContentRef = useRef<HTMLElement | null>(null)
   const scrollbarActivityTimeoutRef = useRef<number | null>(null)
   const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
   const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -714,10 +716,11 @@ function App() {
   const showBottomNav = false
   const phoneMode = layout.mode === 'phone'
   const iPhoneMode = layout.surface === 'capacitor-ios' && phoneMode
+  const useNativeTopChrome = iPhoneMode
   const iPhoneUserAgent = typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent || '')
   const iPhoneHandsetMode = phoneMode && (iPhoneMode || iPhoneUserAgent)
   const isCapacitorSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
-  const showCapacitorTopChromeMenu = compactNav && !drawerOpen && isCapacitorSurface
+  const showCapacitorTopChromeMenu = compactNav && !drawerOpen && isCapacitorSurface && !useNativeTopChrome
   const googleWorkspaceChromeLeftOffsetPx = isMacDesktopSurface ? 88 : 8
   const leftGoogleWorkspaceChromeControlsWidthPx = showLeftAlignedGoogleWorkspaceChromeControls
     ? googleWorkspaceChromeLeftOffsetPx + 76
@@ -738,6 +741,17 @@ function App() {
   const mainBottomPadding = keyboardVisible
     ? Math.max(0, Math.round(layout.keyboardInset))
     : (shouldUsePhoneSafeBottomPadding ? Math.max(bottomInset, 14) : 0)
+  const routeOwnsMainScroll = !isChatRoute && !isWebRoute
+  const mainStageStyle = useMemo<CSSProperties | undefined>(() => {
+    const style: CSSProperties = {}
+    if (mainBottomPadding) {
+      style.paddingBottom = `${mainBottomPadding}px`
+    }
+    if (!routeOwnsMainScroll) {
+      style.overflowY = 'hidden'
+    }
+    return Object.keys(style).length > 0 ? style : undefined
+  }, [mainBottomPadding, routeOwnsMainScroll])
   const commandPaletteTopPadding = Math.max(80, topInset + 56)
   const commandPaletteBottomPadding = Math.max(16, bottomInset + 12)
   const compactDrawerBaseOffset = layout.surface === 'capacitor-ios' ? 24 : 16
@@ -1273,6 +1287,11 @@ function App() {
     navigate(tab.route)
   }, [navigate])
 
+  const openNativeCreateSurface = useCallback(() => {
+    handleCreateWorkspaceTab()
+    navigate('/new-thought')
+  }, [handleCreateWorkspaceTab, navigate])
+
   const handleSelectWorkspaceTab = useCallback((tabId: string) => {
     if (tabId === activeWorkspaceTabId) return
     const target = workspaceTabs.find(tab => tab.id === tabId)
@@ -1385,6 +1404,14 @@ function App() {
     setDrawerOpen(false)
     setCommandPaletteOpen(false)
   }, [currentRoute])
+
+  useEffect(() => {
+    if (routeOwnsMainScroll) return
+    const mainElement = mainContentRef.current
+    if (!mainElement) return
+    mainElement.scrollTop = 0
+    mainElement.scrollLeft = 0
+  }, [activeWorkspaceTabId, currentRoute, routeOwnsMainScroll])
 
   useEffect(() => {
     if (!compactNav) {
@@ -1508,6 +1535,16 @@ function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [activeWorkspaceTab, compactNav, handleCloseWorkspaceTab, handleCreateWorkspaceTab])
+
+  useNativeTopChromeBlock({
+    enabled: useNativeTopChrome && !needsVaultSetup,
+    title: activeWorkspaceTabLabel,
+    showSearch: true,
+    showCreate: true,
+    onMenuTap: () => setDrawerOpen(true),
+    onSearchTap: openCommandPalette,
+    onCreateTap: openNativeCreateSurface,
+  })
 
   useEffect(() => {
     if (needsVaultSetup) return
@@ -1833,7 +1870,7 @@ function App() {
       <div className="ltm-shell-layer-base">
         <div
           className="ltm-shell-stage"
-          style={topInset ? { paddingTop: `calc(${topInset}px + var(--ltm-shell-inset))` } : undefined}
+          style={topInset && !useNativeTopChrome ? { paddingTop: `calc(${topInset}px + var(--ltm-shell-inset))` } : undefined}
         >
         <section className="ltm-shell-main-stage">
           <header className="ltm-shell-top-chrome ltm-shell-motion-chrome relative">
@@ -2300,8 +2337,9 @@ function App() {
               </aside>
             )}
           <main
+            ref={mainContentRef}
             className="ltm-app-main ltm-shell-main ltm-shell-content-stage"
-            style={mainBottomPadding ? { paddingBottom: `${mainBottomPadding}px` } : undefined}
+            style={mainStageStyle}
           >
             <div className="relative h-full min-h-0">
               {renderedPersistentChatTabIds.map((tabId) => {
@@ -2311,7 +2349,7 @@ function App() {
                 return (
                   <div
                     key={`chat-surface:${tabId}`}
-                    className="absolute inset-0"
+                    className="absolute inset-0 overflow-hidden"
                     style={{ visibility: chatSurfaceActive ? 'visible' : 'hidden', pointerEvents: chatSurfaceActive ? 'auto' : 'none' }}
                     aria-hidden={!chatSurfaceActive}
                   >
@@ -2326,7 +2364,7 @@ function App() {
                 return (
                   <div
                     key={`web-surface:${tabId}`}
-                    className="absolute inset-0"
+                    className="absolute inset-0 overflow-hidden"
                     style={{ visibility: webSurfaceActive ? 'visible' : 'hidden', pointerEvents: webSurfaceActive ? 'auto' : 'none' }}
                     aria-hidden={!webSurfaceActive}
                   >
@@ -2340,7 +2378,7 @@ function App() {
               })}
               {persistentRouteMounts.organizer && (
                 <div
-                  className="absolute inset-0"
+                  className="absolute inset-0 overflow-hidden"
                   style={{ visibility: isOrganizerRoute ? 'visible' : 'hidden', pointerEvents: isOrganizerRoute ? 'auto' : 'none' }}
                   aria-hidden={!isOrganizerRoute}
                 >
@@ -2349,7 +2387,7 @@ function App() {
               )}
               {persistentRouteMounts.newThought && (
                 <div
-                  className="absolute inset-0"
+                  className="absolute inset-0 overflow-hidden"
                   style={{ visibility: isNewThoughtRoute ? 'visible' : 'hidden', pointerEvents: isNewThoughtRoute ? 'auto' : 'none' }}
                   aria-hidden={!isNewThoughtRoute}
                 >

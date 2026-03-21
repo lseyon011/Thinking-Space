@@ -16,7 +16,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func applicationDidEnterBackground(_ application: UIApplication) {
         // Dismiss any inline WKWebView overlay so it doesn't persist
         // over the iOS app switcher or home screen.
-        if let vc = window?.rootViewController as? LTMBridgeViewController {
+        if let vc = window?.rootViewController as? RootShellViewController {
             vc.dismissInlineWebView()
         }
     }
@@ -35,7 +35,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 // MARK: - Custom Bridge ViewController
 // Subclass CAPBridgeViewController to register local plugins.
-// Main.storyboard must reference "LTMBridgeViewController" as the custom class.see
+// Main.storyboard must reference "RootShellViewController" as the custom class.
 
 class LTMBridgeViewController: CAPBridgeViewController {
     private let shellBackgroundColor = UIColor(
@@ -60,6 +60,9 @@ class LTMBridgeViewController: CAPBridgeViewController {
         let webViewPlugin = InlineWebViewPlugin()
         inlineWebViewPlugin = webViewPlugin
         bridge?.registerPluginInstance(webViewPlugin)
+        let topChromePlugin = TopChromePlugin()
+        bridge?.registerPluginInstance(topChromePlugin)
+        (parent as? RootShellViewController)?.wireTopChromePlugin(topChromePlugin)
     }
 
     func dismissInlineWebView() {
