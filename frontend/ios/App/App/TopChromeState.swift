@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CoreGraphics
 
 struct TopChromeTabItem: Identifiable, Decodable, Equatable {
     let id: String
@@ -10,6 +11,7 @@ struct TopChromeTabItem: Identifiable, Decodable, Equatable {
 final class TopChromeState: ObservableObject {
     @Published var title: String = "Thinking Space"
     @Published var isVisible: Bool = true
+    @Published var activeNavItemId: String? = nil
     @Published var isTopBarCollapsed: Bool = false
     @Published var isBottomBarCollapsed: Bool = false
     @Published var showSearch: Bool = true
@@ -27,4 +29,5 @@ final class TopChromeState: ObservableObject {
     @Published var canRebuild: Bool = true
     @Published var canGitCommit: Bool = false
     @Published var canGitPush: Bool = false
+    @Published var drawerProgress: CGFloat = 0
 }

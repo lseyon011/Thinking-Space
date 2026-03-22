@@ -689,6 +689,25 @@ function App() {
     () => getTabLabel(currentRoute, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, webullTabLabel, webSidebarChromeState.siteLabels),
     [currentRoute, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, webSidebarChromeState.siteLabels, webullTabLabel],
   )
+  const nativeTopDrawerActiveNavItemId = useMemo(() => {
+    if (location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer') {
+      return '/thinking-organizer'
+    }
+
+    switch (location.pathname) {
+      case '/thinking-space':
+      case '/new-thought':
+      case '/git-insights':
+      case '/chat':
+      case '/web':
+      case '/webull':
+      case '/terminal':
+      case '/settings':
+        return location.pathname
+      default:
+        return undefined
+    }
+  }, [location.pathname])
   const renderedPersistentChatTabIds = useMemo(
     () => (isChatRoute && activeWorkspaceTabId && !persistentChatTabIds.includes(activeWorkspaceTabId)
       ? [...persistentChatTabIds, activeWorkspaceTabId]
@@ -1440,6 +1459,27 @@ function App() {
     navigate('/new-thought')
   }, [handleCreateWorkspaceTab, navigate])
 
+  const handleNativeTopDrawerNavItemTap = useCallback((navItemId: string) => {
+    switch (navItemId) {
+      case '/thinking-space':
+      case '/new-thought':
+      case '/git-insights':
+      case '/chat':
+      case '/web':
+      case '/webull':
+      case '/thinking-organizer':
+      case '/terminal':
+      case '/settings':
+        navigate(navItemId)
+        return
+      case 'search':
+        openCommandPalette()
+        return
+      default:
+        console.warn('[App] Unhandled native top drawer nav item:', navItemId)
+    }
+  }, [navigate, openCommandPalette])
+
   const handleNativeSidebarToggle = useCallback(() => {
     switch (nativeSidebarControl.kind) {
       case 'thinking-space-sidebar':
@@ -1760,6 +1800,7 @@ function App() {
   useNativeTopChromeBlock({
     enabled: useNativeTopChrome && !needsVaultSetup,
     title: activeWorkspaceTabLabel,
+    activeNavItemId: nativeTopDrawerActiveNavItemId,
     topBarCollapsed: nativeTopBarCollapsed,
     bottomBarCollapsed: nativeBottomBarCollapsed,
     showSearch: true,
@@ -1778,6 +1819,7 @@ function App() {
     canGitCommit: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
     canGitPush: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
     onMenuTap: () => setDrawerOpen(true),
+    onNavItemTap: handleNativeTopDrawerNavItemTap,
     onSearchTap: openCommandPalette,
     onOpenDebugTap: openDebugPanel,
     onRefreshTap: handleGlobalRefresh,
@@ -2675,7 +2717,7 @@ function App() {
               })}
               {persistentRouteMounts.organizer && (
                 <div
-                  className="absolute inset-0 overflow-hidden"
+                  className="absolute inset-0 min-h-0 overflow-y-auto overflow-x-hidden"
                   style={{ visibility: isOrganizerRoute ? 'visible' : 'hidden', pointerEvents: isOrganizerRoute ? 'auto' : 'none' }}
                   aria-hidden={!isOrganizerRoute}
                 >
@@ -2684,7 +2726,7 @@ function App() {
               )}
               {persistentRouteMounts.newThought && (
                 <div
-                  className="absolute inset-0 overflow-hidden"
+                  className="absolute inset-0 min-h-0 overflow-y-auto overflow-x-hidden"
                   style={{ visibility: isNewThoughtRoute ? 'visible' : 'hidden', pointerEvents: isNewThoughtRoute ? 'auto' : 'none' }}
                   aria-hidden={!isNewThoughtRoute}
                 >

@@ -36,7 +36,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 // MARK: - Custom Bridge ViewController
 // Subclass CAPBridgeViewController to register local plugins.
 // Main.storyboard must reference "RootShellViewController" as the custom class.
-
+ 
 class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
     private let shellBackgroundColor = UIColor(
         red: 242.0 / 255.0,
@@ -49,18 +49,35 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
     private var scrollObserver: NSKeyValueObservation?
     private var lastScrollOffset: CGFloat = 0
     
+    // Debug view to visualize bottom gap
+    private var debugBottomView: UIView?
+    
     // Scroll thresholds for chrome collapse behavior
     private let topChromeCollapseThreshold: CGFloat = 50
     private let bottomChromeCollapseThreshold: CGFloat = 150
+    var chromeState: TopChromeState?
+    var onTopChromePluginReady: ((TopChromePlugin) -> Void)?
 
     override open func viewDidLoad() {
         super.viewDidLoad()
+        view.backgroundColor = shellBackgroundColor
+        // Ensure view extends to bottom edge
+        if #available(iOS 11.0, *) {
+            view.insetsLayoutMarginsFromSafeArea = false
+        }
         configureShellSurface()
     }
 
     override open func capacitorDidLoad() {
         super.capacitorDidLoad()
         configureShellSurface()
+        
+        // Ensure WebView fills entire screen including safe areas
+        if let webView = webView ?? bridge?.webView {
+            webView.frame = view.bounds
+            webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        }
+        
         bridge?.registerPluginInstance(FolderPickerPlugin())
         bridge?.registerPluginInstance(PencilEventsPlugin())
         let webViewPlugin = InlineWebViewPlugin()
@@ -68,6 +85,7 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
         bridge?.registerPluginInstance(webViewPlugin)
         let topChromePlugin = TopChromePlugin()
         bridge?.registerPluginInstance(topChromePlugin)
+        onTopChromePluginReady?(topChromePlugin)
         (parent as? RootShellViewController)?.wireTopChromePlugin(topChromePlugin)
     }
     
@@ -82,8 +100,91 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
             if let webView = webView ?? bridge?.webView {
                 webView.configuration.userContentController.add(self, name: "chromeScroll")
                 print("[Chrome] ✅ Registered chromeScroll message handler")
+                
+                // Remove bottom safe area padding from web content since we handle it natively
+                removeBottomSafeAreaPadding(from: webView)
             }
         }
+    }
+    
+    private func removeBottomSafeAreaPadding(from webView: WKWebView) {
+        let removeBottomPaddingJS = """
+        (function() {
+            // Override any bottom safe area padding since native chrome handles it
+            const style = document.createElement('style');
+            style.id = 'native-chrome-override';
+            style.textContent = `
+                :root {
+                    --safe-area-inset-bottom: 0px !important;
+                }
+                body {
+                    padding-bottom: 0px !important;
+                    margin-bottom: 0px !important;
+                }
+                html {
+                    padding-bottom: 0px !important;
+                    margin-bottom: 0px !important;
+                }
+            `;
+            
+            // Wait for document to be ready
+            if (document.head) {
+                const existing = document.getElementById('native-chrome-override');
+                if (existing) existing.remove();
+                document.head.appendChild(style);
+                console.log('[Chrome] 🎨 Removed bottom safe area padding from web content');
+            } else {
+                document.addEventListener('DOMContentLoaded', function() {
+                    const existing = document.getElementById('native-chrome-override');
+                    if (existing) existing.remove();
+                    document.head.appendChild(style);
+                    console.log('[Chrome] 🎨 Removed bottom safe area padding from web content (deferred)');
+                });
+            }
+        })();
+        """
+        
+        webView.evaluateJavaScript(removeBottomPaddingJS) { result, error in
+            if let error = error {
+                print("[Chrome] ⚠️ Failed to inject bottom padding removal JS: \(error)")
+            } else {
+                print("[Chrome] ✅ Bottom padding removal JavaScript injected")
+            }
+        }
+    }
+    
+    override open func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        
+        // Ensure WebView always fills the entire view bounds
+        if let webView = webView ?? bridge?.webView {
+            webView.frame = view.bounds
+        }
+        
+        // Add debug view to visualize any bottom gap
+        addDebugBottomView()
+    }
+    
+    private func addDebugBottomView() {
+        // Remove existing debug view
+        debugBottomView?.removeFromSuperview()
+        
+        // Create a bright red view that fills the entire bottom area
+        let debugView = UIView()
+        debugView.backgroundColor = .red
+        debugView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(debugView)
+        view.sendSubviewToBack(debugView) // Put it behind everything
+        
+        NSLayoutConstraint.activate([
+            debugView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            debugView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            debugView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            debugView.heightAnchor.constraint(equalToConstant: 200) // Large enough to see any gap
+        ])
+        
+        debugBottomView = debugView
+        print("[Chrome] 🔴 Added red debug view at bottom")
     }
     
     // WKScriptMessageHandler
@@ -113,13 +214,22 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
         nativeWebView.scrollView.backgroundColor = shellBackgroundColor
 
         if #available(iOS 11.0, *) {
-            nativeWebView.scrollView.contentInsetAdjustmentBehavior = .automatic
+            nativeWebView.scrollView.contentInsetAdjustmentBehavior = UIDevice.current.userInterfaceIdiom == .phone
+                ? .never
+                : .automatic
+            nativeWebView.scrollView.automaticallyAdjustsScrollIndicatorInsets = UIDevice.current.userInterfaceIdiom != .phone
         }
         
         // Keep original scroll settings - changing these broke scrolling!
         nativeWebView.scrollView.bounces = false
         nativeWebView.scrollView.alwaysBounceVertical = false
         nativeWebView.scrollView.alwaysBounceHorizontal = false
+        
+        // Remove any bottom content inset that might create a gap
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            nativeWebView.scrollView.contentInset = .zero
+            nativeWebView.scrollView.scrollIndicatorInsets = .zero
+        }
         
         print("[Chrome] 📱 Configured webView scrollView")
     }
@@ -215,11 +325,10 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
     }
     
     private func updateChromeForScroll(offsetY: CGFloat, direction: ScrollDirection) {
-        guard let rootVC = parent as? RootShellViewController else {
-            print("[Chrome] ⚠️ Parent is not RootShellViewController")
+        guard let chromeState else {
+            print("[Chrome] ⚠️ Top chrome state is unavailable")
             return
         }
-        let chromeState = rootVC.chromeState
         
         // Determine if top chrome should be collapsed
         let shouldCollapseTop: Bool

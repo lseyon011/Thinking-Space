@@ -10,6 +10,7 @@ export interface NativeTopChromeTabBridgeItem {
 export interface TopChromeStateBlock {
   title: string
   visible?: boolean
+  activeNavItemId?: string
   topBarCollapsed?: boolean
   bottomBarCollapsed?: boolean
   showSearch?: boolean
@@ -31,6 +32,7 @@ export interface TopChromeStateBlock {
 
 export type TopChromeEventPayload = {
   tabId?: string
+  navItemId?: string
 }
 
 export type TopChromeEventName =
@@ -48,6 +50,7 @@ export type TopChromeEventName =
   | 'topChromeExpandBottomTap'
   | 'topChromeSelectTab'
   | 'topChromeCloseTab'
+  | 'topChromeNavItemTap'
 
 interface TopChromePluginBlock {
   setState(options: Omit<TopChromeStateBlock, 'tabs'> & { tabsPayload?: string }): Promise<void>

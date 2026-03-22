@@ -41,6 +41,7 @@ import RssFeedPanelBlock from '@/components/lego_blocks/integrations/RssFeedPane
 import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
 import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentBlock'
 import type { RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
+import type { UILayoutState } from '@/services/lego_blocks/units/uiLayoutBlock'
 
 function dispatchFileOpRefresh(): void {
   dispatchGlobalSyncRefreshBlock({
@@ -55,6 +56,9 @@ const FILE_QUERY_PARAM = 'file'
 const MAX_MOUNTED_INLINE_DOCS = 8
 const EXPLORER_DEFAULT_WIDTH_PX = 320
 const EXPLORER_MIN_WIDTH_PX = 220
+const IPHONE_EXPLORER_DEFAULT_WIDTH_PX = 352
+const IPHONE_EXPLORER_MIN_WIDTH_PX = 280
+const IPHONE_EXPLORER_RIGHT_GUTTER_PX = 36
 
 function leafNameOf(path: string): string {
   const idx = path.lastIndexOf('/')
@@ -73,8 +77,22 @@ function isSameOrChildPath(path: string, candidateParent: string): boolean {
   return path === candidateParent || path.startsWith(`${candidateParent}/`)
 }
 
-function clampExplorerWidthPx(value: number): number {
-  if (!Number.isFinite(value)) return EXPLORER_DEFAULT_WIDTH_PX
+function resolveExplorerDefaultWidthPx(layout: UILayoutState): number {
+  if (layout.surface === 'capacitor-ios' && layout.mode === 'phone') {
+    return Math.min(IPHONE_EXPLORER_DEFAULT_WIDTH_PX, Math.max(IPHONE_EXPLORER_MIN_WIDTH_PX, layout.viewport.width - IPHONE_EXPLORER_RIGHT_GUTTER_PX))
+  }
+  return EXPLORER_DEFAULT_WIDTH_PX
+}
+
+function clampExplorerWidthPx(value: number, layout?: UILayoutState): number {
+  const defaultWidth = layout ? resolveExplorerDefaultWidthPx(layout) : EXPLORER_DEFAULT_WIDTH_PX
+  if (!Number.isFinite(value)) return defaultWidth
+
+  if (layout?.surface === 'capacitor-ios' && layout.mode === 'phone') {
+    const maxWidth = Math.max(IPHONE_EXPLORER_MIN_WIDTH_PX, layout.viewport.width - IPHONE_EXPLORER_RIGHT_GUTTER_PX)
+    return Math.min(maxWidth, Math.max(IPHONE_EXPLORER_MIN_WIDTH_PX, value))
+  }
+
   return Math.max(EXPLORER_MIN_WIDTH_PX, value)
 }
 
@@ -111,9 +129,9 @@ export default function ThinkingSpaceOrch() {
   const [inlineDocHeaderHidden, setInlineDocHeaderHidden] = useState(false)
   const [explorerWidthPx, setExplorerWidthPx] = useState(() => {
     const raw = getStorageItem(STORAGE_KEYS.thinkingSpaceExplorerWidthPx)
-    if (!raw) return EXPLORER_DEFAULT_WIDTH_PX
+    if (!raw) return resolveExplorerDefaultWidthPx(layout)
     const parsed = Number.parseInt(raw, 10)
-    return clampExplorerWidthPx(parsed)
+    return clampExplorerWidthPx(parsed, layout)
   })
   const edgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -436,9 +454,9 @@ export default function ThinkingSpaceOrch() {
     const state = explorerResizeRef.current
     if (!state) return
     const deltaX = event.clientX - state.startX
-    const nextWidth = clampExplorerWidthPx(state.startWidth + deltaX)
+    const nextWidth = clampExplorerWidthPx(state.startWidth + deltaX, layout)
     setExplorerWidthPx(nextWidth)
-  }, [])
+  }, [layout])
 
   const stopExplorerResize = useCallback(() => {
     explorerResizeRef.current = null
@@ -467,8 +485,8 @@ export default function ThinkingSpaceOrch() {
     event.preventDefault()
     const step = event.shiftKey ? 32 : 16
     const delta = event.key === 'ArrowLeft' ? -step : step
-    setExplorerWidthPx((prev) => clampExplorerWidthPx(prev + delta))
-  }, [])
+    setExplorerWidthPx((prev) => clampExplorerWidthPx(prev + delta, layout))
+  }, [layout])
 
   useEffect(() => {
     if (showInlineSidebar) setMobileExplorerOpen(false)
@@ -555,11 +573,15 @@ export default function ThinkingSpaceOrch() {
 
   useEffect(() => {
     const handleResize = () => {
-      setExplorerWidthPx((prev) => clampExplorerWidthPx(prev))
+      setExplorerWidthPx((prev) => clampExplorerWidthPx(prev, layout))
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  }, [layout])
+
+  useEffect(() => {
+    setExplorerWidthPx((prev) => clampExplorerWidthPx(prev, layout))
+  }, [layout])
 
   useEffect(() => {
     return () => {
@@ -793,7 +815,7 @@ export default function ThinkingSpaceOrch() {
             aria-orientation="vertical"
             tabIndex={0}
             onPointerDown={handleExplorerResizeStart}
-            onDoubleClick={() => setExplorerWidthPx(EXPLORER_DEFAULT_WIDTH_PX)}
+            onDoubleClick={() => setExplorerWidthPx(resolveExplorerDefaultWidthPx(layout))}
             onKeyDown={handleExplorerResizeKeyDown}
             className="ltm-thinking-space-explorer-resizer group relative hidden w-2 shrink-0 cursor-col-resize items-stretch md:flex"
           >
@@ -802,6 +824,14 @@ export default function ThinkingSpaceOrch() {
         )}
 
         <section className="ltm-thinking-space-document-stage relative min-h-0 flex-1">
+          {isIPhoneIosSurface && showCollapsedInlineExplorer && (
+            <button
+              type="button"
+              aria-label="Close explorer"
+              className="absolute inset-0 z-10 cursor-default bg-transparent"
+              onClick={() => setExplorerCollapsed(true)}
+            />
+          )}
           {rssActiveArticle ? (
             <div className="h-full min-h-0">
               <RssArticleViewBlock

@@ -18,6 +18,7 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func setState(_ call: CAPPluginCall) {
         let title = call.getString("title")
         let isVisible = call.getBool("visible")
+        let activeNavItemId = call.getString("activeNavItemId")
         let topBarCollapsed = call.getBool("topBarCollapsed")
         let bottomBarCollapsed = call.getBool("bottomBarCollapsed")
         let showSearch = call.getBool("showSearch")
@@ -47,6 +48,11 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
             }
             if let isVisible {
                 state.isVisible = isVisible
+            }
+            if call.options.keys.contains("activeNavItemId") {
+                state.activeNavItemId = activeNavItemId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                    ? activeNavItemId
+                    : nil
             }
             if let topBarCollapsed {
                 state.isTopBarCollapsed = topBarCollapsed
@@ -172,6 +178,10 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
 
     func emitCloseTab(tabId: String) {
         notifyListeners("topChromeCloseTab", data: ["tabId": tabId])
+    }
+
+    func emitNavItemTap(navItemId: String) {
+        notifyListeners("topChromeNavItemTap", data: ["navItemId": navItemId])
     }
 
     private func decodeTabs(from payload: String) -> [TopChromeTabItem] {

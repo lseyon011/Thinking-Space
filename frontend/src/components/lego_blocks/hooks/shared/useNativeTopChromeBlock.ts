@@ -17,6 +17,7 @@ interface UseNativeTopChromeOptions extends TopChromeStateBlock {
   enabled: boolean
   tabs: NativeTopChromeTabBridgeItem[]
   onMenuTap: () => void
+  onNavItemTap: (navItemId: string) => void
   onSearchTap: () => void
   onOpenDebugTap: () => void
   onRefreshTap: () => void
@@ -34,6 +35,7 @@ interface UseNativeTopChromeOptions extends TopChromeStateBlock {
 
 interface NativeTopChromeCallbackRegistry {
   onMenuTap: () => void
+  onNavItemTap: (navItemId: string) => void
   onSearchTap: () => void
   onOpenDebugTap: () => void
   onRefreshTap: () => void
@@ -55,9 +57,16 @@ function resolveTabId(payload: TopChromeEventPayload): string | null {
     : null
 }
 
+function resolveNavItemId(payload: TopChromeEventPayload): string | null {
+  return typeof payload.navItemId === 'string' && payload.navItemId.trim().length > 0
+    ? payload.navItemId
+    : null
+}
+
 export function useNativeTopChromeBlock({
   enabled,
   onMenuTap,
+  onNavItemTap,
   onSearchTap,
   onOpenDebugTap,
   onRefreshTap,
@@ -73,6 +82,7 @@ export function useNativeTopChromeBlock({
   onCloseTab,
   title,
   visible,
+  activeNavItemId,
   topBarCollapsed,
   bottomBarCollapsed,
   showSearch,
@@ -93,6 +103,7 @@ export function useNativeTopChromeBlock({
 }: UseNativeTopChromeOptions): void {
   const callbackRegistryRef = useRef<NativeTopChromeCallbackRegistry>({
     onMenuTap,
+    onNavItemTap,
     onSearchTap,
     onOpenDebugTap,
     onRefreshTap,
@@ -111,6 +122,7 @@ export function useNativeTopChromeBlock({
   useEffect(() => {
     callbackRegistryRef.current = {
       onMenuTap,
+      onNavItemTap,
       onSearchTap,
       onOpenDebugTap,
       onRefreshTap,
@@ -132,6 +144,7 @@ export function useNativeTopChromeBlock({
     onGitPushTap,
     onHeaderToggleTap,
     onMenuTap,
+    onNavItemTap,
     onOpenDebugTap,
     onExpandBottomTap,
     onRebuildTap,
@@ -156,6 +169,7 @@ export function useNativeTopChromeBlock({
     void setTopChromeStateBlock({
       title,
       visible: visible ?? true,
+      activeNavItemId,
       topBarCollapsed,
       bottomBarCollapsed,
       showSearch,
@@ -178,7 +192,7 @@ export function useNativeTopChromeBlock({
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps -- tabsJson is a stable serialization of tabs
   }, [
-    enabled, title, visible, topBarCollapsed, bottomBarCollapsed,
+    enabled, title, visible, activeNavItemId, topBarCollapsed, bottomBarCollapsed,
     showSearch, showTools, toolsBadgeCount,
     canToggleSidebar, sidebarToggleActive, sidebarToggleLabel,
     canToggleHeader, headerToggleLabel, tabsJson,
@@ -195,6 +209,10 @@ export function useNativeTopChromeBlock({
       try {
         const nextHandles = await Promise.all([
           addTopChromeListenerBlock('topChromeMenuTap', () => callbackRegistryRef.current.onMenuTap()),
+          addTopChromeListenerBlock('topChromeNavItemTap', (payload) => {
+            const navItemId = resolveNavItemId(payload)
+            if (navItemId) callbackRegistryRef.current.onNavItemTap(navItemId)
+          }),
           addTopChromeListenerBlock('topChromeSearchTap', () => callbackRegistryRef.current.onSearchTap()),
           addTopChromeListenerBlock('topChromeOpenDebugTap', () => callbackRegistryRef.current.onOpenDebugTap()),
           addTopChromeListenerBlock('topChromeRefreshTap', () => callbackRegistryRef.current.onRefreshTap()),

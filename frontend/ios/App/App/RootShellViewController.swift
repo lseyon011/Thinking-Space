@@ -3,27 +3,36 @@ import SwiftUI
 import Combine
 
 final class RootShellViewController: UIViewController {
-    private let shellBackgroundColor = UIColor.systemBackground
+    private let shellBackgroundColor = UIColor(
+        red: 242.0 / 255.0,
+        green: 242.0 / 255.0,
+        blue: 247.0 / 255.0,
+        alpha: 1.0
+    )
 
     private let bridgeVC = LTMBridgeViewController()
-    let chromeState = TopChromeState() // Made internal so bridge can access it
+    let chromeState = TopChromeState()
     private var chromePlugin: TopChromePlugin?
     private var chromeVisibilityCancellable: AnyCancellable?
     private var bottomBarVisibilityCancellable: AnyCancellable?
-    private var chromeLayoutCancellable: AnyCancellable?
-    private var topChromeHeightConstraint: NSLayoutConstraint?
-    private var topChromeHostingHeightConstraint: NSLayoutConstraint?
+    private var bottomBarLayoutCancellable: AnyCancellable?
     private var bottomChromeHeightConstraint: NSLayoutConstraint?
 
-    private lazy var topChromeHostingVC = UIHostingController(
-        rootView: TopChromeView(state: chromeState)
+    private lazy var phoneShellHostingVC = UIHostingController(
+        rootView: PhoneShellView(
+            chromeState: chromeState,
+            bridgeController: bridgeVC,
+            onSelectNavItem: { [weak self] navItemId in
+                self?.chromePlugin?.emitNavItemTap(navItemId: navItemId)
+            }
+        )
     )
 
     private lazy var bottomChromeHostingVC = UIHostingController(
         rootView: BottomChromeView(
             state: chromeState,
-            onMenuTap: { [weak self] in self?.chromePlugin?.emitMenuTap() },
             onSidebarToggleTap: { [weak self] in self?.chromePlugin?.emitSidebarToggleTap() },
+            onDrawerToggleTap: { [weak self] in self?.toggleDrawer() },
             onSearchTap: { [weak self] in self?.chromePlugin?.emitSearchTap() },
             onCreateTap: { [weak self] in self?.chromePlugin?.emitCreateTap() },
             onExpandTap: { [weak self] in self?.chromePlugin?.emitExpandBottomTap() },
@@ -39,12 +48,6 @@ final class RootShellViewController: UIViewController {
         )
     )
 
-    private let topChromeContainerView: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-
     private let bottomChromeContainerView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -59,11 +62,14 @@ final class RootShellViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = shellBackgroundColor
 
+        bridgeVC.chromeState = chromeState
+        bridgeVC.onTopChromePluginReady = { [weak self] plugin in
+            self?.wireTopChromePlugin(plugin)
+        }
+
         if shouldUseNativeTopChrome {
             configurePhoneShell()
-            observeChromeVisibility()
-            observeBottomBarVisibility()
-            observeChromeLayoutChanges()
+            observeBottomChromeState()
         } else {
             embedBridgeFullscreen()
         }
@@ -71,7 +77,6 @@ final class RootShellViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        applyChromeVisibility(animated: false)
         applyBottomBarVisibility(animated: false)
     }
 
@@ -85,62 +90,25 @@ final class RootShellViewController: UIViewController {
     }
 
     private func configurePhoneShell() {
-        topChromeContainerView.backgroundColor = .clear
+        phoneShellHostingVC.view.backgroundColor = .clear
         bottomChromeContainerView.backgroundColor = .clear
-        topChromeHostingVC.view.backgroundColor = .clear
         bottomChromeHostingVC.view.backgroundColor = .clear
 
-        embedTopChrome()
-        embedBridgeUnderTopChrome()
+        addChild(phoneShellHostingVC)
+        view.addSubview(phoneShellHostingVC.view)
+        phoneShellHostingVC.view.translatesAutoresizingMaskIntoConstraints = false
+
+        NSLayoutConstraint.activate([
+            phoneShellHostingVC.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            phoneShellHostingVC.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            phoneShellHostingVC.view.topAnchor.constraint(equalTo: view.topAnchor),
+            phoneShellHostingVC.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+
+        phoneShellHostingVC.didMove(toParent: self)
+
         embedBottomChromeOverlay()
-        view.bringSubviewToFront(topChromeContainerView)
         view.bringSubviewToFront(bottomChromeContainerView)
-    }
-
-    private func embedTopChrome() {
-        addChild(topChromeHostingVC)
-        view.addSubview(topChromeContainerView)
-        topChromeContainerView.addSubview(topChromeHostingVC.view)
-
-        topChromeHostingVC.view.translatesAutoresizingMaskIntoConstraints = false
-
-        let topChromeHeightConstraint = topChromeContainerView.heightAnchor.constraint(equalToConstant: resolvedTopChromeHeight())
-        self.topChromeHeightConstraint = topChromeHeightConstraint
-        let topChromeHostingHeightConstraint = topChromeHostingVC.view.heightAnchor.constraint(equalToConstant: resolvedTopChromeContentHeight())
-        self.topChromeHostingHeightConstraint = topChromeHostingHeightConstraint
-
-        NSLayoutConstraint.activate([
-            topChromeContainerView.topAnchor.constraint(equalTo: view.topAnchor),
-            topChromeContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            topChromeContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            topChromeHeightConstraint,
-            topChromeHostingVC.view.leadingAnchor.constraint(equalTo: topChromeContainerView.leadingAnchor),
-            topChromeHostingVC.view.trailingAnchor.constraint(equalTo: topChromeContainerView.trailingAnchor),
-            topChromeHostingVC.view.topAnchor.constraint(equalTo: topChromeContainerView.safeAreaLayoutGuide.topAnchor),
-            topChromeHostingHeightConstraint,
-        ])
-
-        topChromeHostingVC.didMove(toParent: self)
-    }
-
-    private func embedBridgeUnderTopChrome() {
-        addChild(bridgeVC)
-        view.addSubview(bridgeVC.view)
-        bridgeVC.view.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Ensure content panel is rectangular (no rounded corners) on iPhone
-        bridgeVC.view.layer.cornerRadius = 0
-        bridgeVC.view.layer.masksToBounds = false
-        bridgeVC.view.clipsToBounds = false
-
-        NSLayoutConstraint.activate([
-            bridgeVC.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            bridgeVC.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            bridgeVC.view.topAnchor.constraint(equalTo: topChromeContainerView.bottomAnchor),
-            bridgeVC.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
-
-        bridgeVC.didMove(toParent: self)
     }
 
     private func embedBottomChromeOverlay() {
@@ -150,19 +118,23 @@ final class RootShellViewController: UIViewController {
 
         bottomChromeHostingVC.view.translatesAutoresizingMaskIntoConstraints = false
 
-        let bottomChromeHeightConstraint = bottomChromeContainerView.heightAnchor.constraint(equalToConstant: resolvedBottomChromeHeight())
-        self.bottomChromeHeightConstraint = bottomChromeHeightConstraint
+        let heightConstraint = bottomChromeContainerView.heightAnchor.constraint(equalToConstant: resolvedBottomChromeHeight())
+        bottomChromeHeightConstraint = heightConstraint
 
         NSLayoutConstraint.activate([
             bottomChromeContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             bottomChromeContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             bottomChromeContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            bottomChromeHeightConstraint,
+            heightConstraint,
             bottomChromeHostingVC.view.leadingAnchor.constraint(equalTo: bottomChromeContainerView.leadingAnchor),
             bottomChromeHostingVC.view.trailingAnchor.constraint(equalTo: bottomChromeContainerView.trailingAnchor),
             bottomChromeHostingVC.view.topAnchor.constraint(equalTo: bottomChromeContainerView.safeAreaLayoutGuide.topAnchor),
             bottomChromeHostingVC.view.bottomAnchor.constraint(equalTo: bottomChromeContainerView.bottomAnchor),
         ])
+
+        bottomChromeContainerView.isHidden = true
+        bottomChromeContainerView.alpha = 0
+        bottomChromeContainerView.isUserInteractionEnabled = false
 
         bottomChromeHostingVC.didMove(toParent: self)
     }
@@ -171,37 +143,35 @@ final class RootShellViewController: UIViewController {
         addChild(bridgeVC)
         view.addSubview(bridgeVC.view)
         bridgeVC.view.translatesAutoresizingMaskIntoConstraints = false
+
         NSLayoutConstraint.activate([
             bridgeVC.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             bridgeVC.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             bridgeVC.view.topAnchor.constraint(equalTo: view.topAnchor),
             bridgeVC.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+
         bridgeVC.didMove(toParent: self)
     }
 
-    private func observeChromeVisibility() {
+    private func observeBottomChromeState() {
         chromeVisibilityCancellable = chromeState.$isVisible
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                self?.applyChromeVisibility(animated: true)
+                self?.applyBottomBarVisibility(animated: true)
             }
-    }
 
-    private func observeBottomBarVisibility() {
         bottomBarVisibilityCancellable = chromeState.$isBottomBarHidden
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.applyBottomBarVisibility(animated: true)
             }
-    }
 
-    private func observeChromeLayoutChanges() {
-        chromeLayoutCancellable = Publishers.CombineLatest(chromeState.$isTopBarCollapsed, chromeState.$isBottomBarCollapsed)
+        bottomBarLayoutCancellable = chromeState.$isBottomBarCollapsed
             .receive(on: RunLoop.main)
-            .sink { [weak self] _, _ in
+            .sink { [weak self] _ in
                 guard let self else { return }
-                self.updateChromeSizeConstraints()
+                self.updateBottomChromeSizeConstraint()
                 UIView.animate(
                     withDuration: 0.32,
                     delay: 0,
@@ -209,70 +179,23 @@ final class RootShellViewController: UIViewController {
                     initialSpringVelocity: 0.2,
                     options: [.curveEaseInOut, .beginFromCurrentState]
                 ) {
-                    self.topChromeHostingVC.view.invalidateIntrinsicContentSize()
                     self.bottomChromeHostingVC.view.invalidateIntrinsicContentSize()
                     self.view.layoutIfNeeded()
                 }
             }
     }
 
-    private func resolvedTopChromeHeight() -> CGFloat {
-        // Minimal: just enough to cover the dynamic island / status bar
-        view.safeAreaInsets.top
-    }
-
-    private func resolvedTopChromeContentHeight() -> CGFloat {
-        // No interactive content — just the glass backdrop
-        0
-    }
-
     private func resolvedBottomChromeHeight() -> CGFloat {
         view.safeAreaInsets.bottom + (chromeState.isBottomBarCollapsed ? 42 : 64)
     }
 
-    private func updateChromeSizeConstraints() {
-        topChromeHeightConstraint?.constant = resolvedTopChromeHeight()
-        topChromeHostingHeightConstraint?.constant = resolvedTopChromeContentHeight()
+    private func updateBottomChromeSizeConstraint() {
         bottomChromeHeightConstraint?.constant = resolvedBottomChromeHeight()
-    }
-
-    private func applyChromeVisibility(animated: Bool) {
-        guard shouldUseNativeTopChrome else { return }
-        updateChromeSizeConstraints()
-
-        let animations = {
-            if self.chromeState.isVisible {
-                self.topChromeContainerView.isHidden = false
-                self.topChromeContainerView.alpha = 1
-                self.topChromeContainerView.transform = .identity
-            } else {
-                self.topChromeContainerView.alpha = 0
-                self.topChromeContainerView.transform = CGAffineTransform(translationX: 0, y: -18)
-            }
-        }
-
-        let completion: (Bool) -> Void = { _ in
-            self.topChromeContainerView.isHidden = !self.chromeState.isVisible
-            self.applyBottomBarVisibility(animated: animated)
-        }
-
-        if animated {
-            UIView.animate(
-                withDuration: 0.22,
-                delay: 0,
-                options: [.curveEaseInOut, .beginFromCurrentState],
-                animations: animations,
-                completion: completion
-            )
-        } else {
-            animations()
-            completion(true)
-        }
     }
 
     private func applyBottomBarVisibility(animated: Bool) {
         guard shouldUseNativeTopChrome else { return }
-        updateChromeSizeConstraints()
+        updateBottomChromeSizeConstraint()
 
         let shouldShowBottomBar = chromeState.isVisible && !chromeState.isBottomBarHidden
         let hiddenOffset = max(bottomChromeContainerView.bounds.height, 96) + 12
@@ -306,6 +229,12 @@ final class RootShellViewController: UIViewController {
         } else {
             animations()
             completion(true)
+        }
+    }
+
+    private func toggleDrawer() {
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+            chromeState.drawerProgress = chromeState.drawerProgress > 0.01 ? 0 : 1
         }
     }
 }
