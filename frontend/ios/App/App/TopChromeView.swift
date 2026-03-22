@@ -31,6 +31,7 @@ private struct NativeTopDrawerItem: Identifiable {
     let id: String
     let title: String
     let systemImage: String
+    let badgeColor: Color
 }
 
 private struct NativeTopDrawerSection: Identifiable {
@@ -41,21 +42,21 @@ private struct NativeTopDrawerSection: Identifiable {
 
 private let nativeTopDrawerSections: [NativeTopDrawerSection] = [
     NativeTopDrawerSection(id: "core", title: "Core", items: [
-        NativeTopDrawerItem(id: "/", title: "Home", systemImage: "house"),
-        NativeTopDrawerItem(id: "/thinking-space", title: "Thinking Space", systemImage: "safari"),
-        NativeTopDrawerItem(id: "/new-thought", title: "New Note", systemImage: "plus.rectangle"),
-        NativeTopDrawerItem(id: "/git-insights", title: "Insights", systemImage: "tuningfork"),
-        NativeTopDrawerItem(id: "/chat", title: "AI", systemImage: "bubble.left"),
-        NativeTopDrawerItem(id: "/web", title: "Web", systemImage: "globe"),
-        NativeTopDrawerItem(id: "/webull", title: "F9", systemImage: "chart.xyaxis.line"),
-        NativeTopDrawerItem(id: "/thinking-organizer", title: "Thinking Organizer", systemImage: "tablecells"),
+        NativeTopDrawerItem(id: "/", title: "Home", systemImage: "house", badgeColor: .blue),
+        NativeTopDrawerItem(id: "/thinking-space", title: "Thinking Space", systemImage: "safari", badgeColor: .cyan),
+        NativeTopDrawerItem(id: "/new-thought", title: "New Note", systemImage: "plus.rectangle", badgeColor: .green),
+        NativeTopDrawerItem(id: "/git-insights", title: "Insights", systemImage: "tuningfork", badgeColor: .orange),
+        NativeTopDrawerItem(id: "/chat", title: "AI", systemImage: "bubble.left", badgeColor: .purple),
+        NativeTopDrawerItem(id: "/web", title: "Web", systemImage: "globe", badgeColor: .blue),
+        NativeTopDrawerItem(id: "/webull", title: "F9", systemImage: "chart.xyaxis.line", badgeColor: .mint),
+        NativeTopDrawerItem(id: "/thinking-organizer", title: "Thinking Organizer", systemImage: "tablecells", badgeColor: .indigo),
     ]),
     NativeTopDrawerSection(id: "workspace", title: "Workspace", items: [
-        NativeTopDrawerItem(id: "/terminal", title: "Terminal", systemImage: "terminal"),
-        NativeTopDrawerItem(id: "/settings", title: "Settings", systemImage: "gearshape"),
+        NativeTopDrawerItem(id: "/terminal", title: "Terminal", systemImage: "terminal", badgeColor: Color(uiColor: .darkGray)),
+        NativeTopDrawerItem(id: "/settings", title: "Settings", systemImage: "gearshape", badgeColor: .gray),
     ]),
     NativeTopDrawerSection(id: "search", title: "", items: [
-        NativeTopDrawerItem(id: "search", title: "Search", systemImage: "magnifyingglass"),
+        NativeTopDrawerItem(id: "search", title: "Search", systemImage: "magnifyingglass", badgeColor: .pink),
     ]),
 ]
 
@@ -128,12 +129,27 @@ struct TopDrawerMenuView: View {
                 ForEach(nativeTopDrawerSections) { section in
                     Section(section.title.isEmpty ? "" : section.title) {
                         ForEach(section.items) { item in
-                            let isActive = state.activeNavItemId == item.id
                             Button(action: { onSelectNavItem(item.id) }) {
-                                Label(item.title, systemImage: item.systemImage)
+                                HStack(spacing: 14) {
+                                    Image(systemName: item.systemImage)
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(.white)
+                                        .frame(width: 30, height: 30)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                                .fill(item.badgeColor)
+                                        )
+
+                                    Text(item.title)
+                                        .foregroundStyle(.primary)
+
+                                    Spacer(minLength: 0)
+
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(.tertiary)
+                                }
                             }
-                            .listRowBackground(isActive ? Color.accentColor.opacity(0.12) : nil)
-                            .foregroundStyle(isActive ? Color.accentColor : .primary)
                         }
                     }
                 }
