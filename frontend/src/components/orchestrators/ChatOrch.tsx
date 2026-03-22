@@ -64,6 +64,7 @@ interface ChatOrchProps {
 export default function ChatOrch({ active = true }: ChatOrchProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
+  const isIosPhone = isIos && layout.mode === 'phone'
   const [providers, setProviders] = useState<AiProviderStatus[]>([])
   const [selectedProvider, setSelectedProvider] = useState<AiProvider | null>(null)
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
@@ -255,16 +256,30 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
   }
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
-      {/* ── Vertical sidebar ── */}
+    <div className="relative flex h-full min-h-0 overflow-hidden">
+      {isIosPhone && !sidebarCollapsed && (
+        <div
+          className="ltm-phone-sidebar-backdrop"
+          onClick={() => setSidebarCollapsed(true)}
+          aria-hidden="true"
+        />
+      )}
+
       <aside
         className={cn(
-          'flex shrink-0 flex-col border-r border-border/50 overflow-hidden transition-[width,opacity] duration-200 ease-out',
-          sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-48 opacity-100',
+          'flex shrink-0 flex-col overflow-hidden',
+          isIosPhone
+            ? cn(
+              'ltm-phone-sidebar-sheet transition-transform duration-200 ease-out',
+              sidebarCollapsed ? '-translate-x-[calc(100%+1rem)]' : 'translate-x-0',
+            )
+            : cn(
+              'border-r border-border/50 transition-[width,opacity] duration-200 ease-out',
+              sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-48 opacity-100',
+            ),
         )}
         aria-hidden={sidebarCollapsed}
       >
-        {/* Sidebar header */}
         <div className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between px-2">
           <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             AI
@@ -280,7 +295,6 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
           </Button>
         </div>
 
-        {/* Tab list */}
         <div className="min-h-0 flex-1 overflow-y-auto">
           {providersLoading ? (
             <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
@@ -396,10 +410,7 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
         </div>
       </aside>
 
-      {/* ── Content area ── */}
       <section className="relative min-h-0 flex-1 overflow-hidden">
-        {/* Web AI site — key forces fresh webview mount per site (Electron ignores
-             partition changes on an already-mounted webview element). */}
         {dashboardSelected && (
           <CodexUsageDashboardOrch />
         )}
@@ -410,12 +421,11 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
             url={selectedWebsiteForChrome.url}
             partition={selectedWebsiteForChrome.partition}
             hideHeader={!webviewHeaderVisible}
-            suspended={!active}
+            suspended={!active || (isIosPhone && !sidebarCollapsed)}
             className="h-full"
           />
         )}
 
-        {/* API chat — only shown when no web site is active */}
         {!dashboardSelected && !selectedWebsiteForChrome && (
           <div className="flex h-full flex-col px-4 py-4">
             {/* Model / think controls */}

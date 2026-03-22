@@ -27,6 +27,7 @@ export default function WebOrch({
 }: WebOrchProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
+  const isIosPhone = isIos && layout.mode === 'phone'
   const [searchParams, setSearchParams] = useSearchParams()
   const [prefs, setPrefs] = useState<WebSitePreferencesBlock>({ bookmarks: [], groups: [] })
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -85,12 +86,27 @@ export default function WebOrch({
   }
 
   return (
-    <div className="flex h-full min-h-0">
-      {/* Sidebar */}
+    <div className="relative flex h-full min-h-0 overflow-hidden">
+      {isIosPhone && !sidebarCollapsed && (
+        <div
+          className="ltm-phone-sidebar-backdrop"
+          onClick={() => setSidebarCollapsed(true)}
+          aria-hidden="true"
+        />
+      )}
+
       <aside
         className={cn(
-          'flex shrink-0 flex-col border-r border-border/50 overflow-hidden transition-[width,opacity] duration-200 ease-out',
-          sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-52 opacity-100',
+          'flex shrink-0 flex-col overflow-hidden',
+          isIosPhone
+            ? cn(
+              'ltm-phone-sidebar-sheet transition-transform duration-200 ease-out',
+              sidebarCollapsed ? '-translate-x-[calc(100%+1rem)]' : 'translate-x-0',
+            )
+            : cn(
+              'border-r border-border/50 transition-[width,opacity] duration-200 ease-out',
+              sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-52 opacity-100',
+            ),
         )}
         aria-hidden={sidebarCollapsed}
       >
@@ -103,7 +119,6 @@ export default function WebOrch({
         />
       </aside>
 
-      {/* Content area */}
       <section className="relative min-h-0 flex-1">
         {selectedSite ? (
           <UrlDocumentBlock
@@ -111,7 +126,7 @@ export default function WebOrch({
             url={selectedSite.url}
             partition={selectedSite.partition}
             hideHeader={!webviewHeaderVisible}
-            suspended={!active}
+            suspended={!active || (isIosPhone && !sidebarCollapsed)}
             className="h-full"
           />
         ) : (

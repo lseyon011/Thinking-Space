@@ -36,6 +36,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
+import { hasNativeDrawerShellBlock } from '@/services/orchestrators/runtimeOrch'
 
 type TabMode = 'backlog' | 'view' | 'link' | 'steward' | 'integrity'
 const TAB_QUERY_PARAM = 'tab'
@@ -319,6 +320,8 @@ interface ProjectEntry {
 export default function ThinkingOrganizerOrch() {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
+  const isIosPhone = isIos && layout.mode === 'phone'
+  const useNativePhoneDrawer = isIosPhone && hasNativeDrawerShellBlock()
   const [tab, setTab] = usePersistentTab()
   const [searchParams, setSearchParams] = useSearchParams()
   const [mountedTabs, setMountedTabs] = useState<Record<TabMode, boolean>>(() => ({
@@ -329,6 +332,7 @@ export default function ThinkingOrganizerOrch() {
     integrity: tab === 'integrity',
   }))
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (useNativePhoneDrawer) return true
     if (typeof window === 'undefined') return false
     const stored = window.localStorage.getItem(ORGANIZER_SIDEBAR_COLLAPSED_KEY)
     return stored === '1'
@@ -418,6 +422,12 @@ export default function ThinkingOrganizerOrch() {
   }, [tab])
 
   useEffect(() => {
+    if (useNativePhoneDrawer && !sidebarCollapsed) {
+      setSidebarCollapsed(true)
+    }
+  }, [sidebarCollapsed, useNativePhoneDrawer])
+
+  useEffect(() => {
     if (typeof window === 'undefined') return
     window.localStorage.setItem(ORGANIZER_SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? '1' : '0')
   }, [sidebarCollapsed])
@@ -425,18 +435,19 @@ export default function ThinkingOrganizerOrch() {
   useEffect(() => {
     dispatchOrganizerSidebarChromeStateBlock({
       enabled: true,
-      collapsed: sidebarCollapsed,
+      collapsed: useNativePhoneDrawer ? true : sidebarCollapsed,
       label: 'Organizer',
       headerVisible: pinBoardHeaderVisible,
       showHeaderToggle: tab === 'backlog' && pinBoardActive,
     })
-  }, [pinBoardActive, pinBoardHeaderVisible, sidebarCollapsed, tab])
+  }, [pinBoardActive, pinBoardHeaderVisible, sidebarCollapsed, tab, useNativePhoneDrawer])
 
   useEffect(() => {
+    if (useNativePhoneDrawer) return
     const handler = () => setSidebarCollapsed(prev => !prev)
     window.addEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
     return () => window.removeEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
-  }, [])
+  }, [useNativePhoneDrawer])
 
   useEffect(() => {
     const handler = () => setPinBoardHeaderVisible(prev => !prev)
@@ -446,14 +457,14 @@ export default function ThinkingOrganizerOrch() {
 
   const handleToggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), [])
   useIosSidebarSwipeBlock({
-    isIos,
-    isOpen: !sidebarCollapsed,
+    isIos: isIos && !useNativePhoneDrawer,
+    isOpen: !useNativePhoneDrawer && !sidebarCollapsed,
     keyboardVisible: layout.keyboardVisible,
     onToggle: handleToggleSidebar,
   })
 
   return (
-    <div className="ltm-page-shell ltm-shell-ultra">
+    <div className="ltm-page-shell ltm-shell-ultra relative min-h-full">
       <div className="mb-4">
         <h1 className="text-xl font-semibold tracking-tight md:text-2xl">
           {projectName ? `${activeTabLabel} · ${projectName}` : activeTabLabel}
@@ -521,9 +532,17 @@ export default function ThinkingOrganizerOrch() {
         )}
       </div>
 
-      <div className={cn('grid gap-4', sidebarCollapsed ? 'grid-cols-1' : 'grid-cols-[200px_minmax(0,1fr)]')}>
-        {!sidebarCollapsed && (
-          <aside className="space-y-3">
+      <div className={cn(!isIosPhone && 'grid gap-4', !isIosPhone && (sidebarCollapsed ? 'grid-cols-1' : 'grid-cols-[200px_minmax(0,1fr)]'))}>
+        {isIosPhone && !useNativePhoneDrawer && !sidebarCollapsed && (
+          <div
+            className="ltm-phone-sidebar-backdrop"
+            onClick={() => setSidebarCollapsed(true)}
+            aria-hidden="true"
+          />
+        )}
+
+        {((!useNativePhoneDrawer && !sidebarCollapsed) || !isIosPhone) && (
+          <aside className={cn(isIosPhone ? 'ltm-phone-sidebar-sheet p-3' : 'space-y-3')}>
             <div className="rounded-xl border bg-background p-3">
               <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Thinking Organizer</p>
               <div className="space-y-1">

@@ -296,21 +296,18 @@ struct BottomChromeView: View {
 
     var body: some View {
         ZStack {
-            // Always show sidebar button on the left
             HStack {
                 bottomSidebarButton
                 Spacer(minLength: 0)
             }
 
             if state.isBottomBarCollapsed {
-                // Collapsed state: centered pill
                 HStack {
                     Spacer(minLength: 0)
                     collapsedBottomPill
                     Spacer(minLength: 0)
                 }
             } else {
-                // Expanded state: centered tab controls
                 HStack {
                     Spacer(minLength: 0)
 

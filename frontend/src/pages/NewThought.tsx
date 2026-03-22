@@ -17,6 +17,7 @@ import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanel
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import ThoughtsCalendarOrch from '@/components/orchestrators/ThoughtsCalendarOrch'
 import TodoCalendarOrch from '@/components/orchestrators/TodoCalendarOrch'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
@@ -219,6 +220,8 @@ interface TargetFileState {
 }
 
 function CreateTab() {
+  const { layout } = useUILayoutBlock()
+  const isIosPhone = layout.surface === 'capacitor-ios' && layout.mode === 'phone'
   const [tab, setTab] = useState<Tab>('create')
   const [pickerDefaultPath, setPickerDefaultPath] = useState<string[]>(DEFAULT_BASE_PATH)
   const [pickerVersion, setPickerVersion] = useState(0)
@@ -780,10 +783,18 @@ function CreateTab() {
   const mostUsedDestinations = useMemo(() => topUsedDestinations(usageCounts, 5), [usageCounts])
 
   return (
-    <div className="space-y-4">
-      <div className={leftPanelHidden ? 'space-y-6' : 'grid gap-6 lg:grid-cols-[clamp(240px,27vw,340px)_minmax(0,1fr)]'}>
+    <div className="relative min-h-full space-y-4">
+      <div className={cn(leftPanelHidden || isIosPhone ? 'space-y-6' : 'grid gap-6 lg:grid-cols-[clamp(240px,27vw,340px)_minmax(0,1fr)]')}>
+      {isIosPhone && !leftPanelHidden && (
+        <div
+          className="ltm-phone-sidebar-backdrop"
+          onClick={() => setLeftPanelHidden(true)}
+          aria-hidden="true"
+        />
+      )}
       {!leftPanelHidden && (
-        <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+        <aside className={cn(isIosPhone && 'ltm-phone-sidebar-sheet p-3')}>
+        <div className={cn(isIosPhone ? 'min-h-0 flex-1 space-y-4 overflow-y-auto pr-1' : 'space-y-4 lg:sticky lg:top-20 lg:self-start')}>
         <Card>
           <CardContent className="p-2">
             <nav className="space-y-0.5">
@@ -981,6 +992,7 @@ function CreateTab() {
         )}
         </>)}
       </div>
+      </aside>
       )}
 
       {tab === 'view' && <ThoughtsCalendarOrch />}
@@ -1310,7 +1322,7 @@ function CreateTab() {
 
 export default function NewThought() {
   return (
-    <div className="ltm-page-shell ltm-shell-wide">
+    <div className="ltm-page-shell ltm-shell-wide relative h-full min-h-full overflow-y-auto overflow-x-hidden">
       <CreateTab />
     </div>
   )

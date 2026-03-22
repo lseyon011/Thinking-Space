@@ -68,8 +68,13 @@ import UniversalSearchBlock from './components/lego_blocks/integrations/Universa
 import { UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK } from './components/lego_blocks/integrations/universalSearchPresetBlock'
 import { useUILayoutBlock } from './components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useNativeTopChromeBlock } from './components/lego_blocks/hooks/shared/useNativeTopChromeBlock'
+import NativeDrawerOrch from './components/orchestrators/NativeDrawerOrch'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
-import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
+import {
+  hasNativeDrawerContentBlock,
+  isElectron,
+  setVaultRoot,
+} from './services/orchestrators/runtimeOrch'
 import { fullSync, getLastSyncTimestamp, setLastSyncTimestamp, smartSync, type SyncResult } from './services/orchestrators/vaultSyncOrch'
 import { listMarkdownEntries } from './services/orchestrators/fileSystemOrch'
 import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
@@ -145,6 +150,11 @@ import {
 } from '@/services/lego_blocks/units/runtimeErrorBlock'
 import { consumeRecentExcalidrawCrashMarkerBlock } from '@/services/lego_blocks/units/excalidrawCrashMarkerBlock'
 import { folderPickerPluginBlock } from '@/services/lego_blocks/units/folderPickerPluginBlock'
+import {
+  closeNativeDrawerShellBlock,
+  openNativeDrawerShellBlock,
+  setNativeDrawerShellStateBlock,
+} from '@/services/lego_blocks/units/nativeDrawerShellBlock'
 
 type NavIcon = ComponentType<{ className?: string }>
 
@@ -409,7 +419,7 @@ function AppBrandGlyph({ className = 'h-[14px] w-[14px]' }: { className?: string
   )
 }
 
-function App() {
+function AppMain() {
   const location = useLocation()
   const navigate = useNavigate()
   const { layout } = useUILayoutBlock()
@@ -420,6 +430,7 @@ function App() {
   const gitSyncToolsSupported = useMemo(() => isGitSyncToolsSupportedOrch(), [])
 
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [nativeDrawerOpen, setNativeDrawerOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const stored = getStorageItem(STORAGE_KEYS.appShellSidebarCollapsed)
     if (stored === null) return true
@@ -730,6 +741,7 @@ function App() {
   const phoneMode = layout.mode === 'phone'
   const iPhoneMode = layout.surface === 'capacitor-ios' && phoneMode
   const useNativeTopChrome = iPhoneMode
+  const useNativeDrawerShell = useNativeTopChrome
   const iPhoneUserAgent = typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent || '')
   const iPhoneHandsetMode = phoneMode && (iPhoneMode || iPhoneUserAgent)
   const isCapacitorSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
@@ -1440,7 +1452,20 @@ function App() {
     navigate('/new-thought')
   }, [handleCreateWorkspaceTab, navigate])
 
+  const handleNativeMenuTap = useCallback(() => {
+    if (useNativeDrawerShell) {
+      setNativeDrawerOpen(prev => !prev)
+      return
+    }
+    setDrawerOpen(true)
+  }, [useNativeDrawerShell])
+
   const handleNativeSidebarToggle = useCallback(() => {
+    if (useNativeDrawerShell) {
+      setNativeDrawerOpen(prev => !prev)
+      return
+    }
+
     switch (nativeSidebarControl.kind) {
       case 'thinking-space-sidebar':
         dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock()
@@ -1466,7 +1491,7 @@ function App() {
       default:
         return
     }
-  }, [nativeSidebarControl.kind])
+  }, [nativeSidebarControl.kind, useNativeDrawerShell])
 
   const handleNativeHeaderToggle = useCallback(() => {
     switch (nativeHeaderToolControl.kind) {
@@ -1664,8 +1689,75 @@ function App() {
   useEffect(() => {
     if (keyboardVisible) {
       setDrawerOpen(false)
+      setNativeDrawerOpen(false)
     }
   }, [keyboardVisible])
+
+  useEffect(() => {
+    if (!useNativeDrawerShell || !isCapacitorNative()) return
+
+    void setNativeDrawerShellStateBlock({
+      kind: 'app-nav',
+      title: activeWorkspaceTabLabel,
+      currentPath: location.pathname,
+      currentSearch: location.search,
+      open: nativeDrawerOpen,
+    }).catch((error: unknown) => {
+      console.warn('[App] Failed to sync native drawer shell state:', error)
+    })
+  }, [activeWorkspaceTabLabel, location.pathname, location.search, nativeDrawerOpen, useNativeDrawerShell])
+
+  useEffect(() => {
+    if (!useNativeDrawerShell || !isCapacitorNative()) return
+
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ type?: string; payloadJson?: string }>).detail
+      const actionType = typeof detail?.type === 'string' ? detail.type.trim() : ''
+
+      if (actionType === 'open') {
+        setNativeDrawerOpen(true)
+        return
+      }
+
+      if (actionType === 'close') {
+        setNativeDrawerOpen(false)
+        return
+      }
+
+      if (actionType === 'navigate') {
+        try {
+          const parsed = detail?.payloadJson ? JSON.parse(detail.payloadJson) as { to?: string } : {}
+          console.log('[App] native-drawer-action navigate parsed=', parsed, 'current=', location.pathname)
+          if (typeof parsed.to === 'string' && parsed.to.trim()) {
+            navigate(parsed.to)
+            console.log('[App] navigate() called with', parsed.to)
+          }
+        } catch (error) {
+          console.warn('[App] Failed to parse native drawer navigate payload:', error)
+        } finally {
+          setNativeDrawerOpen(false)
+        }
+      }
+    }
+
+    window.addEventListener('native-drawer-action', handler)
+    return () => window.removeEventListener('native-drawer-action', handler)
+  }, [navigate, useNativeDrawerShell])
+
+  useEffect(() => {
+    if (!useNativeDrawerShell || !isCapacitorNative()) return
+
+    if (nativeDrawerOpen) {
+      void openNativeDrawerShellBlock().catch((error: unknown) => {
+        console.warn('[App] Failed to open native drawer shell:', error)
+      })
+      return
+    }
+
+    void closeNativeDrawerShellBlock().catch((error: unknown) => {
+      console.warn('[App] Failed to close native drawer shell:', error)
+    })
+  }, [nativeDrawerOpen, useNativeDrawerShell])
 
   useEffect(() => {
     if (!useNativeTopChrome) {
@@ -1692,6 +1784,11 @@ function App() {
     nativeChromeScrollTargetRef.current = null
     nativeChromeLastScrollTopRef.current = 0
   }, [currentRoute, keyboardVisible, useNativeTopChrome])
+
+  useEffect(() => {
+    if (!useNativeDrawerShell) return
+    setNativeDrawerOpen(false)
+  }, [currentRoute, useNativeDrawerShell])
 
   useEffect(() => {
     setStorageItem(STORAGE_KEYS.appShellSidebarCollapsed, sidebarCollapsed ? '1' : '0')
@@ -1777,7 +1874,7 @@ function App() {
     canRebuild: !syncActionRunning && !gitActionRunning && !needsVaultSetup,
     canGitCommit: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
     canGitPush: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
-    onMenuTap: () => setDrawerOpen(true),
+    onMenuTap: handleNativeMenuTap,
     onSearchTap: openCommandPalette,
     onOpenDebugTap: openDebugPanel,
     onRefreshTap: handleGlobalRefresh,
@@ -2675,7 +2772,7 @@ function App() {
               })}
               {persistentRouteMounts.organizer && (
                 <div
-                  className="absolute inset-0 overflow-hidden"
+                  className="ltm-persistent-route-scroll"
                   style={{ visibility: isOrganizerRoute ? 'visible' : 'hidden', pointerEvents: isOrganizerRoute ? 'auto' : 'none' }}
                   aria-hidden={!isOrganizerRoute}
                 >
@@ -2684,7 +2781,7 @@ function App() {
               )}
               {persistentRouteMounts.newThought && (
                 <div
-                  className="absolute inset-0 overflow-hidden"
+                  className="ltm-persistent-route-scroll"
                   style={{ visibility: isNewThoughtRoute ? 'visible' : 'hidden', pointerEvents: isNewThoughtRoute ? 'auto' : 'none' }}
                   aria-hidden={!isNewThoughtRoute}
                 >
@@ -3285,6 +3382,77 @@ function App() {
       </>
     </RuntimeErrorBoundaryBlock>
   )
+}
+
+function isNativeDrawerMode(pathname: string, search: string): boolean {
+  const params = new URLSearchParams(search)
+  const hashValue = typeof window !== 'undefined' ? window.location.hash : ''
+  const globalDrawerFlag = (globalThis as { __LTM_NATIVE_DRAWER__?: boolean }).__LTM_NATIVE_DRAWER__ === true
+  return globalDrawerFlag
+    || hasNativeDrawerContentBlock()
+    || pathname === '/native-drawer'
+    || params.get('nativeDrawer') === '1'
+    || hashValue.includes('/native-drawer')
+}
+
+function App() {
+  const location = useLocation()
+  // Re-check drawer mode when the native side sets __LTM_NATIVE_DRAWER__ after mount.
+  // The flag may be set asynchronously via evaluateJavaScript from the native drawer bridge,
+  // so we poll briefly on Capacitor to catch it if the initial check missed it.
+  const [drawerFlagRecheck, setDrawerFlagRecheck] = useState(0)
+  useEffect(() => {
+    if (!isCapacitorNative()) return
+    if ((globalThis as { __LTM_NATIVE_DRAWER__?: boolean }).__LTM_NATIVE_DRAWER__ === true) return
+    // Check a few times over 500ms for the native flag to be set
+    const timers = [50, 150, 350, 500].map((delay) =>
+      window.setTimeout(() => {
+        if ((globalThis as { __LTM_NATIVE_DRAWER__?: boolean }).__LTM_NATIVE_DRAWER__ === true) {
+          setDrawerFlagRecheck((n) => n + 1)
+        }
+      }, delay),
+    )
+    return () => timers.forEach((t) => window.clearTimeout(t))
+  }, [])
+
+  const nativeDrawerMode = useMemo(
+    () => isNativeDrawerMode(location.pathname, location.search),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [location.pathname, location.search, drawerFlagRecheck],
+  )
+
+  if (nativeDrawerMode) {
+    return (
+      <RuntimeErrorBoundaryBlock
+        location={`${location.pathname}${location.search}`}
+        renderFallback={(report) => (
+          <div className="flex min-h-dvh items-center justify-center bg-[linear-gradient(180deg,#f5f3ee_0%,#f1efe8_100%)] p-4">
+            <div className="w-full max-w-sm rounded-[28px] border border-black/5 bg-white/90 p-4 text-sm text-foreground shadow-[0_20px_60px_-42px_rgba(15,23,42,0.45)] backdrop-blur">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                Drawer error
+              </div>
+              <div className="mt-2 font-medium">{report.title}</div>
+              <p className="mt-2 whitespace-pre-wrap text-muted-foreground">
+                {report.message}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                className="mt-4"
+                onClick={() => window.location.reload()}
+              >
+                Reload drawer
+              </Button>
+            </div>
+          </div>
+        )}
+      >
+        <NativeDrawerOrch />
+      </RuntimeErrorBoundaryBlock>
+    )
+  }
+
+  return <AppMain />
 }
 
 export default App

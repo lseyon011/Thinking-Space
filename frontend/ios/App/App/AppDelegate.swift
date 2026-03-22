@@ -38,6 +38,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 // Main.storyboard must reference "RootShellViewController" as the custom class.
 
 class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
+    /// Set by RootShellViewController so that the bridge can wire plugins back.
+    weak var rootShellVC: RootShellViewController?
+
+    /// TopChromePlugin needs deferred wiring if rootShellVC isn't available during init.
+    private var pendingTopChromePlugin: TopChromePlugin?
+
     private let shellBackgroundColor = UIColor(
         red: 242.0 / 255.0,
         green: 242.0 / 255.0,
@@ -68,7 +74,14 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
         bridge?.registerPluginInstance(webViewPlugin)
         let topChromePlugin = TopChromePlugin()
         bridge?.registerPluginInstance(topChromePlugin)
-        (parent as? RootShellViewController)?.wireTopChromePlugin(topChromePlugin)
+        bridge?.registerPluginInstance(NativeDrawerShellPlugin())
+
+        let host = rootShellVC ?? (parent as? RootShellViewController)
+        if let host {
+            host.wireTopChromePlugin(topChromePlugin)
+        } else {
+            pendingTopChromePlugin = topChromePlugin
+        }
     }
     
     override open func viewDidAppear(_ animated: Bool) {
@@ -103,6 +116,14 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
 
     func dismissInlineWebView() {
         inlineWebViewPlugin?.closeWebView()
+    }
+
+    /// Called by RootShellViewController after the main bridge is fully embedded.
+    func wirePendingPluginsIfNeeded(to host: RootShellViewController) {
+        if let plugin = pendingTopChromePlugin {
+            pendingTopChromePlugin = nil
+            host.wireTopChromePlugin(plugin)
+        }
     }
 
     private func configureShellSurface() {
@@ -215,7 +236,7 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
     }
     
     private func updateChromeForScroll(offsetY: CGFloat, direction: ScrollDirection) {
-        guard let rootVC = parent as? RootShellViewController else {
+        guard let rootVC = rootShellVC ?? (parent as? RootShellViewController) else {
             print("[Chrome] ⚠️ Parent is not RootShellViewController")
             return
         }
@@ -260,6 +281,132 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
         if let webView = webView ?? bridge?.webView {
             webView.configuration.userContentController.removeScriptMessageHandler(forName: "chromeScroll")
         }
+    }
+}
+
+class LTMDrawerBridgeViewController: CAPBridgeViewController {
+    private let shellBackgroundColor = UIColor(
+        red: 245.0 / 255.0,
+        green: 243.0 / 255.0,
+        blue: 238.0 / 255.0,
+        alpha: 1.0
+    )
+
+    override open func viewDidLoad() {
+        super.viewDidLoad()
+        configureDrawerSurface()
+    }
+
+    override open func capacitorDidLoad() {
+        super.capacitorDidLoad()
+        configureDrawerSurface()
+        let contentPlugin = NativeDrawerContentPlugin()
+        bridge?.registerPluginInstance(contentPlugin)
+        DrawerBridge.shared.contentPlugin = contentPlugin
+        print("[Drawer] contentPlugin registered on singleton")
+    }
+
+    private func configureDrawerSurface() {
+        view.backgroundColor = shellBackgroundColor
+        guard let nativeWebView = webView ?? bridge?.webView else { return }
+        nativeWebView.isOpaque = false
+        nativeWebView.backgroundColor = shellBackgroundColor
+        nativeWebView.scrollView.backgroundColor = shellBackgroundColor
+
+        if #available(iOS 11.0, *) {
+            nativeWebView.scrollView.contentInsetAdjustmentBehavior = .automatic
+        }
+
+        // Inject user script at document start that:
+        // 1. Sets the drawer marker flag (so React knows this is the drawer bridge)
+        // 2. Sets the hash to #/native-drawer (so HashRouter routes to drawer mode)
+        // This runs BEFORE any JS including React, so the app boots directly into drawer mode.
+        let userContentController = nativeWebView.configuration.userContentController
+        let alreadyInstalled = userContentController.userScripts.contains {
+            $0.source.contains("__LTM_NATIVE_DRAWER__")
+        }
+        if !alreadyInstalled {
+            let markerScript = WKUserScript(
+                source: """
+                window.__LTM_NATIVE_DRAWER__ = true;
+                if (!window.location.hash || window.location.hash === '#/' || window.location.hash === '#') {
+                    window.location.hash = '#/native-drawer';
+                }
+                """,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+            userContentController.addUserScript(markerScript)
+        }
+    }
+}
+
+@objc(NativeDrawerShellPlugin)
+public class NativeDrawerShellPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "NativeDrawerShellPlugin"
+    public let jsName = "NativeDrawerShell"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "setState", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "addListener", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise),
+    ]
+
+    private var shell: RootShellViewController? { DrawerBridge.shared.shellVC }
+
+    @objc func setState(_ call: CAPPluginCall) {
+        var nextState = NativeDrawerShellStateRecord()
+        nextState.kind = call.getString("kind") ?? nextState.kind
+        nextState.title = call.getString("title") ?? nextState.title
+        nextState.currentPath = call.getString("currentPath") ?? nextState.currentPath
+        nextState.currentSearch = call.getString("currentSearch") ?? nextState.currentSearch
+        shell?.updateNativeDrawerState(nextState, open: call.getBool("open"))
+        call.resolve()
+    }
+
+    @objc func open(_ call: CAPPluginCall) {
+        if let shell {
+            shell.updateNativeDrawerState(shell.currentDrawerState(isOpen: true), open: true)
+        }
+        call.resolve()
+    }
+
+    @objc func close(_ call: CAPPluginCall) {
+        if let shell {
+            shell.updateNativeDrawerState(shell.currentDrawerState(isOpen: false), open: false)
+        }
+        call.resolve()
+    }
+}
+
+@objc(NativeDrawerContentPlugin)
+public class NativeDrawerContentPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "NativeDrawerContentPlugin"
+    public let jsName = "NativeDrawerContent"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "getState", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "postAction", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "addListener", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise),
+    ]
+
+    private var shell: RootShellViewController? { DrawerBridge.shared.shellVC }
+
+    @objc func getState(_ call: CAPPluginCall) {
+        call.resolve(shell?.nativeDrawerStatePayload() ?? NativeDrawerShellStateRecord().asPayload())
+    }
+
+    @objc func postAction(_ call: CAPPluginCall) {
+        let type = call.getString("type") ?? ""
+        let payloadJson = call.getString("payloadJson")
+        print("[Drawer] postAction type=\(type) shell=\(shell != nil ? "ready" : "nil")")
+        shell?.handleNativeDrawerAction(type: type, payloadJson: payloadJson)
+        call.resolve()
+    }
+
+    func emitState(_ payload: [String: Any]) {
+        notifyListeners("nativeDrawerState", data: payload)
     }
 }
 

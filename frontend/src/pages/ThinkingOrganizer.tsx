@@ -2,7 +2,7 @@ import ThinkingOrganizerOrch from '@/components/orchestrators/ThinkingOrganizerO
 
 export default function ThinkingOrganizer() {
   return (
-    <div className="ltm-page">
+    <div className="ltm-page h-full overflow-y-auto overflow-x-hidden">
       <ThinkingOrganizerOrch />
     </div>
   )

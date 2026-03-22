@@ -124,12 +124,15 @@ export default function ThinkingSpaceOrch() {
   const showInlineSidebar = layout.hasSidebar && !forceCompactForIosKeyboard
   // On iOS, always use the inline sidebar regardless of hasSidebar (portrait iPad, etc.)
   const iosInlineMode = isIosSurface && !forceCompactForIosKeyboard
-  const showCollapsedInlineExplorer = (showInlineSidebar || iosInlineMode) && !explorerCollapsed
+  const useOverlayExplorer = isIPhoneIosSurface
+  const showInlineExplorerRail = (showInlineSidebar || iosInlineMode) && !useOverlayExplorer
+  const showCollapsedInlineExplorer = showInlineExplorerRail && !explorerCollapsed
 
   const isGoogleWorkspaceInlinePath = isGoogleWorkspacePathBlock(inlinePath)
   const useInstantExplorerToggle = showInlineSidebar && isGoogleWorkspaceInlinePath
   const [rssUrlBarVisible, setRssUrlBarVisible] = useState(!isIosSurface)
   const inlineExplorerTitle = isIPhoneIosSurface ? 'Explorer' : 'Thinking Space Explorer'
+  const showTopRssExplorerButton = isIPhoneIosSurface
 
   const rememberMountedInlinePath = useCallback((path: string, initialMode: MarkdownViewerMode) => {
     setMountedInlinePaths((prev) => {
@@ -471,8 +474,8 @@ export default function ThinkingSpaceOrch() {
   }, [])
 
   useEffect(() => {
-    if (showInlineSidebar) setMobileExplorerOpen(false)
-  }, [showInlineSidebar])
+    if (showInlineExplorerRail) setMobileExplorerOpen(false)
+  }, [showInlineExplorerRail])
 
   useEffect(() => {
     if (layout.keyboardVisible) {
@@ -489,7 +492,7 @@ export default function ThinkingSpaceOrch() {
   }, [explorerWidthPx])
 
   useEffect(() => {
-    const explorerCollapsedForChrome = explorerCollapsed
+    const explorerCollapsedForChrome = showInlineExplorerRail ? explorerCollapsed : !mobileExplorerOpen
 
     if (rssActiveArticle) {
       dispatchThinkingSpaceGoogleWorkspaceChromeStateBlock({
@@ -516,7 +519,7 @@ export default function ThinkingSpaceOrch() {
       headerVisible: !inlineDocHeaderHidden,
       showHeaderToggle: Boolean(inlinePath),
     })
-  }, [explorerCollapsed, inlineDocHeaderHidden, inlinePath, rssActiveArticle, rssUrlBarVisible, isIosSurface])
+  }, [explorerCollapsed, inlineDocHeaderHidden, inlinePath, mobileExplorerOpen, rssActiveArticle, rssUrlBarVisible, isIosSurface, showInlineExplorerRail])
 
   useEffect(() => {
     return () => {
@@ -531,7 +534,7 @@ export default function ThinkingSpaceOrch() {
 
   useEffect(() => {
     const onToggleExplorer = () => {
-      if (showInlineSidebar || iosInlineMode) {
+      if (showInlineExplorerRail) {
         setExplorerCollapsed(prev => !prev)
         return
       }
@@ -551,7 +554,7 @@ export default function ThinkingSpaceOrch() {
       window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_EXPLORER_EVENT_BLOCK, onToggleExplorer as EventListener)
       window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_TOGGLE_HEADER_EVENT_BLOCK, onToggleHeader as EventListener)
     }
-  }, [iosInlineMode, showInlineSidebar, rssActiveArticle])
+  }, [rssActiveArticle, showInlineExplorerRail])
 
   useEffect(() => {
     const handleResize = () => {
@@ -568,17 +571,23 @@ export default function ThinkingSpaceOrch() {
   }, [stopExplorerResize])
 
   // iOS inline sidebar: use shared hook for both open (edge swipe) and close (swipe left)
-  const handleToggleExplorerIos = useCallback(() => setExplorerCollapsed(prev => !prev), [])
+  const handleToggleExplorerIos = useCallback(() => {
+    if (showInlineExplorerRail) {
+      setExplorerCollapsed(prev => !prev)
+      return
+    }
+    setMobileExplorerOpen(prev => !prev)
+  }, [showInlineExplorerRail])
   useIosSidebarSwipeBlock({
-    isIos: iosInlineMode,
-    isOpen: !explorerCollapsed,
+    isIos: isIosSurface,
+    isOpen: showInlineExplorerRail ? !explorerCollapsed : mobileExplorerOpen,
     keyboardVisible: layout.keyboardVisible,
     onToggle: handleToggleExplorerIos,
   })
 
   // Non-iOS: edge swipe to open drawer or inline sidebar
   useEffect(() => {
-    if (iosInlineMode) return
+    if (isIosSurface) return
     const explorerOpen = showInlineSidebar ? !explorerCollapsed : mobileExplorerOpen
     if (explorerOpen || layout.keyboardVisible) {
       edgeSwipeStartRef.current = null
@@ -694,37 +703,44 @@ export default function ThinkingSpaceOrch() {
           </div>
         </div>
       ) : (
-        <div className="min-h-0 flex-1">
-          <VaultExplorerBlock
-            loadEntries={listFolderEntries}
-            selectedPath={inlinePath}
-            listenToGlobalSyncRefresh
-            onOpenFile={setInlinePathAndSyncUrl}
-            onCreateFolder={handleExplorerCreateFolder}
-            onCreateFile={handleExplorerCreateFile}
-            onCreateCsvFile={handleExplorerCreateCsvFile}
-            onCreateDrawing={handleExplorerCreateDrawing}
-            onCreateLink={handleExplorerCreateLink}
-            onCopyRelativePath={handleExplorerCopyRelativePath}
-            onCopyAbsolutePath={handleExplorerCopyAbsolutePath}
-            onOpenInNewTab={handleExplorerOpenInNewTab}
-            onOpenInNewWindow={handleExplorerOpenInNewWindow}
-            onDuplicateFile={handleExplorerDuplicateFile}
-            onRenamePath={handleExplorerRenamePath}
-            onDeleteFile={handleExplorerDeleteFile}
-            onDeleteFolder={handleExplorerDeleteFolder}
-            onOpenInFinder={handleExplorerOpenInFinder}
-            loadFileTags={handleExplorerLoadFileTags}
-            onMovePath={handleExplorerMovePath}
-            draggableFiles
-            draggableFolders
-            title=""
-            belowToolbarSlot={rssExplorerToggleButton}
-          />
+        <div className="min-h-0 flex flex-1 flex-col">
+          <div className="min-h-0 flex-1">
+            <VaultExplorerBlock
+              loadEntries={listFolderEntries}
+              selectedPath={inlinePath}
+              listenToGlobalSyncRefresh
+              onOpenFile={setInlinePathAndSyncUrl}
+              onCreateFolder={handleExplorerCreateFolder}
+              onCreateFile={handleExplorerCreateFile}
+              onCreateCsvFile={handleExplorerCreateCsvFile}
+              onCreateDrawing={handleExplorerCreateDrawing}
+              onCreateLink={handleExplorerCreateLink}
+              onCopyRelativePath={handleExplorerCopyRelativePath}
+              onCopyAbsolutePath={handleExplorerCopyAbsolutePath}
+              onOpenInNewTab={handleExplorerOpenInNewTab}
+              onOpenInNewWindow={handleExplorerOpenInNewWindow}
+              onDuplicateFile={handleExplorerDuplicateFile}
+              onRenamePath={handleExplorerRenamePath}
+              onDeleteFile={handleExplorerDeleteFile}
+              onDeleteFolder={handleExplorerDeleteFolder}
+              onOpenInFinder={handleExplorerOpenInFinder}
+              loadFileTags={handleExplorerLoadFileTags}
+              onMovePath={handleExplorerMovePath}
+              draggableFiles
+              draggableFolders
+              title=""
+              belowToolbarSlot={showTopRssExplorerButton ? rssExplorerToggleButton : null}
+            />
+          </div>
+          {!showTopRssExplorerButton && (
+            <div className="ltm-shell-segment-footer shrink-0 px-3 py-2">
+              {rssExplorerToggleButton}
+            </div>
+          )}
         </div>
       )}
     </>
-  ), [handleExplorerCreateCsvFile, inlinePath, rssExplorerToggleButton, rssPanelOpen, setInlinePathAndSyncUrl])
+  ), [handleExplorerCreateCsvFile, inlinePath, rssExplorerToggleButton, rssPanelOpen, setInlinePathAndSyncUrl, showTopRssExplorerButton])
 
   const inlineDocumentContent = useMemo(() => {
     if (mountedInlinePaths.length === 0) return null
@@ -763,7 +779,7 @@ export default function ThinkingSpaceOrch() {
       data-ltm-explorer-open={showCollapsedInlineExplorer ? 'true' : 'false'}
     >
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {(showInlineSidebar || iosInlineMode) && (
+        {showInlineExplorerRail && (
           <aside
             className={cn(
               'ltm-thinking-space-explorer-surface flex min-h-0 shrink-0 flex-col overflow-hidden',
@@ -786,7 +802,7 @@ export default function ThinkingSpaceOrch() {
           </aside>
         )}
 
-        {(showInlineSidebar || iosInlineMode) && showCollapsedInlineExplorer && (
+        {showInlineExplorerRail && showCollapsedInlineExplorer && (
           <div
             role="separator"
             aria-label="Resize explorer"
@@ -849,7 +865,7 @@ export default function ThinkingSpaceOrch() {
         </section>
       </div>
 
-      {!showInlineSidebar && mobileExplorerOpen && (
+      {!showInlineExplorerRail && mobileExplorerOpen && (
         <>
           <div
             className="ltm-shell-motion-overlay fixed inset-0 z-40 bg-background/70 backdrop-blur-sm"
@@ -889,32 +905,39 @@ export default function ThinkingSpaceOrch() {
                 </div>
               </div>
             ) : (
-              <div className="min-h-0 flex-1">
-                <VaultExplorerBlock
-                  loadEntries={listFolderEntries}
-                  selectedPath={inlinePath}
-                  listenToGlobalSyncRefresh
-                  onOpenFile={handleDrawerFileOpen}
-                  onCreateFolder={handleExplorerCreateFolder}
-                  onCreateFile={handleExplorerCreateFile}
-                  onCreateCsvFile={handleExplorerCreateCsvFile}
-                  onCreateDrawing={handleExplorerCreateDrawing}
-                  onCreateLink={handleExplorerCreateLink}
-                  onCopyRelativePath={handleExplorerCopyRelativePath}
-                  onCopyAbsolutePath={handleExplorerCopyAbsolutePath}
-                  onOpenInNewTab={handleExplorerOpenInNewTab}
-                  onOpenInNewWindow={handleExplorerOpenInNewWindow}
-                  onDuplicateFile={handleExplorerDuplicateFile}
-                  onRenamePath={handleExplorerRenamePath}
-                  onDeleteFile={handleExplorerDeleteFile}
-                  onDeleteFolder={handleExplorerDeleteFolder}
-                  onOpenInFinder={handleExplorerOpenInFinder}
-                  onMovePath={handleExplorerMovePath}
-                  draggableFiles
-                  draggableFolders
-                  title=""
-                  belowToolbarSlot={rssExplorerToggleButton}
-                />
+              <div className="min-h-0 flex flex-1 flex-col">
+                <div className="min-h-0 flex-1">
+                  <VaultExplorerBlock
+                    loadEntries={listFolderEntries}
+                    selectedPath={inlinePath}
+                    listenToGlobalSyncRefresh
+                    onOpenFile={handleDrawerFileOpen}
+                    onCreateFolder={handleExplorerCreateFolder}
+                    onCreateFile={handleExplorerCreateFile}
+                    onCreateCsvFile={handleExplorerCreateCsvFile}
+                    onCreateDrawing={handleExplorerCreateDrawing}
+                    onCreateLink={handleExplorerCreateLink}
+                    onCopyRelativePath={handleExplorerCopyRelativePath}
+                    onCopyAbsolutePath={handleExplorerCopyAbsolutePath}
+                    onOpenInNewTab={handleExplorerOpenInNewTab}
+                    onOpenInNewWindow={handleExplorerOpenInNewWindow}
+                    onDuplicateFile={handleExplorerDuplicateFile}
+                    onRenamePath={handleExplorerRenamePath}
+                    onDeleteFile={handleExplorerDeleteFile}
+                    onDeleteFolder={handleExplorerDeleteFolder}
+                    onOpenInFinder={handleExplorerOpenInFinder}
+                    onMovePath={handleExplorerMovePath}
+                    draggableFiles
+                    draggableFolders
+                    title=""
+                    belowToolbarSlot={showTopRssExplorerButton ? rssExplorerToggleButton : null}
+                  />
+                </div>
+                {!showTopRssExplorerButton && (
+                  <div className="ltm-shell-segment-footer shrink-0 px-3 py-2">
+                    {rssExplorerToggleButton}
+                  </div>
+                )}
               </div>
             )}
           </aside>

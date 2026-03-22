@@ -1157,6 +1157,16 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
     return () => window.removeEventListener(ORGANIZER_OPEN_CREATE_PROJECT_EVENT, handler)
   }, [])
 
+  // Open create-project modal when navigated from native drawer with createProject=1
+  useEffect(() => {
+    if (searchParams.get('createProject') === '1') {
+      setProjectModalOpen(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete('createProject')
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
   useEffect(() => {
     void refreshEpicTimeline()
   }, [refreshEpicTimeline])
