@@ -300,7 +300,7 @@ struct BottomChromeView: View {
             }
         } label: {
             ZStack(alignment: .topTrailing) {
-                Image(systemName: "toolbox")
+                Image(systemName: "ellipsis.circle")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(.primary)
                     .frame(width: NativeChromeMetrics.iconButtonSize, height: NativeChromeMetrics.iconButtonSize)
