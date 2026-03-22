@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 private enum NativeChromeMetrics {
     static let outerHorizontalPadding: CGFloat = 16

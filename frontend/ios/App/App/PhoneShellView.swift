@@ -1,10 +1,9 @@
 import SwiftUI
 import UIKit
 
-private let phoneShellDrawerWidth: CGFloat = 300
+private let phoneShellDrawerDismissVelocityThreshold: CGFloat = 220
+private let phoneShellDrawerOpenThreshold: CGFloat = 0.42
 private let phoneShellContentCornerRadius: CGFloat = 20
-private let phoneShellDismissVelocityThreshold: CGFloat = 300
-private let phoneShellOpenThreshold: CGFloat = 0.4
 
 struct PhoneShellView: View {
     @ObservedObject var chromeState: TopChromeState
@@ -16,13 +15,13 @@ struct PhoneShellView: View {
     var body: some View {
         GeometryReader { proxy in
             let safeTop = proxy.safeAreaInsets.top
+            let revealHeight = resolvedDrawerRevealHeight(containerHeight: proxy.size.height, safeTop: safeTop)
             let progress = chromeState.drawerProgress
-            let contentOffset = progress * phoneShellDrawerWidth
             let contentCornerRadius = phoneShellContentCornerRadius * progress
             let topOverlayReservedHeight: CGFloat = chromeState.isVisible ? max(52, safeTop + 8) : 0
 
-            ZStack(alignment: .leading) {
-                // Menu behind content (left side)
+            ZStack(alignment: .top) {
+                // Menu behind content
                 TopDrawerMenuView(
                     state: chromeState,
                     onSelectNavItem: { navItemId in
@@ -30,13 +29,11 @@ struct PhoneShellView: View {
                         onSelectNavItem(navItemId)
                     }
                 )
-                .frame(width: phoneShellDrawerWidth)
-                .frame(maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .opacity(0.4 + 0.6 * progress)
-                .offset(x: -30 * (1 - progress))
                 .allowsHitTesting(progress > 0.001)
 
-                // Main content that slides right
+                // Main content that slides down
                 ZStack {
                     BridgeControllerContainerView(controller: bridgeController)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -49,6 +46,8 @@ struct PhoneShellView: View {
                             .frame(height: safeTop, alignment: .top)
                             .opacity(chromeState.isVisible ? 1 : 0)
                             .offset(y: chromeState.isVisible ? 0 : -18)
+                            .contentShape(Rectangle())
+                            .highPriorityGesture(topHandleDragGesture(revealHeight: revealHeight))
                         Spacer()
                     }
                     .ignoresSafeArea(edges: .top)
@@ -60,20 +59,27 @@ struct PhoneShellView: View {
                             .onTapGesture {
                                 closeDrawer()
                             }
-                            .gesture(contentDismissDragGesture())
+                            .highPriorityGesture(contentDismissDragGesture(revealHeight: revealHeight))
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: contentCornerRadius, style: .continuous))
-                .offset(x: contentOffset)
-                .shadow(color: Color.black.opacity(0.2 * progress), radius: 20, x: -5, y: 0)
-                .gesture(edgeDragGesture())
+                .offset(y: progress * revealHeight)
+                .shadow(color: Color.black.opacity(0.18 * progress), radius: 20, x: 0, y: -5)
                 .ignoresSafeArea()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .clipped()
             .animation(.easeInOut(duration: 0.22), value: chromeState.isVisible)
         }
         .ignoresSafeArea()
         .background(Color(UIColor.systemGroupedBackground))
+    }
+
+    private func resolvedDrawerRevealHeight(containerHeight: CGFloat, safeTop: CGFloat) -> CGFloat {
+        let minimumHeight: CGFloat = 360
+        let preferredHeight = safeTop + 460
+        let maxHeight = containerHeight * 0.74
+        return max(minimumHeight, min(preferredHeight, maxHeight))
     }
 
     private func closeDrawer() {
@@ -82,51 +88,52 @@ struct PhoneShellView: View {
         }
     }
 
-    private func edgeDragGesture() -> some Gesture {
-        DragGesture(minimumDistance: 10, coordinateSpace: .local)
-            .onChanged { value in
-                // Only start from left edge
-                if drawerDragStartProgress == nil {
-                    if chromeState.drawerProgress < 0.01 && value.startLocation.x > 30 {
-                        return
-                    }
-                    drawerDragStartProgress = chromeState.drawerProgress
-                }
-                guard let startProgress = drawerDragStartProgress else { return }
-                let delta = value.translation.width / phoneShellDrawerWidth
-                chromeState.drawerProgress = min(max(startProgress + delta, 0), 1)
-            }
-            .onEnded { value in
-                finishDrag(velocity: value.predictedEndTranslation.width - value.translation.width)
-            }
-    }
-
-    private func contentDismissDragGesture() -> some Gesture {
-        DragGesture(minimumDistance: 10, coordinateSpace: .local)
+    private func topHandleDragGesture(revealHeight: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .local)
             .onChanged { value in
                 if drawerDragStartProgress == nil {
                     drawerDragStartProgress = chromeState.drawerProgress
                 }
                 guard let startProgress = drawerDragStartProgress else { return }
-                let delta = value.translation.width / phoneShellDrawerWidth
-                chromeState.drawerProgress = min(max(startProgress + delta, 0), 1)
+                let nextProgress = min(max(startProgress + (value.translation.height / max(revealHeight, 1)), 0), 1)
+                chromeState.drawerProgress = nextProgress
             }
             .onEnded { value in
-                finishDrag(velocity: value.predictedEndTranslation.width - value.translation.width)
+                finishDrawerDrag(translation: value.translation.height, predictedEndTranslation: value.predictedEndTranslation.height, revealHeight: revealHeight)
             }
     }
 
-    private func finishDrag(velocity: CGFloat) {
-        let currentProgress = chromeState.drawerProgress
+    private func contentDismissDragGesture(revealHeight: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .local)
+            .onChanged { value in
+                if drawerDragStartProgress == nil {
+                    drawerDragStartProgress = chromeState.drawerProgress
+                }
+                guard let startProgress = drawerDragStartProgress else { return }
+                let nextProgress = min(max(startProgress + (value.translation.height / max(revealHeight, 1)), 0), 1)
+                chromeState.drawerProgress = nextProgress
+            }
+            .onEnded { value in
+                finishDrawerDrag(translation: value.translation.height, predictedEndTranslation: value.predictedEndTranslation.height, revealHeight: revealHeight)
+            }
+    }
+
+    private func finishDrawerDrag(translation: CGFloat, predictedEndTranslation: CGFloat, revealHeight: CGFloat) {
+        let velocityEstimate = predictedEndTranslation - translation
+        let predictedProgress = min(
+            max((drawerDragStartProgress ?? chromeState.drawerProgress) + (predictedEndTranslation / max(revealHeight, 1)), 0),
+            1
+        )
+
         drawerDragStartProgress = nil
 
         let shouldOpen: Bool
-        if velocity > phoneShellDismissVelocityThreshold {
+        if velocityEstimate > phoneShellDrawerDismissVelocityThreshold {
             shouldOpen = true
-        } else if velocity < -phoneShellDismissVelocityThreshold {
+        } else if velocityEstimate < -phoneShellDrawerDismissVelocityThreshold {
             shouldOpen = false
         } else {
-            shouldOpen = currentProgress >= phoneShellOpenThreshold
+            shouldOpen = predictedProgress >= phoneShellDrawerOpenThreshold
         }
 
         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
