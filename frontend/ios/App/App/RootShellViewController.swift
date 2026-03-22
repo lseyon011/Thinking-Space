@@ -70,6 +70,33 @@ final class RootShellViewController: UIViewController {
     private var leftDrawerWidthConstraint: NSLayoutConstraint?
     private var rightDrawerWidthConstraint: NSLayoutConstraint?
 
+    // MARK: - Native drawer headers
+
+    let leftDrawerHeaderState = DrawerHeaderState(sectionLabel: "Sidebar", title: "Explorer")
+    let rightDrawerHeaderState = DrawerHeaderState(sectionLabel: "Navigation", title: "Thinking Space")
+
+    private lazy var leftDrawerHeaderHostingVC: UIHostingController<DrawerHeaderView> = {
+        UIHostingController(rootView: DrawerHeaderView(
+            state: leftDrawerHeaderState,
+            onClose: { [weak self] in
+                guard let self else { return }
+                self.closeDrawer(animated: true)
+                self.dispatchDrawerEventToMainWebView(type: "close", side: .left, payloadJson: nil)
+            }
+        ))
+    }()
+
+    private lazy var rightDrawerHeaderHostingVC: UIHostingController<DrawerHeaderView> = {
+        UIHostingController(rootView: DrawerHeaderView(
+            state: rightDrawerHeaderState,
+            onClose: { [weak self] in
+                guard let self else { return }
+                self.closeDrawer(animated: true)
+                self.dispatchDrawerEventToMainWebView(type: "close", side: .right, payloadJson: nil)
+            }
+        ))
+    }()
+
     private lazy var topInsetHostingVC = UIHostingController(rootView: TopInsetGlassView())
 
     private lazy var bottomChromeHostingVC = UIHostingController(
@@ -96,10 +123,15 @@ final class RootShellViewController: UIViewController {
         return view
     }()
 
+    /// Warm beige matching the drawer header gradient — #f5f3ee
+    private static let drawerBackgroundColor = UIColor(
+        red: 245.0 / 255.0, green: 243.0 / 255.0, blue: 238.0 / 255.0, alpha: 1.0
+    )
+
     private let leftDrawerContainerView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = drawerBackgroundColor
         view.clipsToBounds = true
         return view
     }()
@@ -107,7 +139,7 @@ final class RootShellViewController: UIViewController {
     private let rightDrawerContainerView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = drawerBackgroundColor
         view.clipsToBounds = true
         return view
     }()
@@ -204,6 +236,7 @@ final class RootShellViewController: UIViewController {
             self.nativeDrawerState.title = nextState.title
             self.nativeDrawerState.currentPath = nextState.currentPath
             self.nativeDrawerState.currentSearch = nextState.currentSearch
+            self.updateDrawerHeaders()
             self.emitDrawerState()
 
             if let open {
@@ -214,6 +247,24 @@ final class RootShellViewController: UIViewController {
                     self.closeDrawer(animated: true)
                 }
             }
+        }
+    }
+
+    private func updateDrawerHeaders() {
+        leftDrawerHeaderState.title = sidebarLabelForPath(nativeDrawerState.currentPath)
+        rightDrawerHeaderState.title = nativeDrawerState.title.isEmpty ? "Thinking Space" : nativeDrawerState.title
+    }
+
+    private func sidebarLabelForPath(_ path: String) -> String {
+        switch path {
+        case "/thinking-space": return "Explorer"
+        case "/thinking-organizer": return "Organizer"
+        case "/chat": return "AI"
+        case "/web": return "Web"
+        case "/new-thought": return "New Note"
+        case "/git-insights": return "Insights"
+        case "/password-manager": return "Passwords"
+        default: return nativeDrawerState.title.isEmpty ? "Sidebar" : nativeDrawerState.title
         }
     }
 
@@ -287,6 +338,14 @@ final class RootShellViewController: UIViewController {
     }
 
     private func embedLeftDrawer() {
+        // Native header above the WebView content
+        let headerVC = leftDrawerHeaderHostingVC
+        headerVC.view.backgroundColor = .clear
+        addChild(headerVC)
+        leftDrawerContainerView.addSubview(headerVC.view)
+        headerVC.view.translatesAutoresizingMaskIntoConstraints = false
+
+        // WebView content below the header
         addChild(leftDrawerBridgeVC)
         leftDrawerContainerView.addSubview(leftDrawerBridgeVC.view)
         leftDrawerBridgeVC.view.translatesAutoresizingMaskIntoConstraints = false
@@ -299,16 +358,30 @@ final class RootShellViewController: UIViewController {
             leftDrawerContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             leftDrawerContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             widthConstraint,
+            // Header: top of container → intrinsic height
+            headerVC.view.topAnchor.constraint(equalTo: leftDrawerContainerView.safeAreaLayoutGuide.topAnchor),
+            headerVC.view.leadingAnchor.constraint(equalTo: leftDrawerContainerView.leadingAnchor),
+            headerVC.view.trailingAnchor.constraint(equalTo: leftDrawerContainerView.trailingAnchor),
+            // WebView: below header → bottom of container
+            leftDrawerBridgeVC.view.topAnchor.constraint(equalTo: headerVC.view.bottomAnchor),
             leftDrawerBridgeVC.view.leadingAnchor.constraint(equalTo: leftDrawerContainerView.leadingAnchor),
             leftDrawerBridgeVC.view.trailingAnchor.constraint(equalTo: leftDrawerContainerView.trailingAnchor),
-            leftDrawerBridgeVC.view.topAnchor.constraint(equalTo: leftDrawerContainerView.topAnchor),
             leftDrawerBridgeVC.view.bottomAnchor.constraint(equalTo: leftDrawerContainerView.bottomAnchor),
         ])
 
+        headerVC.didMove(toParent: self)
         leftDrawerBridgeVC.didMove(toParent: self)
     }
 
     private func embedRightDrawer() {
+        // Native header above the WebView content
+        let headerVC = rightDrawerHeaderHostingVC
+        headerVC.view.backgroundColor = .clear
+        addChild(headerVC)
+        rightDrawerContainerView.addSubview(headerVC.view)
+        headerVC.view.translatesAutoresizingMaskIntoConstraints = false
+
+        // WebView content below the header
         addChild(rightDrawerBridgeVC)
         rightDrawerContainerView.addSubview(rightDrawerBridgeVC.view)
         rightDrawerBridgeVC.view.translatesAutoresizingMaskIntoConstraints = false
@@ -321,12 +394,18 @@ final class RootShellViewController: UIViewController {
             rightDrawerContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             rightDrawerContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             widthConstraint,
+            // Header: top of container → intrinsic height
+            headerVC.view.topAnchor.constraint(equalTo: rightDrawerContainerView.safeAreaLayoutGuide.topAnchor),
+            headerVC.view.leadingAnchor.constraint(equalTo: rightDrawerContainerView.leadingAnchor),
+            headerVC.view.trailingAnchor.constraint(equalTo: rightDrawerContainerView.trailingAnchor),
+            // WebView: below header → bottom of container
+            rightDrawerBridgeVC.view.topAnchor.constraint(equalTo: headerVC.view.bottomAnchor),
             rightDrawerBridgeVC.view.leadingAnchor.constraint(equalTo: rightDrawerContainerView.leadingAnchor),
             rightDrawerBridgeVC.view.trailingAnchor.constraint(equalTo: rightDrawerContainerView.trailingAnchor),
-            rightDrawerBridgeVC.view.topAnchor.constraint(equalTo: rightDrawerContainerView.topAnchor),
             rightDrawerBridgeVC.view.bottomAnchor.constraint(equalTo: rightDrawerContainerView.bottomAnchor),
         ])
 
+        headerVC.didMove(toParent: self)
         rightDrawerBridgeVC.didMove(toParent: self)
     }
 
@@ -518,10 +597,6 @@ final class RootShellViewController: UIViewController {
             self.mainShellContainerView.isUserInteractionEnabled = false
             self.drawerTapShieldView.isHidden = false
             self.layoutDrawerTapShield()
-            // Re-emit state after delay — drawer WKWebView suspends JS while hidden
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                self.emitDrawerState()
-            }
         }
 
         if animated {
@@ -568,22 +643,27 @@ final class RootShellViewController: UIViewController {
 
     private func applyDrawerVisualState() {
         let offset = resolvedDrawerSlideOffset()
+        // NOTE: We never set isHidden on drawer containers. WKWebView suspends
+        // JavaScript when its hosting view is hidden, causing stale/missing
+        // content when the drawer reopens. Instead, drawers live behind the
+        // main shell container (z-order) and are naturally occluded when closed.
+        // We only toggle isUserInteractionEnabled for hit-testing.
         switch openDrawerSide {
         case .left:
-            leftDrawerContainerView.isHidden = false
-            rightDrawerContainerView.isHidden = true
+            leftDrawerContainerView.isUserInteractionEnabled = true
+            rightDrawerContainerView.isUserInteractionEnabled = false
             mainShellContainerView.transform = CGAffineTransform(translationX: offset, y: 0)
             mainShellContainerView.layer.shadowOffset = CGSize(width: -10, height: 0)
             mainShellContainerView.layer.shadowOpacity = 0.16
         case .right:
-            leftDrawerContainerView.isHidden = true
-            rightDrawerContainerView.isHidden = false
+            leftDrawerContainerView.isUserInteractionEnabled = false
+            rightDrawerContainerView.isUserInteractionEnabled = true
             mainShellContainerView.transform = CGAffineTransform(translationX: -offset, y: 0)
             mainShellContainerView.layer.shadowOffset = CGSize(width: 10, height: 0)
             mainShellContainerView.layer.shadowOpacity = 0.16
         case nil:
-            leftDrawerContainerView.isHidden = true
-            rightDrawerContainerView.isHidden = true
+            leftDrawerContainerView.isUserInteractionEnabled = false
+            rightDrawerContainerView.isUserInteractionEnabled = false
             mainShellContainerView.transform = .identity
             mainShellContainerView.layer.shadowOpacity = 0
         }

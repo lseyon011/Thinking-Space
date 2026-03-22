@@ -395,9 +395,14 @@ export default function NativeDrawerLeftOrch() {
   const isExplorer = currentPath === '/thinking-space'
   const isWeb = currentPath === '/web'
 
+  // When embedded in a native SwiftUI drawer shell, the header is rendered natively.
+  // Skip the React header to avoid duplication.
+  const isEmbedded = typeof (globalThis as Record<string, unknown>).__LTM_NATIVE_DRAWER_EMBEDDED__ === 'boolean'
+    && (globalThis as Record<string, unknown>).__LTM_NATIVE_DRAWER_EMBEDDED__ === true
+
   return (
     <div className="flex h-dvh min-h-dvh w-full flex-col bg-[linear-gradient(180deg,#f5f3ee_0%,#f1efe8_100%)] text-foreground">
-      {!isWeb && (
+      {!isEmbedded && !isWeb && (
         <div className="flex items-center justify-between px-4 pb-3 pt-[max(env(safe-area-inset-top),1rem)]">
           <div className="min-w-0">
             <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
@@ -418,7 +423,7 @@ export default function NativeDrawerLeftOrch() {
         </div>
       )}
 
-      {isWeb && <div className="pt-[max(env(safe-area-inset-top),0.5rem)]" />}
+      {!isEmbedded && isWeb && <div className="pt-[max(env(safe-area-inset-top),0.5rem)]" />}
 
       {isExplorer ? (
         <div className="min-h-0 flex-1 overflow-hidden">

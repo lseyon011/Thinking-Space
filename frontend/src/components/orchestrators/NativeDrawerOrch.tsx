@@ -179,26 +179,32 @@ export default function NativeDrawerOrch() {
     void postNativeDrawerContentActionBlock({ type: 'close' })
   }
 
+  // When embedded in a native SwiftUI drawer shell, the header is rendered natively.
+  const isEmbedded = typeof (globalThis as Record<string, unknown>).__LTM_NATIVE_DRAWER_EMBEDDED__ === 'boolean'
+    && (globalThis as Record<string, unknown>).__LTM_NATIVE_DRAWER_EMBEDDED__ === true
+
   return (
     <div className="flex h-dvh min-h-dvh w-full flex-col bg-[linear-gradient(180deg,#f5f3ee_0%,#f1efe8_100%)] text-foreground">
-      <div className="flex items-center justify-between px-4 pb-3 pt-[max(env(safe-area-inset-top),1rem)]">
-        <div className="min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-            Navigation
+      {!isEmbedded && (
+        <div className="flex items-center justify-between px-4 pb-3 pt-[max(env(safe-area-inset-top),1rem)]">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              Navigation
+            </div>
+            <div className="mt-1 truncate text-lg font-semibold tracking-tight text-foreground">
+              {currentTitle}
+            </div>
           </div>
-          <div className="mt-1 truncate text-lg font-semibold tracking-tight text-foreground">
-            {currentTitle}
-          </div>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/70 bg-background/85 text-muted-foreground shadow-sm transition-colors hover:text-foreground"
+            aria-label="Close navigation"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={handleClose}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/70 bg-background/85 text-muted-foreground shadow-sm transition-colors hover:text-foreground"
-          aria-label="Close navigation"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-[max(env(safe-area-inset-bottom),1rem)]">
         {organizerSidebarState ? (

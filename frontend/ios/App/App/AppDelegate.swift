@@ -309,6 +309,7 @@ class LTMDrawerBridgeViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         super.capacitorDidLoad()
         configureDrawerSurface()
+
         let contentPlugin = NativeDrawerContentPlugin(drawerSide: side)
         bridge?.registerPluginInstance(contentPlugin)
         switch side {
@@ -339,6 +340,7 @@ class LTMDrawerBridgeViewController: CAPBridgeViewController {
                 source: """
                 window.__LTM_NATIVE_DRAWER__ = true;
                 window.__LTM_NATIVE_DRAWER_SIDE__ = '\(sideString)';
+                window.__LTM_NATIVE_DRAWER_EMBEDDED__ = true;
                 if (!window.location.hash || window.location.hash === '#/' || window.location.hash === '#') {
                     window.location.hash = '\(hashRoute)';
                 }
