@@ -69,6 +69,7 @@ struct PhoneShellView: View {
             .clipped()
             .animation(.easeInOut(duration: 0.22), value: chromeState.isVisible)
         }
+        .ignoresSafeArea()
     }
 
     private func resolvedDrawerRevealHeight(containerHeight: CGFloat, safeTop: CGFloat) -> CGFloat {
