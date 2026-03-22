@@ -828,7 +828,7 @@ export default function ThinkingSpaceOrch() {
             <button
               type="button"
               aria-label="Close explorer"
-              className="absolute inset-0 z-10 cursor-default bg-transparent"
+              className="absolute inset-0 z-10 cursor-default bg-black/[0.001]"
               onClick={() => setExplorerCollapsed(true)}
             />
           )}
