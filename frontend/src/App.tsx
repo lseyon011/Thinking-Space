@@ -504,6 +504,8 @@ function App() {
   const nativeChromeScrollTargetRef = useRef<EventTarget | null>(null)
   const nativeChromeLastScrollTopRef = useRef(0)
   const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
+  const activeWorkspaceTabIdRef = useRef(activeWorkspaceTabId)
+  const currentRouteRef = useRef(currentRoute)
   const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerPanelSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const runtimeErrorCopyResetTimeoutRef = useRef<number | null>(null)
@@ -689,9 +691,31 @@ function App() {
     [activeWorkspaceTabId, workspaceTabs],
   )
 
+  useEffect(() => {
+    activeWorkspaceTabIdRef.current = activeWorkspaceTabId
+    currentRouteRef.current = currentRoute
+  }, [activeWorkspaceTabId, currentRoute])
+
+  const activeWorkspaceTabDisplayRoute = useMemo(() => {
+    const pending = pendingWorkspaceTabNavigationRef.current
+    if (pending && pending.tabId === activeWorkspaceTabId) return pending.route
+    return currentRoute
+  }, [activeWorkspaceTabId, currentRoute])
+
+  const derivedActiveWorkspaceTabLabel = useMemo(
+    () => getTabLabel(
+      activeWorkspaceTabDisplayRoute,
+      routeLabelByPath,
+      chatSidebarChromeState.label,
+      webSidebarChromeState.label,
+      webullTabLabel,
+      webSidebarChromeState.siteLabels,
+    ),
+    [activeWorkspaceTabDisplayRoute, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, webSidebarChromeState.siteLabels, webullTabLabel],
+  )
   const activeWorkspaceTabLabel = useMemo(
-    () => getTabLabel(currentRoute, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, webullTabLabel, webSidebarChromeState.siteLabels),
-    [currentRoute, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, webSidebarChromeState.siteLabels, webullTabLabel],
+    () => activeWorkspaceTab?.label?.trim() || derivedActiveWorkspaceTabLabel,
+    [activeWorkspaceTab?.label, derivedActiveWorkspaceTabLabel],
   )
   const nativeTopDrawerActiveNavItemId = useMemo(() => {
     if (location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer') {
@@ -1958,12 +1982,16 @@ function App() {
         if (activeWorkspaceTabId !== pending.tabId) return prev
         if (normalizedCurrentRoute !== pending.route) return prev
       }
-      if (prev[index].route === normalizedCurrentRoute && prev[index].label === activeWorkspaceTabLabel) return prev
+      const pathname = parseTabRoute(normalizedCurrentRoute).pathname
+      const nextLabel = pathname === '/chat' || pathname === '/web'
+        ? prev[index].label
+        : derivedActiveWorkspaceTabLabel
+      if (prev[index].route === normalizedCurrentRoute && prev[index].label === nextLabel) return prev
       const next = prev.slice()
-      next[index] = { ...next[index], route: normalizedCurrentRoute, label: activeWorkspaceTabLabel }
+      next[index] = { ...next[index], route: normalizedCurrentRoute, label: nextLabel }
       return next
     })
-  }, [activeWorkspaceTabId, activeWorkspaceTabLabel, currentRoute])
+  }, [activeWorkspaceTabId, currentRoute, derivedActiveWorkspaceTabLabel])
 
   useEffect(() => {
     const pending = pendingWorkspaceTabNavigationRef.current
@@ -2035,12 +2063,24 @@ function App() {
       const customEvent = event as CustomEvent<ChatSidebarChromeStateBlock>
       const detail = customEvent.detail
       if (!detail) return
+      const nextLabel = typeof detail.label === 'string' ? detail.label : 'AI'
       setChatSidebarChromeState({
         enabled: Boolean(detail.enabled),
         collapsed: Boolean(detail.collapsed),
         headerVisible: detail.headerVisible !== false,
         showHeaderToggle: Boolean(detail.showHeaderToggle),
-        label: typeof detail.label === 'string' ? detail.label : 'AI',
+        label: nextLabel,
+      })
+      if (parseTabRoute(currentRouteRef.current).pathname !== '/chat') return
+      const tabId = activeWorkspaceTabIdRef.current
+      if (!tabId) return
+      setWorkspaceTabs((prev) => {
+        const index = prev.findIndex(tab => tab.id === tabId)
+        if (index === -1) return prev
+        if (prev[index].label === nextLabel) return prev
+        const next = prev.slice()
+        next[index] = { ...next[index], label: nextLabel }
+        return next
       })
     }
     window.addEventListener(CHAT_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleChatChromeState as EventListener)
@@ -2054,14 +2094,26 @@ function App() {
       const customEvent = event as CustomEvent<WebSidebarChromeStateBlock>
       const detail = customEvent.detail
       if (!detail) return
+      const nextLabel = typeof detail.label === 'string' ? detail.label : 'Web'
       setWebSidebarChromeState(prev => ({
         enabled: Boolean(detail.enabled),
         collapsed: Boolean(detail.collapsed),
         headerVisible: detail.headerVisible !== false,
         showHeaderToggle: Boolean(detail.showHeaderToggle),
-        label: typeof detail.label === 'string' ? detail.label : 'Web',
+        label: nextLabel,
         siteLabels: (detail.siteLabels && typeof detail.siteLabels === 'object') ? detail.siteLabels : prev.siteLabels,
       }))
+      if (parseTabRoute(currentRouteRef.current).pathname !== '/web') return
+      const tabId = activeWorkspaceTabIdRef.current
+      if (!tabId) return
+      setWorkspaceTabs((prev) => {
+        const index = prev.findIndex(tab => tab.id === tabId)
+        if (index === -1) return prev
+        if (prev[index].label === nextLabel) return prev
+        const next = prev.slice()
+        next[index] = { ...next[index], label: nextLabel }
+        return next
+      })
     }
     window.addEventListener(WEB_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleWebChromeState as EventListener)
     return () => {
