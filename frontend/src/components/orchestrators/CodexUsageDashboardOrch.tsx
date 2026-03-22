@@ -332,7 +332,18 @@ export default function CodexUsageDashboardOrch() {
 
                     {/* ── Body ── */}
                     <div className="px-5 pb-4">
-                      {usageMetrics.length > 0 ? (
+                      {isChecking ? (
+                        /* Loading skeleton */
+                        <div className="animate-pulse space-y-2.5">
+                          <div className="flex items-baseline gap-3">
+                            <div className="h-7 w-16 rounded-md bg-muted" />
+                            <div className="h-3.5 w-32 rounded bg-muted" />
+                          </div>
+                          <div className="h-2 w-full rounded-full bg-muted" />
+                          <div className="h-2 w-4/5 rounded-full bg-muted" />
+                          <div className="h-2 w-3/5 rounded-full bg-muted" />
+                        </div>
+                      ) : usageMetrics.length > 0 ? (
                         <>
                           {/* Headline stat */}
                           <div className="mb-3 flex items-baseline gap-2">
@@ -353,7 +364,7 @@ export default function CodexUsageDashboardOrch() {
                         </>
                       ) : (
                         <p className="text-[13px] leading-relaxed text-muted-foreground">
-                          {probe?.summary ?? (isChecking ? 'Scanning visible page state…' : 'No usage data detected.')}
+                          {probe?.summary ?? 'No usage data detected.'}
                         </p>
                       )}
                     </div>
@@ -362,7 +373,10 @@ export default function CodexUsageDashboardOrch() {
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 px-5 py-2.5">
                       <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
                         <Fingerprint className="h-3 w-3 shrink-0" />
-                        <span className="truncate max-w-[180px]">{probe?.accountLabel ?? runtime?.accountId ?? '—'}</span>
+                        {isChecking
+                          ? <span className="h-2.5 w-20 animate-pulse rounded bg-muted" />
+                          : <span className="truncate max-w-[180px]">{probe?.accountLabel ?? runtime?.accountId ?? '—'}</span>
+                        }
                       </span>
                       <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
                         <ShieldCheck className="h-3 w-3 shrink-0" />
