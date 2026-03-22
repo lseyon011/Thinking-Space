@@ -3,12 +3,7 @@ import SwiftUI
 import Combine
 
 final class RootShellViewController: UIViewController {
-    private let shellBackgroundColor = UIColor(
-        red: 242.0 / 255.0,
-        green: 242.0 / 255.0,
-        blue: 247.0 / 255.0,
-        alpha: 1.0
-    )
+    private let shellBackgroundColor = UIColor.systemBackground
 
     private let bridgeVC = LTMBridgeViewController()
     let chromeState = TopChromeState()
