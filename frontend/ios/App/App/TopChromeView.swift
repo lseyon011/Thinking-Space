@@ -11,11 +11,6 @@ private enum NativeChromeMetrics {
     static let collapsedIconButtonSize: CGFloat = 34
     static let floatingCornerRadius: CGFloat = 21
     static let smallCornerRadius: CGFloat = 15
-    static let drawerOuterPadding: CGFloat = 16
-    static let drawerSectionSpacing: CGFloat = 14
-    static let drawerRowHeight: CGFloat = 52
-    static let drawerCornerRadius: CGFloat = 26
-    static let drawerRowCornerRadius: CGFloat = 18
 }
 
 private func floatingChromeCapsule() -> some View {
@@ -35,38 +30,19 @@ private func formatBadgeCount(_ count: Int) -> String {
 private struct NativeTopDrawerItem: Identifiable {
     let id: String
     let title: String
-    let subtitle: String?
     let systemImage: String
 }
 
-private struct NativeTopDrawerSection: Identifiable {
-    let id: String
-    let title: String
-    let items: [NativeTopDrawerItem]
-}
-
-private let nativeTopDrawerSections: [NativeTopDrawerSection] = [
-    NativeTopDrawerSection(
-        id: "core",
-        title: "Core",
-        items: [
-            NativeTopDrawerItem(id: "/thinking-space", title: "Thinking Space", subtitle: "Hierarchy, notes, and linked context", systemImage: "point.topleft.down.curvedto.point.bottomright.up"),
-            NativeTopDrawerItem(id: "/new-thought", title: "New Note", subtitle: "Jump into a fresh writing surface", systemImage: "square.and.pencil"),
-            NativeTopDrawerItem(id: "/git-insights", title: "Insights", subtitle: "Review repository activity", systemImage: "chart.line.uptrend.xyaxis"),
-            NativeTopDrawerItem(id: "/chat", title: "AI", subtitle: "Work with models in context", systemImage: "sparkles"),
-            NativeTopDrawerItem(id: "/web", title: "Web", subtitle: "Pinned sites and browsing tabs", systemImage: "globe"),
-            NativeTopDrawerItem(id: "/webull", title: "F9", subtitle: "Open the F9 workspace surface", systemImage: "bolt.horizontal.circle"),
-            NativeTopDrawerItem(id: "/thinking-organizer", title: "Thinking Organizer", subtitle: "Manage plans, tasks, and operations", systemImage: "square.grid.2x2"),
-        ]
-    ),
-    NativeTopDrawerSection(
-        id: "workspace",
-        title: "Workspace",
-        items: [
-            NativeTopDrawerItem(id: "/terminal", title: "Terminal", subtitle: "Persistent shells inside the workspace", systemImage: "terminal"),
-            NativeTopDrawerItem(id: "/settings", title: "Settings", subtitle: "Preferences, sync, and integrations", systemImage: "gearshape"),
-        ]
-    ),
+private let nativeTopDrawerItems: [NativeTopDrawerItem] = [
+    NativeTopDrawerItem(id: "/thinking-space", title: "Home", systemImage: "house"),
+    NativeTopDrawerItem(id: "/new-thought", title: "New Note", systemImage: "square.and.pencil"),
+    NativeTopDrawerItem(id: "/git-insights", title: "Insights", systemImage: "chart.bar"),
+    NativeTopDrawerItem(id: "/chat", title: "AI", systemImage: "sparkles"),
+    NativeTopDrawerItem(id: "/web", title: "Web", systemImage: "globe"),
+    NativeTopDrawerItem(id: "/webull", title: "F9", systemImage: "bolt.fill"),
+    NativeTopDrawerItem(id: "/thinking-organizer", title: "Organizer", systemImage: "tray.full"),
+    NativeTopDrawerItem(id: "/terminal", title: "Terminal", systemImage: "terminal"),
+    NativeTopDrawerItem(id: "/settings", title: "Settings", systemImage: "gear"),
 ]
 
 // MARK: - Top Chrome (minimal status bar cover)
@@ -112,173 +88,66 @@ struct TopDrawerMenuView: View {
 
     let onSelectNavItem: (String) -> Void
 
+    private let columns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12),
+    ]
+
     var body: some View {
         ZStack(alignment: .top) {
-            LinearGradient(
-                colors: [
-                    Color(uiColor: .systemBackground),
-                    Color(uiColor: .secondarySystemBackground),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            Color(uiColor: .systemBackground)
+                .ignoresSafeArea()
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: NativeChromeMetrics.drawerSectionSpacing) {
-                    headerCard
+            VStack(spacing: 0) {
+                // Drag handle
+                Capsule()
+                    .fill(Color.primary.opacity(0.18))
+                    .frame(width: 36, height: 5)
+                    .padding(.top, 8)
+                    .padding(.bottom, 20)
 
-                    ForEach(nativeTopDrawerSections) { section in
-                        sectionCard(section)
+                // Grid of nav items
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(nativeTopDrawerItems) { item in
+                        drawerGridCell(item)
                     }
 
-                    searchCard
+                    // Search as last grid cell
+                    drawerGridCell(
+                        NativeTopDrawerItem(id: "search", title: "Search", systemImage: "magnifyingglass")
+                    )
                 }
-                .padding(.horizontal, NativeChromeMetrics.drawerOuterPadding)
-                .padding(.top, 10)
-                .padding(.bottom, 20)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
             }
         }
     }
 
-    private var headerCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Capsule()
-                .fill(Color.primary.opacity(0.16))
-                .frame(width: 44, height: 5)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 2)
-
-            Text("Navigation")
-                .font(.system(size: 29, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
-
-            Text("Pull the workspace down to jump between the fixed surfaces behind it.")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(drawerSurfaceBackground)
-    }
-
-    private func sectionCard(_ section: NativeTopDrawerSection) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(section.title.uppercased())
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .tracking(1.2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
-
-            VStack(spacing: 6) {
-                ForEach(section.items) { item in
-                    drawerRow(item)
-                }
-            }
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(drawerSurfaceBackground)
-    }
-
-    private var searchCard: some View {
-        Button(action: { onSelectNavItem("search") }) {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(Color.accentColor.opacity(0.16))
-                        .frame(width: 36, height: 36)
-
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Search")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.primary)
-                    Text("Open the command palette and quick actions")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "arrow.up.forward")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(drawerSurfaceBackground)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Search")
-    }
-
-    private func drawerRow(_ item: NativeTopDrawerItem) -> some View {
+    private func drawerGridCell(_ item: NativeTopDrawerItem) -> some View {
         let isActive = state.activeNavItemId == item.id
 
         return Button(action: { onSelectNavItem(item.id) }) {
-            HStack(spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill((isActive ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.06)))
-                        .frame(width: 38, height: 38)
+            VStack(spacing: 8) {
+                Image(systemName: item.systemImage)
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(isActive ? Color.accentColor : .primary)
+                    .frame(width: 44, height: 44)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(isActive ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.05))
+                    )
 
-                    Image(systemName: item.systemImage)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(isActive ? Color.accentColor : Color.primary)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title)
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.primary)
-
-                    if let subtitle = item.subtitle {
-                        Text(subtitle)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                Spacer(minLength: 0)
-
-                if isActive {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
-                } else {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                }
+                Text(item.title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(isActive ? Color.accentColor : .secondary)
+                    .lineLimit(1)
             }
-            .frame(maxWidth: .infinity, minHeight: NativeChromeMetrics.drawerRowHeight, alignment: .leading)
-            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: NativeChromeMetrics.drawerRowCornerRadius, style: .continuous)
-                    .fill(isActive ? Color.accentColor.opacity(0.12) : Color.primary.opacity(0.035))
-            )
         }
         .buttonStyle(.plain)
         .accessibilityLabel(item.title)
-    }
-
-    private var drawerSurfaceBackground: some View {
-        RoundedRectangle(cornerRadius: NativeChromeMetrics.drawerCornerRadius, style: .continuous)
-            .fill(Color(uiColor: .tertiarySystemBackground).opacity(0.88))
-            .overlay {
-                RoundedRectangle(cornerRadius: NativeChromeMetrics.drawerCornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.55), lineWidth: 0.8)
-            }
-            .shadow(color: Color.black.opacity(0.08), radius: 18, x: 0, y: 8)
     }
 }
 
