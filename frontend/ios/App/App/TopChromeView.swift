@@ -79,14 +79,14 @@ struct BottomChromeView: View {
             if state.isBottomBarCollapsed {
                 // Collapsed: centered pill
                 HStack {
-                    Spacer(minLength: 0)
+                    Spacer(minLength: 120)
                     collapsedBottomPill
-                    Spacer(minLength: 0)
+                    Spacer(minLength: 60)
                 }
             } else {
                 // Expanded: centered tab controls
                 HStack {
-                    Spacer(minLength: 0)
+                    Spacer(minLength: 120)
 
                     HStack(spacing: 2) {
                         tabSwitcherButton
@@ -107,7 +107,7 @@ struct BottomChromeView: View {
                         tabSwitcherSheet
                     }
 
-                    Spacer(minLength: 0)
+                    Spacer(minLength: 60)
                 }
             }
         }
