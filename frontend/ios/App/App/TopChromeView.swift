@@ -250,7 +250,7 @@ struct BottomChromeView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                    .frame(maxWidth: 120, alignment: .leading)
+                    .frame(maxWidth: 80, alignment: .leading)
             }
             .padding(.horizontal, 14)
             .frame(height: NativeChromeMetrics.floatingControlHeight)
