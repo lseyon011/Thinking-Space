@@ -32,6 +32,20 @@ function attachWebviewContextMenuBlock(targetContents: WebContents): void {
     const template: MenuItemConstructorOptions[] = [];
 
     if (params.isEditable) {
+      // --- Spell-check suggestions (macOS native autocorrect feel) ---
+      if (params.misspelledWord) {
+        for (const suggestion of params.dictionarySuggestions) {
+          template.push({
+            label: suggestion,
+            click: () => { targetContents.replaceMisspelling(suggestion); },
+          });
+        }
+        if (params.dictionarySuggestions.length === 0) {
+          template.push({ label: 'No Suggestions', enabled: false });
+        }
+        template.push({ type: 'separator' });
+      }
+
       // --- Editable field: edit actions only (mirrors Chrome behaviour) ---
       template.push(
         { role: 'undo', enabled: params.editFlags.canUndo },
@@ -370,7 +384,21 @@ export class ElectronCapacitorApp {
       let template: MenuItemConstructorOptions[] = [];
 
       if (params.isEditable) {
-        template = [
+        // Spell-check suggestions (macOS native autocorrect feel)
+        if (params.misspelledWord) {
+          for (const suggestion of params.dictionarySuggestions) {
+            template.push({
+              label: suggestion,
+              click: () => { targetWindow.webContents.replaceMisspelling(suggestion); },
+            });
+          }
+          if (params.dictionarySuggestions.length === 0) {
+            template.push({ label: 'No Suggestions', enabled: false });
+          }
+          template.push({ type: 'separator' });
+        }
+
+        template.push(
           { role: 'undo' },
           { role: 'redo' },
           { type: 'separator' },
@@ -385,7 +413,7 @@ export class ElectronCapacitorApp {
             },
           },
           { role: 'selectAll' },
-        ];
+        );
       } else if (params.selectionText?.trim()) {
         template = [
           { role: 'copy' },
@@ -445,6 +473,7 @@ export class ElectronCapacitorApp {
         contextIsolation: true,
         preload: preloadPath,
         webviewTag: true,
+        spellcheck: true,
       },
     });
     winState.manage(newWindow);
@@ -521,6 +550,7 @@ export class ElectronCapacitorApp {
         contextIsolation: true,
         preload: preloadPath,
         webviewTag: true,
+        spellcheck: true,
       },
     });
     this.mainWindowState.manage(mainWindow);
@@ -681,6 +711,38 @@ export function setupWindowSwipeNavigation(win: BrowserWindow): void {
  * We allow: media, mediaKeySystem (DRM/EME), notifications, fullscreen, pointerLock.
  * We deny:  geolocation, camera, microphone, and anything else.
  */
+/**
+ * Create a popup BrowserWindow that shares the webview session so cookies
+ * and auth carry over. Loads the URL directly — no nested webview needed.
+ */
+function createWebviewPopupWindowBlock(url: string): void {
+  const popup = new BrowserWindow({
+    width: 1100,
+    height: 750,
+    webPreferences: {
+      session: session.fromPartition(WEBVIEW_PARTITION),
+      spellcheck: true,
+    },
+  });
+
+  const cleanUa = popup.webContents.getUserAgent()
+    .replace(/\s*Electron\/[\d.]+/g, '')
+    .replace(/\s*Thinking Space\/[\d.]+/g, '')
+    .trim();
+  popup.webContents.setUserAgent(cleanUa);
+
+  attachWebviewContextMenuBlock(popup.webContents);
+
+  // Show the live URL in the window title so the user can see where they are.
+  popup.setTitle(url);
+  popup.webContents.on('did-navigate', (_e, newUrl) => { popup.setTitle(newUrl); });
+  popup.webContents.on('did-navigate-in-page', (_e, newUrl, isMainFrame) => {
+    if (isMainFrame) popup.setTitle(newUrl);
+  });
+
+  void popup.loadURL(url);
+}
+
 export function setupWebviewSessionPermissions(): void {
   configureWebviewSessionPermissions(session.fromPartition(WEBVIEW_PARTITION));
 
@@ -689,17 +751,11 @@ export function setupWebviewSessionPermissions(): void {
     attachWebviewContextMenuBlock(webContents);
     configureWebviewSessionPermissions(webContents.session);
 
-    // Popup windows opened from webviews (via allowpopups / Cmd+Click) inherit
-    // the webview session (cookies stay), but get the raw Electron user-agent.
-    // Strip the Electron/app identifiers so sites treat the popup like a normal
-    // Chrome browser and don't prompt for re-authentication.
-    webContents.on('did-create-window', (childWindow) => {
-      const rawUa = childWindow.webContents.getUserAgent();
-      const cleanUa = rawUa
-        .replace(/\s*Electron\/[\d.]+/g, '')
-        .replace(/\s*Thinking Space\/[\d.]+/g, '')
-        .trim();
-      childWindow.webContents.setUserAgent(cleanUa);
+    // Deny Electron's automatic popup (which uses the wrong session) and
+    // create our own BrowserWindow with the explicit webview session object.
+    webContents.setWindowOpenHandler(({ url }) => {
+      setImmediate(() => createWebviewPopupWindowBlock(url));
+      return { action: 'deny' };
     });
   });
 }
