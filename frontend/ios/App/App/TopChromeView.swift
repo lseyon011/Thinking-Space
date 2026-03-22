@@ -26,7 +26,7 @@ private enum NativeTopDrawerMetrics {
     static let rowMinimumHeight: CGFloat = 46
     static let rowIconSize: CGFloat = 26
     static let rowIconCornerRadius: CGFloat = 8
-    static let rowSpacing: CGFloat = 10
+    static let rowSpacing: CGFloat = 14
     static let dividerInset: CGFloat = 50
 }
 
