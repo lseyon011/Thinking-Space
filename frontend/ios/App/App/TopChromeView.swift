@@ -72,21 +72,21 @@ private struct NativeTopDrawerSection: Identifiable {
 
 private let nativeTopDrawerSections: [NativeTopDrawerSection] = [
     NativeTopDrawerSection(id: "core", title: "Core", items: [
-        NativeTopDrawerItem(id: "/", title: "Home", iconStyle: .symbol("house"), badgeColor: .blue),
-        NativeTopDrawerItem(id: "/thinking-space", title: "Thinking Space", iconStyle: .symbol("safari"), badgeColor: .cyan),
-        NativeTopDrawerItem(id: "/new-thought", title: "New Note", iconStyle: .symbol("plus.rectangle"), badgeColor: .green),
-        NativeTopDrawerItem(id: "/git-insights", title: "Insights", iconStyle: .symbol("tuningfork"), badgeColor: .orange),
-        NativeTopDrawerItem(id: "/chat", title: "AI", iconStyle: .symbol("bubble.left"), badgeColor: .purple),
-        NativeTopDrawerItem(id: "/web", title: "Web", iconStyle: .symbol("globe"), badgeColor: .blue),
-        NativeTopDrawerItem(id: "/webull", title: "F9", iconStyle: .symbol("chart.xyaxis.line"), badgeColor: .mint),
-        NativeTopDrawerItem(id: "/thinking-organizer", title: "Thinking Organizer", iconStyle: .symbol("tablecells"), badgeColor: .indigo),
+        NativeTopDrawerItem(id: "/", title: "Home", iconStyle: .symbol("house"), badgeColor: .black),
+        NativeTopDrawerItem(id: "/thinking-space", title: "Thinking Space", iconStyle: .symbol("safari"), badgeColor: .black),
+        NativeTopDrawerItem(id: "/new-thought", title: "New Note", iconStyle: .symbol("plus.rectangle"), badgeColor: .black),
+        NativeTopDrawerItem(id: "/git-insights", title: "Insights", iconStyle: .symbol("tuningfork"), badgeColor: .black),
+        NativeTopDrawerItem(id: "/chat", title: "AI", iconStyle: .symbol("bubble.left"), badgeColor: .black),
+        NativeTopDrawerItem(id: "/web", title: "Web", iconStyle: .symbol("globe"), badgeColor: .black),
+        NativeTopDrawerItem(id: "/webull", title: "F9", iconStyle: .symbol("chart.xyaxis.line"), badgeColor: .black),
+        NativeTopDrawerItem(id: "/thinking-organizer", title: "Thinking Organizer", iconStyle: .symbol("tablecells"), badgeColor: .black),
     ]),
     NativeTopDrawerSection(id: "workspace", title: "Workspace", items: [
-        NativeTopDrawerItem(id: "/terminal", title: "Terminal", iconStyle: .symbol("terminal"), badgeColor: Color(UIColor.darkGray)),
-        NativeTopDrawerItem(id: "/settings", title: "Settings", iconStyle: .symbol("gearshape"), badgeColor: .gray),
+        NativeTopDrawerItem(id: "/terminal", title: "Terminal", iconStyle: .symbol("terminal"), badgeColor: .black),
+        NativeTopDrawerItem(id: "/settings", title: "Settings", iconStyle: .symbol("gearshape"), badgeColor: .black),
     ]),
     NativeTopDrawerSection(id: "search", title: "", items: [
-        NativeTopDrawerItem(id: "search", title: "Search", iconStyle: .symbol("magnifyingglass"), badgeColor: .pink),
+        NativeTopDrawerItem(id: "search", title: "Search", iconStyle: .symbol("magnifyingglass"), badgeColor: .black),
     ]),
 ]
 
