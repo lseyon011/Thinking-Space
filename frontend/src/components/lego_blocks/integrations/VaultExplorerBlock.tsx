@@ -1,4 +1,4 @@
-import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import excalidrawLogo from '@/assets/excalidraw-logo.svg'
 
 function ExcalidrawIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -116,6 +116,7 @@ interface VaultExplorerBlockProps {
   persistenceKey?: string
   listenToGlobalSyncRefresh?: boolean
   className?: string
+  belowToolbarSlot?: ReactNode
 }
 
 function getFileIcon(name: string) {
@@ -175,6 +176,7 @@ export default function VaultExplorerBlock({
   persistenceKey = 'global',
   listenToGlobalSyncRefresh = false,
   className,
+  belowToolbarSlot = null,
 }: VaultExplorerBlockProps) {
   const storageKey = `${EXPLORER_PERSISTENCE_PREFIX}:${persistenceKey}`
   const initialPersistedState = useMemo(
@@ -1162,6 +1164,12 @@ export default function VaultExplorerBlock({
             )}
           </div>
         )}
+
+        {belowToolbarSlot ? (
+          <div className="mt-2 px-1">
+            {belowToolbarSlot}
+          </div>
+        ) : null}
       </div>
 
 

@@ -10,6 +10,8 @@ export interface NativeTopChromeTabBridgeItem {
 export interface TopChromeStateBlock {
   title: string
   visible?: boolean
+  topBarCollapsed?: boolean
+  bottomBarCollapsed?: boolean
   showSearch?: boolean
   showTools?: boolean
   toolsBadgeCount?: number
@@ -43,6 +45,7 @@ export type TopChromeEventName =
   | 'topChromeHeaderToggleTap'
   | 'topChromeSidebarToggleTap'
   | 'topChromeCreateTap'
+  | 'topChromeExpandBottomTap'
   | 'topChromeSelectTab'
   | 'topChromeCloseTab'
 

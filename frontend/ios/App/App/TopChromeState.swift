@@ -10,6 +10,8 @@ struct TopChromeTabItem: Identifiable, Decodable, Equatable {
 final class TopChromeState: ObservableObject {
     @Published var title: String = "Thinking Space"
     @Published var isVisible: Bool = true
+    @Published var isTopBarCollapsed: Bool = false
+    @Published var isBottomBarCollapsed: Bool = false
     @Published var showSearch: Bool = true
     @Published var showTools: Bool = true
     @Published var toolsBadgeCount: Int = 0

@@ -19,6 +19,17 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		A9D4B5CD2F6F3A5300F191AD /* CHROME_FIXES_SUMMARY.md in Resources */ = {isa = PBXBuildFile; fileRef = A9D4B5CC2F6F3A5300F191AD /* CHROME_FIXES_SUMMARY.md */; };
+		A9D4B5CF2F6F3A8000F191AD /* CHROME_FIXES_VISUAL_GUIDE.md in Resources */ = {isa = PBXBuildFile; fileRef = A9D4B5CE2F6F3A8000F191AD /* CHROME_FIXES_VISUAL_GUIDE.md */; };
+		A9D4B5D12F6F3AAA00F191AD /* CHROME_QA_CHECKLIST.md in Resources */ = {isa = PBXBuildFile; fileRef = A9D4B5D02F6F3AAA00F191AD /* CHROME_QA_CHECKLIST.md */; };
+		A9D4B5D32F6F3C3F00F191AD /* SCROLL_IMPLEMENTATION_NEEDED.md in Resources */ = {isa = PBXBuildFile; fileRef = A9D4B5D22F6F3C3F00F191AD /* SCROLL_IMPLEMENTATION_NEEDED.md */; };
+		A9D4B5D52F6F3C8700F191AD /* FINAL_FIX_SUMMARY.md in Resources */ = {isa = PBXBuildFile; fileRef = A9D4B5D42F6F3C8700F191AD /* FINAL_FIX_SUMMARY.md */; };
+		A9D4B5D72F6F3CAC00F191AD /* QUICK_SUMMARY.md in Resources */ = {isa = PBXBuildFile; fileRef = A9D4B5D62F6F3CAC00F191AD /* QUICK_SUMMARY.md */; };
+		A9D4B5D92F6F3D9E00F191AD /* DEBUG_SCROLL.md in Resources */ = {isa = PBXBuildFile; fileRef = A9D4B5D82F6F3D9E00F191AD /* DEBUG_SCROLL.md */; };
+		A9D4B5DB2F6F3DBF00F191AD /* UPDATED_FIX.md in Resources */ = {isa = PBXBuildFile; fileRef = A9D4B5DA2F6F3DBF00F191AD /* UPDATED_FIX.md */; };
+		A9D4B5DD2F6F3E6700F191AD /* DUAL_APPROACH_DEBUG.md in Resources */ = {isa = PBXBuildFile; fileRef = A9D4B5DC2F6F3E6700F191AD /* DUAL_APPROACH_DEBUG.md */; };
+		A9D4B5DF2F6F3EEA00F191AD /* SIMPLE_TEST.md in Resources */ = {isa = PBXBuildFile; fileRef = A9D4B5DE2F6F3EEA00F191AD /* SIMPLE_TEST.md */; };
+		A9D4B5E12F6F3F0300F191AD /* AUTO_TEST_INSTRUCTIONS.md in Resources */ = {isa = PBXBuildFile; fileRef = A9D4B5E02F6F3F0300F191AD /* AUTO_TEST_INSTRUCTIONS.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +47,17 @@
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		A9D4B5CC2F6F3A5300F191AD /* CHROME_FIXES_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CHROME_FIXES_SUMMARY.md; sourceTree = "<group>"; };
+		A9D4B5CE2F6F3A8000F191AD /* CHROME_FIXES_VISUAL_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CHROME_FIXES_VISUAL_GUIDE.md; sourceTree = "<group>"; };
+		A9D4B5D02F6F3AAA00F191AD /* CHROME_QA_CHECKLIST.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CHROME_QA_CHECKLIST.md; sourceTree = "<group>"; };
+		A9D4B5D22F6F3C3F00F191AD /* SCROLL_IMPLEMENTATION_NEEDED.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = SCROLL_IMPLEMENTATION_NEEDED.md; sourceTree = "<group>"; };
+		A9D4B5D42F6F3C8700F191AD /* FINAL_FIX_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = FINAL_FIX_SUMMARY.md; sourceTree = "<group>"; };
+		A9D4B5D62F6F3CAC00F191AD /* QUICK_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = QUICK_SUMMARY.md; sourceTree = "<group>"; };
+		A9D4B5D82F6F3D9E00F191AD /* DEBUG_SCROLL.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = DEBUG_SCROLL.md; sourceTree = "<group>"; };
+		A9D4B5DA2F6F3DBF00F191AD /* UPDATED_FIX.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = UPDATED_FIX.md; sourceTree = "<group>"; };
+		A9D4B5DC2F6F3E6700F191AD /* DUAL_APPROACH_DEBUG.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = DUAL_APPROACH_DEBUG.md; sourceTree = "<group>"; };
+		A9D4B5DE2F6F3EEA00F191AD /* SIMPLE_TEST.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = SIMPLE_TEST.md; sourceTree = "<group>"; };
+		A9D4B5E02F6F3F0300F191AD /* AUTO_TEST_INSTRUCTIONS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = AUTO_TEST_INSTRUCTIONS.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -82,6 +104,17 @@
 				504EC3131FED79650016851F /* Info.plist */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
+				A9D4B5CC2F6F3A5300F191AD /* CHROME_FIXES_SUMMARY.md */,
+				A9D4B5CE2F6F3A8000F191AD /* CHROME_FIXES_VISUAL_GUIDE.md */,
+				A9D4B5D02F6F3AAA00F191AD /* CHROME_QA_CHECKLIST.md */,
+				A9D4B5D22F6F3C3F00F191AD /* SCROLL_IMPLEMENTATION_NEEDED.md */,
+				A9D4B5D42F6F3C8700F191AD /* FINAL_FIX_SUMMARY.md */,
+				A9D4B5D62F6F3CAC00F191AD /* QUICK_SUMMARY.md */,
+				A9D4B5D82F6F3D9E00F191AD /* DEBUG_SCROLL.md */,
+				A9D4B5DA2F6F3DBF00F191AD /* UPDATED_FIX.md */,
+				A9D4B5DC2F6F3E6700F191AD /* DUAL_APPROACH_DEBUG.md */,
+				A9D4B5DE2F6F3EEA00F191AD /* SIMPLE_TEST.md */,
+				A9D4B5E02F6F3F0300F191AD /* AUTO_TEST_INSTRUCTIONS.md */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -150,12 +183,23 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A9D4B5DB2F6F3DBF00F191AD /* UPDATED_FIX.md in Resources */,
 				504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */,
+				A9D4B5D52F6F3C8700F191AD /* FINAL_FIX_SUMMARY.md in Resources */,
 				50B271D11FEDC1A000F3C39B /* public in Resources */,
 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */,
+				A9D4B5D92F6F3D9E00F191AD /* DEBUG_SCROLL.md in Resources */,
+				A9D4B5DF2F6F3EEA00F191AD /* SIMPLE_TEST.md in Resources */,
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
+				A9D4B5D72F6F3CAC00F191AD /* QUICK_SUMMARY.md in Resources */,
+				A9D4B5DD2F6F3E6700F191AD /* DUAL_APPROACH_DEBUG.md in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
+				A9D4B5D12F6F3AAA00F191AD /* CHROME_QA_CHECKLIST.md in Resources */,
+				A9D4B5D32F6F3C3F00F191AD /* SCROLL_IMPLEMENTATION_NEEDED.md in Resources */,
+				A9D4B5E12F6F3F0300F191AD /* AUTO_TEST_INSTRUCTIONS.md in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+				A9D4B5CD2F6F3A5300F191AD /* CHROME_FIXES_SUMMARY.md in Resources */,
+				A9D4B5CF2F6F3A8000F191AD /* CHROME_FIXES_VISUAL_GUIDE.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

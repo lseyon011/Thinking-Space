@@ -18,6 +18,8 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func setState(_ call: CAPPluginCall) {
         let title = call.getString("title")
         let isVisible = call.getBool("visible")
+        let topBarCollapsed = call.getBool("topBarCollapsed")
+        let bottomBarCollapsed = call.getBool("bottomBarCollapsed")
         let showSearch = call.getBool("showSearch")
         let showTools = call.getBool("showTools")
         let toolsBadgeCount = call.getInt("toolsBadgeCount")
@@ -45,6 +47,12 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
             }
             if let isVisible {
                 state.isVisible = isVisible
+            }
+            if let topBarCollapsed {
+                state.isTopBarCollapsed = topBarCollapsed
+            }
+            if let bottomBarCollapsed {
+                state.isBottomBarCollapsed = bottomBarCollapsed
             }
             if let showSearch {
                 state.showSearch = showSearch
@@ -152,6 +160,10 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
 
     func emitCreateTap() {
         notifyListeners("topChromeCreateTap", data: [:])
+    }
+
+    func emitExpandBottomTap() {
+        notifyListeners("topChromeExpandBottomTap", data: [:])
     }
 
     func emitSelectTab(tabId: String) {

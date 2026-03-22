@@ -37,7 +37,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 // Subclass CAPBridgeViewController to register local plugins.
 // Main.storyboard must reference "RootShellViewController" as the custom class.
 
-class LTMBridgeViewController: CAPBridgeViewController {
+class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
     private let shellBackgroundColor = UIColor(
         red: 242.0 / 255.0,
         green: 242.0 / 255.0,
@@ -46,6 +46,12 @@ class LTMBridgeViewController: CAPBridgeViewController {
     )
 
     private var inlineWebViewPlugin: InlineWebViewPlugin?
+    private var scrollObserver: NSKeyValueObservation?
+    private var lastScrollOffset: CGFloat = 0
+    
+    // Scroll thresholds for chrome collapse behavior
+    private let topChromeCollapseThreshold: CGFloat = 50
+    private let bottomChromeCollapseThreshold: CGFloat = 150
 
     override open func viewDidLoad() {
         super.viewDidLoad()
@@ -64,6 +70,36 @@ class LTMBridgeViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(topChromePlugin)
         (parent as? RootShellViewController)?.wireTopChromePlugin(topChromePlugin)
     }
+    
+    override open func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        
+        // Set up native scroll detection on iPhone after view appears
+        if UIDevice.current.userInterfaceIdiom == .phone && scrollObserver == nil {
+            setupScrollDetection()
+            
+            // Register message handler for JS scroll events
+            if let webView = webView ?? bridge?.webView {
+                webView.configuration.userContentController.add(self, name: "chromeScroll")
+                print("[Chrome] ✅ Registered chromeScroll message handler")
+            }
+        }
+    }
+    
+    // WKScriptMessageHandler
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "chromeScroll",
+              let body = message.body as? [String: Any],
+              let scrollY = body["scrollY"] as? Double,
+              let direction = body["direction"] as? String else {
+            return
+        }
+        
+        print("[Chrome] 🌐 JS scroll event: \(Int(scrollY))pt, direction: \(direction)")
+        
+        let scrollDirection: ScrollDirection = direction == "down" ? .down : .up
+        updateChromeForScroll(offsetY: CGFloat(scrollY), direction: scrollDirection)
+    }
 
     func dismissInlineWebView() {
         inlineWebViewPlugin?.closeWebView()
@@ -79,9 +115,151 @@ class LTMBridgeViewController: CAPBridgeViewController {
         if #available(iOS 11.0, *) {
             nativeWebView.scrollView.contentInsetAdjustmentBehavior = .automatic
         }
+        
+        // Keep original scroll settings - changing these broke scrolling!
         nativeWebView.scrollView.bounces = false
         nativeWebView.scrollView.alwaysBounceVertical = false
         nativeWebView.scrollView.alwaysBounceHorizontal = false
+        
+        print("[Chrome] 📱 Configured webView scrollView")
+    }
+    
+    private func setupScrollDetection() {
+        guard let webView = webView ?? bridge?.webView else {
+            print("[Chrome] ⚠️ WebView not available for scroll detection")
+            return
+        }
+        
+        print("[Chrome] ✅ Setting up scroll detection")
+        print("[Chrome] 📊 WebView scrollView contentSize: \(webView.scrollView.contentSize)")
+        print("[Chrome] 📊 WebView scrollView frame: \(webView.scrollView.frame)")
+        
+        // Method 1: Observe native scrollView
+        scrollObserver = webView.scrollView.observe(\.contentOffset, options: [.new, .old]) { [weak self] scrollView, change in
+            guard let self = self else { return }
+            
+            let offsetY = scrollView.contentOffset.y
+            let scrollDirection: ScrollDirection = offsetY > self.lastScrollOffset ? .down : .up
+            
+            if abs(offsetY - self.lastScrollOffset) > 5 {
+                print("[Chrome] 📍 Native scroll: \(Int(offsetY))pt, direction: \(scrollDirection)")
+            }
+            
+            self.updateChromeForScroll(offsetY: offsetY, direction: scrollDirection)
+            self.lastScrollOffset = offsetY
+        }
+        
+        // Method 2: Inject JavaScript to detect web-side scroll events
+        let scrollDetectionJS = """
+        (function() {
+            let lastScrollY = 0;
+            let ticking = false;
+            
+            function detectScroll() {
+                const scrollY = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+                
+                if (Math.abs(scrollY - lastScrollY) > 5) {
+                    const direction = scrollY > lastScrollY ? 'down' : 'up';
+                    
+                    // Send scroll info to native side
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.chromeScroll) {
+                        window.webkit.messageHandlers.chromeScroll.postMessage({
+                            scrollY: scrollY,
+                            direction: direction
+                        });
+                    }
+                    
+                    // Also try via TopChrome plugin if available
+                    if (window.TopChrome && window.TopChrome.setState) {
+                        const shouldCollapseTop = direction === 'down' && scrollY > 50;
+                        const shouldCollapseBottom = direction === 'down' && scrollY > 150;
+                        
+                        window.TopChrome.setState({
+                            topBarCollapsed: shouldCollapseTop,
+                            bottomBarCollapsed: shouldCollapseBottom
+                        });
+                    }
+                    
+                    lastScrollY = scrollY;
+                }
+                
+                ticking = false;
+            }
+            
+            function requestTick() {
+                if (!ticking) {
+                    window.requestAnimationFrame(detectScroll);
+                    ticking = true;
+                }
+            }
+            
+            // Listen to both window scroll and all scroll events
+            window.addEventListener('scroll', requestTick, { passive: true });
+            document.addEventListener('scroll', requestTick, { passive: true, capture: true });
+            
+            console.log('[Chrome] 🌐 JavaScript scroll detection installed');
+        })();
+        """
+        
+        webView.evaluateJavaScript(scrollDetectionJS) { result, error in
+            if let error = error {
+                print("[Chrome] ⚠️ Failed to inject scroll detection JS: \(error)")
+            } else {
+                print("[Chrome] ✅ JavaScript scroll detection injected")
+            }
+        }
+    }
+    
+    private enum ScrollDirection {
+        case up, down
+    }
+    
+    private func updateChromeForScroll(offsetY: CGFloat, direction: ScrollDirection) {
+        guard let rootVC = parent as? RootShellViewController else {
+            print("[Chrome] ⚠️ Parent is not RootShellViewController")
+            return
+        }
+        let chromeState = rootVC.chromeState
+        
+        // Determine if top chrome should be collapsed
+        let shouldCollapseTop: Bool
+        if direction == .down && offsetY > topChromeCollapseThreshold {
+            shouldCollapseTop = true
+        } else if direction == .up || offsetY < 10 {
+            shouldCollapseTop = false
+        } else {
+            shouldCollapseTop = chromeState.isTopBarCollapsed
+        }
+        
+        // Determine if bottom chrome should be collapsed
+        let shouldCollapseBottom: Bool
+        if direction == .down && offsetY > bottomChromeCollapseThreshold {
+            shouldCollapseBottom = true
+        } else if direction == .up || offsetY < 100 {
+            shouldCollapseBottom = false
+        } else {
+            shouldCollapseBottom = chromeState.isBottomBarCollapsed
+        }
+        
+        // Only update if state changed (avoid unnecessary updates)
+        if shouldCollapseTop != chromeState.isTopBarCollapsed {
+            print("[Chrome] 🔄 Top chrome: \(shouldCollapseTop ? "COLLAPSED" : "EXPANDED")")
+            chromeState.isTopBarCollapsed = shouldCollapseTop
+        }
+        
+        if shouldCollapseBottom != chromeState.isBottomBarCollapsed {
+            print("[Chrome] 🔄 Bottom chrome: \(shouldCollapseBottom ? "COLLAPSED" : "EXPANDED")")
+            chromeState.isBottomBarCollapsed = shouldCollapseBottom
+        }
+    }
+    
+    deinit {
+        scrollObserver?.invalidate()
+        
+        // Clean up message handler
+        if let webView = webView ?? bridge?.webView {
+            webView.configuration.userContentController.removeScriptMessageHandler(forName: "chromeScroll")
+        }
     }
 }
 

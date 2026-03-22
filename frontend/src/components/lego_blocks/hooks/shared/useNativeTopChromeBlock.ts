@@ -27,6 +27,7 @@ interface UseNativeTopChromeOptions extends TopChromeStateBlock {
   onHeaderToggleTap: () => void
   onSidebarToggleTap: () => void
   onCreateTap: () => void
+  onExpandBottomTap: () => void
   onSelectTab: (tabId: string) => void
   onCloseTab: (tabId: string) => void
 }
@@ -43,6 +44,7 @@ interface NativeTopChromeCallbackRegistry {
   onHeaderToggleTap: () => void
   onSidebarToggleTap: () => void
   onCreateTap: () => void
+  onExpandBottomTap: () => void
   onSelectTab: (tabId: string) => void
   onCloseTab: (tabId: string) => void
 }
@@ -66,9 +68,28 @@ export function useNativeTopChromeBlock({
   onHeaderToggleTap,
   onSidebarToggleTap,
   onCreateTap,
+  onExpandBottomTap,
   onSelectTab,
   onCloseTab,
-  ...state
+  title,
+  visible,
+  topBarCollapsed,
+  bottomBarCollapsed,
+  showSearch,
+  showTools,
+  toolsBadgeCount,
+  canToggleSidebar,
+  sidebarToggleActive,
+  sidebarToggleLabel,
+  canToggleHeader,
+  headerToggleLabel,
+  tabs,
+  bottomBarHidden,
+  canRefresh,
+  canSync,
+  canRebuild,
+  canGitCommit,
+  canGitPush,
 }: UseNativeTopChromeOptions): void {
   const callbackRegistryRef = useRef<NativeTopChromeCallbackRegistry>({
     onMenuTap,
@@ -82,6 +103,7 @@ export function useNativeTopChromeBlock({
     onHeaderToggleTap,
     onSidebarToggleTap,
     onCreateTap,
+    onExpandBottomTap,
     onSelectTab,
     onCloseTab,
   })
@@ -99,6 +121,7 @@ export function useNativeTopChromeBlock({
       onHeaderToggleTap,
       onSidebarToggleTap,
       onCreateTap,
+      onExpandBottomTap,
       onSelectTab,
       onCloseTab,
     }
@@ -110,6 +133,7 @@ export function useNativeTopChromeBlock({
     onHeaderToggleTap,
     onMenuTap,
     onOpenDebugTap,
+    onExpandBottomTap,
     onRebuildTap,
     onRefreshTap,
     onSearchTap,
@@ -117,6 +141,10 @@ export function useNativeTopChromeBlock({
     onSidebarToggleTap,
     onSyncTap,
   ])
+
+  // Serialize tabs to a stable string so the dependency array uses a primitive
+  // instead of an object reference that changes every render.
+  const tabsJson = JSON.stringify(tabs)
 
   useEffect(() => {
     if (!enabled || !isCapacitorNative()) return
@@ -126,12 +154,36 @@ export function useNativeTopChromeBlock({
     })
 
     void setTopChromeStateBlock({
-      ...state,
-      visible: true,
+      title,
+      visible: visible ?? true,
+      topBarCollapsed,
+      bottomBarCollapsed,
+      showSearch,
+      showTools,
+      toolsBadgeCount,
+      canToggleSidebar,
+      sidebarToggleActive,
+      sidebarToggleLabel,
+      canToggleHeader,
+      headerToggleLabel,
+      tabs,
+      bottomBarHidden,
+      canRefresh,
+      canSync,
+      canRebuild,
+      canGitCommit,
+      canGitPush,
     }).catch((error: unknown) => {
       console.warn('[useNativeTopChromeBlock] Failed to push native chrome state:', error)
     })
-  }, [enabled, state])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- tabsJson is a stable serialization of tabs
+  }, [
+    enabled, title, visible, topBarCollapsed, bottomBarCollapsed,
+    showSearch, showTools, toolsBadgeCount,
+    canToggleSidebar, sidebarToggleActive, sidebarToggleLabel,
+    canToggleHeader, headerToggleLabel, tabsJson,
+    bottomBarHidden, canRefresh, canSync, canRebuild, canGitCommit, canGitPush,
+  ])
 
   useEffect(() => {
     if (!enabled || !isCapacitorNative()) return
@@ -153,6 +205,7 @@ export function useNativeTopChromeBlock({
           addTopChromeListenerBlock('topChromeHeaderToggleTap', () => callbackRegistryRef.current.onHeaderToggleTap()),
           addTopChromeListenerBlock('topChromeSidebarToggleTap', () => callbackRegistryRef.current.onSidebarToggleTap()),
           addTopChromeListenerBlock('topChromeCreateTap', () => callbackRegistryRef.current.onCreateTap()),
+          addTopChromeListenerBlock('topChromeExpandBottomTap', () => callbackRegistryRef.current.onExpandBottomTap()),
           addTopChromeListenerBlock('topChromeSelectTab', (payload) => {
             const tabId = resolveTabId(payload)
             if (tabId) callbackRegistryRef.current.onSelectTab(tabId)

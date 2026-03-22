@@ -326,7 +326,7 @@
   }
 
   .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-shell-content-stage {
-    border-radius: clamp(0.85rem, 2.8vw, 1.08rem);
+    border-radius: 0;
   }
 
   .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-backlog-inline-create .ltm-backlog-inline-create-top-row,
@@ -817,11 +817,7 @@
     }
 
     .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-shell-content-stage {
-      /* No direct Web API exposes hardware corner radius; infer from safe-area insets. */
-      --ltm-ios-corner-hint: max(var(--ltm-safe-bottom), var(--ltm-safe-left), var(--ltm-safe-right));
-      --ltm-ios-bottom-corner-radius: clamp(1.05rem, calc(0.82rem + (var(--ltm-ios-corner-hint) * 0.42)), 2rem);
-      border-bottom-left-radius: var(--ltm-ios-bottom-corner-radius);
-      border-bottom-right-radius: var(--ltm-ios-bottom-corner-radius);
+      border-radius: 0;
     }
 
     .ltm-page {

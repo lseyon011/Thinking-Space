@@ -119,6 +119,7 @@ export default function ThinkingSpaceOrch() {
   const drawerSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const explorerResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const isIosSurface = layout.surface === 'capacitor-ios'
+  const isIPhoneIosSurface = isIosSurface && layout.mode === 'phone'
   const forceCompactForIosKeyboard = isIosSurface && layout.keyboardVisible
   const showInlineSidebar = layout.hasSidebar && !forceCompactForIosKeyboard
   // On iOS, always use the inline sidebar regardless of hasSidebar (portrait iPad, etc.)
@@ -128,6 +129,7 @@ export default function ThinkingSpaceOrch() {
   const isGoogleWorkspaceInlinePath = isGoogleWorkspacePathBlock(inlinePath)
   const useInstantExplorerToggle = showInlineSidebar && isGoogleWorkspaceInlinePath
   const [rssUrlBarVisible, setRssUrlBarVisible] = useState(!isIosSurface)
+  const inlineExplorerTitle = isIPhoneIosSurface ? 'Explorer' : 'Thinking Space Explorer'
 
   const rememberMountedInlinePath = useCallback((path: string, initialMode: MarkdownViewerMode) => {
     setMountedInlinePaths((prev) => {
@@ -647,11 +649,27 @@ export default function ThinkingSpaceOrch() {
     drawerSwipeStartRef.current = null
   }
 
+  const rssExplorerToggleButton = (
+    <button
+      type="button"
+      onClick={() => setRssPanelOpen(prev => { if (prev) setRssActiveArticle(null); return !prev })}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
+        rssPanelOpen
+          ? 'bg-primary/10 text-primary'
+          : 'text-muted-foreground hover:bg-muted/70',
+      )}
+    >
+      <RssIcon className="h-3.5 w-3.5" />
+      RSS Feeds
+    </button>
+  )
+
   const inlineExplorerContent = useMemo(() => (
     <>
       <div className="ltm-shell-segment-header ltm-thinking-space-explorer-chrome flex h-11 shrink-0 items-center justify-between px-2">
         <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Thinking Space Explorer
+          {inlineExplorerTitle}
         </span>
         <Button
           variant="ghost"
@@ -664,11 +682,16 @@ export default function ThinkingSpaceOrch() {
         </Button>
       </div>
       {rssPanelOpen ? (
-        <div className="min-h-0 flex-1">
-          <RssFeedPanelBlock
-            onOpenArticle={handleRssOpenArticle}
-            onClose={() => { setRssPanelOpen(false); setRssActiveArticle(null) }}
-          />
+        <div className="min-h-0 flex flex-1 flex-col">
+          <div className="shrink-0 px-3 py-2">
+            {rssExplorerToggleButton}
+          </div>
+          <div className="min-h-0 flex-1">
+            <RssFeedPanelBlock
+              onOpenArticle={handleRssOpenArticle}
+              onClose={() => { setRssPanelOpen(false); setRssActiveArticle(null) }}
+            />
+          </div>
         </div>
       ) : (
         <div className="min-h-0 flex-1">
@@ -696,26 +719,12 @@ export default function ThinkingSpaceOrch() {
             draggableFiles
             draggableFolders
             title=""
+            belowToolbarSlot={rssExplorerToggleButton}
           />
         </div>
       )}
-      <div className="shrink-0 border-t border-border/50 px-2 py-1.5">
-        <button
-          type="button"
-          onClick={() => setRssPanelOpen(prev => { if (prev) setRssActiveArticle(null); return !prev })}
-          className={cn(
-            'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
-            rssPanelOpen
-              ? 'bg-primary/10 text-primary'
-              : 'text-muted-foreground hover:bg-muted/70',
-          )}
-        >
-          <RssIcon className="h-3.5 w-3.5" />
-          RSS Feeds
-        </button>
-      </div>
     </>
-  ), [handleExplorerCreateCsvFile, inlinePath, rssPanelOpen, setInlinePathAndSyncUrl])
+  ), [handleExplorerCreateCsvFile, inlinePath, rssExplorerToggleButton, rssPanelOpen, setInlinePathAndSyncUrl])
 
   const inlineDocumentContent = useMemo(() => {
     if (mountedInlinePaths.length === 0) return null
@@ -868,11 +877,16 @@ export default function ThinkingSpaceOrch() {
               </Button>
             </div>
             {rssPanelOpen ? (
-              <div className="min-h-0 flex-1">
-                <RssFeedPanelBlock
-                  onOpenArticle={handleRssOpenArticle}
-                  onClose={() => { setRssPanelOpen(false); setRssActiveArticle(null) }}
-                />
+              <div className="min-h-0 flex flex-1 flex-col">
+                <div className="shrink-0 px-3 py-2">
+                  {rssExplorerToggleButton}
+                </div>
+                <div className="min-h-0 flex-1">
+                  <RssFeedPanelBlock
+                    onOpenArticle={handleRssOpenArticle}
+                    onClose={() => { setRssPanelOpen(false); setRssActiveArticle(null) }}
+                  />
+                </div>
               </div>
             ) : (
               <div className="min-h-0 flex-1">
@@ -899,24 +913,10 @@ export default function ThinkingSpaceOrch() {
                   draggableFiles
                   draggableFolders
                   title=""
+                  belowToolbarSlot={rssExplorerToggleButton}
                 />
               </div>
             )}
-            <div className="shrink-0 border-t border-border/50 px-2 py-1.5">
-              <button
-                type="button"
-                onClick={() => setRssPanelOpen(prev => { if (prev) setRssActiveArticle(null); return !prev })}
-                className={cn(
-                  'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
-                  rssPanelOpen
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:bg-muted/70',
-                )}
-              >
-                <RssIcon className="h-3.5 w-3.5" />
-                RSS Feeds
-              </button>
-            </div>
           </aside>
         </>
       )}

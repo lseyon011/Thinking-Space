@@ -488,6 +488,8 @@ function App() {
   const [debugLogEntries, setDebugLogEntries] = useState<DebugLogEntryBlock[]>([])
   const [debugToast, setDebugToast] = useState<DebugLogEntryBlock | null>(null)
   const [debugUnreadCount, setDebugUnreadCount] = useState(0)
+  const [nativeTopBarCollapsed, setNativeTopBarCollapsed] = useState(false)
+  const [nativeBottomBarCollapsed, setNativeBottomBarCollapsed] = useState(false)
   const [nativeBottomBarHidden, setNativeBottomBarHidden] = useState(false)
   const debugToastTimerRef = useRef<number | null>(null)
   const commandInputRef = useRef<HTMLInputElement | null>(null)
@@ -1667,6 +1669,8 @@ function App() {
 
   useEffect(() => {
     if (!useNativeTopChrome) {
+      setNativeTopBarCollapsed(false)
+      setNativeBottomBarCollapsed(false)
       setNativeBottomBarHidden(false)
       nativeChromeScrollTargetRef.current = null
       nativeChromeLastScrollTopRef.current = 0
@@ -1674,12 +1678,16 @@ function App() {
     }
 
     if (keyboardVisible) {
+      setNativeTopBarCollapsed(false)
+      setNativeBottomBarCollapsed(false)
       setNativeBottomBarHidden(true)
       nativeChromeScrollTargetRef.current = null
       nativeChromeLastScrollTopRef.current = 0
       return
     }
 
+    setNativeTopBarCollapsed(false)
+    setNativeBottomBarCollapsed(false)
     setNativeBottomBarHidden(false)
     nativeChromeScrollTargetRef.current = null
     nativeChromeLastScrollTopRef.current = 0
@@ -1752,6 +1760,8 @@ function App() {
   useNativeTopChromeBlock({
     enabled: useNativeTopChrome && !needsVaultSetup,
     title: activeWorkspaceTabLabel,
+    topBarCollapsed: nativeTopBarCollapsed,
+    bottomBarCollapsed: nativeBottomBarCollapsed,
     showSearch: true,
     showTools: true,
     toolsBadgeCount: debugUnreadCount,
@@ -1778,6 +1788,7 @@ function App() {
     onHeaderToggleTap: handleNativeHeaderToggle,
     onSidebarToggleTap: handleNativeSidebarToggle,
     onCreateTap: openNativeCreateSurface,
+    onExpandBottomTap: () => setNativeBottomBarCollapsed(false),
     onSelectTab: handleSelectWorkspaceTab,
     onCloseTab: handleCloseWorkspaceTab,
   })
@@ -2094,6 +2105,8 @@ function App() {
         nativeChromeScrollTargetRef.current = target
         nativeChromeLastScrollTopRef.current = nextTop
         if (nextTop < 24) {
+          setNativeTopBarCollapsed(false)
+          setNativeBottomBarCollapsed(false)
           setNativeBottomBarHidden(false)
         }
         return
@@ -2103,13 +2116,19 @@ function App() {
       nativeChromeLastScrollTopRef.current = nextTop
 
       if (nextTop < 24) {
+        setNativeTopBarCollapsed(false)
+        setNativeBottomBarCollapsed(false)
         setNativeBottomBarHidden(false)
         return
       }
 
-      if (delta > 10) {
-        setNativeBottomBarHidden(true)
-      } else if (delta < -10) {
+      if (delta > 10 && nextTop > 72) {
+        setNativeTopBarCollapsed(true)
+        setNativeBottomBarCollapsed(true)
+        setNativeBottomBarHidden(false)
+      } else if (delta < -8) {
+        setNativeTopBarCollapsed(false)
+        setNativeBottomBarCollapsed(false)
         setNativeBottomBarHidden(false)
       }
     }
