@@ -784,7 +784,10 @@ export default function ThinkingSpaceOrch() {
       className="ltm-thinking-space-shell flex h-full min-h-0 flex-col overflow-hidden"
       data-ltm-explorer-open={showCollapsedInlineExplorer ? 'true' : 'false'}
     >
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div
+        className="flex min-h-0 flex-1 overflow-hidden"
+        style={isIPhoneIosSurface ? { position: 'relative' } : undefined}
+      >
         {(showInlineSidebar || iosInlineMode) && (
           <aside
             className={cn(
@@ -796,7 +799,10 @@ export default function ThinkingSpaceOrch() {
                 ? 'opacity-100'
                 : 'opacity-0',
             )}
-            style={{ width: showCollapsedInlineExplorer ? `${explorerWidthPx}px` : '0px' }}
+            style={{
+              width: showCollapsedInlineExplorer ? `${explorerWidthPx}px` : '0px',
+              ...(isIPhoneIosSurface ? { position: 'absolute', top: 0, left: 0, bottom: 0, zIndex: 10 } : {}),
+            }}
             data-ltm-nav-region="explorer"
           >
             <div
@@ -823,7 +829,13 @@ export default function ThinkingSpaceOrch() {
           </div>
         )}
 
-        <section className="ltm-thinking-space-document-stage relative min-h-0 flex-1">
+        <section
+          className="ltm-thinking-space-document-stage relative min-h-0 flex-1"
+          style={isIPhoneIosSurface ? {
+            transform: `translateX(${showCollapsedInlineExplorer ? explorerWidthPx : 0}px)`,
+            transition: (isExplorerResizing || useInstantExplorerToggle) ? 'none' : 'transform 200ms ease-out',
+          } : undefined}
+        >
           {isIPhoneIosSurface && showCollapsedInlineExplorer && (
             <button
               type="button"
