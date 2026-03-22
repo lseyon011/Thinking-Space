@@ -1461,6 +1461,7 @@ function App() {
 
   const handleNativeTopDrawerNavItemTap = useCallback((navItemId: string) => {
     switch (navItemId) {
+      case '/':
       case '/thinking-space':
       case '/new-thought':
       case '/git-insights':

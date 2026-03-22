@@ -3,6 +3,8 @@ import UIKit
 
 private let phoneShellDrawerDismissVelocityThreshold: CGFloat = 220
 private let phoneShellDrawerOpenThreshold: CGFloat = 0.42
+private let phoneShellContentCornerRadius: CGFloat = 16
+private let phoneShellContentScale: CGFloat = 0.92
 
 struct PhoneShellView: View {
     @ObservedObject var chromeState: TopChromeState
@@ -15,9 +17,13 @@ struct PhoneShellView: View {
         GeometryReader { proxy in
             let safeTop = proxy.safeAreaInsets.top
             let revealHeight = resolvedDrawerRevealHeight(containerHeight: proxy.size.height, safeTop: safeTop)
+            let progress = chromeState.drawerProgress
+            let contentScale = 1 - (1 - phoneShellContentScale) * progress
+            let contentCornerRadius = phoneShellContentCornerRadius * progress
             let topOverlayReservedHeight: CGFloat = chromeState.isVisible ? max(52, safeTop + 8) : 0
 
             ZStack(alignment: .top) {
+                // Menu behind content
                 TopDrawerMenuView(
                     state: chromeState,
                     onSelectNavItem: { navItemId in
@@ -25,11 +31,11 @@ struct PhoneShellView: View {
                         onSelectNavItem(navItemId)
                     }
                 )
-                .frame(maxWidth: .infinity, maxHeight: revealHeight, alignment: .top)
-                .opacity(chromeState.drawerProgress)
-                .offset(y: (1 - chromeState.drawerProgress) * -18)
-                .allowsHitTesting(chromeState.drawerProgress > 0.001)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .opacity(progress)
+                .allowsHitTesting(progress > 0.001)
 
+                // Main content that slides down
                 ZStack(alignment: .bottom) {
                     BridgeControllerContainerView(controller: bridgeController)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -45,8 +51,8 @@ struct PhoneShellView: View {
                         .highPriorityGesture(topHandleDragGesture(revealHeight: revealHeight))
                 }
                 .overlay {
-                    if chromeState.drawerProgress > 0.001 {
-                        Color.black.opacity(0.001)
+                    if progress > 0.001 {
+                        Color.black.opacity(0.3 * progress)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 closeDrawer()
@@ -54,15 +60,10 @@ struct PhoneShellView: View {
                             .highPriorityGesture(contentDismissDragGesture(revealHeight: revealHeight))
                     }
                 }
-                .background(alignment: .top) {
-                    if topOverlayReservedHeight > 0 {
-                        Color(red: 242/255, green: 242/255, blue: 247/255)
-                            .frame(height: topOverlayReservedHeight)
-                            .frame(maxWidth: .infinity, alignment: .top)
-                    }
-                }
-                .offset(y: chromeState.drawerProgress * revealHeight)
-                .shadow(color: Color.black.opacity(0.14 * chromeState.drawerProgress), radius: 24, x: 0, y: 14)
+                .clipShape(RoundedRectangle(cornerRadius: contentCornerRadius, style: .continuous))
+                .scaleEffect(contentScale, anchor: .bottom)
+                .offset(y: progress * revealHeight)
+                .shadow(color: Color.black.opacity(0.18 * progress), radius: 30, x: 0, y: 10)
                 .ignoresSafeArea()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -70,6 +71,7 @@ struct PhoneShellView: View {
             .animation(.easeInOut(duration: 0.22), value: chromeState.isVisible)
         }
         .ignoresSafeArea()
+        .background(Color(uiColor: .systemGroupedBackground))
     }
 
     private func resolvedDrawerRevealHeight(containerHeight: CGFloat, safeTop: CGFloat) -> CGFloat {

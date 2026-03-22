@@ -41,6 +41,7 @@ private struct NativeTopDrawerSection: Identifiable {
 
 private let nativeTopDrawerSections: [NativeTopDrawerSection] = [
     NativeTopDrawerSection(id: "core", title: "Core", items: [
+        NativeTopDrawerItem(id: "/", title: "Home", systemImage: "house"),
         NativeTopDrawerItem(id: "/thinking-space", title: "Thinking Space", systemImage: "safari"),
         NativeTopDrawerItem(id: "/new-thought", title: "New Note", systemImage: "plus.rectangle"),
         NativeTopDrawerItem(id: "/git-insights", title: "Insights", systemImage: "tuningfork"),
@@ -109,11 +110,19 @@ struct TopDrawerMenuView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Drag handle
             Capsule()
                 .fill(Color.primary.opacity(0.18))
                 .frame(width: 36, height: 5)
                 .padding(.top, topSafeAreaHeight + 10)
-                .padding(.bottom, 4)
+                .padding(.bottom, 8)
+
+            // Large title
+            Text("Thinking Space")
+                .font(.system(size: 34, weight: .bold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
 
             List {
                 ForEach(nativeTopDrawerSections) { section in
