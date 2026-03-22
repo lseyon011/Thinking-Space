@@ -106,14 +106,16 @@ export default function WebOrch({
       {/* Content area */}
       <section className="relative min-h-0 flex-1">
         {selectedSite ? (
-          <UrlDocumentBlock
-            key={selectedSite.id}
-            url={selectedSite.url}
-            partition={selectedSite.partition}
-            hideHeader={!webviewHeaderVisible}
-            suspended={!active}
-            className="h-full"
-          />
+          <div className="relative min-h-0 flex-1 h-full">
+            <UrlDocumentBlock
+              key={selectedSite.id}
+              url={selectedSite.url}
+              partition={selectedSite.partition}
+              hideHeader={!webviewHeaderVisible}
+              suspended={!active}
+              className="absolute inset-0"
+            />
+          </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
             <Globe className="h-10 w-10 text-muted-foreground/30" />
