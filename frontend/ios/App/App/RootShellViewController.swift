@@ -55,7 +55,7 @@ final class RootShellViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = shellBackgroundColor
+        view.backgroundColor = UIColor.yellow // DEBUG: neon yellow = root view
 
         bridgeVC.chromeState = chromeState
         bridgeVC.onTopChromePluginReady = { [weak self] plugin in
@@ -85,9 +85,9 @@ final class RootShellViewController: UIViewController {
     }
 
     private func configurePhoneShell() {
-        phoneShellHostingVC.view.backgroundColor = .clear
-        bottomChromeContainerView.backgroundColor = .clear
-        bottomChromeHostingVC.view.backgroundColor = .clear
+        phoneShellHostingVC.view.backgroundColor = UIColor.green // DEBUG: green = phoneShellHostingVC
+        bottomChromeContainerView.backgroundColor = UIColor.red // DEBUG: red = bottom chrome container
+        bottomChromeHostingVC.view.backgroundColor = UIColor.cyan // DEBUG: cyan = bottom chrome hosting
 
         addChild(phoneShellHostingVC)
         view.addSubview(phoneShellHostingVC.view)
