@@ -8,6 +8,7 @@ import {
   Globe,
   Loader2,
   PlusSquare,
+  Rss as RssIcon,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -20,6 +21,7 @@ import {
 } from '@/services/lego_blocks/units/nativeDrawerContentBlock'
 import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
 import VaultExplorerBlock from '@/components/lego_blocks/integrations/VaultExplorerBlock'
+import RssFeedPanelBlock from '@/components/lego_blocks/integrations/RssFeedPanelBlock'
 import WebSitePanelBlock from '@/components/lego_blocks/integrations/WebSitePanelBlock'
 import { readWebSitePreferencesOrch } from '@/services/orchestrators/webSiteOrch'
 import type { WebSitePreferencesBlock } from '@/services/lego_blocks/units/webSiteBlock'
@@ -75,9 +77,39 @@ function sidebarLabelForPath(path: string, fallback: string): string {
 // ── Sub-panels ──
 
 function ThinkingSpacePanel({ onAction }: { onAction: (type: string, payload?: Record<string, string>) => void }) {
+  const [rssPanelOpen, setRssPanelOpen] = useState(false)
+
   const handleOpenFile = useCallback((path: string) => {
     onAction('open-file', { path })
   }, [onAction])
+
+  const rssToggle = (
+    <button
+      type="button"
+      onClick={() => setRssPanelOpen((prev) => !prev)}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
+        rssPanelOpen ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/70',
+      )}
+    >
+      <RssIcon className="h-3.5 w-3.5" />
+      RSS Feeds
+    </button>
+  )
+
+  if (rssPanelOpen) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="shrink-0 px-3 py-2">{rssToggle}</div>
+        <div className="min-h-0 flex-1">
+          <RssFeedPanelBlock
+            onOpenArticle={() => {}}
+            onClose={() => setRssPanelOpen(false)}
+          />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -85,6 +117,7 @@ function ThinkingSpacePanel({ onAction }: { onAction: (type: string, payload?: R
         loadEntries={listFolderEntries}
         onOpenFile={handleOpenFile}
         title=""
+        belowToolbarSlot={rssToggle}
       />
     </div>
   )

@@ -326,7 +326,10 @@ class LTMDrawerBridgeViewController: CAPBridgeViewController {
         nativeWebView.isOpaque = false
         nativeWebView.backgroundColor = shellBackgroundColor
         nativeWebView.scrollView.backgroundColor = shellBackgroundColor
-        nativeWebView.scrollView.contentInsetAdjustmentBehavior = .automatic
+        // .never: the native SwiftUI header already handles safe area.
+        // .automatic would add extra top insets inside the WebView, causing
+        // content to render below the native header (overlapping) and breaking scroll.
+        nativeWebView.scrollView.contentInsetAdjustmentBehavior = .never
 
         let sideString = side == .left ? "left" : "right"
         let hashRoute = "#/native-drawer-\(sideString)"
