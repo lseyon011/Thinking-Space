@@ -11,12 +11,14 @@ export interface NativeDrawerShellStateBlock {
 
 export interface NativeDrawerActionEventBlock {
   type?: string
+  side?: 'left' | 'right'
   payloadJson?: string
 }
 
 interface NativeDrawerShellPluginBlock {
   setState(options: NativeDrawerShellStateBlock): Promise<void>
-  open(): Promise<void>
+  openLeft(): Promise<void>
+  openRight(): Promise<void>
   close(): Promise<void>
   addListener(
     eventName: 'nativeDrawerAction',
@@ -34,13 +36,20 @@ export async function setNativeDrawerShellStateBlock(options: NativeDrawerShellS
   await NativeDrawerShell.setState(options)
 }
 
-export async function openNativeDrawerShellBlock(): Promise<void> {
-  await NativeDrawerShell.open()
+export async function openLeftNativeDrawerShellBlock(): Promise<void> {
+  await NativeDrawerShell.openLeft()
+}
+
+export async function openRightNativeDrawerShellBlock(): Promise<void> {
+  await NativeDrawerShell.openRight()
 }
 
 export async function closeNativeDrawerShellBlock(): Promise<void> {
   await NativeDrawerShell.close()
 }
+
+// Keep legacy aliases for compatibility
+export const openNativeDrawerShellBlock = openLeftNativeDrawerShellBlock
 
 export async function addNativeDrawerShellActionListenerBlock(
   handler: (payload: NativeDrawerActionEventBlock) => void,

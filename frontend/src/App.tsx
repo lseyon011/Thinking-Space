@@ -69,6 +69,7 @@ import { UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK } from './components/lego_b
 import { useUILayoutBlock } from './components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useNativeTopChromeBlock } from './components/lego_blocks/hooks/shared/useNativeTopChromeBlock'
 import NativeDrawerOrch from './components/orchestrators/NativeDrawerOrch'
+import NativeDrawerLeftOrch from './components/orchestrators/NativeDrawerLeftOrch'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import {
   hasNativeDrawerContentBlock,
@@ -152,7 +153,8 @@ import { consumeRecentExcalidrawCrashMarkerBlock } from '@/services/lego_blocks/
 import { folderPickerPluginBlock } from '@/services/lego_blocks/units/folderPickerPluginBlock'
 import {
   closeNativeDrawerShellBlock,
-  openNativeDrawerShellBlock,
+  openLeftNativeDrawerShellBlock,
+  openRightNativeDrawerShellBlock,
   setNativeDrawerShellStateBlock,
 } from '@/services/lego_blocks/units/nativeDrawerShellBlock'
 
@@ -430,7 +432,8 @@ function AppMain() {
   const gitSyncToolsSupported = useMemo(() => isGitSyncToolsSupportedOrch(), [])
 
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [nativeDrawerOpen, setNativeDrawerOpen] = useState(false)
+  const [nativeDrawerSide, setNativeDrawerSide] = useState<'left' | 'right' | null>(null)
+  const nativeDrawerOpen = nativeDrawerSide !== null
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const stored = getStorageItem(STORAGE_KEYS.appShellSidebarCollapsed)
     if (stored === null) return true
@@ -1454,7 +1457,7 @@ function AppMain() {
 
   const handleNativeMenuTap = useCallback(() => {
     if (useNativeDrawerShell) {
-      setNativeDrawerOpen(prev => !prev)
+      setNativeDrawerSide((prev) => prev === 'right' ? null : 'right')
       return
     }
     setDrawerOpen(true)
@@ -1462,7 +1465,7 @@ function AppMain() {
 
   const handleNativeSidebarToggle = useCallback(() => {
     if (useNativeDrawerShell) {
-      setNativeDrawerOpen(prev => !prev)
+      setNativeDrawerSide((prev) => prev === 'left' ? null : 'left')
       return
     }
 
@@ -1689,7 +1692,7 @@ function AppMain() {
   useEffect(() => {
     if (keyboardVisible) {
       setDrawerOpen(false)
-      setNativeDrawerOpen(false)
+      setNativeDrawerSide(null)
     }
   }, [keyboardVisible])
 
@@ -1711,32 +1714,109 @@ function AppMain() {
     if (!useNativeDrawerShell || !isCapacitorNative()) return
 
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ type?: string; payloadJson?: string }>).detail
+      const detail = (event as CustomEvent<{ type?: string; side?: string; payloadJson?: string }>).detail
       const actionType = typeof detail?.type === 'string' ? detail.type.trim() : ''
+      const side = detail?.side === 'right' ? 'right' as const : 'left' as const
 
       if (actionType === 'open') {
-        setNativeDrawerOpen(true)
+        setNativeDrawerSide(side)
         return
       }
 
       if (actionType === 'close') {
-        setNativeDrawerOpen(false)
+        setNativeDrawerSide(null)
         return
       }
 
       if (actionType === 'navigate') {
         try {
           const parsed = detail?.payloadJson ? JSON.parse(detail.payloadJson) as { to?: string } : {}
-          console.log('[App] native-drawer-action navigate parsed=', parsed, 'current=', location.pathname)
           if (typeof parsed.to === 'string' && parsed.to.trim()) {
             navigate(parsed.to)
-            console.log('[App] navigate() called with', parsed.to)
           }
         } catch (error) {
           console.warn('[App] Failed to parse native drawer navigate payload:', error)
         } finally {
-          setNativeDrawerOpen(false)
+          setNativeDrawerSide(null)
         }
+        return
+      }
+
+      // Left drawer: open a vault file in ThinkingSpace
+      if (actionType === 'open-file') {
+        try {
+          const parsed = detail?.payloadJson ? JSON.parse(detail.payloadJson) as { path?: string } : {}
+          if (typeof parsed.path === 'string' && parsed.path.trim()) {
+            navigate(`/thinking-space?path=${encodeURIComponent(parsed.path)}`)
+          }
+        } catch (error) {
+          console.warn('[App] Failed to parse open-file payload:', error)
+        } finally {
+          setNativeDrawerSide(null)
+        }
+        return
+      }
+
+      // Left drawer: select an AI provider or usage dashboard
+      if (actionType === 'select-ai') {
+        try {
+          const parsed = detail?.payloadJson ? JSON.parse(detail.payloadJson) as { provider?: string } : {}
+          if (parsed.provider === '__usage_dashboard__') {
+            navigate('/chat?site=__usage_dashboard__')
+          } else if (typeof parsed.provider === 'string' && parsed.provider.trim()) {
+            navigate(`/chat?provider=${encodeURIComponent(parsed.provider)}`)
+          }
+        } catch (error) {
+          console.warn('[App] Failed to parse select-ai payload:', error)
+        } finally {
+          setNativeDrawerSide(null)
+        }
+        return
+      }
+
+      // Left drawer: select an AI website
+      if (actionType === 'select-ai-website') {
+        try {
+          const parsed = detail?.payloadJson ? JSON.parse(detail.payloadJson) as { siteId?: string } : {}
+          if (typeof parsed.siteId === 'string' && parsed.siteId.trim()) {
+            navigate(`/chat?site=${encodeURIComponent(parsed.siteId)}`)
+          }
+        } catch (error) {
+          console.warn('[App] Failed to parse select-ai-website payload:', error)
+        } finally {
+          setNativeDrawerSide(null)
+        }
+        return
+      }
+
+      // Left drawer: select a web bookmark
+      if (actionType === 'select-web-site') {
+        try {
+          const parsed = detail?.payloadJson ? JSON.parse(detail.payloadJson) as { siteId?: string } : {}
+          if (typeof parsed.siteId === 'string' && parsed.siteId.trim()) {
+            navigate(`/web?site=${encodeURIComponent(parsed.siteId)}`)
+          }
+        } catch (error) {
+          console.warn('[App] Failed to parse select-web-site payload:', error)
+        } finally {
+          setNativeDrawerSide(null)
+        }
+        return
+      }
+
+      // Left drawer: new thought quick destination
+      if (actionType === 'new-thought-destination') {
+        try {
+          const parsed = detail?.payloadJson ? JSON.parse(detail.payloadJson) as { destination?: string } : {}
+          if (typeof parsed.destination === 'string' && parsed.destination.trim()) {
+            navigate(`/new-thought?dest=${encodeURIComponent(parsed.destination)}`)
+          }
+        } catch (error) {
+          console.warn('[App] Failed to parse new-thought-destination payload:', error)
+        } finally {
+          setNativeDrawerSide(null)
+        }
+        return
       }
     }
 
@@ -1747,9 +1827,16 @@ function AppMain() {
   useEffect(() => {
     if (!useNativeDrawerShell || !isCapacitorNative()) return
 
-    if (nativeDrawerOpen) {
-      void openNativeDrawerShellBlock().catch((error: unknown) => {
-        console.warn('[App] Failed to open native drawer shell:', error)
+    if (nativeDrawerSide === 'left') {
+      void openLeftNativeDrawerShellBlock().catch((error: unknown) => {
+        console.warn('[App] Failed to open left native drawer:', error)
+      })
+      return
+    }
+
+    if (nativeDrawerSide === 'right') {
+      void openRightNativeDrawerShellBlock().catch((error: unknown) => {
+        console.warn('[App] Failed to open right native drawer:', error)
       })
       return
     }
@@ -1757,7 +1844,7 @@ function AppMain() {
     void closeNativeDrawerShellBlock().catch((error: unknown) => {
       console.warn('[App] Failed to close native drawer shell:', error)
     })
-  }, [nativeDrawerOpen, useNativeDrawerShell])
+  }, [nativeDrawerSide, useNativeDrawerShell])
 
   useEffect(() => {
     if (!useNativeTopChrome) {
@@ -1787,7 +1874,7 @@ function AppMain() {
 
   useEffect(() => {
     if (!useNativeDrawerShell) return
-    setNativeDrawerOpen(false)
+    setNativeDrawerSide(null)
   }, [currentRoute, useNativeDrawerShell])
 
   useEffect(() => {
@@ -3391,8 +3478,19 @@ function isNativeDrawerMode(pathname: string, search: string): boolean {
   return globalDrawerFlag
     || hasNativeDrawerContentBlock()
     || pathname === '/native-drawer'
+    || pathname === '/native-drawer-left'
+    || pathname === '/native-drawer-right'
     || params.get('nativeDrawer') === '1'
     || hashValue.includes('/native-drawer')
+}
+
+function getNativeDrawerSide(): 'left' | 'right' {
+  const side = (globalThis as { __LTM_NATIVE_DRAWER_SIDE__?: string }).__LTM_NATIVE_DRAWER_SIDE__
+  if (side === 'right') return 'right'
+  if (side === 'left') return 'left'
+  const hash = typeof window !== 'undefined' ? window.location.hash : ''
+  if (hash.includes('native-drawer-right')) return 'right'
+  return 'left'
 }
 
 function App() {
@@ -3422,6 +3520,7 @@ function App() {
   )
 
   if (nativeDrawerMode) {
+    const drawerSide = getNativeDrawerSide()
     return (
       <RuntimeErrorBoundaryBlock
         location={`${location.pathname}${location.search}`}
@@ -3447,7 +3546,7 @@ function App() {
           </div>
         )}
       >
-        <NativeDrawerOrch />
+        {drawerSide === 'right' ? <NativeDrawerOrch /> : <NativeDrawerLeftOrch />}
       </RuntimeErrorBoundaryBlock>
     )
   }

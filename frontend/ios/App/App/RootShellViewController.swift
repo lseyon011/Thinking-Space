@@ -2,13 +2,16 @@ import UIKit
 import SwiftUI
 import Combine
 
+enum DrawerSide {
+    case left, right
+}
+
 /// Shared singleton so any plugin can reach the shell VC without wiring.
-/// Eliminates all timing issues with plugin ↔ VC references.
 final class DrawerBridge {
     static let shared = DrawerBridge()
     weak var shellVC: RootShellViewController?
-    /// Content plugin lives on the drawer bridge — stored here so the shell can push state to it.
-    weak var contentPlugin: NativeDrawerContentPlugin?
+    weak var leftContentPlugin: NativeDrawerContentPlugin?
+    weak var rightContentPlugin: NativeDrawerContentPlugin?
     private init() {}
 }
 
@@ -36,24 +39,37 @@ final class RootShellViewController: UIViewController {
     private let drawerCloseThreshold: CGFloat = -56
     private let drawerVerticalDriftTolerance: CGFloat = 44
 
+    // MARK: - Child VCs
+
     private lazy var bridgeVC: LTMBridgeViewController = {
         let vc = LTMBridgeViewController()
         vc.rootShellVC = self
         return vc
     }()
-    private lazy var drawerBridgeVC: LTMDrawerBridgeViewController = {
-        LTMDrawerBridgeViewController()
+    private lazy var leftDrawerBridgeVC: LTMDrawerBridgeViewController = {
+        LTMDrawerBridgeViewController(side: .left)
     }()
-    let chromeState = TopChromeState() // Made internal so bridge can access it
+    private lazy var rightDrawerBridgeVC: LTMDrawerBridgeViewController = {
+        LTMDrawerBridgeViewController(side: .right)
+    }()
+
+    let chromeState = TopChromeState()
     private var chromePlugin: TopChromePlugin?
     private var chromeVisibilityCancellable: AnyCancellable?
     private var bottomBarVisibilityCancellable: AnyCancellable?
     private var chromeLayoutCancellable: AnyCancellable?
     private var topChromeHeightConstraint: NSLayoutConstraint?
     private var bottomChromeHeightConstraint: NSLayoutConstraint?
-    private var drawerWidthConstraint: NSLayoutConstraint?
+
+    // MARK: - Drawer state
+
     private var nativeDrawerState = NativeDrawerShellStateRecord()
-    private var nativeDrawerOpen = false
+    /// Which drawer is currently open, or nil if both are closed.
+    private var openDrawerSide: DrawerSide?
+
+    private var leftDrawerWidthConstraint: NSLayoutConstraint?
+    private var rightDrawerWidthConstraint: NSLayoutConstraint?
+
     private lazy var topInsetHostingVC = UIHostingController(rootView: TopInsetGlassView())
 
     private lazy var bottomChromeHostingVC = UIHostingController(
@@ -67,18 +83,28 @@ final class RootShellViewController: UIViewController {
         )
     )
 
+    // MARK: - Container views
+
     private let mainShellContainerView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.backgroundColor = .clear
         view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOffset = CGSize(width: -10, height: 0)
+        view.layer.shadowOffset = .zero
         view.layer.shadowRadius = 28
         view.layer.shadowOpacity = 0
         return view
     }()
 
-    private let drawerContainerView: UIView = {
+    private let leftDrawerContainerView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = .systemBackground
+        view.clipsToBounds = true
+        return view
+    }()
+
+    private let rightDrawerContainerView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.backgroundColor = .systemBackground
@@ -94,9 +120,17 @@ final class RootShellViewController: UIViewController {
         return view
     }()
 
-    private lazy var drawerOpenEdgeGestureRecognizer: UIScreenEdgePanGestureRecognizer = {
-        let recognizer = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleDrawerOpenEdgePan(_:)))
+    // MARK: - Gesture recognizers
+
+    private lazy var leftEdgeGestureRecognizer: UIScreenEdgePanGestureRecognizer = {
+        let recognizer = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleLeftEdgePan(_:)))
         recognizer.edges = .left
+        return recognizer
+    }()
+
+    private lazy var rightEdgeGestureRecognizer: UIScreenEdgePanGestureRecognizer = {
+        let recognizer = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleRightEdgePan(_:)))
+        recognizer.edges = .right
         return recognizer
     }()
 
@@ -122,6 +156,8 @@ final class RootShellViewController: UIViewController {
         UIDevice.current.userInterfaceIdiom == .phone
     }
 
+    // MARK: - Lifecycle
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = shellBackgroundColor
@@ -139,11 +175,13 @@ final class RootShellViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        updateDrawerWidthConstraint()
+        updateDrawerWidthConstraints()
         applyChromeVisibility(animated: false)
         applyBottomBarVisibility(animated: false)
-        applyNativeDrawerVisualState(open: nativeDrawerOpen)
+        applyDrawerVisualState()
     }
+
+    // MARK: - Public API
 
     func wireTopChromePlugin(_ plugin: TopChromePlugin) {
         chromePlugin = plugin
@@ -160,51 +198,36 @@ final class RootShellViewController: UIViewController {
         bridgeVC.dismissInlineWebView()
     }
 
-    func updateNativeDrawerState(_ nextState: NativeDrawerShellStateRecord, open: Bool? = nil) {
+    func updateNativeDrawerState(_ nextState: NativeDrawerShellStateRecord, open: Bool? = nil, side: DrawerSide? = nil) {
         DispatchQueue.main.async {
             self.nativeDrawerState.kind = nextState.kind
             self.nativeDrawerState.title = nextState.title
             self.nativeDrawerState.currentPath = nextState.currentPath
             self.nativeDrawerState.currentSearch = nextState.currentSearch
-            self.emitNativeDrawerState()
+            self.emitDrawerState()
 
             if let open {
-                self.setNativeDrawerOpen(open, animated: true)
+                let drawerSide = side ?? .left
+                if open {
+                    self.openDrawer(drawerSide, animated: true)
+                } else {
+                    self.closeDrawer(animated: true)
+                }
             }
         }
     }
 
-    func handleNativeDrawerAction(type: String, payloadJson: String?) {
+    func handleNativeDrawerAction(type: String, payloadJson: String?, side: DrawerSide) {
         DispatchQueue.main.async {
-            print("[Drawer] handleNativeDrawerAction type=\(type) payloadJson=\(payloadJson ?? "nil")")
             switch type {
             case "close":
-                self.setNativeDrawerOpen(false, animated: true)
-                self.dispatchDrawerEventToMainWebView(type: "close", payloadJson: nil)
+                self.closeDrawer(animated: true)
+                self.dispatchDrawerEventToMainWebView(type: "close", side: side, payloadJson: nil)
             case "navigate":
-                self.setNativeDrawerOpen(false, animated: true)
-                self.dispatchDrawerEventToMainWebView(type: "navigate", payloadJson: payloadJson)
+                self.closeDrawer(animated: true)
+                self.dispatchDrawerEventToMainWebView(type: "navigate", side: side, payloadJson: payloadJson)
             default:
                 break
-            }
-        }
-    }
-
-    /// Dispatch a custom DOM event directly to the main web view, bypassing Capacitor plugin wiring.
-    private func dispatchDrawerEventToMainWebView(type: String, payloadJson: String?) {
-        let detail: [String: String] = [
-            "type": type,
-            "payloadJson": payloadJson ?? "",
-        ]
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: detail),
-              let jsonString = String(data: jsonData, encoding: .utf8) else { return }
-        let js = "window.dispatchEvent(new CustomEvent('native-drawer-action', { detail: \(jsonString) }));"
-        print("[Drawer] dispatchToMainWebView js=\(js) webView=\(bridgeVC.webView != nil ? "ready" : "nil")")
-        bridgeVC.webView?.evaluateJavaScript(js) { result, error in
-            if let error {
-                print("[Drawer] evaluateJavaScript error: \(error)")
-            } else {
-                print("[Drawer] evaluateJavaScript success result=\(String(describing: result))")
             }
         }
     }
@@ -213,16 +236,35 @@ final class RootShellViewController: UIViewController {
         nativeDrawerState.asPayload()
     }
 
+    // MARK: - Event dispatch to main web view
+
+    private func dispatchDrawerEventToMainWebView(type: String, side: DrawerSide, payloadJson: String?) {
+        let detail: [String: String] = [
+            "type": type,
+            "side": side == .left ? "left" : "right",
+            "payloadJson": payloadJson ?? "",
+        ]
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: detail),
+              let jsonString = String(data: jsonData, encoding: .utf8) else { return }
+        let js = "window.dispatchEvent(new CustomEvent('native-drawer-action', { detail: \(jsonString) }));"
+        bridgeVC.webView?.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    // MARK: - Shell layout
+
     private func configurePhoneShell() {
         topChromeContainerView.backgroundColor = .clear
         bottomChromeContainerView.backgroundColor = .clear
         topInsetHostingVC.view.backgroundColor = .clear
         bottomChromeHostingVC.view.backgroundColor = .clear
         bridgeVC.view.backgroundColor = shellBackgroundColor
-        drawerBridgeVC.view.backgroundColor = shellBackgroundColor
+        leftDrawerBridgeVC.view.backgroundColor = shellBackgroundColor
+        rightDrawerBridgeVC.view.backgroundColor = shellBackgroundColor
 
-        view.addSubview(drawerContainerView)
+        view.addSubview(leftDrawerContainerView)
+        view.addSubview(rightDrawerContainerView)
         view.addSubview(mainShellContainerView)
+
         NSLayoutConstraint.activate([
             mainShellContainerView.topAnchor.constraint(equalTo: view.topAnchor),
             mainShellContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -230,7 +272,8 @@ final class RootShellViewController: UIViewController {
             mainShellContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
-        embedDrawerBehindShell()
+        embedLeftDrawer()
+        embedRightDrawer()
         configureDrawerTapShield()
         embedTopInsetGlass()
         embedBridgeBelowTopInset()
@@ -241,26 +284,48 @@ final class RootShellViewController: UIViewController {
         view.bringSubviewToFront(drawerTapShieldView)
     }
 
-    private func embedDrawerBehindShell() {
-        addChild(drawerBridgeVC)
-        drawerContainerView.addSubview(drawerBridgeVC.view)
-        drawerBridgeVC.view.translatesAutoresizingMaskIntoConstraints = false
+    private func embedLeftDrawer() {
+        addChild(leftDrawerBridgeVC)
+        leftDrawerContainerView.addSubview(leftDrawerBridgeVC.view)
+        leftDrawerBridgeVC.view.translatesAutoresizingMaskIntoConstraints = false
 
-        let drawerWidthConstraint = drawerContainerView.widthAnchor.constraint(equalToConstant: resolvedDrawerWidth())
-        self.drawerWidthConstraint = drawerWidthConstraint
+        let widthConstraint = leftDrawerContainerView.widthAnchor.constraint(equalToConstant: resolvedDrawerWidth())
+        leftDrawerWidthConstraint = widthConstraint
 
         NSLayoutConstraint.activate([
-            drawerContainerView.topAnchor.constraint(equalTo: view.topAnchor),
-            drawerContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            drawerContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            drawerWidthConstraint,
-            drawerBridgeVC.view.leadingAnchor.constraint(equalTo: drawerContainerView.leadingAnchor),
-            drawerBridgeVC.view.trailingAnchor.constraint(equalTo: drawerContainerView.trailingAnchor),
-            drawerBridgeVC.view.topAnchor.constraint(equalTo: drawerContainerView.topAnchor),
-            drawerBridgeVC.view.bottomAnchor.constraint(equalTo: drawerContainerView.bottomAnchor),
+            leftDrawerContainerView.topAnchor.constraint(equalTo: view.topAnchor),
+            leftDrawerContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            leftDrawerContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            widthConstraint,
+            leftDrawerBridgeVC.view.leadingAnchor.constraint(equalTo: leftDrawerContainerView.leadingAnchor),
+            leftDrawerBridgeVC.view.trailingAnchor.constraint(equalTo: leftDrawerContainerView.trailingAnchor),
+            leftDrawerBridgeVC.view.topAnchor.constraint(equalTo: leftDrawerContainerView.topAnchor),
+            leftDrawerBridgeVC.view.bottomAnchor.constraint(equalTo: leftDrawerContainerView.bottomAnchor),
         ])
 
-        drawerBridgeVC.didMove(toParent: self)
+        leftDrawerBridgeVC.didMove(toParent: self)
+    }
+
+    private func embedRightDrawer() {
+        addChild(rightDrawerBridgeVC)
+        rightDrawerContainerView.addSubview(rightDrawerBridgeVC.view)
+        rightDrawerBridgeVC.view.translatesAutoresizingMaskIntoConstraints = false
+
+        let widthConstraint = rightDrawerContainerView.widthAnchor.constraint(equalToConstant: resolvedDrawerWidth())
+        rightDrawerWidthConstraint = widthConstraint
+
+        NSLayoutConstraint.activate([
+            rightDrawerContainerView.topAnchor.constraint(equalTo: view.topAnchor),
+            rightDrawerContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            rightDrawerContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            widthConstraint,
+            rightDrawerBridgeVC.view.leadingAnchor.constraint(equalTo: rightDrawerContainerView.leadingAnchor),
+            rightDrawerBridgeVC.view.trailingAnchor.constraint(equalTo: rightDrawerContainerView.trailingAnchor),
+            rightDrawerBridgeVC.view.topAnchor.constraint(equalTo: rightDrawerContainerView.topAnchor),
+            rightDrawerBridgeVC.view.bottomAnchor.constraint(equalTo: rightDrawerContainerView.bottomAnchor),
+        ])
+
+        rightDrawerBridgeVC.didMove(toParent: self)
     }
 
     private func configureDrawerTapShield() {
@@ -309,7 +374,6 @@ final class RootShellViewController: UIViewController {
         ])
 
         bridgeVC.didMove(toParent: self)
-        // Wire any plugins that were created during init before rootShellVC was set
         bridgeVC.wirePendingPluginsIfNeeded(to: self)
     }
 
@@ -351,23 +415,22 @@ final class RootShellViewController: UIViewController {
     }
 
     private func setupDrawerGestures() {
-        view.addGestureRecognizer(drawerOpenEdgeGestureRecognizer)
+        view.addGestureRecognizer(leftEdgeGestureRecognizer)
+        view.addGestureRecognizer(rightEdgeGestureRecognizer)
     }
+
+    // MARK: - Chrome observers
 
     private func observeChromeVisibility() {
         chromeVisibilityCancellable = chromeState.$isVisible
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.applyChromeVisibility(animated: true)
-            }
+            .sink { [weak self] _ in self?.applyChromeVisibility(animated: true) }
     }
 
     private func observeBottomBarVisibility() {
         bottomBarVisibilityCancellable = chromeState.$isBottomBarHidden
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.applyBottomBarVisibility(animated: true)
-            }
+            .sink { [weak self] _ in self?.applyBottomBarVisibility(animated: true) }
     }
 
     private func observeChromeLayoutChanges() {
@@ -388,6 +451,8 @@ final class RootShellViewController: UIViewController {
                 }
             }
     }
+
+    // MARK: - Layout helpers
 
     private func resolvedTopChromeHeight() -> CGFloat {
         view.safeAreaInsets.top + 6
@@ -411,59 +476,58 @@ final class RootShellViewController: UIViewController {
         bottomChromeHeightConstraint?.constant = resolvedBottomChromeHeight()
     }
 
-    private func updateDrawerWidthConstraint() {
-        drawerWidthConstraint?.constant = resolvedDrawerWidth()
+    private func updateDrawerWidthConstraints() {
+        let w = resolvedDrawerWidth()
+        leftDrawerWidthConstraint?.constant = w
+        rightDrawerWidthConstraint?.constant = w
     }
 
-    private func emitNativeDrawerState() {
-        let plugin = DrawerBridge.shared.contentPlugin
+    // MARK: - Drawer state emission
+
+    private func emitDrawerState() {
         let payload = nativeDrawerStatePayload()
-        print("[Drawer] emitNativeDrawerState contentPlugin=\(plugin != nil ? "ready" : "nil") path=\(payload["currentPath"] ?? "?")")
-        plugin?.emitState(payload)
+        DrawerBridge.shared.leftContentPlugin?.emitState(payload)
+        DrawerBridge.shared.rightContentPlugin?.emitState(payload)
     }
 
-    private func setNativeDrawerOpen(_ open: Bool, animated: Bool) {
+    // MARK: - Drawer open/close
+
+    private func openDrawer(_ side: DrawerSide, animated: Bool) {
         guard shouldUseNativeTopChrome else { return }
-
-        let stateDidChange = nativeDrawerOpen != open || nativeDrawerState.isOpen != open
-        nativeDrawerOpen = open
-        nativeDrawerState.isOpen = open
-
-        if stateDidChange {
-            emitNativeDrawerState()
+        // Close opposite drawer first if open
+        if let current = openDrawerSide, current != side {
+            closeDrawer(animated: false)
         }
 
-        if open {
-            drawerTapShieldView.isHidden = false
-            view.bringSubviewToFront(drawerTapShieldView)
+        let wasOpen = openDrawerSide != nil
+        openDrawerSide = side
+        nativeDrawerState.isOpen = true
+
+        if !wasOpen {
+            emitDrawerState()
         }
 
-        let applyState = {
-            self.applyNativeDrawerVisualState(open: open)
-        }
+        drawerTapShieldView.isHidden = false
+        view.bringSubviewToFront(drawerTapShieldView)
+
+        let applyState = { self.applyDrawerVisualState() }
 
         let completion: (Bool) -> Void = { _ in
-            self.mainShellContainerView.isUserInteractionEnabled = !open
-            self.drawerTapShieldView.isHidden = !open
+            self.mainShellContainerView.isUserInteractionEnabled = false
+            self.drawerTapShieldView.isHidden = false
             self.layoutDrawerTapShield()
-            // Re-emit state after drawer opens — the drawer WKWebView suspends JS
-            // while hidden, so any state events sent while closed are lost.
-            if open {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    self.emitNativeDrawerState()
-                }
+            // Re-emit state after delay — drawer WKWebView suspends JS while hidden
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.emitDrawerState()
             }
         }
 
         if animated {
             UIView.animate(
-                withDuration: 0.34,
-                delay: 0,
-                usingSpringWithDamping: 0.9,
-                initialSpringVelocity: 0.18,
+                withDuration: 0.34, delay: 0,
+                usingSpringWithDamping: 0.9, initialSpringVelocity: 0.18,
                 options: [.curveEaseInOut, .beginFromCurrentState],
-                animations: applyState,
-                completion: completion
+                animations: applyState, completion: completion
             )
         } else {
             applyState()
@@ -471,28 +535,84 @@ final class RootShellViewController: UIViewController {
         }
     }
 
-    private func applyNativeDrawerVisualState(open: Bool) {
-        let slideOffset = open ? resolvedDrawerSlideOffset() : 0
-        mainShellContainerView.transform = CGAffineTransform(translationX: slideOffset, y: 0)
-        mainShellContainerView.layer.shadowOpacity = open ? 0.16 : 0
-        drawerTapShieldView.alpha = open ? 1 : 0
+    private func closeDrawer(animated: Bool) {
+        guard shouldUseNativeTopChrome else { return }
+        guard openDrawerSide != nil else { return }
+
+        openDrawerSide = nil
+        nativeDrawerState.isOpen = false
+        emitDrawerState()
+
+        let applyState = { self.applyDrawerVisualState() }
+
+        let completion: (Bool) -> Void = { _ in
+            self.mainShellContainerView.isUserInteractionEnabled = true
+            self.drawerTapShieldView.isHidden = true
+            self.layoutDrawerTapShield()
+        }
+
+        if animated {
+            UIView.animate(
+                withDuration: 0.34, delay: 0,
+                usingSpringWithDamping: 0.9, initialSpringVelocity: 0.18,
+                options: [.curveEaseInOut, .beginFromCurrentState],
+                animations: applyState, completion: completion
+            )
+        } else {
+            applyState()
+            completion(true)
+        }
+    }
+
+    private func applyDrawerVisualState() {
+        let offset = resolvedDrawerSlideOffset()
+        switch openDrawerSide {
+        case .left:
+            leftDrawerContainerView.isHidden = false
+            rightDrawerContainerView.isHidden = true
+            mainShellContainerView.transform = CGAffineTransform(translationX: offset, y: 0)
+            mainShellContainerView.layer.shadowOffset = CGSize(width: -10, height: 0)
+            mainShellContainerView.layer.shadowOpacity = 0.16
+        case .right:
+            leftDrawerContainerView.isHidden = true
+            rightDrawerContainerView.isHidden = false
+            mainShellContainerView.transform = CGAffineTransform(translationX: -offset, y: 0)
+            mainShellContainerView.layer.shadowOffset = CGSize(width: 10, height: 0)
+            mainShellContainerView.layer.shadowOpacity = 0.16
+        case nil:
+            leftDrawerContainerView.isHidden = true
+            rightDrawerContainerView.isHidden = true
+            mainShellContainerView.transform = .identity
+            mainShellContainerView.layer.shadowOpacity = 0
+        }
+        drawerTapShieldView.alpha = openDrawerSide != nil ? 1 : 0
         layoutDrawerTapShield()
     }
 
     private func layoutDrawerTapShield() {
-        guard nativeDrawerOpen else {
+        guard let side = openDrawerSide else {
             drawerTapShieldView.frame = .zero
             return
         }
 
-        let originX = resolvedDrawerSlideOffset()
-        drawerTapShieldView.frame = CGRect(
-            x: originX,
-            y: 0,
-            width: max(view.bounds.width - originX, 0),
-            height: view.bounds.height
-        )
+        let offset = resolvedDrawerSlideOffset()
+        switch side {
+        case .left:
+            drawerTapShieldView.frame = CGRect(
+                x: offset, y: 0,
+                width: max(view.bounds.width - offset, 0),
+                height: view.bounds.height
+            )
+        case .right:
+            drawerTapShieldView.frame = CGRect(
+                x: 0, y: 0,
+                width: max(view.bounds.width - offset, 0),
+                height: view.bounds.height
+            )
+        }
     }
+
+    // MARK: - Chrome visibility
 
     private func applyChromeVisibility(animated: Bool) {
         guard shouldUseNativeTopChrome else { return }
@@ -522,18 +642,15 @@ final class RootShellViewController: UIViewController {
 
         let completion: (Bool) -> Void = { _ in
             self.bottomChromeContainerView.isHidden = !shouldShowBottomBar
-            self.bottomChromeContainerView.isUserInteractionEnabled = shouldShowBottomBar && !self.nativeDrawerOpen
+            self.bottomChromeContainerView.isUserInteractionEnabled = shouldShowBottomBar && self.openDrawerSide == nil
         }
 
         if animated {
             UIView.animate(
-                withDuration: 0.32,
-                delay: 0,
-                usingSpringWithDamping: 0.9,
-                initialSpringVelocity: 0.18,
+                withDuration: 0.32, delay: 0,
+                usingSpringWithDamping: 0.9, initialSpringVelocity: 0.18,
                 options: [.curveEaseInOut, .beginFromCurrentState],
-                animations: animations,
-                completion: completion
+                animations: animations, completion: completion
             )
         } else {
             animations()
@@ -541,34 +658,56 @@ final class RootShellViewController: UIViewController {
         }
     }
 
+    // MARK: - Gesture handlers
+
     @objc private func handleDrawerTapShield() {
-        setNativeDrawerOpen(false, animated: true)
-        dispatchDrawerEventToMainWebView(type: "close", payloadJson: nil)
+        let side = openDrawerSide ?? .left
+        closeDrawer(animated: true)
+        dispatchDrawerEventToMainWebView(type: "close", side: side, payloadJson: nil)
     }
 
-    @objc private func handleDrawerOpenEdgePan(_ recognizer: UIScreenEdgePanGestureRecognizer) {
-        guard !nativeDrawerOpen else { return }
-
+    @objc private func handleLeftEdgePan(_ recognizer: UIScreenEdgePanGestureRecognizer) {
+        guard openDrawerSide == nil else { return }
         let translation = recognizer.translation(in: view)
         guard abs(translation.y) <= drawerVerticalDriftTolerance else { return }
 
         if translation.x >= drawerOpenThreshold {
-            setNativeDrawerOpen(true, animated: true)
-            dispatchDrawerEventToMainWebView(type: "open", payloadJson: nil)
+            openDrawer(.left, animated: true)
+            dispatchDrawerEventToMainWebView(type: "open", side: .left, payloadJson: nil)
+            recognizer.isEnabled = false
+            recognizer.isEnabled = true
+        }
+    }
+
+    @objc private func handleRightEdgePan(_ recognizer: UIScreenEdgePanGestureRecognizer) {
+        guard openDrawerSide == nil else { return }
+        let translation = recognizer.translation(in: view)
+        guard abs(translation.y) <= drawerVerticalDriftTolerance else { return }
+
+        if translation.x <= drawerCloseThreshold {
+            openDrawer(.right, animated: true)
+            dispatchDrawerEventToMainWebView(type: "open", side: .right, payloadJson: nil)
             recognizer.isEnabled = false
             recognizer.isEnabled = true
         }
     }
 
     @objc private func handleDrawerClosePan(_ recognizer: UIPanGestureRecognizer) {
-        guard nativeDrawerOpen else { return }
-
+        guard let side = openDrawerSide else { return }
         let translation = recognizer.translation(in: view)
         guard abs(translation.y) <= drawerVerticalDriftTolerance else { return }
 
-        if translation.x <= drawerCloseThreshold {
-            setNativeDrawerOpen(false, animated: true)
-            dispatchDrawerEventToMainWebView(type: "close", payloadJson: nil)
+        let shouldClose: Bool
+        switch side {
+        case .left:
+            shouldClose = translation.x <= drawerCloseThreshold
+        case .right:
+            shouldClose = translation.x >= drawerOpenThreshold
+        }
+
+        if shouldClose {
+            closeDrawer(animated: true)
+            dispatchDrawerEventToMainWebView(type: "close", side: side, payloadJson: nil)
             recognizer.isEnabled = false
             recognizer.isEnabled = true
         }

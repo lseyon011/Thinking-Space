@@ -285,12 +285,21 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
 }
 
 class LTMDrawerBridgeViewController: CAPBridgeViewController {
+    let side: DrawerSide
+
     private let shellBackgroundColor = UIColor(
         red: 245.0 / 255.0,
         green: 243.0 / 255.0,
         blue: 238.0 / 255.0,
         alpha: 1.0
     )
+
+    init(side: DrawerSide = .left) {
+        self.side = side
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
 
     override open func viewDidLoad() {
         super.viewDidLoad()
@@ -300,10 +309,14 @@ class LTMDrawerBridgeViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         super.capacitorDidLoad()
         configureDrawerSurface()
-        let contentPlugin = NativeDrawerContentPlugin()
+        let contentPlugin = NativeDrawerContentPlugin(drawerSide: side)
         bridge?.registerPluginInstance(contentPlugin)
-        DrawerBridge.shared.contentPlugin = contentPlugin
-        print("[Drawer] contentPlugin registered on singleton")
+        switch side {
+        case .left:
+            DrawerBridge.shared.leftContentPlugin = contentPlugin
+        case .right:
+            DrawerBridge.shared.rightContentPlugin = contentPlugin
+        }
     }
 
     private func configureDrawerSurface() {
@@ -312,15 +325,11 @@ class LTMDrawerBridgeViewController: CAPBridgeViewController {
         nativeWebView.isOpaque = false
         nativeWebView.backgroundColor = shellBackgroundColor
         nativeWebView.scrollView.backgroundColor = shellBackgroundColor
+        nativeWebView.scrollView.contentInsetAdjustmentBehavior = .automatic
 
-        if #available(iOS 11.0, *) {
-            nativeWebView.scrollView.contentInsetAdjustmentBehavior = .automatic
-        }
+        let sideString = side == .left ? "left" : "right"
+        let hashRoute = "#/native-drawer-\(sideString)"
 
-        // Inject user script at document start that:
-        // 1. Sets the drawer marker flag (so React knows this is the drawer bridge)
-        // 2. Sets the hash to #/native-drawer (so HashRouter routes to drawer mode)
-        // This runs BEFORE any JS including React, so the app boots directly into drawer mode.
         let userContentController = nativeWebView.configuration.userContentController
         let alreadyInstalled = userContentController.userScripts.contains {
             $0.source.contains("__LTM_NATIVE_DRAWER__")
@@ -329,8 +338,9 @@ class LTMDrawerBridgeViewController: CAPBridgeViewController {
             let markerScript = WKUserScript(
                 source: """
                 window.__LTM_NATIVE_DRAWER__ = true;
+                window.__LTM_NATIVE_DRAWER_SIDE__ = '\(sideString)';
                 if (!window.location.hash || window.location.hash === '#/' || window.location.hash === '#') {
-                    window.location.hash = '#/native-drawer';
+                    window.location.hash = '\(hashRoute)';
                 }
                 """,
                 injectionTime: .atDocumentStart,
@@ -347,7 +357,8 @@ public class NativeDrawerShellPlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "NativeDrawerShell"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "setState", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openLeft", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openRight", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "addListener", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise),
@@ -365,9 +376,16 @@ public class NativeDrawerShellPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve()
     }
 
-    @objc func open(_ call: CAPPluginCall) {
+    @objc func openLeft(_ call: CAPPluginCall) {
         if let shell {
-            shell.updateNativeDrawerState(shell.currentDrawerState(isOpen: true), open: true)
+            shell.updateNativeDrawerState(shell.currentDrawerState(isOpen: true), open: true, side: .left)
+        }
+        call.resolve()
+    }
+
+    @objc func openRight(_ call: CAPPluginCall) {
+        if let shell {
+            shell.updateNativeDrawerState(shell.currentDrawerState(isOpen: true), open: true, side: .right)
         }
         call.resolve()
     }
@@ -391,7 +409,13 @@ public class NativeDrawerContentPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise),
     ]
 
+    private let drawerSide: DrawerSide
     private var shell: RootShellViewController? { DrawerBridge.shared.shellVC }
+
+    init(drawerSide: DrawerSide = .left) {
+        self.drawerSide = drawerSide
+        super.init()
+    }
 
     @objc func getState(_ call: CAPPluginCall) {
         call.resolve(shell?.nativeDrawerStatePayload() ?? NativeDrawerShellStateRecord().asPayload())
@@ -400,8 +424,7 @@ public class NativeDrawerContentPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func postAction(_ call: CAPPluginCall) {
         let type = call.getString("type") ?? ""
         let payloadJson = call.getString("payloadJson")
-        print("[Drawer] postAction type=\(type) shell=\(shell != nil ? "ready" : "nil")")
-        shell?.handleNativeDrawerAction(type: type, payloadJson: payloadJson)
+        shell?.handleNativeDrawerAction(type: type, payloadJson: payloadJson, side: drawerSide)
         call.resolve()
     }
 
