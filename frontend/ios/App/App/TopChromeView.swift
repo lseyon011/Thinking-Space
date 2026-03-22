@@ -41,13 +41,13 @@ private struct NativeTopDrawerSection: Identifiable {
 
 private let nativeTopDrawerSections: [NativeTopDrawerSection] = [
     NativeTopDrawerSection(id: "core", title: "Core", items: [
-        NativeTopDrawerItem(id: "/thinking-space", title: "Thinking Space", systemImage: "compass"),
-        NativeTopDrawerItem(id: "/new-thought", title: "New Note", systemImage: "plus.square"),
-        NativeTopDrawerItem(id: "/git-insights", title: "Insights", systemImage: "arrow.triangle.branch"),
-        NativeTopDrawerItem(id: "/chat", title: "AI", systemImage: "message"),
+        NativeTopDrawerItem(id: "/thinking-space", title: "Thinking Space", systemImage: "safari"),
+        NativeTopDrawerItem(id: "/new-thought", title: "New Note", systemImage: "plus.rectangle"),
+        NativeTopDrawerItem(id: "/git-insights", title: "Insights", systemImage: "tuningfork"),
+        NativeTopDrawerItem(id: "/chat", title: "AI", systemImage: "bubble.left"),
         NativeTopDrawerItem(id: "/web", title: "Web", systemImage: "globe"),
-        NativeTopDrawerItem(id: "/webull", title: "Webull", systemImage: "waveform"),
-        NativeTopDrawerItem(id: "/thinking-organizer", title: "Thinking Organizer", systemImage: "folder"),
+        NativeTopDrawerItem(id: "/webull", title: "F9", systemImage: "chart.xyaxis.line"),
+        NativeTopDrawerItem(id: "/thinking-organizer", title: "Thinking Organizer", systemImage: "tablecells"),
     ]),
     NativeTopDrawerSection(id: "workspace", title: "Workspace", items: [
         NativeTopDrawerItem(id: "/terminal", title: "Terminal", systemImage: "terminal"),
@@ -101,34 +101,35 @@ struct TopDrawerMenuView: View {
 
     let onSelectNavItem: (String) -> Void
 
+    private var topSafeAreaHeight: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first?.safeAreaInsets.top ?? 59
+    }
+
     var body: some View {
-        GeometryReader { proxy in
-            let safeTop = proxy.safeAreaInsets.top
+        VStack(spacing: 0) {
+            Capsule()
+                .fill(Color.primary.opacity(0.18))
+                .frame(width: 36, height: 5)
+                .padding(.top, topSafeAreaHeight + 10)
+                .padding(.bottom, 4)
 
-            VStack(spacing: 0) {
-                Capsule()
-                    .fill(Color.primary.opacity(0.18))
-                    .frame(width: 36, height: 5)
-                    .padding(.top, safeTop + 10)
-                    .padding(.bottom, 4)
-
-                List {
-                    ForEach(nativeTopDrawerSections) { section in
-                        Section(section.title.isEmpty ? "" : section.title) {
-                            ForEach(section.items) { item in
-                                let isActive = state.activeNavItemId == item.id
-                                Button(action: { onSelectNavItem(item.id) }) {
-                                    Label(item.title, systemImage: item.systemImage)
-                                }
-                                .listRowBackground(isActive ? Color.accentColor.opacity(0.12) : nil)
-                                .foregroundStyle(isActive ? Color.accentColor : .primary)
+            List {
+                ForEach(nativeTopDrawerSections) { section in
+                    Section(section.title.isEmpty ? "" : section.title) {
+                        ForEach(section.items) { item in
+                            let isActive = state.activeNavItemId == item.id
+                            Button(action: { onSelectNavItem(item.id) }) {
+                                Label(item.title, systemImage: item.systemImage)
                             }
+                            .listRowBackground(isActive ? Color.accentColor.opacity(0.12) : nil)
+                            .foregroundStyle(isActive ? Color.accentColor : .primary)
                         }
                     }
                 }
-                .listStyle(.insetGrouped)
             }
-            .ignoresSafeArea()
+            .listStyle(.insetGrouped)
         }
         .background(Color(uiColor: .systemGroupedBackground))
     }
