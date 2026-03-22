@@ -3139,7 +3139,7 @@ function App() {
             data-ltm-shell-region="command-stage"
             style={{ paddingTop: `${commandPaletteTopPadding}px`, paddingBottom: `${commandPaletteBottomPadding}px` }}
           >
-            <div className="ltm-cmd-card ltm-shell-command-card ltm-shell-command-surface ltm-shell-motion-modal max-h-full w-full max-w-3xl overflow-hidden rounded-2xl">
+            <div className={`ltm-cmd-card ltm-shell-command-card ltm-shell-command-surface ltm-shell-motion-modal w-full max-w-3xl overflow-hidden rounded-2xl ${iPhoneMode ? 'max-h-[60vh]' : 'max-h-full'}`}>
               <div className="p-3">
                 <UniversalSearchBlock
                   {...UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK}
