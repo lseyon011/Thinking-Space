@@ -643,6 +643,26 @@
     -webkit-backdrop-filter: none;
   }
 
+  /* iPhone push-drawer: content slides right as drawer opens */
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-shell-body-stage {
+    transition: transform var(--ltm-shell-motion-drawer-duration, 220ms) var(--ltm-shell-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+    will-change: transform;
+  }
+
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-shell-body-stage.ltm-drawer-push-active {
+    transform: translateX(min(
+      var(--ltm-theme-drawer-width-phone, 84vw),
+      calc(100vw - max(var(--ltm-safe-left), 10px) - max(var(--ltm-safe-right), 10px))
+    ));
+  }
+
+  /* No dim overlay in push mode — tapping pushed content still closes the drawer */
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-mobile-drawer-overlay {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
   .ltm-shell-command-surface {
     background: #ffffff;
     backdrop-filter: none;

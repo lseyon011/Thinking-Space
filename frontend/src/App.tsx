@@ -2520,7 +2520,7 @@ function App() {
             </div>
           </header>
           )}
-          <div className="ltm-shell-body-stage">
+          <div className={`ltm-shell-body-stage${iPhoneMode && drawerOpen ? ' ltm-drawer-push-active' : ''}`}>
             {!compactNav && (
               <aside className={`ltm-shell-sidebar ltm-shell-nav-surface hidden shrink-0 transition-[width] duration-200 lg:block ${
                 sidebarCollapsed ? 'ltm-sidebar-collapsed' : 'ltm-sidebar-expanded'
