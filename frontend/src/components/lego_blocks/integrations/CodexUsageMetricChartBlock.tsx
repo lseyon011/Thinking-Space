@@ -8,6 +8,10 @@ const CHART_TONE_BLOCK: Record<CodexUsageMetricBlock['tone'], string> = {
   critical: '#ef6b73',
 }
 
+const BAR_HEIGHT_PX = 28
+const BAR_GAP_PX = 10
+const CHART_PADDING_PX = 12
+
 function useIsDarkBlock(): boolean {
   const [isDark, setIsDark] = useState(
     () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark'),
@@ -22,6 +26,18 @@ function useIsDarkBlock(): boolean {
   return isDark
 }
 
+// Custom tick that truncates long label strings so they never wrap
+function CustomTickBlock(props: Record<string, unknown> & { fill: string }) {
+  const { x, y, payload, fill } = props
+  const label = (payload as { value?: string } | undefined)?.value ?? ''
+  const truncated = label.length > 20 ? `${label.slice(0, 18)}…` : label
+  return (
+    <text x={x as number} y={y as number} fill={fill} fontSize={11} textAnchor="end" dominantBaseline="middle">
+      {truncated}
+    </text>
+  )
+}
+
 export interface CodexUsageMetricChartBlockProps {
   metrics: CodexUsageMetricBlock[]
 }
@@ -30,28 +46,30 @@ export default function CodexUsageMetricChartBlock({ metrics }: CodexUsageMetric
   const isDark = useIsDarkBlock()
   if (metrics.length === 0) return null
 
-  const tickColor = isDark ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.55)'
+  const tickColor = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.50)'
   const barBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)'
+  const chartHeight = metrics.length * (BAR_HEIGHT_PX + BAR_GAP_PX) + CHART_PADDING_PX
 
   return (
-    <div className="h-[96px] w-full rounded-lg border border-black/8 bg-black/[0.04] px-2 py-2 dark:border-white/10 dark:bg-black/20">
+    <div style={{ height: chartHeight }} className="w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={metrics}
           layout="vertical"
-          margin={{ top: 4, right: 12, left: 8, bottom: 4 }}
-          barCategoryGap={14}
+          margin={{ top: 4, right: 8, left: 4, bottom: 4 }}
+          barCategoryGap={BAR_GAP_PX}
+          barSize={BAR_HEIGHT_PX}
         >
           <XAxis type="number" domain={[0, 100]} hide />
           <YAxis
             type="category"
             dataKey="label"
-            width={96}
+            width={112}
             axisLine={false}
             tickLine={false}
-            tick={{ fill: tickColor, fontSize: 11 }}
+            tick={(props) => <CustomTickBlock {...(props as Record<string, unknown>)} fill={tickColor} />}
           />
-          <Bar dataKey="remainingPercent" radius={[7, 7, 7, 7]} background={{ fill: barBg, radius: 7 }}>
+          <Bar dataKey="remainingPercent" radius={[4, 4, 4, 4]} background={{ fill: barBg, radius: 4 }}>
             {metrics.map((metric) => (
               <Cell key={`${metric.label}:${metric.remainingPercent}`} fill={CHART_TONE_BLOCK[metric.tone]} />
             ))}
