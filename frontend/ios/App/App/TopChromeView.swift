@@ -102,28 +102,33 @@ struct TopDrawerMenuView: View {
     let onSelectNavItem: (String) -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            Capsule()
-                .fill(Color.primary.opacity(0.18))
-                .frame(width: 36, height: 5)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
+        GeometryReader { proxy in
+            let safeTop = proxy.safeAreaInsets.top
 
-            List {
-                ForEach(nativeTopDrawerSections) { section in
-                    Section(section.title.isEmpty ? "" : section.title) {
-                        ForEach(section.items) { item in
-                            let isActive = state.activeNavItemId == item.id
-                            Button(action: { onSelectNavItem(item.id) }) {
-                                Label(item.title, systemImage: item.systemImage)
+            VStack(spacing: 0) {
+                Capsule()
+                    .fill(Color.primary.opacity(0.18))
+                    .frame(width: 36, height: 5)
+                    .padding(.top, safeTop + 10)
+                    .padding(.bottom, 4)
+
+                List {
+                    ForEach(nativeTopDrawerSections) { section in
+                        Section(section.title.isEmpty ? "" : section.title) {
+                            ForEach(section.items) { item in
+                                let isActive = state.activeNavItemId == item.id
+                                Button(action: { onSelectNavItem(item.id) }) {
+                                    Label(item.title, systemImage: item.systemImage)
+                                }
+                                .listRowBackground(isActive ? Color.accentColor.opacity(0.12) : nil)
+                                .foregroundStyle(isActive ? Color.accentColor : .primary)
                             }
-                            .listRowBackground(isActive ? Color.accentColor.opacity(0.12) : nil)
-                            .foregroundStyle(isActive ? Color.accentColor : .primary)
                         }
                     }
                 }
+                .listStyle(.insetGrouped)
             }
-            .listStyle(.insetGrouped)
+            .ignoresSafeArea()
         }
         .background(Color(uiColor: .systemGroupedBackground))
     }
