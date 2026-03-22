@@ -8,9 +8,9 @@ const CHART_TONE_BLOCK: Record<CodexUsageMetricBlock['tone'], string> = {
   critical: '#ef6b73',
 }
 
-const BAR_HEIGHT_PX = 28
-const BAR_GAP_PX = 10
-const CHART_PADDING_PX = 12
+const BAR_HEIGHT_PX = 10
+const BAR_GAP_PX = 12
+const CHART_PADDING_PX = 8
 
 function useIsDarkBlock(): boolean {
   const [isDark, setIsDark] = useState(
@@ -69,7 +69,7 @@ export default function CodexUsageMetricChartBlock({ metrics }: CodexUsageMetric
             tickLine={false}
             tick={(props) => <CustomTickBlock {...(props as Record<string, unknown>)} fill={tickColor} />}
           />
-          <Bar dataKey="remainingPercent" radius={[4, 4, 4, 4]} background={{ fill: barBg, radius: 4 }}>
+          <Bar dataKey="remainingPercent" radius={[3, 3, 3, 3]} background={{ fill: barBg, radius: 3 }}>
             {metrics.map((metric) => (
               <Cell key={`${metric.label}:${metric.remainingPercent}`} fill={CHART_TONE_BLOCK[metric.tone]} />
             ))}

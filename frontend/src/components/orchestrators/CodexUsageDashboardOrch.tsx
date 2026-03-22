@@ -339,11 +339,13 @@ export default function CodexUsageDashboardOrch() {
                             <span className={cn('text-3xl font-bold tabular-nums leading-none', headlineToneClass(headlineMetric?.tone ?? null))}>
                               {headlineMetric?.remainingPercent ?? 0}%
                             </span>
-                            <span className="text-sm text-muted-foreground">
-                              {headlineMetric?.label} remaining
+                            <span className="max-w-[220px] truncate text-sm text-muted-foreground">
+                              {headlineMetric?.label
+                                ? `${headlineMetric.label.length > 24 ? headlineMetric.label.slice(0, 22) + '…' : headlineMetric.label} remaining`
+                                : 'remaining'}
                             </span>
                             {resetText && (
-                              <span className="ml-auto text-[11px] text-muted-foreground/60">{resetText}</span>
+                              <span className="ml-auto shrink-0 text-[11px] text-muted-foreground/60">{resetText}</span>
                             )}
                           </div>
                           {/* Chart */}
