@@ -780,7 +780,7 @@ function CreateTab() {
   const mostUsedDestinations = useMemo(() => topUsedDestinations(usageCounts, 5), [usageCounts])
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-24">
       <div className={leftPanelHidden ? 'space-y-6' : 'grid gap-6 lg:grid-cols-[clamp(240px,27vw,340px)_minmax(0,1fr)]'}>
       {!leftPanelHidden && (
         <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
