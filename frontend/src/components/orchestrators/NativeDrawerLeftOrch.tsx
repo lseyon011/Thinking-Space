@@ -7,7 +7,6 @@ import {
   FolderKanban,
   Globe,
   Loader2,
-
   PlusSquare,
   X,
   type LucideIcon,
@@ -117,7 +116,6 @@ function ChatPanel({ onAction }: { onAction: (type: string, payload?: Record<str
 
   return (
     <div className="space-y-0.5">
-      {/* Tools */}
       <SidebarGroupHeaderBlock
         name="Tools"
         expanded={isExpanded('tools')}
@@ -135,7 +133,6 @@ function ChatPanel({ onAction }: { onAction: (type: string, payload?: Record<str
         </button>
       )}
 
-      {/* API providers */}
       {providers.length > 0 && (
         <>
           <SidebarGroupHeaderBlock
@@ -163,7 +160,6 @@ function ChatPanel({ onAction }: { onAction: (type: string, payload?: Record<str
         </>
       )}
 
-      {/* Web AI sites */}
       {aiWebsites.length > 0 && (
         <>
           <SidebarGroupHeaderBlock
@@ -396,15 +392,11 @@ export default function NativeDrawerLeftOrch() {
     void postNativeDrawerContentActionBlock({ type: 'close' })
   }
 
-  // For /thinking-space, the VaultExplorerBlock manages its own scroll, so we
-  // use a flex layout that gives it full remaining height.
   const isExplorer = currentPath === '/thinking-space'
-  // For /web, the WebSitePanelBlock has its own header and scroll.
   const isWeb = currentPath === '/web'
 
   return (
     <div className="flex h-dvh min-h-dvh w-full flex-col bg-[linear-gradient(180deg,#f5f3ee_0%,#f1efe8_100%)] text-foreground">
-      {/* Header — skip for routes that render their own header */}
       {!isWeb && (
         <div className="flex items-center justify-between px-4 pb-3 pt-[max(env(safe-area-inset-top),1rem)]">
           <div className="min-w-0">
@@ -426,10 +418,8 @@ export default function NativeDrawerLeftOrch() {
         </div>
       )}
 
-      {/* Safe-area top for web panel (which draws its own header) */}
       {isWeb && <div className="pt-[max(env(safe-area-inset-top),0.5rem)]" />}
 
-      {/* Panel content */}
       {isExplorer ? (
         <div className="min-h-0 flex-1 overflow-hidden">
           <ThinkingSpacePanel onAction={handleAction} />

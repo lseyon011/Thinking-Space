@@ -227,7 +227,9 @@ final class RootShellViewController: UIViewController {
                 self.closeDrawer(animated: true)
                 self.dispatchDrawerEventToMainWebView(type: "navigate", side: side, payloadJson: payloadJson)
             default:
-                break
+                // Pass through any other action types (e.g. open-file, select-ai, etc.)
+                self.closeDrawer(animated: true)
+                self.dispatchDrawerEventToMainWebView(type: type, side: side, payloadJson: payloadJson)
             }
         }
     }
