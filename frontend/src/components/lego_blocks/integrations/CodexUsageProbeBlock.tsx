@@ -16,6 +16,7 @@ interface ElectronProbeWebviewElementBlock extends HTMLElement {
 interface CodexUsageProbeGuestBlockProps {
   site: WebSiteBlock
   refreshToken: number
+  freshResultSiteIds: ReadonlySet<string>
   onResult: (result: CodexUsageProbeResultBlock) => void
 }
 
@@ -43,14 +44,22 @@ const PROBE_USER_AGENT = typeof navigator === 'undefined' ? undefined : buildPro
 const CodexUsageProbeGuestBlock = memo(function CodexUsageProbeGuestBlock({
   site,
   refreshToken,
+  freshResultSiteIds,
   onResult,
 }: CodexUsageProbeGuestBlockProps) {
   const webviewRef = useRef<ElectronProbeWebviewElementBlock | null>(null)
   const pollInFlightRef = useRef(false)
   const webviewKey = useMemo(() => `${site.id}:${refreshToken}`, [refreshToken, site.id])
+  // Capture freshness at mount time — don't re-run effects when parent cache updates
+  const isFreshRef = useRef(freshResultSiteIds.has(site.id))
 
   useEffect(() => {
-    onResult(buildCodexUsageProbeLoadingResultBlock(site.id))
+    // Refresh token bump always means manual refresh — reset freshness guard
+    isFreshRef.current = refreshToken === 0 ? freshResultSiteIds.has(site.id) : false
+    if (!isFreshRef.current) {
+      onResult(buildCodexUsageProbeLoadingResultBlock(site.id))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onResult, refreshToken, site.id])
 
   useEffect(() => {
@@ -100,7 +109,11 @@ const CodexUsageProbeGuestBlock = memo(function CodexUsageProbeGuestBlock({
     webview.addEventListener('did-fail-load', handleFailLoad as EventListener)
 
     const intervalId = window.setInterval(() => { void runProbe() }, PROBE_INTERVAL_MS)
-    void runProbe()
+
+    // Skip immediate probe if we have a fresh cached result for this site
+    if (!isFreshRef.current) {
+      void runProbe()
+    }
 
     return () => {
       cancelled = true
@@ -126,12 +139,14 @@ const CodexUsageProbeGuestBlock = memo(function CodexUsageProbeGuestBlock({
 export interface CodexUsageProbeBlockProps {
   sites: WebSiteBlock[]
   refreshToken: number
+  freshResultSiteIds: ReadonlySet<string>
   onResult: (result: CodexUsageProbeResultBlock) => void
 }
 
 export default function CodexUsageProbeBlock({
   sites,
   refreshToken,
+  freshResultSiteIds,
   onResult,
 }: CodexUsageProbeBlockProps) {
   if (!window.electronAPI?.isElectron || sites.length === 0) return null
@@ -143,6 +158,7 @@ export default function CodexUsageProbeBlock({
           key={`${site.id}:${refreshToken}`}
           site={site}
           refreshToken={refreshToken}
+          freshResultSiteIds={freshResultSiteIds}
           onResult={onResult}
         />
       ))}

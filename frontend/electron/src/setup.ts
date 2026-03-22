@@ -32,9 +32,10 @@ function attachWebviewContextMenuBlock(targetContents: WebContents): void {
     const template: MenuItemConstructorOptions[] = [];
 
     if (params.isEditable) {
+      // --- Editable field: edit actions only (mirrors Chrome behaviour) ---
       template.push(
-        { role: 'undo' },
-        { role: 'redo' },
+        { role: 'undo', enabled: params.editFlags.canUndo },
+        { role: 'redo', enabled: params.editFlags.canRedo },
         { type: 'separator' },
         { role: 'cut', enabled: params.editFlags.canCut },
         { role: 'copy', enabled: params.editFlags.canCopy },
@@ -45,51 +46,97 @@ function attachWebviewContextMenuBlock(targetContents: WebContents): void {
       const linkUrl = params.linkURL?.trim() ?? '';
       const selectionText = params.selectionText?.trim() ?? '';
 
+      // --- Link ---
       if (linkUrl) {
         template.push(
           {
             label: 'Open Link in Browser',
-            click: () => {
-              void shell.openExternal(linkUrl).catch(() => undefined);
-            },
+            click: () => { void shell.openExternal(linkUrl).catch(() => undefined); },
           },
           {
-            label: 'Copy Link',
-            click: () => {
-              clipboard.writeText(linkUrl);
-            },
+            label: 'Copy Link Address',
+            click: () => { clipboard.writeText(linkUrl); },
           },
         );
       }
 
+      // --- Image ---
+      if (params.hasImageContents && params.srcURL) {
+        if (template.length > 0) template.push({ type: 'separator' });
+        template.push(
+          {
+            label: 'Save Image As…',
+            click: () => { targetContents.downloadURL(params.srcURL); },
+          },
+          {
+            label: 'Copy Image Address',
+            click: () => { clipboard.writeText(params.srcURL); },
+          },
+          {
+            label: 'Open Image in Browser',
+            click: () => { void shell.openExternal(params.srcURL).catch(() => undefined); },
+          },
+        );
+      }
+
+      // --- Selected text ---
       if (selectionText) {
         if (template.length > 0) template.push({ type: 'separator' });
+        const query = selectionText.length > 30 ? `${selectionText.slice(0, 30)}…` : selectionText;
         template.push(
           { role: 'copy' },
-          { role: 'selectAll' },
+          {
+            label: `Search Google for "${query}"`,
+            click: () => {
+              void shell.openExternal(`https://www.google.com/search?q=${encodeURIComponent(selectionText)}`).catch(() => undefined);
+            },
+          },
         );
       }
 
-      const showNavigationActions = targetContents.canGoBack() || targetContents.canGoForward() || Boolean(params.pageURL?.trim());
-      if (showNavigationActions) {
-        if (template.length > 0) template.push({ type: 'separator' });
-        template.push(
-          {
-            label: 'Back',
-            enabled: targetContents.canGoBack(),
-            click: () => { if (targetContents.canGoBack()) targetContents.goBack(); },
-          },
-          {
-            label: 'Forward',
-            enabled: targetContents.canGoForward(),
-            click: () => { if (targetContents.canGoForward()) targetContents.goForward(); },
-          },
-          {
-            label: 'Reload',
-            click: () => { targetContents.reload(); },
-          },
-        );
-      }
+      // --- Navigation (Back / Forward / Reload) ---
+      if (template.length > 0) template.push({ type: 'separator' });
+      template.push(
+        {
+          label: 'Back',
+          enabled: targetContents.canGoBack(),
+          click: () => { targetContents.goBack(); },
+        },
+        {
+          label: 'Forward',
+          enabled: targetContents.canGoForward(),
+          click: () => { targetContents.goForward(); },
+        },
+        {
+          label: 'Reload',
+          click: () => { targetContents.reload(); },
+        },
+      );
+
+      // --- Page actions ---
+      const pageUrl = params.pageURL?.trim() ?? '';
+      template.push(
+        { type: 'separator' },
+        {
+          label: 'Save As…',
+          enabled: Boolean(pageUrl),
+          click: () => { if (pageUrl) targetContents.downloadURL(pageUrl); },
+        },
+        {
+          label: 'Print…',
+          click: () => { targetContents.print(); },
+        },
+        { type: 'separator' },
+        {
+          label: 'View Page Source',
+          enabled: Boolean(pageUrl),
+          click: () => { if (pageUrl) void shell.openExternal(`view-source:${pageUrl}`).catch(() => undefined); },
+        },
+        {
+          label: 'Inspect',
+          click: () => { targetContents.openDevTools(); },
+        },
+      );
     }
 
     if (template.length === 0) return;
@@ -641,6 +688,19 @@ export function setupWebviewSessionPermissions(): void {
     if (webContents.getType() !== 'webview') return;
     attachWebviewContextMenuBlock(webContents);
     configureWebviewSessionPermissions(webContents.session);
+
+    // Popup windows opened from webviews (via allowpopups / Cmd+Click) inherit
+    // the webview session (cookies stay), but get the raw Electron user-agent.
+    // Strip the Electron/app identifiers so sites treat the popup like a normal
+    // Chrome browser and don't prompt for re-authentication.
+    webContents.on('did-create-window', (childWindow) => {
+      const rawUa = childWindow.webContents.getUserAgent();
+      const cleanUa = rawUa
+        .replace(/\s*Electron\/[\d.]+/g, '')
+        .replace(/\s*Thinking Space\/[\d.]+/g, '')
+        .trim();
+      childWindow.webContents.setUserAgent(cleanUa);
+    });
   });
 }
 
