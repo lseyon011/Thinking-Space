@@ -119,11 +119,11 @@ final class RootShellViewController: UIViewController {
         NSLayoutConstraint.activate([
             bottomChromeContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             bottomChromeContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            bottomChromeContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            bottomChromeContainerView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             heightConstraint,
             bottomChromeHostingVC.view.leadingAnchor.constraint(equalTo: bottomChromeContainerView.leadingAnchor),
             bottomChromeHostingVC.view.trailingAnchor.constraint(equalTo: bottomChromeContainerView.trailingAnchor),
-            bottomChromeHostingVC.view.topAnchor.constraint(equalTo: bottomChromeContainerView.safeAreaLayoutGuide.topAnchor),
+            bottomChromeHostingVC.view.topAnchor.constraint(equalTo: bottomChromeContainerView.topAnchor),
             bottomChromeHostingVC.view.bottomAnchor.constraint(equalTo: bottomChromeContainerView.bottomAnchor),
         ])
 
@@ -181,7 +181,7 @@ final class RootShellViewController: UIViewController {
     }
 
     private func resolvedBottomChromeHeight() -> CGFloat {
-        view.safeAreaInsets.bottom + (chromeState.isBottomBarCollapsed ? 42 : 64)
+        chromeState.isBottomBarCollapsed ? 42 : 64
     }
 
     private func updateBottomChromeSizeConstraint() {
