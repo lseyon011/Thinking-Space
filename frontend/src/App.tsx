@@ -3138,8 +3138,12 @@ function App() {
             className="fixed inset-0 z-[60] flex items-start justify-center p-3 sm:p-4"
             data-ltm-shell-region="command-stage"
             style={{ paddingTop: `${commandPaletteTopPadding}px`, paddingBottom: `${commandPaletteBottomPadding}px` }}
+            onClick={closeCommandPalette}
           >
-            <div className={`ltm-cmd-card ltm-shell-command-card ltm-shell-command-surface ltm-shell-motion-modal w-full max-w-3xl overflow-hidden rounded-2xl ${iPhoneMode ? 'max-h-[55vh]' : 'max-h-full'}`}>
+            <div
+              className={`ltm-cmd-card ltm-shell-command-card ltm-shell-command-surface ltm-shell-motion-modal w-full max-w-3xl overflow-hidden rounded-2xl ${iPhoneMode ? 'max-h-[55vh]' : 'max-h-full'}`}
+              onClick={e => e.stopPropagation()}
+            >
               <div className="p-3">
                 <UniversalSearchBlock
                   {...UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK}

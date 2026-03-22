@@ -832,6 +832,10 @@
     overscroll-behavior: contain;
   }
 
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-app-main {
+    padding-bottom: calc(88px + var(--ltm-safe-bottom, 0px));
+  }
+
   .ltm-page {
     width: 100%;
     max-width: 100%;
