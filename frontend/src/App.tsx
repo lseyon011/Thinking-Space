@@ -858,7 +858,10 @@ function App() {
     if (compactNav) {
       return {
         kind: 'drawer',
-        enabled: true,
+        // On Capacitor iOS the SwiftUI native drawer handles navigation;
+        // setting enabled=false causes the native sidebar button to open
+        // the SwiftUI drawer instead of the React web nav menu.
+        enabled: !isCapacitorSurface,
         active: drawerOpen,
         label: drawerOpen ? 'Hide navigation' : 'Show navigation',
       }
