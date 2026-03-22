@@ -63,8 +63,9 @@ struct BottomChromeView: View {
 
     var body: some View {
         ZStack {
-            // Left: hamburger menu
-            HStack {
+            // Left: sidebar toggle + hamburger menu
+            HStack(spacing: 8) {
+                sidebarToggleButton
                 menuButton
                 Spacer(minLength: 0)
             }
@@ -116,7 +117,26 @@ struct BottomChromeView: View {
         .animation(.easeInOut(duration: 0.28), value: state.isBottomBarCollapsed)
     }
 
-    // MARK: - Menu button (hamburger)
+    // MARK: - Sidebar toggle (left drawer)
+
+    private var sidebarToggleButton: some View {
+        Button(action: onSidebarToggleTap) {
+            Image(systemName: "sidebar.left")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(state.canToggleSidebar ? .primary : .secondary)
+                .frame(width: NativeChromeMetrics.iconButtonSize, height: NativeChromeMetrics.iconButtonSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!state.canToggleSidebar)
+        .accessibilityLabel(state.sidebarToggleLabel)
+        .padding(6)
+        .background {
+            floatingChromeCapsule()
+        }
+    }
+
+    // MARK: - Menu button (hamburger / right drawer)
 
     private var menuButton: some View {
         Button(action: onMenuTap) {
