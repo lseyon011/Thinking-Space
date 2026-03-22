@@ -1,10 +1,10 @@
 import SwiftUI
 import UIKit
 
-private let phoneShellDrawerDismissVelocityThreshold: CGFloat = 220
-private let phoneShellDrawerOpenThreshold: CGFloat = 0.42
-private let phoneShellContentCornerRadius: CGFloat = 16
-private let phoneShellContentScale: CGFloat = 0.92
+private let phoneShellDrawerWidth: CGFloat = 300
+private let phoneShellContentCornerRadius: CGFloat = 20
+private let phoneShellDismissVelocityThreshold: CGFloat = 300
+private let phoneShellOpenThreshold: CGFloat = 0.4
 
 struct PhoneShellView: View {
     @ObservedObject var chromeState: TopChromeState
@@ -16,14 +16,13 @@ struct PhoneShellView: View {
     var body: some View {
         GeometryReader { proxy in
             let safeTop = proxy.safeAreaInsets.top
-            let revealHeight = resolvedDrawerRevealHeight(containerHeight: proxy.size.height, safeTop: safeTop)
             let progress = chromeState.drawerProgress
-            let contentScale = 1 - (1 - phoneShellContentScale) * progress
+            let contentOffset = progress * phoneShellDrawerWidth
             let contentCornerRadius = phoneShellContentCornerRadius * progress
             let topOverlayReservedHeight: CGFloat = chromeState.isVisible ? max(52, safeTop + 8) : 0
 
-            ZStack(alignment: .top) {
-                // Menu behind content
+            ZStack(alignment: .leading) {
+                // Menu behind content (left side)
                 TopDrawerMenuView(
                     state: chromeState,
                     onSelectNavItem: { navItemId in
@@ -31,111 +30,106 @@ struct PhoneShellView: View {
                         onSelectNavItem(navItemId)
                     }
                 )
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .opacity(progress)
+                .frame(width: phoneShellDrawerWidth)
+                .frame(maxHeight: .infinity)
+                .opacity(0.4 + 0.6 * progress)
+                .offset(x: -30 * (1 - progress))
                 .allowsHitTesting(progress > 0.001)
 
-                // Main content that slides down
-                ZStack(alignment: .bottom) {
+                // Main content that slides right
+                ZStack {
                     BridgeControllerContainerView(controller: bridgeController)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding(.top, topOverlayReservedHeight)
                         .ignoresSafeArea(edges: .all)
-                }
-                .overlay(alignment: .top) {
-                    TopChromeView(state: chromeState)
-                        .frame(height: safeTop, alignment: .top)
-                        .opacity(chromeState.isVisible ? 1 : 0)
-                        .offset(y: chromeState.isVisible ? 0 : -18)
-                        .contentShape(Rectangle())
-                        .highPriorityGesture(topHandleDragGesture(revealHeight: revealHeight))
-                }
-                .overlay {
+
+                    // Top chrome overlay
+                    VStack {
+                        TopChromeView(state: chromeState)
+                            .frame(height: safeTop, alignment: .top)
+                            .opacity(chromeState.isVisible ? 1 : 0)
+                            .offset(y: chromeState.isVisible ? 0 : -18)
+                        Spacer()
+                    }
+                    .ignoresSafeArea(edges: .top)
+
+                    // Dismiss overlay
                     if progress > 0.001 {
-                        Color.black.opacity(0.3 * progress)
+                        Color.black.opacity(0.15 * progress)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 closeDrawer()
                             }
-                            .highPriorityGesture(contentDismissDragGesture(revealHeight: revealHeight))
+                            .gesture(contentDismissDragGesture())
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: contentCornerRadius, style: .continuous))
-                .scaleEffect(contentScale, anchor: .bottom)
-                .offset(y: progress * revealHeight)
-                .shadow(color: Color.black.opacity(0.18 * progress), radius: 30, x: 0, y: 10)
+                .offset(x: contentOffset)
+                .shadow(color: Color.black.opacity(0.2 * progress), radius: 20, x: -5, y: 0)
+                .gesture(edgeDragGesture())
                 .ignoresSafeArea()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .clipped()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeInOut(duration: 0.22), value: chromeState.isVisible)
         }
         .ignoresSafeArea()
-        .background(Color(uiColor: .systemGroupedBackground))
-    }
-
-    private func resolvedDrawerRevealHeight(containerHeight: CGFloat, safeTop: CGFloat) -> CGFloat {
-        let minimumHeight: CGFloat = 360
-        let preferredHeight = safeTop + 460
-        let maxHeight = containerHeight * 0.74
-        return max(minimumHeight, min(preferredHeight, maxHeight))
+        .background(Color(UIColor.systemGroupedBackground))
     }
 
     private func closeDrawer() {
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
             chromeState.drawerProgress = 0
         }
     }
 
-    private func topHandleDragGesture(revealHeight: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 6, coordinateSpace: .local)
+    private func edgeDragGesture() -> some Gesture {
+        DragGesture(minimumDistance: 10, coordinateSpace: .local)
+            .onChanged { value in
+                // Only start from left edge
+                if drawerDragStartProgress == nil {
+                    if chromeState.drawerProgress < 0.01 && value.startLocation.x > 30 {
+                        return
+                    }
+                    drawerDragStartProgress = chromeState.drawerProgress
+                }
+                guard let startProgress = drawerDragStartProgress else { return }
+                let delta = value.translation.width / phoneShellDrawerWidth
+                chromeState.drawerProgress = min(max(startProgress + delta, 0), 1)
+            }
+            .onEnded { value in
+                finishDrag(velocity: value.predictedEndTranslation.width - value.translation.width)
+            }
+    }
+
+    private func contentDismissDragGesture() -> some Gesture {
+        DragGesture(minimumDistance: 10, coordinateSpace: .local)
             .onChanged { value in
                 if drawerDragStartProgress == nil {
                     drawerDragStartProgress = chromeState.drawerProgress
                 }
                 guard let startProgress = drawerDragStartProgress else { return }
-                let nextProgress = min(max(startProgress + (value.translation.height / max(revealHeight, 1)), 0), 1)
-                chromeState.drawerProgress = nextProgress
+                let delta = value.translation.width / phoneShellDrawerWidth
+                chromeState.drawerProgress = min(max(startProgress + delta, 0), 1)
             }
             .onEnded { value in
-                finishDrawerDrag(translation: value.translation.height, predictedEndTranslation: value.predictedEndTranslation.height, revealHeight: revealHeight)
+                finishDrag(velocity: value.predictedEndTranslation.width - value.translation.width)
             }
     }
 
-    private func contentDismissDragGesture(revealHeight: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 6, coordinateSpace: .local)
-            .onChanged { value in
-                if drawerDragStartProgress == nil {
-                    drawerDragStartProgress = chromeState.drawerProgress
-                }
-                guard let startProgress = drawerDragStartProgress else { return }
-                let nextProgress = min(max(startProgress + (value.translation.height / max(revealHeight, 1)), 0), 1)
-                chromeState.drawerProgress = nextProgress
-            }
-            .onEnded { value in
-                finishDrawerDrag(translation: value.translation.height, predictedEndTranslation: value.predictedEndTranslation.height, revealHeight: revealHeight)
-            }
-    }
-
-    private func finishDrawerDrag(translation: CGFloat, predictedEndTranslation: CGFloat, revealHeight: CGFloat) {
-        let velocityEstimate = predictedEndTranslation - translation
-        let predictedProgress = min(
-            max((drawerDragStartProgress ?? chromeState.drawerProgress) + (predictedEndTranslation / max(revealHeight, 1)), 0),
-            1
-        )
-
+    private func finishDrag(velocity: CGFloat) {
+        let currentProgress = chromeState.drawerProgress
         drawerDragStartProgress = nil
 
         let shouldOpen: Bool
-        if velocityEstimate > phoneShellDrawerDismissVelocityThreshold {
+        if velocity > phoneShellDismissVelocityThreshold {
             shouldOpen = true
-        } else if velocityEstimate < -phoneShellDrawerDismissVelocityThreshold {
+        } else if velocity < -phoneShellDismissVelocityThreshold {
             shouldOpen = false
         } else {
-            shouldOpen = predictedProgress >= phoneShellDrawerOpenThreshold
+            shouldOpen = currentProgress >= phoneShellOpenThreshold
         }
 
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
             chromeState.drawerProgress = shouldOpen ? 1 : 0
         }
     }

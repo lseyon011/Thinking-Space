@@ -52,7 +52,7 @@ private let nativeTopDrawerSections: [NativeTopDrawerSection] = [
         NativeTopDrawerItem(id: "/thinking-organizer", title: "Thinking Organizer", systemImage: "tablecells", badgeColor: .indigo),
     ]),
     NativeTopDrawerSection(id: "workspace", title: "Workspace", items: [
-        NativeTopDrawerItem(id: "/terminal", title: "Terminal", systemImage: "terminal", badgeColor: Color(uiColor: .darkGray)),
+        NativeTopDrawerItem(id: "/terminal", title: "Terminal", systemImage: "terminal", badgeColor: Color(UIColor.darkGray)),
         NativeTopDrawerItem(id: "/settings", title: "Settings", systemImage: "gearshape", badgeColor: .gray),
     ]),
     NativeTopDrawerSection(id: "search", title: "", items: [
@@ -103,27 +103,14 @@ struct TopDrawerMenuView: View {
 
     let onSelectNavItem: (String) -> Void
 
-    private var topSafeAreaHeight: CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.windows.first?.safeAreaInsets.top ?? 59
-    }
-
     var body: some View {
-        VStack(spacing: 0) {
-            // Drag handle
-            Capsule()
-                .fill(Color.primary.opacity(0.18))
-                .frame(width: 36, height: 5)
-                .padding(.top, topSafeAreaHeight + 10)
-                .padding(.bottom, 8)
-
-            // Large title
+        VStack(alignment: .leading, spacing: 0) {
+            // Title below safe area
             Text("Thinking Space")
                 .font(.system(size: 34, weight: .bold))
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
-                .padding(.bottom, 8)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
 
             List {
                 ForEach(nativeTopDrawerSections) { section in
@@ -156,7 +143,7 @@ struct TopDrawerMenuView: View {
             }
             .listStyle(.insetGrouped)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(Color(UIColor.systemGroupedBackground))
     }
 }
 
