@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BarChart3, Clock3, ExternalLink, Fingerprint, RefreshCw, ShieldCheck, TerminalSquare } from 'lucide-react'
+import { Clock3, ExternalLink, Fingerprint, RefreshCw, ShieldCheck, TerminalSquare } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import CodexUsageMetricChartBlock from '@/components/lego_blocks/integrations/CodexUsageMetricChartBlock'
 import CodexUsageProbeBlock from '@/components/lego_blocks/integrations/CodexUsageProbeBlock'
@@ -40,33 +40,33 @@ function formatTimestamp(value: string | null | undefined): string | null {
   if (!value) return null
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return null
-  return parsed.toLocaleString()
+  return parsed.toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 function formatHostname(value: string): string {
-  try {
-    return new URL(value).hostname
-  } catch {
-    return value
-  }
+  try { return new URL(value).hostname } catch { return value }
 }
 
-function stateToneClassName(status: CodexProfileRuntimeStatusBlock | null): string {
-  if (!status) return 'bg-black/6 text-foreground/60 dark:bg-white/10 dark:text-white/70'
-  if (status.active && status.hasAuthFile) return 'bg-emerald-500/12 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300'
-  if (status.hasAuthFile) return 'bg-blue-500/12 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300'
-  if (status.exists) return 'bg-amber-500/12 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300'
-  return 'bg-black/6 text-foreground/60 dark:bg-white/10 dark:text-white/70'
+function sessionBadgeClassName(result: CodexUsageProbeResultBlock | null | undefined): string {
+  if (!result || result.sessionState === 'loading' || result.sessionState === 'unknown') return ''
+  if (result.sessionState === 'ready') return 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400'
+  if (result.sessionState === 'needs_login') return 'bg-rose-500/10 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400'
+  if (result.sessionState === 'error') return 'bg-destructive/10 text-destructive'
+  return ''
 }
 
-function probeToneClassName(result: CodexUsageProbeResultBlock | null | undefined): string {
-  if (!result) return 'bg-black/6 text-foreground/60 dark:bg-white/10 dark:text-white/70'
-  if (result.sessionState === 'ready') return 'bg-emerald-500/12 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300'
-  if (result.sessionState === 'rate_limited') return 'bg-black/6 text-foreground/60 dark:bg-white/10 dark:text-white/70'
-  if (result.sessionState === 'needs_login') return 'bg-rose-500/12 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300'
-  if (result.sessionState === 'loading') return 'bg-black/6 text-foreground/50 dark:bg-white/10 dark:text-white/60'
-  if (result.sessionState === 'error') return 'bg-destructive/15 text-destructive'
-  return 'bg-black/6 text-foreground/60 dark:bg-white/10 dark:text-white/70'
+function cliBadgeClassName(status: CodexProfileRuntimeStatusBlock | null): string {
+  if (!status) return ''
+  if (status.active && status.hasAuthFile) return 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400'
+  if (status.hasAuthFile) return 'bg-blue-500/10 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400'
+  if (status.exists) return 'bg-amber-500/10 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400'
+  return ''
+}
+
+function headlineToneClass(tone: 'healthy' | 'warning' | 'critical' | null): string {
+  if (tone === 'critical') return 'text-rose-500 dark:text-rose-400'
+  if (tone === 'warning') return 'text-amber-500 dark:text-amber-400'
+  return 'text-foreground dark:text-white'
 }
 
 export default function CodexUsageDashboardOrch() {
@@ -105,7 +105,7 @@ export default function CodexUsageDashboardOrch() {
       seedInMemoryProbeCache(vaultData)
       setProbeResults((prev) => {
         const merged = { ...vaultData }
-        for (const [siteId, result] of Object.entries(prev)) merged[siteId] = result
+        for (const [id, r] of Object.entries(prev)) merged[id] = r
         return merged
       })
     })
@@ -113,25 +113,17 @@ export default function CodexUsageDashboardOrch() {
 
   useEffect(() => {
     if (!data) return
-    const allowedSiteIds = new Set(data.rows.map((row) => row.site.id))
+    const allowed = new Set(data.rows.map((r) => r.site.id))
     setProbeResults((prev) =>
-      Object.fromEntries(Object.entries(prev).filter(([siteId]) => allowedSiteIds.has(siteId))),
+      Object.fromEntries(Object.entries(prev).filter(([id]) => allowed.has(id))),
     )
   }, [data])
 
   const handleProbeResult = useCallback((result: CodexUsageProbeResultBlock) => {
     updateInMemoryProbeCache(result)
     setProbeResults((prev) => {
-      const existing = prev[result.siteId]
-      if (
-        existing
-        && existing.sessionState === result.sessionState
-        && existing.summary === result.summary
-        && existing.usageLabel === result.usageLabel
-        && existing.detectedAt === result.detectedAt
-        && existing.accountLabel === result.accountLabel
-        && existing.error === result.error
-      ) return prev
+      const ex = prev[result.siteId]
+      if (ex && ex.sessionState === result.sessionState && ex.usageLabel === result.usageLabel && ex.detectedAt === result.detectedAt) return prev
       return { ...prev, [result.siteId]: result }
     })
   }, [])
@@ -151,9 +143,7 @@ export default function CodexUsageDashboardOrch() {
       await reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save dashboard source group.')
-    } finally {
-      setBusySiteId(null)
-    }
+    } finally { setBusySiteId(null) }
   }, [data, reload])
 
   const handleUseInTerminal = useCallback(async (siteId: string, siteName: string) => {
@@ -177,9 +167,7 @@ export default function CodexUsageDashboardOrch() {
       }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to activate Codex profile.')
-    } finally {
-      setBusySiteId(null)
-    }
+    } finally { setBusySiteId(null) }
   }, [navigate, reload])
 
   const handleRefresh = useCallback(() => {
@@ -190,38 +178,38 @@ export default function CodexUsageDashboardOrch() {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Loading usage dashboard…
+        Loading…
       </div>
     )
   }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col gap-3 overflow-y-auto px-4 py-3">
-      {/* Top bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="relative flex h-full min-h-0 flex-col gap-4 overflow-y-auto px-5 py-4">
+
+      {/* Page header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold tracking-tight text-foreground">Usage Dashboard</h2>
-          <p className="text-xs text-muted-foreground">
-            Source sessions from one web group and probe their visible page state.
-          </p>
+          <h2 className="text-sm font-semibold text-foreground">Usage Dashboard</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">Live session state from your web group</p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={handleRefresh}>
-          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+        <Button type="button" variant="outline" size="sm" onClick={handleRefresh} className="gap-1.5">
+          <RefreshCw className="h-3.5 w-3.5" />
           Refresh
         </Button>
       </div>
 
       {data && (
         <>
-          {/* Source group + CODEX_HOME — flat, no card */}
-          <div className="flex flex-wrap items-center gap-3">
+          {/* Source selector — inline, no card */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="text-xs font-medium text-muted-foreground">Source</span>
             <Select
               value={data.sourceGroupId ?? ''}
               onValueChange={handleGroupChange}
               disabled={busySiteId === '__group__' || data.groups.length === 0}
             >
-              <SelectTrigger className="h-8 w-52 text-xs">
-                <SelectValue placeholder="Select a web group" />
+              <SelectTrigger className="h-7 w-48 text-xs">
+                <SelectValue placeholder="Select group" />
               </SelectTrigger>
               <SelectContent>
                 {data.groups.map((group) => (
@@ -232,78 +220,101 @@ export default function CodexUsageDashboardOrch() {
               </SelectContent>
             </Select>
             {data.activeHomePath && (
-              <span className="truncate font-mono text-[11px] text-muted-foreground">
+              <span className="truncate font-mono text-[11px] text-muted-foreground/70">
                 {data.activeHomePath}
               </span>
             )}
           </div>
 
           {activationNote && (
-            <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-200">
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-50 px-3.5 py-2.5 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
               {activationNote}
             </div>
           )}
-
           {error && (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <div className="rounded-lg border border-destructive/20 bg-destructive/8 px-3.5 py-2.5 text-xs text-destructive">
               {error}
             </div>
           )}
 
           {data.rows.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">
-              No web bookmarks found in the selected group.
+            <div className="flex flex-col items-center gap-2 py-12 text-sm text-muted-foreground">
+              No bookmarks found in the selected group.
             </div>
           ) : (
-            <div className="grid gap-2">
+            <div className="grid gap-3">
               {data.rows.map(({ site, runtime }) => {
                 const busy = busySiteId === site.id
-                const lastRefresh = formatTimestamp(runtime?.lastRefresh)
-                const expiresAt = formatTimestamp(runtime?.expiresAt)
-                const authUpdated = formatTimestamp(runtime?.authFileUpdatedAt)
                 const probe = probeResults[site.id] ?? null
                 const probeDetectedAt = formatTimestamp(probe?.detectedAt)
+                const lastRefresh = formatTimestamp(runtime?.lastRefresh)
+                const authUpdated = formatTimestamp(runtime?.authFileUpdatedAt)
                 const usageMetrics = extractCodexUsageMetricsBlock(probe)
                 const resetText = extractCodexUsageResetTextBlock(probe)
                 const headlineMetric = usageMetrics
-                  .slice()
-                  .sort((a, b) => a.remainingPercent - b.remainingPercent)[0] ?? null
+                  .slice().sort((a, b) => a.remainingPercent - b.remainingPercent)[0] ?? null
+                const sessionBadge = sessionBadgeClassName(probe)
+                const cliBadge = cliBadgeClassName(runtime)
+                const isChecking = !probe || probe.sessionState === 'loading'
 
                 return (
                   <div
                     key={site.id}
-                    className="overflow-hidden rounded-xl border border-black/8 bg-white dark:border-white/10 dark:bg-[#08111f]"
+                    className="overflow-hidden rounded-2xl border border-border bg-white dark:bg-[#0a0f1c]"
                   >
-                    {/* Header row */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                        <h3 className="truncate text-sm font-semibold text-foreground dark:text-white">{site.name}</h3>
-                        <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', probeToneClassName(probe))}>
-                          {probe?.sessionLabel ?? 'Checking…'}
-                        </span>
-                        <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', stateToneClassName(runtime))}>
-                          CLI {formatCodexProfileStateLabelBlock(runtime)}
-                        </span>
-                        {runtime?.launchctlMatches && (
-                          <span className="rounded-full bg-black/6 px-2 py-0.5 text-[10px] text-foreground/55 dark:bg-white/10 dark:text-white/60">
-                            launchd
+                    {/* ── Header ── */}
+                    <div className="flex items-start justify-between gap-4 px-5 pt-4 pb-3">
+                      <div className="min-w-0 flex-1">
+                        {/* Name */}
+                        <h3 className="truncate text-[15px] font-semibold leading-tight text-foreground dark:text-white">
+                          {site.name}
+                        </h3>
+                        {/* Badge row */}
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {/* Session state */}
+                          {sessionBadge ? (
+                            <span className={cn('rounded-md px-1.5 py-0.5 text-[11px] font-medium', sessionBadge)}>
+                              {probe?.sessionLabel}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">
+                              {isChecking ? 'Checking…' : probe?.sessionLabel}
+                            </span>
+                          )}
+                          {/* CLI state */}
+                          {cliBadge ? (
+                            <span className={cn('rounded-md px-1.5 py-0.5 text-[11px] font-medium', cliBadge)}>
+                              CLI {formatCodexProfileStateLabelBlock(runtime)}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground/60">
+                              CLI {formatCodexProfileStateLabelBlock(runtime)}
+                            </span>
+                          )}
+                          {runtime?.launchctlMatches && (
+                            <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                              launchd
+                            </span>
+                          )}
+                          {/* Hostname + probe time */}
+                          <span className="text-[11px] text-muted-foreground/50">
+                            {formatHostname(site.url)}
+                            {probeDetectedAt && <> · {probeDetectedAt}</>}
                           </span>
-                        )}
-                        <span className="text-[10px] text-foreground/35 dark:text-white/35">{formatHostname(site.url)}</span>
-                        {probeDetectedAt && (
-                          <span className="text-[10px] text-foreground/25 dark:text-white/25">· {probeDetectedAt}</span>
-                        )}
+                        </div>
                       </div>
-                      <div className="flex gap-1.5">
+
+                      {/* Actions */}
+                      <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
                         <Button
                           type="button"
                           size="sm"
                           onClick={() => void handleUseInTerminal(site.id, site.name)}
                           disabled={busy}
-                          className="h-7 border-0 bg-foreground px-2.5 text-xs text-background hover:bg-foreground/90 dark:bg-white dark:text-slate-950 dark:hover:bg-white/90"
+                          className="h-7 gap-1 border-0 bg-foreground px-3 text-[11px] font-medium text-background hover:bg-foreground/90 dark:bg-white dark:text-slate-950 dark:hover:bg-white/90"
                         >
-                          <TerminalSquare className="mr-1 h-3 w-3" />
-                          {runtime?.hasAuthFile ? 'Use in Terminal' : 'Codex Login'}
+                          <TerminalSquare className="h-3 w-3" />
+                          {runtime?.hasAuthFile ? 'Terminal' : 'Login'}
                         </Button>
                         <Button
                           type="button"
@@ -311,102 +322,70 @@ export default function CodexUsageDashboardOrch() {
                           variant="outline"
                           onClick={() => navigate(`/web?site=${encodeURIComponent(site.id)}`)}
                           disabled={busy}
-                          className="h-7 border-border bg-transparent px-2.5 text-xs text-foreground hover:bg-muted dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10 dark:hover:text-white"
+                          className="h-7 gap-1 px-3 text-[11px] font-medium"
                         >
-                          <ExternalLink className="mr-1 h-3 w-3" />
+                          <ExternalLink className="h-3 w-3" />
                           Open
                         </Button>
                       </div>
                     </div>
 
-                    {/* Body — flat, no inner boxes */}
-                    <div className="border-t border-black/6 px-4 py-3 dark:border-white/8">
-                      <div className="grid gap-x-6 gap-y-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-                        {/* Left: usage + chart */}
-                        <div>
-                          {usageMetrics.length > 0 ? (
-                            <div className="flex items-start gap-4">
-                              <div className="shrink-0">
-                                <div className={cn(
-                                  'text-2xl font-semibold tabular-nums',
-                                  headlineMetric && headlineMetric.tone === 'critical'
-                                    ? 'text-rose-500 dark:text-rose-400'
-                                    : headlineMetric && headlineMetric.tone === 'warning'
-                                      ? 'text-amber-500 dark:text-amber-400'
-                                      : 'text-foreground dark:text-white',
-                                )}>
-                                  {headlineMetric?.remainingPercent ?? 0}%
-                                </div>
-                                <div className="text-[10px] text-foreground/45 dark:text-white/45">
-                                  {headlineMetric?.label ?? ''} remaining
-                                </div>
-                                {resetText && (
-                                  <div className="mt-1 text-[10px] text-foreground/40 dark:text-white/40">{resetText}</div>
-                                )}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <CodexUsageMetricChartBlock metrics={usageMetrics} />
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-foreground/50 dark:text-white/50">
-                                {probe?.usageLabel ?? probe?.summary ?? 'No usage data yet'}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Right: metadata as plain key/value pairs */}
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                          <div>
-                            <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-foreground/35 dark:text-white/35">
-                              <Fingerprint className="h-2.5 w-2.5" />
-                              Account
-                            </div>
-                            <div className="mt-0.5 truncate text-xs text-foreground/80 dark:text-white/80">
-                              {probe?.accountLabel ?? runtime?.accountId ?? '—'}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-foreground/35 dark:text-white/35">
-                              <ShieldCheck className="h-2.5 w-2.5" />
-                              CLI Profile
-                            </div>
-                            <div className="mt-0.5 truncate text-xs text-foreground/80 dark:text-white/80">
-                              {formatCodexProfileStateLabelBlock(runtime)}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-foreground/35 dark:text-white/35">
-                              <Clock3 className="h-2.5 w-2.5" />
-                              CLI Refresh
-                            </div>
-                            <div className="mt-0.5 text-xs text-foreground/80 dark:text-white/80">{lastRefresh ?? '—'}</div>
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-foreground/35 dark:text-white/35">
-                              <BarChart3 className="h-2.5 w-2.5" />
-                              Probed
-                            </div>
-                            <div className="mt-0.5 text-xs text-foreground/80 dark:text-white/80">{probeDetectedAt ?? '—'}</div>
-                            {expiresAt && (
-                              <div className="text-[10px] text-foreground/35 dark:text-white/35">exp {expiresAt}</div>
+                    {/* ── Body ── */}
+                    <div className="px-5 pb-4">
+                      {usageMetrics.length > 0 ? (
+                        <>
+                          {/* Headline stat */}
+                          <div className="mb-3 flex items-baseline gap-2">
+                            <span className={cn('text-3xl font-bold tabular-nums leading-none', headlineToneClass(headlineMetric?.tone ?? null))}>
+                              {headlineMetric?.remainingPercent ?? 0}%
+                            </span>
+                            <span className="text-sm text-muted-foreground">
+                              {headlineMetric?.label} remaining
+                            </span>
+                            {resetText && (
+                              <span className="ml-auto text-[11px] text-muted-foreground/60">{resetText}</span>
                             )}
                           </div>
-                        </div>
-                      </div>
+                          {/* Chart */}
+                          <CodexUsageMetricChartBlock metrics={usageMetrics} />
+                        </>
+                      ) : (
+                        <p className="text-[13px] leading-relaxed text-muted-foreground">
+                          {probe?.summary ?? (isChecking ? 'Scanning visible page state…' : 'No usage data detected.')}
+                        </p>
+                      )}
                     </div>
 
-                    {/* Footer — only when there's extra debug info */}
-                    {(authUpdated || runtime?.error || runtime?.authMode || probe?.error) && (
-                      <div className="border-t border-black/6 px-4 py-1.5 text-[10px] text-foreground/35 dark:border-white/8 dark:text-white/35">
-                        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                          {runtime?.authMode && <span>Auth: {runtime.authMode}</span>}
-                          {authUpdated && <span>Updated: {authUpdated}</span>}
-                          {runtime?.error && <span className="text-rose-500 dark:text-rose-400">{runtime.error}</span>}
-                          {probe?.error && <span className="text-rose-500 dark:text-rose-400">{probe.error}</span>}
-                        </div>
+                    {/* ── Footer meta bar ── */}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 px-5 py-2.5">
+                      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
+                        <Fingerprint className="h-3 w-3 shrink-0" />
+                        <span className="truncate max-w-[180px]">{probe?.accountLabel ?? runtime?.accountId ?? '—'}</span>
+                      </span>
+                      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
+                        <ShieldCheck className="h-3 w-3 shrink-0" />
+                        {formatCodexProfileStateLabelBlock(runtime)}
+                        {runtime?.homePath && (
+                          <span className="hidden truncate max-w-[120px] text-muted-foreground/40 xl:inline">{runtime.homePath}</span>
+                        )}
+                      </span>
+                      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
+                        <Clock3 className="h-3 w-3 shrink-0" />
+                        {probeDetectedAt ?? lastRefresh ?? '—'}
+                      </span>
+                      {/* Errors surfaced inline — subtle */}
+                      {(runtime?.error || probe?.error) && (
+                        <span className="ml-auto text-[11px] text-rose-500 dark:text-rose-400">
+                          {runtime?.error ?? probe?.error}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Debug strip — only auth details, collapsed by default */}
+                    {(runtime?.authMode || authUpdated) && (
+                      <div className="border-t border-border/40 px-5 py-1.5 text-[10px] text-muted-foreground/40">
+                        {runtime?.authMode && <span className="mr-3">Auth: {runtime.authMode}</span>}
+                        {authUpdated && <span>Updated: {authUpdated}</span>}
                       </div>
                     )}
                   </div>
@@ -419,7 +398,7 @@ export default function CodexUsageDashboardOrch() {
 
       {data && (
         <CodexUsageProbeBlock
-          sites={data.rows.map((row) => row.site)}
+          sites={data.rows.map((r) => r.site)}
           refreshToken={probeRefreshToken}
           freshResultSiteIds={freshResultSiteIds}
           onResult={handleProbeResult}
