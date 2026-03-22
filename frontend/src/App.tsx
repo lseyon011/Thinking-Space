@@ -561,6 +561,8 @@ function App() {
   const [persistentRouteMounts, setPersistentRouteMounts] = useState(() => ({
     organizer: location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer',
     newThought: location.pathname === '/new-thought',
+    thinkingSpace: location.pathname === '/thinking-space',
+    webull: location.pathname === '/webull',
   }))
   const showGoogleWorkspaceChromeControls = location.pathname === '/thinking-space'
     && thinkingSpaceGoogleWorkspaceChromeState.enabled
@@ -597,7 +599,9 @@ function App() {
   const isWebRoute = location.pathname === '/web'
   const isOrganizerRoute = location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer'
   const isNewThoughtRoute = location.pathname === '/new-thought'
-  const usesPersistentRouteSurface = isChatRoute || isWebRoute || isOrganizerRoute || isNewThoughtRoute
+  const isThinkingSpaceRoute = location.pathname === '/thinking-space'
+  const isWebullRoute = location.pathname === '/webull'
+  const usesPersistentRouteSurface = isChatRoute || isWebRoute || isOrganizerRoute || isNewThoughtRoute || isThinkingSpaceRoute || isWebullRoute
 
   const resolvedWebullIcon = useMemo(() => {
     if (!webullTabIconText) return WebullNavIcon
@@ -1416,10 +1420,14 @@ function App() {
     setPersistentRouteMounts(prev => (
       prev.organizer === isOrganizerRoute
         && prev.newThought === isNewThoughtRoute
+        && prev.thinkingSpace === isThinkingSpaceRoute
+        && prev.webull === isWebullRoute
         ? prev
         : {
             organizer: prev.organizer || isOrganizerRoute,
             newThought: prev.newThought || isNewThoughtRoute,
+            thinkingSpace: prev.thinkingSpace || isThinkingSpaceRoute,
+            webull: prev.webull || isWebullRoute,
           }
     ))
     if (!activeWorkspaceTabId) return
@@ -1441,7 +1449,7 @@ function App() {
           : { ...prev, [activeWorkspaceTabId]: selectedSiteId }
       ))
     }
-  }, [activeWorkspaceTabId, isChatRoute, isNewThoughtRoute, isOrganizerRoute, isWebRoute, location.search])
+  }, [activeWorkspaceTabId, isChatRoute, isNewThoughtRoute, isOrganizerRoute, isThinkingSpaceRoute, isWebRoute, isWebullRoute, location.search])
 
   const handleCreateWorkspaceTab = useCallback(() => {
     const tab: AppWorkspaceTab = {
@@ -2735,6 +2743,24 @@ function App() {
                   aria-hidden={!isNewThoughtRoute}
                 >
                   <NewThought />
+                </div>
+              )}
+              {persistentRouteMounts.thinkingSpace && (
+                <div
+                  className="absolute inset-0 min-h-0 overflow-hidden"
+                  style={{ visibility: isThinkingSpaceRoute ? 'visible' : 'hidden', pointerEvents: isThinkingSpaceRoute ? 'auto' : 'none' }}
+                  aria-hidden={!isThinkingSpaceRoute}
+                >
+                  <ThinkingSpace />
+                </div>
+              )}
+              {persistentRouteMounts.webull && (
+                <div
+                  className="absolute inset-0 min-h-0 overflow-y-auto overflow-x-hidden"
+                  style={{ visibility: isWebullRoute ? 'visible' : 'hidden', pointerEvents: isWebullRoute ? 'auto' : 'none' }}
+                  aria-hidden={!isWebullRoute}
+                >
+                  <WebullPage pageLabel={webullTabLabel} />
                 </div>
               )}
               {!usesPersistentRouteSurface && (

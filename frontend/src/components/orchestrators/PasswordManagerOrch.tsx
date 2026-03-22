@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Copy,
   ExternalLink,
@@ -142,6 +142,11 @@ export default function PasswordManagerOrch() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
+  const selectedEntryIdRef = useRef(selectedEntryId)
+  const creatingNewEntryRef = useRef(creatingNewEntry)
+  useEffect(() => { selectedEntryIdRef.current = selectedEntryId }, [selectedEntryId])
+  useEffect(() => { creatingNewEntryRef.current = creatingNewEntry }, [creatingNewEntry])
+
   const unlocked = !!vaultState
   const vault = vaultState?.vault ?? null
   const sortedEntries = useMemo(() => sortEntriesBlock(vault?.entries ?? []), [vault])
@@ -204,14 +209,16 @@ export default function PasswordManagerOrch() {
       }
 
       setVaultState(nextSnapshot.vaultState)
-      const stillSelected = selectedEntryId
-        ? nextSnapshot.vaultState.vault.entries.find((entry) => entry.id === selectedEntryId) ?? null
+      if (creatingNewEntryRef.current) return
+      const stillSelected = selectedEntryIdRef.current
+        ? nextSnapshot.vaultState.vault.entries.find((entry) => entry.id === selectedEntryIdRef.current) ?? null
         : null
       if (!stillSelected) {
         hydrateFromLoadedVault(nextSnapshot.vaultState)
       }
     })
-  }, [selectedEntryId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const confirmDiscardBlock = (): boolean => {
     if (!isDirty) return true

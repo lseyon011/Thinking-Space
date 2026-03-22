@@ -58,10 +58,46 @@ export function passwordAutofillProbeScriptBlock(): string {
         && rect.height > 0
     }
 
+    const isUsernameCandidate = (element) => {
+      if (!(element instanceof HTMLInputElement) && !(element instanceof HTMLTextAreaElement)) return false
+      if (element instanceof HTMLInputElement) {
+        const type = (element.type || 'text').toLowerCase()
+        return ['text', 'email', 'search', 'tel', 'url'].includes(type)
+          || element.autocomplete === 'username'
+          || element.name.toLowerCase().includes('user')
+          || element.name.toLowerCase().includes('email')
+          || element.id.toLowerCase().includes('user')
+          || element.id.toLowerCase().includes('email')
+      }
+      return true
+    }
+
+    const buildContext = (passwordInput, usernameInput, anchor, active) => {
+      const rect = anchor.getBoundingClientRect()
+      return {
+        url: window.location.href,
+        origin: window.location.origin,
+        hostname: window.location.hostname,
+        pageTitle: document.title || window.location.hostname,
+        usernameValue: usernameInput instanceof HTMLInputElement || usernameInput instanceof HTMLTextAreaElement ? usernameInput.value || '' : '',
+        passwordValue: passwordInput instanceof HTMLInputElement ? passwordInput.value || '' : '',
+        activeField: active === passwordInput ? 'password' : active === usernameInput ? 'username' : 'other',
+        rect: {
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+          width: rect.width,
+          height: rect.height,
+        },
+      }
+    }
+
     const findLoginContext = () => {
       const active = document.activeElement
       if (!(active instanceof HTMLElement)) return null
 
+      // Primary: form-based detection
       const forms = []
       const candidates = Array.from(document.querySelectorAll('form'))
       for (const form of candidates) {
@@ -74,44 +110,36 @@ export function passwordAutofillProbeScriptBlock(): string {
       const activeForm = forms.find(({ form, passwordInput }) =>
         form.contains(active) || active === passwordInput
       )
-      if (!activeForm) return null
-
-      const usernameCandidates = Array.from(activeForm.form.querySelectorAll('input, textarea'))
-        .filter(isVisibleInput)
-        .filter((element) => {
-          if (element === activeForm.passwordInput) return false
-          if (!(element instanceof HTMLInputElement) && !(element instanceof HTMLTextAreaElement)) return false
-          if (element instanceof HTMLInputElement) {
-            const type = (element.type || 'text').toLowerCase()
-            return ['text', 'email', 'search', 'tel', 'url'].includes(type)
-              || element.autocomplete === 'username'
-              || element.name.toLowerCase().includes('user')
-              || element.name.toLowerCase().includes('email')
-          }
-          return true
-        })
-      const usernameInput = usernameCandidates[0] || null
-      const anchor = active === activeForm.passwordInput || active === usernameInput ? active : activeForm.passwordInput
-      if (!(anchor instanceof HTMLElement)) return null
-
-      const rect = anchor.getBoundingClientRect()
-      return {
-        url: window.location.href,
-        origin: window.location.origin,
-        hostname: window.location.hostname,
-        pageTitle: document.title || window.location.hostname,
-        usernameValue: usernameInput instanceof HTMLInputElement || usernameInput instanceof HTMLTextAreaElement ? usernameInput.value || '' : '',
-        passwordValue: activeForm.passwordInput instanceof HTMLInputElement ? activeForm.passwordInput.value || '' : '',
-        activeField: active === activeForm.passwordInput ? 'password' : active === usernameInput ? 'username' : 'other',
-        rect: {
-          left: rect.left,
-          top: rect.top,
-          right: rect.right,
-          bottom: rect.bottom,
-          width: rect.width,
-          height: rect.height,
-        },
+      if (activeForm) {
+        const usernameCandidates = Array.from(activeForm.form.querySelectorAll('input, textarea'))
+          .filter(isVisibleInput)
+          .filter((element) => element !== activeForm.passwordInput && isUsernameCandidate(element))
+        const usernameInput = usernameCandidates[0] || null
+        const anchor = active === activeForm.passwordInput || active === usernameInput ? active : activeForm.passwordInput
+        if (!(anchor instanceof HTMLElement)) return null
+        return buildContext(activeForm.passwordInput, usernameInput, anchor, active)
       }
+
+      // Fallback: formless detection — covers SPA/framework pages that omit <form>
+      if (!isVisibleInput(active)) return null
+      const activeIsPassword = active instanceof HTMLInputElement && active.type.toLowerCase() === 'password'
+      const activeIsUsername = isUsernameCandidate(active)
+      if (!activeIsPassword && !activeIsUsername) return null
+
+      // Find all visible password inputs on the page
+      const allPasswordInputs = Array.from(document.querySelectorAll('input[type="password"]')).filter(isVisibleInput)
+      if (allPasswordInputs.length === 0) return null
+      const passwordInput = activeIsPassword ? active : allPasswordInputs[0]
+
+      // Find a username input: prefer siblings/nearby elements relative to the password input
+      const searchRoot = passwordInput.closest('[class],[id],section,main,div') || document.body
+      const usernameCandidates = Array.from(searchRoot.querySelectorAll('input, textarea'))
+        .filter(isVisibleInput)
+        .filter((element) => element !== passwordInput && isUsernameCandidate(element))
+      const usernameInput = usernameCandidates[0] || null
+
+      const anchor = active
+      return buildContext(passwordInput, usernameInput, anchor, active)
     }
 
     return findLoginContext()
