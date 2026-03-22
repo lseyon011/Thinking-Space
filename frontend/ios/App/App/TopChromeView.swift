@@ -12,6 +12,31 @@ private enum NativeChromeMetrics {
     static let collapsedIconButtonSize: CGFloat = 34
     static let floatingCornerRadius: CGFloat = 21
     static let smallCornerRadius: CGFloat = 15
+    static let fixedTabSwitcherWidth: CGFloat = 204
+}
+
+private enum NativeTopDrawerMetrics {
+    static let horizontalPadding: CGFloat = 20
+    static let titleTopSpacing: CGFloat = 10
+    static let sectionSpacing: CGFloat = 14
+    static let maxContentWidth: CGFloat = 312
+    static let sectionCornerRadius: CGFloat = 14
+    static let sectionStrokeOpacity: CGFloat = 0.1
+    static let rowHorizontalPadding: CGFloat = 12
+    static let rowMinimumHeight: CGFloat = 46
+    static let rowIconSize: CGFloat = 26
+    static let rowIconCornerRadius: CGFloat = 8
+    static let rowSpacing: CGFloat = 10
+    static let dividerInset: CGFloat = 50
+}
+
+private func resolvedNativeTopDrawerSafeAreaTopInset() -> CGFloat {
+    UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }
+        .flatMap(\.windows)
+        .filter(\.isKeyWindow)
+        .map(\.safeAreaInsets.top)
+        .max() ?? 0
 }
 
 private func floatingChromeCapsule() -> some View {
@@ -72,22 +97,22 @@ private struct NativeTopDrawerRowView: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 14) {
+            HStack(spacing: NativeTopDrawerMetrics.rowSpacing) {
                 iconView
 
                 Text(item.title)
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(Color.primary)
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.secondary.opacity(0.7))
             }
-            .padding(.horizontal, 16)
-            .frame(minHeight: 58)
+            .padding(.horizontal, NativeTopDrawerMetrics.rowHorizontalPadding)
+            .frame(minHeight: NativeTopDrawerMetrics.rowMinimumHeight)
             .background(active ? Color.accentColor.opacity(0.08) : Color.clear)
             .contentShape(Rectangle())
         }
@@ -99,14 +124,43 @@ private struct NativeTopDrawerRowView: View {
         switch item.iconStyle {
         case .symbol(let systemImage):
             Image(systemName: systemImage)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 34, height: 34)
+                .frame(width: NativeTopDrawerMetrics.rowIconSize, height: NativeTopDrawerMetrics.rowIconSize)
                 .background(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    RoundedRectangle(cornerRadius: NativeTopDrawerMetrics.rowIconCornerRadius, style: .continuous)
                         .fill(item.badgeColor)
                 )
         }
+    }
+}
+
+private struct NativeTopDrawerSectionCardView: View {
+    let state: TopChromeState
+    let section: NativeTopDrawerSection
+    let onSelectNavItem: (String) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(section.items.enumerated()), id: \.element.id) { index, item in
+                NativeTopDrawerRowView(
+                    item: item,
+                    active: state.activeNavItemId == item.id,
+                    action: { onSelectNavItem(item.id) }
+                )
+
+                if index < section.items.count - 1 {
+                    Divider()
+                        .padding(.leading, NativeTopDrawerMetrics.dividerInset)
+                }
+            }
+        }
+        .background(Color(UIColor.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: NativeTopDrawerMetrics.sectionCornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: NativeTopDrawerMetrics.sectionCornerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(NativeTopDrawerMetrics.sectionStrokeOpacity), lineWidth: 0.75)
+        )
     }
 }
 
@@ -154,31 +208,41 @@ struct TopDrawerMenuView: View {
     let onSelectNavItem: (String) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Thinking Space")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.primary)
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
+        GeometryReader { proxy in
+            let safeTopInset = max(proxy.safeAreaInsets.top, resolvedNativeTopDrawerSafeAreaTopInset())
 
-            List {
-                ForEach(nativeTopDrawerSections) { section in
-                    Section(section.title.isEmpty ? "" : section.title) {
-                        ForEach(section.items) { item in
-                            NativeTopDrawerRowView(
-                                item: item,
-                                active: state.activeNavItemId == item.id,
-                                action: { onSelectNavItem(item.id) }
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: NativeTopDrawerMetrics.sectionSpacing) {
+                    Text("Thinking Space")
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundStyle(Color.primary)
+                        .padding(.bottom, 2)
+
+                    ForEach(nativeTopDrawerSections) { section in
+                        VStack(alignment: .leading, spacing: 8) {
+                            if !section.title.isEmpty {
+                                Text(section.title)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Color.secondary)
+                                    .padding(.horizontal, 2)
+                            }
+
+                            NativeTopDrawerSectionCardView(
+                                state: state,
+                                section: section,
+                                onSelectNavItem: onSelectNavItem
                             )
-                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                         }
                     }
                 }
+                .frame(maxWidth: NativeTopDrawerMetrics.maxContentWidth)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal, NativeTopDrawerMetrics.horizontalPadding)
+                .padding(.top, safeTopInset + NativeTopDrawerMetrics.titleTopSpacing)
+                .padding(.bottom, 28)
             }
-            .listStyle(.insetGrouped)
         }
-        .background(Color(UIColor.systemGroupedBackground))
+        .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
     }
 }
 
@@ -203,56 +267,19 @@ struct BottomChromeView: View {
     let onHeaderToggleTap: () -> Void
 
     @State private var tabSwitcherPresented = false
+    @State private var toolsMenuPresented = false
 
     var body: some View {
-        ZStack {
-            // Left: sidebar toggle + tools
-            HStack(spacing: 8) {
-                sidebarToggleButton
-                moreMenuButton
-                Spacer(minLength: 0)
-            }
-
-            // Right: drawer toggle
-            HStack {
-                Spacer(minLength: 0)
-                drawerToggleButton
-            }
-
+        HStack(spacing: 8) {
+            leadingControlPill
             if state.isBottomBarCollapsed {
-                // Collapsed: centered pill
-                HStack {
-                    Spacer(minLength: 120)
-                    collapsedBottomPill
-                    Spacer(minLength: 60)
-                }
+                collapsedBottomPill
+                Spacer(minLength: 0)
             } else {
-                // Expanded: centered tab controls
-                HStack {
-                    Spacer(minLength: 120)
-
-                    HStack(spacing: 2) {
-                        tabSwitcherButton
-
-                        bottomBarIconButton(
-                            systemName: "plus",
-                            action: onCreateTap,
-                            accessibilityLabel: "Create note",
-                            enabled: true
-                        )
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 6)
-                    .background {
-                        floatingChromeCapsule()
-                    }
-                    .sheet(isPresented: $tabSwitcherPresented) {
-                        tabSwitcherSheet
-                    }
-
-                    Spacer(minLength: 60)
-                }
+                expandedBottomPill
+                    .frame(maxWidth: .infinity)
             }
+            drawerToggleButton
         }
         .padding(.horizontal, NativeChromeMetrics.outerHorizontalPadding)
         .padding(.top, 4)
@@ -261,6 +288,23 @@ struct BottomChromeView: View {
     }
 
     // MARK: - Sidebar toggle (left drawer)
+
+    private var leadingControlPill: some View {
+        HStack(spacing: 0) {
+            sidebarToggleButton
+
+            Rectangle()
+                .fill(Color.primary.opacity(0.1))
+                .frame(width: 1, height: 26)
+
+            toolsMenuButton
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background {
+            floatingChromeCapsule()
+        }
+    }
 
     private var sidebarToggleButton: some View {
         Button(action: onSidebarToggleTap) {
@@ -273,23 +317,39 @@ struct BottomChromeView: View {
         .buttonStyle(.plain)
         .disabled(!state.canToggleSidebar)
         .accessibilityLabel(state.sidebarToggleLabel)
-        .padding(6)
-        .background {
-            floatingChromeCapsule()
-        }
     }
 
     // MARK: - More menu (search + tools combined)
 
-    private var moreMenuButton: some View {
-        Menu {
+    private var toolsMenuButton: some View {
+        Button(action: { toolsMenuPresented = true }) {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: toolsMenuPresented ? "chevron.down" : "chevron.up")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: NativeChromeMetrics.iconButtonSize, height: NativeChromeMetrics.iconButtonSize)
+                    .contentShape(Rectangle())
+
+                if state.toolsBadgeCount > 0 {
+                    Text(formatBadgeCount(state.toolsBadgeCount))
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .frame(minWidth: 18, minHeight: 18)
+                        .background(Color.red)
+                        .clipShape(Capsule())
+                        .offset(x: 5, y: -4)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("More options")
+        .confirmationDialog("More Options", isPresented: $toolsMenuPresented, titleVisibility: .visible) {
             if state.showSearch {
                 Button(action: onSearchTap) {
                     Label("Search", systemImage: "magnifyingglass")
                 }
             }
-
-            Divider()
 
             if state.canToggleHeader {
                 Button(action: onHeaderToggleTap) {
@@ -329,70 +389,66 @@ struct BottomChromeView: View {
                     Label("Git Push", systemImage: "arrow.up.circle")
                 }
             }
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                Image(systemName: "wrench")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .frame(width: NativeChromeMetrics.iconButtonSize, height: NativeChromeMetrics.iconButtonSize)
-                    .contentShape(Rectangle())
-
-                if state.toolsBadgeCount > 0 {
-                    Text(formatBadgeCount(state.toolsBadgeCount))
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5)
-                        .frame(minWidth: 18, minHeight: 18)
-                        .background(Color.red)
-                        .clipShape(Capsule())
-                        .offset(x: 5, y: -4)
-                }
-            }
         }
-        .accessibilityLabel("More options")
+    }
+
+    private var drawerToggleButton: some View {
+        Button(action: onDrawerToggleTap) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(state.drawerProgress > 0.01 ? Color.accentColor : .primary)
+                .frame(width: NativeChromeMetrics.iconButtonSize, height: NativeChromeMetrics.iconButtonSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(state.drawerProgress > 0.01 ? "Close navigation" : "Open navigation")
         .padding(6)
         .background {
             floatingChromeCapsule()
         }
     }
 
-    private var drawerToggleButton: some View {
-        TopChromeDrawerButtonView(
-            active: state.drawerProgress > 0.01,
-            action: onDrawerToggleTap
-        )
-    }
-
     // MARK: - Tab controls
 
     private var tabSwitcherButton: some View {
         Button(action: { tabSwitcherPresented = true }) {
-            HStack(spacing: 7) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .stroke(Color.primary, lineWidth: 1.8)
-                        .frame(width: 20, height: 18)
-
-                    Text("\(max(state.tabs.count, 1))")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.primary)
-                }
+            HStack(spacing: 9) {
+                tabCountBadge
+                    .frame(width: 24, height: 20)
 
                 Text(activeTabLabel)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                    .frame(maxWidth: 80, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: NativeChromeMetrics.floatingControlHeight)
-            .background(
-                RoundedRectangle(cornerRadius: NativeChromeMetrics.smallCornerRadius, style: .continuous)
-                    .fill(Color.primary.opacity(0.07))
-            )
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Tab switcher")
+    }
+
+    private var expandedBottomPill: some View {
+        HStack(spacing: 2) {
+            tabSwitcherButton
+
+            bottomBarIconButton(
+                systemName: "plus",
+                action: onCreateTap,
+                accessibilityLabel: "Create note",
+                enabled: true
+            )
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 6)
+        .background {
+            floatingChromeCapsule()
+        }
+        .sheet(isPresented: $tabSwitcherPresented) {
+            tabSwitcherSheet
+        }
     }
 
     private var activeTabLabel: String {
@@ -402,21 +458,14 @@ struct BottomChromeView: View {
     private var collapsedBottomPill: some View {
         Button(action: onExpandTap) {
             HStack(spacing: 8) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .stroke(Color.primary, lineWidth: 1.6)
-                        .frame(width: 19, height: 17)
-
-                    Text("\(max(state.tabs.count, 1))")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.primary)
-                }
+                tabCountBadge
+                    .frame(width: 20, height: 18)
 
                 Text("Tabs")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.primary)
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 13)
             .frame(height: NativeChromeMetrics.floatingCollapsedControlHeight)
             .background {
                 floatingChromeCapsule()
@@ -466,6 +515,20 @@ struct BottomChromeView: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var tabCountBadge: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6.5, style: .continuous)
+                .fill(Color.primary.opacity(0.09))
+
+            RoundedRectangle(cornerRadius: 6.5, style: .continuous)
+                .stroke(Color.primary.opacity(0.18), lineWidth: 0.8)
+
+            Text("\(max(state.tabs.count, 1))")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.primary)
+        }
     }
 }
 

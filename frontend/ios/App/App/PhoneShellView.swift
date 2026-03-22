@@ -3,7 +3,7 @@ import UIKit
 
 private let phoneShellDrawerDismissVelocityThreshold: CGFloat = 180
 private let phoneShellDrawerOpenThreshold: CGFloat = 0.42
-private let phoneShellContentCornerRadius: CGFloat = 28
+private let phoneShellContentCornerRadius: CGFloat = 44
 
 struct PhoneShellView: View {
     @ObservedObject var chromeState: TopChromeState
@@ -17,8 +17,10 @@ struct PhoneShellView: View {
             let safeTop = proxy.safeAreaInsets.top
             let revealHeight = resolvedDrawerRevealHeight(containerHeight: proxy.size.height, safeTop: safeTop)
             let progress = chromeState.drawerProgress
+            let visibleDrawerHeight = max(0, progress * revealHeight)
             let contentCornerRadius = phoneShellContentCornerRadius * progress
             let topOverlayReservedHeight: CGFloat = chromeState.isVisible ? max(52, safeTop + 8) : 0
+            let contentPanelShape = RoundedRectangle(cornerRadius: contentCornerRadius, style: .continuous)
 
             ZStack(alignment: .top) {
                 // Menu behind content
@@ -29,7 +31,9 @@ struct PhoneShellView: View {
                         onSelectNavItem(navItemId)
                     }
                 )
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .frame(height: visibleDrawerHeight + contentCornerRadius, alignment: .top)
+                .clipped()
                 .opacity(0.52 + 0.48 * progress)
                 .allowsHitTesting(progress > 0.001)
 
@@ -38,6 +42,7 @@ struct PhoneShellView: View {
                     BridgeControllerContainerView(controller: bridgeController)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding(.top, topOverlayReservedHeight)
+                        .background(LiquidGlassChromeView(progress: progress, cornerRadius: contentCornerRadius))
                         .ignoresSafeArea(edges: .all)
 
                     // Top chrome overlay
@@ -62,9 +67,15 @@ struct PhoneShellView: View {
                             .highPriorityGesture(contentDismissDragGesture(revealHeight: revealHeight))
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: contentCornerRadius, style: .continuous))
+                .clipShape(contentPanelShape)
+                .overlay {
+                    contentPanelShape
+                        .stroke(Color.white.opacity(0.42 * progress), lineWidth: 0.8)
+                        .opacity(progress)
+                }
                 .offset(y: progress * revealHeight)
-                .shadow(color: Color.black.opacity(0.16 * progress), radius: 18, x: 0, y: -3)
+                .shadow(color: Color.black.opacity(0.08 * progress), radius: 10, x: 0, y: 2)
+                .shadow(color: Color.black.opacity(0.12 * progress), radius: 18, x: 0, y: 8)
                 .ignoresSafeArea()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -77,8 +88,8 @@ struct PhoneShellView: View {
 
     private func resolvedDrawerRevealHeight(containerHeight: CGFloat, safeTop: CGFloat) -> CGFloat {
         let minimumHeight: CGFloat = 360
-        let preferredHeight = safeTop + 460
-        let maxHeight = containerHeight * 0.74
+        let preferredHeight = safeTop + 500
+        let maxHeight = containerHeight * 0.78
         return max(minimumHeight, min(preferredHeight, maxHeight))
     }
 
@@ -150,4 +161,84 @@ private struct BridgeControllerContainerView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+}
+
+// MARK: - Liquid Glass Chrome
+
+private struct LiquidGlassChromeView: View {
+    let progress: CGFloat
+    let cornerRadius: CGFloat
+
+    private var intensity: CGFloat { 1 - pow(1 - min(progress, 1), 2) }
+
+    var body: some View {
+        GeometryReader { geo in
+            let r = min(cornerRadius, geo.size.width / 2, geo.size.height / 2)
+
+            ZStack {
+                // Base blur material
+                Rectangle().fill(.ultraThinMaterial)
+
+                // Soft inner glow fading top-to-bottom
+                LinearGradient(
+                    stops: [
+                        .init(color: .white.opacity(0.20 * intensity), location: 0.00),
+                        .init(color: .white.opacity(0.05 * intensity), location: 0.55),
+                        .init(color: .clear,                           location: 1.00),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                // Chromatic fringe — blue-to-pink dispersion at the glass rim
+                VStack(spacing: 0) {
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color(red: 0.62, green: 0.88, blue: 1.00).opacity(0.26 * intensity), location: 0.0),
+                            .init(color: Color(red: 1.00, green: 0.92, blue: 0.96).opacity(0.08 * intensity), location: 0.5),
+                            .init(color: .clear, location: 1.0),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 14)
+                    .blur(radius: 1.5)
+                    Spacer()
+                }
+
+                // ── Symmetric top-edge specular ────────────────────────────
+                // Stroke the exact RoundedRectangle shape used for clipShape —
+                // this is mathematically symmetric on both sides by construction.
+                // The mask fades it out before reaching the straight bottom edge,
+                // so no artifacts appear at the lower corners.
+                RoundedRectangle(cornerRadius: r, style: .continuous)
+                    .stroke(Color.white, lineWidth: 2.5)
+                    .blur(radius: 3.5)
+                    .opacity(0.75 * intensity)
+                    .mask(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .black,              location: 0.00),
+                                .init(color: .black.opacity(0.65), location: 0.22),
+                                .init(color: .clear,              location: 0.52),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+
+                // ── Bottom seam shadow ─────────────────────────────────────
+                // Softens the hard boundary where frosted glass meets web content.
+                VStack(spacing: 0) {
+                    Spacer()
+                    LinearGradient(
+                        colors: [.clear, .black.opacity(0.11 * intensity)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 14)
+                }
+            }
+        }
+    }
 }
