@@ -41,17 +41,20 @@ private struct NativeTopDrawerSection: Identifiable {
 
 private let nativeTopDrawerSections: [NativeTopDrawerSection] = [
     NativeTopDrawerSection(id: "core", title: "Core", items: [
-        NativeTopDrawerItem(id: "/thinking-space", title: "Thinking Space", systemImage: "safari"),
-        NativeTopDrawerItem(id: "/new-thought", title: "New Note", systemImage: "plus.rectangle"),
+        NativeTopDrawerItem(id: "/thinking-space", title: "Thinking Space", systemImage: "compass"),
+        NativeTopDrawerItem(id: "/new-thought", title: "New Note", systemImage: "plus.square"),
         NativeTopDrawerItem(id: "/git-insights", title: "Insights", systemImage: "arrow.triangle.branch"),
-        NativeTopDrawerItem(id: "/chat", title: "AI", systemImage: "bubble.left.and.bubble.right"),
+        NativeTopDrawerItem(id: "/chat", title: "AI", systemImage: "message"),
         NativeTopDrawerItem(id: "/web", title: "Web", systemImage: "globe"),
-        NativeTopDrawerItem(id: "/webull", title: "F9", systemImage: "chart.line.uptrend.xyaxis"),
-        NativeTopDrawerItem(id: "/thinking-organizer", title: "Thinking Organizer", systemImage: "rectangle.3.group"),
+        NativeTopDrawerItem(id: "/webull", title: "Webull", systemImage: "waveform"),
+        NativeTopDrawerItem(id: "/thinking-organizer", title: "Thinking Organizer", systemImage: "folder"),
     ]),
     NativeTopDrawerSection(id: "workspace", title: "Workspace", items: [
         NativeTopDrawerItem(id: "/terminal", title: "Terminal", systemImage: "terminal"),
         NativeTopDrawerItem(id: "/settings", title: "Settings", systemImage: "gearshape"),
+    ]),
+    NativeTopDrawerSection(id: "search", title: "", items: [
+        NativeTopDrawerItem(id: "search", title: "Search", systemImage: "magnifyingglass"),
     ]),
 ]
 
@@ -99,79 +102,30 @@ struct TopDrawerMenuView: View {
     let onSelectNavItem: (String) -> Void
 
     var body: some View {
-        ZStack(alignment: .top) {
-            Color(uiColor: .systemBackground)
-                .ignoresSafeArea()
+        VStack(spacing: 0) {
+            Capsule()
+                .fill(Color.primary.opacity(0.18))
+                .frame(width: 36, height: 5)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
 
-            VStack(spacing: 0) {
-                // Drag handle
-                Capsule()
-                    .fill(Color.primary.opacity(0.18))
-                    .frame(width: 36, height: 5)
-                    .padding(.top, 8)
-                    .padding(.bottom, 16)
-
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 20) {
-                        ForEach(nativeTopDrawerSections) { section in
-                            drawerSection(section)
+            List {
+                ForEach(nativeTopDrawerSections) { section in
+                    Section(section.title.isEmpty ? "" : section.title) {
+                        ForEach(section.items) { item in
+                            let isActive = state.activeNavItemId == item.id
+                            Button(action: { onSelectNavItem(item.id) }) {
+                                Label(item.title, systemImage: item.systemImage)
+                            }
+                            .listRowBackground(isActive ? Color.accentColor.opacity(0.12) : nil)
+                            .foregroundStyle(isActive ? Color.accentColor : .primary)
                         }
-
-                        // Search row at the bottom
-                        drawerRow(
-                            NativeTopDrawerItem(id: "search", title: "Search", systemImage: "magnifyingglass")
-                        )
-                        .padding(.horizontal, 16)
                     }
-                    .padding(.bottom, 24)
                 }
             }
+            .listStyle(.insetGrouped)
         }
-    }
-
-    private func drawerSection(_ section: NativeTopDrawerSection) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(section.title.uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 2)
-
-            VStack(spacing: 0) {
-                ForEach(section.items) { item in
-                    drawerRow(item)
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-
-    private func drawerRow(_ item: NativeTopDrawerItem) -> some View {
-        let isActive = state.activeNavItemId == item.id
-
-        return Button(action: { onSelectNavItem(item.id) }) {
-            HStack(spacing: 10) {
-                Image(systemName: item.systemImage)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(isActive ? Color(uiColor: .systemBackground) : .primary)
-                    .frame(width: 20)
-
-                Text(item.title)
-                    .font(.system(size: 15, weight: isActive ? .semibold : .regular))
-                    .foregroundStyle(isActive ? Color(uiColor: .systemBackground) : .primary)
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isActive ? Color.primary : Color.clear)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(item.title)
+        .background(Color(uiColor: .systemGroupedBackground))
     }
 }
 
@@ -324,7 +278,7 @@ struct BottomChromeView: View {
             }
         } label: {
             ZStack(alignment: .topTrailing) {
-                Image(systemName: "wrench.and.screwdriver")
+                Image(systemName: "wrench")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(.primary)
                     .frame(width: NativeChromeMetrics.iconButtonSize, height: NativeChromeMetrics.iconButtonSize)
