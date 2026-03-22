@@ -16,10 +16,19 @@ final class RootShellViewController: UIViewController {
     private var bottomChromeHeightConstraint: NSLayoutConstraint?
 
     private lazy var topChromeHostingVC = UIHostingController(
-        rootView: TopChromeView(
+        rootView: TopChromeView(state: chromeState)
+    )
+
+    private lazy var bottomChromeHostingVC = UIHostingController(
+        rootView: BottomChromeView(
             state: chromeState,
             onMenuTap: { [weak self] in self?.chromePlugin?.emitMenuTap() },
+            onSidebarToggleTap: { [weak self] in self?.chromePlugin?.emitSidebarToggleTap() },
             onSearchTap: { [weak self] in self?.chromePlugin?.emitSearchTap() },
+            onCreateTap: { [weak self] in self?.chromePlugin?.emitCreateTap() },
+            onExpandTap: { [weak self] in self?.chromePlugin?.emitExpandBottomTap() },
+            onSelectTab: { [weak self] tabId in self?.chromePlugin?.emitSelectTab(tabId: tabId) },
+            onCloseTab: { [weak self] tabId in self?.chromePlugin?.emitCloseTab(tabId: tabId) },
             onDebugTap: { [weak self] in self?.chromePlugin?.emitOpenDebugTap() },
             onRefreshTap: { [weak self] in self?.chromePlugin?.emitRefreshTap() },
             onSyncTap: { [weak self] in self?.chromePlugin?.emitSyncTap() },
@@ -27,17 +36,6 @@ final class RootShellViewController: UIViewController {
             onGitCommitTap: { [weak self] in self?.chromePlugin?.emitGitCommitTap() },
             onGitPushTap: { [weak self] in self?.chromePlugin?.emitGitPushTap() },
             onHeaderToggleTap: { [weak self] in self?.chromePlugin?.emitHeaderToggleTap() }
-        )
-    )
-
-    private lazy var bottomChromeHostingVC = UIHostingController(
-        rootView: BottomChromeView(
-            state: chromeState,
-            onSidebarToggleTap: { [weak self] in self?.chromePlugin?.emitSidebarToggleTap() },
-            onCreateTap: { [weak self] in self?.chromePlugin?.emitCreateTap() },
-            onExpandTap: { [weak self] in self?.chromePlugin?.emitExpandBottomTap() },
-            onSelectTab: { [weak self] tabId in self?.chromePlugin?.emitSelectTab(tabId: tabId) },
-            onCloseTab: { [weak self] tabId in self?.chromePlugin?.emitCloseTab(tabId: tabId) }
         )
     )
 
@@ -219,11 +217,13 @@ final class RootShellViewController: UIViewController {
     }
 
     private func resolvedTopChromeHeight() -> CGFloat {
-        view.safeAreaInsets.top + (chromeState.isTopBarCollapsed ? 6 : 56)
+        // Minimal: just enough to cover the dynamic island / status bar
+        view.safeAreaInsets.top
     }
 
     private func resolvedTopChromeContentHeight() -> CGFloat {
-        chromeState.isTopBarCollapsed ? 33 : 52
+        // No interactive content — just the glass backdrop
+        0
     }
 
     private func resolvedBottomChromeHeight() -> CGFloat {
