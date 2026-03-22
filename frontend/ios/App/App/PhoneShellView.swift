@@ -1,9 +1,9 @@
 import SwiftUI
 import UIKit
 
-private let phoneShellDrawerDismissVelocityThreshold: CGFloat = 220
+private let phoneShellDrawerDismissVelocityThreshold: CGFloat = 180
 private let phoneShellDrawerOpenThreshold: CGFloat = 0.42
-private let phoneShellContentCornerRadius: CGFloat = 20
+private let phoneShellContentCornerRadius: CGFloat = 28
 
 struct PhoneShellView: View {
     @ObservedObject var chromeState: TopChromeState
@@ -30,7 +30,7 @@ struct PhoneShellView: View {
                     }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .opacity(0.4 + 0.6 * progress)
+                .opacity(0.52 + 0.48 * progress)
                 .allowsHitTesting(progress > 0.001)
 
                 // Main content that slides down
@@ -64,12 +64,12 @@ struct PhoneShellView: View {
                 }
                 .clipShape(RoundedRectangle(cornerRadius: contentCornerRadius, style: .continuous))
                 .offset(y: progress * revealHeight)
-                .shadow(color: Color.black.opacity(0.18 * progress), radius: 20, x: 0, y: -5)
+                .shadow(color: Color.black.opacity(0.16 * progress), radius: 18, x: 0, y: -3)
                 .ignoresSafeArea()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .clipped()
-            .animation(.easeInOut(duration: 0.22), value: chromeState.isVisible)
+            .animation(.easeOut(duration: 0.18), value: chromeState.isVisible)
         }
         .ignoresSafeArea()
         .background(Color(UIColor.systemGroupedBackground))
@@ -83,7 +83,7 @@ struct PhoneShellView: View {
     }
 
     private func closeDrawer() {
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+        withAnimation(.spring(response: 0.26, dampingFraction: 0.92)) {
             chromeState.drawerProgress = 0
         }
     }
@@ -136,7 +136,7 @@ struct PhoneShellView: View {
             shouldOpen = predictedProgress >= phoneShellDrawerOpenThreshold
         }
 
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+        withAnimation(.spring(response: 0.26, dampingFraction: 0.92)) {
             chromeState.drawerProgress = shouldOpen ? 1 : 0
         }
     }

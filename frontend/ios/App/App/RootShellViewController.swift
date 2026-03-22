@@ -228,7 +228,7 @@ final class RootShellViewController: UIViewController {
     }
 
     private func toggleDrawer() {
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+        withAnimation(.spring(response: 0.26, dampingFraction: 0.92)) {
             chromeState.drawerProgress = chromeState.drawerProgress > 0.01 ? 0 : 1
         }
     }

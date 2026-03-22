@@ -28,10 +28,14 @@ private func formatBadgeCount(_ count: Int) -> String {
     count > 99 ? "99+" : "\(max(0, count))"
 }
 
+private enum NativeTopDrawerIconStyle {
+    case symbol(String)
+}
+
 private struct NativeTopDrawerItem: Identifiable {
     let id: String
     let title: String
-    let systemImage: String
+    let iconStyle: NativeTopDrawerIconStyle
     let badgeColor: Color
 }
 
@@ -43,23 +47,68 @@ private struct NativeTopDrawerSection: Identifiable {
 
 private let nativeTopDrawerSections: [NativeTopDrawerSection] = [
     NativeTopDrawerSection(id: "core", title: "Core", items: [
-        NativeTopDrawerItem(id: "/", title: "Home", systemImage: "house", badgeColor: .blue),
-        NativeTopDrawerItem(id: "/thinking-space", title: "Thinking Space", systemImage: "safari", badgeColor: .cyan),
-        NativeTopDrawerItem(id: "/new-thought", title: "New Note", systemImage: "plus.rectangle", badgeColor: .green),
-        NativeTopDrawerItem(id: "/git-insights", title: "Insights", systemImage: "tuningfork", badgeColor: .orange),
-        NativeTopDrawerItem(id: "/chat", title: "AI", systemImage: "bubble.left", badgeColor: .purple),
-        NativeTopDrawerItem(id: "/web", title: "Web", systemImage: "globe", badgeColor: .blue),
-        NativeTopDrawerItem(id: "/webull", title: "F9", systemImage: "chart.xyaxis.line", badgeColor: .mint),
-        NativeTopDrawerItem(id: "/thinking-organizer", title: "Thinking Organizer", systemImage: "tablecells", badgeColor: .indigo),
+        NativeTopDrawerItem(id: "/", title: "Home", iconStyle: .symbol("house"), badgeColor: .blue),
+        NativeTopDrawerItem(id: "/thinking-space", title: "Thinking Space", iconStyle: .symbol("safari"), badgeColor: .cyan),
+        NativeTopDrawerItem(id: "/new-thought", title: "New Note", iconStyle: .symbol("plus.rectangle"), badgeColor: .green),
+        NativeTopDrawerItem(id: "/git-insights", title: "Insights", iconStyle: .symbol("tuningfork"), badgeColor: .orange),
+        NativeTopDrawerItem(id: "/chat", title: "AI", iconStyle: .symbol("bubble.left"), badgeColor: .purple),
+        NativeTopDrawerItem(id: "/web", title: "Web", iconStyle: .symbol("globe"), badgeColor: .blue),
+        NativeTopDrawerItem(id: "/webull", title: "F9", iconStyle: .symbol("chart.xyaxis.line"), badgeColor: .mint),
+        NativeTopDrawerItem(id: "/thinking-organizer", title: "Thinking Organizer", iconStyle: .symbol("tablecells"), badgeColor: .indigo),
     ]),
     NativeTopDrawerSection(id: "workspace", title: "Workspace", items: [
-        NativeTopDrawerItem(id: "/terminal", title: "Terminal", systemImage: "terminal", badgeColor: Color(UIColor.darkGray)),
-        NativeTopDrawerItem(id: "/settings", title: "Settings", systemImage: "gearshape", badgeColor: .gray),
+        NativeTopDrawerItem(id: "/terminal", title: "Terminal", iconStyle: .symbol("terminal"), badgeColor: Color(UIColor.darkGray)),
+        NativeTopDrawerItem(id: "/settings", title: "Settings", iconStyle: .symbol("gearshape"), badgeColor: .gray),
     ]),
     NativeTopDrawerSection(id: "search", title: "", items: [
-        NativeTopDrawerItem(id: "search", title: "Search", systemImage: "magnifyingglass", badgeColor: .pink),
+        NativeTopDrawerItem(id: "search", title: "Search", iconStyle: .symbol("magnifyingglass"), badgeColor: .pink),
     ]),
 ]
+
+private struct NativeTopDrawerRowView: View {
+    let item: NativeTopDrawerItem
+    let active: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                iconView
+
+                Text(item.title)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(Color.primary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.secondary.opacity(0.7))
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 58)
+            .background(active ? Color.accentColor.opacity(0.08) : Color.clear)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var iconView: some View {
+        switch item.iconStyle {
+        case .symbol(let systemImage):
+            Image(systemName: systemImage)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .background(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(item.badgeColor)
+                )
+        }
+    }
+}
 
 // MARK: - Top Chrome (minimal status bar cover)
 
@@ -106,9 +155,9 @@ struct TopDrawerMenuView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Title below safe area
             Text("Thinking Space")
-                .font(.system(size: 34, weight: .bold))
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.primary)
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
                 .padding(.bottom, 4)
@@ -117,27 +166,12 @@ struct TopDrawerMenuView: View {
                 ForEach(nativeTopDrawerSections) { section in
                     Section(section.title.isEmpty ? "" : section.title) {
                         ForEach(section.items) { item in
-                            Button(action: { onSelectNavItem(item.id) }) {
-                                HStack(spacing: 14) {
-                                    Image(systemName: item.systemImage)
-                                        .font(.system(size: 15, weight: .medium))
-                                        .foregroundColor(.white)
-                                        .frame(width: 30, height: 30)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                                .fill(item.badgeColor)
-                                        )
-
-                                    Text(item.title)
-                                        .foregroundStyle(.primary)
-
-                                    Spacer(minLength: 0)
-
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
+                            NativeTopDrawerRowView(
+                                item: item,
+                                active: state.activeNavItemId == item.id,
+                                action: { onSelectNavItem(item.id) }
+                            )
+                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                         }
                     }
                 }

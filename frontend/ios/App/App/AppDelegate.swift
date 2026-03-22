@@ -12,17 +12,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return true
     }
 
-    func applicationWillResignActive(_ application: UIApplication) {}
-    func applicationDidEnterBackground(_ application: UIApplication) {
-        // Dismiss any inline WKWebView overlay so it doesn't persist
-        // over the iOS app switcher or home screen.
-        if let vc = window?.rootViewController as? RootShellViewController {
-            vc.dismissInlineWebView()
-        }
+    // MARK: UISceneSession Lifecycle
+
+    func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+        config.delegateClass = SceneDelegate.self
+        config.storyboard = UIStoryboard(name: "Main", bundle: nil)
+        return config
     }
-    func applicationWillEnterForeground(_ application: UIApplication) {}
-    func applicationDidBecomeActive(_ application: UIApplication) {}
-    func applicationWillTerminate(_ application: UIApplication) {}
+
+    func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {}
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
@@ -31,6 +30,31 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
+}
+
+// MARK: - SceneDelegate
+
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+
+    var window: UIWindow?
+
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        guard let windowScene = scene as? UIWindowScene else { return }
+        // Window and root VC are created from Main.storyboard automatically
+        window?.windowScene = windowScene
+    }
+
+    func sceneWillResignActive(_ scene: UIScene) {}
+
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        if let vc = window?.rootViewController as? RootShellViewController {
+            vc.dismissInlineWebView()
+        }
+    }
+
+    func sceneWillEnterForeground(_ scene: UIScene) {}
+    func sceneDidBecomeActive(_ scene: UIScene) {}
+    func sceneDidDisconnect(_ scene: UIScene) {}
 }
 
 // MARK: - Custom Bridge ViewController
@@ -48,9 +72,6 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
     private var inlineWebViewPlugin: InlineWebViewPlugin?
     private var scrollObserver: NSKeyValueObservation?
     private var lastScrollOffset: CGFloat = 0
-    
-    // Debug view to visualize bottom gap
-    private var debugBottomView: UIView?
     
     // Scroll thresholds for chrome collapse behavior
     private let topChromeCollapseThreshold: CGFloat = 50
@@ -161,30 +182,6 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
             webView.frame = view.bounds
         }
         
-        // Add debug view to visualize any bottom gap
-        addDebugBottomView()
-    }
-    
-    private func addDebugBottomView() {
-        // Remove existing debug view
-        debugBottomView?.removeFromSuperview()
-        
-        // Create a bright red view that fills the entire bottom area
-        let debugView = UIView()
-        debugView.backgroundColor = .red
-        debugView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(debugView)
-        view.sendSubviewToBack(debugView) // Put it behind everything
-        
-        NSLayoutConstraint.activate([
-            debugView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            debugView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            debugView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            debugView.heightAnchor.constraint(equalToConstant: 200) // Large enough to see any gap
-        ])
-        
-        debugBottomView = debugView
-        print("[Chrome] 🔴 Added red debug view at bottom")
     }
     
     // WKScriptMessageHandler
