@@ -686,6 +686,7 @@ export default function ThinkingSpaceOrch() {
       RSS Feeds
     </button>
   )
+  const useTopRssExplorerToggle = isIPhoneIosSurface
 
   const inlineExplorerContent = useMemo(() => (
     <>
@@ -703,17 +704,17 @@ export default function ThinkingSpaceOrch() {
           <PanelLeftClose className="h-4 w-4" />
         </Button>
       </div>
+      {useTopRssExplorerToggle ? (
+        <div className="shrink-0 px-3 py-2">
+          {rssExplorerToggleButton}
+        </div>
+      ) : null}
       {rssPanelOpen ? (
-        <div className="min-h-0 flex flex-1 flex-col">
-          <div className="shrink-0 px-3 py-2">
-            {rssExplorerToggleButton}
-          </div>
-          <div className="min-h-0 flex-1">
-            <RssFeedPanelBlock
-              onOpenArticle={handleRssOpenArticle}
-              onClose={() => { setRssPanelOpen(false); setRssActiveArticle(null) }}
-            />
-          </div>
+        <div className="min-h-0 flex-1">
+          <RssFeedPanelBlock
+            onOpenArticle={handleRssOpenArticle}
+            onClose={() => { setRssPanelOpen(false); setRssActiveArticle(null) }}
+          />
         </div>
       ) : (
         <div className="min-h-0 flex-1">
@@ -741,12 +742,16 @@ export default function ThinkingSpaceOrch() {
             draggableFiles
             draggableFolders
             title=""
-            belowToolbarSlot={rssExplorerToggleButton}
           />
         </div>
       )}
+      {!useTopRssExplorerToggle ? (
+        <div className="shrink-0 border-t border-border/50 px-2 py-1.5">
+          {rssExplorerToggleButton}
+        </div>
+      ) : null}
     </>
-  ), [handleExplorerCreateCsvFile, inlinePath, rssExplorerToggleButton, rssPanelOpen, setInlinePathAndSyncUrl])
+  ), [handleExplorerCreateCsvFile, inlinePath, rssExplorerToggleButton, rssPanelOpen, setInlinePathAndSyncUrl, useTopRssExplorerToggle])
 
   const inlineDocumentContent = useMemo(() => {
     if (mountedInlinePaths.length === 0) return null
@@ -906,17 +911,17 @@ export default function ThinkingSpaceOrch() {
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
             </div>
+            {useTopRssExplorerToggle ? (
+              <div className="shrink-0 px-3 py-2">
+                {rssExplorerToggleButton}
+              </div>
+            ) : null}
             {rssPanelOpen ? (
-              <div className="min-h-0 flex flex-1 flex-col">
-                <div className="shrink-0 px-3 py-2">
-                  {rssExplorerToggleButton}
-                </div>
-                <div className="min-h-0 flex-1">
-                  <RssFeedPanelBlock
-                    onOpenArticle={handleRssOpenArticle}
-                    onClose={() => { setRssPanelOpen(false); setRssActiveArticle(null) }}
-                  />
-                </div>
+              <div className="min-h-0 flex-1">
+                <RssFeedPanelBlock
+                  onOpenArticle={handleRssOpenArticle}
+                  onClose={() => { setRssPanelOpen(false); setRssActiveArticle(null) }}
+                />
               </div>
             ) : (
               <div className="min-h-0 flex-1">
@@ -943,10 +948,14 @@ export default function ThinkingSpaceOrch() {
                   draggableFiles
                   draggableFolders
                   title=""
-                  belowToolbarSlot={rssExplorerToggleButton}
                 />
               </div>
             )}
+            {!useTopRssExplorerToggle ? (
+              <div className="shrink-0 border-t border-border/50 px-2 py-1.5">
+                {rssExplorerToggleButton}
+              </div>
+            ) : null}
           </aside>
         </>
       )}

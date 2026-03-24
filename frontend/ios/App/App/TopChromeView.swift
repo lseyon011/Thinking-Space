@@ -30,6 +30,10 @@ private enum NativeTopDrawerMetrics {
     static let dividerInset: CGFloat = 50
 }
 
+private func nativeTopDrawerSectionShape() -> RoundedRectangle {
+    RoundedRectangle(cornerRadius: NativeTopDrawerMetrics.sectionCornerRadius, style: .continuous)
+}
+
 private func resolvedNativeTopDrawerSafeAreaTopInset() -> CGFloat {
     UIApplication.shared.connectedScenes
         .compactMap { $0 as? UIWindowScene }
@@ -100,15 +104,15 @@ private struct NativeTopDrawerRowView: View {
     }
 
     private var rowForegroundColor: Color {
-        .primary
+        Color.primary.opacity(0.9)
     }
 
     private var rowChevronColor: Color {
-        .secondary.opacity(0.7)
+        Color.primary.opacity(0.42)
     }
 
     private var iconBackgroundColor: Color {
-        active ? item.badgeColor : Color(UIColor.systemBackground)
+        active ? item.badgeColor : Color.white.opacity(0.14)
     }
 
     private var iconForegroundColor: Color {
@@ -116,7 +120,7 @@ private struct NativeTopDrawerRowView: View {
     }
 
     private var iconStrokeColor: Color {
-        active ? item.badgeColor : .black.opacity(0.1)
+        active ? item.badgeColor : Color.white.opacity(0.28)
     }
 
     var body: some View {
@@ -183,12 +187,20 @@ private struct NativeTopDrawerSectionCardView: View {
                 }
             }
         }
-        .background(Color(UIColor.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: NativeTopDrawerMetrics.sectionCornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: NativeTopDrawerMetrics.sectionCornerRadius, style: .continuous)
-                .stroke(Color.primary.opacity(NativeTopDrawerMetrics.sectionStrokeOpacity), lineWidth: 0.75)
-        )
+        .background {
+            nativeTopDrawerSectionShape()
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    nativeTopDrawerSectionShape()
+                        .fill(Color.white.opacity(0.08))
+                }
+        }
+        .clipShape(nativeTopDrawerSectionShape())
+        .overlay {
+            nativeTopDrawerSectionShape()
+                .stroke(Color.white.opacity(0.34), lineWidth: 0.8)
+        }
+        .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: 8)
     }
 }
 
@@ -243,7 +255,7 @@ struct TopDrawerMenuView: View {
                 LazyVStack(alignment: .leading, spacing: NativeTopDrawerMetrics.sectionSpacing) {
                     Text("Thinking Space")
                         .font(.system(size: 34, weight: .bold))
-                        .foregroundStyle(Color.primary)
+                        .foregroundStyle(Color.primary.opacity(0.92))
                         .padding(.bottom, 2)
 
                     ForEach(nativeTopDrawerSections) { section in
@@ -251,7 +263,7 @@ struct TopDrawerMenuView: View {
                             if !section.title.isEmpty {
                                 Text(section.title)
                                     .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(Color.secondary)
+                                    .foregroundStyle(Color.primary.opacity(0.42))
                                     .padding(.horizontal, 2)
                             }
 
@@ -270,7 +282,34 @@ struct TopDrawerMenuView: View {
                 .padding(.bottom, 28)
             }
         }
-        .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
+        .background {
+            ZStack {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .opacity(0.82)
+
+                LinearGradient(
+                    stops: [
+                        .init(color: Color.white.opacity(0.22), location: 0.0),
+                        .init(color: Color.white.opacity(0.08), location: 0.3),
+                        .init(color: Color.clear, location: 0.85),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                LinearGradient(
+                    stops: [
+                        .init(color: Color(red: 0.86, green: 0.9, blue: 1.0).opacity(0.16), location: 0.0),
+                        .init(color: Color(red: 1.0, green: 0.95, blue: 0.98).opacity(0.08), location: 0.38),
+                        .init(color: Color.clear, location: 1.0),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+            .ignoresSafeArea()
+        }
     }
 }
 

@@ -821,7 +821,7 @@ export default function VaultExplorerBlock({
               ref={bindRowRef('folder', folderPath)}
               className={cn(
                 'ltm-explorer-row ltm-explorer-folder-row ltm-touch-row group flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/90 transition-colors hover:bg-muted/70',
-                inSelectionTrail && 'border border-border/60 bg-muted/85 text-foreground hover:bg-muted/90',
+                inSelectionTrail && 'bg-[#e8eaee] text-foreground hover:bg-[#e8eaee]',
                 expanded && !inSelectionTrail && 'bg-muted/50',
                 canDropOnRows && dropOverPath === folderPath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
               )}
