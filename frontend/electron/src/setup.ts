@@ -5,8 +5,8 @@ import {
   setupCapacitorElectronPlugins,
 } from '@capacitor-community/electron';
 import chokidar from 'chokidar';
-import type { MenuItemConstructorOptions, Session, WebContents } from 'electron';
-import { app, BrowserWindow, clipboard, Menu, MenuItem, nativeImage, Tray, session, shell } from 'electron';
+import type { MenuItemConstructorOptions, Rectangle, Session, WebContents } from 'electron';
+import { app, BrowserWindow, clipboard, Menu, MenuItem, nativeImage, screen, Tray, session, shell } from 'electron';
 import electronIsDev from 'electron-is-dev';
 import electronServe from 'electron-serve';
 import windowStateKeeper from 'electron-window-state';
@@ -21,6 +21,70 @@ const reloadWatcher = {
 };
 
 const MAC_TRAFFIC_LIGHT_POSITION = { x: 14, y: 14 };
+const DEFAULT_WINDOW_WIDTH = 1400;
+const DEFAULT_WINDOW_HEIGHT = 900;
+const MIN_WINDOW_WIDTH = 960;
+const MIN_WINDOW_HEIGHT = 640;
+
+interface PersistedWindowStateBlock {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}
+
+interface SafeWindowBoundsBlock {
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+}
+
+function isFiniteNumberBlock(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function clampNumberBlock(value: number, min: number, max: number): number {
+  if (max <= min) return min;
+  return Math.min(Math.max(value, min), max);
+}
+
+function rectsIntersectBlock(left: Rectangle, right: Rectangle): boolean {
+  return left.x < right.x + right.width
+    && left.x + left.width > right.x
+    && left.y < right.y + right.height
+    && left.y + left.height > right.y;
+}
+
+function pickDisplayForBoundsBlock(bounds: Rectangle) {
+  const displays = screen.getAllDisplays();
+  const exactMatch = displays.find((display) => rectsIntersectBlock(bounds, display.workArea));
+  return exactMatch ?? screen.getPrimaryDisplay();
+}
+
+function resolveSafeWindowBoundsBlock(
+  state: PersistedWindowStateBlock,
+  defaults: { width: number; height: number },
+): SafeWindowBoundsBlock {
+  const primaryWorkArea = screen.getPrimaryDisplay().workArea;
+  const desiredWidth = isFiniteNumberBlock(state.width) ? state.width : defaults.width;
+  const desiredHeight = isFiniteNumberBlock(state.height) ? state.height : defaults.height;
+  const width = clampNumberBlock(desiredWidth, MIN_WINDOW_WIDTH, primaryWorkArea.width);
+  const height = clampNumberBlock(desiredHeight, MIN_WINDOW_HEIGHT, primaryWorkArea.height);
+
+  if (isFiniteNumberBlock(state.x) && isFiniteNumberBlock(state.y)) {
+    const desiredBounds = { x: state.x, y: state.y, width, height };
+    const workArea = pickDisplayForBoundsBlock(desiredBounds).workArea;
+    return {
+      width: Math.min(width, workArea.width),
+      height: Math.min(height, workArea.height),
+      x: clampNumberBlock(state.x, workArea.x, workArea.x + Math.max(0, workArea.width - width)),
+      y: clampNumberBlock(state.y, workArea.y, workArea.y + Math.max(0, workArea.height - height)),
+    };
+  }
+
+  return { width, height };
+}
 
 function resolveContextMenuOwnerWindowBlock(targetContents: WebContents): BrowserWindow | undefined {
   const guestHostContents = (targetContents as WebContents & { hostWebContents?: WebContents }).hostWebContents;
@@ -443,8 +507,8 @@ export class ElectronCapacitorApp {
     const icon = this.createAppIcon();
     const preloadPath = join(app.getAppPath(), 'build', 'src', 'preload.js');
     const winState = windowStateKeeper({
-      defaultWidth: 1400,
-      defaultHeight: 900,
+      defaultWidth: DEFAULT_WINDOW_WIDTH,
+      defaultHeight: DEFAULT_WINDOW_HEIGHT,
     });
 
     // Cascade new windows 32px down-right from the frontmost existing window
@@ -458,14 +522,20 @@ export class ElectronCapacitorApp {
       spawnX = fx + CASCADE_OFFSET;
       spawnY = fy + CASCADE_OFFSET;
     }
+    const safeBounds = resolveSafeWindowBoundsBlock(
+      {
+        x: spawnX,
+        y: spawnY,
+        width: winState.width,
+        height: winState.height,
+      },
+      { width: DEFAULT_WINDOW_WIDTH, height: DEFAULT_WINDOW_HEIGHT },
+    );
 
     const newWindow = new BrowserWindow({
       icon,
       show: false,
-      x: spawnX,
-      y: spawnY,
-      width: winState.width,
-      height: winState.height,
+      ...safeBounds,
       autoHideMenuBar: this.shouldHideNativeMenuBar(),
       ...this.getWindowChromeOptions(),
       webPreferences: {
@@ -531,18 +601,19 @@ export class ElectronCapacitorApp {
       app.dock?.setIcon(icon);
     }
     this.mainWindowState = windowStateKeeper({
-      defaultWidth: 1400,
-      defaultHeight: 900,
+      defaultWidth: DEFAULT_WINDOW_WIDTH,
+      defaultHeight: DEFAULT_WINDOW_HEIGHT,
+    });
+    const safeMainWindowBounds = resolveSafeWindowBoundsBlock(this.mainWindowState, {
+      width: DEFAULT_WINDOW_WIDTH,
+      height: DEFAULT_WINDOW_HEIGHT,
     });
     // Setup preload script path and construct our main window.
     const preloadPath = join(app.getAppPath(), 'build', 'src', 'preload.js');
     const mainWindow = new BrowserWindow({
       icon,
       show: false,
-      x: this.mainWindowState.x,
-      y: this.mainWindowState.y,
-      width: this.mainWindowState.width,
-      height: this.mainWindowState.height,
+      ...safeMainWindowBounds,
       autoHideMenuBar: this.shouldHideNativeMenuBar(),
       ...this.getWindowChromeOptions(),
       webPreferences: {

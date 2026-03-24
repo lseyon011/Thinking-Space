@@ -14,9 +14,15 @@ import {
   deleteNodeByPath,
   getAllFilePaths,
   clearAll,
+  clearAllLinks,
   getNodeCount,
+  bulkUpsertLinks,
+  replaceLinksForFile,
+  deleteLinksForFile,
   type NodeRecord,
+  type LinkRecord,
 } from '@/services/lego_blocks/integrations/dbBlock'
+import { extractLinksFromContentBlock } from '@/services/lego_blocks/units/linkIndexBlock'
 
 // ── Types ──
 
@@ -63,9 +69,11 @@ export async function fullSync(fs?: VaultFS, options?: VaultSyncOptions): Promis
   const start = Date.now()
 
   await clearAll()
+  await clearAllLinks()
 
   const entries = await vaultFs.walkVault(['.md'])
-  const result = await syncEntries(vaultFs, entries, options)
+  const candidatePaths = entries.map(e => e.path)
+  const result = await syncEntries(vaultFs, entries, options, candidatePaths)
 
   result.durationMs = Date.now() - start
   return result
@@ -96,11 +104,13 @@ export async function incrementalSync(
   for (const cachedPath of cachedPaths) {
     if (!currentPaths.has(cachedPath)) {
       await deleteNodeByPath(cachedPath)
+      await deleteLinksForFile(cachedPath)
       deletedCount++
     }
   }
 
-  const result = await syncEntries(vaultFs, updatedEntries, options)
+  const candidatePaths = allEntries.map(e => e.path)
+  const result = await syncEntries(vaultFs, updatedEntries, options, candidatePaths)
   result.deletedNodes = deletedCount
   result.totalFiles = allEntries.length
   result.durationMs = Date.now() - start
@@ -132,6 +142,18 @@ export async function syncSingleFile(
 
     const record = frontmatterToRecord(note.frontmatter, filePath, note.body)
     await upsertNode(record)
+
+    // Update link index for this file
+    const candidatePaths = await getAllFilePaths()
+    const links = extractLinksFromContentBlock(content, filePath, [...candidatePaths])
+    const linkRecords: Omit<LinkRecord, 'id'>[] = links.map(l => ({
+      sourceFilePath: filePath,
+      targetFilePath: l.targetFilePath,
+      linkType: l.linkType,
+      rawText: l.rawText,
+    }))
+    await replaceLinksForFile(filePath, linkRecords)
+
     return true
   } catch {
     return false
@@ -195,10 +217,13 @@ export async function smartSync(fs?: VaultFS, options?: VaultSyncOptions): Promi
 
 // ── Internals ──
 
+const LINK_BATCH_SIZE = 500
+
 async function syncEntries(
   fs: VaultFS,
   entries: VaultEntry[],
   options?: VaultSyncOptions,
+  candidatePaths?: string[],
 ): Promise<SyncResult> {
   const maxFileSizeBytes = resolveMaxSyncFileSizeBytes(options)
   const result: SyncResult = {
@@ -208,6 +233,28 @@ async function syncEntries(
     deletedNodes: 0,
     errors: [],
     durationMs: 0,
+  }
+
+  const allCandidatePaths = candidatePaths ?? entries.map(e => e.path)
+  const pendingLinks: Omit<LinkRecord, 'id'>[] = []
+  const isFullSync = candidatePaths !== undefined
+
+  async function flushLinks() {
+    if (pendingLinks.length === 0) return
+    if (isFullSync) {
+      await bulkUpsertLinks(pendingLinks.splice(0))
+    } else {
+      // For incremental sync, replace per-file
+      const bySource = new Map<string, Omit<LinkRecord, 'id'>[]>()
+      for (const link of pendingLinks.splice(0)) {
+        const existing = bySource.get(link.sourceFilePath)
+        if (existing) existing.push(link)
+        else bySource.set(link.sourceFilePath, [link])
+      }
+      for (const [source, links] of bySource) {
+        await replaceLinksForFile(source, links)
+      }
+    }
   }
 
   for (const entry of entries) {
@@ -233,6 +280,21 @@ async function syncEntries(
       const record = frontmatterToRecord(note.frontmatter, entry.path, note.body)
       await upsertNode(record)
       result.parsedNodes++
+
+      // Extract links for the index
+      const extracted = extractLinksFromContentBlock(content, entry.path, allCandidatePaths)
+      for (const link of extracted) {
+        pendingLinks.push({
+          sourceFilePath: entry.path,
+          targetFilePath: link.targetFilePath,
+          linkType: link.linkType,
+          rawText: link.rawText,
+        })
+      }
+
+      if (pendingLinks.length >= LINK_BATCH_SIZE) {
+        await flushLinks()
+      }
     } catch (err) {
       result.errors.push({
         path: entry.path,
@@ -240,6 +302,9 @@ async function syncEntries(
       })
     }
   }
+
+  // Flush remaining links
+  await flushLinks()
 
   return result
 }

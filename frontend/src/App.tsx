@@ -366,6 +366,18 @@ function getTabLabel(route: string, labelByPath: Map<string, string>, chatLabel?
   return labelByPath.get(pathname) ?? 'Workspace'
 }
 
+function resolvePreferredSameRouteTabLabel(pathname: string, cachedLabel: string | undefined, derivedLabel: string): string {
+  const trimmedCachedLabel = cachedLabel?.trim()
+  const genericLabel = pathname === '/chat'
+    ? 'AI'
+    : (pathname === '/web' ? 'Web' : null)
+
+  if (!genericLabel) return trimmedCachedLabel || derivedLabel
+  if (trimmedCachedLabel && trimmedCachedLabel !== genericLabel) return trimmedCachedLabel
+  if (derivedLabel !== genericLabel) return derivedLabel
+  return trimmedCachedLabel || derivedLabel
+}
+
 function buildThinkingSpaceFileRoute(path: string): string {
   return `/thinking-space?file=${encodeURIComponent(path)}`
 }
@@ -504,7 +516,7 @@ function App() {
   const nativeChromeScrollTargetRef = useRef<EventTarget | null>(null)
   const nativeChromeLastScrollTopRef = useRef(0)
   const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
-  const activeWorkspaceTabIdRef = useRef(activeWorkspaceTabId)
+  const activeWorkspaceTabIdRef = useRef(getStorageItem(STORAGE_KEYS.appShellActiveTabId) ?? '')
   const currentRouteRef = useRef(currentRoute)
   const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerPanelSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -714,8 +726,12 @@ function App() {
     [activeWorkspaceTabDisplayRoute, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, webSidebarChromeState.siteLabels, webullTabLabel],
   )
   const activeWorkspaceTabLabel = useMemo(
-    () => activeWorkspaceTab?.label?.trim() || derivedActiveWorkspaceTabLabel,
-    [activeWorkspaceTab?.label, derivedActiveWorkspaceTabLabel],
+    () => resolvePreferredSameRouteTabLabel(
+      parseTabRoute(activeWorkspaceTabDisplayRoute).pathname,
+      activeWorkspaceTab?.label,
+      derivedActiveWorkspaceTabLabel,
+    ),
+    [activeWorkspaceTab?.label, activeWorkspaceTabDisplayRoute, derivedActiveWorkspaceTabLabel],
   )
   const nativeTopDrawerActiveNavItemId = useMemo(() => {
     if (location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer') {
@@ -1984,7 +2000,7 @@ function App() {
       }
       const pathname = parseTabRoute(normalizedCurrentRoute).pathname
       const nextLabel = pathname === '/chat' || pathname === '/web'
-        ? prev[index].label
+        ? resolvePreferredSameRouteTabLabel(pathname, prev[index].label, derivedActiveWorkspaceTabLabel)
         : derivedActiveWorkspaceTabLabel
       if (prev[index].route === normalizedCurrentRoute && prev[index].label === nextLabel) return prev
       const next = prev.slice()

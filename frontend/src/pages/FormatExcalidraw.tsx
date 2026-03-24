@@ -29,7 +29,7 @@ export default function FormatExcalidraw() {
   useEffect(() => {
     invokeCapabilityOrThrow({
       capability: 'tools.files.list_markdown',
-      input: { limit: 1000 },
+      input: {},
       actor: FORMAT_ACTOR,
     })
       .then(({ files }) => setFiles(files))

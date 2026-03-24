@@ -1193,7 +1193,7 @@ export default function VaultExplorerBlock({
       {contextMenu && (
         <div
           ref={contextMenuRef}
-          className="fixed z-[90] min-w-[220px] rounded-lg border border-border bg-background/95 p-1 shadow-2xl backdrop-blur-sm"
+          className="context-menu-surface fixed z-[90] min-w-[220px] rounded-lg border border-border/80 bg-background/95 p-[5px] shadow-2xl backdrop-blur-xl"
           style={contextMenuStyle}
           role="menu"
         >
@@ -1216,12 +1216,15 @@ export default function VaultExplorerBlock({
               <button
                 type="button"
                 className={cn(
-                  'flex w-full items-center rounded-md px-2 py-1.5 text-left text-xs',
-                  disabled && 'cursor-not-allowed opacity-50',
-                  !disabled && !destructive && 'text-foreground hover:bg-muted',
-                  !disabled && destructive && 'text-destructive hover:bg-destructive/10',
+                  'context-menu-item flex w-full appearance-none items-center rounded-[5px] px-2.5 py-[5px] text-left text-xs leading-4 select-none outline-none',
+                  disabled && 'cursor-not-allowed opacity-40',
+                  !disabled && !destructive && 'text-foreground',
+                  !disabled && destructive && 'text-destructive',
                 )}
                 onClick={onClick}
+                onMouseDown={(event) => {
+                  if (!disabled) event.preventDefault()
+                }}
                 disabled={disabled}
                 role="menuitem"
               >
@@ -1276,7 +1279,7 @@ export default function VaultExplorerBlock({
                 />
                 {!showFileActions && (
                   <>
-                    <div className="my-1 border-t border-border/70" />
+                    <div className="context-menu-divider my-1 border-t border-border/70" />
                     <MenuItem
                       label="Delete Folder"
                       onClick={() => { void runContextAction(onDeleteFolder ? () => onDeleteFolder(filePath) : undefined, { refreshPath: getParentPath(filePath) }) }}
@@ -1292,7 +1295,7 @@ export default function VaultExplorerBlock({
                 )}
                 {showFileActions && (
                   <>
-                    <div className="my-1 border-t border-border/70" />
+                    <div className="context-menu-divider my-1 border-t border-border/70" />
                     <MenuItem
                       label="Open in New Tab"
                       onClick={() => { void runContextAction(onOpenInNewTab ? () => onOpenInNewTab(filePath) : undefined) }}

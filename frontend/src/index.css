@@ -392,7 +392,7 @@
   }
 
   .ltm-shell-top-tab-capsule {
-    width: min(100%, 880px);
+    width: min(100%, 960px);
     margin-inline: auto;
   }
 
@@ -725,20 +725,40 @@
   }
 
   .ltm-shell-tabs .ltm-tab-item {
+    position: relative;
     touch-action: manipulation;
     transition:
       opacity var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
       background-color var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
-      border-color var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1));
+      border-color var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1)),
+      color var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1));
+    border: 0;
+    box-shadow: none;
   }
 
   .ltm-shell-tabs .ltm-tab-item.ltm-tab-active {
     box-shadow: none;
   }
 
+  .ltm-shell-tabs .ltm-tab-slot {
+    flex: 0 0 auto;
+    scroll-snap-align: center;
+  }
+
+  .ltm-shell-tabs .ltm-tab-separator {
+    width: 1px;
+    background: hsl(var(--border) / 0.52);
+    transition: opacity var(--ltm-anim-fast, 100ms) var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1));
+  }
+
   .ltm-tab-scroll-track {
     -ms-overflow-style: none;
     scrollbar-width: none;
+    overscroll-behavior-x: contain;
+    overflow-y: hidden;
+    scroll-behavior: smooth;
+    scroll-padding-inline: 1.25rem;
+    scroll-snap-type: x proximity;
   }
 
   .ltm-tab-scroll-track::-webkit-scrollbar {
@@ -1061,4 +1081,44 @@
   .animate-slide-in {
     animation: none !important;
   }
+}
+
+/* ── macOS-style context menu ── */
+
+.context-menu-surface {
+  animation: ltm-menu-in 140ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: top left;
+  box-shadow:
+    0 18px 46px hsl(222 45% 8% / 0.28),
+    0 3px 14px hsl(222 45% 8% / 0.16);
+}
+
+.context-menu-divider {
+  opacity: 0.75;
+}
+
+.context-menu-item {
+  transition:
+    background-color 90ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 90ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 110ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 90ms cubic-bezier(0.22, 1, 0.36, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.context-menu-item:not(:disabled):hover,
+.context-menu-item:not(:disabled):focus-visible {
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.context-menu-item:not(:disabled).text-destructive:hover,
+.context-menu-item:not(:disabled).text-destructive:focus-visible {
+  background-color: hsl(0 72% 51%);
+  color: #fff;
+}
+
+.context-menu-item:not(:disabled):active {
+  transform: scale(0.985);
+  opacity: 0.92;
 }

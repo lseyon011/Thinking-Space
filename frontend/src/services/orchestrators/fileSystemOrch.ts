@@ -9,6 +9,18 @@ import {
   resolveWikilinkPathBlock,
   splitTextByWikilinksBlock,
 } from '@/services/lego_blocks/integrations/obsidianWikilinkBlock'
+import {
+  splitFrontmatterDocumentBlock,
+  isLikelyYamlPathScalarBlock,
+  findYamlCommentStartIndexBlock,
+} from '@/services/lego_blocks/units/linkIndexBlock'
+import {
+  getBacklinksForPathPrefix,
+  getAllFilePaths,
+  updateLinkTargets,
+  updateLinkSourcePaths,
+} from '@/services/lego_blocks/integrations/dbBlock'
+import { syncSingleFile } from './vaultSyncOrch'
 import { getStoredVaultRoot } from './storageOrch'
 import { isCapacitorNative, isElectron } from './runtimeOrch'
 
@@ -215,72 +227,8 @@ function formatMarkdownLinkPathLikeOriginal(
   return rewritten
 }
 
-function splitFrontmatterDocumentBlock(content: string): { frontmatter: string; body: string } {
-  const openMatch = content.match(/^---(\r?\n)/)
-  if (!openMatch) return { frontmatter: '', body: content }
-
-  const lineBreak = openMatch[1]
-  const start = openMatch[0].length
-  const closeToken = `${lineBreak}---`
-  const closeIndex = content.indexOf(closeToken, start)
-  if (closeIndex < 0) return { frontmatter: '', body: content }
-
-  let frontmatterEnd = closeIndex + closeToken.length
-  if (content.startsWith(lineBreak, frontmatterEnd)) {
-    frontmatterEnd += lineBreak.length
-  }
-  return {
-    frontmatter: content.slice(0, frontmatterEnd),
-    body: content.slice(frontmatterEnd),
-  }
-}
-
-function isLikelyYamlPathScalarBlock(value: string): boolean {
-  const trimmed = value.trim()
-  if (!trimmed) return false
-  if (/^(true|false|null|~|yes|no|on|off)$/i.test(trimmed)) return false
-  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return false
-  if (trimmed.startsWith('|') || trimmed.startsWith('>')) return false
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return false
-  if (trimmed.startsWith('&') || trimmed.startsWith('*') || trimmed.startsWith('!')) return false
-  if (trimmed.includes('[[') || trimmed.includes('](') || trimmed.includes('{{')) return false
-
-  return (
-    trimmed.startsWith('./')
-    || trimmed.startsWith('../')
-    || trimmed.startsWith('/')
-    || trimmed.includes('/')
-    || /\.[A-Za-z0-9]{1,8}$/i.test(trimmed)
-  )
-}
-
-function findYamlCommentStartIndexBlock(value: string): number {
-  let inSingle = false
-  let inDouble = false
-
-  for (let i = 0; i < value.length; i += 1) {
-    const ch = value[i]
-    if (ch === '\'' && !inDouble) {
-      const next = value[i + 1]
-      if (inSingle && next === '\'') {
-        i += 1
-        continue
-      }
-      inSingle = !inSingle
-      continue
-    }
-    if (ch === '"' && !inSingle) {
-      const prev = value[i - 1]
-      if (prev !== '\\') inDouble = !inDouble
-      continue
-    }
-    if (ch === '#' && !inSingle && !inDouble) {
-      if (i === 0 || /\s/.test(value[i - 1] ?? '')) return i
-    }
-  }
-
-  return -1
-}
+// splitFrontmatterDocumentBlock, isLikelyYamlPathScalarBlock, findYamlCommentStartIndexBlock
+// are now imported from @/services/lego_blocks/units/linkIndexBlock
 
 function resolveYamlScalarAbsolutePathBlock(
   rawValue: string,
@@ -510,38 +458,54 @@ export async function rewriteMovedPathReferencesOrch(
     return { updatedFiles: 0 }
   }
 
-  const fs = getVaultFS()
-  const markdownEntries = await listMarkdownEntries()
-  const markdownPathsAfterMove = markdownEntries
-    .map((entry) => normalizeLinkPath(entry.path))
-    .filter(Boolean)
+  // Query the link index to find only files that reference the moved path
+  const backlinks = await getBacklinksForPathPrefix(normalizedSourcePath)
+  const affectedFiles = [...new Set(backlinks.map(l => l.sourceFilePath))]
+
+  if (affectedFiles.length === 0) {
+    // Still update the link index paths even if no content rewriting needed
+    await updateLinkTargets(normalizedSourcePath, normalizedTargetPath)
+    await updateLinkSourcePaths(normalizedSourcePath, normalizedTargetPath)
+    return { updatedFiles: 0 }
+  }
+
+  // Build candidate paths for link resolution (need pre-move paths)
+  const allPaths = await getAllFilePaths()
+  const markdownPathsAfterMove = [...allPaths]
   const candidatePathsBeforeMove = [...new Set(markdownPathsAfterMove.map(
     (path) => reverseRemapMovedPath(path, normalizedSourcePath, normalizedTargetPath),
   ))]
 
+  const fs = getVaultFS()
   let updatedFiles = 0
-  for (const entry of markdownEntries) {
-    const markdownPath = normalizeLinkPath(entry.path)
-    if (!markdownPath) continue
-
+  for (const filePath of affectedFiles) {
     let content: string
     try {
-      content = await fs.read(markdownPath)
+      content = await fs.read(filePath)
     } catch {
       continue
     }
 
     const rewritten = rewriteMovedPathReferencesInMarkdown(
       content,
-      markdownPath,
+      filePath,
       normalizedSourcePath,
       normalizedTargetPath,
       candidatePathsBeforeMove,
     )
     if (rewritten === content) continue
 
-    await fs.write(markdownPath, rewritten)
+    await fs.write(filePath, rewritten)
     updatedFiles += 1
+  }
+
+  // Update the link index to reflect the path changes
+  await updateLinkTargets(normalizedSourcePath, normalizedTargetPath)
+  await updateLinkSourcePaths(normalizedSourcePath, normalizedTargetPath)
+
+  // Re-index affected files to refresh their link records with new content
+  for (const filePath of affectedFiles) {
+    await syncSingleFile(filePath).catch(() => {})
   }
 
   return { updatedFiles }
@@ -669,14 +633,18 @@ export async function getFileStats(paths: string[]): Promise<FileStat[]> {
   return results
 }
 
-export async function listFiles(limit = 1000): Promise<string[]> {
+export async function listFiles(limit?: number): Promise<string[]> {
   const fs = getVaultFS()
-  const entries = await fs.walkVault(['.md'])
-  return entries
+  const files = (await fs.walkVault(['.md']))
     .map(e => e.path)
     .filter(p => !p.includes('.excalidraw'))
     .sort()
-    .slice(0, limit)
+
+  if (typeof limit === 'number' && Number.isFinite(limit) && limit >= 0) {
+    return files.slice(0, limit)
+  }
+
+  return files
 }
 
 export async function listFolders(limit = 1000): Promise<string[]> {

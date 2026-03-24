@@ -10,6 +10,7 @@ import type {
   YAMLCommentEntry,
   YAMLStateHistoryEntry,
 } from '@/services/lego_blocks/units/yamlNoteBlock'
+import type { LinkType } from '@/services/lego_blocks/units/linkIndexBlock'
 
 // ── Types ──
 
@@ -65,10 +66,19 @@ export interface NodeRecord {
   bodyExcerpt?: string     // first ~200 chars of body for search
 }
 
+export interface LinkRecord {
+  id?: number
+  sourceFilePath: string
+  targetFilePath: string
+  linkType: LinkType
+  rawText: string
+}
+
 // ── Database ──
 
 class ThinkingSpaceDB extends Dexie {
   nodes!: Table<NodeRecord>
+  links!: Table<LinkRecord>
 
   constructor() {
     super('ThinkingSpaceDB')
@@ -83,6 +93,10 @@ class ThinkingSpaceDB extends Dexie {
         const normalized = normalizeRecordForStorage(raw)
         Object.assign(raw, normalized)
       })
+    })
+    this.version(3).stores({
+      nodes: '++id, &uuid, &key, type, parent, parentUuid, filePath, updatedAt, status, taskStatus, owner, runId, sessionId, recordKind, *tags, *dependsOn, *blockedBy, *relatedNodes, *metadataKeys',
+      links: '++id, sourceFilePath, targetFilePath, linkType',
     })
   }
 }
@@ -314,6 +328,124 @@ export async function deleteDb(): Promise<void> {
     _db = null
   }
   await Dexie.delete('ThinkingSpaceDB')
+}
+
+// ── Link Index API ──
+
+/**
+ * Replace all links for a source file (atomic delete + insert).
+ * Used after parsing a file to update its link records.
+ */
+export async function replaceLinksForFile(
+  sourceFilePath: string,
+  links: Omit<LinkRecord, 'id'>[],
+): Promise<void> {
+  const db = getDb()
+  await db.transaction('rw', db.links, async () => {
+    await db.links.where('sourceFilePath').equals(sourceFilePath).delete()
+    if (links.length > 0) await db.links.bulkAdd(links)
+  })
+}
+
+/**
+ * Find all files that link TO the given target path.
+ */
+export async function getBacklinks(targetFilePath: string): Promise<LinkRecord[]> {
+  const db = getDb()
+  return db.links.where('targetFilePath').equals(targetFilePath).toArray()
+}
+
+/**
+ * Find all files that link to the given path or any child path.
+ * Used for folder moves where all descendant references need updating.
+ */
+export async function getBacklinksForPathPrefix(pathPrefix: string): Promise<LinkRecord[]> {
+  const db = getDb()
+  const exactMatches = await db.links
+    .where('targetFilePath')
+    .equals(pathPrefix)
+    .toArray()
+  const childMatches = await db.links
+    .where('targetFilePath')
+    .startsWith(`${pathPrefix}/`)
+    .toArray()
+  return [...exactMatches, ...childMatches]
+}
+
+/**
+ * Bulk insert links (for full sync). Caller should clearAllLinks() first.
+ */
+export async function bulkUpsertLinks(links: Omit<LinkRecord, 'id'>[]): Promise<void> {
+  const db = getDb()
+  if (links.length === 0) return
+  await db.links.bulkAdd(links)
+}
+
+/**
+ * Clear all link records. Used during full sync reset.
+ */
+export async function clearAllLinks(): Promise<void> {
+  const db = getDb()
+  await db.links.clear()
+}
+
+/**
+ * Delete all links originating from a source file.
+ */
+export async function deleteLinksForFile(sourceFilePath: string): Promise<void> {
+  const db = getDb()
+  await db.links.where('sourceFilePath').equals(sourceFilePath).delete()
+}
+
+/**
+ * Batch update target paths after a move/rename.
+ * Updates all links whose target matches oldPrefix (exact or child).
+ */
+export async function updateLinkTargets(
+  oldPrefix: string,
+  newPrefix: string,
+): Promise<number> {
+  const db = getDb()
+  let updated = 0
+  await db.transaction('rw', db.links, async () => {
+    const exact = await db.links.where('targetFilePath').equals(oldPrefix).toArray()
+    for (const link of exact) {
+      await db.links.update(link.id!, { targetFilePath: newPrefix })
+      updated++
+    }
+    const children = await db.links.where('targetFilePath').startsWith(`${oldPrefix}/`).toArray()
+    for (const link of children) {
+      const suffix = link.targetFilePath.slice(oldPrefix.length)
+      await db.links.update(link.id!, { targetFilePath: `${newPrefix}${suffix}` })
+      updated++
+    }
+  })
+  return updated
+}
+
+/**
+ * Also update source paths when a file is moved/renamed.
+ */
+export async function updateLinkSourcePaths(
+  oldPrefix: string,
+  newPrefix: string,
+): Promise<number> {
+  const db = getDb()
+  let updated = 0
+  await db.transaction('rw', db.links, async () => {
+    const exact = await db.links.where('sourceFilePath').equals(oldPrefix).toArray()
+    for (const link of exact) {
+      await db.links.update(link.id!, { sourceFilePath: newPrefix })
+      updated++
+    }
+    const children = await db.links.where('sourceFilePath').startsWith(`${oldPrefix}/`).toArray()
+    for (const link of children) {
+      const suffix = link.sourceFilePath.slice(oldPrefix.length)
+      await db.links.update(link.id!, { sourceFilePath: `${newPrefix}${suffix}` })
+      updated++
+    }
+  })
+  return updated
 }
 
 function normalizeRecordForStorage(record: Omit<NodeRecord, 'id'>): Omit<NodeRecord, 'id'> {

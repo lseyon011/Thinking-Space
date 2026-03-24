@@ -267,33 +267,46 @@ if (electronIsDev) {
 // Run Application
 if (hasSingleInstanceLock) {
   (async () => {
-    // Wait for electron app to be ready.
-    await app.whenReady();
-    // Security - Set Content-Security-Policy based on whether or not we are in dev mode.
-    setupContentSecurityPolicy(myCapacitorApp.getCustomURLScheme());
-    setupWebviewSessionPermissions();
-    // Phase 5: If no source path is configured yet and bundled source exists,
-    // extract it to a writable userData location for regular users.
-    await ensureDefaultSourcePathBlock();
-    // Apply live-source mode if configured.
-    const sourceConfig = readSourceConfigBlock();
-    if (sourceConfig.mode === 'live-source' && sourceConfig.sourcePath) {
-      try {
-        await startViteServerBlock(sourceConfig.sourcePath, sourceConfig.vitePort);
-        myCapacitorApp.setLiveSourceUrl(`http://127.0.0.1:${sourceConfig.vitePort}`);
-      } catch (err) {
-        console.error('[live-source] Failed to start Vite server:', err);
-        // Fall back to locked mode — don't block startup
+    try {
+      // Wait for electron app to be ready.
+      await app.whenReady();
+      // Security - Set Content-Security-Policy based on whether or not we are in dev mode.
+      setupContentSecurityPolicy(myCapacitorApp.getCustomURLScheme());
+      setupWebviewSessionPermissions();
+      // Phase 5: If no source path is configured yet and bundled source exists,
+      // extract it to a writable userData location for regular users.
+      await ensureDefaultSourcePathBlock();
+      // Apply live-source mode if configured.
+      const sourceConfig = readSourceConfigBlock();
+      if (sourceConfig.mode === 'live-source' && sourceConfig.sourcePath) {
+        try {
+          await startViteServerBlock(sourceConfig.sourcePath, sourceConfig.vitePort);
+          myCapacitorApp.setLiveSourceUrl(`http://127.0.0.1:${sourceConfig.vitePort}`);
+        } catch (err) {
+          console.error('[live-source] Failed to start Vite server:', err);
+          // Fall back to locked mode — don't block startup
+        }
       }
-    }
-    // Initialize our app, build windows, and load content.
-    await myCapacitorApp.init();
-    configureAppIconMenu();
-    // Check for updates if we are in a packaged app (skip in dev or if no valid publish config).
-    if (!electronIsDev) {
-      autoUpdater.checkForUpdatesAndNotify().catch(() => {
-        // Silently ignore update check failures (e.g. no releases published yet)
-      });
+      // Initialize our app, build windows, and load content.
+      await myCapacitorApp.init();
+      configureAppIconMenu();
+      // Check for updates if we are in a packaged app (skip in dev or if no valid publish config).
+      if (!electronIsDev) {
+        autoUpdater.checkForUpdatesAndNotify().catch(() => {
+          // Silently ignore update check failures (e.g. no releases published yet)
+        });
+      }
+    } catch (error) {
+      console.error('[electron] Failed to start Thinking Space:', error);
+      const detail = error instanceof Error
+        ? `${error.message}${error.stack ? `\n\n${error.stack}` : ''}`
+        : String(error);
+      try {
+        dialog.showErrorBox('Thinking Space failed to start', detail);
+      } catch {
+        // Best-effort only; if dialog setup fails, we still exit with a non-zero code.
+      }
+      app.exit(1);
     }
   })();
 }
