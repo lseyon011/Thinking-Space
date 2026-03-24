@@ -806,8 +806,9 @@ function App() {
     : leftGoogleWorkspaceChromeControlsWidthPx
   const topChromeRightWidth = Math.max(phoneMode ? 86 : 120, syncToolsWidth)
   const topChromeBalancedWidth = Math.max(120, topChromeLeftWidth, topChromeRightWidth)
+  const topChromeRightAnchorInset = iPhoneMode ? 4 : 32
   const topChromePaddingLeft = phoneMode ? topChromeLeftWidth : topChromeBalancedWidth
-  const topChromePaddingRight = phoneMode ? topChromeRightWidth : topChromeBalancedWidth
+  const topChromePaddingRight = (phoneMode ? topChromeRightWidth : topChromeBalancedWidth) + topChromeRightAnchorInset
   const topInset = shell.topInset
   const rightInset = shell.rightInset
   const bottomInset = shell.bottomInset
@@ -2513,10 +2514,11 @@ function App() {
             </div>
 
             <div
-              className={`absolute top-0 z-20 flex h-full items-center justify-end gap-2 [-webkit-app-region:no-drag] ${
-                iPhoneMode ? 'right-1' : 'right-8'
-              }`}
-              style={{ width: `${phoneMode ? topChromeRightWidth : topChromeBalancedWidth}px` }}
+              className="absolute top-0 z-20 flex h-full items-center justify-end gap-2 [-webkit-app-region:no-drag]"
+              style={{
+                right: `${topChromeRightAnchorInset}px`,
+                width: `${phoneMode ? topChromeRightWidth : topChromeBalancedWidth}px`,
+              }}
             >
               <div ref={syncToolsRef} className="inline-flex items-center gap-2">
                 {showRightAlignedGoogleWorkspaceChromeControls && (

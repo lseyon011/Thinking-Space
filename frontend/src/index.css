@@ -391,8 +391,10 @@
     -webkit-app-region: no-drag;
   }
 
-  .ltm-shell-top-tab-capsule {
-    width: min(100%, 960px);
+  .ltm-shell-tabs.ltm-shell-top-tab-capsule {
+    width: 100%;
+    min-width: 0;
+    max-width: 960px;
     margin-inline: auto;
   }
 
@@ -684,10 +686,17 @@
   .ltm-shell-tabs {
     @apply flex w-full items-center justify-center;
     min-width: 0;
+    max-width: 100%;
     padding-block: 0.1rem;
     background: transparent;
     border: 0;
     box-shadow: none;
+  }
+
+  .ltm-tab-strip-shell,
+  .ltm-tab-strip-rail {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .ltm-shell-motion-chrome {

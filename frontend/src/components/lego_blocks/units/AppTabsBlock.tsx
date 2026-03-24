@@ -90,12 +90,15 @@ export default function AppTabsBlock({
   }, [tabsSignature])
 
   return (
-    <div className={cn('ltm-shell-tabs ltm-shell-motion-capsule', className)} style={{ containerType: 'inline-size' }}>
+    <div
+      className={cn('ltm-shell-tabs ltm-shell-motion-capsule min-w-0 max-w-full', className)}
+      style={{ containerType: 'inline-size' }}
+    >
       <div
         ref={stripShellRef}
         className={cn(
-          'ltm-tab-strip-shell mx-auto flex w-full items-center justify-center',
-          tabsOverflowing ? 'max-w-full' : 'max-w-[min(100%,960px)]',
+          'ltm-tab-strip-shell mx-auto flex min-w-0 w-full items-center justify-center',
+          tabsOverflowing ? 'max-w-full overflow-hidden' : 'max-w-[min(100%,960px)]',
         )}
       >
         <div
