@@ -135,13 +135,15 @@ export default function TerminalBlock({ cwd, className = '', onExit, envPatch, i
     }
 
     const existingId = sessionKey ? sessions.get(sessionKey) : undefined
+    const reattachTerminal = api.terminalReattach
+    const detachTerminal = api.terminalDetach
 
-    if (existingId) {
+    if (existingId && reattachTerminal && detachTerminal) {
       // Reattach to live PTY and replay buffered output into the fresh xterm
-      api.terminalReattach!(existingId).then((result) => {
+      reattachTerminal(existingId).then((result: { buffer: string } | null) => {
         if (destroyed) {
           // Unmounted before reattach resolved — detach again to keep PTY idle
-          void api.terminalDetach!(existingId)
+          void detachTerminal(existingId)
           return
         }
         if (!result) {
@@ -193,7 +195,7 @@ export default function TerminalBlock({ cwd, className = '', onExit, envPatch, i
       if (terminalId) {
         // With sessionKey: detach (keep PTY alive for reattach on return)
         // Without: kill (no one will reclaim this PTY)
-        if (sessionKey) void api.terminalDetach!(terminalId)
+        if (sessionKey && detachTerminal) void detachTerminal(terminalId)
         else void api.terminalKill!(terminalId)
       }
       term.dispose()

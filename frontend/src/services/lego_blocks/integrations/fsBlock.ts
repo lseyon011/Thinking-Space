@@ -117,6 +117,8 @@ interface ElectronAPI {
   terminalInput?(id: string, data: string): Promise<void>
   terminalResize?(id: string, cols: number, rows: number): Promise<void>
   terminalKill?(id: string): Promise<void>
+  terminalDetach?(id: string): Promise<void>
+  terminalReattach?(id: string): Promise<{ buffer: string } | null>
   codexProfilesList?(siteIds: string[]): Promise<{
     activeHomePath: string
     launchctlHomePath: string | null
@@ -418,23 +420,9 @@ class WebVaultFS implements VaultFS {
   }
 
   async exists(path: string): Promise<boolean> {
-    if (!path) return true
-
-    const normalized = path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
-    if (!normalized) return true
-
-    const slashIndex = normalized.lastIndexOf('/')
-    const parent = slashIndex >= 0 ? normalized.slice(0, slashIndex) : ''
-    const name = slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized
-    if (!name) return true
-
-    const { Filesystem, Directory } = await import('@capacitor/filesystem')
     try {
-      const parentOpts = this.isAbsolute
-        ? { path: parent ? this.resolve(parent) : this.resolve('') }
-        : { path: parent ? this.resolve(parent) : this.vaultRoot, directory: Directory.Documents }
-      const listed = await Filesystem.readdir(parentOpts)
-      return listed.files.some((entry) => entry.name === name)
+      await this.stat(path)
+      return true
     } catch {
       return false
     }

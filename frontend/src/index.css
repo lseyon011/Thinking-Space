@@ -391,6 +391,21 @@
     -webkit-app-region: no-drag;
   }
 
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-shell-tabs,
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-strip-shell,
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-strip-rail,
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-scroll-track,
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-scroll-inner,
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-slot,
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-item,
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-separator {
+    -webkit-app-region: no-drag;
+  }
+
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-tab-scroll-track {
+    scroll-snap-type: none;
+  }
+
   .ltm-shell-tabs.ltm-shell-top-tab-capsule {
     width: 100%;
     min-width: 0;

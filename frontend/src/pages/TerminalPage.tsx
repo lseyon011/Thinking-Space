@@ -36,10 +36,12 @@ function createNamedTab(label?: string, envPatch?: Record<string, string>, initi
 
 function getInitialTerminalPageSessionState(): TerminalPageSessionState {
   if (terminalPageSessionState && terminalPageSessionState.tabs.length > 0) {
-    const activeTabStillExists = terminalPageSessionState.tabs.some(tab => tab.id === terminalPageSessionState.activeTabId)
+    const sessionState = terminalPageSessionState
+    const activeTabStillExists = sessionState.tabs.some(tab => tab.id === sessionState.activeTabId)
+    const fallbackTab = sessionState.tabs[0]
     return {
-      tabs: terminalPageSessionState.tabs,
-      activeTabId: activeTabStillExists ? terminalPageSessionState.activeTabId : terminalPageSessionState.tabs[0].id,
+      tabs: sessionState.tabs,
+      activeTabId: activeTabStillExists ? sessionState.activeTabId : fallbackTab.id,
     }
   }
 

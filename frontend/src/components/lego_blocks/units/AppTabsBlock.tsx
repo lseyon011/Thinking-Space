@@ -29,7 +29,10 @@ export default function AppTabsBlock({
   const scrollInnerRef = useRef<HTMLDivElement | null>(null)
   const activeTabButtonRef = useRef<HTMLButtonElement | null>(null)
   const createTabButtonRef = useRef<HTMLButtonElement | null>(null)
+  const wheelFrameRef = useRef<number | null>(null)
+  const wheelTargetLeftRef = useRef(0)
   const [tabsOverflowing, setTabsOverflowing] = useState(false)
+  const prefersNativeMomentumScroll = typeof window !== 'undefined' && window.electronAPI?.isElectron === true
   const tabsSignature = useMemo(
     () => tabs.map((tab) => `${tab.id}:${tab.label}`).join('\n'),
     [tabs],
@@ -46,6 +49,11 @@ export default function AppTabsBlock({
       const nextOverflowing = inner.scrollWidth + createButton.offsetWidth + gap > shell.clientWidth + 1
       setTabsOverflowing((prev) => (prev === nextOverflowing ? prev : nextOverflowing))
       if (!nextOverflowing && scrollTrackRef.current) {
+        if (wheelFrameRef.current !== null) {
+          window.cancelAnimationFrame(wheelFrameRef.current)
+          wheelFrameRef.current = null
+        }
+        wheelTargetLeftRef.current = 0
         scrollTrackRef.current.scrollLeft = 0
       }
     }
@@ -74,20 +82,53 @@ export default function AppTabsBlock({
   useEffect(() => {
     const track = scrollTrackRef.current
     if (!track) return
+    if (prefersNativeMomentumScroll) return
+
+    const normalizeWheelDelta = (event: WheelEvent): number => {
+      const dominantDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+      if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return dominantDelta * 16
+      if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return dominantDelta * track.clientWidth
+      return dominantDelta
+    }
+
+    const stopWheelAnimation = () => {
+      if (wheelFrameRef.current === null) return
+      window.cancelAnimationFrame(wheelFrameRef.current)
+      wheelFrameRef.current = null
+    }
+
+    const animateWheelScroll = () => {
+      const maxLeft = Math.max(0, track.scrollWidth - track.clientWidth)
+      const clampedTarget = Math.min(Math.max(wheelTargetLeftRef.current, 0), maxLeft)
+      const delta = clampedTarget - track.scrollLeft
+      if (Math.abs(delta) <= 0.5) {
+        track.scrollLeft = clampedTarget
+        wheelFrameRef.current = null
+        return
+      }
+
+      track.scrollLeft += delta * 0.22
+      wheelFrameRef.current = window.requestAnimationFrame(animateWheelScroll)
+    }
 
     const onWheel = (event: WheelEvent) => {
-      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
       if (track.scrollWidth <= track.clientWidth + 1) return
+      const delta = normalizeWheelDelta(event)
+      if (Math.abs(delta) < 0.5) return
       event.preventDefault()
-      track.scrollTo({
-        left: track.scrollLeft + event.deltaY,
-        behavior: 'instant',
-      })
+      const maxLeft = Math.max(0, track.scrollWidth - track.clientWidth)
+      const baseLeft = wheelFrameRef.current === null ? track.scrollLeft : wheelTargetLeftRef.current
+      wheelTargetLeftRef.current = Math.min(Math.max(baseLeft + delta, 0), maxLeft)
+      if (wheelFrameRef.current !== null) return
+      wheelFrameRef.current = window.requestAnimationFrame(animateWheelScroll)
     }
 
     track.addEventListener('wheel', onWheel, { passive: false })
-    return () => track.removeEventListener('wheel', onWheel)
-  }, [tabsSignature])
+    return () => {
+      stopWheelAnimation()
+      track.removeEventListener('wheel', onWheel)
+    }
+  }, [prefersNativeMomentumScroll, tabsSignature])
 
   return (
     <div

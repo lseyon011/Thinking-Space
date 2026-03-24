@@ -1,6 +1,5 @@
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import TagChipListBlock from '@/components/lego_blocks/units/TagChipListBlock'
-import { cn } from '@/lib/utils'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import { normalizeTagListBlock } from '@/services/lego_blocks/units/tagBlock'
 import type { YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'

@@ -610,14 +610,6 @@ export async function fetchAndParseRssFeedOrch(
   }
 }
 
-function buildResultFromStored(
-  config: RssFeedConfigBlock,
-  storedItems: Map<string, RssFeedItemBlock>,
-  error: string,
-): RssFeedResultBlock {
-  return buildStoredResultBlock(config, storedItems, error)
-}
-
 function buildStoredResultBlock(
   config: RssFeedConfigBlock,
   storedItems: Map<string, RssFeedItemBlock>,
@@ -640,7 +632,7 @@ function sortByPubDateDesc(items: RssFeedItemBlock[]): void {
 export async function fetchAllRssFeedsOrch(): Promise<RssFeedResultBlock[]> {
   const configs = await readRssFeedConfigsOrch()
   if (configs.length === 0) return []
-  const results = await Promise.allSettled(configs.map(fetchAndParseRssFeedOrch))
+  const results = await Promise.allSettled(configs.map(config => fetchAndParseRssFeedOrch(config)))
   return results.map((r, i) =>
     r.status === 'fulfilled'
       ? r.value
