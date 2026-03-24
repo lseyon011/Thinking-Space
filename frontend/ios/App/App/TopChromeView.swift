@@ -96,27 +96,27 @@ private struct NativeTopDrawerRowView: View {
     let action: () -> Void
 
     private var rowBackgroundColor: Color {
-        active ? .black : .white
+        .clear
     }
 
     private var rowForegroundColor: Color {
-        active ? .white : .black
+        .primary
     }
 
     private var rowChevronColor: Color {
-        active ? .white.opacity(0.88) : .secondary.opacity(0.7)
+        .secondary.opacity(0.7)
     }
 
     private var iconBackgroundColor: Color {
-        active ? .black : .white
+        active ? item.badgeColor : Color(UIColor.systemBackground)
     }
 
     private var iconForegroundColor: Color {
-        active ? .white : .black
+        active ? .white : .primary
     }
 
     private var iconStrokeColor: Color {
-        active ? .white.opacity(0.12) : .black.opacity(0.1)
+        active ? item.badgeColor : .black.opacity(0.1)
     }
 
     var body: some View {
@@ -137,10 +137,7 @@ private struct NativeTopDrawerRowView: View {
             }
             .padding(.horizontal, NativeTopDrawerMetrics.rowHorizontalPadding)
             .frame(minHeight: NativeTopDrawerMetrics.rowMinimumHeight)
-            .background(
-                RoundedRectangle(cornerRadius: NativeTopDrawerMetrics.sectionCornerRadius - 2, style: .continuous)
-                    .fill(rowBackgroundColor)
-            )
+            .background(rowBackgroundColor)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

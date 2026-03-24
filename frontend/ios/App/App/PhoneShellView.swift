@@ -4,6 +4,7 @@ import UIKit
 private let phoneShellDrawerDismissVelocityThreshold: CGFloat = 180
 private let phoneShellDrawerOpenThreshold: CGFloat = 0.42
 private let phoneShellContentCornerRadius: CGFloat = 44
+private let phoneShellDrawerExtraContentOffset: CGFloat = 14
 
 struct PhoneShellView: View {
     @ObservedObject var chromeState: TopChromeState
@@ -37,7 +38,6 @@ struct PhoneShellView: View {
                 .opacity(0.52 + 0.48 * progress)
                 .allowsHitTesting(progress > 0.001)
 
-                // Main content that slides down
                 ZStack {
                     BridgeControllerContainerView(controller: bridgeController)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -67,16 +67,16 @@ struct PhoneShellView: View {
                             .highPriorityGesture(contentDismissDragGesture(revealHeight: revealHeight))
                     }
                 }
+                .ignoresSafeArea()
                 .clipShape(contentPanelShape)
                 .overlay {
                     contentPanelShape
                         .stroke(Color.white.opacity(0.42 * progress), lineWidth: 0.8)
                         .opacity(progress)
                 }
-                .offset(y: progress * revealHeight)
+                .offset(y: progress * (revealHeight + phoneShellDrawerExtraContentOffset))
                 .shadow(color: Color.black.opacity(0.08 * progress), radius: 10, x: 0, y: 2)
                 .shadow(color: Color.black.opacity(0.12 * progress), radius: 18, x: 0, y: 8)
-                .ignoresSafeArea()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .clipped()

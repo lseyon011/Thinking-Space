@@ -739,6 +739,7 @@ function App() {
     }
 
     switch (location.pathname) {
+      case '/':
       case '/thinking-space':
       case '/new-thought':
       case '/git-insights':
