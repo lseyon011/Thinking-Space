@@ -11,6 +11,37 @@ interface DebugPanelBlockProps {
 
 type TabFilter = 'all' | 'error' | 'warn' | 'info' | 'debug' | 'performance'
 
+interface DebugHostProcessMetricBlock {
+  pid: number
+  type: string
+  name: string | null
+  serviceName: string | null
+  cpuPercent: number
+  idleWakeupsPerSecond: number
+  workingSetBytes: number
+  peakWorkingSetBytes: number
+  threads: number | null
+}
+
+interface DebugHostPerformanceSnapshotBlock {
+  appCpuPercent: number
+  appMemoryWorkingSetBytes: number
+  appMemoryPeakWorkingSetBytes: number
+  processCount: number
+  threadCount: number | null
+  browserProcessCount: number
+  rendererProcessCount: number
+  utilityProcessCount: number
+  gpuProcessCount: number
+  logicalCpuCount: number
+  gpuProcessCpuPercent: number | null
+  gpuProcessMemoryWorkingSetBytes: number | null
+  gpuRenderer: string | null
+  gpuModel: string | null
+  gpuFeatureStatus: Record<string, string>
+  topProcesses: DebugHostProcessMetricBlock[]
+}
+
 const LEVEL_CONFIG: Record<DebugLogLevel, { icon: typeof AlertCircle; badge: string; text: string; dot: string }> = {
   error: { icon: AlertCircle, badge: 'bg-red-500/20 text-red-400 border-red-500/30', text: 'text-red-400', dot: 'bg-red-500' },
   warn:  { icon: AlertTriangle, badge: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', text: 'text-yellow-400', dot: 'bg-yellow-400' },
@@ -153,6 +184,17 @@ function fmtUptime(ms: number): string {
   return `${sec}s`
 }
 
+function fmtPercent(value: number): string {
+  return `${value.toFixed(1)}%`
+}
+
+function fmtGpuStatus(value: string | undefined): string {
+  if (!value) return 'Unknown'
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase())
+}
+
 function MetricRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="flex items-baseline justify-between py-1.5">
@@ -174,9 +216,20 @@ function MetricSection({ title, children }: { title: string; children: React.Rea
   )
 }
 
-function HeapBar({ used, total, limit }: { used: number; total: number; limit: number }) {
-  const usedPct = Math.round((used / limit) * 100)
-  const totalPct = Math.round((total / limit) * 100)
+function UsageBar({
+  used,
+  total,
+  usedLabel,
+  totalLabel,
+}: {
+  used: number
+  total: number
+  usedLabel: string
+  totalLabel: string
+}) {
+  const safeTotal = total > 0 ? total : 1
+  const usedPct = Math.round((used / safeTotal) * 100)
+  const totalPct = Math.min(100, Math.round((total / safeTotal) * 100))
   const usedColor = usedPct > 80 ? 'bg-red-500' : usedPct > 60 ? 'bg-yellow-400' : 'bg-blue-400'
   return (
     <div className="mt-2 space-y-1">
@@ -185,18 +238,71 @@ function HeapBar({ used, total, limit }: { used: number; total: number; limit: n
         <div className={`absolute left-0 top-0 h-full rounded-full ${usedColor}`} style={{ width: `${usedPct}%` }} />
       </div>
       <div className="flex justify-between text-[10px] text-muted-foreground/60">
-        <span>{fmtBytes(used)} used</span>
-        <span>{usedPct}% of {fmtBytes(limit)}</span>
+        <span>{usedLabel}</span>
+        <span>{usedPct}% of {totalLabel}</span>
       </div>
     </div>
   )
 }
 
+function HeapBar({ used, limit }: { used: number; limit: number }) {
+  return (
+    <UsageBar
+      used={used}
+      total={limit}
+      usedLabel={`${fmtBytes(used)} used`}
+      totalLabel={fmtBytes(limit)}
+    />
+  )
+}
+
 function PerformanceTab() {
   const [tick, setTick] = useState(0)
+  const [hostMetrics, setHostMetrics] = useState<DebugHostPerformanceSnapshotBlock | null>(null)
+  const [hostMetricsError, setHostMetricsError] = useState<string | null>(null)
+
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 1000)
     return () => clearInterval(id)
+  }, [])
+
+  useEffect(() => {
+    if (!window.electronAPI?.debugPerformanceSnapshot) {
+      setHostMetrics(null)
+      setHostMetricsError(null)
+      return
+    }
+
+    let disposed = false
+    let polling = false
+
+    const loadHostMetrics = async () => {
+      if (polling) return
+      polling = true
+      try {
+        const snapshot = await window.electronAPI?.debugPerformanceSnapshot?.()
+        if (!disposed && snapshot) {
+          setHostMetrics(snapshot)
+          setHostMetricsError(null)
+        }
+      } catch (error) {
+        if (!disposed) {
+          setHostMetricsError(error instanceof Error ? error.message : String(error))
+        }
+      } finally {
+        polling = false
+      }
+    }
+
+    void loadHostMetrics()
+    const id = window.setInterval(() => {
+      void loadHostMetrics()
+    }, 1000)
+
+    return () => {
+      disposed = true
+      window.clearInterval(id)
+    }
   }, [])
 
   const mem = perfMemory()
@@ -204,16 +310,82 @@ function PerformanceTab() {
   const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
   const resources = performance.getEntriesByType('resource')
   const transferTotal = resources.reduce((s, r) => s + ((r as PerformanceResourceTiming).transferSize ?? 0), 0)
+  const gpuCompositingStatus = fmtGpuStatus(hostMetrics?.gpuFeatureStatus.gpu_compositing)
+  const gpuWebglStatus = fmtGpuStatus(hostMetrics?.gpuFeatureStatus.webgl)
 
   return (
     <div className="space-y-3 p-3">
+      {hostMetrics && (
+        <>
+          <MetricSection title="App Health">
+            <MetricRow label="App CPU" value={fmtPercent(hostMetrics.appCpuPercent)} sub={`${hostMetrics.logicalCpuCount} logical cores`} />
+            <MetricRow label="App RAM Used" value={fmtBytes(hostMetrics.appMemoryWorkingSetBytes)} sub={`${hostMetrics.processCount} processes`} />
+            <MetricRow label="App Peak RAM" value={fmtBytes(hostMetrics.appMemoryPeakWorkingSetBytes)} />
+            <MetricRow label="Threads" value={hostMetrics.threadCount != null ? String(hostMetrics.threadCount) : 'Unavailable'} sub={`${hostMetrics.rendererProcessCount} renderer · ${hostMetrics.utilityProcessCount} utility`} />
+          </MetricSection>
+
+          <MetricSection title="App Memory">
+            <MetricRow label="RAM Used" value={fmtBytes(hostMetrics.appMemoryWorkingSetBytes)} sub={`${hostMetrics.processCount} processes`} />
+            <MetricRow label="Peak RAM" value={fmtBytes(hostMetrics.appMemoryPeakWorkingSetBytes)} />
+            <div className="pb-1.5 pt-0.5">
+              <UsageBar
+                used={hostMetrics.appMemoryWorkingSetBytes}
+                total={Math.max(hostMetrics.appMemoryPeakWorkingSetBytes, hostMetrics.appMemoryWorkingSetBytes, 1)}
+                usedLabel={`${fmtBytes(hostMetrics.appMemoryWorkingSetBytes)} used`}
+                totalLabel={`peak ${fmtBytes(Math.max(hostMetrics.appMemoryPeakWorkingSetBytes, hostMetrics.appMemoryWorkingSetBytes))}`}
+              />
+            </div>
+          </MetricSection>
+
+          <MetricSection title="GPU">
+            <MetricRow label="GPU process CPU" value={hostMetrics.gpuProcessCpuPercent != null ? fmtPercent(hostMetrics.gpuProcessCpuPercent) : 'Unavailable'} />
+            <MetricRow label="GPU process RAM" value={hostMetrics.gpuProcessMemoryWorkingSetBytes != null ? fmtBytes(hostMetrics.gpuProcessMemoryWorkingSetBytes) : 'Unavailable'} sub={`${hostMetrics.gpuProcessCount} processes`} />
+            <MetricRow label="GPU compositing" value={gpuCompositingStatus} />
+            <MetricRow label="WebGL" value={gpuWebglStatus} />
+            {(hostMetrics.gpuModel || hostMetrics.gpuRenderer) && (
+              <MetricRow
+                label="Renderer"
+                value={hostMetrics.gpuModel ?? hostMetrics.gpuRenderer ?? 'Unknown'}
+                sub={hostMetrics.gpuModel && hostMetrics.gpuRenderer && hostMetrics.gpuRenderer !== hostMetrics.gpuModel ? hostMetrics.gpuRenderer : undefined}
+              />
+            )}
+          </MetricSection>
+
+          <MetricSection title="Top Processes">
+            {hostMetrics.topProcesses.map((processMetric) => (
+              <div key={`${processMetric.pid}-${processMetric.type}`} className="flex items-start justify-between gap-3 py-1.5">
+                <div className="min-w-0">
+                  <p className="truncate text-xs text-foreground/90">
+                    {processMetric.name || processMetric.serviceName || processMetric.type}
+                  </p>
+                  <p className="font-mono text-[10px] text-muted-foreground/60">
+                    pid {processMetric.pid} · {processMetric.type}
+                    {processMetric.threads != null ? ` · ${processMetric.threads} threads` : ''}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="font-mono text-xs text-foreground/90">{fmtPercent(processMetric.cpuPercent)}</p>
+                  <p className="font-mono text-[10px] text-muted-foreground/60">{fmtBytes(processMetric.workingSetBytes)}</p>
+                </div>
+              </div>
+            ))}
+          </MetricSection>
+        </>
+      )}
+
+      {hostMetricsError && (
+        <MetricSection title="Host Metrics">
+          <div className="py-2 text-xs text-muted-foreground/50">{hostMetricsError}</div>
+        </MetricSection>
+      )}
+
       {/* Memory */}
       {mem ? (
         <MetricSection title="Memory">
           <MetricRow label="JS Heap Used" value={fmtBytes(mem.used)} sub={`/ ${fmtBytes(mem.total)} allocated`} />
           <MetricRow label="Heap Limit" value={fmtBytes(mem.limit)} />
           <div className="pb-1.5 pt-0.5">
-            <HeapBar used={mem.used} total={mem.total} limit={mem.limit} />
+            <HeapBar used={mem.used} limit={mem.limit} />
           </div>
         </MetricSection>
       ) : (
@@ -223,10 +395,11 @@ function PerformanceTab() {
       )}
 
       {/* Runtime */}
-      <MetricSection title="Runtime">
-        <MetricRow label="Uptime" value={fmtUptime(uptime)} />
-        <MetricRow label="Resources loaded" value={String(resources.length)} sub={transferTotal > 0 ? fmtBytes(transferTotal) + ' transferred' : undefined} />
-      </MetricSection>
+        <MetricSection title="Runtime">
+          <MetricRow label="Uptime" value={fmtUptime(uptime)} />
+          <MetricRow label="Resources loaded" value={String(resources.length)} sub={transferTotal > 0 ? fmtBytes(transferTotal) + ' transferred' : undefined} />
+          {hostMetrics && <MetricRow label="Browser process" value={String(hostMetrics.browserProcessCount)} sub={`${hostMetrics.processCount} total app processes`} />}
+        </MetricSection>
 
       {/* Navigation timing */}
       {nav && (
@@ -305,7 +478,7 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
         role="dialog"
         aria-label="Debug console"
         aria-hidden={!isOpen}
-        className={`fixed right-0 top-0 z-[89] flex h-full w-[420px] max-w-[92vw] flex-col border-l border-border/60 bg-background/95 shadow-2xl backdrop-blur-xl transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        className={`fixed right-0 top-0 z-[89] flex h-full w-[520px] max-w-[96vw] flex-col border-l border-border/60 bg-background/95 shadow-2xl backdrop-blur-xl transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -348,7 +521,7 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
         </div>
 
         {/* Tabs */}
-        <div className="flex shrink-0 gap-0 border-b border-border/50 px-1 pt-1">
+        <div className="ltm-nav-scroll flex shrink-0 gap-1 overflow-x-auto border-b border-border/50 px-2 pt-1">
           {TABS.map(tab => {
             const count = countFor(tab.id)
             const isActive = activeTab === tab.id
@@ -358,7 +531,7 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`relative flex items-center gap-1.5 rounded-t px-3 py-2 text-xs font-medium transition-colors ${
+                className={`relative shrink-0 whitespace-nowrap rounded-t px-3 py-2 text-xs font-medium transition-colors ${
                   isActive
                     ? 'text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-px after:bg-foreground'
                     : 'text-muted-foreground hover:text-foreground'

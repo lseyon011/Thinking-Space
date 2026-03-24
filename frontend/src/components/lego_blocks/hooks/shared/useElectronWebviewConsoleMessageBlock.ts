@@ -21,11 +21,14 @@ function getConsoleLevelBlock(level: number): DebugLogLevel | null {
   return null
 }
 
-function shouldDowngradeWebviewConsoleNoiseBlock(message: string): boolean {
+function shouldIgnoreWebviewConsoleNoiseBlock(message: string): boolean {
   const normalized = message.toLowerCase()
   return normalized.includes('permissions-policy header')
     || normalized.includes("unrecognized feature: 'pointer-lock'")
+    || normalized.includes("unrecognized feature: 'web-share'")
     || normalized.includes('react-i18next:: usetranslation')
+    || normalized.includes("the content security policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy")
+    || normalized.includes('[service_worker] found 1 service worker(s), which are no longer used. unregistering.')
     || (normalized.includes('violates the following content security policy directive')
       && (
         normalized.includes('appsflyer')
@@ -34,7 +37,7 @@ function shouldDowngradeWebviewConsoleNoiseBlock(message: string): boolean {
 }
 
 function normalizeWebviewConsoleLevelBlock(level: DebugLogLevel, message: string): DebugLogLevel {
-  if ((level === 'warn' || level === 'error') && shouldDowngradeWebviewConsoleNoiseBlock(message)) {
+  if ((level === 'warn' || level === 'error') && shouldIgnoreWebviewConsoleNoiseBlock(message)) {
     return 'info'
   }
   return level
@@ -85,6 +88,7 @@ export function useElectronWebviewConsoleMessageBlock({
 
       const message = String(consoleEvent?.message ?? '').trim()
       if (!message) return
+      if (shouldIgnoreWebviewConsoleNoiseBlock(message)) return
 
       dispatchDebugLogBlock({
         level: normalizeWebviewConsoleLevelBlock(mappedLevel, message),

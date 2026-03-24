@@ -95,6 +95,30 @@ private struct NativeTopDrawerRowView: View {
     let active: Bool
     let action: () -> Void
 
+    private var rowBackgroundColor: Color {
+        active ? .black : .white
+    }
+
+    private var rowForegroundColor: Color {
+        active ? .white : .black
+    }
+
+    private var rowChevronColor: Color {
+        active ? .white.opacity(0.88) : .secondary.opacity(0.7)
+    }
+
+    private var iconBackgroundColor: Color {
+        active ? .black : .white
+    }
+
+    private var iconForegroundColor: Color {
+        active ? .white : .black
+    }
+
+    private var iconStrokeColor: Color {
+        active ? .white.opacity(0.12) : .black.opacity(0.1)
+    }
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: NativeTopDrawerMetrics.rowSpacing) {
@@ -102,18 +126,21 @@ private struct NativeTopDrawerRowView: View {
 
                 Text(item.title)
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(Color.primary)
+                    .foregroundStyle(rowForegroundColor)
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.secondary.opacity(0.7))
+                    .foregroundStyle(rowChevronColor)
             }
             .padding(.horizontal, NativeTopDrawerMetrics.rowHorizontalPadding)
             .frame(minHeight: NativeTopDrawerMetrics.rowMinimumHeight)
-            .background(active ? Color.accentColor.opacity(0.08) : Color.clear)
+            .background(
+                RoundedRectangle(cornerRadius: NativeTopDrawerMetrics.sectionCornerRadius - 2, style: .continuous)
+                    .fill(rowBackgroundColor)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -125,11 +152,15 @@ private struct NativeTopDrawerRowView: View {
         case .symbol(let systemImage):
             Image(systemName: systemImage)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(iconForegroundColor)
                 .frame(width: NativeTopDrawerMetrics.rowIconSize, height: NativeTopDrawerMetrics.rowIconSize)
                 .background(
                     RoundedRectangle(cornerRadius: NativeTopDrawerMetrics.rowIconCornerRadius, style: .continuous)
-                        .fill(item.badgeColor)
+                        .fill(iconBackgroundColor)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: NativeTopDrawerMetrics.rowIconCornerRadius, style: .continuous)
+                        .stroke(iconStrokeColor, lineWidth: 0.75)
                 )
         }
     }

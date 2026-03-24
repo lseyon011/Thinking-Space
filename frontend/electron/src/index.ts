@@ -68,6 +68,7 @@ import {
   resizePtyBlock,
   writePtyBlock,
 } from './lego_blocks/ptyManagerBlock';
+import { readDebugPerformanceSnapshotBlock } from './lego_blocks/debugMetricsBlock';
 import {
   createHierarchyEdgeOrch,
   createHierarchyNodeOrch,
@@ -344,6 +345,10 @@ app.on('activate', async function () {
 // -- New window IPC --
 ipcMain.handle('window:new', async (_event, route?: string) => {
   await myCapacitorApp.createWindow(route);
+});
+
+ipcMain.handle('debug:performance:get', async () => {
+  return readDebugPerformanceSnapshotBlock();
 });
 
 // =====================================================================

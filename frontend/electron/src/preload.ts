@@ -188,6 +188,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Window management
   newWindow: (route?: string) => ipcRenderer.invoke('window:new', route),
+  debugPerformanceSnapshot: (): Promise<{
+    appCpuPercent: number
+    appMemoryWorkingSetBytes: number
+    appMemoryPeakWorkingSetBytes: number
+    processCount: number
+    threadCount: number | null
+    browserProcessCount: number
+    rendererProcessCount: number
+    utilityProcessCount: number
+    gpuProcessCount: number
+    logicalCpuCount: number
+    gpuProcessCpuPercent: number | null
+    gpuProcessMemoryWorkingSetBytes: number | null
+    gpuRenderer: string | null
+    gpuModel: string | null
+    gpuFeatureStatus: Record<string, string>
+    topProcesses: Array<{
+      pid: number
+      type: string
+      name: string | null
+      serviceName: string | null
+      cpuPercent: number
+      idleWakeupsPerSecond: number
+      workingSetBytes: number
+      peakWorkingSetBytes: number
+      threads: number | null
+    }>
+  }> => ipcRenderer.invoke('debug:performance:get'),
   // Webview swipe navigation (macOS 2-finger swipe via BrowserWindow 'swipe' event)
   onWebviewSwipe: (handler: (direction: 'left' | 'right') => void) => {
     const channel = 'webview:swipe'
