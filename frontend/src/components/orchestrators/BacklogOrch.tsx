@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import PinBoardBlock, { type PinBoardFileOptionBlock } from '@/components/lego_blocks/integrations/PinBoardBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
+import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
 import ExecutionProgressBlock from '@/components/lego_blocks/units/ExecutionProgressBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import {
@@ -85,6 +86,7 @@ const SELECTED_NODE_QUERY_PARAM = 'selectedNode'
 export const ORGANIZER_OPEN_CREATE_PROJECT_EVENT = 'ltm:organizer:open-create-project'
 export const ORGANIZER_PROJECTS_UPDATED_EVENT = 'ltm:organizer:projects-updated'
 export interface OrganizerProjectsUpdatedDetail { projects: Array<{ name: string; root: string }> }
+const BACKLOG_SUBTAB_SESSION_KEY = 'thinking-organizer-backlog-subtab'
 
 function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
@@ -417,7 +419,10 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
   const [activeExecutionTasks, setActiveExecutionTasks] = useState<NodeRecord[]>([])
   const [activeExecutionTasksLoading, setActiveExecutionTasksLoading] = useState(false)
   const [activeExecutionTasksError, setActiveExecutionTasksError] = useState<string | null>(null)
-  const [activeBacklogSubTab, setActiveBacklogSubTab] = useState<BacklogSubTab>('hierarchy')
+  const [activeBacklogSubTab, setActiveBacklogSubTab] = useSessionStateBlock<BacklogSubTab>(
+    BACKLOG_SUBTAB_SESSION_KEY,
+    'hierarchy',
+  )
   const [programLayoutEditMode, setProgramLayoutEditMode] = useState(false)
   const [pinBoardLayoutEditMode, setPinBoardLayoutEditMode] = useState(false)
   const [showRootProgramCreate, setShowRootProgramCreate] = useState(false)
@@ -2075,6 +2080,7 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
               projectTagColorsByRoot={projectTagColorsByRoot}
               programGroups={activeProjectProgramGroups}
               programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
+              persistenceKey={activeProjectRoot || 'all-projects'}
               onCreateProgramGroup={createActiveProjectProgramGroup}
               onDeleteProgramGroup={deleteActiveProjectProgramGroup}
                 onToggleProgramGroupCollapsed={toggleActiveProjectProgramGroupCollapsed}

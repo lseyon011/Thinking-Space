@@ -45,6 +45,42 @@ interface BacklogRelatedNodeOptionBlock {
   summary?: string
 }
 
+interface PersistedBacklogListStateBlock {
+  childrenByNode: Record<string, ChildStateBlock>
+  expandedNodes: Record<string, boolean>
+}
+
+const BACKLOG_LIST_PERSISTENCE_PREFIX = 'ltm-backlog-list'
+
+function readPersistedBacklogListStateBlock(storageKey: string): PersistedBacklogListStateBlock {
+  if (!storageKey || typeof window === 'undefined') {
+    return { childrenByNode: {}, expandedNodes: {} }
+  }
+  try {
+    const raw = window.sessionStorage.getItem(storageKey)
+    if (!raw) return { childrenByNode: {}, expandedNodes: {} }
+    const parsed = JSON.parse(raw) as Partial<PersistedBacklogListStateBlock> | null
+    return {
+      childrenByNode: parsed?.childrenByNode && typeof parsed.childrenByNode === 'object' ? parsed.childrenByNode : {},
+      expandedNodes: parsed?.expandedNodes && typeof parsed.expandedNodes === 'object' ? parsed.expandedNodes : {},
+    }
+  } catch {
+    return { childrenByNode: {}, expandedNodes: {} }
+  }
+}
+
+function writePersistedBacklogListStateBlock(
+  storageKey: string,
+  state: PersistedBacklogListStateBlock,
+): void {
+  if (!storageKey || typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(storageKey, JSON.stringify(state))
+  } catch {
+    // Ignore session persistence failures; in-memory state still works.
+  }
+}
+
 function normalizeRelatedNodePathsBlock(paths: string[] | undefined): string[] {
   if (!paths || paths.length === 0) return []
   const seen = new Set<string>()
@@ -141,6 +177,7 @@ export interface BacklogListBlockProps {
   programLabelSingular?: string
   programLabelPlural?: string
   programGroupLabelSingular?: string
+  persistenceKey?: string
 }
 
 
@@ -203,9 +240,16 @@ export default function BacklogListBlock({
   programLabelSingular = 'program',
   programLabelPlural = 'programs',
   programGroupLabelSingular = 'group',
+  persistenceKey,
 }: BacklogListBlockProps) {
-  const [childrenByNode, setChildrenByNode] = useState<Record<string, ChildStateBlock>>({})
-  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({})
+  const normalizedPersistenceKey = persistenceKey?.trim() ?? ''
+  const storageKey = normalizedPersistenceKey ? `${BACKLOG_LIST_PERSISTENCE_PREFIX}:${normalizedPersistenceKey}` : ''
+  const [childrenByNode, setChildrenByNode] = useState<Record<string, ChildStateBlock>>(
+    () => readPersistedBacklogListStateBlock(storageKey).childrenByNode,
+  )
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>(
+    () => readPersistedBacklogListStateBlock(storageKey).expandedNodes,
+  )
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, string>>({})
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({})
@@ -218,11 +262,13 @@ export default function BacklogListBlock({
   const [rowDetailsNodeId, setRowDetailsNodeId] = useState<string | null>(null)
   const [internalProgramLayoutEditMode, setInternalProgramLayoutEditMode] = useState(false)
   const [programGroupDraft, setProgramGroupDraft] = useState('')
+  const programFingerprint = programs.map(program => `${program.uuid}:${program.updatedAt}`).join('|')
   const newRowHighlightTimeoutByNodeRef = useRef<Record<string, number>>({})
+  const previousProgramFingerprintRef = useRef(programFingerprint)
+  const previousTreeRevisionRef = useRef(treeRevision)
   const rootCreateTitleInputRef = useRef<HTMLInputElement | null>(null)
   const prevFocusRootCreateRequestNonceRef = useRef(0)
   const [localError, setLocalError] = useState<string | null>(null)
-  const programFingerprint = programs.map(program => `${program.uuid}:${program.updatedAt}`).join('|')
   const controlledProgramLayoutEditMode = typeof programLayoutEditMode === 'boolean'
   const allowProgramLayoutModeToggle = !readOnly || allowProgramLayoutEditingInReadOnly
   const allowProgramLayoutEditing = allowProgramLayoutModeToggle && (
@@ -280,6 +326,18 @@ export default function BacklogListBlock({
   }, [programGroups, programs, resolvedProgramGroupIdByProgram])
 
   useEffect(() => {
+    const persisted = readPersistedBacklogListStateBlock(storageKey)
+    setChildrenByNode(persisted.childrenByNode)
+    setExpandedNodes(persisted.expandedNodes)
+  }, [storageKey])
+
+  useEffect(() => {
+    writePersistedBacklogListStateBlock(storageKey, { childrenByNode, expandedNodes })
+  }, [childrenByNode, expandedNodes, storageKey])
+
+  useEffect(() => {
+    if (previousProgramFingerprintRef.current === programFingerprint) return
+    previousProgramFingerprintRef.current = programFingerprint
     // Child lists are locally cached; clear them when upstream program data refreshes
     // so externally-created organizer nodes become visible without stale tree state.
     setChildrenByNode({})
@@ -287,6 +345,8 @@ export default function BacklogListBlock({
   }, [programFingerprint])
 
   useEffect(() => {
+    if (previousTreeRevisionRef.current === treeRevision) return
+    previousTreeRevisionRef.current = treeRevision
     setChildrenByNode({})
   }, [treeRevision])
 

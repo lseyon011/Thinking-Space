@@ -576,6 +576,16 @@ function App() {
       }),
     ),
   )
+  const [persistentOrganizerRouteByTabId, setPersistentOrganizerRouteByTabId] = useState<Record<string, string>>(
+    () => Object.fromEntries(
+      workspaceTabs.flatMap((tab) => {
+        const pathname = parseTabRoute(tab.route).pathname
+        return pathname === '/thinking-organizer' || pathname === '/file-organizer'
+          ? [[tab.id, normalizeTabRoute(tab.route)]]
+          : []
+      }),
+    ),
+  )
   const [persistentRouteMounts, setPersistentRouteMounts] = useState(() => ({
     organizer: location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer',
     newThought: location.pathname === '/new-thought',
@@ -777,6 +787,15 @@ function App() {
       : persistentWebTabIds),
     [activeWorkspaceTabId, isWebRoute, persistentWebTabIds],
   )
+  const organizerNavRoute = useMemo(
+    () => (activeWorkspaceTabId
+      ? (persistentOrganizerRouteByTabId[activeWorkspaceTabId] ?? '/thinking-organizer')
+      : '/thinking-organizer'),
+    [activeWorkspaceTabId, persistentOrganizerRouteByTabId],
+  )
+  const resolveWorkspaceNavigationRoute = useCallback((route: string) => (
+    route === '/thinking-organizer' ? organizerNavRoute : route
+  ), [organizerNavRoute])
 
   const workspaceTabItems = useMemo<AppWorkspaceTabBlockModel[]>(
     () => workspaceTabs.map(tab => ({
@@ -1467,8 +1486,8 @@ function App() {
   const runCommandItem = useCallback((item: CommandItem) => {
     setCommandPaletteOpen(false)
     setCommandQuery('')
-    navigate(item.to)
-  }, [navigate])
+    navigate(resolveWorkspaceNavigationRoute(item.to))
+  }, [navigate, resolveWorkspaceNavigationRoute])
 
   useEffect(() => {
     setPersistentRouteMounts(prev => (
@@ -1507,7 +1526,16 @@ function App() {
         ))
       }
     }
-  }, [activeWorkspaceTabId, isChatRoute, isNewThoughtRoute, isOrganizerRoute, isThinkingSpaceRoute, isWebRoute, isWebullRoute, location.search])
+
+    if (isOrganizerRoute) {
+      const normalizedCurrentRoute = normalizeTabRoute(currentRoute)
+      setPersistentOrganizerRouteByTabId((prev) => (
+        prev[activeWorkspaceTabId] === normalizedCurrentRoute
+          ? prev
+          : { ...prev, [activeWorkspaceTabId]: normalizedCurrentRoute }
+      ))
+    }
+  }, [activeWorkspaceTabId, currentRoute, isChatRoute, isNewThoughtRoute, isOrganizerRoute, isThinkingSpaceRoute, isWebRoute, isWebullRoute, location.search])
 
   const handleCreateWorkspaceTab = useCallback(() => {
     const tab: AppWorkspaceTab = {
@@ -1540,7 +1568,7 @@ function App() {
       case '/thinking-organizer':
       case '/terminal':
       case '/settings':
-        navigate(navItemId)
+        navigate(resolveWorkspaceNavigationRoute(navItemId))
         return
       case 'search':
         openCommandPalette()
@@ -1548,7 +1576,7 @@ function App() {
       default:
         console.warn('[App] Unhandled native top drawer nav item:', navItemId)
     }
-  }, [navigate, openCommandPalette])
+  }, [navigate, openCommandPalette, resolveWorkspaceNavigationRoute])
 
   const handleNativeSidebarToggle = useCallback(() => {
     switch (nativeSidebarControl.kind) {
@@ -2006,6 +2034,10 @@ function App() {
       return next.length === prev.length ? prev : next
     })
     setPersistentWebSiteIdByTabId((prev) => {
+      const nextEntries = Object.entries(prev).filter(([tabId]) => tabIds.has(tabId))
+      return nextEntries.length === Object.keys(prev).length ? prev : Object.fromEntries(nextEntries)
+    })
+    setPersistentOrganizerRouteByTabId((prev) => {
       const nextEntries = Object.entries(prev).filter(([tabId]) => tabIds.has(tabId))
       return nextEntries.length === Object.keys(prev).length ? prev : Object.fromEntries(nextEntries)
     })
@@ -2656,7 +2688,7 @@ function App() {
                       return (
                         <Link
                           key={item.to}
-                          to={item.to}
+                          to={resolveWorkspaceNavigationRoute(item.to)}
                           title={sidebarCollapsed ? item.label : undefined}
                           className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
                             sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
@@ -2994,7 +3026,7 @@ function App() {
                     return (
                       <Link
                         key={item.to}
-                        to={item.to}
+                        to={resolveWorkspaceNavigationRoute(item.to)}
                         onClick={() => setDrawerOpen(false)}
                         className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
                           active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
