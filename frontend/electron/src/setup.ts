@@ -240,6 +240,12 @@ function isTrustedPopupUrlBlock(url: string): boolean {
   }
 }
 export function setupReloadWatcher(electronCapacitorApp: ElectronCapacitorApp): void {
+  // Properly close any existing watcher before creating a new one to prevent
+  // file descriptor leaks and memory growth during dev mode reloads
+  if (reloadWatcher.watcher) {
+    reloadWatcher.watcher.close().catch(() => { /* best-effort cleanup */ });
+    reloadWatcher.watcher = null;
+  }
   reloadWatcher.watcher = chokidar
     .watch(join(app.getAppPath(), 'app'), {
       ignored: /[/\\]\./,
@@ -256,7 +262,6 @@ export function setupReloadWatcher(electronCapacitorApp: ElectronCapacitorApp): 
           reloadWatcher.ready = false;
           clearTimeout(reloadWatcher.debouncer);
           reloadWatcher.debouncer = null;
-          reloadWatcher.watcher = null;
           setupReloadWatcher(electronCapacitorApp);
         }, 1500);
       }

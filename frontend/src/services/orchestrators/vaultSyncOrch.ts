@@ -11,14 +11,15 @@ import {
 import { parseOrganizerBodySections } from '@/services/lego_blocks/integrations/organizerBodyBlock'
 import {
   upsertNode,
-  deleteNodeByPath,
+  bulkUpsertNodes,
+  bulkDeleteNodesByPaths,
+  bulkDeleteLinksForFiles,
   getAllFilePaths,
   clearAll,
   clearAllLinks,
   getNodeCount,
   bulkUpsertLinks,
   replaceLinksForFile,
-  deleteLinksForFile,
   type NodeRecord,
   type LinkRecord,
 } from '@/services/lego_blocks/integrations/dbBlock'
@@ -37,6 +38,26 @@ export interface SyncResult {
 
 export interface VaultSyncOptions {
   maxFileSizeBytes?: number
+}
+
+// ── File paths cache ──
+// Avoid re-querying all file paths from IndexedDB on every single-file sync.
+// Invalidated after full/incremental sync completes.
+let _cachedFilePaths: Set<string> | null = null
+let _cachedFilePathsAge = 0
+const FILE_PATHS_CACHE_TTL_MS = 30_000
+
+function getCachedFilePaths(): Set<string> | null {
+  if (_cachedFilePaths && (Date.now() - _cachedFilePathsAge) < FILE_PATHS_CACHE_TTL_MS) {
+    return _cachedFilePaths
+  }
+  _cachedFilePaths = null
+  return null
+}
+
+function setCachedFilePaths(paths: Set<string>): void {
+  _cachedFilePaths = paths
+  _cachedFilePathsAge = Date.now()
 }
 
 const IOS_MAX_SYNC_FILE_SIZE_BYTES = 2 * 1024 * 1024
@@ -73,6 +94,7 @@ export async function fullSync(fs?: VaultFS, options?: VaultSyncOptions): Promis
 
   const entries = await vaultFs.walkVault(['.md'])
   const candidatePaths = entries.map(e => e.path)
+  setCachedFilePaths(new Set(candidatePaths))
   const result = await syncEntries(vaultFs, entries, options, candidatePaths)
 
   result.durationMs = Date.now() - start
@@ -97,19 +119,23 @@ export async function incrementalSync(
   const sinceSeconds = normalizeEpochSeconds(sinceTimestamp)
   const updatedEntries = allEntries.filter(e => normalizeEpochSeconds(e.mtime) > sinceSeconds)
 
-  // Detect deleted files
+  // Detect deleted files — batch delete instead of N individual queries
   const currentPaths = new Set(allEntries.map(e => e.path))
   const cachedPaths = await getAllFilePaths()
-  let deletedCount = 0
+  const deletedPaths: string[] = []
   for (const cachedPath of cachedPaths) {
     if (!currentPaths.has(cachedPath)) {
-      await deleteNodeByPath(cachedPath)
-      await deleteLinksForFile(cachedPath)
-      deletedCount++
+      deletedPaths.push(cachedPath)
     }
   }
+  if (deletedPaths.length > 0) {
+    await bulkDeleteNodesByPaths(deletedPaths)
+    await bulkDeleteLinksForFiles(deletedPaths)
+  }
+  const deletedCount = deletedPaths.length
 
   const candidatePaths = allEntries.map(e => e.path)
+  setCachedFilePaths(new Set(candidatePaths))
   const result = await syncEntries(vaultFs, updatedEntries, options, candidatePaths)
   result.deletedNodes = deletedCount
   result.totalFiles = allEntries.length
@@ -143,8 +169,8 @@ export async function syncSingleFile(
     const record = frontmatterToRecord(note.frontmatter, filePath, note.body)
     await upsertNode(record)
 
-    // Update link index for this file
-    const candidatePaths = await getAllFilePaths()
+    // Update link index for this file — use cached paths if available
+    const candidatePaths = getCachedFilePaths() ?? await getAllFilePaths()
     const links = extractLinksFromContentBlock(content, filePath, [...candidatePaths])
     const linkRecords: Omit<LinkRecord, 'id'>[] = links.map(l => ({
       sourceFilePath: filePath,
@@ -237,7 +263,20 @@ async function syncEntries(
 
   const allCandidatePaths = candidatePaths ?? entries.map(e => e.path)
   const pendingLinks: Omit<LinkRecord, 'id'>[] = []
+  const pendingNodes: Omit<NodeRecord, 'id'>[] = []
   const isFullSync = candidatePaths !== undefined
+
+  const NODE_BATCH_SIZE = 200
+
+  async function flushNodes() {
+    if (pendingNodes.length === 0) return
+    if (isFullSync) {
+      await bulkUpsertNodes(pendingNodes.splice(0))
+    } else {
+      // Incremental: still use bulk for efficiency
+      await bulkUpsertNodes(pendingNodes.splice(0))
+    }
+  }
 
   async function flushLinks() {
     if (pendingLinks.length === 0) return
@@ -278,7 +317,7 @@ async function syncEntries(
       }
 
       const record = frontmatterToRecord(note.frontmatter, entry.path, note.body)
-      await upsertNode(record)
+      pendingNodes.push(record)
       result.parsedNodes++
 
       // Extract links for the index
@@ -292,6 +331,9 @@ async function syncEntries(
         })
       }
 
+      if (pendingNodes.length >= NODE_BATCH_SIZE) {
+        await flushNodes()
+      }
       if (pendingLinks.length >= LINK_BATCH_SIZE) {
         await flushLinks()
       }
@@ -303,7 +345,8 @@ async function syncEntries(
     }
   }
 
-  // Flush remaining links
+  // Flush remaining batches
+  await flushNodes()
   await flushLinks()
 
   return result

@@ -31,5 +31,24 @@ export default defineConfig({
     chunkSizeWarningLimit: 10000,
     // Use esnext for local builds — Electron ships a recent Chromium, no legacy transforms needed
     target: isLocalBuild ? 'esnext' : undefined,
+    rollupOptions: {
+      output: {
+        // Split heavy vendor dependencies into separate chunks for better caching
+        // and smaller initial bundle size
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-dexie': ['dexie'],
+          'vendor-excalidraw': ['@excalidraw/excalidraw'],
+          'vendor-pdf': ['react-pdf', 'pdfjs-dist'],
+          'vendor-codemirror': [
+            '@codemirror/state',
+            '@codemirror/view',
+            '@codemirror/language',
+            '@uiw/react-codemirror',
+          ],
+          'vendor-recharts': ['recharts'],
+        },
+      },
+    },
   },
 })

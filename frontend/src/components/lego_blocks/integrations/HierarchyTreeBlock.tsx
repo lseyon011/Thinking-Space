@@ -150,12 +150,21 @@ function splitMappedItems(items: HierarchyMappedItem[]): {
 } {
   if (items.length === 0) return { folders: [], files: [] }
 
-  const allPaths = items.map(item => item.path)
+  // Build a Set of path prefixes for O(1) descendant lookups instead of O(n²) .some()
+  const pathPrefixSet = new Set<string>()
+  for (const item of items) {
+    // Add all ancestor prefixes so we can check "has descendants" in O(1)
+    const parts = item.path.split('/')
+    for (let i = 1; i < parts.length; i++) {
+      pathPrefixSet.add(parts.slice(0, i).join('/'))
+    }
+  }
+
   const folders: HierarchyMappedItem[] = []
   const files: HierarchyMappedItem[] = []
 
   for (const item of items) {
-    const hasDescendants = allPaths.some(path => path !== item.path && path.startsWith(`${item.path}/`))
+    const hasDescendants = pathPrefixSet.has(item.path)
     if (hasDescendants || !hasFileExtension(item.path)) folders.push(item)
     else files.push(item)
   }

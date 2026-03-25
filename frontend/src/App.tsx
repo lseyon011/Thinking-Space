@@ -1,5 +1,5 @@
 import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Bot,
@@ -26,25 +26,29 @@ import {
 } from 'lucide-react'
 import treeOfLifeLogo from './assets/tree-of-life-logo.jpg'
 import excalidrawLogo from './assets/excalidraw-logo.svg'
+// Core pages — eagerly loaded (used on every session)
 import Home from './pages/Home'
-import ExcalidrawPlus from './pages/ExcalidrawPlus'
-import FormatExcalidraw from './pages/FormatExcalidraw'
-import ExcalidrawPlugin from './pages/ExcalidrawPlugin'
-import MindmapBuilder from './pages/MindmapBuilder'
-import PdfToMarkdown from './pages/PdfToMarkdown'
-import GitInsights from './pages/GitInsights'
-import TranscriptCleaner from './pages/TranscriptCleaner'
 import NewThought from './pages/NewThought'
 import ThinkingSpace from './pages/ThinkingSpace'
 import ThinkingOrganizer from './pages/ThinkingOrganizer'
 import Chat from './pages/Chat'
 import Web from './pages/Web'
-import CapabilityDiscovery from './pages/CapabilityDiscovery'
-import ExtensionBuilder from './pages/ExtensionBuilder'
-import PasswordManager from './pages/PasswordManager'
 import Settings from './pages/Settings'
-import TerminalPage from './pages/TerminalPage'
-import WebullPage from './personal_extension/pages/WebullPage'
+
+// Heavy / rarely-used pages — lazy loaded (code-split into separate chunks)
+const ExcalidrawPlus = lazy(() => import('./pages/ExcalidrawPlus'))
+const FormatExcalidraw = lazy(() => import('./pages/FormatExcalidraw'))
+const ExcalidrawPlugin = lazy(() => import('./pages/ExcalidrawPlugin'))
+const MindmapBuilder = lazy(() => import('./pages/MindmapBuilder'))
+const PdfToMarkdown = lazy(() => import('./pages/PdfToMarkdown'))
+const GitInsights = lazy(() => import('./pages/GitInsights'))
+const TranscriptCleaner = lazy(() => import('./pages/TranscriptCleaner'))
+const CapabilityDiscovery = lazy(() => import('./pages/CapabilityDiscovery'))
+const ExtensionBuilder = lazy(() => import('./pages/ExtensionBuilder'))
+const PasswordManager = lazy(() => import('./pages/PasswordManager'))
+const TerminalPage = lazy(() => import('./pages/TerminalPage'))
+const WebullPage = lazy(() => import('./personal_extension/pages/WebullPage'))
+import { FrozenRouteBlock } from './components/lego_blocks/units/FrozenRouteBlock'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import AppTabsBlock, { type AppWorkspaceTabBlockModel } from './components/lego_blocks/units/AppTabsBlock'
 import { copyTextToClipboard } from './components/lego_blocks/units/BacklogListDomainBlock'
@@ -578,6 +582,14 @@ function App() {
     thinkingSpace: location.pathname === '/thinking-space',
     webull: location.pathname === '/webull',
   }))
+
+  // Pre-compute a Set of mounted tab IDs for O(1) lookups in persistent route rendering
+  // (replaces O(n) workspaceTabs.some() calls inside .map() loops)
+  const mountedTabIdSet = useMemo(
+    () => new Set(workspaceTabs.map(tab => tab.id)),
+    [workspaceTabs],
+  )
+
   const showGoogleWorkspaceChromeControls = location.pathname === '/thinking-space'
     && thinkingSpaceGoogleWorkspaceChromeState.enabled
   const showChatSidebarChromeControl = location.pathname === '/chat'
@@ -1791,8 +1803,14 @@ function App() {
     nativeChromeLastScrollTopRef.current = 0
   }, [currentRoute, keyboardVisible, useNativeTopChrome])
 
+  // Debounce sidebar collapsed persistence — avoids synchronous localStorage write on every toggle
+  const sidebarCollapsedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    setStorageItem(STORAGE_KEYS.appShellSidebarCollapsed, sidebarCollapsed ? '1' : '0')
+    if (sidebarCollapsedTimerRef.current) clearTimeout(sidebarCollapsedTimerRef.current)
+    sidebarCollapsedTimerRef.current = setTimeout(() => {
+      setStorageItem(STORAGE_KEYS.appShellSidebarCollapsed, sidebarCollapsed ? '1' : '0')
+    }, 300)
+    return () => { if (sidebarCollapsedTimerRef.current) clearTimeout(sidebarCollapsedTimerRef.current) }
   }, [sidebarCollapsed])
 
   useEffect(() => {
@@ -2033,13 +2051,24 @@ function App() {
     pendingWorkspaceTabNavigationRef.current = null
   }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
 
+  // Debounce workspace tab persistence — rapid tab switches only write once after settling
+  const tabsPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    setJsonStorageItem(STORAGE_KEYS.appShellTabs, workspaceTabs)
+    if (tabsPersistTimerRef.current) clearTimeout(tabsPersistTimerRef.current)
+    tabsPersistTimerRef.current = setTimeout(() => {
+      setJsonStorageItem(STORAGE_KEYS.appShellTabs, workspaceTabs)
+    }, 500)
+    return () => { if (tabsPersistTimerRef.current) clearTimeout(tabsPersistTimerRef.current) }
   }, [workspaceTabs])
 
+  const activeTabPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (!activeWorkspaceTabId) return
-    setStorageItem(STORAGE_KEYS.appShellActiveTabId, activeWorkspaceTabId)
+    if (activeTabPersistTimerRef.current) clearTimeout(activeTabPersistTimerRef.current)
+    activeTabPersistTimerRef.current = setTimeout(() => {
+      setStorageItem(STORAGE_KEYS.appShellActiveTabId, activeWorkspaceTabId)
+    }, 300)
+    return () => { if (activeTabPersistTimerRef.current) clearTimeout(activeTabPersistTimerRef.current) }
   }, [activeWorkspaceTabId])
 
   useEffect(() => {
@@ -2769,7 +2798,7 @@ function App() {
           >
             <div className="relative h-full min-h-0">
               {renderedPersistentChatTabIds.map((tabId) => {
-                const chatTabMounted = workspaceTabs.some((tab) => tab.id === tabId)
+                const chatTabMounted = mountedTabIdSet.has(tabId)
                 if (!chatTabMounted) return null
                 const chatSurfaceActive = isChatRoute && activeWorkspaceTabId === tabId
                 return (
@@ -2779,12 +2808,14 @@ function App() {
                     style={{ visibility: chatSurfaceActive ? 'visible' : 'hidden', pointerEvents: chatSurfaceActive ? 'auto' : 'none' }}
                     aria-hidden={!chatSurfaceActive}
                   >
-                    <Chat active={chatSurfaceActive} />
+                    <FrozenRouteBlock active={chatSurfaceActive}>
+                      <Chat active={chatSurfaceActive} />
+                    </FrozenRouteBlock>
                   </div>
                 )
               })}
               {renderedPersistentWebTabIds.map((tabId) => {
-                const webTabMounted = workspaceTabs.some((tab) => tab.id === tabId)
+                const webTabMounted = mountedTabIdSet.has(tabId)
                 if (!webTabMounted) return null
                 const webSurfaceActive = isWebRoute && activeWorkspaceTabId === tabId
                 return (
@@ -2794,11 +2825,13 @@ function App() {
                     style={{ visibility: webSurfaceActive ? 'visible' : 'hidden', pointerEvents: webSurfaceActive ? 'auto' : 'none' }}
                     aria-hidden={!webSurfaceActive}
                   >
-                    <Web
-                      active={webSurfaceActive}
-                      selectedSiteId={persistentWebSiteIdByTabId[tabId] ?? null}
-                      onSelectSiteId={(siteId) => handlePersistentWebSiteSelect(tabId, siteId)}
-                    />
+                    <FrozenRouteBlock active={webSurfaceActive}>
+                      <Web
+                        active={webSurfaceActive}
+                        selectedSiteId={persistentWebSiteIdByTabId[tabId] ?? null}
+                        onSelectSiteId={(siteId) => handlePersistentWebSiteSelect(tabId, siteId)}
+                      />
+                    </FrozenRouteBlock>
                   </div>
                 )
               })}
@@ -2808,7 +2841,9 @@ function App() {
                   style={{ visibility: isOrganizerRoute ? 'visible' : 'hidden', pointerEvents: isOrganizerRoute ? 'auto' : 'none' }}
                   aria-hidden={!isOrganizerRoute}
                 >
-                  <ThinkingOrganizer active={isOrganizerRoute} />
+                  <FrozenRouteBlock active={isOrganizerRoute}>
+                    <ThinkingOrganizer active={isOrganizerRoute} />
+                  </FrozenRouteBlock>
                 </div>
               )}
               {persistentRouteMounts.newThought && (
@@ -2817,7 +2852,9 @@ function App() {
                   style={{ visibility: isNewThoughtRoute ? 'visible' : 'hidden', pointerEvents: isNewThoughtRoute ? 'auto' : 'none' }}
                   aria-hidden={!isNewThoughtRoute}
                 >
-                  <NewThought />
+                  <FrozenRouteBlock active={isNewThoughtRoute}>
+                    <NewThought />
+                  </FrozenRouteBlock>
                 </div>
               )}
               {persistentRouteMounts.thinkingSpace && (
@@ -2826,7 +2863,9 @@ function App() {
                   style={{ visibility: isThinkingSpaceRoute ? 'visible' : 'hidden', pointerEvents: isThinkingSpaceRoute ? 'auto' : 'none' }}
                   aria-hidden={!isThinkingSpaceRoute}
                 >
-                  <ThinkingSpace />
+                  <FrozenRouteBlock active={isThinkingSpaceRoute}>
+                    <ThinkingSpace />
+                  </FrozenRouteBlock>
                 </div>
               )}
               {persistentRouteMounts.webull && (
@@ -2835,10 +2874,13 @@ function App() {
                   style={{ visibility: isWebullRoute ? 'visible' : 'hidden', pointerEvents: isWebullRoute ? 'auto' : 'none' }}
                   aria-hidden={!isWebullRoute}
                 >
-                  <WebullPage pageLabel={webullTabLabel} />
+                  <FrozenRouteBlock active={isWebullRoute}>
+                    <WebullPage pageLabel={webullTabLabel} />
+                  </FrozenRouteBlock>
                 </div>
               )}
               {!usesPersistentRouteSurface && (
+                <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>}>
                 <Routes>
                   <Route path="/" element={<Home />} />
                   <Route path="/thinking-space" element={<ThinkingSpace />} />
@@ -2882,6 +2924,7 @@ function App() {
                   />
                   <Route path="/capabilities" element={<CapabilityDiscovery />} />
                 </Routes>
+                </Suspense>
               )}
             </div>
           </main>

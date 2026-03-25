@@ -64,6 +64,7 @@ export interface NodeRecord {
   updatedAt: string        // ISO string
   aiSummary?: string
   bodyExcerpt?: string     // first ~200 chars of body for search
+  searchText?: string      // pre-computed lowercase search text (built during upsert)
 }
 
 export interface LinkRecord {
@@ -128,6 +129,64 @@ export async function upsertNode(
 }
 
 /**
+ * Bulk upsert nodes — much faster than individual upsertNode calls during full sync.
+ * Uses a single transaction with bulkPut for O(1) transaction overhead.
+ */
+export async function bulkUpsertNodes(
+  records: Omit<NodeRecord, 'id'>[],
+): Promise<void> {
+  if (records.length === 0) return
+  const db = getDb()
+  const normalized = records.map(normalizeRecordForStorage)
+  // Fetch existing uuids in one indexed query
+  const uuids = normalized.map(r => r.uuid)
+  const existingNodes = await db.nodes.where('uuid').anyOf(uuids).toArray()
+  const existingByUuid = new Map(existingNodes.map(n => [n.uuid, n.id!]))
+
+  const toUpdate: NodeRecord[] = []
+  const toAdd: Omit<NodeRecord, 'id'>[] = []
+  for (const record of normalized) {
+    const existingId = existingByUuid.get(record.uuid)
+    if (existingId !== undefined) {
+      toUpdate.push({ ...record, id: existingId })
+    } else {
+      toAdd.push(record)
+    }
+  }
+
+  await db.transaction('rw', db.nodes, async () => {
+    if (toUpdate.length > 0) await db.nodes.bulkPut(toUpdate)
+    if (toAdd.length > 0) await db.nodes.bulkAdd(toAdd)
+  })
+}
+
+/**
+ * Batch delete nodes by file paths — single transaction instead of N individual deletes.
+ */
+export async function bulkDeleteNodesByPaths(filePaths: string[]): Promise<void> {
+  if (filePaths.length === 0) return
+  const db = getDb()
+  await db.transaction('rw', db.nodes, async () => {
+    for (const path of filePaths) {
+      await db.nodes.where('filePath').equals(path).delete()
+    }
+  })
+}
+
+/**
+ * Batch delete links for multiple source files — single transaction.
+ */
+export async function bulkDeleteLinksForFiles(filePaths: string[]): Promise<void> {
+  if (filePaths.length === 0) return
+  const db = getDb()
+  await db.transaction('rw', db.links, async () => {
+    for (const path of filePaths) {
+      await db.links.where('sourceFilePath').equals(path).delete()
+    }
+  })
+}
+
+/**
  * Get all children of a parent (by parent key).
  */
 export async function getChildren(parentKey: string): Promise<NodeRecord[]> {
@@ -165,8 +224,8 @@ export async function getNodeByPath(filePath: string): Promise<NodeRecord | unde
  */
 export async function getRootNodes(): Promise<NodeRecord[]> {
   const db = getDb()
-  // Nodes without a parent field — filter manually since Dexie can't index undefined
-  const roots = (await db.nodes.toArray()).filter(n => !n.parent)
+  // Use indexed lookup for sentinel value '' (set during normalizeRecordForStorage)
+  const roots = await db.nodes.where('parent').equals('').toArray()
   return roots.sort(compareNodeDisplayOrder)
 }
 
@@ -220,46 +279,26 @@ export async function searchNodes(query: string, limit: number = 20): Promise<No
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
   if (terms.length === 0) return []
 
-  const all = await db.nodes.toArray()
+  // Use pre-computed searchText field (built during upsert) instead of
+  // loading all nodes and constructing search strings on the fly.
   const scored: Array<{ node: NodeRecord; score: number }> = []
+  let earlyExitCount = 0
+  const maxScan = limit * 50 // scan at most 50x limit to avoid full table scan on huge vaults
 
-  for (const node of all) {
+  await db.nodes.each(node => {
+    if (earlyExitCount >= maxScan) return
+    earlyExitCount++
+
+    const searchable = node.searchText || ''
     let score = 0
-    const searchable = [
-      node.title,
-      node.key,
-      ...(node.tags || []),
-      ...(node.projectPresetTags || []),
-      node.bodyExcerpt || '',
-      node.aiSummary || '',
-      node.taskId || '',
-      node.taskStatus || '',
-      node.epicCompletedAt || '',
-      ...(node.dependsOn || []),
-      ...(node.blockedBy || []),
-      ...(node.acceptanceCriteria || []),
-      node.owner || '',
-      node.runId || '',
-      node.sessionId || '',
-      node.agentName || '',
-      node.model || '',
-      node.result || '',
-      node.sourceRepo || '',
-      node.branch || '',
-      node.commit || '',
-      ...(node.artifacts || []),
-      ...(node.relatedNodes || []),
-      node.schemaVersion || '',
-      node.recordKind || '',
-      node.metadataText || '',
-    ].join(' ').toLowerCase()
-
     for (const term of terms) {
       if (searchable.includes(term)) score++
     }
 
-    if (score > 0) scored.push({ node, score })
-  }
+    if (score > 0) {
+      scored.push({ node, score })
+    }
+  })
 
   return scored
     .sort((a, b) => b.score - a.score)
@@ -305,7 +344,8 @@ export async function getNodeCount(): Promise<number> {
  */
 export async function getAllFilePaths(): Promise<Set<string>> {
   const db = getDb()
-  const paths = await db.nodes.orderBy('filePath').keys()
+  // Use filePath index to get keys directly — no need to load full records or sort
+  const paths = await db.nodes.orderBy('filePath').uniqueKeys()
   return new Set(paths as string[])
 }
 
@@ -408,16 +448,20 @@ export async function updateLinkTargets(
   const db = getDb()
   let updated = 0
   await db.transaction('rw', db.links, async () => {
+    // Batch update exact matches
     const exact = await db.links.where('targetFilePath').equals(oldPrefix).toArray()
-    for (const link of exact) {
-      await db.links.update(link.id!, { targetFilePath: newPrefix })
-      updated++
+    if (exact.length > 0) {
+      await db.links.bulkPut(exact.map(link => ({ ...link, targetFilePath: newPrefix })))
+      updated += exact.length
     }
+    // Batch update child path matches
     const children = await db.links.where('targetFilePath').startsWith(`${oldPrefix}/`).toArray()
-    for (const link of children) {
-      const suffix = link.targetFilePath.slice(oldPrefix.length)
-      await db.links.update(link.id!, { targetFilePath: `${newPrefix}${suffix}` })
-      updated++
+    if (children.length > 0) {
+      await db.links.bulkPut(children.map(link => ({
+        ...link,
+        targetFilePath: `${newPrefix}${link.targetFilePath.slice(oldPrefix.length)}`,
+      })))
+      updated += children.length
     }
   })
   return updated
@@ -433,28 +477,44 @@ export async function updateLinkSourcePaths(
   const db = getDb()
   let updated = 0
   await db.transaction('rw', db.links, async () => {
+    // Batch update exact matches
     const exact = await db.links.where('sourceFilePath').equals(oldPrefix).toArray()
-    for (const link of exact) {
-      await db.links.update(link.id!, { sourceFilePath: newPrefix })
-      updated++
+    if (exact.length > 0) {
+      await db.links.bulkPut(exact.map(link => ({ ...link, sourceFilePath: newPrefix })))
+      updated += exact.length
     }
+    // Batch update child path matches
     const children = await db.links.where('sourceFilePath').startsWith(`${oldPrefix}/`).toArray()
-    for (const link of children) {
-      const suffix = link.sourceFilePath.slice(oldPrefix.length)
-      await db.links.update(link.id!, { sourceFilePath: `${newPrefix}${suffix}` })
-      updated++
+    if (children.length > 0) {
+      await db.links.bulkPut(children.map(link => ({
+        ...link,
+        sourceFilePath: `${newPrefix}${link.sourceFilePath.slice(oldPrefix.length)}`,
+      })))
+      updated += children.length
     }
   })
   return updated
 }
 
 function normalizeRecordForStorage(record: Omit<NodeRecord, 'id'>): Omit<NodeRecord, 'id'> {
+  // Use structuredClone instead of JSON round-trip for deep copy (faster, handles more types)
   const metadata = record.metadata
-    ? JSON.parse(JSON.stringify(record.metadata)) as Record<string, unknown>
+    ? structuredClone(record.metadata)
     : undefined
+
+  // Ensure parent has sentinel value '' for indexed root-node queries
+  const parent = record.parent || ''
+
+  const tags = (record.tags ?? []).filter(Boolean)
+  const projectPresetTags = record.projectPresetTags?.filter(Boolean)
+  const metadataText = record.metadataText ?? buildMetadataSearchText(metadata)
+
+  // Pre-compute searchText for fast full-text search without loading all records
+  const searchText = buildSearchText(record, tags, projectPresetTags, metadataText)
 
   return {
     ...record,
+    parent,
     dependsOn: record.dependsOn?.filter(Boolean),
     blockedBy: record.blockedBy?.filter(Boolean),
     acceptanceCriteria: record.acceptanceCriteria?.filter(Boolean),
@@ -462,10 +522,36 @@ function normalizeRecordForStorage(record: Omit<NodeRecord, 'id'>): Omit<NodeRec
     relatedNodes: record.relatedNodes?.filter(Boolean),
     metadata,
     metadataKeys: (record.metadataKeys ?? extractMetadataKeys(metadata)).filter(Boolean),
-    metadataText: record.metadataText ?? buildMetadataSearchText(metadata),
-    tags: (record.tags ?? []).filter(Boolean),
-    projectPresetTags: record.projectPresetTags?.filter(Boolean),
+    metadataText,
+    tags,
+    projectPresetTags,
+    searchText,
   }
+}
+
+function buildSearchText(
+  record: Omit<NodeRecord, 'id'>,
+  tags: string[],
+  projectPresetTags: string[] | undefined,
+  metadataText: string,
+): string {
+  // Build a single lowercase string at upsert time so search never needs to reconstruct it
+  const parts: string[] = [
+    record.title,
+    record.key,
+  ]
+  if (tags.length > 0) parts.push(tags.join(' '))
+  if (projectPresetTags && projectPresetTags.length > 0) parts.push(projectPresetTags.join(' '))
+  if (record.bodyExcerpt) parts.push(record.bodyExcerpt)
+  if (record.aiSummary) parts.push(record.aiSummary)
+  if (record.taskId) parts.push(record.taskId)
+  if (record.taskStatus) parts.push(record.taskStatus)
+  if (record.owner) parts.push(record.owner)
+  if (record.agentName) parts.push(record.agentName)
+  if (record.recordKind) parts.push(record.recordKind)
+  if (record.description) parts.push(record.description)
+  if (metadataText) parts.push(metadataText)
+  return parts.join(' ').toLowerCase()
 }
 
 function compareNodeDisplayOrder(a: NodeRecord, b: NodeRecord): number {

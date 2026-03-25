@@ -6,12 +6,17 @@
  * Azure:  `az account get-access-token` CLI
  */
 
-import { execFileSync, execSync } from 'child_process';
+import { execFile, exec } from 'child_process';
 import { createHash } from 'crypto';
 import * as fs from 'fs';
+import * as fsPromises from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import * as https from 'https';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
 // ── Types ──
 
@@ -78,14 +83,14 @@ function parseKeychainPayload(raw: string): ClaudeCredentials | null {
   }
 }
 
-export function readClaudeCredentialsBlock(): ClaudeCredentials | null {
-  // Try macOS Keychain first
+export async function readClaudeCredentialsBlock(): Promise<ClaudeCredentials | null> {
+  // Try macOS Keychain first (async — does not block the main thread)
   try {
-    const raw = execSync(
+    const { stdout } = await execAsync(
       `security find-generic-password -s "${KEYCHAIN_SERVICE}" -w`,
-      { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] },
-    ).trim();
-    const creds = parseKeychainPayload(raw);
+      { encoding: 'utf-8', timeout: 5000 },
+    );
+    const creds = parseKeychainPayload(stdout.trim());
     if (creds) return creds;
   } catch {
     // Keychain not available or entry missing — fall through
@@ -93,7 +98,7 @@ export function readClaudeCredentialsBlock(): ClaudeCredentials | null {
 
   // Fallback: credentials file
   try {
-    const raw = fs.readFileSync(CREDENTIALS_FILE, 'utf-8');
+    const raw = await fsPromises.readFile(CREDENTIALS_FILE, 'utf-8');
     return parseKeychainPayload(raw);
   } catch {
     return null;
@@ -207,30 +212,30 @@ function parseCodexPayload(raw: string, fallbackMtimeMs?: number): CodexCredenti
   }
 }
 
-export function readCodexCredentialsBlock(): CodexCredentials | null {
+export async function readCodexCredentialsBlock(): Promise<CodexCredentials | null> {
   const codexHome = resolveCodexHomePath();
   const authPath = path.join(codexHome, 'auth.json');
 
-  // Try macOS Keychain first.
+  // Try macOS Keychain first (async — does not block the main thread).
   if (process.platform === 'darwin') {
     try {
       const account = computeCodexKeychainAccount(codexHome);
-      const raw = execFileSync(
+      const { stdout } = await execFileAsync(
         'security',
         ['find-generic-password', '-s', CODEX_KEYCHAIN_SERVICE, '-a', account, '-w'],
-        { encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] },
-      ).trim();
-      const creds = parseCodexPayload(raw);
+        { encoding: 'utf8', timeout: 5000 },
+      );
+      const creds = parseCodexPayload(stdout.trim());
       if (creds) return creds;
     } catch {
       // Missing keychain record or security command unavailable.
     }
   }
 
-  // Fallback file.
+  // Fallback file (async).
   try {
-    const stat = fs.statSync(authPath);
-    const raw = fs.readFileSync(authPath, 'utf8');
+    const stat = await fsPromises.stat(authPath);
+    const raw = await fsPromises.readFile(authPath, 'utf8');
     return parseCodexPayload(raw, stat.mtimeMs);
   } catch {
     return null;
@@ -395,13 +400,13 @@ export function chatCodexWithOauthBlock(
 
 const AZURE_RESOURCE = 'https://cognitiveservices.azure.com';
 
-export function readAzureTokenBlock(): AzureCredentials | null {
+export async function readAzureTokenBlock(): Promise<AzureCredentials | null> {
   try {
-    const raw = execSync(
+    const { stdout } = await execAsync(
       `az account get-access-token --resource ${AZURE_RESOURCE} --output json`,
-      { encoding: 'utf-8', timeout: 15000, stdio: ['pipe', 'pipe', 'pipe'] },
-    ).trim();
-    const parsed = JSON.parse(raw);
+      { encoding: 'utf-8', timeout: 15000 },
+    );
+    const parsed = JSON.parse(stdout.trim());
     if (!parsed?.accessToken) return null;
     return {
       accessToken: parsed.accessToken,

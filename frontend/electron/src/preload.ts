@@ -19,20 +19,22 @@ function readPersistedVaultRootSyncBlock(): string | null {
   }
 }
 
+// Cache the sync IPC result so we only make ONE synchronous round-trip at preload time.
+// Subsequent calls return the cached value without blocking the renderer.
 let persistedVaultRootBlock: string | null = readPersistedVaultRootSyncBlock()
 
 function getPersistedVaultRootBlock(): string | null {
-  const nextValue = readPersistedVaultRootSyncBlock()
-  if (nextValue) {
-    persistedVaultRootBlock = nextValue
-    return nextValue
-  }
+  // Return cached value — no additional sync IPC calls needed.
+  // The value is updated via vaultRootSetPersisted below.
   return persistedVaultRootBlock
 }
 
-const appVersion: string = (() => {
-  try { return ipcRenderer.sendSync('app:version:getSync') as string } catch { return '' }
-})()
+// Fetch app version asynchronously to avoid blocking the renderer at preload.
+// The contextBridge getter returns '' until the async call resolves.
+let appVersion = ''
+ipcRenderer.invoke('app:version:get').then((v: unknown) => {
+  if (typeof v === 'string') appVersion = v
+}).catch(() => { /* ignore */ })
 
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,

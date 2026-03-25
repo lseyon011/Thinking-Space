@@ -1351,9 +1351,13 @@ ipcMain.handle('vault:selectFolder', async () => {
 });
 
 // -- Persisted vault root (main-process storage) --
+// Legacy sync handler (kept for backwards-compat with older preload)
 ipcMain.on('app:version:getSync', (event) => {
   event.returnValue = app.getVersion();
 });
+
+// Async version — avoids blocking the renderer
+ipcMain.handle('app:version:get', () => app.getVersion());
 
 ipcMain.on('vault:root:getPersistedSync', (event) => {
   event.returnValue = readPersistedVaultRootBlock();
@@ -1533,50 +1537,59 @@ ipcMain.handle('vault:walk', async (_event, vaultRoot: string, extensions: strin
     } catch {
       return;
     }
+
+    // Collect subdirectories and files in a single pass
+    const subdirPromises: Promise<void>[] = [];
+    const fileStatPromises: Promise<void>[] = [];
+
     for (const entry of entries) {
       if (entry.name.startsWith('.') || EXCLUDED_DIRS.has(entry.name)) continue;
       const full = path.join(dir, entry.name);
+
       if (entry.isDirectory()) {
-        await walk(full);
+        // Parallelize directory recursion instead of sequential await
+        subdirPromises.push(walk(full));
         continue;
       }
 
-      if (!entry.isFile() && !entry.isSymbolicLink()) {
-        // Unknown dirent type; treat via stat best-effort.
-        try {
-          const st = await fsPromises.stat(full);
-          if (st.isDirectory()) continue;
-          if (!st.isFile()) continue;
-        } catch {
-          continue;
-        }
+      if (entry.isSymbolicLink()) {
+        // Single stat call for symlinks — check if it's a file (not dir)
+        fileStatPromises.push(
+          fsPromises.stat(full).then(st => {
+            if (!st.isFile()) return;
+            const ext = path.extname(entry.name).toLowerCase();
+            if (!extSet.has(ext)) return;
+            results.push({
+              path: path.relative(rootResolved, full),
+              size: st.size,
+              mtime: st.mtimeMs / 1000,
+              ctime: st.birthtimeMs / 1000,
+            });
+          }).catch(() => { /* skip unreadable */ }),
+        );
+        continue;
       }
 
-      // Do not recurse into symlink directories to avoid potential loops.
-      if (entry.isSymbolicLink()) {
-        try {
-          const targetStat = await fsPromises.stat(full);
-          if (targetStat.isDirectory()) continue;
-        } catch {
-          continue;
-        }
-      }
+      if (!entry.isFile()) continue;
 
       const ext = path.extname(entry.name).toLowerCase();
       if (!extSet.has(ext)) continue;
-      try {
-        const st = await fsPromises.stat(full);
-        if (!st.isFile()) continue;
-        results.push({
-          path: path.relative(rootResolved, full),
-          size: st.size,
-          mtime: st.mtimeMs / 1000,
-          ctime: st.birthtimeMs / 1000,
-        });
-      } catch {
-        // skip unreadable files
-      }
+
+      // Single stat call per matching file (was 2-3 stats before)
+      fileStatPromises.push(
+        fsPromises.stat(full).then(st => {
+          results.push({
+            path: path.relative(rootResolved, full),
+            size: st.size,
+            mtime: st.mtimeMs / 1000,
+            ctime: st.birthtimeMs / 1000,
+          });
+        }).catch(() => { /* skip unreadable */ }),
+      );
     }
+
+    // Wait for all subdirs and file stats in parallel
+    await Promise.all([...subdirPromises, ...fileStatPromises]);
   }
 
   await walk(rootResolved);

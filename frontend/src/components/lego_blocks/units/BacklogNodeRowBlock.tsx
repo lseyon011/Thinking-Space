@@ -1,5 +1,5 @@
 import { Check, ChevronRight, Copy, Info, Layers, Loader2 } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { memo, type ReactNode } from 'react'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
 import {
@@ -84,7 +84,7 @@ interface BacklogNodeRowBlockProps {
   onNodeStatusChange: (nextStatus: NodeStatus) => void
 }
 
-export function BacklogNodeRowBlock({
+export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
   node,
   depth,
   siblingIndex,
@@ -374,4 +374,4 @@ export function BacklogNodeRowBlock({
       </div>
     </div>
   )
-}
+})

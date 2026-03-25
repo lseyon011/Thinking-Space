@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
  * localStorage-backed Set<string> for tracking expanded IDs in sidebar panels.
  * Collapsed by default unless `defaultIds` is provided.
+ *
+ * Performance: debounces localStorage writes to avoid blocking the main thread
+ * on rapid toggle sequences (e.g., expand/collapse spam).
  */
 export function useExpandedSetBlock(
   storageKey: string,
@@ -20,8 +23,16 @@ export function useExpandedSetBlock(
     return defaultIds ? new Set(defaultIds) : new Set()
   })
 
+  // Debounce localStorage writes — 500ms after last change instead of on every toggle
+  const writeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify([...expanded]))
+    if (writeTimerRef.current) clearTimeout(writeTimerRef.current)
+    writeTimerRef.current = setTimeout(() => {
+      localStorage.setItem(storageKey, JSON.stringify([...expanded]))
+    }, 500)
+    return () => {
+      if (writeTimerRef.current) clearTimeout(writeTimerRef.current)
+    }
   }, [storageKey, expanded])
 
   const toggle = useCallback((id: string) => {

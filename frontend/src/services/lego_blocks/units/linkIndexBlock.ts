@@ -124,10 +124,6 @@ function joinLinkPath(parent: string, child: string): string {
   return normalizeLinkPath(`${base}/${relRaw}`)
 }
 
-function isSameOrChildPath(path: string, maybeParent: string): boolean {
-  if (!path || !maybeParent) return false
-  return path === maybeParent || path.startsWith(`${maybeParent}/`)
-}
 
 function extractWikilinks(
   content: string,
@@ -215,6 +211,8 @@ function extractYamlPathScalars(
   const links: ExtractedLink[] = []
   const normalizedFilePath = normalizeLinkPath(filePath)
   const currentDir = dirnameLinkPath(normalizedFilePath)
+  // Pre-normalize candidate paths into a Set for O(1) lookups instead of O(n) .some()
+  const normalizedCandidateSet = new Set(candidatePaths.map(normalizeLinkPath))
   const lines = frontmatter.split(/\r?\n/)
   if (lines.length < 3 || lines[0] !== '---') return []
 
@@ -272,7 +270,7 @@ function extractYamlPathScalars(
       absolutePath = normalizeLinkPath(unquoted)
     }
 
-    if (absolutePath && candidatePaths.some(cp => isSameOrChildPath(normalizeLinkPath(cp), absolutePath!))) {
+    if (absolutePath && normalizedCandidateSet.has(absolutePath)) {
       links.push({
         targetFilePath: absolutePath,
         linkType: 'yaml',
@@ -296,5 +294,6 @@ export function extractLinksFromContentBlock(
   const wikilinks = extractWikilinks(content, filePath, candidatePaths)
   const markdownLinks = extractMarkdownLinks(content, filePath)
   const yamlLinks = extractYamlPathScalars(content, filePath, candidatePaths)
-  return [...wikilinks, ...markdownLinks, ...yamlLinks]
+  // Avoid 3x spread — concat is faster for combining arrays
+  return wikilinks.concat(markdownLinks, yamlLinks)
 }

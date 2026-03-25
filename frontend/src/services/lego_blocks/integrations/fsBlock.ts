@@ -652,6 +652,7 @@ class CapacitorVaultFS implements VaultFS {
 
     // walkByUri: use native-provided URIs from readdir results to avoid
     // encoding issues with special characters (?, #, %) in filenames.
+    // Parallelized: subdirectories and file stats run concurrently for faster vault scans.
     const walk = async (dirPath: string, dirUri: string | null, relPrefix: string) => {
       const { Filesystem } = await import('@capacitor/filesystem')
       // Use the native URI when available (properly encoded); fall back to constructing our own
@@ -661,6 +662,10 @@ class CapacitorVaultFS implements VaultFS {
           ? { path: `file://${dirPath}` }
           : { path: dirPath, directory: (await import('@capacitor/filesystem')).Directory.Documents }
       const result = await Filesystem.readdir(opts)
+
+      const subdirPromises: Promise<void>[] = []
+      const fileStatPromises: Promise<void>[] = []
+
       for (const item of result.files) {
         if (item.name.startsWith('.') || EXCLUDED_DIRS.has(item.name)) continue
         const relPath = relPrefix ? `${relPrefix}/${item.name}` : item.name
@@ -669,7 +674,7 @@ class CapacitorVaultFS implements VaultFS {
 
         if (item.type === 'directory') {
           const childDir = `${dirPath}/${item.name}`
-          await walk(childDir, itemUri ?? null, relPath)
+          subdirPromises.push(walk(childDir, itemUri ?? null, relPath))
         } else {
           const ext = '.' + item.name.split('.').pop()?.toLowerCase()
           if (!extSet.has(ext || '')) continue
@@ -679,20 +684,24 @@ class CapacitorVaultFS implements VaultFS {
             : this.isAbsolute
               ? { path: `file://${dirPath}/${item.name}` }
               : { path: `${dirPath}/${item.name}`, directory: (await import('@capacitor/filesystem')).Directory.Documents }
-          try {
-            const st = await Filesystem.stat(stOpts)
-            entries.push({
-              path: relPath,
-              size: st.size,
-              mtime: (st.mtime || 0) / 1000,
-              ctime: (st.ctime || st.mtime || 0) / 1000,
-            })
-          } catch (err) {
-            // Skip files that can't be stat'd (e.g. iCloud placeholders not yet downloaded)
-            console.warn(`[CapacitorVaultFS] Skipping file that failed stat: ${relPath}`, err)
-          }
+          fileStatPromises.push(
+            Filesystem.stat(stOpts).then(st => {
+              entries.push({
+                path: relPath,
+                size: st.size,
+                mtime: (st.mtime || 0) / 1000,
+                ctime: (st.ctime || st.mtime || 0) / 1000,
+              })
+            }).catch(err => {
+              // Skip files that can't be stat'd (e.g. iCloud placeholders not yet downloaded)
+              console.warn(`[CapacitorVaultFS] Skipping file that failed stat: ${relPath}`, err)
+            }),
+          )
         }
       }
+
+      // Wait for all subdirectories and file stats in parallel
+      await Promise.all([...subdirPromises, ...fileStatPromises])
     }
 
     await walk(this.vaultRoot, null, '')
@@ -876,24 +885,37 @@ export class BrowserVaultFS implements VaultFS {
     const entries: VaultEntry[] = []
 
     const walk = async (dir: FileSystemDirectoryHandle, prefix: string) => {
+      // Collect all entries first (async iterator must be consumed sequentially)
+      const items: Array<[string, FileSystemHandle]> = []
       for await (const [name, handle] of (dir as any).entries()) {
         if (name.startsWith('.') || EXCLUDED_DIRS.has(name)) continue
+        items.push([name, handle])
+      }
+
+      // Then process subdirs and file stats in parallel
+      const promises: Promise<void>[] = []
+      for (const [name, handle] of items) {
         const relPath = prefix ? `${prefix}/${name}` : name
 
         if (handle.kind === 'directory') {
-          await walk(handle as FileSystemDirectoryHandle, relPath)
+          promises.push(walk(handle as FileSystemDirectoryHandle, relPath))
         } else {
           const ext = '.' + name.split('.').pop()?.toLowerCase()
           if (!extSet.has(ext || '')) continue
-          const file = await (handle as FileSystemFileHandle).getFile()
-          entries.push({
-            path: relPath,
-            size: file.size,
-            mtime: file.lastModified / 1000,
-            ctime: file.lastModified / 1000, // File System Access API doesn't expose ctime
-          })
+          promises.push(
+            (handle as FileSystemFileHandle).getFile().then(file => {
+              entries.push({
+                path: relPath,
+                size: file.size,
+                mtime: file.lastModified / 1000,
+                ctime: file.lastModified / 1000, // File System Access API doesn't expose ctime
+              })
+            }),
+          )
         }
       }
+
+      await Promise.all(promises)
     }
 
     await walk(this.root, '')
