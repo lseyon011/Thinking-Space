@@ -15,6 +15,14 @@ export interface WebullSelectedAccountOrch {
   subscriptionId: string | null
 }
 
+export interface WebullAccountSnapshotOrch {
+  account: WebullSelectedAccountOrch
+  accountBalanceLegacy: unknown | null
+  accountPositionsLegacy: unknown | null
+  assetsPositions: unknown | null
+  warnings: string[]
+}
+
 export interface WebullOverallSnapshotOrch {
   runtime: WebullRuntimeSurfaceOrch
   fetchedAt: string
@@ -26,11 +34,17 @@ export interface WebullOverallSnapshotOrch {
     assetsPositions: string | null
     marketQuotes: string | null
   }
+  /** First account — kept for backward compatibility. */
   selectedAccount: WebullSelectedAccountOrch | null
+  /** All resolved accounts with per-account data. */
+  accounts: WebullAccountSnapshotOrch[]
   accountList: unknown
+  /** Merged across all accounts (legacy compat — prefer accounts[]). */
   accountBalanceLegacy: unknown | null
+  /** Merged across all accounts (legacy compat — prefer accounts[]). */
   accountPositionsLegacy: unknown | null
   assetsAccount: unknown | null
+  /** Merged across all accounts (legacy compat — prefer accounts[]). */
   assetsPositions: unknown | null
   marketQuotes: unknown | null
   attempts: string[]
@@ -67,22 +81,19 @@ function firstNonEmptyStringBlock(...candidates: unknown[]): string | null {
   return null
 }
 
-function resolveSelectedAccountBlock(accountListData: unknown): WebullSelectedAccountOrch | null {
+function resolveAllAccountsBlock(accountListData: unknown): WebullSelectedAccountOrch[] {
   const rows = asRecordArrayBlock(accountListData)
-  if (rows.length === 0) return null
-  const first = rows[0]
-
-  const accountId = firstNonEmptyStringBlock(
-    first.account_id,
-    first.accountId,
-  )
-  if (!accountId) return null
-
-  return {
-    accountId,
-    accountNumber: firstNonEmptyStringBlock(first.account_number, first.accountNumber),
-    subscriptionId: firstNonEmptyStringBlock(first.subscription_id, first.subscriptionId),
+  const accounts: WebullSelectedAccountOrch[] = []
+  for (const row of rows) {
+    const accountId = firstNonEmptyStringBlock(row.account_id, row.accountId)
+    if (!accountId) continue
+    accounts.push({
+      accountId,
+      accountNumber: firstNonEmptyStringBlock(row.account_number, row.accountNumber),
+      subscriptionId: firstNonEmptyStringBlock(row.subscription_id, row.subscriptionId),
+    })
   }
+  return accounts
 }
 
 function mergeAttemptsBlock(
@@ -102,71 +113,147 @@ export function getWebullRuntimeSurfaceOrch(): WebullRuntimeSurfaceOrch {
   return 'web'
 }
 
-export async function fetchWebullOverallSnapshotOrch(): Promise<WebullOverallSnapshotOrch> {
-  const accountListResult = await fetchWebullAccountListBlock()
-  const selectedAccount = resolveSelectedAccountBlock(accountListResult.data)
-  const warnings: string[] = []
-  const hasAccountId = !!selectedAccount?.accountId
-  if (!hasAccountId) {
-    warnings.push('No account_id found in account list payload; positions and balance were skipped.')
+function mergeHoldingsArraysBlock(datasets: Array<unknown | null>): unknown[] {
+  const merged: unknown[] = []
+  for (const dataset of datasets) {
+    if (!dataset) continue
+    if (Array.isArray(dataset)) {
+      merged.push(...dataset)
+      continue
+    }
+    const record = dataset as Record<string, unknown>
+    const holdings = record?.holdings
+    if (Array.isArray(holdings)) {
+      merged.push(...holdings)
+    }
   }
+  return merged
+}
+
+async function fetchAccountSnapshotBlock(
+  account: WebullSelectedAccountOrch,
+): Promise<{
+  snapshot: WebullAccountSnapshotOrch
+  legacyBalanceResult: WebullApiResultBlock | null
+  legacyPositionsResult: WebullApiResultBlock | null
+  assetsPositionsResult: WebullApiResultBlock | null
+}> {
+  const warnings: string[] = []
 
   const [legacyBalanceSettled, legacyPositionsSettled, assetsPositionsSettled] = await Promise.allSettled([
-    hasAccountId && selectedAccount
-      ? fetchWebullAccountBalanceBlock(selectedAccount.accountId)
-      : Promise.resolve<WebullApiResultBlock | null>(null),
-    hasAccountId && selectedAccount
-      ? fetchWebullAccountPositionsBlock(selectedAccount.accountId)
-      : Promise.resolve<WebullApiResultBlock | null>(null),
-    hasAccountId && selectedAccount
-      ? fetchWebullAssetsPositionsBlock(selectedAccount.accountId)
-      : Promise.resolve<WebullApiResultBlock | null>(null),
+    fetchWebullAccountBalanceBlock(account.accountId),
+    fetchWebullAccountPositionsBlock(account.accountId),
+    fetchWebullAssetsPositionsBlock(account.accountId),
   ])
 
-  const legacyAccountBalanceResult = legacyBalanceSettled.status === 'fulfilled'
+  const legacyBalanceResult = legacyBalanceSettled.status === 'fulfilled'
     ? legacyBalanceSettled.value
     : null
-  const legacyAccountPositionsResult = legacyPositionsSettled.status === 'fulfilled'
+  const legacyPositionsResult = legacyPositionsSettled.status === 'fulfilled'
     ? legacyPositionsSettled.value
     : null
-  let assetsPositionsResult = assetsPositionsSettled.status === 'fulfilled'
+  const assetsPositionsResult = assetsPositionsSettled.status === 'fulfilled'
     ? assetsPositionsSettled.value
     : null
 
+  const accountLabel = account.accountNumber ?? account.accountId
   if (legacyBalanceSettled.status === 'rejected') {
-    warnings.push(summarizeApiUnavailableBlock('Account balance', legacyBalanceSettled.reason))
+    warnings.push(summarizeApiUnavailableBlock(`Account balance [${accountLabel}]`, legacyBalanceSettled.reason))
   }
   if (legacyPositionsSettled.status === 'rejected') {
-    warnings.push(summarizeApiUnavailableBlock('Positions', legacyPositionsSettled.reason))
+    warnings.push(summarizeApiUnavailableBlock(`Positions [${accountLabel}]`, legacyPositionsSettled.reason))
   }
   if (assetsPositionsSettled.status === 'rejected') {
-    warnings.push(summarizeApiUnavailableBlock('OpenAPI assets positions', assetsPositionsSettled.reason))
+    warnings.push(summarizeApiUnavailableBlock(`OpenAPI assets positions [${accountLabel}]`, assetsPositionsSettled.reason))
   }
+
+  return {
+    snapshot: {
+      account,
+      accountBalanceLegacy: legacyBalanceResult?.data ?? null,
+      accountPositionsLegacy: legacyPositionsResult?.data ?? null,
+      assetsPositions: assetsPositionsResult?.data ?? null,
+      warnings,
+    },
+    legacyBalanceResult,
+    legacyPositionsResult,
+    assetsPositionsResult,
+  }
+}
+
+export async function fetchWebullOverallSnapshotOrch(): Promise<WebullOverallSnapshotOrch> {
+  const accountListResult = await fetchWebullAccountListBlock()
+  const allAccounts = resolveAllAccountsBlock(accountListResult.data)
+  const warnings: string[] = []
+
+  if (allAccounts.length === 0) {
+    warnings.push('No account_id found in account list payload; positions and balance were skipped.')
+  }
+
+  // Fetch data for all accounts in parallel.
+  const accountResults = await Promise.all(
+    allAccounts.map(account => fetchAccountSnapshotBlock(account)),
+  )
+
+  const accountSnapshots: WebullAccountSnapshotOrch[] = accountResults.map(r => r.snapshot)
+  const allAttempts: WebullApiResultBlock[] = [accountListResult]
+
+  // Collect merged data for backward-compat top-level fields.
+  const allLegacyBalances: Array<unknown | null> = []
+  const allLegacyPositions: Array<unknown | null> = []
+  const allAssetsPositions: Array<unknown | null> = []
+  let firstLegacyBalanceEndpoint: string | null = null
+  let firstLegacyPositionsEndpoint: string | null = null
+  let firstAssetsPositionsEndpoint: string | null = null
+
+  for (const result of accountResults) {
+    warnings.push(...result.snapshot.warnings)
+
+    if (result.legacyBalanceResult) {
+      allAttempts.push(result.legacyBalanceResult)
+      allLegacyBalances.push(result.legacyBalanceResult.data)
+      if (!firstLegacyBalanceEndpoint) firstLegacyBalanceEndpoint = result.legacyBalanceResult.endpoint
+    }
+    if (result.legacyPositionsResult) {
+      allAttempts.push(result.legacyPositionsResult)
+      allLegacyPositions.push(result.legacyPositionsResult.data)
+      if (!firstLegacyPositionsEndpoint) firstLegacyPositionsEndpoint = result.legacyPositionsResult.endpoint
+    }
+    if (result.assetsPositionsResult) {
+      allAttempts.push(result.assetsPositionsResult)
+      allAssetsPositions.push(result.assetsPositionsResult.data)
+      if (!firstAssetsPositionsEndpoint) firstAssetsPositionsEndpoint = result.assetsPositionsResult.endpoint
+    }
+  }
+
+  // Merge holdings from all accounts into single top-level payloads for backward compat.
+  const mergedLegacyPositions = allLegacyPositions.length > 0
+    ? { holdings: mergeHoldingsArraysBlock(allLegacyPositions) }
+    : null
+  const mergedAssetsPositions = allAssetsPositions.length > 0
+    ? { holdings: mergeHoldingsArraysBlock(allAssetsPositions) }
+    : null
 
   return {
     runtime: getWebullRuntimeSurfaceOrch(),
     fetchedAt: accountListResult.requestedAt,
     endpoints: {
       accountList: accountListResult.endpoint,
-      accountBalanceLegacy: legacyAccountBalanceResult?.endpoint ?? null,
-      accountPositionsLegacy: legacyAccountPositionsResult?.endpoint ?? null,
+      accountBalanceLegacy: firstLegacyBalanceEndpoint,
+      accountPositionsLegacy: firstLegacyPositionsEndpoint,
       assetsAccount: null,
-      assetsPositions: assetsPositionsResult?.endpoint ?? null,
+      assetsPositions: firstAssetsPositionsEndpoint,
       marketQuotes: null,
     },
-    selectedAccount,
+    selectedAccount: allAccounts[0] ?? null,
+    accounts: accountSnapshots,
     accountList: accountListResult.data,
-    accountBalanceLegacy: legacyAccountBalanceResult?.data ?? null,
-    accountPositionsLegacy: legacyAccountPositionsResult?.data ?? null,
+    accountBalanceLegacy: allLegacyBalances.length === 1 ? allLegacyBalances[0] : (allLegacyBalances.length > 1 ? allLegacyBalances : null),
+    accountPositionsLegacy: mergedLegacyPositions,
     assetsAccount: null,
-    assetsPositions: assetsPositionsResult?.data ?? null,
+    assetsPositions: mergedAssetsPositions,
     marketQuotes: null,
-    attempts: mergeAttemptsBlock(
-      accountListResult,
-      legacyAccountBalanceResult,
-      legacyAccountPositionsResult,
-      assetsPositionsResult,
-    ),
+    attempts: mergeAttemptsBlock(...allAttempts),
     warnings,
   }
 }

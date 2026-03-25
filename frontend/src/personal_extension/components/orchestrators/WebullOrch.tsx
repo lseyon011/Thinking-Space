@@ -50,6 +50,14 @@ function toSnapshotFromCacheBlock(
   const selectedAccountId = selectedAccountRecord
     ? String(selectedAccountRecord.accountId ?? selectedAccountRecord.account_id ?? '')
     : ''
+  const selectedAccount = selectedAccountId
+    ? {
+      accountId: selectedAccountId,
+      accountNumber: String(selectedAccountRecord?.accountNumber ?? selectedAccountRecord?.account_number ?? '') || null,
+      subscriptionId: String(selectedAccountRecord?.subscriptionId ?? selectedAccountRecord?.subscription_id ?? '') || null,
+    }
+    : null
+
   return {
     runtime: refreshRuntime ?? runtime,
     fetchedAt: cache.fetchedAt || 'Unknown',
@@ -61,13 +69,16 @@ function toSnapshotFromCacheBlock(
       assetsPositions: null,
       marketQuotes: null,
     },
-    selectedAccount: selectedAccountId
-      ? {
-        accountId: selectedAccountId,
-        accountNumber: String(selectedAccountRecord?.accountNumber ?? selectedAccountRecord?.account_number ?? '') || null,
-        subscriptionId: String(selectedAccountRecord?.subscriptionId ?? selectedAccountRecord?.subscription_id ?? '') || null,
-      }
-      : null,
+    selectedAccount,
+    accounts: selectedAccount
+      ? [{
+        account: selectedAccount,
+        accountBalanceLegacy: cache.accountBalanceLegacy,
+        accountPositionsLegacy: cache.accountPositionsLegacy,
+        assetsPositions: cache.assetsPositions,
+        warnings: [],
+      }]
+      : [],
     accountList: cache.accountList,
     accountBalanceLegacy: cache.accountBalanceLegacy,
     accountPositionsLegacy: cache.accountPositionsLegacy,
