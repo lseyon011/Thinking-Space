@@ -75,6 +75,19 @@ export interface LinkRecord {
   rawText: string
 }
 
+export interface NodeKeyConflictBlock {
+  key: string
+  uuid: string
+  filePath: string
+  conflictingUuid: string
+  conflictingFilePath: string
+}
+
+export interface BulkUpsertNodesResultBlock {
+  writtenCount: number
+  conflicts: NodeKeyConflictBlock[]
+}
+
 // ── Database ──
 
 class ThinkingSpaceDB extends Dexie {
@@ -121,6 +134,16 @@ export async function upsertNode(
   const db = getDb()
   const normalized = normalizeRecordForStorage(record)
   const existing = await db.nodes.where('uuid').equals(record.uuid).first()
+  const conflictingByKey = await db.nodes.where('key').equals(normalized.key).first()
+  if (conflictingByKey && conflictingByKey.uuid !== normalized.uuid) {
+    throw new Error(formatNodeKeyConflictMessage({
+      key: normalized.key,
+      uuid: normalized.uuid,
+      filePath: normalized.filePath,
+      conflictingUuid: conflictingByKey.uuid,
+      conflictingFilePath: conflictingByKey.filePath,
+    }))
+  }
   if (existing) {
     await db.nodes.update(existing.id!, normalized)
   } else {
@@ -134,21 +157,58 @@ export async function upsertNode(
  */
 export async function bulkUpsertNodes(
   records: Omit<NodeRecord, 'id'>[],
-): Promise<void> {
-  if (records.length === 0) return
+): Promise<BulkUpsertNodesResultBlock> {
+  if (records.length === 0) return { writtenCount: 0, conflicts: [] }
   const db = getDb()
-  const normalized = records.map(normalizeRecordForStorage)
+  const dedupedByUuid = new Map<string, Omit<NodeRecord, 'id'>>()
+  for (const record of records.map(normalizeRecordForStorage)) {
+    dedupedByUuid.set(record.uuid, record)
+  }
+  const normalized = [...dedupedByUuid.values()]
   // Fetch existing uuids in one indexed query
   const uuids = normalized.map(r => r.uuid)
   const existingNodes = await db.nodes.where('uuid').anyOf(uuids).toArray()
-  const existingByUuid = new Map(existingNodes.map(n => [n.uuid, n.id!]))
+  const existingByUuid = new Map(existingNodes.map(n => [n.uuid, n]))
+  const keys = [...new Set(normalized.map(r => r.key).filter(Boolean))]
+  const existingKeyNodes = keys.length > 0
+    ? await db.nodes.where('key').anyOf(keys).toArray()
+    : []
+  const existingByKey = new Map(existingKeyNodes.map(n => [n.key, n]))
+  const incomingByKey = new Map<string, Omit<NodeRecord, 'id'>>()
 
   const toUpdate: NodeRecord[] = []
   const toAdd: Omit<NodeRecord, 'id'>[] = []
+  const conflicts: NodeKeyConflictBlock[] = []
   for (const record of normalized) {
-    const existingId = existingByUuid.get(record.uuid)
-    if (existingId !== undefined) {
-      toUpdate.push({ ...record, id: existingId })
+    const incomingConflict = incomingByKey.get(record.key)
+    if (incomingConflict && incomingConflict.uuid !== record.uuid) {
+      conflicts.push({
+        key: record.key,
+        uuid: record.uuid,
+        filePath: record.filePath,
+        conflictingUuid: incomingConflict.uuid,
+        conflictingFilePath: incomingConflict.filePath,
+      })
+      continue
+    }
+
+    const existingKeyNode = existingByKey.get(record.key)
+    if (existingKeyNode && existingKeyNode.uuid !== record.uuid) {
+      conflicts.push({
+        key: record.key,
+        uuid: record.uuid,
+        filePath: record.filePath,
+        conflictingUuid: existingKeyNode.uuid,
+        conflictingFilePath: existingKeyNode.filePath,
+      })
+      continue
+    }
+
+    incomingByKey.set(record.key, record)
+
+    const existingNode = existingByUuid.get(record.uuid)
+    if (existingNode?.id !== undefined) {
+      toUpdate.push({ ...record, id: existingNode.id })
     } else {
       toAdd.push(record)
     }
@@ -158,6 +218,11 @@ export async function bulkUpsertNodes(
     if (toUpdate.length > 0) await db.nodes.bulkPut(toUpdate)
     if (toAdd.length > 0) await db.nodes.bulkAdd(toAdd)
   })
+
+  return {
+    writtenCount: toUpdate.length + toAdd.length,
+    conflicts,
+  }
 }
 
 /**
@@ -619,4 +684,12 @@ function collectMetadataValues(value: unknown, out: string[]): void {
   }
 
   out.push(String(value))
+}
+
+function formatNodeKeyConflictMessage(conflict: NodeKeyConflictBlock): string {
+  return `Duplicate node key "${conflict.key}" in "${conflict.filePath}" conflicts with "${conflictingFilePath(conflict)}". Node keys must be unique.`
+}
+
+function conflictingFilePath(conflict: NodeKeyConflictBlock): string {
+  return conflict.conflictingFilePath || `[uuid:${conflict.conflictingUuid}]`
 }

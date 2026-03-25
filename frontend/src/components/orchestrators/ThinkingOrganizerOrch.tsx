@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowRight, Check, Loader2, FolderTree, Handshake, Layers, Lightbulb, ListChecks, Pencil, Play, Plus, X } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
@@ -12,6 +13,7 @@ import {
   STORAGE_KEYS,
   getStorageItem,
   getJsonStorageItem,
+  setJsonStorageItem,
   setStorageItem,
 } from '@/services/orchestrators/storageOrch'
 import {
@@ -38,6 +40,7 @@ import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILay
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
 
 type TabMode = 'backlog' | 'view' | 'link' | 'steward' | 'integrity'
+const PROJECT_ROOT_QUERY_PARAM = 'projectRoot'
 const THINKING_ORGANIZER_TABS: Array<{ id: TabMode; label: string }> = [
   { id: 'backlog', label: 'Create' },
   { id: 'view', label: 'View' },
@@ -59,6 +62,10 @@ function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
   if (typeof value === 'string' && value.trim()) return value
   return fallback
+}
+
+function normalizePath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
 }
 
 const VIEW_ACTOR: CapabilityActor = {
@@ -320,6 +327,7 @@ interface ThinkingOrganizerOrchProps {
 export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganizerOrchProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
+  const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = usePersistentTab()
   const [mountedTabs, setMountedTabs] = useState<Record<TabMode, boolean>>(() => ({
     backlog: tab === 'backlog',
@@ -337,11 +345,11 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   const [pinBoardActive, setPinBoardActive] = useState(false)
 
   // Project context
-  const [projectRoot, setProjectRoot] = useSessionStateBlock('organizer-project-root', '')
   const [projectUiState, setProjectUiState] = useState<OrganizerUiStateOrch | null>(null)
   const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>(
     () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
   )
+  const projectRoot = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -357,8 +365,18 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   const missionTextareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   const selectProject = useCallback((root: string) => {
-    setProjectRoot(root)
-  }, [setProjectRoot])
+    const normalized = normalizePath(root)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (normalized) next.set(PROJECT_ROOT_QUERY_PARAM, normalized)
+      else next.delete(PROJECT_ROOT_QUERY_PARAM)
+      return next
+    }, { replace: true })
+    setJsonStorageItem(
+      STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot,
+      normalized ? normalized.split('/') : [],
+    )
+  }, [setSearchParams])
 
 
   useEffect(() => {

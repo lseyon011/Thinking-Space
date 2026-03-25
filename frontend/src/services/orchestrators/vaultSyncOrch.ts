@@ -21,6 +21,7 @@ import {
   bulkUpsertLinks,
   replaceLinksForFile,
   type NodeRecord,
+  type NodeKeyConflictBlock,
   type LinkRecord,
 } from '@/services/lego_blocks/integrations/dbBlock'
 import { extractLinksFromContentBlock } from '@/services/lego_blocks/units/linkIndexBlock'
@@ -270,11 +271,13 @@ async function syncEntries(
 
   async function flushNodes() {
     if (pendingNodes.length === 0) return
-    if (isFullSync) {
-      await bulkUpsertNodes(pendingNodes.splice(0))
-    } else {
-      // Incremental: still use bulk for efficiency
-      await bulkUpsertNodes(pendingNodes.splice(0))
+    const batch = pendingNodes.splice(0)
+    const { conflicts } = await bulkUpsertNodes(batch)
+    if (conflicts.length > 0) {
+      result.errors.push(...conflicts.map(conflict => ({
+        path: conflict.filePath,
+        error: formatNodeKeyConflictError(conflict),
+      })))
     }
   }
 
@@ -350,6 +353,10 @@ async function syncEntries(
   await flushLinks()
 
   return result
+}
+
+function formatNodeKeyConflictError(conflict: NodeKeyConflictBlock): string {
+  return `Duplicate YAML key "${conflict.key}" conflicts with "${conflict.conflictingFilePath}". Node keys must be unique.`
 }
 
 function frontmatterToRecord(

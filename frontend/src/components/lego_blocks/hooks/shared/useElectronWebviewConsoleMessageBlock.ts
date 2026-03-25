@@ -21,7 +21,26 @@ function getConsoleLevelBlock(level: number): DebugLogLevel | null {
   return null
 }
 
-function shouldIgnoreWebviewConsoleNoiseBlock(message: string): boolean {
+function isBarchartConsoleNoiseBlock(normalized: string, resolvedUrl?: string | null): boolean {
+  if (!resolvedUrl) return false
+
+  let hostname = ''
+  try {
+    hostname = new URL(resolvedUrl).hostname.toLowerCase()
+  } catch {
+    return false
+  }
+
+  if (!(hostname === 'www.barchart.com' || hostname.endsWith('.barchart.com'))) return false
+
+  return normalized.includes('an item in styles is not of type cssresult. use `unsafecss` or `css`.')
+    || normalized.includes("failed to execute 'write' on 'document': it isn't possible to write into a document from an asynchronously-loaded external script unless it is explicitly opened.")
+    || normalized.includes("provider's accounts list is empty.")
+    || normalized.includes('not signed in with the identity provider.')
+    || normalized.includes('[gsi_logger]: fedcm get() rejects with networkerror: error retrieving a token.')
+}
+
+function shouldIgnoreWebviewConsoleNoiseBlock(message: string, resolvedUrl?: string | null): boolean {
   const normalized = message.toLowerCase()
   return normalized.includes('permissions-policy header')
     || normalized.includes("unrecognized feature: 'pointer-lock'")
@@ -38,10 +57,11 @@ function shouldIgnoreWebviewConsoleNoiseBlock(message: string): boolean {
     || normalized.includes('error sending segment performance metrics')
     || normalized.includes('fetch api cannot load')
     || normalized.includes("framing '") // CSP frame-ancestors violations
+    || isBarchartConsoleNoiseBlock(normalized, resolvedUrl)
 }
 
-function normalizeWebviewConsoleLevelBlock(level: DebugLogLevel, message: string): DebugLogLevel {
-  if ((level === 'warn' || level === 'error') && shouldIgnoreWebviewConsoleNoiseBlock(message)) {
+function normalizeWebviewConsoleLevelBlock(level: DebugLogLevel, message: string, resolvedUrl?: string | null): DebugLogLevel {
+  if ((level === 'warn' || level === 'error') && shouldIgnoreWebviewConsoleNoiseBlock(message, resolvedUrl)) {
     return 'info'
   }
   return level
@@ -92,10 +112,10 @@ export function useElectronWebviewConsoleMessageBlock({
 
       const message = String(consoleEvent?.message ?? '').trim()
       if (!message) return
-      if (shouldIgnoreWebviewConsoleNoiseBlock(message)) return
+      if (shouldIgnoreWebviewConsoleNoiseBlock(message, resolvedUrl)) return
 
       dispatchDebugLogBlock({
-        level: normalizeWebviewConsoleLevelBlock(mappedLevel, message),
+        level: normalizeWebviewConsoleLevelBlock(mappedLevel, message, resolvedUrl),
         message,
         details: buildConsoleDetailsBlock(consoleEvent, resolvedUrl),
         source: sourceLabel,
