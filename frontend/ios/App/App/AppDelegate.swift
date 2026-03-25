@@ -48,11 +48,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidEnterBackground(_ scene: UIScene) {
         if let vc = window?.rootViewController as? RootShellViewController {
-            vc.dismissInlineWebView()
+            vc.suspendInlineWebView()
         }
     }
 
-    func sceneWillEnterForeground(_ scene: UIScene) {}
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        if let vc = window?.rootViewController as? RootShellViewController {
+            vc.resumeInlineWebView()
+        }
+    }
     func sceneDidBecomeActive(_ scene: UIScene) {}
     func sceneDidDisconnect(_ scene: UIScene) {}
 }
@@ -201,6 +205,14 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
 
     func dismissInlineWebView() {
         inlineWebViewPlugin?.closeWebView()
+    }
+
+    func suspendInlineWebView() {
+        inlineWebViewPlugin?.suspendWebView()
+    }
+
+    func resumeInlineWebView() {
+        inlineWebViewPlugin?.resumeWebView()
     }
 
     private func configureShellSurface() {
@@ -673,7 +685,10 @@ public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDeleg
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "suspend", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "resume", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updateFrame", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getCurrentUrl", returnType: CAPPluginReturnPromise),
     ]
 
     // Swipe gesture thresholds matching uiGestureBlock.ts DEFAULT_DRAWER_SWIPE_THRESHOLDS
@@ -750,6 +765,71 @@ public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDeleg
             self.inlineWebView = nil
             self.edgeSwipeOverlay?.removeFromSuperview()
             self.edgeSwipeOverlay = nil
+            self.isSuspended = false
+        }
+    }
+
+    /// Internal: suspend for app background (called from bridge VC, not from JS).
+    func suspendWebView() {
+        DispatchQueue.main.async {
+            guard let wkView = self.inlineWebView, !self.isSuspended else { return }
+            self.suspendedFrame = wkView.frame
+            wkView.frame = CGRect(x: -9999, y: 0, width: wkView.frame.width, height: wkView.frame.height)
+            self.edgeSwipeOverlay?.isHidden = true
+            self.isSuspended = true
+        }
+    }
+
+    /// Internal: resume after app foreground (called from bridge VC, not from JS).
+    func resumeWebView() {
+        DispatchQueue.main.async {
+            guard let wkView = self.inlineWebView, self.isSuspended else { return }
+            wkView.frame = self.suspendedFrame
+            self.edgeSwipeOverlay?.isHidden = false
+            if let overlay = self.edgeSwipeOverlay {
+                overlay.frame = CGRect(x: 0, y: self.suspendedFrame.minY, width: 28, height: self.suspendedFrame.height)
+            }
+            self.isSuspended = false
+        }
+    }
+
+    private var isSuspended = false
+    private var suspendedFrame: CGRect = .zero
+
+    /// Move the WKWebView offscreen instead of destroying it, preserving all
+    /// session state (cookies, scroll position, form data, auth sessions).
+    @objc func suspend(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let wkView = self.inlineWebView else {
+                call.resolve(); return
+            }
+            self.suspendedFrame = wkView.frame
+            wkView.frame = CGRect(x: -9999, y: 0, width: wkView.frame.width, height: wkView.frame.height)
+            self.edgeSwipeOverlay?.isHidden = true
+            self.isSuspended = true
+            call.resolve()
+        }
+    }
+
+    /// Restore a previously suspended WKWebView to its frame without reloading.
+    @objc func resume(_ call: CAPPluginCall) {
+        let x = CGFloat(call.getFloat("x") ?? 0)
+        let y = CGFloat(call.getFloat("y") ?? 0)
+        let w = CGFloat(call.getFloat("width") ?? 0)
+        let h = CGFloat(call.getFloat("height") ?? 0)
+
+        DispatchQueue.main.async {
+            guard let wkView = self.inlineWebView, self.isSuspended else {
+                call.resolve(["resumed": false]); return
+            }
+            let frame = self.nativeFrame(x: x, y: y, width: w, height: h)
+            wkView.frame = frame
+            self.edgeSwipeOverlay?.isHidden = false
+            if let overlay = self.edgeSwipeOverlay {
+                overlay.frame = CGRect(x: 0, y: frame.minY, width: 28, height: frame.height)
+            }
+            self.isSuspended = false
+            call.resolve(["resumed": true])
         }
     }
 
@@ -805,6 +885,23 @@ public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDeleg
         pan.isEnabled = false
         pan.isEnabled = true
         notifyListeners("inlineWebViewEdgeSwipeClose", data: [:])
+    }
+
+    // MARK: - WKNavigationDelegate
+
+    public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if let url = webView.url?.absoluteString {
+            notifyListeners("urlChanged", data: ["url": url])
+        }
+    }
+
+    // MARK: - getCurrentUrl
+
+    @objc func getCurrentUrl(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            let url = self.inlineWebView?.url?.absoluteString ?? ""
+            call.resolve(["url": url])
+        }
     }
 
     // MARK: - UIGestureRecognizerDelegate

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
 import { Loader2, Send, AlertCircle, PanelLeftClose } from 'lucide-react'
 import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useExpandedSetBlock'
 import SidebarGroupHeaderBlock from '@/components/lego_blocks/units/ui/SidebarGroupHeaderBlock'
@@ -74,9 +75,9 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
   const [error, setError] = useState<string | null>(null)
   const [providersLoading, setProvidersLoading] = useState(true)
   const [aiWebsites, setAiWebsites] = useState<AiWebsiteBlock[]>([])
-  const [selectedWebsiteId, setSelectedWebsiteId] = useState<string | null>(null)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [webviewHeaderVisible, setWebviewHeaderVisible] = useState(true)
+  const [selectedWebsiteId, setSelectedWebsiteId] = useSessionStateBlock<string | null>('chat-selected-website', null)
+  const [sidebarCollapsed, setSidebarCollapsed] = useSessionStateBlock('chat-sidebar-collapsed', false)
+  const [webviewHeaderVisible, setWebviewHeaderVisible] = useSessionStateBlock('chat-webview-header-visible', true)
   // Sections start expanded by default (both IDs pre-seeded)
   const { isExpanded: isSectionExpanded, toggle: toggleSection } = useExpandedSetBlock(
     'ltm-chat-expanded-sections',

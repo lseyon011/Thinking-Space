@@ -611,7 +611,7 @@ function TableDocumentBlock({
                     }
                   }}
                   disabled={renaming || saving}
-                  className="h-8 min-w-0 flex-1 border-0 bg-transparent px-0 text-sm font-medium outline-none focus:outline-none disabled:opacity-60"
+                  className="h-8 min-w-0 flex-1 appearance-none border-0 bg-transparent px-0 text-sm font-medium shadow-none outline-none ring-0 focus:border-0 focus:bg-transparent focus:shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 disabled:opacity-60"
                   aria-label="File name"
                 />
               ) : isEditing && canRenameInHeader ? (

@@ -1485,11 +1485,15 @@ function App() {
       setPersistentWebTabIds((prev) => (
         prev.includes(activeWorkspaceTabId) ? prev : [...prev, activeWorkspaceTabId]
       ))
-      setPersistentWebSiteIdByTabId((prev) => (
-        prev[activeWorkspaceTabId] === selectedSiteId
-          ? prev
-          : { ...prev, [activeWorkspaceTabId]: selectedSiteId }
-      ))
+      // Only update the stored site ID when the URL explicitly carries a site param.
+      // Navigating to bare /web (e.g. via sidebar) must not wipe a previously stored selection.
+      if (selectedSiteId !== null) {
+        setPersistentWebSiteIdByTabId((prev) => (
+          prev[activeWorkspaceTabId] === selectedSiteId
+            ? prev
+            : { ...prev, [activeWorkspaceTabId]: selectedSiteId }
+        ))
+      }
     }
   }, [activeWorkspaceTabId, isChatRoute, isNewThoughtRoute, isOrganizerRoute, isThinkingSpaceRoute, isWebRoute, isWebullRoute, location.search])
 
@@ -2804,7 +2808,7 @@ function App() {
                   style={{ visibility: isOrganizerRoute ? 'visible' : 'hidden', pointerEvents: isOrganizerRoute ? 'auto' : 'none' }}
                   aria-hidden={!isOrganizerRoute}
                 >
-                  <ThinkingOrganizer />
+                  <ThinkingOrganizer active={isOrganizerRoute} />
                 </div>
               )}
               {persistentRouteMounts.newThought && (

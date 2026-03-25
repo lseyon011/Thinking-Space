@@ -1,9 +1,13 @@
 import ThinkingOrganizerOrch from '@/components/orchestrators/ThinkingOrganizerOrch'
 
-export default function ThinkingOrganizer() {
+interface ThinkingOrganizerPageProps {
+  active?: boolean
+}
+
+export default function ThinkingOrganizer({ active = true }: ThinkingOrganizerPageProps) {
   return (
     <div className="ltm-page">
-      <ThinkingOrganizerOrch />
+      <ThinkingOrganizerOrch active={active} />
     </div>
   )
 }

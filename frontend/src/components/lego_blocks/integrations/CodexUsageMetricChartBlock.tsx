@@ -46,11 +46,10 @@ export default function CodexUsageMetricChartBlock({ metrics }: CodexUsageMetric
   const isDark = useIsDarkBlock()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [hasPositiveSize, setHasPositiveSize] = useState(false)
-  if (metrics.length === 0) return null
 
   const tickColor = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.50)'
   const barBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)'
-  const chartHeight = metrics.length * (BAR_HEIGHT_PX + BAR_GAP_PX) + CHART_PADDING_PX
+  const chartHeight = metrics.length === 0 ? 0 : metrics.length * (BAR_HEIGHT_PX + BAR_GAP_PX) + CHART_PADDING_PX
 
   useEffect(() => {
     const node = containerRef.current
@@ -66,10 +65,12 @@ export default function CodexUsageMetricChartBlock({ metrics }: CodexUsageMetric
     return () => observer.disconnect()
   }, [chartHeight, metrics.length])
 
+  if (metrics.length === 0) return null
+
   return (
     <div ref={containerRef} style={{ height: chartHeight }} className="min-w-0 w-full">
       {hasPositiveSize && (
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <BarChart
             data={metrics}
             layout="vertical"

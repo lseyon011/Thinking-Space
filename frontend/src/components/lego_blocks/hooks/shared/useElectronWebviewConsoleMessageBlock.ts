@@ -29,11 +29,15 @@ function shouldIgnoreWebviewConsoleNoiseBlock(message: string): boolean {
     || normalized.includes('react-i18next:: usetranslation')
     || normalized.includes("the content security policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy")
     || normalized.includes('[service_worker] found 1 service worker(s), which are no longer used. unregistering.')
-    || (normalized.includes('violates the following content security policy directive')
-      && (
-        normalized.includes('appsflyer')
-        || normalized.includes('onelink')
-      ))
+    || normalized.includes('violates the following content security policy directive')
+    || normalized.includes('was preloaded using link preload')
+    || normalized.includes('deprecated api for given entry type')
+    || normalized.includes('allow-scripts and allow-same-origin for its sandbox')
+    || normalized.includes('[react_query_client] queryclient error')
+    || normalized.includes('[bootstrap] eager fetch failed')
+    || normalized.includes('error sending segment performance metrics')
+    || normalized.includes('fetch api cannot load')
+    || normalized.includes("framing '") // CSP frame-ancestors violations
 }
 
 function normalizeWebviewConsoleLevelBlock(level: DebugLogLevel, message: string): DebugLogLevel {

@@ -18,6 +18,8 @@ import type { PasswordVaultEntryBlock } from '@/services/orchestrators/passwordM
 import {
   openInlineWebViewBlock,
   closeInlineWebViewBlock,
+  suspendInlineWebViewBlock,
+  resumeInlineWebViewBlock,
   updateInlineWebViewFrameBlock,
 } from '@/services/lego_blocks/units/inlineWebViewBlock'
 import {
@@ -191,15 +193,23 @@ function UrlDocumentBlock({
 
   useEffect(() => subscribePasswordVaultSessionOrch(setPasswordSession), [])
 
-  // iOS: close the native WKWebView immediately (before paint) when suspended so
-  // it doesn't bleed over overlays/drawers that open on top of the content area.
+  // iOS: track whether the native WKWebView was created by this component
+  // instance so we can use suspend/resume to preserve full session state
+  // (cookies, scroll, forms, auth) instead of destroying and recreating.
+  const iosWebViewMountedRef = useRef(false)
+
+  // iOS: suspend the native WKWebView offscreen (before paint) when the
+  // component is hidden, preserving all session state.
   useLayoutEffect(() => {
     if (!isCapacitorRuntime || !isTrusted || !resolvedUrl || !suspended) return
-    void closeInlineWebViewBlock()
+    if (iosWebViewMountedRef.current) {
+      void suspendInlineWebViewBlock()
+    }
   }, [isCapacitorRuntime, isTrusted, resolvedUrl, suspended])
 
   // iOS: overlay a native WKWebView over the content area div, kept in sync
   // via ResizeObserver so it survives panel resizes and layout changes.
+  // Uses resume (no reload) if the webview was previously suspended.
   useEffect(() => {
     if (!isCapacitorRuntime || !isTrusted || !resolvedUrl || suspended) return
     const el = contentAreaRef.current
@@ -207,7 +217,17 @@ function UrlDocumentBlock({
 
     const getRect = () => el.getBoundingClientRect()
 
-    void openInlineWebViewBlock(resolvedUrl, getRect())
+    if (iosWebViewMountedRef.current) {
+      // Webview was suspended — restore it at the correct frame (no reload).
+      void resumeInlineWebViewBlock(getRect()).then((resumed) => {
+        // If resume failed (webview was destroyed externally), fall back to open.
+        if (!resumed) void openInlineWebViewBlock(resolvedUrl, getRect())
+      })
+    } else {
+      // First open — create and load.
+      void openInlineWebViewBlock(resolvedUrl, getRect())
+      iosWebViewMountedRef.current = true
+    }
 
     const observer = new ResizeObserver(() => {
       void updateInlineWebViewFrameBlock(getRect())
@@ -216,7 +236,9 @@ function UrlDocumentBlock({
 
     return () => {
       observer.disconnect()
+      // Component unmounting — truly destroy the webview.
       void closeInlineWebViewBlock()
+      iosWebViewMountedRef.current = false
     }
   }, [isCapacitorRuntime, isTrusted, resolvedUrl, suspended])
 

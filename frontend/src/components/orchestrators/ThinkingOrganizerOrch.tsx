@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowRight, Check, Loader2, FolderTree, Handshake, Layers, Lightbulb, ListChecks, Pencil, Play, Plus, X } from 'lucide-react'
-import { useSearchParams } from 'react-router-dom'
+import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import type { NodeType } from '@/services/lego_blocks/units/yamlNoteBlock'
@@ -38,7 +38,6 @@ import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILay
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
 
 type TabMode = 'backlog' | 'view' | 'link' | 'steward' | 'integrity'
-const TAB_QUERY_PARAM = 'tab'
 const THINKING_ORGANIZER_TABS: Array<{ id: TabMode; label: string }> = [
   { id: 'backlog', label: 'Create' },
   { id: 'view', label: 'View' },
@@ -73,74 +72,73 @@ function parseTabMode(raw: string | null): TabMode | null {
 }
 
 function usePersistentTab(): [TabMode, (value: TabMode) => void] {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [tab, setTab] = useState<TabMode>(() => {
+  const [tab, setTab] = useSessionStateBlock<TabMode>('organizer-tab', () => {
     const saved = parseTabMode(getStorageItem(STORAGE_KEYS.thinkingOrganizerTab))
-    if (saved) return saved
-    return 'backlog'
+    return saved ?? 'backlog'
   })
-  const [urlHydrated, setUrlHydrated] = useState(false)
-
-  useEffect(() => {
-    if (urlHydrated) return
-    const tabFromUrl = parseTabMode(searchParams.get(TAB_QUERY_PARAM))
-    if (tabFromUrl && tabFromUrl !== tab) {
-      setTab(tabFromUrl)
-    }
-    setUrlHydrated(true)
-  }, [searchParams, tab, urlHydrated])
-
-  useEffect(() => {
-    if (!urlHydrated) return
-    const current = parseTabMode(searchParams.get(TAB_QUERY_PARAM))
-    if (current === tab) return
-    const next = new URLSearchParams(searchParams)
-    next.set(TAB_QUERY_PARAM, tab)
-    setSearchParams(next, { replace: true })
-  }, [searchParams, setSearchParams, tab, urlHydrated])
 
   useEffect(() => {
     setStorageItem(STORAGE_KEYS.thinkingOrganizerTab, tab)
   }, [tab])
 
-  const setAndPersist = useCallback((value: TabMode) => {
-    setTab(value)
-  }, [])
-
-  return [tab, setAndPersist]
+  return [tab, setTab]
 }
 
 function ViewTab() {
   const { openFile } = useMarkdownViewer()
   const [programs, setPrograms] = useState<NodeRecord[]>([])
-  const [selectedPath, setSelectedPath] = useState<NodeRecord[]>([])
+  const [selectedPath, setSelectedPath] = useSessionStateBlock<NodeRecord[]>('organizer-view-path', [])
   const [currentNodes, setCurrentNodes] = useState<NodeRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [nodesLoading, setNodesLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const loadPrograms = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const { nodes: roots } = await invokeCapabilityOrThrow({
-        capability: 'organizer.nodes.list_roots',
-        input: { typeFilter: 'program' },
-        actor: VIEW_ACTOR,
-      })
-      const sorted = roots.sort((a, b) => a.title.localeCompare(b.title))
-      setPrograms(sorted)
-      setCurrentNodes(sorted)
-    } catch (err) {
-      setError(errorMessage(err, 'Failed to load programs'))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
+  // On mount: load programs, then restore saved path if any.
   useEffect(() => {
-    void loadPrograms()
-  }, [loadPrograms])
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const { nodes: roots } = await invokeCapabilityOrThrow({
+          capability: 'organizer.nodes.list_roots',
+          input: { typeFilter: 'program' },
+          actor: VIEW_ACTOR,
+        })
+        if (cancelled) return
+        const sorted = roots.sort((a, b) => a.title.localeCompare(b.title))
+        setPrograms(sorted)
+
+        // Restore saved drill-down path from session
+        const saved = selectedPath
+        if (saved.length > 0) {
+          const deepest = saved[saved.length - 1]
+          try {
+            const { nodes: children } = await invokeCapabilityOrThrow({
+              capability: 'organizer.nodes.list_children',
+              input: { parentKey: deepest.key },
+              actor: VIEW_ACTOR,
+            })
+            if (!cancelled) setCurrentNodes(children.sort((a, b) => a.title.localeCompare(b.title)))
+          } catch {
+            // If restoring fails (node deleted?), fall back to root
+            if (!cancelled) {
+              setSelectedPath([])
+              setCurrentNodes(sorted)
+            }
+          }
+        } else {
+          setCurrentNodes(sorted)
+        }
+      } catch (err) {
+        if (!cancelled) setError(errorMessage(err, 'Failed to load programs'))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount; selectedPath read from session initial value
+  }, [])
 
   const openPathNode = useCallback(async (node: NodeRecord) => {
     setError(null)
@@ -309,18 +307,20 @@ function ViewTab() {
 }
 
 const ORGANIZER_SIDEBAR_COLLAPSED_KEY = 'organizer_sidebar_collapsed'
-const PROJECT_ROOT_QUERY_PARAM = 'projectRoot'
 
 interface ProjectEntry {
   name: string
   root: string
 }
 
-export default function ThinkingOrganizerOrch() {
+interface ThinkingOrganizerOrchProps {
+  active?: boolean
+}
+
+export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganizerOrchProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
   const [tab, setTab] = usePersistentTab()
-  const [searchParams, setSearchParams] = useSearchParams()
   const [mountedTabs, setMountedTabs] = useState<Record<TabMode, boolean>>(() => ({
     backlog: tab === 'backlog',
     view: tab === 'view',
@@ -337,10 +337,7 @@ export default function ThinkingOrganizerOrch() {
   const [pinBoardActive, setPinBoardActive] = useState(false)
 
   // Project context
-  const projectRoot = useMemo(
-    () => searchParams.get(PROJECT_ROOT_QUERY_PARAM)?.trim() ?? '',
-    [searchParams],
-  )
+  const [projectRoot, setProjectRoot] = useSessionStateBlock('organizer-project-root', '')
   const [projectUiState, setProjectUiState] = useState<OrganizerUiStateOrch | null>(null)
   const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>(
     () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
@@ -360,13 +357,8 @@ export default function ThinkingOrganizerOrch() {
   const missionTextareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   const selectProject = useCallback((root: string) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      if (root) next.set(PROJECT_ROOT_QUERY_PARAM, root)
-      else next.delete(PROJECT_ROOT_QUERY_PARAM)
-      return next
-    }, { replace: true })
-  }, [setSearchParams])
+    setProjectRoot(root)
+  }, [setProjectRoot])
 
 
   useEffect(() => {
@@ -423,6 +415,7 @@ export default function ThinkingOrganizerOrch() {
   }, [sidebarCollapsed])
 
   useEffect(() => {
+    if (!active) return
     dispatchOrganizerSidebarChromeStateBlock({
       enabled: true,
       collapsed: sidebarCollapsed,
@@ -430,24 +423,26 @@ export default function ThinkingOrganizerOrch() {
       headerVisible: pinBoardHeaderVisible,
       showHeaderToggle: tab === 'backlog' && pinBoardActive,
     })
-  }, [pinBoardActive, pinBoardHeaderVisible, sidebarCollapsed, tab])
+  }, [active, pinBoardActive, pinBoardHeaderVisible, sidebarCollapsed, tab])
 
   useEffect(() => {
+    if (!active) return
     const handler = () => setSidebarCollapsed(prev => !prev)
     window.addEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
     return () => window.removeEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
-  }, [])
+  }, [active])
 
   useEffect(() => {
+    if (!active) return
     const handler = () => setPinBoardHeaderVisible(prev => !prev)
     window.addEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
     return () => window.removeEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
-  }, [])
+  }, [active])
 
   const handleToggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), [])
   useIosSidebarSwipeBlock({
-    isIos,
-    isOpen: !sidebarCollapsed,
+    isIos: isIos && active,
+    isOpen: active && !sidebarCollapsed,
     keyboardVisible: layout.keyboardVisible,
     onToggle: handleToggleSidebar,
   })

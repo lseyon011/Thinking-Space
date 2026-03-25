@@ -91,6 +91,14 @@ final class RootShellViewController: UIViewController {
         bridgeVC.dismissInlineWebView()
     }
 
+    func suspendInlineWebView() {
+        bridgeVC.suspendInlineWebView()
+    }
+
+    func resumeInlineWebView() {
+        bridgeVC.resumeInlineWebView()
+    }
+
     private func configurePhoneShell() {
         phoneShellHostingVC.view.backgroundColor = .clear
         bottomChromeContainerView.backgroundColor = .clear

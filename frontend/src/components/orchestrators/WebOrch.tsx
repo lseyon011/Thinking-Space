@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
 import { Globe } from 'lucide-react'
 import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentBlock'
 import WebSitePanelBlock from '@/components/lego_blocks/integrations/WebSitePanelBlock'
@@ -27,12 +27,11 @@ export default function WebOrch({
 }: WebOrchProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
-  const [searchParams, setSearchParams] = useSearchParams()
   const [prefs, setPrefs] = useState<WebSitePreferencesBlock>({ bookmarks: [], groups: [] })
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [webviewHeaderVisible, setWebviewHeaderVisible] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useSessionStateBlock('web-sidebar-collapsed', false)
+  const [webviewHeaderVisible, setWebviewHeaderVisible] = useSessionStateBlock('web-webview-header-visible', true)
 
-  const selectedSiteId = controlledSelectedSiteId ?? searchParams.get('site')
+  const selectedSiteId = controlledSelectedSiteId ?? null
 
   useEffect(() => { void readWebSitePreferencesOrch().then(setPrefs) }, [])
 
@@ -77,11 +76,7 @@ export default function WebOrch({
   })
 
   const handleSelectSite = (site: WebSiteBlock) => {
-    if (onSelectSiteId) {
-      onSelectSiteId(site.id)
-      return
-    }
-    setSearchParams({ site: site.id }, { replace: true })
+    onSelectSiteId?.(site.id)
   }
 
   return (

@@ -775,7 +775,7 @@ export default function VaultExplorerBlock({
                   }
                 }}
                 onBlur={() => { void commitInlineRename() }}
-                className="h-6 flex-1 rounded border border-transparent bg-transparent px-1.5 text-xs outline-none focus:border-ring focus:bg-background"
+                className="h-6 flex-1 appearance-none rounded border-0 bg-transparent px-1.5 text-xs shadow-none outline-none ring-0 focus:border-0 focus:bg-transparent focus:shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
                 aria-label="Rename folder"
               />
             </div>,
@@ -912,7 +912,7 @@ export default function VaultExplorerBlock({
                   }
                 }}
                 onBlur={() => { void commitInlineRename() }}
-                className="h-6 flex-1 rounded border border-transparent bg-transparent px-1.5 text-xs text-white outline-none placeholder:text-white/70 focus:border-white/50"
+                className="h-6 flex-1 appearance-none rounded border-0 bg-transparent px-1.5 text-xs text-white shadow-none outline-none ring-0 placeholder:text-white/70 focus:border-0 focus:bg-transparent focus:shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
                 aria-label="Rename file"
               />
             </div>,
