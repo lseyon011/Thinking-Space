@@ -94,6 +94,7 @@ interface WebullWorkspaceBlockProps {
   activePositionDetail: WebullPositionDetailBlock | null
   positionDetailLoading: boolean
   positionDetailError: string | null
+  loading: boolean
   workspaceBusy: boolean
   workspaceMessage: string | null
   onCreateCompany: (companyTicker: string) => Promise<void>
@@ -712,6 +713,7 @@ export default function WebullWorkspaceBlock({
   activePositionDetail,
   positionDetailLoading,
   positionDetailError,
+  loading,
   workspaceBusy,
   workspaceMessage,
   onCreateCompany,
@@ -1742,6 +1744,12 @@ export default function WebullWorkspaceBlock({
               onOpenFile={onOpenNodeFile}
               disabled={workspaceBusy}
             />
+          )}
+
+          {loading && (
+            <div className="overflow-hidden rounded-full">
+              <div className="h-1 w-full animate-pulse rounded-full bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+            </div>
           )}
 
           {error && (

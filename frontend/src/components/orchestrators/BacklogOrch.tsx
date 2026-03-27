@@ -497,6 +497,19 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
     }
   }, [programs, projectEntries, pinBoardByRoot, projectPinBoardGroupsByRoot, projectPresetTagsByRoot, projectProgramGroupsByRoot, projectTagColorsByRoot])
 
+  const persistProjectUiState = useCallback(async (
+    projectRoot: string,
+    snapshot: OrganizerUiStateOrch,
+  ): Promise<OrganizerUiStateOrch> => {
+    const normalizedRoot = normalizePath(projectRoot)
+    const current = normalizedRoot ? await readOrganizerUiStateOrch(normalizedRoot) : null
+    return writeOrganizerUiStateOrch(normalizedRoot, {
+      ...(current ?? {}),
+      ...snapshot,
+      missionStatement: snapshot.missionStatement ?? current?.missionStatement,
+    })
+  }, [])
+
   const applyProjectUiStateToCache = useCallback((projectRoot: string, state: OrganizerUiStateOrch) => {
     const normalizedRoot = normalizePath(projectRoot)
     if (!normalizedRoot) return
@@ -587,7 +600,7 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
 
         const cachedState = buildProjectUiState(normalizedRoot)
         if (hasProjectUiStateData(cachedState)) {
-          const persisted = await writeOrganizerUiStateOrch(normalizedRoot, cachedState)
+          const persisted = await persistProjectUiState(normalizedRoot, cachedState)
           if (cancelled) return
           applyProjectUiStateToCache(normalizedRoot, persisted)
           return
@@ -602,7 +615,7 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
     })()
 
     return () => { cancelled = true }
-  }, [activeProjectRoot, applyProjectUiStateToCache, buildProjectUiState])
+  }, [activeProjectRoot, applyProjectUiStateToCache, buildProjectUiState, persistProjectUiState])
 
   useEffect(() => {
     if (!activeProjectRoot) return
@@ -617,7 +630,7 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
     let cancelled = false
     void (async () => {
       try {
-        const persisted = await writeOrganizerUiStateOrch(normalizedRoot, snapshot)
+        const persisted = await persistProjectUiState(normalizedRoot, snapshot)
         if (cancelled) return
         projectUiStatePersistedSignatureByRootRef.current[normalizedRoot] = projectUiStateSignature(persisted)
       } catch (err) {
@@ -626,7 +639,7 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
     })()
 
     return () => { cancelled = true }
-  }, [activeProjectRoot, buildProjectUiState])
+  }, [activeProjectRoot, buildProjectUiState, persistProjectUiState])
 
   const loadPrograms = useCallback(async (syncVault = false): Promise<boolean> => {
     // Only show the loading spinner on first load when there's no data yet.

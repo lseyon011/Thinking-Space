@@ -26,6 +26,8 @@ export const STORAGE_KEYS = {
   aiTelemetryEvents: 'ltm-ai-telemetry-events',
   aiSettings: 'ltm-ai-settings',
   markdownEditorSettings: 'ltm-markdown-editor-settings',
+  schedulerSettings: 'ltm-scheduler-settings',
+  schedulerTaskLastAttemptById: 'ltm-scheduler-task-last-attempt-by-id',
   markdownDocumentTopBarHidden: 'ltm-markdown-document-top-bar-hidden',
   userProfileCache: 'ltm-user-profile-cache',
   gitSyncActionsByVault: 'ltm-git-sync-actions-by-vault',
@@ -41,6 +43,7 @@ export const STORAGE_KEYS = {
   rssFeedRetentionDays: 'ltm-rss-feed-retention-days',
   aiWebsites: 'ltm-ai-websites',
   webSites: 'ltm-web-sites',
+  fileActivityIgnoredPaths: 'ltm-file-activity-ignored-paths',
 } as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]

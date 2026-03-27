@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
@@ -13,6 +13,12 @@ import {
   writeMarkdownEditorSettingsOrch,
   type MarkdownEditorSettingsBlock,
 } from '@/services/orchestrators/markdownEditorSettingsOrch'
+import {
+  getNextScheduledTaskRunAtOrch,
+  SCHEDULED_TASK_ACTION_OPTIONS_BLOCK,
+  type SchedulerSettingsBlock,
+  type ScheduledTaskBlock,
+} from '@/services/orchestrators/schedulerSettingsOrch'
 import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeOrch'
 import {
   getDefaultWebullExecutionSettingsOrch,
@@ -73,8 +79,10 @@ import {
 } from '@/services/orchestrators/webSiteOrch'
 import type { WebSitePreferencesBlock } from '@/services/lego_blocks/units/webSiteBlock'
 import DeveloperSetupBlock from '@/components/lego_blocks/integrations/DeveloperSetupBlock'
+import { readFileActivityIgnoredPaths, writeFileActivityIgnoredPaths } from '@/services/orchestrators/fileActivityOrch'
+import { setFileActivityIgnoredPathsOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 
-export type SettingsTabId = 'theme' | 'explorer' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer'
+export type SettingsTabId = 'theme' | 'explorer' | 'activity' | 'scheduler' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
 
 interface SettingsOrchProps {
@@ -82,6 +90,8 @@ interface SettingsOrchProps {
   onExplorerIconStyleChange: (nextStyle: ExplorerIconStyleBlock) => void
   explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
   onExplorerFolderColorRulesChange: (nextRules: ExplorerFolderColorPreferenceBlock[]) => Promise<void> | void
+  schedulerSettings: SchedulerSettingsBlock
+  onSchedulerSettingsChange: (nextSettings: SchedulerSettingsBlock) => Promise<void> | void
   onRequestVaultSwitch: () => void
   initialTab?: SettingsTabWithProfileId
   webullTabLabel?: string
@@ -104,6 +114,8 @@ function createExplorerRuleKey(rule: Pick<ExplorerFolderColorPreferenceBlock, 'f
 const TAB_OPTIONS: Array<{ id: SettingsTabWithProfileId; label: string }> = [
   { id: 'theme', label: 'Theme' },
   { id: 'explorer', label: 'Explorer' },
+  { id: 'activity', label: 'Activity Tracker' },
+  { id: 'scheduler', label: 'Scheduler' },
   { id: 'profile', label: 'Profile' },
   { id: 'ai', label: 'AI' },
   { id: 'ai_websites', label: 'AI Websites' },
@@ -117,11 +129,21 @@ const TAB_OPTIONS: Array<{ id: SettingsTabWithProfileId; label: string }> = [
   { id: 'developer', label: 'Developer' },
 ]
 
+function sanitizeTimeInputBlock(value: string): string | null {
+  const trimmed = value.trim()
+  if (!/^\d{2}:\d{2}$/.test(trimmed)) return null
+  const [h, m] = trimmed.split(':').map(Number)
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
+}
+
 export default function SettingsOrch({
   explorerIconStyle,
   onExplorerIconStyleChange,
   explorerFolderColorRules,
   onExplorerFolderColorRulesChange,
+  schedulerSettings,
+  onSchedulerSettingsChange,
   onRequestVaultSwitch,
   initialTab = 'theme',
   webullTabLabel: webullTabLabelProp = 'Webull',
@@ -134,6 +156,9 @@ export default function SettingsOrch({
   const [markdownEditorSettings, setMarkdownEditorSettings] = useState<MarkdownEditorSettingsBlock>(
     () => readMarkdownEditorSettingsOrch(),
   )
+  const [schedulerSettingsDraft, setSchedulerSettingsDraft] = useState<SchedulerSettingsBlock>(() => schedulerSettings)
+  const [schedulerDirty, setSchedulerDirty] = useState(false)
+  const [schedulerNewTimeByTaskId, setSchedulerNewTimeByTaskId] = useState<Record<string, string>>({})
   const [webullExecutionFolderPathInput, setWebullExecutionFolderPathInput] = useState<string>('')
   const [webullSavedExecutionFolderPath, setWebullSavedExecutionFolderPath] = useState<string>('')
   const [webullAppKeyInput, setWebullAppKeyInput] = useState('')
@@ -158,12 +183,45 @@ export default function SettingsOrch({
   const [busyProfileSave, setBusyProfileSave] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [activityIgnoredPaths, setActivityIgnoredPaths] = useState<string[]>(() => readFileActivityIgnoredPaths())
+  const [activityNewPathInput, setActivityNewPathInput] = useState('')
+  const [activityDirty, setActivityDirty] = useState(false)
+
+  const handleActivityAddPath = useCallback(() => {
+    const trimmed = activityNewPathInput.trim()
+    if (!trimmed || activityIgnoredPaths.includes(trimmed)) return
+    setActivityIgnoredPaths(prev => [...prev, trimmed])
+    setActivityNewPathInput('')
+    setActivityDirty(true)
+  }, [activityNewPathInput, activityIgnoredPaths])
+
+  const handleActivityRemovePath = useCallback((path: string) => {
+    setActivityIgnoredPaths(prev => prev.filter(p => p !== path))
+    setActivityDirty(true)
+  }, [])
+
+  const handleActivitySave = useCallback(async () => {
+    setBusyAction('activity')
+    writeFileActivityIgnoredPaths(activityIgnoredPaths)
+    // Persist to vault for cross-device sync
+    await setFileActivityIgnoredPathsOrch(activityIgnoredPaths)
+    setActivityDirty(false)
+    setBusyAction(null)
+  }, [activityIgnoredPaths])
+
   const runtimeLabel = useMemo(() => {
     if (isElectron()) return 'desktop'
     if (isCapacitorNative()) return 'mobile'
     return 'web'
   }, [])
   const webullCredentialEditingSupported = isElectron()
+  const schedulerActionOptionById = useMemo(
+    () => new Map(SCHEDULED_TASK_ACTION_OPTIONS_BLOCK.map((option) => [option.id, option])),
+    [],
+  )
+  const schedulerNextRunByTaskId = useMemo(() => Object.fromEntries(
+    schedulerSettingsDraft.tasks.map((task) => [task.id, getNextScheduledTaskRunAtOrch(task)]),
+  ), [schedulerSettingsDraft])
 
   useEffect(() => {
     setActiveTab(initialTab)
@@ -173,6 +231,11 @@ export default function SettingsOrch({
     setWebullTabLabelInput(webullTabLabelProp)
     setWebullTabIconTextInput(webullTabIconTextProp)
   }, [webullTabLabelProp, webullTabIconTextProp])
+
+  useEffect(() => {
+    setSchedulerSettingsDraft(schedulerSettings)
+    setSchedulerDirty(false)
+  }, [schedulerSettings])
 
   useEffect(() => {
     let cancelled = false
@@ -294,6 +357,70 @@ export default function SettingsOrch({
   const updateMarkdownEditorSettings = (nextSettings: MarkdownEditorSettingsBlock) => {
     setMarkdownEditorSettings(nextSettings)
     writeMarkdownEditorSettingsOrch(nextSettings)
+  }
+
+  const onUpdateScheduledTask = (taskId: string, patch: Partial<ScheduledTaskBlock>) => {
+    setSchedulerSettingsDraft((prev) => ({
+      ...prev,
+      tasks: prev.tasks.map((task) => (
+        task.id === taskId ? { ...task, ...patch } : task
+      )),
+    }))
+    setSchedulerDirty(true)
+    setMessage(null)
+    setError(null)
+  }
+
+  const onAddScheduledTime = (taskId: string, time: string) => {
+    const sanitized = sanitizeTimeInputBlock(time)
+    if (!sanitized) return
+    setSchedulerSettingsDraft(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t => {
+        if (t.id !== taskId) return t
+        if (t.timesOfDay.includes(sanitized)) return t
+        return { ...t, timesOfDay: [...t.timesOfDay, sanitized].sort() }
+      }),
+    }))
+    setSchedulerDirty(true)
+    setMessage(null)
+    setError(null)
+  }
+
+  const onRemoveScheduledTime = (taskId: string, time: string) => {
+    setSchedulerSettingsDraft(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t => {
+        if (t.id !== taskId) return t
+        const next = t.timesOfDay.filter(tod => tod !== time)
+        return { ...t, timesOfDay: next.length > 0 ? next : t.timesOfDay }
+      }),
+    }))
+    setSchedulerDirty(true)
+    setMessage(null)
+    setError(null)
+  }
+
+  const onResetSchedulerSettings = () => {
+    setSchedulerSettingsDraft(schedulerSettings)
+    setSchedulerDirty(false)
+    setMessage('Scheduler settings reset to saved values.')
+    setError(null)
+  }
+
+  const onSaveSchedulerSettings = async () => {
+    setBusyAction('scheduler')
+    setError(null)
+    setMessage(null)
+    try {
+      await onSchedulerSettingsChange(schedulerSettingsDraft)
+      setSchedulerDirty(false)
+      setMessage('Scheduler settings saved.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save scheduler settings')
+    } finally {
+      setBusyAction(null)
+    }
   }
 
   const onSaveWebullTabPreferences = async () => {
@@ -743,6 +870,188 @@ export default function SettingsOrch({
                 variant="outline"
                 onClick={onResetExplorerColorRules}
                 disabled={busyAction === 'explorer' || !explorerRulesDirty}
+              >
+                Reset
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'activity' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Activity Tracker</CardTitle>
+            <CardDescription>
+              Configure which vault paths are excluded from file activity tracking.
+              Files under ignored paths will not appear in activity calendars or daily summaries.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium mb-2">Ignored Paths</h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                Vault-relative path prefixes to exclude. Any file whose path starts with an ignored prefix will be filtered out.
+              </p>
+              {activityIgnoredPaths.length > 0 && (
+                <div className="space-y-1.5 mb-3">
+                  {activityIgnoredPaths.map(path => (
+                    <div key={path} className="flex items-center gap-2 group rounded-md border border-border/40 px-3 py-1.5 text-sm">
+                      <code className="flex-1 truncate text-muted-foreground">{path}</code>
+                      <button
+                        onClick={() => handleActivityRemovePath(path)}
+                        className="text-muted-foreground/50 hover:text-destructive shrink-0 text-xs"
+                        title="Remove"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {activityIgnoredPaths.length === 0 && (
+                <p className="text-sm text-muted-foreground/60 mb-3">No ignored paths configured.</p>
+              )}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={activityNewPathInput}
+                  onChange={e => setActivityNewPathInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleActivityAddPath() }}
+                  placeholder="e.g. operations/F9/execution"
+                  className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleActivityAddPath}
+                  disabled={!activityNewPathInput.trim()}
+                >
+                  Add
+                </Button>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                onClick={handleActivitySave}
+                disabled={busyAction === 'activity' || !activityDirty}
+              >
+                {busyAction === 'activity' ? 'Saving...' : 'Save Activity Settings'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'scheduler' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Scheduler</CardTitle>
+            <CardDescription>
+              Configure scheduled in-app jobs. Tasks run only while Thinking Space is open; {runtimeLabel} runtimes may pause timers when the app is backgrounded.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-3">
+              {schedulerSettingsDraft.tasks.map((task) => {
+                const taskOption = schedulerActionOptionById.get(task.action)
+                const nextRunAt = schedulerNextRunByTaskId[task.id]
+                return (
+                  <div key={task.id} className="space-y-3 rounded-xl border border-border/60 bg-background p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-1">
+                        <div className="text-sm font-medium text-foreground">
+                          {taskOption?.label ?? task.action}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {taskOption?.description ?? 'Scheduled task'}
+                        </p>
+                      </div>
+                      <label className="flex items-center gap-3 rounded-md border border-border/60 px-3 py-2 text-sm text-foreground">
+                        <span>Enabled</span>
+                        <Switch
+                          checked={task.enabled}
+                          onCheckedChange={(checked) => onUpdateScheduledTask(task.id, { enabled: checked })}
+                          aria-label={`Enable ${taskOption?.label ?? task.action}`}
+                        />
+                      </label>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Scheduled Times</div>
+                      <div className="flex flex-wrap gap-2">
+                        {task.timesOfDay.map(time => (
+                          <div
+                            key={time}
+                            className="flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/20 px-2.5 py-1 text-sm"
+                          >
+                            <span className="font-mono">{time}</span>
+                            {task.timesOfDay.length > 1 && (
+                              <button
+                                onClick={() => onRemoveScheduledTime(task.id, time)}
+                                className="text-muted-foreground/50 hover:text-destructive text-xs ml-0.5"
+                                title="Remove time"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          step={60}
+                          value={schedulerNewTimeByTaskId[task.id] ?? ''}
+                          onChange={(e) => setSchedulerNewTimeByTaskId(prev => ({ ...prev, [task.id]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              onAddScheduledTime(task.id, schedulerNewTimeByTaskId[task.id] ?? '')
+                              setSchedulerNewTimeByTaskId(prev => ({ ...prev, [task.id]: '' }))
+                            }
+                          }}
+                          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            onAddScheduledTime(task.id, schedulerNewTimeByTaskId[task.id] ?? '')
+                            setSchedulerNewTimeByTaskId(prev => ({ ...prev, [task.id]: '' }))
+                          }}
+                          disabled={!schedulerNewTimeByTaskId[task.id]?.trim()}
+                        >
+                          Add Time
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                      {task.enabled && nextRunAt
+                        ? `Next run: ${new Date(nextRunAt).toLocaleString()}`
+                        : 'Task is disabled. Enable it to schedule runs.'}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={() => { void onSaveSchedulerSettings() }}
+                disabled={busyAction === 'scheduler' || !schedulerDirty}
+              >
+                {busyAction === 'scheduler' ? 'Saving...' : 'Save Scheduler Settings'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onResetSchedulerSettings}
+                disabled={busyAction === 'scheduler' || !schedulerDirty}
               >
                 Reset
               </Button>

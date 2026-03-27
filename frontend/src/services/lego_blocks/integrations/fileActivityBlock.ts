@@ -21,6 +21,11 @@ async function walkVaultCached(fs: VaultFS): Promise<VaultEntry[]> {
 
 // ── Helpers ──
 
+function filterIgnoredPaths(entries: VaultEntry[], ignoredPaths: string[]): VaultEntry[] {
+  if (ignoredPaths.length === 0) return entries
+  return entries.filter(entry => !ignoredPaths.some(prefix => entry.path.startsWith(prefix)))
+}
+
 function dateFromTimestamp(ts: number): string {
   const d = new Date(ts * 1000)
   const y = d.getFullYear()
@@ -45,8 +50,9 @@ export async function getMonthActivity(
   fs: VaultFS,
   year: number,
   month: number,
+  ignoredPaths: string[] = [],
 ) {
-  const entries = await walkVaultCached(fs)
+  const entries = filterIgnoredPaths(await walkVaultCached(fs), ignoredPaths)
 
   const monthStart = new Date(year, month - 1, 1)
   const monthEnd = month === 12 ? new Date(year + 1, 0, 1) : new Date(year, month, 1)
@@ -133,8 +139,9 @@ export async function getMonthActivity(
 export async function getDayActivity(
   fs: VaultFS,
   targetDate: string,
+  ignoredPaths: string[] = [],
 ) {
-  const entries = await walkVaultCached(fs)
+  const entries = filterIgnoredPaths(await walkVaultCached(fs), ignoredPaths)
 
   const created: Array<{ path: string; section: string; size_bytes: number; timestamp: string }> = []
   const modified: Array<{ path: string; section: string; size_bytes: number; timestamp: string }> = []
@@ -192,8 +199,9 @@ export async function getSectionMonthActivity(
   year: number,
   month: number,
   section: string,
+  ignoredPaths: string[] = [],
 ) {
-  const entries = await walkVaultCached(fs)
+  const entries = filterIgnoredPaths(await walkVaultCached(fs), ignoredPaths)
 
   const monthStart = new Date(year, month - 1, 1)
   const monthEnd = month === 12 ? new Date(year + 1, 0, 1) : new Date(year, month, 1)

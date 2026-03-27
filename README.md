@@ -2,7 +2,7 @@
 
 > A local-first thinking workspace where humans and AI work together on personal knowledge.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Source Available](https://img.shields.io/badge/License-Source%20Available-blue.svg)](LICENSE)
 [![Platform: Electron](https://img.shields.io/badge/Platform-Electron%20%7C%20Web%20%7C%20iOS-brightgreen)]()
 [![Built with: React + TypeScript](https://img.shields.io/badge/Built%20with-React%20%2B%20TypeScript-61DAFB)]()
 
@@ -20,7 +20,7 @@ You can use an existing folder with your notes or create a new one. A cloud-sync
 
 Thinking Space does not impose a fixed way of thinking or organization. Your structure is yours. It provides useful tools out of the box and removes repetitive parts of knowledge-base work so you can focus on actual thinking.
 
-Thinking Space is open source and designed to be extendable with AI. You can download the source code, add features, and shape the app to fit your workflow.
+Thinking Space is source-available and designed to be extendable with AI. You can inspect the source code, add features, and shape the app to fit your workflow under the terms in [LICENSE](LICENSE).
 
 - Works alongside Obsidian — no conflicts
 - Local-first and portable (plain Markdown + YAML)
@@ -234,4 +234,13 @@ Contributions are welcome! The codebase follows strict placement and naming conv
 
 ## License
 
-[MIT](LICENSE) — Anurag Patil
+AGPL-style copyleft for non-commercial use. Commercial license required for any commercial use.
+
+| Use Case | Allowed? |
+| --- | --- |
+| Personal / research / educational | Yes |
+| Self-hosted (non-commercial) | Yes, with attribution |
+| Fork and modify (non-commercial) | Yes, share source under the terms in [LICENSE](LICENSE) |
+| Commercial use / SaaS / rebranding | Requires commercial license |
+
+See [LICENSE](LICENSE) for full terms. For commercial licensing, contact the maintainer.

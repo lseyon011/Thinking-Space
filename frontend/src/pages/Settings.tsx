@@ -5,12 +5,15 @@ import type {
   ExplorerFolderColorPreferenceBlock,
   ExplorerIconStyleBlock,
 } from '@/services/orchestrators/vaultUiPreferencesOrch'
+import type { SchedulerSettingsBlock } from '@/services/orchestrators/schedulerSettingsOrch'
 
 interface SettingsPageProps {
   explorerIconStyle: ExplorerIconStyleBlock
   onExplorerIconStyleChange: (nextStyle: ExplorerIconStyleBlock) => void
   explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
   onExplorerFolderColorRulesChange: (nextRules: ExplorerFolderColorPreferenceBlock[]) => Promise<void> | void
+  schedulerSettings: SchedulerSettingsBlock
+  onSchedulerSettingsChange: (nextSettings: SchedulerSettingsBlock) => Promise<void> | void
   onRequestVaultSwitch: () => void
   webullTabLabel?: string
   webullTabIconText?: string
@@ -22,6 +25,8 @@ export default function Settings({
   onExplorerIconStyleChange,
   explorerFolderColorRules,
   onExplorerFolderColorRulesChange,
+  schedulerSettings,
+  onSchedulerSettingsChange,
   onRequestVaultSwitch,
   webullTabLabel,
   webullTabIconText,
@@ -40,6 +45,10 @@ export default function Settings({
             ? 'google_docs_sheets'
           : requestedTab === 'explorer'
             ? 'explorer'
+          : requestedTab === 'activity'
+            ? 'activity'
+          : requestedTab === 'scheduler'
+            ? 'scheduler'
           : requestedTab === 'cache'
             ? 'cache'
             : requestedTab === 'vault'
@@ -57,7 +66,7 @@ export default function Settings({
             <div>
               <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Settings</h1>
               <p className="text-sm text-muted-foreground">
-                Manage profile, theme, markdown editor behavior, AI configuration, Webull execution storage, cache reset, and Thinking Space switching.
+                Manage profile, theme, scheduler jobs, markdown editor behavior, AI configuration, Webull execution storage, cache reset, and Thinking Space switching.
               </p>
             </div>
           </div>
@@ -67,6 +76,8 @@ export default function Settings({
           onExplorerIconStyleChange={onExplorerIconStyleChange}
           explorerFolderColorRules={explorerFolderColorRules}
           onExplorerFolderColorRulesChange={onExplorerFolderColorRulesChange}
+          schedulerSettings={schedulerSettings}
+          onSchedulerSettingsChange={onSchedulerSettingsChange}
           onRequestVaultSwitch={onRequestVaultSwitch}
           initialTab={initialTab}
           webullTabLabel={webullTabLabel}

@@ -10,6 +10,7 @@ import {
   type ExplorerFolderColorPreferenceBlock,
   type ExplorerIconStyleBlock,
   type NewThoughtQuickDestinationPreferenceBlock,
+  type VaultSchedulerTaskPreferenceBlock,
   type VaultUiPreferencesBlock,
 } from '@/services/lego_blocks/units/vaultUiPreferencesBlock'
 
@@ -139,3 +140,19 @@ export async function setWebullTabPreferencesOrch(
     webullTabIconText: iconText.trim(),
   })
 }
+
+export async function setFileActivityIgnoredPathsOrch(
+  paths: string[],
+): Promise<VaultUiPreferencesBlock> {
+  return updateVaultUiPreferencesOrch({
+    fileActivityIgnoredPaths: paths.filter(p => typeof p === 'string' && p.trim().length > 0).map(p => p.trim()),
+  })
+}
+
+export async function setSchedulerTasksPreferenceOrch(
+  tasks: VaultSchedulerTaskPreferenceBlock[],
+): Promise<VaultUiPreferencesBlock> {
+  return updateVaultUiPreferencesOrch({ schedulerTasks: tasks })
+}
+
+export type { VaultSchedulerTaskPreferenceBlock }

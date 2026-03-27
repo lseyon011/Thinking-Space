@@ -1,7 +1,7 @@
 export const GLOBAL_SYNC_REFRESH_EVENT_BLOCK = 'ltm:global-sync-refresh'
 
 export interface GlobalSyncRefreshDetailBlock {
-  source: 'topbar' | 'unknown'
+  source: 'topbar' | 'background' | 'unknown'
   requestedAt: number
   vaultSyncAttempted: boolean
   vaultSyncSucceeded: boolean

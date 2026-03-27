@@ -91,12 +91,25 @@ import {
   setJsonStorageItem,
   setStorageItem,
 } from './services/orchestrators/storageOrch'
+import {
+  readScheduledTaskLastAttemptByIdOrch,
+  readSchedulerSettingsOrch,
+  sanitizeSchedulerSettingsOrch,
+  writeScheduledTaskLastAttemptAtOrch,
+  writeSchedulerSettingsOrch,
+  getNextScheduledTaskRunAtOrch,
+  getPreviousScheduledTaskRunAtOrch,
+  type SchedulerSettingsBlock,
+  type ScheduledTaskBlock,
+} from './services/orchestrators/schedulerSettingsOrch'
 import { getCapabilityFeatureFlags } from './services/orchestrators/capabilityFeatureFlagsOrch'
+import { writeFileActivityIgnoredPaths } from './services/orchestrators/fileActivityOrch'
 import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from '@/services/lego_blocks/integrations/fsBlock'
 import { readUserProfileOrch } from './services/orchestrators/userProfileOrch'
 import {
   setExplorerFolderColorPreferencesOrch,
   setWebullTabPreferencesOrch,
+  setSchedulerTasksPreferenceOrch,
   type ExplorerFolderColorPreferenceBlock,
   readVaultUiPreferencesOrch,
   setExplorerIconStylePreferenceOrch,
@@ -487,6 +500,9 @@ function App() {
   const [syncPanelOpen, setSyncPanelOpen] = useState(false)
   const [syncActionRunning, setSyncActionRunning] = useState<'sync' | 'rebuild' | null>(null)
   const [gitActionRunning, setGitActionRunning] = useState<'commit' | 'push' | null>(null)
+  const [schedulerSettings, setSchedulerSettings] = useState<SchedulerSettingsBlock>(
+    () => readSchedulerSettingsOrch(),
+  )
   const [syncToolsWidth, setSyncToolsWidth] = useState(96)
   const [topChromeMenuWidth, setTopChromeMenuWidth] = useState(0)
   const [syncPanelAnchor, setSyncPanelAnchor] = useState<SyncPanelAnchor>({ top: 52, right: 12 })
@@ -510,6 +526,7 @@ function App() {
   const debugToastTimerRef = useRef<number | null>(null)
   const commandInputRef = useRef<HTMLInputElement | null>(null)
   const gitCommitMessageInputRef = useRef<HTMLInputElement | null>(null)
+  const schedulerTimeoutRef = useRef<number | null>(null)
   const syncToolsRef = useRef<HTMLDivElement | null>(null)
   const topChromeMenuRef = useRef<HTMLDivElement | null>(null)
   const syncPanelRef = useRef<HTMLDivElement | null>(null)
@@ -1350,7 +1367,10 @@ function App() {
     return () => window.removeEventListener('resize', updateMenuWidth)
   }, [showCapacitorTopChromeMenu])
 
-  const runSyncAction = useCallback(async (mode: 'sync' | 'rebuild') => {
+  const runSyncAction = useCallback(async (
+    mode: 'sync' | 'rebuild',
+    options?: { source?: 'topbar' | 'background' },
+  ) => {
     if (needsVaultSetup || syncActionRunning) return
     setSyncActionRunning(mode)
 
@@ -1387,7 +1407,7 @@ function App() {
       console.error('Vault sync action failed', error)
     } finally {
       dispatchGlobalSyncRefreshBlock({
-        source: 'topbar',
+        source: options?.source ?? 'topbar',
         requestedAt: Date.now(),
         vaultSyncAttempted: true,
         vaultSyncSucceeded: syncSucceeded,
@@ -1395,6 +1415,20 @@ function App() {
       setSyncActionRunning(null)
     }
   }, [needsVaultSetup, syncActionRunning])
+
+  const handleSchedulerSettingsChange = useCallback((nextSettings: SchedulerSettingsBlock) => {
+    const saved = writeSchedulerSettingsOrch(nextSettings)
+    setSchedulerSettings(saved)
+    // Persist to vault for cross-device sync
+    void setSchedulerTasksPreferenceOrch(saved.tasks)
+  }, [])
+
+  const runScheduledTask = useCallback((task: ScheduledTaskBlock) => {
+    writeScheduledTaskLastAttemptAtOrch(task.id, Date.now())
+    if (task.action === 'vault_sync') {
+      void runSyncAction('sync', { source: 'background' })
+    }
+  }, [runSyncAction])
 
   const openGitCommitDialog = useCallback(() => {
     if (needsVaultSetup || gitActionRunning || !gitSyncToolsSupported) return
@@ -1504,6 +1538,10 @@ function App() {
           }
     ))
     if (!activeWorkspaceTabId) return
+    const normalizedCurrentRoute = normalizeTabRoute(currentRoute)
+    const pending = pendingWorkspaceTabNavigationRef.current
+    const activeTabRoutePending = pending?.tabId === activeWorkspaceTabId
+      && pending.route !== normalizedCurrentRoute
 
     if (isChatRoute) {
       setPersistentChatTabIds((prev) => (
@@ -1518,7 +1556,7 @@ function App() {
       ))
       // Only update the stored site ID when the URL explicitly carries a site param.
       // Navigating to bare /web (e.g. via sidebar) must not wipe a previously stored selection.
-      if (selectedSiteId !== null) {
+      if (!activeTabRoutePending && selectedSiteId !== null) {
         setPersistentWebSiteIdByTabId((prev) => (
           prev[activeWorkspaceTabId] === selectedSiteId
             ? prev
@@ -1528,7 +1566,7 @@ function App() {
     }
 
     if (isOrganizerRoute) {
-      const normalizedCurrentRoute = normalizeTabRoute(currentRoute)
+      if (activeTabRoutePending) return
       setPersistentOrganizerRouteByTabId((prev) => (
         prev[activeWorkspaceTabId] === normalizedCurrentRoute
           ? prev
@@ -1963,6 +2001,75 @@ function App() {
   }, [needsVaultSetup])
 
   useEffect(() => {
+    return () => {
+      if (schedulerTimeoutRef.current !== null) {
+        window.clearTimeout(schedulerTimeoutRef.current)
+        schedulerTimeoutRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (schedulerTimeoutRef.current !== null) {
+      window.clearTimeout(schedulerTimeoutRef.current)
+      schedulerTimeoutRef.current = null
+    }
+
+    if (needsVaultSetup || syncActionRunning) return
+
+    const enabledTasks = schedulerSettings.tasks.filter(task => task.enabled)
+    if (enabledTasks.length === 0) return
+
+    const nowMs = Date.now()
+    const lastAttemptById = readScheduledTaskLastAttemptByIdOrch()
+    let overdueTask: ScheduledTaskBlock | null = null
+    let overdueRunAt = Number.POSITIVE_INFINITY
+    let nextTask: ScheduledTaskBlock | null = null
+    let nextRunAt = Number.POSITIVE_INFINITY
+
+    for (const task of enabledTasks) {
+      const previousRunAt = getPreviousScheduledTaskRunAtOrch(task, nowMs)
+      const latestRecordedAttemptAt = task.action === 'vault_sync'
+        ? Math.max(
+            lastAttemptById[task.id] ?? 0,
+            lastSyncAttemptAt ?? 0,
+            lastSyncedAt ? lastSyncedAt * 1000 : 0,
+          )
+        : (lastAttemptById[task.id] ?? 0)
+
+      if (previousRunAt && latestRecordedAttemptAt < previousRunAt && previousRunAt < overdueRunAt) {
+        overdueRunAt = previousRunAt
+        overdueTask = task
+      }
+
+      const candidateNextRunAt = getNextScheduledTaskRunAtOrch(task, nowMs)
+      if (candidateNextRunAt && candidateNextRunAt < nextRunAt) {
+        nextRunAt = candidateNextRunAt
+        nextTask = task
+      }
+    }
+
+    if (overdueTask) {
+      runScheduledTask(overdueTask)
+      return
+    }
+
+    if (!nextTask || !Number.isFinite(nextRunAt)) return
+
+    schedulerTimeoutRef.current = window.setTimeout(() => {
+      schedulerTimeoutRef.current = null
+      runScheduledTask(nextTask)
+    }, Math.max(1000, nextRunAt - nowMs))
+
+    return () => {
+      if (schedulerTimeoutRef.current !== null) {
+        window.clearTimeout(schedulerTimeoutRef.current)
+        schedulerTimeoutRef.current = null
+      }
+    }
+  }, [lastSyncAttemptAt, lastSyncedAt, needsVaultSetup, runScheduledTask, schedulerSettings, syncActionRunning])
+
+  useEffect(() => {
     if (!syncPanelOpen) return
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as Node | null
@@ -1997,6 +2104,18 @@ function App() {
         setExplorerFolderColorRules(preferences.explorerFolderColorRules)
         setWebullTabLabel(preferences.webullTabLabel || 'Webull')
         setWebullTabIconText(preferences.webullTabIconText || '')
+        // Sync scheduler tasks from vault (overrides localStorage)
+        if (preferences.schedulerTasks.length > 0) {
+          const vaultSchedulerSettings = sanitizeSchedulerSettingsOrch({
+            tasks: preferences.schedulerTasks as unknown as ScheduledTaskBlock[],
+          })
+          setSchedulerSettings(vaultSchedulerSettings)
+          writeSchedulerSettingsOrch(vaultSchedulerSettings)
+        }
+        // Sync file activity ignored paths from vault
+        if (preferences.fileActivityIgnoredPaths.length > 0) {
+          writeFileActivityIgnoredPaths(preferences.fileActivityIgnoredPaths)
+        }
       })
       .catch((error) => {
         if (!cancelled) {
@@ -2055,7 +2174,8 @@ function App() {
         if (normalizedCurrentRoute !== pending.route) return prev
       }
       const pathname = parseTabRoute(normalizedCurrentRoute).pathname
-      const nextLabel = pathname === '/chat' || pathname === '/web'
+      const prevPathname = parseTabRoute(prev[index].route).pathname
+      const nextLabel = (pathname === '/chat' || pathname === '/web') && prevPathname === pathname
         ? resolvePreferredSameRouteTabLabel(pathname, prev[index].label, derivedActiveWorkspaceTabLabel)
         : derivedActiveWorkspaceTabLabel
       if (prev[index].route === normalizedCurrentRoute && prev[index].label === nextLabel) return prev
@@ -2186,6 +2306,9 @@ function App() {
         label: nextLabel,
         siteLabels: (detail.siteLabels && typeof detail.siteLabels === 'object') ? detail.siteLabels : prev.siteLabels,
       }))
+      const currentNormalizedRoute = normalizeTabRoute(currentRouteRef.current)
+      const pending = pendingWorkspaceTabNavigationRef.current
+      if (pending && currentNormalizedRoute !== pending.route) return
       if (parseTabRoute(currentRouteRef.current).pathname !== '/web') return
       const tabId = activeWorkspaceTabIdRef.current
       if (!tabId) return
@@ -2854,7 +2977,11 @@ function App() {
                   <div
                     key={`web-surface:${tabId}`}
                     className="absolute inset-0 overflow-hidden"
-                    style={{ visibility: webSurfaceActive ? 'visible' : 'hidden', pointerEvents: webSurfaceActive ? 'auto' : 'none' }}
+                    style={{
+                      opacity: webSurfaceActive ? 1 : 0,
+                      pointerEvents: webSurfaceActive ? 'auto' : 'none',
+                      transform: webSurfaceActive ? 'translate3d(0, 0, 0)' : 'translate3d(-200vw, 0, 0)',
+                    }}
                     aria-hidden={!webSurfaceActive}
                   >
                     <FrozenRouteBlock active={webSurfaceActive}>
@@ -2942,6 +3069,8 @@ function App() {
                         onExplorerIconStyleChange={handleExplorerIconStyleChange}
                         explorerFolderColorRules={explorerFolderColorRules}
                         onExplorerFolderColorRulesChange={handleExplorerFolderColorRulesChange}
+                        schedulerSettings={schedulerSettings}
+                        onSchedulerSettingsChange={handleSchedulerSettingsChange}
                         onRequestVaultSwitch={handleRequestVaultSwitch}
                         webullTabLabel={webullTabLabel}
                         webullTabIconText={webullTabIconText}

@@ -13,12 +13,21 @@ export interface ExplorerFolderColorPreferenceBlock {
   includeDescendants: boolean
 }
 
+export interface VaultSchedulerTaskPreferenceBlock {
+  id: string
+  action: string
+  enabled: boolean
+  timesOfDay: string[]
+}
+
 export interface VaultUiPreferencesBlock {
   explorerIconStyle: ExplorerIconStyleBlock
   newThoughtQuickDestinations: NewThoughtQuickDestinationPreferenceBlock[]
   explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
   webullTabLabel: string
   webullTabIconText: string
+  fileActivityIgnoredPaths: string[]
+  schedulerTasks: VaultSchedulerTaskPreferenceBlock[]
 }
 
 export const DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK: ExplorerFolderColorPreferenceBlock[] = [
@@ -49,6 +58,8 @@ export const DEFAULT_VAULT_UI_PREFERENCES_BLOCK: VaultUiPreferencesBlock = {
   explorerFolderColorRules: cloneExplorerFolderColorRulesBlock(DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK),
   webullTabLabel: 'Webull',
   webullTabIconText: '',
+  fileActivityIgnoredPaths: [],
+  schedulerTasks: [],
 }
 
 export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock {
@@ -58,6 +69,8 @@ export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock 
     explorerFolderColorRules: cloneExplorerFolderColorRulesBlock(DEFAULT_VAULT_UI_PREFERENCES_BLOCK.explorerFolderColorRules),
     webullTabLabel: 'Webull',
     webullTabIconText: '',
+    fileActivityIgnoredPaths: [],
+    schedulerTasks: [],
   }
 }
 
@@ -181,7 +194,41 @@ export function normalizeVaultUiPreferencesBlock(value: unknown): VaultUiPrefere
     webullTabIconText: typeof record.webullTabIconText === 'string'
       ? record.webullTabIconText.trim()
       : '',
+    fileActivityIgnoredPaths: normalizeFileActivityIgnoredPathsBlock(record.fileActivityIgnoredPaths),
+    schedulerTasks: normalizeSchedulerTasksPreferenceBlock(record.schedulerTasks),
   }
+}
+
+function normalizeFileActivityIgnoredPathsBlock(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((p): p is string => typeof p === 'string' && p.trim().length > 0).map(p => p.trim())
+}
+
+function normalizeSchedulerTaskPreferenceBlock(value: unknown): VaultSchedulerTaskPreferenceBlock | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Partial<VaultSchedulerTaskPreferenceBlock>
+  const id = typeof record.id === 'string' ? record.id.trim() : ''
+  const action = typeof record.action === 'string' ? record.action.trim() : ''
+  if (!id || !action) return null
+  const timesOfDay = Array.isArray(record.timesOfDay)
+    ? record.timesOfDay.filter((t): t is string => typeof t === 'string' && /^\d{2}:\d{2}$/.test(t.trim()))
+    : []
+  return {
+    id,
+    action,
+    enabled: Boolean(record.enabled),
+    timesOfDay: timesOfDay.length > 0 ? [...new Set(timesOfDay)].sort() : ['03:00'],
+  }
+}
+
+function normalizeSchedulerTasksPreferenceBlock(value: unknown): VaultSchedulerTaskPreferenceBlock[] {
+  if (!Array.isArray(value)) return []
+  const tasks: VaultSchedulerTaskPreferenceBlock[] = []
+  for (const candidate of value) {
+    const task = normalizeSchedulerTaskPreferenceBlock(candidate)
+    if (task) tasks.push(task)
+  }
+  return tasks
 }
 
 export function serializeVaultUiPreferencesBlock(preferences: VaultUiPreferencesBlock): string {

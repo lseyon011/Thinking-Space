@@ -113,6 +113,53 @@ export function getWebullRuntimeSurfaceOrch(): WebullRuntimeSurfaceOrch {
   return 'web'
 }
 
+function mergeBalancesBlock(balances: Array<unknown | null>): unknown | null {
+  const valid = balances.filter((b): b is Record<string, unknown> => !!b && typeof b === 'object' && !Array.isArray(b))
+  if (valid.length === 0) return null
+  if (valid.length === 1) return valid[0]
+  // Sum numeric balance fields across accounts
+  const merged: Record<string, unknown> = {}
+  const numericKeys = [
+    'total_market_value', 'totalMarketValue', 'total_asset', 'total_assets',
+    'total_value', 'totalValue', 'net_liquidation_value', 'netLiquidationValue',
+    'total_cash', 'totalCash', 'buying_power', 'buyingPower',
+  ]
+  for (const balance of valid) {
+    for (const key of Object.keys(balance)) {
+      if (!(key in merged)) {
+        merged[key] = balance[key]
+      } else if (numericKeys.includes(key)) {
+        const existing = Number(merged[key])
+        const incoming = Number(balance[key])
+        if (Number.isFinite(existing) && Number.isFinite(incoming)) {
+          merged[key] = existing + incoming
+        }
+      }
+    }
+    // Sum inside account_currency_assets if present
+    const currencyAssets = balance.account_currency_assets
+    if (Array.isArray(currencyAssets) && currencyAssets.length > 0) {
+      if (!Array.isArray(merged.account_currency_assets)) {
+        merged.account_currency_assets = currencyAssets.map((a: unknown) => ({ ...(a as Record<string, unknown>) }))
+      } else {
+        const mergedAssets = merged.account_currency_assets as Array<Record<string, unknown>>
+        for (let i = 0; i < currencyAssets.length && i < mergedAssets.length; i++) {
+          const source = currencyAssets[i] as Record<string, unknown> | undefined
+          if (!source) continue
+          for (const key of Object.keys(source)) {
+            const existing = Number(mergedAssets[i][key])
+            const incoming = Number(source[key])
+            if (Number.isFinite(existing) && Number.isFinite(incoming)) {
+              mergedAssets[i][key] = existing + incoming
+            }
+          }
+        }
+      }
+    }
+  }
+  return merged
+}
+
 function mergeHoldingsArraysBlock(datasets: Array<unknown | null>): unknown[] {
   const merged: unknown[] = []
   for (const dataset of datasets) {
@@ -130,6 +177,12 @@ function mergeHoldingsArraysBlock(datasets: Array<unknown | null>): unknown[] {
   return merged
 }
 
+function waitMsBlock(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+const WEBULL_API_STAGGER_MS_BLOCK = 350
+
 async function fetchAccountSnapshotBlock(
   account: WebullSelectedAccountOrch,
 ): Promise<{
@@ -140,31 +193,36 @@ async function fetchAccountSnapshotBlock(
 }> {
   const warnings: string[] = []
 
-  const [legacyBalanceSettled, legacyPositionsSettled, assetsPositionsSettled] = await Promise.allSettled([
-    fetchWebullAccountBalanceBlock(account.accountId),
-    fetchWebullAccountPositionsBlock(account.accountId),
-    fetchWebullAssetsPositionsBlock(account.accountId),
-  ])
+  // Stagger API calls to avoid 429 rate limits
+  const legacyBalanceSettled = await Promise.allSettled([fetchWebullAccountBalanceBlock(account.accountId)])
+  await waitMsBlock(WEBULL_API_STAGGER_MS_BLOCK)
+  const legacyPositionsSettled = await Promise.allSettled([fetchWebullAccountPositionsBlock(account.accountId)])
+  await waitMsBlock(WEBULL_API_STAGGER_MS_BLOCK)
+  const assetsPositionsSettled = await Promise.allSettled([fetchWebullAssetsPositionsBlock(account.accountId)])
 
-  const legacyBalanceResult = legacyBalanceSettled.status === 'fulfilled'
-    ? legacyBalanceSettled.value
+  const balanceSettled = legacyBalanceSettled[0]
+  const positionsSettled = legacyPositionsSettled[0]
+  const assetsSettled = assetsPositionsSettled[0]
+
+  const legacyBalanceResult = balanceSettled.status === 'fulfilled'
+    ? balanceSettled.value
     : null
-  const legacyPositionsResult = legacyPositionsSettled.status === 'fulfilled'
-    ? legacyPositionsSettled.value
+  const legacyPositionsResult = positionsSettled.status === 'fulfilled'
+    ? positionsSettled.value
     : null
-  const assetsPositionsResult = assetsPositionsSettled.status === 'fulfilled'
-    ? assetsPositionsSettled.value
+  const assetsPositionsResult = assetsSettled.status === 'fulfilled'
+    ? assetsSettled.value
     : null
 
   const accountLabel = account.accountNumber ?? account.accountId
-  if (legacyBalanceSettled.status === 'rejected') {
-    warnings.push(summarizeApiUnavailableBlock(`Account balance [${accountLabel}]`, legacyBalanceSettled.reason))
+  if (balanceSettled.status === 'rejected') {
+    warnings.push(summarizeApiUnavailableBlock(`Account balance [${accountLabel}]`, balanceSettled.reason))
   }
-  if (legacyPositionsSettled.status === 'rejected') {
-    warnings.push(summarizeApiUnavailableBlock(`Positions [${accountLabel}]`, legacyPositionsSettled.reason))
+  if (positionsSettled.status === 'rejected') {
+    warnings.push(summarizeApiUnavailableBlock(`Positions [${accountLabel}]`, positionsSettled.reason))
   }
-  if (assetsPositionsSettled.status === 'rejected') {
-    warnings.push(summarizeApiUnavailableBlock(`OpenAPI assets positions [${accountLabel}]`, assetsPositionsSettled.reason))
+  if (assetsSettled.status === 'rejected') {
+    warnings.push(summarizeApiUnavailableBlock(`OpenAPI assets positions [${accountLabel}]`, assetsSettled.reason))
   }
 
   return {
@@ -190,10 +248,12 @@ export async function fetchWebullOverallSnapshotOrch(): Promise<WebullOverallSna
     warnings.push('No account_id found in account list payload; positions and balance were skipped.')
   }
 
-  // Fetch data for all accounts in parallel.
-  const accountResults = await Promise.all(
-    allAccounts.map(account => fetchAccountSnapshotBlock(account)),
-  )
+  // Fetch data for accounts sequentially to avoid 429 rate limits.
+  const accountResults: Awaited<ReturnType<typeof fetchAccountSnapshotBlock>>[] = []
+  for (let i = 0; i < allAccounts.length; i++) {
+    if (i > 0) await waitMsBlock(WEBULL_API_STAGGER_MS_BLOCK)
+    accountResults.push(await fetchAccountSnapshotBlock(allAccounts[i]))
+  }
 
   const accountSnapshots: WebullAccountSnapshotOrch[] = accountResults.map(r => r.snapshot)
   const allAttempts: WebullApiResultBlock[] = [accountListResult]
@@ -248,7 +308,7 @@ export async function fetchWebullOverallSnapshotOrch(): Promise<WebullOverallSna
     selectedAccount: allAccounts[0] ?? null,
     accounts: accountSnapshots,
     accountList: accountListResult.data,
-    accountBalanceLegacy: allLegacyBalances.length === 1 ? allLegacyBalances[0] : (allLegacyBalances.length > 1 ? allLegacyBalances : null),
+    accountBalanceLegacy: mergeBalancesBlock(allLegacyBalances),
     accountPositionsLegacy: mergedLegacyPositions,
     assetsAccount: null,
     assetsPositions: mergedAssetsPositions,

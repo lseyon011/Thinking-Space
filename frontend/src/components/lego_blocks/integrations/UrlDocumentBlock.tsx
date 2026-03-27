@@ -35,6 +35,7 @@ import {
 import { cn } from '@/lib/utils'
 
 const LINK_WEBVIEW_PARTITION = 'persist:thinking-space-links'
+type ElectronWebviewRefBlock = React.MutableRefObject<ElectronWebviewElementBlock | null>
 
 interface ElectronWebviewElementBlock extends HTMLElement {
   canGoBack?: () => boolean
@@ -42,6 +43,8 @@ interface ElectronWebviewElementBlock extends HTMLElement {
   goForward?: () => void
   reload?: () => void
   executeJavaScript?: (script: string, userGesture?: boolean) => Promise<unknown>
+  getAttribute: (qualifiedName: string) => string | null
+  setAttribute: (qualifiedName: string, value: string) => void
 }
 
 interface UrlDocumentBlockProps {
@@ -59,6 +62,36 @@ interface UrlDocumentBlockProps {
   suspended?: boolean
 }
 
+const ElectronPersistentWebviewBlock = memo(function ElectronPersistentWebviewBlock({
+  webviewRef,
+  title,
+  partition,
+  useragent,
+  className,
+}: {
+  webviewRef: ElectronWebviewRefBlock
+  title: string
+  partition: string
+  useragent?: string
+  className?: string
+}) {
+  return (
+    <webview
+      ref={(node) => {
+        webviewRef.current = node as ElectronWebviewElementBlock | null
+      }}
+      title={title}
+      partition={partition}
+      useragent={useragent}
+      // Spotify relies on Widevine/EME, which Electron only exposes to
+      // guest content when browser plugins are explicitly enabled.
+      plugins
+      allowpopups
+      className={className}
+    />
+  )
+})
+
 function UrlDocumentBlock({
   path,
   url: directUrl,
@@ -75,7 +108,7 @@ function UrlDocumentBlock({
   const [error, setError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [canGoBack, setCanGoBack] = useState(false)
-  const webviewRef = useRef<HTMLElement | null>(null)
+  const webviewRef = useRef<ElectronWebviewElementBlock | null>(null)
   const contentAreaRef = useRef<HTMLDivElement | null>(null)
   const passwordProbeInFlightRef = useRef(false)
   const isElectronRuntime = Boolean(window.electronAPI?.isElectron)
@@ -188,8 +221,19 @@ function UrlDocumentBlock({
 
   const getElectronWebviewBlock = useCallback((): ElectronWebviewElementBlock | null => {
     if (!isElectronRuntime) return null
-    return webviewRef.current as ElectronWebviewElementBlock | null
+    return webviewRef.current
   }, [isElectronRuntime])
+
+  // Electron guest views can reload when React re-applies the same `src`
+  // during parent re-renders. Set `src` imperatively only when the target URL
+  // actually changes so workspace-tab switches preserve the live page state.
+  useEffect(() => {
+    if (!isElectronRuntime || !resolvedUrl) return
+    const webview = getElectronWebviewBlock()
+    if (!webview) return
+    if (webview.getAttribute('src') === resolvedUrl) return
+    webview.setAttribute('src', resolvedUrl)
+  }, [getElectronWebviewBlock, isElectronRuntime, resolvedUrl])
 
   useEffect(() => subscribePasswordVaultSessionOrch(setPasswordSession), [])
 
@@ -501,16 +545,11 @@ function UrlDocumentBlock({
       {/* Content area */}
       <div ref={contentAreaRef} className="relative min-h-0 flex-1 overflow-hidden">
         {isElectronRuntime ? (
-          <webview
-            ref={webviewRef}
+          <ElectronPersistentWebviewBlock
+            webviewRef={webviewRef}
             title={displayTitle}
-            src={resolvedUrl!}
             partition={partition ?? LINK_WEBVIEW_PARTITION}
             useragent={webviewUserAgent}
-            // Spotify relies on Widevine/EME, which Electron only exposes to
-            // guest content when browser plugins are explicitly enabled.
-            plugins
-            allowpopups
             className="absolute inset-0 bg-background"
           />
         ) : isCapacitorRuntime ? (

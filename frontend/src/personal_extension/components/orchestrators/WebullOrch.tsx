@@ -112,7 +112,7 @@ export default function WebullOrch() {
   const [executionSyncError, setExecutionSyncError] = useState<string | null>(null)
   const [runtime] = useState<WebullRuntimeSurfaceOrch>(getWebullRuntimeSurfaceOrch())
   const [hasConfig, setHasConfig] = useState(false)
-  const [, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const executionRoot = executionOverview?.executionRoot?.trim()
     ? executionOverview.executionRoot
@@ -501,6 +501,7 @@ export default function WebullOrch() {
       activePositionDetail={activePositionDetail}
       positionDetailLoading={positionDetailLoading}
       positionDetailError={positionDetailError}
+      loading={loading}
       workspaceBusy={workspaceBusy}
       workspaceMessage={workspaceMessage}
       onCreateCompany={onCreateCompany}

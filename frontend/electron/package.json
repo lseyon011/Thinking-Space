@@ -10,7 +10,7 @@
     "type": "git",
     "url": "https://github.com/anuragrpatil23/Thinking-Space"
   },
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "main": "build/src/index.js",
   "scripts": {
     "build": "tsc && electron-rebuild",

@@ -1,21 +1,60 @@
-MIT License
+Thinking Space License
 
-Copyright (c) 2026 Anurag Patil
+Copyright (C) 2024-2026 Elie Habib. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This repository is source-available.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. Non-commercial use
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+You may use, copy, modify, and redistribute this software for personal,
+research, educational, and other non-commercial purposes only.
+
+If you fork, modify, or redistribute this software for non-commercial use, you
+must:
+
+- preserve this copyright notice and attribution to the original project;
+- make the complete corresponding source code of your modified version
+  available under these same non-commercial terms; and
+- provide recipients the rights needed to inspect, run, modify, and share the
+  source code for non-commercial use.
+
+These non-commercial copyleft obligations are intended to be AGPL-3.0-style
+source-sharing requirements. This license is not a plain AGPL-3.0 grant,
+because commercial use is excluded unless separately licensed.
+
+2. Self-hosted non-commercial use
+
+Self-hosted non-commercial use is permitted, with attribution.
+
+3. Commercial use
+
+Any commercial use requires a separate commercial license from the copyright
+holder.
+
+Commercial use includes, without limitation:
+
+- offering the software as a hosted or managed service;
+- using the software in connection with paid services, consulting, or client
+  work;
+- internal use by a business in support of commercial activity;
+- selling, sublicensing, or commercially distributing the software;
+- rebranding or white-labeling the software; or
+- incorporating substantial portions of the software into a commercial product
+  or service.
+
+4. No commercial rights under this license
+
+No right to use this software for commercial purposes is granted by this
+license.
+
+5. Warranty disclaimer
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM,
+OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+For commercial licensing, contact the maintainer.
