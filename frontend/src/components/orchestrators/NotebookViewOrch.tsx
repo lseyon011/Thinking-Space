@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { BookOpen, Loader2, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { BookOpen, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
@@ -39,6 +39,7 @@ export default function NotebookViewOrch({
   const [tocOpen, setTocOpen] = useState(true)
   const [tocViewMode, setTocViewMode] = useState<NotebookTocViewMode>('list')
   const [tocWidth, setTocWidth] = useState(TOC_DEFAULT_WIDTH)
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
   const pageRefsMap = useRef<Map<string, HTMLDivElement>>(new Map())
 
@@ -54,6 +55,19 @@ export default function NotebookViewOrch({
 
   const showSinglePage = tocViewMode === 'grid' || selectedPagePath !== null
   const displayPath = selectedPagePath ?? activePagePath ?? fileEntries[0]?.path ?? null
+
+  // Compute a window of pages to force-mount around the active page (for instant TOC click)
+  const WINDOW_SIZE = 5
+  const forceMountPaths = useMemo(() => {
+    const set = new Set<string>()
+    if (!activePagePath) return set
+    const idx = fileEntries.findIndex((e) => e.path === activePagePath)
+    if (idx === -1) return set
+    const start = Math.max(0, idx - WINDOW_SIZE)
+    const end = Math.min(fileEntries.length, idx + WINDOW_SIZE + 1)
+    for (let i = start; i < end; i++) set.add(fileEntries[i].path)
+    return set
+  }, [activePagePath, fileEntries])
 
   // Track which page is visible via IntersectionObserver (scroll-all mode)
   useEffect(() => {
@@ -94,14 +108,23 @@ export default function NotebookViewOrch({
       setSelectedPagePath(path)
       setActivePagePath(path)
     } else {
+      // List mode: scroll to page in scroll-all view
       if (selectedPagePath === null) {
-        scrollToPage(path)
+        // Set active so windowed rendering mounts pages around target
+        setActivePagePath(path)
+        // Scroll after a tick to let the window re-render around the target
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            const el = pageRefsMap.current.get(path)
+            if (el) el.scrollIntoView({ behavior: 'auto', block: 'start' })
+          }, 50)
+        })
       } else {
         setSelectedPagePath(path)
         setActivePagePath(path)
       }
     }
-  }, [tocViewMode, selectedPagePath, scrollToPage])
+  }, [tocViewMode, selectedPagePath])
 
   const handleViewModeChange = useCallback((mode: NotebookTocViewMode) => {
     setTocViewMode(mode)
@@ -200,13 +223,30 @@ export default function NotebookViewOrch({
   function renderEntries(items: NotebookEntry[], pageCounter: { value: number }) {
     return items.map((entry) => {
       if (entry.kind === 'folder') {
+        const isCollapsed = collapsedFolders.has(entry.path)
+        const childFileCount = entry.children ? countNotebookPages(entry.children) : 0
         return (
           <div key={entry.path} className="mt-8 first:mt-0">
-            <div className="mb-4 flex items-center gap-2 border-b border-border/40 pb-2">
+            <button
+              type="button"
+              className="mb-4 flex w-full items-center gap-2 border-b border-border/40 pb-2 text-left"
+              onClick={() => setCollapsedFolders((prev) => {
+                const next = new Set(prev)
+                if (next.has(entry.path)) next.delete(entry.path)
+                else next.add(entry.path)
+                return next
+              })}
+            >
+              {isCollapsed
+                ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                : <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              }
               <span className="text-sm font-semibold text-foreground">{entry.name}</span>
-              <span className="text-xs text-muted-foreground">folder</span>
-            </div>
-            {entry.children && entry.children.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                {childFileCount} {childFileCount === 1 ? 'page' : 'pages'}
+              </span>
+            </button>
+            {!isCollapsed && entry.children && entry.children.length > 0 && (
               <div className="space-y-6 pl-0">
                 {renderEntries(entry.children, pageCounter)}
               </div>
@@ -227,6 +267,8 @@ export default function NotebookViewOrch({
             entry={entry}
             pageNumber={pageCounter.value}
             onOpenFile={onOpenFile}
+            topBarHidden={topBarHidden}
+            forceMount={forceMountPaths.has(entry.path)}
           />
         </div>
       )

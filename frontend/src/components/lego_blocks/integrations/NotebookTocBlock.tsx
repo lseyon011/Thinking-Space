@@ -1,11 +1,10 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
-import { Folder, FileText, File, GripVertical, LayoutGrid, List } from 'lucide-react'
+import { memo, useCallback, useEffect, useState } from 'react'
+import { Folder, FileText, File, GripVertical, LayoutGrid, List, ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocumentPathBlock'
 import { readMarkdownDocument } from '@/services/orchestrators/markdownDocumentsOrch'
 import { loadExcalidrawSvgPreviewBlock } from '@/services/lego_blocks/units/excalidrawPreviewBlock'
 import type { NotebookEntry } from '@/components/lego_blocks/hooks/shared/useNotebookEntriesBlock'
-import { flattenNotebookEntries } from '@/components/lego_blocks/hooks/shared/useNotebookEntriesBlock'
 
 // ---------------------------------------------------------------------------
 // Shared utilities
@@ -157,12 +156,6 @@ function TocEntry({
 // Grid thumbnail view
 // ---------------------------------------------------------------------------
 
-/** Extract parent folder name from a full path (e.g. "a/b/c/file.md" → "c") */
-function parentFolderName(path: string): string | null {
-  const parts = path.split('/')
-  return parts.length >= 2 ? parts[parts.length - 2] : null
-}
-
 function GridThumbnail({ entry, pageNumber, isActive, onClick }: {
   entry: NotebookEntry
   pageNumber: number
@@ -171,7 +164,6 @@ function GridThumbnail({ entry, pageNumber, isActive, onClick }: {
 }) {
   const [thumbnail, setThumbnail] = useState<React.ReactNode | null>(null)
   const [loaded, setLoaded] = useState(false)
-  const folder = parentFolderName(entry.path)
 
   useEffect(() => {
     let cancelled = false
@@ -246,14 +238,9 @@ function GridThumbnail({ entry, pageNumber, isActive, onClick }: {
           </div>
         )}
       </div>
-      {/* Footer: page number, folder, filename */}
-      <div className="flex w-full flex-col border-t border-border/30 bg-muted/30 px-1.5 py-1">
-        <div className="flex items-center gap-1">
-          <span className="text-[10px] tabular-nums text-muted-foreground">{pageNumber}</span>
-          {folder && (
-            <span className="truncate text-[9px] text-muted-foreground/60">{folder}/</span>
-          )}
-        </div>
+      {/* Footer: page number + filename */}
+      <div className="flex w-full items-center gap-1.5 border-t border-border/30 bg-muted/30 px-1.5 py-1">
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{pageNumber}</span>
         <span className="truncate text-[10px] font-medium text-foreground/80">{entry.name}</span>
       </div>
     </button>
@@ -265,19 +252,73 @@ function GridView({ entries, activePagePath, onSelectPage }: {
   activePagePath: string | null
   onSelectPage: (path: string) => void
 }) {
-  const flat = useMemo(() => flattenNotebookEntries(entries).filter((e) => e.kind === 'file'), [entries])
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
+
+  const toggleFolder = useCallback((path: string) => {
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }, [])
+
+  function renderGridEntries(items: NotebookEntry[], pageCounter: { value: number }) {
+    const result: React.ReactNode[] = []
+
+    for (const entry of items) {
+      if (entry.kind === 'folder') {
+        const isCollapsed = collapsedFolders.has(entry.path)
+        const childCount = entry.children
+          ? entry.children.reduce(function count(n, e): number {
+              if (e.kind === 'file') return n + 1
+              return e.children ? e.children.reduce(count, n) : n
+            }, 0)
+          : 0
+
+        result.push(
+          <div key={entry.path} className="col-span-2 mt-3 first:mt-0">
+            <button
+              type="button"
+              className="flex w-full items-center gap-1.5 px-1 py-1 text-left"
+              onClick={() => toggleFolder(entry.path)}
+            >
+              {isCollapsed
+                ? <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                : <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+              }
+              <Folder className="h-3 w-3 shrink-0 text-blue-500" />
+              <span className="truncate text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {entry.name}
+              </span>
+              <span className="text-[10px] text-muted-foreground/60">{childCount}</span>
+            </button>
+          </div>,
+        )
+
+        if (!isCollapsed && entry.children && entry.children.length > 0) {
+          result.push(...renderGridEntries(entry.children, pageCounter))
+        }
+      } else {
+        pageCounter.value += 1
+        result.push(
+          <GridThumbnail
+            key={entry.path}
+            entry={entry}
+            pageNumber={pageCounter.value}
+            isActive={activePagePath === entry.path}
+            onClick={() => onSelectPage(entry.path)}
+          />,
+        )
+      }
+    }
+
+    return result
+  }
 
   return (
     <div className="grid grid-cols-2 gap-2 px-2 py-2">
-      {flat.map((entry, idx) => (
-        <GridThumbnail
-          key={entry.path}
-          entry={entry}
-          pageNumber={idx + 1}
-          isActive={activePagePath === entry.path}
-          onClick={() => onSelectPage(entry.path)}
-        />
-      ))}
+      {renderGridEntries(entries, { value: 0 })}
     </div>
   )
 }
