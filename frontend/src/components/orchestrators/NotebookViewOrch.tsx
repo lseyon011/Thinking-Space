@@ -23,6 +23,7 @@ interface NotebookViewOrchProps {
   onOpenFile: (path: string) => void
   onClose: () => void
   className?: string
+  topBarHidden?: boolean
 }
 
 export default function NotebookViewOrch({
@@ -30,6 +31,7 @@ export default function NotebookViewOrch({
   onOpenFile,
   onClose,
   className,
+  topBarHidden = false,
 }: NotebookViewOrchProps) {
   const { entries, loading, error, reload } = useNotebookEntriesBlock(folderPath)
   const [activePagePath, setActivePagePath] = useState<string | null>(null)
@@ -336,7 +338,7 @@ export default function NotebookViewOrch({
               initialMode="view"
               onOpenPath={handleDocumentOpenPath}
               className="h-full min-h-0"
-              topBarHidden
+              topBarHidden={topBarHidden}
             />
           )}
 

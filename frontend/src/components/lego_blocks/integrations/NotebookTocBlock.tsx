@@ -157,6 +157,12 @@ function TocEntry({
 // Grid thumbnail view
 // ---------------------------------------------------------------------------
 
+/** Extract parent folder name from a full path (e.g. "a/b/c/file.md" → "c") */
+function parentFolderName(path: string): string | null {
+  const parts = path.split('/')
+  return parts.length >= 2 ? parts[parts.length - 2] : null
+}
+
 function GridThumbnail({ entry, pageNumber, isActive, onClick }: {
   entry: NotebookEntry
   pageNumber: number
@@ -165,6 +171,7 @@ function GridThumbnail({ entry, pageNumber, isActive, onClick }: {
 }) {
   const [thumbnail, setThumbnail] = useState<React.ReactNode | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const folder = parentFolderName(entry.path)
 
   useEffect(() => {
     let cancelled = false
@@ -174,16 +181,23 @@ function GridThumbnail({ entry, pageNumber, isActive, onClick }: {
     if (isMarkdown) {
       void readMarkdownDocument(entry.path, { includeHash: false }).then((doc) => {
         if (cancelled) return
-        // Strip frontmatter, take first ~300 chars for preview
         let text = doc.content
         if (text.startsWith('---')) {
           const endIdx = text.indexOf('\n---', 3)
           if (endIdx !== -1) text = text.slice(endIdx + 4)
         }
-        text = text.trim().slice(0, 300)
+        // Extract a meaningful title + first lines for preview
+        const lines = text.trim().split('\n').filter((l) => l.trim().length > 0)
+        const title = lines[0]?.replace(/^#+\s*/, '') ?? entry.name
+        const body = lines.slice(1, 6).join('\n')
         setThumbnail(
-          <div className="pointer-events-none h-full w-full overflow-hidden p-1.5 text-[4px] leading-[6px] text-foreground/70">
-            {text}
+          <div className="pointer-events-none flex h-full w-full flex-col overflow-hidden bg-white p-2 dark:bg-zinc-50">
+            <div className="mb-0.5 truncate text-[7px] font-bold leading-[9px] text-foreground/80">
+              {title}
+            </div>
+            <div className="flex-1 overflow-hidden text-[5px] leading-[7px] text-foreground/50">
+              {body}
+            </div>
           </div>,
         )
         setLoaded(true)
@@ -193,18 +207,17 @@ function GridThumbnail({ entry, pageNumber, isActive, onClick }: {
         if (cancelled) return
         setThumbnail(
           <div
-            className="flex h-full w-full items-center justify-center bg-white p-1 dark:bg-zinc-900"
+            className="flex h-full w-full items-center justify-center bg-white p-1 dark:bg-zinc-50"
             dangerouslySetInnerHTML={{ __html: svg }}
           />,
         )
         setLoaded(true)
       }).catch(() => { if (!cancelled) setLoaded(true) })
     } else {
-      // PDF / generic — show icon
       const Icon = getEntryIcon(entry)
       const iconColor = getEntryIconColor(entry)
       setThumbnail(
-        <div className="flex h-full w-full items-center justify-center">
+        <div className="flex h-full w-full items-center justify-center bg-white dark:bg-zinc-50">
           <Icon className={cn('h-6 w-6', iconColor)} />
         </div>,
       )
@@ -218,7 +231,7 @@ function GridThumbnail({ entry, pageNumber, isActive, onClick }: {
     <button
       type="button"
       className={cn(
-        'group flex flex-col overflow-hidden rounded-md border transition-all',
+        'group flex flex-col overflow-hidden rounded-md border transition-all text-left',
         isActive
           ? 'border-primary ring-2 ring-primary/30'
           : 'border-border/50 hover:border-border hover:shadow-sm',
@@ -233,9 +246,15 @@ function GridThumbnail({ entry, pageNumber, isActive, onClick }: {
           </div>
         )}
       </div>
-      {/* Page number footer */}
-      <div className="flex w-full items-center justify-between border-t border-border/30 bg-muted/30 px-1.5 py-0.5">
-        <span className="text-[10px] tabular-nums text-muted-foreground">{pageNumber}</span>
+      {/* Footer: page number, folder, filename */}
+      <div className="flex w-full flex-col border-t border-border/30 bg-muted/30 px-1.5 py-1">
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] tabular-nums text-muted-foreground">{pageNumber}</span>
+          {folder && (
+            <span className="truncate text-[9px] text-muted-foreground/60">{folder}/</span>
+          )}
+        </div>
+        <span className="truncate text-[10px] font-medium text-foreground/80">{entry.name}</span>
       </div>
     </button>
   )

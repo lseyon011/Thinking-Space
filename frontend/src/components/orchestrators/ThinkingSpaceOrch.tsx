@@ -554,9 +554,9 @@ export default function ThinkingSpaceOrch() {
       enabled: true,
       explorerCollapsed,
       headerVisible: !inlineDocHeaderHidden,
-      showHeaderToggle: Boolean(inlinePath),
+      showHeaderToggle: Boolean(inlinePath || notebookFolderPath),
     })
-  }, [explorerCollapsed, inlineDocHeaderHidden, inlinePath, rssActiveArticle, rssUrlBarVisible, isIosSurface])
+  }, [explorerCollapsed, inlineDocHeaderHidden, inlinePath, notebookFolderPath, rssActiveArticle, rssUrlBarVisible, isIosSurface])
 
   useEffect(() => {
     return () => {
@@ -896,6 +896,7 @@ export default function ThinkingSpaceOrch() {
                 onOpenFile={handleNotebookOpenFile}
                 onClose={() => openNotebookView(null)}
                 className="h-full min-h-0"
+                topBarHidden={inlineDocHeaderHidden}
               />
             </div>
           ) : inlinePath && inlineDocumentContent ? (
