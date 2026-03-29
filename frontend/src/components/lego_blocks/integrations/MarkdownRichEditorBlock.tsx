@@ -41,6 +41,8 @@ import {
   getWikilinkSuggestionsOrch,
   toObsidianWikilinkTargetOrch,
 } from '@/services/orchestrators/obsidianLinkOrch'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import ContextMenuBlock, { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import {
   buildMarkdownTableFromRowsBlock,
   buildMarkdownTableTemplateBlock,
@@ -510,6 +512,37 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     return /iPhone/i.test(navigator.userAgent)
   }, [layout.mode, layout.surface])
   const editorViewRef = useRef<EditorView | null>(null)
+  const currentPathRef = useRef(currentPath)
+  useEffect(() => { currentPathRef.current = currentPath }, [currentPath])
+  const handleImagePasteRef = useRef<((file: File, view: EditorView) => Promise<void>) | null>(null)
+  handleImagePasteRef.current = async (file: File, view: EditorView) => {
+    const path = currentPathRef.current
+    if (!path) return
+    const mimeToExt: Record<string, string> = {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/gif': 'gif',
+      'image/webp': 'webp',
+      'image/bmp': 'bmp',
+      'image/avif': 'avif',
+      'image/svg+xml': 'svg',
+    }
+    const ext = mimeToExt[file.type] ?? 'png'
+    const noteDir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+    const filename = `pasted-image-${Date.now()}.${ext}`
+    const storagePath = noteDir ? `${noteDir}/assets/${filename}` : `assets/${filename}`
+    const wikilinkTarget = `assets/${filename}`
+    const buffer = await file.arrayBuffer()
+    await getVaultFS().writeBytes(storagePath, new Uint8Array(buffer))
+    const { from, to } = view.state.selection.main
+    const insert = `![[${wikilinkTarget}]]`
+    view.dispatch({
+      changes: { from, to, insert },
+      selection: { anchor: from + insert.length },
+    })
+    view.focus()
+  }
+  const [contextMenuState, setContextMenuState] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null)
   const [toolbarOpen, setToolbarOpen] = useState(false)
   const [currentCursorLine, setCurrentCursorLine] = useState(1)
   const [internalAiPanelOpen, setInternalAiPanelOpen] = useState(defaultAiPanelOpen)
@@ -1145,6 +1178,32 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
 
         setWikilinkQuery(query.query)
         setWikilinkPickerOpen(true)
+      }),
+      EditorView.domEventHandlers({
+        paste(event, view) {
+          const items = event.clipboardData?.items
+          if (!items) return false
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+            if (item.kind === 'file' && item.type.startsWith('image/')) {
+              const file = item.getAsFile()
+              if (!file) continue
+              event.preventDefault()
+              void handleImagePasteRef.current?.(file, view)
+              return true
+            }
+          }
+          return false
+        },
+        contextmenu(event, view) {
+          event.preventDefault()
+          setContextMenuState({
+            x: event.clientX,
+            y: event.clientY,
+            hasSelection: !view.state.selection.main.empty,
+          })
+          return true
+        },
       }),
       keymap.of([]),
     ]
@@ -1849,6 +1908,79 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           onChange={handleEditorChange}
         />
       </div>
+
+      {contextMenuState && (
+        <ContextMenuBlock
+          position={{ x: contextMenuState.x, y: contextMenuState.y }}
+          onClose={() => setContextMenuState(null)}
+          entries={[
+            {
+              key: 'cut',
+              label: 'Cut',
+              disabled: !contextMenuState.hasSelection,
+              onClick: () => {
+                const view = editorViewRef.current
+                if (!view) return
+                const { from, to } = view.state.selection.main
+                const text = view.state.sliceDoc(from, to)
+                void navigator.clipboard.writeText(text).catch(() => {})
+                view.dispatch({ changes: { from, to, insert: '' }, selection: { anchor: from } })
+                view.focus()
+              },
+            },
+            {
+              key: 'copy',
+              label: 'Copy',
+              disabled: !contextMenuState.hasSelection,
+              onClick: () => {
+                const view = editorViewRef.current
+                if (!view) return
+                const { from, to } = view.state.selection.main
+                void navigator.clipboard.writeText(view.state.sliceDoc(from, to)).catch(() => {})
+              },
+            },
+            {
+              key: 'paste',
+              label: 'Paste',
+              onClick: () => {
+                const view = editorViewRef.current
+                if (!view) return
+                void navigator.clipboard.readText().then((text) => {
+                  const { from, to } = view.state.selection.main
+                  view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length } })
+                  view.focus()
+                }).catch(() => {})
+              },
+            },
+            { key: 'sep1', kind: 'separator' },
+            {
+              key: 'bold',
+              label: 'Bold',
+              onClick: () => applyPatch((text, from, to) => wrapSelection(text, from, to, '**', '**', 'bold text')),
+            },
+            {
+              key: 'italic',
+              label: 'Italic',
+              onClick: () => applyPatch((text, from, to) => wrapSelection(text, from, to, '*', '*', 'italic text')),
+            },
+            {
+              key: 'code',
+              label: 'Inline Code',
+              onClick: () => applyPatch((text, from, to) => wrapSelection(text, from, to, '`', '`', 'code')),
+            },
+            {
+              key: 'link',
+              label: 'Insert Link',
+              onClick: () => applyPatch((text, from, to) => wrapSelection(text, from, to, '[', '](https://)', 'link text')),
+            },
+            {
+              key: 'wikilink',
+              label: 'Insert Wikilink',
+              onClick: () => applyPatch(insertWikilink),
+            },
+          ] satisfies ContextMenuEntryBlock[]}
+        />
+      )}
 
       {wikilinkPickerOpen && (
         <div className="pointer-events-none absolute inset-x-3 top-2 z-40">

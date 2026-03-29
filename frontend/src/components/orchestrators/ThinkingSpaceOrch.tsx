@@ -42,6 +42,7 @@ import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticl
 import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentBlock'
 import type { RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import type { UILayoutState } from '@/services/lego_blocks/units/uiLayoutBlock'
+import NotebookViewOrch from '@/components/orchestrators/NotebookViewOrch'
 
 function dispatchFileOpRefresh(): void {
   dispatchGlobalSyncRefreshBlock({
@@ -53,6 +54,7 @@ function dispatchFileOpRefresh(): void {
 }
 
 const FILE_QUERY_PARAM = 'file'
+const NOTEBOOK_QUERY_PARAM = 'notebook'
 const MAX_MOUNTED_INLINE_DOCS = 8
 const EXPLORER_DEFAULT_WIDTH_PX = 320
 const EXPLORER_MIN_WIDTH_PX = 220
@@ -122,6 +124,8 @@ export default function ThinkingSpaceOrch() {
     presetTags: string[]
     tagColors: Record<string, string>
   } | null>(null)
+  const notebookPathFromUrl = searchParams.get(NOTEBOOK_QUERY_PARAM)?.trim() || null
+  const [notebookFolderPath, setNotebookFolderPath] = useState<string | null>(notebookPathFromUrl)
   const [linkPromptOpen, setLinkPromptOpen] = useState(false)
   const linkPromptResolveRef = useRef<((url: string | null) => void) | null>(null)
   const [isExplorerResizing, setIsExplorerResizing] = useState(false)
@@ -252,6 +256,24 @@ export default function ThinkingSpaceOrch() {
   const handleInlineOpenPathForEdit = useCallback((nextPath: string) => {
     setInlinePathAndSyncUrl(nextPath, 'edit')
   }, [setInlinePathAndSyncUrl])
+
+  const openNotebookView = useCallback((folderPath: string | null) => {
+    setNotebookFolderPath(folderPath)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (folderPath) {
+        next.set(NOTEBOOK_QUERY_PARAM, folderPath)
+      } else {
+        next.delete(NOTEBOOK_QUERY_PARAM)
+      }
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const handleNotebookOpenFile = useCallback((path: string) => {
+    openNotebookView(null)
+    setInlinePathAndSyncUrl(path)
+  }, [openNotebookView, setInlinePathAndSyncUrl])
 
   const handleDrawerFileOpen = useCallback((path: string) => {
     setInlinePathAndSyncUrl(path)
@@ -739,6 +761,7 @@ export default function ThinkingSpaceOrch() {
             onOpenInFinder={handleExplorerOpenInFinder}
             loadFileTags={handleExplorerLoadFileTags}
             onMovePath={handleExplorerMovePath}
+            onOpenFolderAsNotebook={openNotebookView}
             draggableFiles
             draggableFolders
             title=""
@@ -864,6 +887,15 @@ export default function ThinkingSpaceOrch() {
                 url={browserUrl}
                 onClose={() => setBrowserUrl(null)}
                 showCloseButton
+              />
+            </div>
+          ) : notebookFolderPath ? (
+            <div className="h-full min-h-0">
+              <NotebookViewOrch
+                folderPath={notebookFolderPath}
+                onOpenFile={handleNotebookOpenFile}
+                onClose={() => openNotebookView(null)}
+                className="h-full min-h-0"
               />
             </div>
           ) : inlinePath && inlineDocumentContent ? (

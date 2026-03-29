@@ -55,6 +55,7 @@ import {
 import { rankFuzzyItemsBlock } from '@/services/lego_blocks/units/fuzzySearchBlock'
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import { cn } from '@/lib/utils'
+import ContextMenuBlock, { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 
 interface FolderEntries {
   folders: string[]
@@ -69,13 +70,6 @@ interface NodeState extends FolderEntries {
 
 type ExplorerPathKind = 'file' | 'folder'
 type ExplorerActionResult = void | boolean | string | Promise<void | boolean | string>
-
-interface ContextMenuState {
-  x: number
-  y: number
-  path: string
-  kind: ExplorerPathKind
-}
 
 interface PendingRenameState {
   path: string
@@ -116,6 +110,7 @@ interface VaultExplorerBlockProps {
   persistenceKey?: string
   listenToGlobalSyncRefresh?: boolean
   className?: string
+  onOpenFolderAsNotebook?: (path: string) => void
   belowToolbarSlot?: ReactNode
 }
 
@@ -123,11 +118,17 @@ function getFileIcon(name: string) {
   const lower = name.toLowerCase()
   if (lower.endsWith('.md')) return FileText
   if (lower.endsWith('.url')) return Link2
+  if (lower.endsWith('.excalidraw')) return ExcalidrawIcon
   return File
 }
 
-function isUrlFile(name: string): boolean {
-  return name.toLowerCase().endsWith('.url')
+function getFileIconColor(name: string, isSelected: boolean): string {
+  if (isSelected) return 'text-white'
+  const lower = name.toLowerCase()
+  if (lower.endsWith('.url')) return 'text-blue-400'
+  if (lower.endsWith('.excalidraw')) return 'text-violet-400'
+  if (lower.endsWith('.pdf')) return 'text-red-400'
+  return 'text-muted-foreground'
 }
 
 function remapPathAfterMove(path: string, sourcePath: string, targetPath: string): string {
@@ -175,6 +176,7 @@ export default function VaultExplorerBlock({
   title = 'Thinking Space Explorer',
   persistenceKey = 'global',
   listenToGlobalSyncRefresh = false,
+  onOpenFolderAsNotebook,
   className,
   belowToolbarSlot = null,
 }: VaultExplorerBlockProps) {
@@ -199,14 +201,13 @@ export default function VaultExplorerBlock({
   )
   const [query, setQuery] = useState('')
   const [dropOverPath, setDropOverPath] = useState<string | null>(null)
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; kind: ExplorerPathKind } | null>(null)
   const [pendingRename, setPendingRename] = useState<PendingRenameState | null>(null)
   const [inlineRename, setInlineRename] = useState<InlineRenameState | null>(null)
   const [showInfoPanel, setShowInfoPanel] = useState(false)
   const [infoPanelTags, setInfoPanelTags] = useState<string[] | null>(null)
   const [infoPanelLoading, setInfoPanelLoading] = useState(false)
 
-  const contextMenuRef = useRef<HTMLDivElement | null>(null)
   const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const renameSubmittingRef = useRef(false)
@@ -682,35 +683,6 @@ export default function VaultExplorerBlock({
     return () => window.cancelAnimationFrame(rafId)
   }, [inlineRenameSession])
 
-  useEffect(() => {
-    if (!contextMenu) return
-
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target
-      if (!(target instanceof Node)) {
-        setContextMenu(null)
-        return
-      }
-      if (!contextMenuRef.current?.contains(target)) {
-        setContextMenu(null)
-      }
-    }
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setContextMenu(null)
-    }
-
-    const onScroll = () => setContextMenu(null)
-
-    window.addEventListener('pointerdown', onPointerDown)
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('scroll', onScroll, true)
-    return () => {
-      window.removeEventListener('pointerdown', onPointerDown)
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('scroll', onScroll, true)
-    }
-  }, [contextMenu])
 
   const renderPath = useCallback(
     (path: string, depth: number): JSX.Element[] => {
@@ -973,7 +945,7 @@ export default function VaultExplorerBlock({
             >
               <Icon className={cn(
                 'ltm-explorer-glyph ltm-explorer-file-icon h-3.5 w-3.5 shrink-0',
-                selectedFilePath === filePath ? 'text-white' : isUrlFile(fileName) ? 'text-blue-400' : 'text-muted-foreground',
+                getFileIconColor(fileName, selectedFilePath === filePath),
               )} />
               <span className="truncate">{fileName}</span>
             </button>,
@@ -1035,21 +1007,6 @@ export default function VaultExplorerBlock({
     return rows
   }, [normalizedQuery, renderPath, rootNode.loaded, rootNode.loading])
 
-  const contextMenuStyle = useMemo(() => {
-    if (!contextMenu) return undefined
-    const menuWidth = 228
-    const menuHeight = contextMenu.kind === 'file'
-      ? 452
-      : onDeleteFolder
-        ? 342
-        : 304
-    const maxX = Math.max(8, window.innerWidth - menuWidth - 8)
-    const maxY = Math.max(8, window.innerHeight - menuHeight - 8)
-    return {
-      left: `${Math.min(contextMenu.x, maxX)}px`,
-      top: `${Math.min(contextMenu.y, maxY)}px`,
-    }
-  }, [contextMenu, onDeleteFolder])
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col', className)}>
@@ -1190,145 +1147,41 @@ export default function VaultExplorerBlock({
       >
         {content}
       </div>
-      {contextMenu && (
-        <div
-          ref={contextMenuRef}
-          className="context-menu-surface fixed z-[90] min-w-[220px] rounded-lg border border-border/80 bg-background/95 p-[5px] shadow-2xl backdrop-blur-xl"
-          style={contextMenuStyle}
-          role="menu"
-        >
-          {(() => {
-            const parentPath = contextMenu.kind === 'folder' ? contextMenu.path : getParentPath(contextMenu.path)
-            const filePath = contextMenu.path
-            const showFileActions = contextMenu.kind === 'file'
-
-            const MenuItem = ({
-              label,
-              onClick,
-              disabled = false,
-              destructive = false,
-            }: {
-              label: string
-              onClick: () => void
-              disabled?: boolean
-              destructive?: boolean
-            }) => (
-              <button
-                type="button"
-                className={cn(
-                  'context-menu-item flex w-full appearance-none items-center rounded-[5px] px-2.5 py-[5px] text-left text-xs leading-4 select-none outline-none',
-                  disabled && 'cursor-not-allowed opacity-40',
-                  !disabled && !destructive && 'text-foreground',
-                  !disabled && destructive && 'text-destructive',
-                )}
-                onClick={onClick}
-                onMouseDown={(event) => {
-                  if (!disabled) event.preventDefault()
-                }}
-                disabled={disabled}
-                role="menuitem"
-              >
-                {label}
-              </button>
-            )
-
-            return (
-              <>
-                <MenuItem
-                  label="New Folder"
-                  onClick={() => { void runContextAction(onCreateFolder ? () => onCreateFolder(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'folder' }) }}
-                  disabled={!onCreateFolder}
-                />
-                <MenuItem
-                  label="New File"
-                  onClick={() => { void runContextAction(onCreateFile ? () => onCreateFile(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) }}
-                  disabled={!onCreateFile}
-                />
-                <MenuItem
-                  label="New CSV File"
-                  onClick={() => { void runContextAction(onCreateCsvFile ? () => onCreateCsvFile(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) }}
-                  disabled={!onCreateCsvFile}
-                />
-                <MenuItem
-                  label="New Drawing"
-                  onClick={() => { void runContextAction(onCreateDrawing ? () => onCreateDrawing(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) }}
-                  disabled={!onCreateDrawing}
-                />
-                <MenuItem
-                  label="Add Link Here"
-                  onClick={() => { void runContextAction(onCreateLink ? () => onCreateLink(parentPath) : undefined, { refreshPath: parentPath }) }}
-                  disabled={!onCreateLink}
-                />
-                <MenuItem
-                  label="Copy Absolute Path"
-                  onClick={() => { void runContextAction(onCopyAbsolutePath ? () => onCopyAbsolutePath(filePath) : undefined) }}
-                  disabled={!onCopyAbsolutePath}
-                />
-                <MenuItem
-                  label="Copy Relative Path"
-                  onClick={() => { void runContextAction(onCopyRelativePath ? () => onCopyRelativePath(filePath) : undefined) }}
-                  disabled={!onCopyRelativePath}
-                />
-                <MenuItem
-                  label="Rename"
-                  onClick={() => {
-                    setContextMenu(null)
-                    beginInlineRename(filePath, contextMenu.kind)
-                  }}
-                  disabled={!onRenamePath}
-                />
-                {!showFileActions && (
-                  <>
-                    <div className="context-menu-divider my-1 border-t border-border/70" />
-                    <MenuItem
-                      label="Delete Folder"
-                      onClick={() => { void runContextAction(onDeleteFolder ? () => onDeleteFolder(filePath) : undefined, { refreshPath: getParentPath(filePath) }) }}
-                      disabled={!onDeleteFolder}
-                      destructive
-                    />
-                    <MenuItem
-                      label="Open in Finder"
-                      onClick={() => { void runContextAction(onOpenInFinder ? () => onOpenInFinder(filePath) : undefined) }}
-                      disabled={!onOpenInFinder}
-                    />
-                  </>
-                )}
-                {showFileActions && (
-                  <>
-                    <div className="context-menu-divider my-1 border-t border-border/70" />
-                    <MenuItem
-                      label="Open in New Tab"
-                      onClick={() => { void runContextAction(onOpenInNewTab ? () => onOpenInNewTab(filePath) : undefined) }}
-                      disabled={!onOpenInNewTab}
-                    />
-                    <MenuItem
-                      label="Open in New Window"
-                      onClick={() => { void runContextAction(onOpenInNewWindow ? () => onOpenInNewWindow(filePath) : undefined) }}
-                      disabled={!onOpenInNewWindow}
-                    />
-                    <MenuItem
-                      label="Duplicate"
-                      onClick={() => { void runContextAction(onDuplicateFile ? () => onDuplicateFile(filePath) : undefined, { refreshPath: parentPath }) }}
-                      disabled={!onDuplicateFile}
-                    />
-                    <MenuItem
-                      label="Delete"
-                      onClick={() => { void runContextAction(onDeleteFile ? () => onDeleteFile(filePath) : undefined, { refreshPath: parentPath }) }}
-                      disabled={!onDeleteFile}
-                      destructive
-                    />
-                    <MenuItem
-                      label="Open in Finder"
-                      onClick={() => { void runContextAction(onOpenInFinder ? () => onOpenInFinder(filePath) : undefined) }}
-                      disabled={!onOpenInFinder}
-                    />
-                  </>
-                )}
-              </>
-            )
-          })()}
-        </div>
-      )}
+      {contextMenu && (() => {
+        const parentPath = contextMenu.kind === 'folder' ? contextMenu.path : getParentPath(contextMenu.path)
+        const filePath = contextMenu.path
+        const showFileActions = contextMenu.kind === 'file'
+        const entries: ContextMenuEntryBlock[] = [
+          { key: 'new-folder', label: 'New Folder', disabled: !onCreateFolder, onClick: () => { void runContextAction(onCreateFolder ? () => onCreateFolder(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'folder' }) } },
+          { key: 'new-file', label: 'New File', disabled: !onCreateFile, onClick: () => { void runContextAction(onCreateFile ? () => onCreateFile(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) } },
+          { key: 'new-csv', label: 'New CSV File', disabled: !onCreateCsvFile, onClick: () => { void runContextAction(onCreateCsvFile ? () => onCreateCsvFile(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) } },
+          { key: 'new-drawing', label: 'New Drawing', disabled: !onCreateDrawing, onClick: () => { void runContextAction(onCreateDrawing ? () => onCreateDrawing(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) } },
+          { key: 'add-link', label: 'Add Link Here', disabled: !onCreateLink, onClick: () => { void runContextAction(onCreateLink ? () => onCreateLink(parentPath) : undefined, { refreshPath: parentPath }) } },
+          { key: 'copy-abs', label: 'Copy Absolute Path', disabled: !onCopyAbsolutePath, onClick: () => { void runContextAction(onCopyAbsolutePath ? () => onCopyAbsolutePath(filePath) : undefined) } },
+          { key: 'copy-rel', label: 'Copy Relative Path', disabled: !onCopyRelativePath, onClick: () => { void runContextAction(onCopyRelativePath ? () => onCopyRelativePath(filePath) : undefined) } },
+          { key: 'rename', label: 'Rename', disabled: !onRenamePath, onClick: () => { beginInlineRename(filePath, contextMenu.kind) } },
+          ...(showFileActions ? [
+            { key: 'sep1', kind: 'separator' as const },
+            { key: 'open-tab', label: 'Open in New Tab', disabled: !onOpenInNewTab, onClick: () => { void runContextAction(onOpenInNewTab ? () => onOpenInNewTab(filePath) : undefined) } },
+            { key: 'open-win', label: 'Open in New Window', disabled: !onOpenInNewWindow, onClick: () => { void runContextAction(onOpenInNewWindow ? () => onOpenInNewWindow(filePath) : undefined) } },
+            { key: 'duplicate', label: 'Duplicate', disabled: !onDuplicateFile, onClick: () => { void runContextAction(onDuplicateFile ? () => onDuplicateFile(filePath) : undefined, { refreshPath: parentPath }) } },
+            { key: 'delete-file', label: 'Delete', disabled: !onDeleteFile, destructive: true, onClick: () => { void runContextAction(onDeleteFile ? () => onDeleteFile(filePath) : undefined, { refreshPath: parentPath }) } },
+            { key: 'finder-file', label: 'Open in Finder', disabled: !onOpenInFinder, onClick: () => { void runContextAction(onOpenInFinder ? () => onOpenInFinder(filePath) : undefined) } },
+          ] : [
+            { key: 'sep1', kind: 'separator' as const },
+            { key: 'open-notebook', label: 'Open as Notebook', disabled: !onOpenFolderAsNotebook, onClick: () => { if (onOpenFolderAsNotebook) onOpenFolderAsNotebook(filePath) } },
+            { key: 'delete-folder', label: 'Delete Folder', disabled: !onDeleteFolder, destructive: true, onClick: () => { void runContextAction(onDeleteFolder ? () => onDeleteFolder(filePath) : undefined, { refreshPath: getParentPath(filePath) }) } },
+            { key: 'finder-folder', label: 'Open in Finder', disabled: !onOpenInFinder, onClick: () => { void runContextAction(onOpenInFinder ? () => onOpenInFinder(filePath) : undefined) } },
+          ]),
+        ]
+        return (
+          <ContextMenuBlock
+            entries={entries}
+            position={{ x: contextMenu.x, y: contextMenu.y }}
+            onClose={() => setContextMenu(null)}
+          />
+        )
+      })()}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, RefreshCw, ScanLine, ZoomIn, ZoomOut } from 'lucide-react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import PdfJsWorkerBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
@@ -344,6 +344,40 @@ export default function PdfDocumentBlock({
   const canGoNext = numPages > 0 && pageNumber < numPages
   const displayedScale = scale
 
+  const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+
+  const scrollToPage = useCallback((page: number) => {
+    const el = pageRefs.current.get(page)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport || numPages <= 0) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let topMostPage = pageNumber
+        let topMostTop = Infinity
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          const page = Number(entry.target.getAttribute('data-page'))
+          if (!page) continue
+          const top = entry.boundingClientRect.top
+          if (top < topMostTop) {
+            topMostTop = top
+            topMostPage = page
+          }
+        }
+        setPageNumber((prev) => (prev === topMostPage ? prev : topMostPage))
+      },
+      { root: viewport, threshold: 0.1 },
+    )
+
+    for (const [, el] of pageRefs.current) observer.observe(el)
+    return () => observer.disconnect()
+  }, [numPages, pageNumber])
+
   return (
     <div className={cn('flex h-full min-h-0 flex-col bg-card', className)}>
       <div className="flex flex-wrap items-center gap-1 border-b border-border/60 px-3 py-2">
@@ -353,7 +387,7 @@ export default function PdfDocumentBlock({
           size="icon"
           className="h-8 w-8"
           disabled={!canGoPrev}
-          onClick={() => setPageNumber((prev) => Math.max(1, prev - 1))}
+          onClick={() => { const p = Math.max(1, pageNumber - 1); setPageNumber(p); scrollToPage(p) }}
           title="Previous page"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -367,7 +401,7 @@ export default function PdfDocumentBlock({
           size="icon"
           className="h-8 w-8"
           disabled={!canGoNext}
-          onClick={() => setPageNumber((prev) => (numPages > 0 ? Math.min(numPages, prev + 1) : prev))}
+          onClick={() => { const p = numPages > 0 ? Math.min(numPages, pageNumber + 1) : pageNumber; setPageNumber(p); scrollToPage(p) }}
           title="Next page"
         >
           <ChevronRight className="h-4 w-4" />
@@ -466,17 +500,25 @@ export default function PdfDocumentBlock({
                   Rendering PDF...
                 </div>
               )}
-              className="w-fit"
+              className="flex w-fit flex-col gap-3"
             >
-              <Page
-                pageNumber={pageNumber}
-                width={pageWidth}
-                scale={fitWidth ? undefined : scale}
-                devicePixelRatio={pageDevicePixelRatio}
-                renderAnnotationLayer={!electronRuntime}
-                renderTextLayer={!electronRuntime}
-                className="overflow-hidden rounded-md border bg-background shadow-sm"
-              />
+              {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
+                <div
+                  key={pageNum}
+                  ref={(el) => { if (el) pageRefs.current.set(pageNum, el); else pageRefs.current.delete(pageNum) }}
+                  data-page={pageNum}
+                >
+                  <Page
+                    pageNumber={pageNum}
+                    width={pageWidth}
+                    scale={fitWidth ? undefined : scale}
+                    devicePixelRatio={pageDevicePixelRatio}
+                    renderAnnotationLayer={!electronRuntime}
+                    renderTextLayer={!electronRuntime}
+                    className="overflow-hidden rounded-md border bg-background shadow-sm"
+                  />
+                </div>
+              ))}
             </Document>
           </div>
         )}
