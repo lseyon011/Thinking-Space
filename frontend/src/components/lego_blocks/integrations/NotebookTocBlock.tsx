@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useState } from 'react'
 import { Folder, FileText, File, GripVertical, LayoutGrid, List, ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPathBlock'
 import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocumentPathBlock'
 import { readMarkdownDocument } from '@/services/orchestrators/markdownDocumentsOrch'
 import { loadExcalidrawSvgPreviewBlock } from '@/services/lego_blocks/units/excalidrawPreviewBlock'
@@ -12,6 +13,7 @@ import type { NotebookEntry } from '@/components/lego_blocks/hooks/shared/useNot
 
 function getEntryIcon(entry: NotebookEntry) {
   if (entry.kind === 'folder') return Folder
+  if (isExcalidrawPathBlock(entry.name)) return File
   if (/\.md$/i.test(entry.name)) return FileText
   if (isPdfDocumentPathBlock(entry.path)) return FileText
   return File
@@ -19,7 +21,7 @@ function getEntryIcon(entry: NotebookEntry) {
 
 function getEntryIconColor(entry: NotebookEntry): string {
   if (entry.kind === 'folder') return 'text-blue-500'
-  if (/\.excalidraw$/i.test(entry.name)) return 'text-violet-400'
+  if (isExcalidrawPathBlock(entry.name)) return 'text-violet-400'
   if (isPdfDocumentPathBlock(entry.path)) return 'text-red-400'
   return 'text-muted-foreground'
 }
@@ -167,10 +169,21 @@ function GridThumbnail({ entry, pageNumber, isActive, onClick }: {
 
   useEffect(() => {
     let cancelled = false
-    const isMarkdown = /\.md$/i.test(entry.name)
-    const isExcalidraw = /\.excalidraw$/i.test(entry.name)
+    const isExcalidraw = isExcalidrawPathBlock(entry.name)
+    const isMarkdown = /\.md$/i.test(entry.name) && !isExcalidraw
 
-    if (isMarkdown) {
+    if (isExcalidraw) {
+      void loadExcalidrawSvgPreviewBlock(entry.path).then((svg) => {
+        if (cancelled) return
+        setThumbnail(
+          <div
+            className="flex h-full w-full items-center justify-center bg-white p-1 dark:bg-zinc-50"
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />,
+        )
+        setLoaded(true)
+      }).catch(() => { if (!cancelled) setLoaded(true) })
+    } else if (isMarkdown) {
       void readMarkdownDocument(entry.path, { includeHash: false }).then((doc) => {
         if (cancelled) return
         let text = doc.content
@@ -191,17 +204,6 @@ function GridThumbnail({ entry, pageNumber, isActive, onClick }: {
               {body}
             </div>
           </div>,
-        )
-        setLoaded(true)
-      }).catch(() => { if (!cancelled) setLoaded(true) })
-    } else if (isExcalidraw) {
-      void loadExcalidrawSvgPreviewBlock(entry.path).then((svg) => {
-        if (cancelled) return
-        setThumbnail(
-          <div
-            className="flex h-full w-full items-center justify-center bg-white p-1 dark:bg-zinc-50"
-            dangerouslySetInnerHTML={{ __html: svg }}
-          />,
         )
         setLoaded(true)
       }).catch(() => { if (!cancelled) setLoaded(true) })

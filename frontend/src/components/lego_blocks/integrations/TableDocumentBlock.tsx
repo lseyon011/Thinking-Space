@@ -2,12 +2,14 @@ import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from '
 import * as Toolbar from '@radix-ui/react-toolbar'
 import {
   DataSheetGrid,
+  type DataSheetGridRef,
   keyColumn,
   textColumn,
 } from 'react-datasheet-grid'
 import 'react-datasheet-grid/dist/style.css'
 import { ExternalLink, FileSpreadsheet, FolderOpen, Pencil, Plus, Save, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import ContextMenuBlock, { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import GoogleWorkspaceViewerBlock from '@/components/lego_blocks/integrations/GoogleWorkspaceViewerBlock'
 import type {
   TableCellAlign,
@@ -101,7 +103,11 @@ function TableDocumentBlock({
   const [googlePickerLoading, setGooglePickerLoading] = useState(false)
   const [googlePickerError, setGooglePickerError] = useState<string | null>(null)
   const [showGoogleAdvancedFields, setShowGoogleAdvancedFields] = useState(false)
+  const [columnContextMenu, setColumnContextMenu] = useState<{ x: number; y: number; col: number } | null>(null)
   const headerRenameInputRef = useRef<HTMLInputElement | null>(null)
+  const gridRootRef = useRef<HTMLDivElement | null>(null)
+  const gridRef = useRef<DataSheetGridRef | null>(null)
+  const pendingColumnRevealRef = useRef<{ row: number; col: number } | null>(null)
   const scopeId = useId()
 
   const gridScopeClass = useMemo(() => {
@@ -195,6 +201,12 @@ function TableDocumentBlock({
       setShowGoogleAdvancedFields(false)
     }
   }, [isEditing])
+
+  useEffect(() => {
+    if (columnContextMenu && (!isEditing || !activeSheet)) {
+      setColumnContextMenu(null)
+    }
+  }, [activeSheet, columnContextMenu, isEditing])
 
   useEffect(() => {
     if (!isEditing || draft?.kind !== 'gsheet') return
@@ -365,7 +377,12 @@ function TableDocumentBlock({
           },
         ),
         id: key,
-        title: columnLabelBlock(colIndex),
+        title: (
+          <div className="flex h-full w-full items-center" title={isEditing ? 'Right-click for column actions' : undefined}>
+            {columnLabelBlock(colIndex)}
+          </div>
+        ),
+        headerClassName: `ts-table-column-header ts-table-column-header-${colIndex}`,
         minWidth: 120,
       }
     })
@@ -458,6 +475,61 @@ function TableDocumentBlock({
     setActiveCell({ row: 0, col: 0 })
     setSelection({ min: { row: 0, col: 0 }, max: { row: 0, col: 0 } })
   }, [applyDraftChange])
+
+  const addRowsAndColumns = useCallback((rowCountToAdd: number, columnCountToAdd: number) => {
+    const nextRowCount = Math.max(0, Math.round(rowCountToAdd))
+    const nextColumnCount = Math.max(0, Math.round(columnCountToAdd))
+    if (nextRowCount === 0 && nextColumnCount === 0) return
+
+    const nextColumnTotal = columnCount + nextColumnCount
+    const firstNewColumn = columnCount
+    const lastNewColumn = Math.max(firstNewColumn, nextColumnTotal - 1)
+    const focusColumn = nextColumnCount > 0
+      ? lastNewColumn
+      : clampBlock(activeCell?.col ?? selectedBounds.start.col, 0, Math.max(0, nextColumnTotal - 1))
+    const focusRow = nextRowCount > 0
+      ? rowCount
+      : clampBlock(activeCell?.row ?? selectedBounds.start.row, 0, Math.max(0, rowCount - 1))
+    applyDraftChange((current) => mutateActiveSheetBlock(current, (sheet) => {
+      const rows = ensureTableRectBlock(sheet.rows, Math.max(1, sheet.rows.length), columnCount)
+      const expandedRows = rows.map((row) => {
+        if (nextColumnCount === 0) return row
+        return [...row, ...createEmptyTableRowBlock(nextColumnCount)]
+      })
+      const appendedRows = Array.from({ length: nextRowCount }, () => createEmptyTableRowBlock(nextColumnTotal))
+      return {
+        ...sheet,
+        rows: [...expandedRows, ...appendedRows],
+      }
+    }))
+    setActiveCell({ row: focusRow, col: focusColumn })
+    setSelection({
+      min: { row: focusRow, col: nextColumnCount > 0 ? firstNewColumn : focusColumn },
+      max: { row: focusRow, col: focusColumn },
+    })
+    pendingColumnRevealRef.current = nextColumnCount > 0
+      ? { row: focusRow, col: focusColumn }
+      : null
+  }, [activeCell?.col, activeCell?.row, applyDraftChange, columnCount, rowCount, selectedBounds.start.col, selectedBounds.start.row])
+
+  const deleteColumn = useCallback((colIndex: number) => {
+    if (columnCount <= 1) return
+    const nextFocusCol = clampBlock(colIndex > 0 ? colIndex - 1 : 0, 0, Math.max(0, columnCount - 2))
+    const focusRow = clampBlock(activeCell?.row ?? selectedBounds.start.row, 0, Math.max(0, rowCount - 1))
+    applyDraftChange((current) => mutateActiveSheetBlock(current, (sheet) => {
+      const rows = ensureTableRectBlock(sheet.rows, Math.max(1, sheet.rows.length), columnCount)
+      return {
+        ...sheet,
+        rows: rows.map((row) => row.filter((_, index) => index !== colIndex)),
+      }
+    }))
+    setActiveCell({ row: focusRow, col: nextFocusCol })
+    setSelection({
+      min: { row: focusRow, col: nextFocusCol },
+      max: { row: focusRow, col: nextFocusCol },
+    })
+    setColumnContextMenu(null)
+  }, [activeCell?.row, applyDraftChange, columnCount, rowCount, selectedBounds.start.row])
 
   const updateGoogleMetadata = useCallback((key: 'spreadsheetId' | 'title' | 'openUrl' | 'sheetName' | 'range', value: string) => {
     applyDraftChange((current) => ({
@@ -575,6 +647,76 @@ function TableDocumentBlock({
   const gridHeight = useMemo(() => {
     return Math.min(780, Math.max(320, gridRows.length * 36 + 84))
   }, [gridRows.length])
+
+  const gridInstanceKey = useMemo(
+    () => `${path}:${draft?.activeSheetId ?? 'sheet'}:${columnCount}:${rowCount}`,
+    [columnCount, draft?.activeSheetId, path, rowCount],
+  )
+
+  useEffect(() => {
+    const pendingReveal = pendingColumnRevealRef.current
+    if (!pendingReveal) return
+    pendingColumnRevealRef.current = null
+    const run = () => {
+      const container = gridRootRef.current?.querySelector('.dsg-container') as HTMLDivElement | null
+      if (container) {
+        container.scrollLeft = container.scrollWidth
+      }
+      gridRef.current?.setActiveCell({
+        row: pendingReveal.row,
+        col: pendingReveal.col,
+      })
+    }
+    const frame1 = window.requestAnimationFrame(() => {
+      const frame2 = window.requestAnimationFrame(run)
+      pendingColumnRevealRef.current = null
+      return frame2
+    })
+    return () => {
+      window.cancelAnimationFrame(frame1)
+    }
+  }, [gridInstanceKey])
+
+  useEffect(() => {
+    const root = gridRootRef.current
+    if (!root || !isEditing) return
+
+    const onContextMenu = (event: MouseEvent) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+      const headerCell = target.closest('.ts-table-column-header')
+      if (!(headerCell instanceof HTMLElement)) return
+      const className = Array.from(headerCell.classList).find((name) => name.startsWith('ts-table-column-header-'))
+      if (!className) return
+      const value = Number.parseInt(className.slice('ts-table-column-header-'.length), 10)
+      if (!Number.isFinite(value)) return
+      event.preventDefault()
+      setColumnContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        col: value,
+      })
+    }
+
+    root.addEventListener('contextmenu', onContextMenu)
+    return () => {
+      root.removeEventListener('contextmenu', onContextMenu)
+    }
+  }, [isEditing])
+
+  const columnContextMenuEntries = useMemo<ContextMenuEntryBlock[]>(() => {
+    if (!columnContextMenu) return []
+    const label = columnLabelBlock(columnContextMenu.col)
+    return [
+      {
+        key: 'delete-column',
+        label: `Delete column ${label}`,
+        onClick: () => deleteColumn(columnContextMenu.col),
+        disabled: !isEditing || columnCount <= 1,
+        destructive: true,
+      },
+    ]
+  }, [columnContextMenu, columnCount, deleteColumn, isEditing])
 
   return (
     <div className={cn(
@@ -948,22 +1090,39 @@ function TableDocumentBlock({
           </div>
         )}
         {!loading && !error && !isGoogleSheetDocument && activeSheet && (
-          <DataSheetGrid<GridRowBlock>
-            className={gridScopeClass}
-            value={gridRows}
-            onChange={handleGridRowsChange}
-            columns={gridColumns}
-            cellClassName={({ rowIndex, columnId }) => gridCellClassName({ rowIndex, columnId })}
-            height={gridHeight}
-            autoAddRow={isEditing}
-            lockRows={!isEditing}
-            disableContextMenu={!isEditing}
-            addRowsComponent={isEditing ? undefined : false}
-            onActiveCellChange={({ cell }) => handleActiveCellChange(cell)}
-            onSelectionChange={({ selection: nextSelection }) => handleSelectionChange(nextSelection)}
-          />
+          <>
+            <div ref={gridRootRef}>
+            <DataSheetGrid<GridRowBlock>
+              key={gridInstanceKey}
+              ref={gridRef}
+              className={gridScopeClass}
+              value={gridRows}
+              onChange={handleGridRowsChange}
+              columns={gridColumns}
+              cellClassName={({ rowIndex, columnId }) => gridCellClassName({ rowIndex, columnId })}
+              height={gridHeight}
+              autoAddRow={isEditing}
+              lockRows={!isEditing}
+              disableContextMenu={!isEditing}
+              addRowsComponent={false}
+              onActiveCellChange={({ cell }) => handleActiveCellChange(cell)}
+              onSelectionChange={({ selection: nextSelection }) => handleSelectionChange(nextSelection)}
+            />
+            </div>
+            {isEditing && (
+              <TableGridFooterControlsBlock onAddRowsAndColumns={addRowsAndColumns} />
+            )}
+          </>
         )}
       </div>
+
+      {columnContextMenu && columnContextMenuEntries.length > 0 && (
+        <ContextMenuBlock
+          entries={columnContextMenuEntries}
+          position={{ x: columnContextMenu.x, y: columnContextMenu.y }}
+          onClose={() => setColumnContextMenu(null)}
+        />
+      )}
 
       {(saveError || successMessage || conflict) && (
         <div className="border-t border-border/50 px-5 py-2.5 text-sm">
@@ -1083,6 +1242,67 @@ function createEmptyGridRowBlock(columnCount: number): GridRowBlock {
     row[columnKeyBlock(i)] = ''
   }
   return row
+}
+
+function createEmptyTableRowBlock(columnCount: number): TableSheetBlock['rows'][number] {
+  return Array.from({ length: columnCount }, () => ({ value: '', format: undefined }))
+}
+
+function TableGridFooterControlsBlock({
+  onAddRowsAndColumns,
+}: {
+  onAddRowsAndColumns: (rowCount: number, columnCount: number) => void
+}) {
+  const [rowValue, setRowValue] = useState(1)
+  const [rawRowValue, setRawRowValue] = useState('1')
+  const [columnValue, setColumnValue] = useState(0)
+  const [rawColumnValue, setRawColumnValue] = useState('0')
+
+  const commitAddRowsAndColumns = useCallback(() => {
+    onAddRowsAndColumns(rowValue, columnValue)
+  }, [columnValue, onAddRowsAndColumns, rowValue])
+
+  return (
+    <div className="dsg-add-row">
+      <button type="button" className="dsg-add-row-btn" onClick={commitAddRowsAndColumns}>
+        Add
+      </button>
+      <input
+        className="dsg-add-row-input"
+        value={rawRowValue}
+        onBlur={() => setRawRowValue(String(rowValue))}
+        type="number"
+        min={1}
+        onChange={(event) => {
+          setRawRowValue(event.target.value)
+          setRowValue(Math.max(1, Math.round(Number.parseInt(event.target.value || '0', 10) || 0)))
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            commitAddRowsAndColumns()
+          }
+        }}
+      />
+      <span>rows</span>
+      <input
+        className="dsg-add-row-input"
+        value={rawColumnValue}
+        onBlur={() => setRawColumnValue(String(columnValue))}
+        type="number"
+        min={0}
+        onChange={(event) => {
+          setRawColumnValue(event.target.value)
+          setColumnValue(Math.max(0, Math.round(Number.parseInt(event.target.value || '0', 10) || 0)))
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            commitAddRowsAndColumns()
+          }
+        }}
+      />
+      <span>columns</span>
+    </div>
+  )
 }
 
 function columnLabelBlock(index: number): string {

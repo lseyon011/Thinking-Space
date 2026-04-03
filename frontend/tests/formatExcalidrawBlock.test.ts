@@ -114,6 +114,31 @@ describe('formatExcalidrawBlock', () => {
     expect(output).toContain('### Chapter 2 Part 1')
   })
 
+  it('treats bold numbered transcript sections as single numbered headings', () => {
+    const input = [
+      '### 1997',
+      '',
+      '_Morning Session - 1997 Meeting_',
+      '',
+      '**1. Buffett is losing his voice**',
+      '',
+      'WARREN BUFFETT: Good morning. I am Warren Buffett.',
+      'I had a real problem last night. I was losing my voice almost entirely.',
+      '',
+      '**2. Formal business meeting begins**',
+      '',
+      'WARREN BUFFETT: I think that is most of the preliminaries.',
+      'We will get the meeting over with here promptly with your cooperation.',
+    ].join('\n')
+
+    const output = formatMarkdown(input, DEFAULT_OPTIONS)
+
+    expect(output).toContain('## 1 Buffett is losing his voice')
+    expect(output).toContain('## 2 Formal business meeting begins')
+    expect(output).not.toContain('• **1. Buffett is losing his voice**')
+    expect(output).not.toContain('• Buffett is losing his voice')
+  })
+
   it('failsafe splits any oversized heading block into parts', () => {
     const longSectionBody = Array.from({ length: 4300 }, (_, index) => `line${index + 1}`).join(' ')
     const input = [

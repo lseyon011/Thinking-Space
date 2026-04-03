@@ -77,6 +77,7 @@ import { isTableDocumentPathBlock } from '@/services/lego_blocks/units/tableDocu
 import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocumentPathBlock'
 import { isGoogleDocDocumentPathBlock } from '@/services/lego_blocks/units/googleDocDocumentPathBlock'
 import { isImageDocumentPathBlock } from '@/services/lego_blocks/units/imageDocumentPathBlock'
+import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPathBlock'
 import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOrch'
 import {
   clearExcalidrawCrashMarkerBlock,
@@ -226,6 +227,10 @@ function MarkdownTextDocumentRuntimeBlock({
   const { layout } = useUILayoutBlock()
   const isIosSurface = layout.surface === 'capacitor-ios'
   const isElectronSurface = layout.surface === 'electron'
+  const isElectronDesktopSurface = isElectronSurface && layout.mode === 'desktop'
+  const isMacDesktopSurface = isElectronDesktopSurface
+    && typeof navigator !== 'undefined'
+    && /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform || navigator.userAgent || '')
   const isIosPhone = isIosSurface && layout.mode === 'phone'
   const [mode, setMode] = useState<MarkdownViewerMode>(initialMode)
   const [content, setContent] = useState<string | null>(null)
@@ -259,7 +264,7 @@ function MarkdownTextDocumentRuntimeBlock({
   const [isHeaderRenameActive, setIsHeaderRenameActive] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameError, setRenameError] = useState<string | null>(null)
-  const isExcalidrawDoc = /\.(excalidraw|excalidraw\.md)$/i.test(path)
+  const isExcalidrawDoc = isExcalidrawPathBlock(path)
   const chromeContainerRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
   const headerRenameInputRef = useRef<HTMLInputElement | null>(null)
@@ -363,6 +368,7 @@ function MarkdownTextDocumentRuntimeBlock({
 
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
+  const immersiveChromeLeftOffsetPx = isMacDesktopSurface ? 88 : 0
   const canRenameInHeader = !!(onOpenPathForEdit || onOpenPath)
   const obsidianUrl = buildObsidianOpenUrlOrch(path)
   const openInSystemLabel = getOpenInSystemLabelOrch()
@@ -1401,9 +1407,20 @@ function MarkdownTextDocumentRuntimeBlock({
                 ...isElectronSurface && { WebkitAppRegion: 'drag' } as React.CSSProperties,
               }}
             >
-              <span className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Excalidraw Focus Mode {hasChanges ? '· Unsaved changes' : '· Saved'}
-              </span>
+              <div
+                className="min-w-0 flex items-center gap-2"
+                style={immersiveChromeLeftOffsetPx > 0 ? { marginLeft: `${immersiveChromeLeftOffsetPx}px` } : undefined}
+              >
+                <span className="truncate text-sm font-medium text-foreground">
+                  {filename}
+                </span>
+                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Excalidraw Focus Mode
+                </span>
+                <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-muted-foreground/80">
+                  {hasChanges ? 'Unsaved changes' : 'Saved'}
+                </span>
+              </div>
               <div className="flex flex-wrap items-center justify-end gap-1.5" style={isElectronSurface ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
                 <button
                   type="button"

@@ -593,6 +593,11 @@ function App() {
       }),
     ),
   )
+  const [persistentThinkingSpaceTabIds, setPersistentThinkingSpaceTabIds] = useState<string[]>(
+    () => workspaceTabs
+      .filter((tab) => parseTabRoute(tab.route).pathname === '/thinking-space')
+      .map((tab) => tab.id),
+  )
   const [persistentOrganizerRouteByTabId, setPersistentOrganizerRouteByTabId] = useState<Record<string, string>>(
     () => Object.fromEntries(
       workspaceTabs.flatMap((tab) => {
@@ -803,6 +808,12 @@ function App() {
       ? [...persistentWebTabIds, activeWorkspaceTabId]
       : persistentWebTabIds),
     [activeWorkspaceTabId, isWebRoute, persistentWebTabIds],
+  )
+  const renderedPersistentThinkingSpaceTabIds = useMemo(
+    () => (isThinkingSpaceRoute && activeWorkspaceTabId && !persistentThinkingSpaceTabIds.includes(activeWorkspaceTabId)
+      ? [...persistentThinkingSpaceTabIds, activeWorkspaceTabId]
+      : persistentThinkingSpaceTabIds),
+    [activeWorkspaceTabId, isThinkingSpaceRoute, persistentThinkingSpaceTabIds],
   )
   const organizerNavRoute = useMemo(
     () => (activeWorkspaceTabId
@@ -1565,6 +1576,12 @@ function App() {
       }
     }
 
+    if (isThinkingSpaceRoute) {
+      setPersistentThinkingSpaceTabIds((prev) => (
+        prev.includes(activeWorkspaceTabId) ? prev : [...prev, activeWorkspaceTabId]
+      ))
+    }
+
     if (isOrganizerRoute) {
       if (activeTabRoutePending) return
       setPersistentOrganizerRouteByTabId((prev) => (
@@ -2149,6 +2166,10 @@ function App() {
       return next.length === prev.length ? prev : next
     })
     setPersistentWebTabIds((prev) => {
+      const next = prev.filter((tabId) => tabIds.has(tabId))
+      return next.length === prev.length ? prev : next
+    })
+    setPersistentThinkingSpaceTabIds((prev) => {
       const next = prev.filter((tabId) => tabIds.has(tabId))
       return next.length === prev.length ? prev : next
     })
@@ -3016,17 +3037,24 @@ function App() {
                   </FrozenRouteBlock>
                 </div>
               )}
-              {persistentRouteMounts.thinkingSpace && (
-                <div
-                  className="absolute inset-0 min-h-0 overflow-hidden"
-                  style={{ visibility: isThinkingSpaceRoute ? 'visible' : 'hidden', pointerEvents: isThinkingSpaceRoute ? 'auto' : 'none' }}
-                  aria-hidden={!isThinkingSpaceRoute}
-                >
-                  <FrozenRouteBlock active={isThinkingSpaceRoute}>
-                    <ThinkingSpace />
-                  </FrozenRouteBlock>
-                </div>
-              )}
+              {renderedPersistentThinkingSpaceTabIds.map((tabId) => {
+                const thinkingSpaceTabMounted = mountedTabIdSet.has(tabId)
+                if (!thinkingSpaceTabMounted) return null
+                const thinkingSpaceSurfaceActive = isThinkingSpaceRoute && activeWorkspaceTabId === tabId
+                const thinkingSpaceTabRoute = workspaceTabs.find((tab) => tab.id === tabId)?.route ?? '/thinking-space'
+                return (
+                  <div
+                    key={`thinking-space-surface:${tabId}`}
+                    className="absolute inset-0 min-h-0 overflow-hidden"
+                    style={{ visibility: thinkingSpaceSurfaceActive ? 'visible' : 'hidden', pointerEvents: thinkingSpaceSurfaceActive ? 'auto' : 'none' }}
+                    aria-hidden={!thinkingSpaceSurfaceActive}
+                  >
+                    <FrozenRouteBlock active={thinkingSpaceSurfaceActive}>
+                      <ThinkingSpace routeOverride={thinkingSpaceTabRoute} />
+                    </FrozenRouteBlock>
+                  </div>
+                )
+              })}
               {persistentRouteMounts.webull && (
                 <div
                   className="absolute inset-0 min-h-0 overflow-y-auto overflow-x-hidden"

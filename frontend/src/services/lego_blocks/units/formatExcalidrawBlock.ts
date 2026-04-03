@@ -14,6 +14,7 @@ const CHAPTER_LINE_RE = /^CHAPTER\s+(\d+)\s*$/i
 const CHAPTER_MARKER_RE = /^(?:#{1,6}\s*)?CHAPTER\s+(\d+)\s*$/i
 const MARKDOWN_HEADING_RE = /^#{1,6}\s+(.+)$/
 const CHAPTER_SECTION_RE = /^##\s+Chapter\s+(\d+)(?::\s*(.+))?$/i
+const TRANSCRIPT_SECTION_RE = /^(?:\*\*|__)\s*(\d{1,3})[.)]\s+(.+?)\s*(?:\*\*|__)$/
 const CONTENTS_HEADING_RE = /^(?:#{1,6}\s*)?(?:table of contents|contents|index)\s*$/i
 const NOTES_HEADING_RE = /^#{1,6}\s+notes\b/i
 const INDEX_DOT_LEADER_RE = /\.{2,}\s*\d+\s*$/
@@ -86,6 +87,31 @@ function parseIndexChapterEntry(line: string): { chapterNum: string; chapterTitl
   }
 
   return null
+}
+
+function parseTranscriptSectionEntry(line: string): { chapterNum: string; chapterTitle: string } | null {
+  const match = line.trim().match(TRANSCRIPT_SECTION_RE)
+  if (!match) return null
+
+  const chapterTitle = cleanChapterTitle(match[2] ?? '')
+  if (!chapterTitle) return null
+
+  return {
+    chapterNum: match[1],
+    chapterTitle,
+  }
+}
+
+function hasTranscriptSectionStructure(lines: string[]): boolean {
+  let transcriptHeadingCount = 0
+
+  for (const line of lines) {
+    if (!parseTranscriptSectionEntry(line)) continue
+    transcriptHeadingCount += 1
+    if (transcriptHeadingCount >= 2) return true
+  }
+
+  return false
 }
 
 function collectIndexChapterHints(lines: string[]): Map<string, string> {
@@ -248,6 +274,14 @@ function normalizeBookStructure(lines: string[], chapterIndexHints: Map<string, 
       continue
     }
 
+    const transcriptSection = parseTranscriptSectionEntry(stripped)
+    if (transcriptSection) {
+      out.push(`\n## ${transcriptSection.chapterNum} ${transcriptSection.chapterTitle}\n`)
+      emittedChapterNumbers.add(transcriptSection.chapterNum)
+      i++
+      continue
+    }
+
     // CHAPTER headers
     let m = stripped.match(CHAPTER_RE)
     if (!m) m = stripped.match(CHAPTER_LINE_RE)
@@ -334,6 +368,7 @@ function cleanExcessNewlines(text: string): string {
 }
 
 function autoDetectBook(lines: string[]): boolean {
+  if (hasTranscriptSectionStructure(lines)) return true
   for (const line of lines) {
     const s = line.trim()
     if (PART_RE.test(s) || CHAPTER_RE.test(s) || CHAPTER_LINE_RE.test(s) || CHAPTER_MARKER_RE.test(s) || CONTENTS_HEADING_RE.test(s)) return true

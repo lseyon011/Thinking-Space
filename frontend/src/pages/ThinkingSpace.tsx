@@ -1,9 +1,13 @@
 import ThinkingSpaceOrch from '@/components/orchestrators/ThinkingSpaceOrch'
 
-export default function ThinkingSpace() {
+interface ThinkingSpaceProps {
+  routeOverride?: string
+}
+
+export default function ThinkingSpace({ routeOverride }: ThinkingSpaceProps) {
   return (
     <div className="h-full min-h-0">
-      <ThinkingSpaceOrch />
+      <ThinkingSpaceOrch routeOverride={routeOverride} />
     </div>
   )
 }

@@ -38,6 +38,7 @@ import {
   buildPathSearchCandidatesBlock,
   UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK,
 } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
+import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPathBlock'
 import TagChipListBlock from '@/components/lego_blocks/units/TagChipListBlock'
 import {
   EXPLORER_PERSISTENCE_PREFIX,
@@ -116,9 +117,9 @@ interface VaultExplorerBlockProps {
 
 function getFileIcon(name: string) {
   const lower = name.toLowerCase()
+  if (isExcalidrawPathBlock(lower)) return ExcalidrawIcon
   if (lower.endsWith('.md')) return FileText
   if (lower.endsWith('.url')) return Link2
-  if (lower.endsWith('.excalidraw')) return ExcalidrawIcon
   return File
 }
 
@@ -126,7 +127,7 @@ function getFileIconColor(name: string, isSelected: boolean): string {
   if (isSelected) return 'text-white'
   const lower = name.toLowerCase()
   if (lower.endsWith('.url')) return 'text-blue-400'
-  if (lower.endsWith('.excalidraw')) return 'text-violet-400'
+  if (isExcalidrawPathBlock(lower)) return 'text-violet-400'
   if (lower.endsWith('.pdf')) return 'text-red-400'
   return 'text-muted-foreground'
 }

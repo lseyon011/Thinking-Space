@@ -8,6 +8,15 @@ import 'react-pdf/dist/Page/TextLayer.css'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { cn } from '@/lib/utils'
 import { readPdfDocumentOrch } from '@/services/orchestrators/pdfDocumentsOrch'
+import {
+  buildPdfRenderedWindowBlock,
+  computeDisplayedPdfScaleBlock,
+  computeEstimatedPdfPageHeightBlock,
+  computePdfFitScaleBlock,
+  computePdfPageWidthBlock,
+  DEFAULT_PDF_NATURAL_PAGE_METRICS_BLOCK,
+  type PdfNaturalPageMetricsBlock,
+} from '@/services/lego_blocks/units/pdfViewportBlock'
 
 let activePdfWorkerBlock: Worker | null = null
 let activePdfWorkerVersionBlock: string | null = null
@@ -102,6 +111,10 @@ export default function PdfDocumentBlock({
   const [fitWidth, setFitWidth] = useState(true)
   const [viewportWidth, setViewportWidth] = useState(0)
   const [renderNonce, setRenderNonce] = useState(0)
+  const [naturalPageMetrics, setNaturalPageMetrics] = useState<PdfNaturalPageMetricsBlock>(
+    DEFAULT_PDF_NATURAL_PAGE_METRICS_BLOCK
+  )
+  const documentMeasurementTokenRef = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -112,6 +125,8 @@ export default function PdfDocumentBlock({
     setNumPages(0)
     setPageNumber(1)
     setRenderNonce(0)
+    setNaturalPageMetrics(DEFAULT_PDF_NATURAL_PAGE_METRICS_BLOCK)
+    documentMeasurementTokenRef.current += 1
     void readPdfDocumentOrch(path)
       .then((doc) => {
         if (cancelled) return
@@ -149,6 +164,18 @@ export default function PdfDocumentBlock({
     scaleRef.current = scale
   }, [scale])
 
+  const naturalPageWidth = naturalPageMetrics.width
+  const fitScale = useMemo(() => computePdfFitScaleBlock({
+    viewportWidth,
+    naturalPageWidth,
+  }), [naturalPageWidth, viewportWidth])
+  const displayedScale = useMemo(() => computeDisplayedPdfScaleBlock({
+    fitWidth,
+    scale,
+    viewportWidth,
+    naturalPageWidth,
+  }), [fitWidth, naturalPageWidth, scale, viewportWidth])
+
   const clearPreviewTransformBlock = () => {
     const previewTarget = previewContainerRef.current
     if (!previewTarget) return
@@ -160,7 +187,12 @@ export default function PdfDocumentBlock({
   const applyPreviewTransformBlock = (nextScale: number) => {
     const previewTarget = previewContainerRef.current
     if (!previewTarget) return
-    const baseScale = fitWidthRef.current ? 1 : scaleRef.current
+    const baseScale = fitWidthRef.current
+      ? computePdfFitScaleBlock({
+        viewportWidth,
+        naturalPageWidth,
+      })
+      : scaleRef.current
     if (!Number.isFinite(baseScale) || baseScale <= 0) return
     const transformScale = nextScale / baseScale
     if (!Number.isFinite(transformScale)) return
@@ -246,7 +278,10 @@ export default function PdfDocumentBlock({
       }
 
       const currentInteractiveScale = fitWidthRef.current
-        ? 1
+        ? computePdfFitScaleBlock({
+          viewportWidth,
+          naturalPageWidth,
+        })
         : (pendingScaleRef.current ?? scaleRef.current)
 
       pinchTouchActiveRef.current = true
@@ -256,6 +291,8 @@ export default function PdfDocumentBlock({
       if (fitWidthRef.current) {
         fitWidthRef.current = false
         setFitWidth(false)
+        scaleRef.current = currentInteractiveScale
+        setScale(currentInteractiveScale)
       }
     }
 
@@ -282,12 +319,17 @@ export default function PdfDocumentBlock({
       event.preventDefault()
 
       const currentInteractiveScale = fitWidthRef.current
-        ? 1
+        ? computePdfFitScaleBlock({
+          viewportWidth,
+          naturalPageWidth,
+        })
         : (pendingScaleRef.current ?? scaleRef.current)
 
       if (fitWidthRef.current) {
         fitWidthRef.current = false
         setFitWidth(false)
+        scaleRef.current = currentInteractiveScale
+        setScale(currentInteractiveScale)
       }
 
       const zoomMultiplier = Math.exp(-event.deltaY * TRACKPAD_ZOOM_SENSITIVITY_BLOCK)
@@ -315,12 +357,11 @@ export default function PdfDocumentBlock({
       target.removeEventListener('touchcancel', handleTouchEndBlock)
       target.removeEventListener('wheel', handleWheelBlock)
     }
-  }, [])
+  }, [naturalPageWidth, viewportWidth])
 
   const pageWidth = useMemo(() => {
     if (!fitWidth) return undefined
-    if (viewportWidth <= 0) return undefined
-    return Math.max(320, viewportWidth - 24)
+    return computePdfPageWidthBlock(viewportWidth)
   }, [fitWidth, viewportWidth])
 
   const documentFile = useMemo(() => {
@@ -342,7 +383,16 @@ export default function PdfDocumentBlock({
 
   const canGoPrev = pageNumber > 1
   const canGoNext = numPages > 0 && pageNumber < numPages
-  const displayedScale = scale
+  const estimatedPageHeight = useMemo(() => computeEstimatedPdfPageHeightBlock({
+    fitWidth,
+    scale,
+    viewportWidth,
+    naturalPageMetrics,
+  }), [fitWidth, naturalPageMetrics, scale, viewportWidth])
+  const renderWindow = useMemo(() => buildPdfRenderedWindowBlock({
+    centerPage: pageNumber,
+    numPages,
+  }), [numPages, pageNumber])
 
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
@@ -377,6 +427,36 @@ export default function PdfDocumentBlock({
     for (const [, el] of pageRefs.current) observer.observe(el)
     return () => observer.disconnect()
   }, [numPages, pageNumber])
+
+  const commitManualScaleBlock = useCallback((nextScale: number) => {
+    pendingScaleRef.current = null
+    clearPreviewTransformBlock()
+    fitWidthRef.current = false
+    setFitWidth(false)
+    scaleRef.current = nextScale
+    setScale(normalizeScaleBlock(nextScale))
+  }, [])
+
+  const adjustManualScaleBlock = useCallback((delta: number) => {
+    const baseScale = fitWidth ? fitScale : (pendingScaleRef.current ?? scaleRef.current)
+    commitManualScaleBlock(baseScale + delta)
+  }, [commitManualScaleBlock, fitScale, fitWidth])
+
+  const toggleFitWidthBlock = useCallback(() => {
+    pendingScaleRef.current = null
+    clearPreviewTransformBlock()
+
+    if (fitWidth) {
+      fitWidthRef.current = false
+      setFitWidth(false)
+      scaleRef.current = fitScale
+      setScale(normalizeScaleBlock(fitScale))
+      return
+    }
+
+    fitWidthRef.current = true
+    setFitWidth(true)
+  }, [fitScale, fitWidth])
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col bg-card', className)}>
@@ -413,7 +493,7 @@ export default function PdfDocumentBlock({
           type="button"
           variant={fitWidth ? 'default' : 'outline'}
           size="sm"
-          onClick={() => setFitWidth((prev) => !prev)}
+          onClick={toggleFitWidthBlock}
           title="Fit page to container width"
         >
           <ScanLine className="mr-1 h-3.5 w-3.5" />
@@ -424,17 +504,12 @@ export default function PdfDocumentBlock({
           variant="outline"
           size="icon"
           className="h-8 w-8"
-          disabled={fitWidth}
-          onClick={() => {
-            pendingScaleRef.current = null
-            clearPreviewTransformBlock()
-            setScale((prev) => normalizeScaleBlock(prev - 0.1))
-          }}
+          onClick={() => adjustManualScaleBlock(-0.1)}
           title="Zoom out"
         >
           <ZoomOut className="h-4 w-4" />
         </Button>
-        <span className={cn('min-w-[3.5rem] text-center text-xs text-muted-foreground', fitWidth && 'opacity-60')}>
+        <span className="min-w-[3.5rem] text-center text-xs text-muted-foreground">
           {(displayedScale * 100).toFixed(0)}%
         </span>
         <Button
@@ -442,12 +517,7 @@ export default function PdfDocumentBlock({
           variant="outline"
           size="icon"
           className="h-8 w-8"
-          disabled={fitWidth}
-          onClick={() => {
-            pendingScaleRef.current = null
-            clearPreviewTransformBlock()
-            setScale((prev) => normalizeScaleBlock(prev + 0.1))
-          }}
+          onClick={() => adjustManualScaleBlock(0.1)}
           title="Zoom in"
         >
           <ZoomIn className="h-4 w-4" />
@@ -478,8 +548,19 @@ export default function PdfDocumentBlock({
               key={`${path}:${renderNonce}`}
               file={documentFile}
               onLoadSuccess={(doc) => {
+                const measurementToken = documentMeasurementTokenRef.current
                 setNumPages(doc.numPages)
                 setPageNumber((prev) => clampPageBlock(prev, doc.numPages))
+                void doc.getPage(1)
+                  .then((page) => {
+                    if (documentMeasurementTokenRef.current !== measurementToken) return
+                    const viewport = page.getViewport({ scale: 1 })
+                    setNaturalPageMetrics({
+                      width: viewport.width,
+                      height: viewport.height,
+                    })
+                  })
+                  .catch(() => undefined)
               }}
               onLoadError={(docError) => {
                 const message = docError instanceof Error ? docError.message : 'Failed to render PDF.'
@@ -507,16 +588,26 @@ export default function PdfDocumentBlock({
                   key={pageNum}
                   ref={(el) => { if (el) pageRefs.current.set(pageNum, el); else pageRefs.current.delete(pageNum) }}
                   data-page={pageNum}
+                  style={{ minHeight: `${estimatedPageHeight}px` }}
                 >
-                  <Page
-                    pageNumber={pageNum}
-                    width={pageWidth}
-                    scale={fitWidth ? undefined : scale}
-                    devicePixelRatio={pageDevicePixelRatio}
-                    renderAnnotationLayer={!electronRuntime}
-                    renderTextLayer={!electronRuntime}
-                    className="overflow-hidden rounded-md border bg-background shadow-sm"
-                  />
+                  {pageNum >= renderWindow.start && pageNum <= renderWindow.end ? (
+                    <Page
+                      pageNumber={pageNum}
+                      width={pageWidth}
+                      scale={fitWidth ? undefined : scale}
+                      devicePixelRatio={pageDevicePixelRatio}
+                      renderAnnotationLayer={!electronRuntime}
+                      renderTextLayer={!electronRuntime}
+                      className="overflow-hidden rounded-md border bg-background shadow-sm"
+                    />
+                  ) : (
+                    <div
+                      aria-hidden="true"
+                      className="flex h-full min-h-[160px] items-center justify-center rounded-md border border-dashed bg-background/70 text-xs text-muted-foreground shadow-sm"
+                    >
+                      Page {pageNum}
+                    </div>
+                  )}
                 </div>
               ))}
             </Document>

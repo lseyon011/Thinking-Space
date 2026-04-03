@@ -103,16 +103,32 @@ function isGoogleWorkspacePathBlock(path: string | null): boolean {
   return /\.(gdoc|gdoc\.json|gsheet|gsheet\.json)$/i.test(path)
 }
 
-export default function ThinkingSpaceOrch() {
+function readThinkingSpaceRouteParamBlock(route: string | null | undefined, key: string): string | null {
+  if (!route) return null
+  try {
+    const parsed = new URL(route.startsWith('/') ? route : `/${route}`, 'https://ltm.local')
+    return parsed.searchParams.get(key)?.trim() || null
+  } catch {
+    return null
+  }
+}
+
+interface ThinkingSpaceOrchProps {
+  routeOverride?: string
+}
+
+export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchProps) {
   const [searchParams, setSearchParams] = useSearchParams()
-  const inlinePathFromUrl = searchParams.get(FILE_QUERY_PARAM)?.trim() || null
+  const inlinePathFromRoute = routeOverride !== undefined
+    ? readThinkingSpaceRouteParamBlock(routeOverride, FILE_QUERY_PARAM)
+    : (searchParams.get(FILE_QUERY_PARAM)?.trim() || null)
   const { layout } = useUILayoutBlock()
-  const [inlinePath, setInlinePath] = useState<string | null>(inlinePathFromUrl)
+  const [inlinePath, setInlinePath] = useState<string | null>(inlinePathFromRoute)
   const [mountedInlinePaths, setMountedInlinePaths] = useState<string[]>(
-    () => (inlinePathFromUrl ? [inlinePathFromUrl] : []),
+    () => (inlinePathFromRoute ? [inlinePathFromRoute] : []),
   )
   const [inlineInitialModeByPath, setInlineInitialModeByPath] = useState<Record<string, MarkdownViewerMode>>(
-    () => (inlinePathFromUrl ? { [inlinePathFromUrl]: 'view' } : {}),
+    () => (inlinePathFromRoute ? { [inlinePathFromRoute]: 'view' } : {}),
   )
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
   const [rssPanelOpen, setRssPanelOpen] = useState(false)
@@ -124,8 +140,10 @@ export default function ThinkingSpaceOrch() {
     presetTags: string[]
     tagColors: Record<string, string>
   } | null>(null)
-  const notebookPathFromUrl = searchParams.get(NOTEBOOK_QUERY_PARAM)?.trim() || null
-  const [notebookFolderPath, setNotebookFolderPath] = useState<string | null>(notebookPathFromUrl)
+  const notebookPathFromRoute = routeOverride !== undefined
+    ? readThinkingSpaceRouteParamBlock(routeOverride, NOTEBOOK_QUERY_PARAM)
+    : (searchParams.get(NOTEBOOK_QUERY_PARAM)?.trim() || null)
+  const [notebookFolderPath, setNotebookFolderPath] = useState<string | null>(notebookPathFromRoute)
   const [linkPromptOpen, setLinkPromptOpen] = useState(false)
   const linkPromptResolveRef = useRef<((url: string | null) => void) | null>(null)
   const [isExplorerResizing, setIsExplorerResizing] = useState(false)
@@ -217,12 +235,17 @@ export default function ThinkingSpaceOrch() {
   }, [mountedInlinePaths])
 
   useEffect(() => {
-    if (inlinePathFromUrl === inlinePath) return
-    setInlinePath(inlinePathFromUrl)
-    if (inlinePathFromUrl) {
-      rememberMountedInlinePath(inlinePathFromUrl, 'view')
+    if (inlinePathFromRoute === inlinePath) return
+    setInlinePath(inlinePathFromRoute)
+    if (inlinePathFromRoute) {
+      rememberMountedInlinePath(inlinePathFromRoute, 'view')
     }
-  }, [inlinePath, inlinePathFromUrl, rememberMountedInlinePath])
+  }, [inlinePath, inlinePathFromRoute, rememberMountedInlinePath])
+
+  useEffect(() => {
+    if (notebookPathFromRoute === notebookFolderPath) return
+    setNotebookFolderPath(notebookPathFromRoute)
+  }, [notebookFolderPath, notebookPathFromRoute])
 
   const setInlinePathAndSyncUrl = useCallback((path: string | null, mode: MarkdownViewerMode = 'view') => {
     if (path) {

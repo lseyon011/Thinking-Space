@@ -31,7 +31,8 @@ function normalizeStrokeColor(value: unknown, fallback: string): string {
 
 function normalizeStrokeWidth(value: unknown, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
-  return Math.min(Math.max(Math.round(value), 1), 24)
+  const rounded = Math.round(value * 10) / 10
+  return Math.min(Math.max(rounded, 0.1), 24)
 }
 
 function normalizeOpacity(value: unknown, fallback: number): number {

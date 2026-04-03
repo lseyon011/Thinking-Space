@@ -1,4 +1,5 @@
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
+import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPathBlock'
 
 function normalizeVaultRoot(vaultRoot: string): string {
   return vaultRoot.replace(/\\/g, '/').replace(/\/+$/, '')
@@ -21,8 +22,7 @@ function toObsidianFileTarget(path: string): string {
 }
 
 export function isExcalidrawFile(path: string): boolean {
-  const lower = path.toLowerCase()
-  return lower.endsWith('.excalidraw') || lower.endsWith('.excalidraw.md')
+  return isExcalidrawPathBlock(path)
 }
 
 export function buildObsidianOpenUrl(path: string): string {

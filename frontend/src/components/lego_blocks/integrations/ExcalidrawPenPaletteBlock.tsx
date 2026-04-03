@@ -6,7 +6,17 @@ import type { ExcalidrawPenDefaultsOrch } from '@/services/orchestrators/excalid
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import { cn } from '@/lib/utils'
 
-const STROKE_WIDTH_OPTIONS = [1, 2, 4, 8, 12] as const
+const STROKE_WIDTH_OPTIONS = [
+  ...Array.from({ length: 10 }, (_, index) => Number(((index + 1) / 10).toFixed(1))),
+  2,
+  4,
+  8,
+  12,
+]
+
+function isSameStrokeWidth(a: number | undefined, b: number): boolean {
+  return typeof a === 'number' && Math.abs(a - b) < 0.05
+}
 
 function clampOpacity(value: number): number {
   return Math.min(Math.max(Math.round(value), 1), 100)
@@ -127,7 +137,7 @@ export default function ExcalidrawPenPaletteBlock({
             {showWidthPicker && (
               <div className="absolute right-full top-1/2 mr-2 flex -translate-y-1/2 flex-col items-center gap-0.5 rounded-lg border border-border/70 bg-background/95 p-1 shadow-sm backdrop-blur">
                 {STROKE_WIDTH_OPTIONS.map((w) => {
-                  const isCurrentWidth = currentStrokeWidth !== undefined && Math.abs(currentStrokeWidth - w) < 0.5
+                  const isCurrentWidth = isSameStrokeWidth(currentStrokeWidth, w)
                   return (
                     <button
                       key={w}
@@ -176,7 +186,7 @@ export default function ExcalidrawPenPaletteBlock({
                         onClick={() => updateDefaults({ strokeWidth: width })}
                         className={cn(
                           'flex h-6 w-6 items-center justify-center rounded-full border border-border/70 text-[10px]',
-                          penDefaults.strokeWidth === width ? 'bg-primary/15 ring-1 ring-primary/50' : 'hover:bg-muted/80',
+                          isSameStrokeWidth(penDefaults.strokeWidth, width) ? 'bg-primary/15 ring-1 ring-primary/50' : 'hover:bg-muted/80',
                         )}
                         title={`Width ${width}`}
                       >
