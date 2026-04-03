@@ -39,12 +39,14 @@ These are architecture constraints, not optional positioning variants.
 ## Phase Order
 Use `DEVELOPMENT.md` as source of truth for implementation phases and detailed architecture.
 
-Current status (v2.0):
+Current status (v2.5):
 - Phase 0–5: DONE
 - Agent Capability Transport: DONE
 - EPIC-3 (Extension Platform): DONE
 - Embedded Terminal (xterm.js + node-pty): DONE
 - Live Source Mode + Rebuild Pipeline: DONE
+- Notebook workspace upgrades: DONE
+- Native iPhone shell/chrome work: DONE
 
 Next up:
 - EPIC-5: AI Actions Everywhere

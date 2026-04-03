@@ -44,7 +44,7 @@ These are architecture requirements, not optional positioning variants.
 ## Phase Order
 Use `DEVELOPMENT.md` as source of truth for implementation phases and detailed architecture.
 
-Current status (v2.0): Phases 0–5, Agent Capability Transport, EPIC-3, Embedded Terminal, and Live Source Mode are all complete.
+Current status (v2.5): Phases 0–5, Agent Capability Transport, EPIC-3, Embedded Terminal, Live Source Mode, notebook workspace upgrades, and native iPhone shell/chrome work are all complete.
 
 Upcoming:
 - EPIC-5: AI Actions Everywhere

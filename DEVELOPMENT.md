@@ -224,6 +224,8 @@ Completed: `sourceConfigBlock.ts` (reads/writes `userData/state/source-config.js
 - `v0.4`: AI actions + native AI login/runtime parity
 - `v0.5`: Extension platform foundations
 - `v1.0`: Full feature set with capability transport, extension builder, and multi-platform packaging
+- `v2.0`: Agent capability transport, embedded terminal, and live source mode complete
+- `v2.5`: Notebook workspace upgrades, route persistence, iPhone native shell/chrome, and broader UI/performance polish
 
 ## Success Metrics
 
