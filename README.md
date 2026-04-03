@@ -8,6 +8,13 @@
 
 ---
 
+## Download
+
+- Latest macOS desktop build: [Thinking Space 2.5.0 arm64 DMG](https://github.com/anuragrpatil23/Thinking-Space/releases/download/v2.5.0/Thinking.Space-2.5.0-arm64.dmg)
+- All release assets: [GitHub Releases](https://github.com/anuragrpatil23/Thinking-Space/releases)
+
+---
+
 ## What Is This?
 
 Thinking Space helps you turn a folder of notes into a practical, compounding long-term memory.
@@ -45,9 +52,21 @@ Thinking Space is built as three product pillars:
 <!-- Replace with an actual screen recording when available -->
 
 <p align="center">
-  <img src="docs/screenshots/home.png" alt="Vault Setup" width="700" />
+  <img src="docs/screenshots/home-dashboard.jpg" alt="Thinking Space home dashboard" width="900" />
   <br />
-  <em>Local-first folder setup — your data stays on your machine</em>
+  <em>Home dashboard with daily activity summary and calm ambient chrome</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/explorer-workspace.jpg" alt="Thinking Space explorer workspace" width="900" />
+  <br />
+  <em>Markdown workspace with the local-first explorer and multi-tab desktop shell</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/organizer-workspace.jpg" alt="Thinking Space organizer workspace" width="900" />
+  <br />
+  <em>Organizer view for structured thinking and hierarchical knowledge management</em>
 </p>
 
 <details>
