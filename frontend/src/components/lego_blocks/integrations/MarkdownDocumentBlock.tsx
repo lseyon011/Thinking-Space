@@ -227,10 +227,6 @@ function MarkdownTextDocumentRuntimeBlock({
   const { layout } = useUILayoutBlock()
   const isIosSurface = layout.surface === 'capacitor-ios'
   const isElectronSurface = layout.surface === 'electron'
-  const isElectronDesktopSurface = isElectronSurface && layout.mode === 'desktop'
-  const isMacDesktopSurface = isElectronDesktopSurface
-    && typeof navigator !== 'undefined'
-    && /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform || navigator.userAgent || '')
   const isIosPhone = isIosSurface && layout.mode === 'phone'
   const [mode, setMode] = useState<MarkdownViewerMode>(initialMode)
   const [content, setContent] = useState<string | null>(null)
@@ -368,7 +364,6 @@ function MarkdownTextDocumentRuntimeBlock({
 
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
-  const immersiveChromeLeftOffsetPx = isMacDesktopSurface ? 88 : 0
   const canRenameInHeader = !!(onOpenPathForEdit || onOpenPath)
   const obsidianUrl = buildObsidianOpenUrlOrch(path)
   const openInSystemLabel = getOpenInSystemLabelOrch()
@@ -1409,7 +1404,6 @@ function MarkdownTextDocumentRuntimeBlock({
             >
               <div
                 className="min-w-0 flex items-center gap-2"
-                style={immersiveChromeLeftOffsetPx > 0 ? { marginLeft: `${immersiveChromeLeftOffsetPx}px` } : undefined}
               >
                 <span className="truncate text-sm font-medium text-foreground">
                   {filename}
