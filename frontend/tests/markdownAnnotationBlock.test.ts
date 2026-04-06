@@ -12,6 +12,7 @@ import {
   parseMarkdownHighlightSegmentsBlock,
   parseMarkdownAnchorIdBlock,
   removeMarkdownHighlightByVisibleOffsetBlock,
+  removeMarkdownHighlightsInVisibleRangeBlock,
   splitMarkdownAnnotationDocumentBlock,
   updateMarkdownHighlightPresetByVisibleOffsetBlock,
   upsertMarkdownAnchorAnnotationBlock,
@@ -183,5 +184,16 @@ describe('markdownAnnotationBlock', () => {
     })
     expect(updateMarkdownHighlightPresetByVisibleOffsetBlock(source, 17, 'highlighter-8')).toBe('A ==[highlighter-8]bright== note')
     expect(removeMarkdownHighlightByVisibleOffsetBlock(source, 17)).toBe('A bright note')
+  })
+
+  it('removes highlight syntax across a selected visible range', () => {
+    const source = 'A ==[default-2]bright== and ==[highlighter-8]bold== note'
+    expect(
+      removeMarkdownHighlightsInVisibleRangeBlock(
+        source,
+        source.indexOf('bright'),
+        source.indexOf('bold') + 'bold'.length,
+      ),
+    ).toBe('A bright and bold note')
   })
 })

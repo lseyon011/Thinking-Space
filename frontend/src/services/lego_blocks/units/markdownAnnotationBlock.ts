@@ -353,6 +353,30 @@ export function removeMarkdownHighlightByVisibleOffsetBlock(
   return `${source.slice(0, match.rawSyntaxStart)}${match.visibleText}${source.slice(match.rawSyntaxEnd)}`
 }
 
+export function removeMarkdownHighlightsInVisibleRangeBlock(
+  source: string,
+  start: number,
+  end: number,
+): string {
+  if (end <= start) return source
+  const pattern = /==(?:\[([a-z0-9-]+)\])?([\s\S]+?)==/gi
+  let result = ''
+  let cursor = 0
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(source)) !== null) {
+    const presetId = match[1] ?? null
+    const visibleText = match[2] ?? ''
+    const visibleStart = match.index + 2 + (presetId ? presetId.length + 2 : 0)
+    const visibleEnd = visibleStart + visibleText.length
+    const overlaps = visibleStart < end && visibleEnd > start
+    result += source.slice(cursor, match.index)
+    result += overlaps ? visibleText : match[0]
+    cursor = match.index + match[0].length
+  }
+  result += source.slice(cursor)
+  return result
+}
+
 export function upsertMarkdownAnchorAnnotationBlock(
   store: MarkdownAnnotationStoreBlock,
   annotation: MarkdownAnchorAnnotationBlock,

@@ -11,7 +11,7 @@ import {
 } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X, FileText, ExternalLink, Pencil, Save, FolderOpen } from 'lucide-react'
+import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Ban } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -49,7 +49,7 @@ import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/Markdown
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import MarkdownAnchorAnnotationBlock from '@/components/lego_blocks/integrations/MarkdownAnchorAnnotationBlock'
 import MarkdownAnnotationEditorBlock from '@/components/lego_blocks/integrations/MarkdownAnnotationEditorBlock'
-import ExcalidrawHighlighterPresetPickerBlock from '@/components/lego_blocks/integrations/ExcalidrawHighlighterPresetPickerBlock'
+import ExcalidrawPenPaletteBlock from '@/components/lego_blocks/integrations/ExcalidrawPenPaletteBlock'
 import MarkupToolIconBlock from '@/components/lego_blocks/units/MarkupToolIconBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
 import { cn } from '@/lib/utils'
@@ -62,7 +62,14 @@ import {
   EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH,
   type ExcalidrawHighlighterPresetBlock,
 } from '@/services/orchestrators/excalidrawHighlighterOrch'
-import { readExcalidrawActivePresetIdOrch, writeExcalidrawActivePresetIdOrch } from '@/services/orchestrators/excalidrawPenDefaultsOrch'
+import {
+  getDefaultExcalidrawPenDefaultsOrch,
+  readAllExcalidrawPerPresetSettingsOrch,
+  readExcalidrawActivePresetIdOrch,
+  writeAllExcalidrawPerPresetSettingsOrch,
+  writeExcalidrawActivePresetIdOrch,
+  type ExcalidrawPenDefaultsOrch,
+} from '@/services/orchestrators/excalidrawPenDefaultsOrch'
 import { subscribeNativePencilBridgeOrch } from '@/services/orchestrators/pencilBridgeOrch'
 import { STORAGE_KEYS, getStorageItem } from '@/services/orchestrators/storageOrch'
 import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
@@ -99,17 +106,15 @@ import {
   buildMarkdownAnnotationIdBlock,
   composeMarkdownAnnotationDocumentBlock,
   findMarkdownAnchorAfterOffsetBlock,
-  findMarkdownHighlightByVisibleOffsetBlock,
   getMarkdownAnchorAnnotationBlock,
   insertMarkdownAnchorAfterBlockOffsetBlock,
   insertMarkdownHighlightAtRangeBlock,
   parseMarkdownHighlightSegmentsBlock,
   parseMarkdownAnchorIdBlock,
-  removeMarkdownHighlightByVisibleOffsetBlock,
+  removeMarkdownHighlightsInVisibleRangeBlock,
   removeMarkdownAnchorAnnotationBlock,
   remarkMarkdownSourceSpansBlock,
   splitMarkdownAnnotationDocumentBlock,
-  updateMarkdownHighlightPresetByVisibleOffsetBlock,
   upsertMarkdownAnchorAnnotationBlock,
   type MarkdownAnchorAnnotationBlock as MarkdownAnchorAnnotationModelBlock,
   type MarkdownAnnotationStoreBlock,
@@ -247,8 +252,11 @@ function MarkdownWikilinkImageBlock({
 function resolveMarkdownHighlightColorBlock(
   presetId: string | null,
   presets: readonly ExcalidrawHighlighterPresetBlock[],
+  perPresetSettings?: Record<string, ExcalidrawPenDefaultsOrch>,
 ): string {
   if (!presetId) return '#fde68a'
+  const customized = perPresetSettings?.[presetId]?.strokeColor
+  if (customized) return customized
   const preset = presets.find((entry) => entry.id === presetId)
   if (!preset) return '#fde68a'
   return preset.backgroundColor !== 'transparent' ? preset.backgroundColor : preset.strokeColor
@@ -259,6 +267,7 @@ function renderHighlightedSourceSpanBlock(
   sourceStart: number,
   keyPrefix: string,
   presets: readonly ExcalidrawHighlighterPresetBlock[],
+  perPresetSettings?: Record<string, ExcalidrawPenDefaultsOrch>,
 ): ReactNode[] {
   return parseMarkdownHighlightSegmentsBlock(text).map((segment, index) => {
     const absoluteStart = sourceStart + segment.rawStart
@@ -271,7 +280,7 @@ function renderHighlightedSourceSpanBlock(
           data-md-source-end={absoluteEnd}
           data-md-highlight-preset={segment.presetId ?? ''}
           className="rounded px-1 py-0.5 text-inherit shadow-[inset_0_-1px_0_rgba(180,83,9,0.18)]"
-          style={{ backgroundColor: resolveMarkdownHighlightColorBlock(segment.presetId, presets) }}
+          style={{ backgroundColor: resolveMarkdownHighlightColorBlock(segment.presetId, presets, perPresetSettings) }}
         >
           {segment.visibleText}
         </mark>
@@ -295,14 +304,6 @@ interface ViewerHighlightSelectionBlock {
   text: string
   top: number
   left: number
-}
-
-interface ViewerExistingHighlightTargetBlock {
-  offset: number
-  start: number
-  end: number
-  text: string
-  presetId: string | null
 }
 
 interface ViewerPencilHighlightGestureBlock {
@@ -432,12 +433,14 @@ function MarkdownTextDocumentRuntimeBlock({
   const [viewerAnnotateMode, setViewerAnnotateMode] = useState(false)
   const [viewerAnnotateSessionBody, setViewerAnnotateSessionBody] = useState<string | null>(null)
   const [viewerHighlightSelection, setViewerHighlightSelection] = useState<ViewerHighlightSelectionBlock | null>(null)
-  const [viewerExistingHighlightTarget, setViewerExistingHighlightTarget] = useState<ViewerExistingHighlightTargetBlock | null>(null)
   const [viewerHighlightSaving, setViewerHighlightSaving] = useState(false)
   const [viewerHighlightError, setViewerHighlightError] = useState<string | null>(null)
   const [viewerHighlightPresets] = useState<readonly ExcalidrawHighlighterPresetBlock[]>(EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH)
   const [activeViewerHighlightPresetId, setActiveViewerHighlightPresetId] = useState<string | null>(
     () => readExcalidrawActivePresetIdOrch() ?? EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH[0]?.id ?? null,
+  )
+  const [viewerPerPresetSettings, setViewerPerPresetSettings] = useState<Record<string, ExcalidrawPenDefaultsOrch>>(
+    () => readAllExcalidrawPerPresetSettingsOrch(),
   )
   const isExcalidrawDoc = isExcalidrawPathBlock(path)
   const chromeContainerRef = useRef<HTMLDivElement | null>(null)
@@ -475,7 +478,6 @@ function MarkdownTextDocumentRuntimeBlock({
     setViewerAnnotateMode(false)
     setViewerAnnotateSessionBody(null)
     setViewerHighlightSelection(null)
-    setViewerExistingHighlightTarget(null)
     setViewerHighlightSaving(false)
     setViewerHighlightError(null)
     viewerPencilHighlightGestureRef.current = null
@@ -612,6 +614,22 @@ function MarkdownTextDocumentRuntimeBlock({
     () => (viewerAnnotateMode && viewerAnnotateSessionBody !== null ? viewerAnnotateSessionBody : displayContent),
     [displayContent, viewerAnnotateMode, viewerAnnotateSessionBody],
   )
+  const viewerPenDefaults = useMemo((): ExcalidrawPenDefaultsOrch => {
+    if (activeViewerHighlightPresetId) {
+      const saved = viewerPerPresetSettings[activeViewerHighlightPresetId]
+      if (saved) return saved
+      const preset = viewerHighlightPresets.find((entry) => entry.id === activeViewerHighlightPresetId)
+      if (preset) {
+        return {
+          strokeColor: preset.backgroundColor !== 'transparent' ? preset.backgroundColor : preset.strokeColor,
+          strokeWidth: preset.strokeWidth > 0 ? preset.strokeWidth : 2,
+          opacity: preset.opacity > 0 ? preset.opacity : 100,
+          pressureSensitive: false,
+        }
+      }
+    }
+    return getDefaultExcalidrawPenDefaultsOrch()
+  }, [activeViewerHighlightPresetId, viewerHighlightPresets, viewerPerPresetSettings])
   const displayDraft = useMemo(
     () => stripFrontmatter(draft),
     [draft],
@@ -978,7 +996,7 @@ function MarkdownTextDocumentRuntimeBlock({
       if (typeof children === 'string' && Number.isFinite(sourceStart) && Number.isFinite(sourceEnd)) {
         return (
           <span {...props}>
-            {renderHighlightedSourceSpanBlock(children, sourceStart, `span-${sourceStart}`, viewerHighlightPresets)}
+            {renderHighlightedSourceSpanBlock(children, sourceStart, `span-${sourceStart}`, viewerHighlightPresets, viewerPerPresetSettings)}
           </span>
         )
       }
@@ -991,16 +1009,15 @@ function MarkdownTextDocumentRuntimeBlock({
         currentPath={path}
       />
     ),
-  }), [activeViewerMarkdownBody, annotationParseError, annotationSaving, annotationStore, content, openLinkedPath, path, viewerAnnotateMode, viewerHighlightPresets])
+  }), [activeViewerMarkdownBody, annotationParseError, annotationSaving, annotationStore, content, openLinkedPath, path, viewerAnnotateMode, viewerHighlightPresets, viewerPerPresetSettings])
 
   const clearViewerHighlightSelection = useCallback(() => {
     setViewerHighlightSelection(null)
-    setViewerExistingHighlightTarget(null)
     setViewerHighlightError(null)
   }, [])
 
   const captureViewerHighlightSelection = useCallback(() => {
-    if (isEditing || isExcalidrawDoc || pendingFullRender || viewerHighlightSaving) return
+    if (!viewerAnnotateMode || isEditing || isExcalidrawDoc || pendingFullRender || viewerHighlightSaving) return
     if (Date.now() < viewerSuppressSelectionCaptureUntilRef.current) return
     const root = markdownViewRootRef.current
     const selection = window.getSelection()
@@ -1059,12 +1076,12 @@ function MarkdownTextDocumentRuntimeBlock({
     }
 
     setViewerHighlightSelection(nextSelection)
-    setViewerExistingHighlightTarget(null)
   }, [
     clearViewerHighlightSelection,
     isEditing,
     isExcalidrawDoc,
     pendingFullRender,
+    viewerAnnotateMode,
     viewerHighlightSaving,
   ])
 
@@ -1310,7 +1327,6 @@ function MarkdownTextDocumentRuntimeBlock({
       markExcalidrawCrashStageBlock(path, 'edit_requested')
     }
     setViewerHighlightSelection(null)
-    setViewerExistingHighlightTarget(null)
     setViewerHighlightError(null)
     setViewerAnnotateSessionBody(null)
     setViewerAnnotateMode(false)
@@ -1344,7 +1360,6 @@ function MarkdownTextDocumentRuntimeBlock({
     setAutoSaving(false)
     setNavigationError(null)
     setViewerHighlightSelection(null)
-    setViewerExistingHighlightTarget(null)
     setViewerAnnotateSessionBody(null)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(false)
@@ -1564,47 +1579,45 @@ function MarkdownTextDocumentRuntimeBlock({
     )
     setViewerAnnotateSessionBody(nextBody)
     setViewerHighlightSelection(null)
-    setViewerExistingHighlightTarget(null)
     setViewerHighlightError(null)
     window.getSelection()?.removeAllRanges()
     return true
   }
 
   const handleApplyViewerHighlight = useCallback(async (presetIdOverride?: string) => {
-    if (viewerExistingHighlightTarget) {
-      const nextBody = updateMarkdownHighlightPresetByVisibleOffsetBlock(
-        activeViewerMarkdownBody,
-        viewerExistingHighlightTarget.offset,
-        presetIdOverride ?? activeViewerHighlightPresetId ?? null,
-      )
-      setViewerAnnotateSessionBody(nextBody)
-      setViewerExistingHighlightTarget((current) => current ? {
-        ...current,
-        presetId: presetIdOverride ?? activeViewerHighlightPresetId ?? null,
-      } : null)
-      setViewerHighlightSelection(null)
-      setViewerHighlightError(null)
-      return
-    }
     if (!viewerHighlightSelection) return
     await applyViewerHighlightRangeBlock(
       viewerHighlightSelection.start,
       viewerHighlightSelection.end,
       presetIdOverride ?? activeViewerHighlightPresetId ?? undefined,
     )
-  }, [activeViewerHighlightPresetId, activeViewerMarkdownBody, viewerExistingHighlightTarget, viewerHighlightSelection])
+  }, [activeViewerHighlightPresetId, viewerHighlightSelection])
 
-  const handleRemoveExistingViewerHighlight = useCallback(() => {
-    if (!viewerExistingHighlightTarget) return
-    const nextBody = removeMarkdownHighlightByVisibleOffsetBlock(
+  const handleRemoveViewerHighlightsInSelection = useCallback(async () => {
+    if (!viewerHighlightSelection) return
+    const nextBody = removeMarkdownHighlightsInVisibleRangeBlock(
       activeViewerMarkdownBody,
-      viewerExistingHighlightTarget.offset,
+      viewerHighlightSelection.start,
+      viewerHighlightSelection.end,
     )
+    if (nextBody === activeViewerMarkdownBody) {
+      setViewerHighlightSelection(null)
+      setViewerHighlightError(null)
+      window.getSelection()?.removeAllRanges()
+      return
+    }
+    const didSave = await persistViewerMarkdownContent(`${persistedFrontmatterSplit.frontmatter}${nextBody}`)
+    if (!didSave) return
     setViewerAnnotateSessionBody(nextBody)
-    setViewerExistingHighlightTarget(null)
     setViewerHighlightSelection(null)
     setViewerHighlightError(null)
-  }, [activeViewerMarkdownBody, viewerExistingHighlightTarget])
+    window.getSelection()?.removeAllRanges()
+  }, [
+    activeViewerMarkdownBody,
+    persistViewerMarkdownContent,
+    persistedFrontmatterSplit.frontmatter,
+    viewerHighlightSelection,
+  ])
 
   const toggleViewerAnnotateMode = useCallback(async () => {
     if (viewerHighlightSaving) return
@@ -1612,7 +1625,6 @@ function MarkdownTextDocumentRuntimeBlock({
       setViewerAnnotateSessionBody(displayContent)
       setViewerAnnotateMode(true)
       setViewerHighlightSelection(null)
-      setViewerExistingHighlightTarget(null)
       setViewerHighlightError(null)
       setShowMeta(false)
       return
@@ -1626,7 +1638,6 @@ function MarkdownTextDocumentRuntimeBlock({
     setViewerAnnotateMode(false)
     setViewerAnnotateSessionBody(null)
     setViewerHighlightSelection(null)
-    setViewerExistingHighlightTarget(null)
     setViewerHighlightError(null)
     window.getSelection()?.removeAllRanges()
   }, [
@@ -1637,6 +1648,21 @@ function MarkdownTextDocumentRuntimeBlock({
     viewerAnnotateSessionBody,
     viewerHighlightSaving,
   ])
+
+  const handleViewerPenDefaultsChange = useCallback((nextDefaults: ExcalidrawPenDefaultsOrch) => {
+    const key = activeViewerHighlightPresetId
+    if (!key) return
+    const nextSettings = { ...viewerPerPresetSettings, [key]: nextDefaults }
+    setViewerPerPresetSettings(nextSettings)
+    writeAllExcalidrawPerPresetSettingsOrch(nextSettings)
+  }, [activeViewerHighlightPresetId, viewerPerPresetSettings])
+
+  const handleViewerStrokeWidthChange = useCallback((width: number) => {
+    handleViewerPenDefaultsChange({
+      ...viewerPenDefaults,
+      strokeWidth: width,
+    })
+  }, [handleViewerPenDefaultsChange, viewerPenDefaults])
 
   const handleSave = async () => {
     if (baseMtime === null) return
@@ -2166,7 +2192,7 @@ function MarkdownTextDocumentRuntimeBlock({
                   viewerAnnotateMode && 'ltm-markdown-annotate-mode',
                 )}
                 style={viewerAnnotateMode ? {
-                  ['--ltm-active-highlight-color' as string]: resolveMarkdownHighlightColorBlock(activeViewerHighlightPresetId, viewerHighlightPresets),
+                  ['--ltm-active-highlight-color' as string]: resolveMarkdownHighlightColorBlock(activeViewerHighlightPresetId, viewerHighlightPresets, viewerPerPresetSettings),
                 } : undefined}
                 data-markdown-nav-root
                 onMouseDownCapture={() => {
@@ -2177,31 +2203,7 @@ function MarkdownTextDocumentRuntimeBlock({
                 onTouchStartCapture={() => {
                   if (!viewerAnnotateMode) return
                   setViewerHighlightSelection(null)
-                  setViewerExistingHighlightTarget(null)
                   setViewerHighlightError(null)
-                }}
-                onClickCapture={(event) => {
-                  if (!viewerAnnotateMode) return
-                  const target = event.target
-                  if (!(target instanceof HTMLElement)) return
-                  const highlightElement = target.closest('mark[data-md-source-start]')
-                  if (!(highlightElement instanceof HTMLElement)) return
-                  event.preventDefault()
-                  event.stopPropagation()
-                  const start = Number(highlightElement.dataset.mdSourceStart ?? '')
-                  if (!Number.isFinite(start)) return
-                  const match = findMarkdownHighlightByVisibleOffsetBlock(activeViewerMarkdownBody, start)
-                  if (!match) return
-                  setViewerHighlightSelection(null)
-                  setViewerExistingHighlightTarget({
-                    offset: start,
-                    start: match.visibleStart,
-                    end: match.visibleEnd,
-                    text: match.visibleText,
-                    presetId: match.presetId,
-                  })
-                  setViewerHighlightError(null)
-                  window.getSelection()?.removeAllRanges()
                 }}
                 onMouseUp={() => {
                   window.setTimeout(() => {
@@ -2223,70 +2225,48 @@ function MarkdownTextDocumentRuntimeBlock({
                 </ReactMarkdown>
               </div>
               {viewerAnnotateMode && (
-                <div
-                  className={cn(
-                    'fixed z-[72]',
-                    isIosPhone ? 'right-3 top-[calc(var(--ltm-safe-top,0px)+7rem)]' : 'right-4 top-1/2 -translate-y-1/2',
-                  )}
-                >
+                <>
+                  <ExcalidrawPenPaletteBlock
+                    presets={viewerHighlightPresets}
+                    activePresetId={activeViewerHighlightPresetId}
+                    onSelectPreset={(presetId) => {
+                      setActiveViewerHighlightPresetId(presetId)
+                      writeExcalidrawActivePresetIdOrch(presetId)
+                      void handleApplyViewerHighlight(presetId)
+                    }}
+                    penDefaults={viewerPenDefaults}
+                    onPenDefaultsChange={handleViewerPenDefaultsChange}
+                    currentStrokeWidth={viewerPenDefaults.strokeWidth}
+                    onStrokeWidthChange={handleViewerStrokeWidthChange}
+                    perPresetSettings={viewerPerPresetSettings}
+                  />
                   <div
-                    onMouseDown={(event) => event.preventDefault()}
-                    onTouchStart={(event) => event.preventDefault()}
-                    className="space-y-2"
+                    className="fixed z-[72]"
+                    style={{
+                      top: 'calc(50% + 11rem)',
+                      right: 'calc(var(--ltm-safe-right, 0px) + 0.62rem)',
+                      transform: 'translateY(-50%)',
+                    }}
                   >
-                    <ExcalidrawHighlighterPresetPickerBlock
-                      presets={viewerHighlightPresets}
-                      activePresetId={activeViewerHighlightPresetId}
-                      onSelectPreset={(presetId) => {
-                        setActiveViewerHighlightPresetId(presetId)
-                        writeExcalidrawActivePresetIdOrch(presetId)
-                        if (viewerHighlightSelection) {
-                          void handleApplyViewerHighlight(presetId)
-                        }
-                      }}
-                      orientation="vertical"
-                    />
-                    {viewerExistingHighlightTarget && (
-                      <button
-                        type="button"
-                        onClick={handleRemoveExistingViewerHighlight}
-                        className="w-full rounded-lg border border-destructive/40 bg-background/90 px-2 py-1 text-[11px] font-medium text-destructive shadow-sm"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-              {!viewerAnnotateMode && viewerHighlightSelection && (
-                <div
-                  className="fixed z-[72] -translate-x-1/2"
-                  style={{
-                    top: Math.max(12, viewerHighlightSelection.top),
-                    left: viewerHighlightSelection.left,
-                  }}
-                >
-                  <div className="rounded-2xl border border-border/70 bg-background/95 p-2 shadow-lg backdrop-blur">
-                    <div className="px-1 pb-1 text-[11px] font-medium text-muted-foreground">
-                      {viewerHighlightSaving ? 'Highlighting…' : 'Choose highlighter'}
-                    </div>
-                    <div
+                    <button
+                      type="button"
                       onMouseDown={(event) => event.preventDefault()}
                       onTouchStart={(event) => event.preventDefault()}
+                      onClick={() => { void handleRemoveViewerHighlightsInSelection() }}
+                      disabled={!viewerHighlightSelection || viewerHighlightSaving}
+                      className={cn(
+                        'flex h-8 w-8 items-center justify-center rounded-full border shadow-sm backdrop-blur',
+                        viewerHighlightSelection && !viewerHighlightSaving
+                          ? 'border-destructive/40 bg-background/95 text-destructive hover:bg-destructive/10'
+                          : 'border-border/50 bg-background/80 text-muted-foreground opacity-45',
+                      )}
+                      title="Remove highlight from selected text"
+                      aria-label="Remove highlight from selected text"
                     >
-                      <ExcalidrawHighlighterPresetPickerBlock
-                        presets={viewerHighlightPresets}
-                        activePresetId={activeViewerHighlightPresetId}
-                        onSelectPreset={(presetId) => {
-                          setActiveViewerHighlightPresetId(presetId)
-                          writeExcalidrawActivePresetIdOrch(presetId)
-                          void handleApplyViewerHighlight(presetId)
-                        }}
-                        orientation="horizontal"
-                      />
-                    </div>
+                      <Ban className="h-4 w-4" />
+                    </button>
                   </div>
-                </div>
+                </>
               )}
             </div>
           )}
