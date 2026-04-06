@@ -342,7 +342,7 @@ export default function PersonalToolsOrch() {
           <CardHeader>
             <CardTitle>{activeTool.label}</CardTitle>
             <CardDescription>
-              Pick a markdown file with universal search, assign one dropdown value to each heading, then copy or download the pipe-delimited export.
+              Pick a markdown file with universal search, assign one dropdown value to each heading, then copy or save the pipe-delimited export.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -367,6 +367,7 @@ export default function PersonalToolsOrch() {
                 selectedItemKey={selectedFilePath || null}
                 placeholder={bootstrapLoading ? 'Loading markdown files…' : 'Search vault files by name or path'}
                 emptyMessage="No markdown files match this search."
+                inputWrapperClassName="relative"
                 inputClassName="h-10 border border-slate-200 bg-white pl-10 pr-4 text-sm shadow-sm focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                 dropdownClassName="z-50 mt-1"
                 listClassName="max-h-64 overflow-auto p-1"
