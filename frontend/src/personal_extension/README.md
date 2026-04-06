@@ -15,6 +15,10 @@ without mixing directly into shared product folders.
 
 ## Current Feature
 
+- Route: `/personal-tools`
+- UI orchestrator: `components/orchestrators/PersonalToolsOrch.tsx`
+- Service workflow: `services/orchestrators/headingAssignmentOrch.ts`
+- First tool: heading assignment exporter for markdown files with vault-persisted dropdown presets
 - Route: `/webull`
 - UI orchestrator: `components/orchestrators/WebullOrch.tsx`
 - Service workflow: `services/orchestrators/webullOverallOrch.ts`
