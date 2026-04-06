@@ -23,6 +23,14 @@ export interface CapabilityActor {
 }
 
 export type CapabilityName =
+  | 'read_note'
+  | 'write_note'
+  | 'patch_note_frontmatter'
+  | 'resolve_ai_synthesis_path'
+  | 'create_ai_synthesis_note'
+  | 'get_impacted_ai_synthesis_notes'
+  | 'update_ai_synthesis_compile_state'
+  | 'list_domain_ai_synthesis_health'
   | 'organizer.nodes.list_roots'
   | 'organizer.nodes.list_children'
   | 'organizer.nodes.list_all'
@@ -54,6 +62,52 @@ export type CapabilityName =
   | 'tools.transcript.clean_save'
 
 export interface CapabilityInputMap {
+  'read_note': {
+    path: string
+  }
+  'write_note': {
+    path: string
+    frontmatter?: Record<string, unknown>
+    body?: string
+    overwrite?: boolean
+  }
+  'patch_note_frontmatter': {
+    path: string
+    set?: Record<string, unknown>
+    append_unique?: Record<string, unknown>
+  }
+  'resolve_ai_synthesis_path': {
+    domain_root: string
+    layer?: 'reference' | 'experiential' | 'operational' | 'integrated'
+    synthesis_type: string
+    source_title?: string
+    concept_root?: string
+    concept_subpath?: string[]
+    slug: string
+  }
+  'create_ai_synthesis_note': {
+    domain_root: string
+    layer: 'reference' | 'experiential' | 'operational' | 'integrated'
+    synthesis_type: string
+    title?: string
+    slug?: string
+    source_title?: string
+    concept_root?: string
+    concept_subpath?: string[]
+    derived_from: string[]
+    if_exists?: 'error' | 'return_existing' | 'overwrite'
+  }
+  'get_impacted_ai_synthesis_notes': {
+    changed_paths: string[]
+  }
+  'update_ai_synthesis_compile_state': {
+    path: string
+    last_compiled_at?: string
+    compile_status: string
+  }
+  'list_domain_ai_synthesis_health': {
+    domain_root: string
+  }
   'organizer.nodes.list_roots': {
     typeFilter?: NodeType
   }
@@ -222,6 +276,54 @@ export interface CapabilityInputMap {
 }
 
 export interface CapabilityOutputMap {
+  'read_note': {
+    path: string
+    exists: boolean
+    frontmatter: Record<string, unknown>
+    body: string
+    raw: string
+  }
+  'write_note': {
+    path: string
+    written: true
+    created: boolean
+    frontmatter: Record<string, unknown>
+    body: string
+  }
+  'patch_note_frontmatter': {
+    path: string
+    patched: true
+    frontmatter: Record<string, unknown>
+  }
+  'resolve_ai_synthesis_path': {
+    path: string
+    domain_root: string
+    domain: string
+  }
+  'create_ai_synthesis_note': {
+    created: boolean
+    path: string
+    frontmatter: Record<string, unknown>
+    body: string
+  }
+  'get_impacted_ai_synthesis_notes': {
+    domain_root: string
+    likely_impacted: string[]
+    missing_candidates: string[]
+  }
+  'update_ai_synthesis_compile_state': {
+    path: string
+    updated: true
+    frontmatter: Record<string, unknown>
+  }
+  'list_domain_ai_synthesis_health': {
+    domain_root: string
+    missing_canonical_pages: string[]
+    stale_pages: string[]
+    missing_required_metadata: Array<{ path: string; missing_fields: string[] }>
+    unanswered_questions: string[]
+    orphan_outputs: string[]
+  }
   'organizer.nodes.list_roots': {
     nodes: NodeRecord[]
   }
@@ -333,6 +435,46 @@ export interface CapabilityDefinition {
 }
 
 export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
+  {
+    name: 'read_note',
+    description: 'Read a markdown note as structured frontmatter plus body.',
+    readOnly: true,
+  },
+  {
+    name: 'write_note',
+    description: 'Write a markdown note with optional frontmatter and safe overwrite control.',
+    readOnly: false,
+  },
+  {
+    name: 'patch_note_frontmatter',
+    description: 'Patch selected frontmatter fields without rewriting the note body manually.',
+    readOnly: false,
+  },
+  {
+    name: 'resolve_ai_synthesis_path',
+    description: 'Resolve the canonical destination path for an AI Synthesis note.',
+    readOnly: true,
+  },
+  {
+    name: 'create_ai_synthesis_note',
+    description: 'Create an AI Synthesis scaffold note with mechanical metadata and template body.',
+    readOnly: false,
+  },
+  {
+    name: 'get_impacted_ai_synthesis_notes',
+    description: 'Return likely impacted AI Synthesis notes and missing canonical pages for changed notes.',
+    readOnly: true,
+  },
+  {
+    name: 'update_ai_synthesis_compile_state',
+    description: 'Update AI Synthesis compile timestamps and compile_status metadata.',
+    readOnly: false,
+  },
+  {
+    name: 'list_domain_ai_synthesis_health',
+    description: 'Scan a domain AI Synthesis area for missing, stale, or inconsistent notes.',
+    readOnly: true,
+  },
   {
     name: 'organizer.nodes.list_roots',
     description: 'List root nodes in the organizer hierarchy, optionally filtered by type.',

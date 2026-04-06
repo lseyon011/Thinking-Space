@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+
+APP_NAME="Thinking Space.app"
+TARGET_VOLUME="${3:-/}"
+
+if [ "$TARGET_VOLUME" = "/" ]; then
+  VOLUME_PREFIX=""
+else
+  VOLUME_PREFIX="$TARGET_VOLUME"
+fi
+
+APP_ROOT="$VOLUME_PREFIX/Applications/$APP_NAME"
+APP_RESOURCES="$APP_ROOT/Contents/Resources"
+CLI_SOURCE="$APP_RESOURCES/cli/thinkspc-standalone.sh"
+CLI_TARGET="$VOLUME_PREFIX/usr/local/bin/thinkspc"
+
+if [ ! -f "$CLI_SOURCE" ]; then
+  echo "thinkspc postinstall: missing bundled CLI at $CLI_SOURCE" >&2
+  exit 1
+fi
+
+mkdir -p "$(dirname "$CLI_TARGET")"
+
+cat >"$CLI_TARGET" <<EOF
+#!/usr/bin/env bash
+export THINKSPC_APP_RESOURCES='$APP_RESOURCES'
+exec '$CLI_SOURCE' "\$@"
+EOF
+
+chmod 755 "$CLI_TARGET"

@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "sync:excalidraw-fonts": "node scripts/syncExcalidrawFonts.mjs",
+    "build:agent-cli": "node scripts/buildCapabilityRunnerBundle.mjs",
     "dev": "npm run sync:excalidraw-fonts && vite",
     "build": "npm run sync:excalidraw-fonts && vite build",
     "build:web": "npm run sync:excalidraw-fonts && tsc && vite build",
-    "build:electron": "npm run sync:excalidraw-fonts && BUILD_TARGET=electron vite build",
+    "build:electron": "npm run sync:excalidraw-fonts && npm run build:agent-cli && BUILD_TARGET=electron vite build",
     "build:ios": "npm run sync:excalidraw-fonts && BUILD_TARGET=capacitor vite build && npx cap sync ios",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

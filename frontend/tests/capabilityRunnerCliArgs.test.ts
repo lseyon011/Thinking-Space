@@ -59,6 +59,89 @@ describe('capabilityRunner CLI argument parsing', () => {
     expect(warnings.some(msg => msg.includes('comment.add'))).toBe(true)
   })
 
+  it('parses JSON object flags for note frontmatter patching', () => {
+    const { payload } = buildCLIInvokePayload('patch_note_frontmatter', [
+      '--path', 'notes/example.md',
+      '--set', '{"related_concepts":["moats"]}',
+      '--append_unique', '{"tags":["investing"]}',
+    ])
+
+    expect(payload.request.input).toEqual({
+      path: 'notes/example.md',
+      set: {
+        related_concepts: ['moats'],
+      },
+      append_unique: {
+        tags: ['investing'],
+      },
+    })
+  })
+
+  it('renders capability-specific help for create_ai_synthesis_note', () => {
+    const help = renderCapabilityHelp('create_ai_synthesis_note')
+    expect(help).toContain('Capability: create_ai_synthesis_note')
+    expect(help).toContain('--domain_root')
+    expect(help).toContain('--derived_from')
+    expect(help).toContain('--concept_root')
+    expect(help).toContain('thinkspc create_ai_synthesis_note')
+  })
+
+  it('parses source and concept grouping flags for AI synthesis path resolution', () => {
+    const { payload } = buildCLIInvokePayload('resolve_ai_synthesis_path', [
+      '--domain_root', 'lifeblood_systems/Understanding Myself',
+      '--layer', 'reference',
+      '--synthesis_type', 'concept',
+      '--concept_root', 'Habits',
+      '--concept_subpath', 'Formation,Breaking',
+      '--slug', 'what-are-habits',
+    ])
+
+    expect(payload.request.input).toEqual({
+      domain_root: 'lifeblood_systems/Understanding Myself',
+      layer: 'reference',
+      synthesis_type: 'concept',
+      concept_root: 'Habits',
+      concept_subpath: ['Formation', 'Breaking'],
+      slug: 'what-are-habits',
+    })
+  })
+
+  it('accepts kebab-case aliases for snake_case AI synthesis flags', () => {
+    const { payload } = buildCLIInvokePayload('create_ai_synthesis_note', [
+      '--domain-root', 'lifeblood_systems/Understanding Myself',
+      '--layer', 'reference',
+      '--synthesis-type', 'concept',
+      '--concept-root', 'Habits',
+      '--concept-subpath', 'Formation,Breaking',
+      '--slug', 'what-are-habits',
+      '--derived-from', 'notes/source-a.md,notes/source-b.md',
+      '--if-exists', 'return_existing',
+    ])
+
+    expect(payload.request.input).toEqual({
+      domain_root: 'lifeblood_systems/Understanding Myself',
+      layer: 'reference',
+      synthesis_type: 'concept',
+      concept_root: 'Habits',
+      concept_subpath: ['Formation', 'Breaking'],
+      slug: 'what-are-habits',
+      derived_from: ['notes/source-a.md', 'notes/source-b.md'],
+      if_exists: 'return_existing',
+    })
+  })
+
+  it('parses explicit boolean flag values instead of treating them as strings', () => {
+    const { payload } = buildCLIInvokePayload('write_note', [
+      '--path', 'notes/example.md',
+      '--overwrite', 'false',
+    ])
+
+    expect(payload.request.input).toEqual({
+      path: 'notes/example.md',
+      overwrite: false,
+    })
+  })
+
   it('keeps explicit metadata extras in extraFields for organizer.node.update', () => {
     const { payload, warnings } = buildCLIInvokePayload('organizer.node.update', [
       '--uuid', 'node-123',
@@ -93,10 +176,10 @@ describe('capabilityRunner CLI argument parsing', () => {
 
   it('renders top-level help with usage and guidance', () => {
     const help = renderRunnerHelp()
-    expect(help).toContain('./thinkspc [--text|--json] [--brief|--full] <command>')
-    expect(help).toContain('./thinkspc help')
-    expect(help).toContain('./thinkspc <capability> --help')
-    expect(help).toContain('./thinkspc organizer.context --url')
+    expect(help).toContain('thinkspc [--text|--json] [--brief|--full] <command>')
+    expect(help).toContain('thinkspc help')
+    expect(help).toContain('thinkspc <capability> --help')
+    expect(help).toContain('thinkspc organizer.context --url')
     expect(help).toContain('Output defaults to text in terminals and json in non-interactive mode.')
     expect(help).toContain('Use comment.add for append-only task notes.')
   })
@@ -129,7 +212,7 @@ describe('capabilityRunner CLI argument parsing', () => {
 
   it('renders organizer context help', () => {
     const help = renderOrganizerContextHelp()
-    expect(help).toContain('./thinkspc organizer.context --url')
+    expect(help).toContain('thinkspc organizer.context --url')
     expect(help).toContain('Converts human organizer links into agent-native capability command suggestions.')
   })
 
@@ -137,8 +220,8 @@ describe('capabilityRunner CLI argument parsing', () => {
     const help = renderCapabilityHelp('organizer.node.update')
     expect(help).toContain('Capability: organizer.node.update')
     expect(help).toContain('Update node metadata fields.')
-    expect(help).toContain('./thinkspc organizer.node.update --uuid "abc-123" --status active --priority high')
-    expect(help).toContain('./thinkspc organizer.node.update --uuid "abc-123" --description "Updated description"')
+    expect(help).toContain('thinkspc organizer.node.update --uuid "abc-123" --status active --priority high')
+    expect(help).toContain('thinkspc organizer.node.update --uuid "abc-123" --description "Updated description"')
   })
 
   it('uses text output by default in TTY mode', () => {
@@ -253,6 +336,46 @@ describe('capabilityRunner CLI argument parsing', () => {
     expect(input).toEqual({
       uuid: 'abc-123',
       text: 'line 1\nline 2',
+    })
+  })
+
+  it('materializes JSON and array file-backed inputs with type coercion', async () => {
+    const tempDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'thinkspc-cli-'))
+    const jsonPath = path.join(tempDir, 'frontmatter.json')
+    const arrayPath = path.join(tempDir, 'derived.txt')
+    await fsPromises.writeFile(jsonPath, '{"title":"Answer - What Are Habits?"}\n', 'utf-8')
+    await fsPromises.writeFile(arrayPath, 'notes/a.md\nnotes/b.md\n', 'utf-8')
+    process.env.THINKSPC_CALLER_CWD = tempDir
+
+    const input: Record<string, unknown> = {
+      'frontmatter-file': './frontmatter.json',
+      'derived_from-file': './derived.txt',
+    }
+    await materializeFileBackedInputs(input)
+
+    expect(input).toEqual({
+      frontmatter: {
+        title: 'Answer - What Are Habits?',
+      },
+      derived_from: ['notes/a.md', 'notes/b.md'],
+    })
+  })
+
+  it('normalizes kebab-case file-backed aliases before materialization', async () => {
+    const { payload } = buildCLIInvokePayload('create_ai_synthesis_note', [
+      '--domain-root', 'lifeblood_systems/Understanding Myself',
+      '--layer', 'reference',
+      '--synthesis-type', 'concept',
+      '--slug', 'what-are-habits',
+      '--derived-from-file', './derived.txt',
+    ])
+
+    expect(payload.request.input).toEqual({
+      domain_root: 'lifeblood_systems/Understanding Myself',
+      layer: 'reference',
+      synthesis_type: 'concept',
+      slug: 'what-are-habits',
+      'derived_from-file': './derived.txt',
     })
   })
 

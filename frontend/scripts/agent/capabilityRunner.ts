@@ -188,8 +188,9 @@ export class NodeVaultFS implements VaultFS {
 // ── CLI arg parsing for direct capability invocation ──
 
 const NUMBER_FIELDS = new Set(['limit', 'lineNumber'])
-const ARRAY_FIELDS = new Set(['tags', 'items', 'artifacts', 'relatedNodes', 'emotions', 'comments'])
-const BOOLEAN_FIELDS = new Set(['dryRun', 'dry-run', 'date_header', 'text-stdin'])
+const ARRAY_FIELDS = new Set(['tags', 'items', 'artifacts', 'relatedNodes', 'emotions', 'comments', 'derived_from', 'changed_paths', 'concept_subpath'])
+const BOOLEAN_FIELDS = new Set(['dryRun', 'dry-run', 'date_header', 'text-stdin', 'overwrite'])
+const JSON_FIELDS = new Set(['frontmatter', 'set', 'append_unique'])
 const GREEDY_TEXT_FIELDS = new Set([
   'text',
   'note',
@@ -371,9 +372,9 @@ export function renderOrganizerContextHelp(): string {
     'Organizer agent context helper',
     '',
     'Usage:',
-    '  ./thinkspc organizer.context --url "http://localhost:5173/thinking-space/thinking-organizer?tab=backlog&projectRoot=operations%2Fsfw"',
-    '  ./thinkspc organizer.context --projectRoot operations/sfw --tab backlog',
-    '  ./thinkspc organizer.context --projectRoot operations/sfw --query "taskStatus ready" --limit 20',
+    '  thinkspc organizer.context --url "http://localhost:5173/thinking-space/thinking-organizer?tab=backlog&projectRoot=operations%2Fsfw"',
+    '  thinkspc organizer.context --projectRoot operations/sfw --tab backlog',
+    '  thinkspc organizer.context --projectRoot operations/sfw --query "taskStatus ready" --limit 20',
     '',
     'Purpose:',
     '  Converts human organizer links into agent-native capability command suggestions.',
@@ -396,26 +397,82 @@ export function renderOrganizerContextOutput(context: OrganizerContext): string 
     : ''
   const queryArg = ` --query ${shellQuote(context.query)} --limit ${context.limit}`
 
-  lines.push(`  ./thinkspc organizer.nodes.search${queryArg}${projectRootArg}`)
-  lines.push(`  ./thinkspc organizer.nodes.search --query "taskStatus ready" --limit ${context.limit}${projectRootArg}`)
-  lines.push('  ./thinkspc task.claim --uuid "<task-uuid>" --owner codex-cli')
-  lines.push('  ./thinkspc comment.add --uuid "<task-uuid>" --text "Progress update" --addedBy codex-cli')
-  lines.push('  ./thinkspc task.update_status --uuid "<task-uuid>" --taskStatus done')
+  lines.push(`  thinkspc organizer.nodes.search${queryArg}${projectRootArg}`)
+  lines.push(`  thinkspc organizer.nodes.search --query "taskStatus ready" --limit ${context.limit}${projectRootArg}`)
+  lines.push('  thinkspc task.claim --uuid "<task-uuid>" --owner codex-cli')
+  lines.push('  thinkspc comment.add --uuid "<task-uuid>" --text "Progress update" --addedBy codex-cli')
+  lines.push('  thinkspc task.update_status --uuid "<task-uuid>" --taskStatus done')
 
   return lines.join('\n')
 }
 
 function parseScalarOrCollectionValue(key: string, value: string): unknown {
-  if (NUMBER_FIELDS.has(key)) return Number(value)
-  if (ARRAY_FIELDS.has(key)) return value.split(',').map(s => s.trim())
+  return coerceStringInputValue(key, value, 'flag')
+}
+
+function coerceStringInputValue(key: string, value: string, source: 'flag' | 'file'): unknown {
+  const trimmed = value.trim()
+
+  if (NUMBER_FIELDS.has(key)) {
+    const parsed = Number(trimmed)
+    if (!Number.isFinite(parsed)) {
+      throw new Error(`Invalid number for ${source === 'file' ? `${key}-file` : `--${key}`}: ${value}`)
+    }
+    return parsed
+  }
+
+  if (BOOLEAN_FIELDS.has(key)) {
+    const normalized = trimmed.toLowerCase()
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false
+    if (source === 'flag') {
+      throw new Error(`Invalid boolean for --${key}: ${value}. Use true or false.`)
+    }
+    throw new Error(`Invalid boolean in ${key}-file: ${value}. Use true or false.`)
+  }
+
+  if (JSON_FIELDS.has(key)) {
+    try {
+      const parsed = JSON.parse(value)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('expected a JSON object')
+      }
+      return parsed
+    } catch (error) {
+      const prefix = source === 'file' ? `${key}-file` : `--${key}`
+      throw new Error(`Invalid JSON for ${prefix}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  if (ARRAY_FIELDS.has(key)) {
+    const raw = value.replace(/\r\n/g, '\n').trim()
+    if (!raw) return []
+    if (raw.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) throw new Error('expected a JSON array')
+        return parsed.map(item => String(item).trim()).filter(Boolean)
+      } catch (error) {
+        const prefix = source === 'file' ? `${key}-file` : `--${key}`
+        throw new Error(`Invalid array value for ${prefix}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    const parts = raw.includes('\n')
+      ? raw.split('\n')
+      : raw.split(',')
+    return parts.map(part => part.trim()).filter(Boolean)
+  }
+
   return value
 }
 
 function getAliasedKey(capability: string, key: string): { key: string; warning?: string } {
   const aliases = EXTRA_FIELD_ALIASES[capability]
-  if (!aliases) return { key }
-  const canonical = aliases[key]
-  if (!canonical) return { key }
+  const canonicalByFieldAlias = resolveCapabilityFieldAlias(capability, key)
+  const resolvedInputKey = canonicalByFieldAlias ?? key
+  if (!aliases) return { key: resolvedInputKey }
+  const canonical = aliases[resolvedInputKey]
+  if (!canonical) return { key: resolvedInputKey }
 
   if (canonical === 'comments') {
     return {
@@ -428,6 +485,31 @@ function getAliasedKey(capability: string, key: string): { key: string; warning?
     key: canonical,
     warning: `Flag --${key} is deprecated for ${capability}. Use --${canonical} instead.`,
   }
+}
+
+function resolveCapabilityFieldAlias(capability: string, key: string): string | null {
+  const fields = CAPABILITY_INPUT_FIELDS[capability]
+  if (!fields || fields.length === 0) return null
+
+  for (const field of fields) {
+    const aliases = expandFieldAliases(field.flag)
+    if (aliases.has(key)) return field.flag
+  }
+  return null
+}
+
+function expandFieldAliases(field: string): Set<string> {
+  const aliases = new Set<string>([field])
+  const snake = field
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/-/g, '_')
+    .toLowerCase()
+  const kebab = snake.replace(/_/g, '-')
+  const camel = snake.replace(/_([a-z0-9])/g, (_, char: string) => char.toUpperCase())
+  aliases.add(snake)
+  aliases.add(kebab)
+  aliases.add(camel)
+  return aliases
 }
 
 function parseCLIArgs(capability: string, args: string[]): ParsedCLIArgsResult {
@@ -458,7 +540,8 @@ function parseCLIArgs(capability: string, args: string[]): ParsedCLIArgsResult {
 
     const inlineEqualsIndex = arg.indexOf('=')
     const hasInlineValue = inlineEqualsIndex > 2
-    const key = hasInlineValue ? arg.slice(2, inlineEqualsIndex) : arg.slice(2)
+    const rawKey = hasInlineValue ? arg.slice(2, inlineEqualsIndex) : arg.slice(2)
+    const key = normalizeFileBackedFlagKey(capability, rawKey)
     const inlineValue = hasInlineValue ? arg.slice(inlineEqualsIndex + 1) : null
 
     // Boolean flags: if next arg is missing or starts with --, treat as true
@@ -495,6 +578,19 @@ function parseCLIArgs(capability: string, args: string[]): ParsedCLIArgsResult {
   return { input: result, warnings }
 }
 
+function normalizeFileBackedFlagKey(capability: string, key: string): string {
+  const fileSuffix = key.endsWith('-file')
+    ? '-file'
+    : key.endsWith('_file')
+      ? '_file'
+      : null
+  if (!fileSuffix) return key
+
+  const baseKey = key.slice(0, -fileSuffix.length)
+  const canonicalBase = resolveCapabilityFieldAlias(capability, baseKey) ?? baseKey
+  return `${canonicalBase}-file`
+}
+
 function writeCLIWarnings(warnings: string[]): void {
   for (const warning of warnings) {
     process.stderr.write(`[thinkspc] ${warning}\n`)
@@ -508,7 +604,7 @@ export function buildCLIInvokePayload(
   const vaultRoot = process.env.THINKSPC_VAULT_ROOT || process.env.LTM_VAULT_ROOT
   if (!vaultRoot) {
     throw new Error(
-      'THINKSPC_VAULT_ROOT/LTM_VAULT_ROOT is not set. Use the ./thinkspc wrapper script (or ./ltm compatibility alias), or set it in .env.',
+      'THINKSPC_VAULT_ROOT/LTM_VAULT_ROOT is not set. Use thinkspc (or the ltm compatibility alias), or set it in .env.',
     )
   }
 
@@ -563,101 +659,127 @@ export function buildCLIInvokePayload(
 }
 
 const CAPABILITY_EXAMPLES: Record<string, string[]> = {
+  'read_note': [
+    'thinkspc read_note --path "lifeblood_systems/Understanding Myself/thoughts/2025-12-19.md"',
+  ],
+  'write_note': [
+    'thinkspc write_note --path "lifeblood_systems/Understanding Myself/AI Synthesis/Outputs/Answers/what-are-habits.md" --frontmatter \'{"title":"Answer - What Are Habits?"}\' --body-file ./answer.md',
+  ],
+  'patch_note_frontmatter': [
+    'thinkspc patch_note_frontmatter --path "lifeblood_systems/Understanding Myself/thoughts/2025-12-19.md" --set \'{"related_concepts":["understanding-hunger"]}\' --append_unique \'{"tags":["brain"]}\'',
+  ],
+  'resolve_ai_synthesis_path': [
+    'thinkspc resolve_ai_synthesis_path --domain_root "lifeblood_systems/Understanding Myself" --layer reference --synthesis_type concept --slug what-are-habits',
+    'thinkspc resolve_ai_synthesis_path --domain_root "lifeblood_systems/Understanding Myself" --layer reference --synthesis_type source_summary --source_title "The Science of Making and Breaking Habits - Huberman" --slug limbic-friction',
+  ],
+  'create_ai_synthesis_note': [
+    'thinkspc create_ai_synthesis_note --domain_root "lifeblood_systems/Understanding Myself" --layer reference --synthesis_type concept --title "Concept - What Are Habits?" --slug what-are-habits --derived_from "lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Sources/science-of-making-and-breaking-habits.md"',
+    'thinkspc create_ai_synthesis_note --domain_root "lifeblood_systems/Understanding Myself" --layer reference --synthesis_type concept --concept_root "Habits" --concept_subpath "Formation" --title "Concept - What Are Habits?" --slug what-are-habits --derived_from "lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Sources/The Science of Making and Breaking Habits - Huberman/what-are-habits.md"',
+  ],
+  'get_impacted_ai_synthesis_notes': [
+    'thinkspc get_impacted_ai_synthesis_notes --changed_paths "lifeblood_systems/Understanding Myself/thoughts/2025-12-19.md"',
+  ],
+  'update_ai_synthesis_compile_state': [
+    'thinkspc update_ai_synthesis_compile_state --path "lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Concepts/what-are-habits.md" --compile_status draft',
+  ],
+  'list_domain_ai_synthesis_health': [
+    'thinkspc list_domain_ai_synthesis_health --domain_root "lifeblood_systems/Understanding Myself"',
+  ],
   'organizer.nodes.list_roots': [
-    './thinkspc organizer.nodes.list_roots',
-    './thinkspc organizer.nodes.list_roots --typeFilter program',
+    'thinkspc organizer.nodes.list_roots',
+    'thinkspc organizer.nodes.list_roots --typeFilter program',
   ],
   'organizer.nodes.list_children': [
-    './thinkspc organizer.nodes.list_children --parentKey task-backlog',
+    'thinkspc organizer.nodes.list_children --parentKey task-backlog',
   ],
   'organizer.nodes.list_all': [
-    './thinkspc organizer.nodes.list_all',
+    'thinkspc organizer.nodes.list_all',
   ],
   'organizer.nodes.search': [
-    './thinkspc organizer.nodes.search --query "status active" --limit 10',
-    './thinkspc organizer.nodes.search --query "taskStatus ready"',
+    'thinkspc organizer.nodes.search --query "status active" --limit 10',
+    'thinkspc organizer.nodes.search --query "taskStatus ready"',
   ],
   'organizer.node.get': [
-    './thinkspc organizer.node.get --uuid "abc-123"',
+    'thinkspc organizer.node.get --uuid "abc-123"',
   ],
   'organizer.node.get_by_key': [
-    './thinkspc organizer.node.get_by_key --key "task-backlog"',
+    'thinkspc organizer.node.get_by_key --key "task-backlog"',
   ],
   'organizer.node.read_frontmatter': [
-    './thinkspc organizer.node.read_frontmatter --filePath "coding-projects/thinking-space/some-note.md"',
+    'thinkspc organizer.node.read_frontmatter --filePath "coding-projects/thinking-space/some-note.md"',
   ],
   'organizer.node.create': [
-    './thinkspc organizer.node.create --type task --title "My task" --parentKey task-backlog --projectRoot coding-projects/thinking-space --description "Short description" --extra-record_kind task',
+    'thinkspc organizer.node.create --type task --title "My task" --parentKey task-backlog --projectRoot coding-projects/thinking-space --description "Short description" --extra-record_kind task',
   ],
   'organizer.node.rename': [
-    './thinkspc organizer.node.rename --uuid "abc-123" --newTitle "Better title"',
+    'thinkspc organizer.node.rename --uuid "abc-123" --newTitle "Better title"',
   ],
   'organizer.node.update': [
-    './thinkspc organizer.node.update --uuid "abc-123" --status active --priority high',
-    './thinkspc organizer.node.update --uuid "abc-123" --description "Updated description"',
+    'thinkspc organizer.node.update --uuid "abc-123" --status active --priority high',
+    'thinkspc organizer.node.update --uuid "abc-123" --description "Updated description"',
   ],
   'organizer.node.move': [
-    './thinkspc organizer.node.move --uuid "abc-123" --newParentKey "epic-auth"',
+    'thinkspc organizer.node.move --uuid "abc-123" --newParentKey "epic-auth"',
   ],
   'organizer.node.delete': [
-    './thinkspc organizer.node.delete --uuid "abc-123"',
-    './thinkspc organizer.node.delete --uuid "abc-123" --dryRun',
+    'thinkspc organizer.node.delete --uuid "abc-123"',
+    'thinkspc organizer.node.delete --uuid "abc-123" --dryRun',
   ],
   'task.claim': [
-    './thinkspc task.claim --uuid "abc-123" --owner claude-code',
-    './thinkspc task.claim --uuid "abc-123" --owner codex-cli --taskStatus in_progress',
+    'thinkspc task.claim --uuid "abc-123" --owner claude-code',
+    'thinkspc task.claim --uuid "abc-123" --owner codex-cli --taskStatus in_progress',
   ],
   'task.update_status': [
-    './thinkspc task.update_status --uuid "abc-123" --taskStatus done',
-    './thinkspc task.update_status --uuid "abc-123" --taskStatus blocked --note "Waiting on API key"',
+    'thinkspc task.update_status --uuid "abc-123" --taskStatus done',
+    'thinkspc task.update_status --uuid "abc-123" --taskStatus blocked --note "Waiting on API key"',
   ],
   'run.log': [
-    './thinkspc run.log --title "Session log" --projectRoot coding-projects/thinking-space --agentName claude-code --result success',
+    'thinkspc run.log --title "Session log" --projectRoot coding-projects/thinking-space --agentName claude-code --result success',
   ],
   'handoff.create': [
-    './thinkspc handoff.create --title "Auth handoff" --projectRoot coding-projects/thinking-space --summary "Completed login flow" --fromAgent claude-code --toAgent human --parentKey handoffs-agent-operations',
+    'thinkspc handoff.create --title "Auth handoff" --projectRoot coding-projects/thinking-space --summary "Completed login flow" --fromAgent claude-code --toAgent human --parentKey handoffs-agent-operations',
   ],
   'comment.add': [
-    './thinkspc comment.add --uuid "abc-123" --text "Implemented parser hardening" --addedBy claude-code',
-    'echo "Long comment" | ./thinkspc comment.add --uuid "abc-123" --addedBy claude-code --text-stdin',
+    'thinkspc comment.add --uuid "abc-123" --text "Implemented parser hardening" --addedBy claude-code',
+    'echo "Long comment" | thinkspc comment.add --uuid "abc-123" --addedBy claude-code --text-stdin',
   ],
   'thoughts.create': [
-    './thinkspc thoughts.create --folder_path "journal" --filename "reflection" --content "Today I learned..." --title "Daily reflection" --date_header --emotions "curious,focused"',
+    'thinkspc thoughts.create --folder_path "journal" --filename "reflection" --content "Today I learned..." --title "Daily reflection" --date_header --emotions "curious,focused"',
   ],
   'todos.create': [
-    './thinkspc todos.create --folderPath "todos" --date "2025-01-15" --items "Buy groceries,Fix bug,Review PR"',
+    'thinkspc todos.create --folderPath "todos" --date "2025-01-15" --items "Buy groceries,Fix bug,Review PR"',
   ],
   'todos.toggle': [
-    './thinkspc todos.toggle --filePath "todos/2025-01-15.md" --lineNumber 3',
+    'thinkspc todos.toggle --filePath "todos/2025-01-15.md" --lineNumber 3',
   ],
   'tools.files.list_markdown': [
-    './thinkspc tools.files.list_markdown',
-    './thinkspc tools.files.list_markdown --limit 50',
+    'thinkspc tools.files.list_markdown',
+    'thinkspc tools.files.list_markdown --limit 50',
   ],
   'tools.files.list_pdf': [
-    './thinkspc tools.files.list_pdf',
+    'thinkspc tools.files.list_pdf',
   ],
   'tools.folders.list': [
-    './thinkspc tools.folders.list',
-    './thinkspc tools.folders.list --limit 20',
+    'thinkspc tools.folders.list',
+    'thinkspc tools.folders.list --limit 20',
   ],
   'tools.excalidraw.preview': [
-    './thinkspc tools.excalidraw.preview --inputPath "notes/diagram.md"',
+    'thinkspc tools.excalidraw.preview --inputPath "notes/diagram.md"',
   ],
   'tools.excalidraw.format': [
-    './thinkspc tools.excalidraw.format --inputPath "notes/diagram.md"',
+    'thinkspc tools.excalidraw.format --inputPath "notes/diagram.md"',
   ],
   'tools.pdf.preview': [
-    './thinkspc tools.pdf.preview --inputPath "docs/paper.pdf"',
+    'thinkspc tools.pdf.preview --inputPath "docs/paper.pdf"',
   ],
   'tools.pdf.convert': [
-    './thinkspc tools.pdf.convert --inputPath "docs/paper.pdf"',
+    'thinkspc tools.pdf.convert --inputPath "docs/paper.pdf"',
   ],
   'tools.transcript.preview': [
-    './thinkspc tools.transcript.preview --inputText "Speaker 1: Hello..."',
+    'thinkspc tools.transcript.preview --inputText "Speaker 1: Hello..."',
   ],
   'tools.transcript.clean_save': [
-    './thinkspc tools.transcript.clean_save --input_text "Speaker 1: Hello..." --output_folder "transcripts" --output_name "meeting-notes"',
+    'thinkspc tools.transcript.clean_save --input_text "Speaker 1: Hello..." --output_folder "transcripts" --output_name "meeting-notes"',
   ],
 }
 
@@ -676,13 +798,13 @@ export function renderRunnerHelp(): string {
     'Thinking Space capability runner',
     '',
     'Usage:',
-    '  ./thinkspc [--text|--json] [--brief|--full] <command>',
-    '  ./thinkspc list',
-    '  ./thinkspc invoke < payload.json',
-    '  ./thinkspc <capability> [--flag value ...]',
-    '  ./thinkspc organizer.context --url "<organizer-url>"',
-    '  ./thinkspc help',
-    '  ./thinkspc <capability> --help',
+    '  thinkspc [--text|--json] [--brief|--full] <command>',
+    '  thinkspc list',
+    '  thinkspc invoke < payload.json',
+    '  thinkspc <capability> [--flag value ...]',
+    '  thinkspc organizer.context --url "<organizer-url>"',
+    '  thinkspc help',
+    '  thinkspc <capability> --help',
     '',
     'Notes:',
     '  - Output defaults to text in terminals and json in non-interactive mode.',
@@ -692,21 +814,65 @@ export function renderRunnerHelp(): string {
     '  - For first-class fields use first-class flags (e.g., --comments, --description).',
     '  - Use comment.add for append-only task notes.',
     '  - You can load long text values from files via --<flag>-file (e.g., --text-file ./note.md).',
-    '  - ./ltm remains a compatibility alias for ./thinkspc.',
+    '  - ltm remains a compatibility alias for thinkspc.',
     '  - Passing a thinking-organizer URL directly is treated like organizer.context.',
     '  - Shortcuts: context, search, claim, comment, done, wip, ready, blocked.',
     '  - For long/multi-line text, use --text-stdin and pipe via stdin:',
-    '      echo "my long text" | ./thinkspc comment.add --uuid <id> --addedBy agent --text-stdin',
-    '      ./thinkspc comment.add --uuid <id> --addedBy agent --text-stdin <<\'EOF\'',
+    '      echo "my long text" | thinkspc comment.add --uuid <id> --addedBy agent --text-stdin',
+    '      thinkspc comment.add --uuid <id> --addedBy agent --text-stdin <<\'EOF\'',
     '      Multi-line text with $pecial "chars" here.',
     '      EOF',
     '',
     'Discover capabilities:',
-    '  ./thinkspc list',
+    '  thinkspc list',
   ].join('\n')
 }
 
 const CAPABILITY_INPUT_FIELDS: Record<string, Array<{ flag: string; required: boolean; note?: string }>> = {
+  'read_note': [{ flag: 'path', required: true }],
+  'write_note': [
+    { flag: 'path', required: true },
+    { flag: 'frontmatter', required: false, note: 'JSON object' },
+    { flag: 'body', required: false, note: 'or use --body-file' },
+    { flag: 'overwrite', required: false, note: 'boolean flag' },
+  ],
+  'patch_note_frontmatter': [
+    { flag: 'path', required: true },
+    { flag: 'set', required: false, note: 'JSON object' },
+    { flag: 'append_unique', required: false, note: 'JSON object of array fields' },
+  ],
+  'resolve_ai_synthesis_path': [
+    { flag: 'domain_root', required: true },
+    { flag: 'layer', required: false, note: 'reference, experiential, operational, integrated' },
+    { flag: 'synthesis_type', required: true },
+    { flag: 'source_title', required: false, note: 'for source-shaped source summaries' },
+    { flag: 'concept_root', required: false, note: 'for concept-root grouping' },
+    { flag: 'concept_subpath', required: false, note: 'comma-separated conceptual subfolders' },
+    { flag: 'slug', required: true },
+  ],
+  'create_ai_synthesis_note': [
+    { flag: 'domain_root', required: true },
+    { flag: 'layer', required: true, note: 'reference, experiential, operational, integrated' },
+    { flag: 'synthesis_type', required: true },
+    { flag: 'title', required: false },
+    { flag: 'slug', required: false },
+    { flag: 'source_title', required: false, note: 'for source-shaped source summaries' },
+    { flag: 'concept_root', required: false, note: 'for concept-root grouping' },
+    { flag: 'concept_subpath', required: false, note: 'comma-separated conceptual subfolders' },
+    { flag: 'derived_from', required: true, note: 'comma-separated paths' },
+    { flag: 'if_exists', required: false, note: 'error, return_existing, overwrite' },
+  ],
+  'get_impacted_ai_synthesis_notes': [
+    { flag: 'changed_paths', required: true, note: 'comma-separated paths' },
+  ],
+  'update_ai_synthesis_compile_state': [
+    { flag: 'path', required: true },
+    { flag: 'last_compiled_at', required: false, note: 'ISO-8601; defaults to now' },
+    { flag: 'compile_status', required: true },
+  ],
+  'list_domain_ai_synthesis_health': [
+    { flag: 'domain_root', required: true },
+  ],
   'organizer.nodes.list_roots': [{ flag: 'typeFilter', required: false, note: 'e.g. program, epic, task' }],
   'organizer.nodes.list_children': [{ flag: 'parentKey', required: true }],
   'organizer.nodes.list_all': [],
@@ -825,7 +991,7 @@ function formatInputFields(capability: string): string {
 export function renderCapabilityHelp(capability: string): string {
   const definition = listCapabilitiesOrch().find(entry => entry.name === capability)
   if (!definition) {
-    return `Unknown capability: ${capability}\n\nRun ./thinkspc list to view available capabilities.`
+    return `Unknown capability: ${capability}\n\nRun thinkspc list to view available capabilities.`
   }
 
   return [
@@ -833,7 +999,7 @@ export function renderCapabilityHelp(capability: string): string {
     `Description: ${definition.description}`,
     `Mode: ${definition.readOnly ? 'read-only' : 'write'}`,
     '',
-    `Usage: ./thinkspc ${definition.name} --flag value ...`,
+    `Usage: thinkspc ${definition.name} --flag value ...`,
     formatInputFields(definition.name),
     ...((formatExamples(definition.name)).split('\n')),
   ].join('\n').trim()
@@ -925,7 +1091,7 @@ export async function materializeFileBackedInputs(input: Record<string, unknown>
     if (!normalizedText) {
       throw new Error(`File for --${key} is empty: ${resolvedFilePath}`)
     }
-    input[targetKey] = normalizedText
+    input[targetKey] = coerceStringInputValue(targetKey, normalizedText, 'file')
     delete input[key]
   }
 }
@@ -1015,7 +1181,7 @@ function renderListOutput(payload: unknown): string {
     lines.push(`- ${name} [${mode}]${description ? `: ${description}` : ''}`)
   }
   lines.push('')
-  lines.push('Tip: run ./thinkspc <capability> --help for usage examples.')
+  lines.push('Tip: run thinkspc <capability> --help for usage examples.')
   return lines.join('\n')
 }
 
@@ -1091,6 +1257,25 @@ function renderInvokeOutput(payload: unknown): string {
     }
   }
 
+  const dataPath = asString(data.path)
+  if (dataPath) lines.push(`Path: ${dataPath}`)
+  if (Array.isArray(data.likely_impacted)) {
+    lines.push(`Likely impacted: ${data.likely_impacted.length}`)
+    data.likely_impacted.slice(0, 12).forEach((entry) => lines.push(`  - ${String(entry)}`))
+  }
+  if (Array.isArray(data.missing_candidates)) {
+    lines.push(`Missing candidates: ${data.missing_candidates.length}`)
+    data.missing_candidates.slice(0, 12).forEach((entry) => lines.push(`  - ${String(entry)}`))
+  }
+  if (Array.isArray(data.missing_canonical_pages)) {
+    lines.push(`Missing canonical pages: ${data.missing_canonical_pages.length}`)
+    data.missing_canonical_pages.slice(0, 12).forEach((entry) => lines.push(`  - ${String(entry)}`))
+  }
+  if (Array.isArray(data.stale_pages)) {
+    lines.push(`Stale pages: ${data.stale_pages.length}`)
+    data.stale_pages.slice(0, 12).forEach((entry) => lines.push(`  - ${String(entry)}`))
+  }
+
   lines.push('Data:')
   lines.push(indentText(formatUnknown(data)))
   return lines.join('\n')
@@ -1137,6 +1322,11 @@ function renderInvokeOutputBrief(payload: unknown): string {
       return lines.join('\n')
     }
   }
+
+  const dataPath = asString(data.path)
+  if (dataPath) lines.push(`Path: ${dataPath}`)
+  if (Array.isArray(data.likely_impacted)) lines.push(`Likely impacted: ${data.likely_impacted.length}`)
+  if (Array.isArray(data.missing_canonical_pages)) lines.push(`Missing canonical pages: ${data.missing_canonical_pages.length}`)
 
   return lines.join('\n')
 }
@@ -1217,7 +1407,7 @@ async function main(): Promise<void> {
   }
 
   // CLI-arg mode: treat argv[2] as a capability name
-  if (resolvedCommand && resolvedCommand.includes('.')) {
+  if (listCapabilitiesOrch().some(capability => capability.name === resolvedCommand)) {
     const cliArgs = resolvedArgs
     if (cliArgs.includes('--help') || cliArgs.includes('-h')) {
       writeText(renderCapabilityHelp(resolvedCommand))
@@ -1270,8 +1460,23 @@ export async function runCapabilityRunnerCommand(
   }
 
   const fs = new NodeVaultFS(payload.vaultRoot)
-  await fullSync(fs)
+  if (capabilityRequiresVaultSync(payload.request.capability)) {
+    await fullSync(fs)
+  }
   return invokeCapabilityOrch(payload.request, { fs })
+}
+
+function capabilityRequiresVaultSync(capability: CapabilityInvokeRequest['capability']): boolean {
+  return capability === 'organizer.node.create'
+    || capability === 'organizer.node.rename'
+    || capability === 'organizer.node.update'
+    || capability === 'organizer.node.move'
+    || capability === 'organizer.node.delete'
+    || capability === 'task.claim'
+    || capability === 'task.update_status'
+    || capability === 'run.log'
+    || capability === 'handoff.create'
+    || capability === 'comment.add'
 }
 
 async function parseInvokePayload(): Promise<InvokePayload> {

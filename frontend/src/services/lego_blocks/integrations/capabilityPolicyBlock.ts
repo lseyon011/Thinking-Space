@@ -8,6 +8,10 @@ const DESTRUCTIVE_CAPABILITIES = new Set<CapabilityName>([
 ])
 
 const WRITE_CAPABILITIES = new Set<CapabilityName>([
+  'write_note',
+  'patch_note_frontmatter',
+  'create_ai_synthesis_note',
+  'update_ai_synthesis_compile_state',
   'organizer.node.create',
   'organizer.node.rename',
   'organizer.node.update',

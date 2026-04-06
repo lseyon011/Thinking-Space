@@ -45,6 +45,12 @@ import {
   writeSourceConfigBlock,
 } from './lego_blocks/sourceConfigBlock';
 import {
+  ensureCliToolInstalledBlock,
+  getCliSourcePathBlock,
+  getCliTargetPathBlock,
+  installCliToolBlock,
+} from './lego_blocks/cliInstallBlock';
+import {
   isViteServerRunningBlock,
   startViteServerBlock,
   stopViteServerBlock,
@@ -122,12 +128,16 @@ const appMenuBarMenuTemplate: (MenuItemConstructorOptions | MenuItem)[] = [
         label: 'Install CLI Tool',
         click: async () => {
           try {
-            const result = await installCliTool();
+            const result = await installCliToolBlock({
+              sourcePath: getCliSourcePathBlock(),
+              targetPath: getCliTargetPathBlock(),
+              resourcesPath: process.resourcesPath,
+            });
             dialog.showMessageBox({
               type: 'info',
               title: 'CLI Installed',
               message: `thinkspc CLI installed successfully.`,
-              detail: `Symlink created at ${result.targetPath}\n\nYou can now run 'thinkspc' from any terminal.\n\nSet your vault root in ~/.config/thinkspc/.env:\nTHINKSPC_VAULT_ROOT="/path/to/vault"`,
+              detail: `CLI installed at ${result.targetPath}\n\nYou can now run 'thinkspc' from any terminal.\n\nSet your vault root in ~/.config/thinkspc/.env:\nTHINKSPC_VAULT_ROOT="/path/to/vault"`,
             });
           } catch (err) {
             dialog.showErrorBox(
@@ -277,6 +287,24 @@ if (hasSingleInstanceLock) {
       // Phase 5: If no source path is configured yet and bundled source exists,
       // extract it to a writable userData location for regular users.
       await ensureDefaultSourcePathBlock();
+      if (!electronIsDev) {
+        const cliInstallResult = await ensureCliToolInstalledBlock();
+        if (cliInstallResult.status === 'failed') {
+          console.warn(
+            '[cli] Failed to auto-install thinkspc:',
+            cliInstallResult.errorMessage,
+            'target=',
+            cliInstallResult.targetPath,
+          );
+        } else if (cliInstallResult.status === 'skipped' && cliInstallResult.reason !== 'dev_mode') {
+          console.info(
+            '[cli] Auto-install skipped:',
+            cliInstallResult.reason,
+            'target=',
+            cliInstallResult.targetPath,
+          );
+        }
+      }
       // Apply live-source mode if configured.
       const sourceConfig = readSourceConfigBlock();
       if (sourceConfig.mode === 'live-source' && sourceConfig.sourcePath) {
@@ -494,29 +522,6 @@ ipcMain.handle('source:install:deps', async (event) => {
 });
 
 // =====================================================================
-// CLI Install
-// =====================================================================
-
-function getCliSourcePath(): string {
-  const resourcesPath = process.resourcesPath;
-  const cliWrapper = path.join(resourcesPath, 'cli', 'thinkspc-standalone.sh');
-  if (!fs.existsSync(cliWrapper)) {
-    throw new Error(
-      `CLI wrapper not found at ${cliWrapper}. The app may not have been built with CLI resources bundled.`,
-    );
-  }
-  return cliWrapper;
-}
-
-function getCliTargetPath(): string {
-  if (process.platform === 'win32') {
-    const appData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Local');
-    return path.join(appData, 'thinkspc', 'thinkspc.cmd');
-  }
-  return '/usr/local/bin/thinkspc';
-}
-
-// =====================================================================
 // Phase 5: Bundled Source Extraction
 // =====================================================================
 
@@ -538,44 +543,13 @@ async function ensureDefaultSourcePathBlock(): Promise<void> {
   writeSourceConfigBlock({ sourcePath: userDataSource });
 }
 
-async function installCliTool(): Promise<{ targetPath: string }> {
-  const sourcePath = getCliSourcePath();
-  const targetPath = getCliTargetPath();
-
-  if (process.platform === 'win32') {
-    // Windows: copy a .cmd wrapper that invokes the bundled script
-    const targetDir = path.dirname(targetPath);
-    await fsPromises.mkdir(targetDir, { recursive: true });
-    const cmdContent = `@echo off\r\nbash "${sourcePath}" %*\r\n`;
-    await fsPromises.writeFile(targetPath, cmdContent, 'utf-8');
-  } else {
-    // macOS/Linux: create a symlink
-    const targetDir = path.dirname(targetPath);
-    try {
-      await fsPromises.mkdir(targetDir, { recursive: true });
-    } catch {
-      // /usr/local/bin usually exists
-    }
-
-    // Remove existing symlink/file if present
-    try {
-      const stat = await fsPromises.lstat(targetPath);
-      if (stat.isSymbolicLink() || stat.isFile()) {
-        await fsPromises.unlink(targetPath);
-      }
-    } catch {
-      // File doesn't exist, that's fine
-    }
-
-    await fsPromises.symlink(sourcePath, targetPath);
-  }
-
-  return { targetPath };
-}
-
 // -- CLI install IPC --
 ipcMain.handle('cli:install', async () => {
-  return installCliTool();
+  return installCliToolBlock({
+    sourcePath: getCliSourcePathBlock(),
+    targetPath: getCliTargetPathBlock(),
+    resourcesPath: process.resourcesPath,
+  });
 });
 
 // =====================================================================

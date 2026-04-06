@@ -45,6 +45,16 @@ import { formatAndSave, previewFormat } from './formatExcalidrawOrch'
 import { convertPdf, previewPdf } from './pdfToMarkdownOrch'
 import { cleanAndSave, previewTranscript } from './transcriptCleanerOrch'
 import { getCapabilityFeatureFlags } from '@/services/lego_blocks/integrations/capabilityFeatureFlagsBlock'
+import {
+  createAiSynthesisNoteOrch,
+  getImpactedAiSynthesisNotesOrch,
+  listDomainAiSynthesisHealthOrch,
+  patchNoteFrontmatterOrch,
+  readNoteOrch,
+  resolveAiSynthesisPathOrch,
+  updateAiSynthesisCompileStateOrch,
+  writeNoteOrch,
+} from './aiSynthesisInfraOrch'
 
 export interface CapabilityInvokeRequest<Name extends CapabilityName = CapabilityName> {
   capability: Name
@@ -95,6 +105,10 @@ const DEFAULT_ACTOR: CapabilityActor = {
 }
 
 const WRITE_CAPABILITIES = new Set<CapabilityName>([
+  'write_note',
+  'patch_note_frontmatter',
+  'create_ai_synthesis_note',
+  'update_ai_synthesis_compile_state',
   'organizer.node.create',
   'organizer.node.rename',
   'organizer.node.update',
@@ -339,6 +353,64 @@ async function executeCapability<Name extends CapabilityName>(
   fs?: VaultFS,
 ): Promise<CapabilityOutputMap[Name]> {
   switch (capability) {
+    case 'read_note': {
+      const payload = input as CapabilityInputMap['read_note']
+      assertNonEmptyString(payload.path, 'path')
+      const note = await readNoteOrch(fs ?? getVaultFS(), payload.path)
+      return note as CapabilityOutputMap[Name]
+    }
+    case 'write_note': {
+      const payload = input as CapabilityInputMap['write_note']
+      assertNonEmptyString(payload.path, 'path')
+      const result = await writeNoteOrch(fs ?? getVaultFS(), payload)
+      return result as CapabilityOutputMap[Name]
+    }
+    case 'patch_note_frontmatter': {
+      const payload = input as CapabilityInputMap['patch_note_frontmatter']
+      assertNonEmptyString(payload.path, 'path')
+      const result = await patchNoteFrontmatterOrch(fs ?? getVaultFS(), payload)
+      return result as CapabilityOutputMap[Name]
+    }
+    case 'resolve_ai_synthesis_path': {
+      const payload = input as CapabilityInputMap['resolve_ai_synthesis_path']
+      assertNonEmptyString(payload.domain_root, 'domain_root')
+      assertNonEmptyString(payload.synthesis_type, 'synthesis_type')
+      assertNonEmptyString(payload.slug, 'slug')
+      const result = await resolveAiSynthesisPathOrch(fs ?? getVaultFS(), payload)
+      return result as CapabilityOutputMap[Name]
+    }
+    case 'create_ai_synthesis_note': {
+      const payload = input as CapabilityInputMap['create_ai_synthesis_note']
+      assertNonEmptyString(payload.domain_root, 'domain_root')
+      assertNonEmptyString(payload.layer, 'layer')
+      assertNonEmptyString(payload.synthesis_type, 'synthesis_type')
+      if (!Array.isArray(payload.derived_from) || payload.derived_from.length === 0) {
+        throw new Error('derived_from must contain at least one path')
+      }
+      const result = await createAiSynthesisNoteOrch(fs ?? getVaultFS(), payload)
+      return result as CapabilityOutputMap[Name]
+    }
+    case 'get_impacted_ai_synthesis_notes': {
+      const payload = input as CapabilityInputMap['get_impacted_ai_synthesis_notes']
+      if (!Array.isArray(payload.changed_paths) || payload.changed_paths.length === 0) {
+        throw new Error('changed_paths must contain at least one path')
+      }
+      const result = await getImpactedAiSynthesisNotesOrch(fs ?? getVaultFS(), payload)
+      return result as CapabilityOutputMap[Name]
+    }
+    case 'update_ai_synthesis_compile_state': {
+      const payload = input as CapabilityInputMap['update_ai_synthesis_compile_state']
+      assertNonEmptyString(payload.path, 'path')
+      assertNonEmptyString(payload.compile_status, 'compile_status')
+      const result = await updateAiSynthesisCompileStateOrch(fs ?? getVaultFS(), payload)
+      return result as CapabilityOutputMap[Name]
+    }
+    case 'list_domain_ai_synthesis_health': {
+      const payload = input as CapabilityInputMap['list_domain_ai_synthesis_health']
+      assertNonEmptyString(payload.domain_root, 'domain_root')
+      const result = await listDomainAiSynthesisHealthOrch(fs ?? getVaultFS(), payload)
+      return result as CapabilityOutputMap[Name]
+    }
     case 'organizer.nodes.list_roots': {
       const payload = input as CapabilityInputMap['organizer.nodes.list_roots']
       const nodes = await listYamlRootNodes(payload.typeFilter)
@@ -716,7 +788,12 @@ async function executeDryRunCapability<Name extends CapabilityName>(
   input: CapabilityInputMap[Name],
 ): Promise<CapabilityOutputMap[Name] | null> {
   switch (capability) {
+    case 'write_note':
+    case 'patch_note_frontmatter':
+    case 'create_ai_synthesis_note':
+    case 'update_ai_synthesis_compile_state':
     case 'organizer.node.move': {
+      if (capability !== 'organizer.node.move') return null
       const payload = input as CapabilityInputMap['organizer.node.move']
       assertNonEmptyString(payload.uuid, 'uuid')
       const source = await getYamlNode(payload.uuid)
@@ -816,6 +893,19 @@ function extractTouchedPaths<Name extends CapabilityName>(
   data: CapabilityOutputMap[Name],
 ): string[] {
   switch (capability) {
+    case 'write_note':
+    case 'patch_note_frontmatter':
+    case 'resolve_ai_synthesis_path':
+    case 'create_ai_synthesis_note':
+    case 'update_ai_synthesis_compile_state': {
+      const output = data as
+        | CapabilityOutputMap['write_note']
+        | CapabilityOutputMap['patch_note_frontmatter']
+        | CapabilityOutputMap['resolve_ai_synthesis_path']
+        | CapabilityOutputMap['create_ai_synthesis_note']
+        | CapabilityOutputMap['update_ai_synthesis_compile_state']
+      return output.path ? [output.path] : []
+    }
     case 'organizer.node.create':
     case 'organizer.node.rename':
     case 'organizer.node.update':

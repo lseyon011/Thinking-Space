@@ -178,6 +178,8 @@ afterEach(async () => {
 describe('capabilityRouterOrch', () => {
   it('lists organizer capabilities', () => {
     const names = capabilityOrch!.listCapabilitiesOrch().map(capability => capability.name)
+    expect(names).toContain('read_note')
+    expect(names).toContain('create_ai_synthesis_note')
     expect(names).toContain('organizer.node.create')
     expect(names).toContain('organizer.node.update')
   })
@@ -296,6 +298,261 @@ describe('capabilityRouterOrch', () => {
     }, { fs })
     expect(children.length).toBe(1)
     expect(children[0].type).toBe('epic')
+  })
+
+  it('reads, writes, and patches generic markdown notes safely', async () => {
+    const fs = new FakeVaultFS()
+
+    const written = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'write_note',
+      input: {
+        path: 'lifeblood_systems/thinkingspace.ai/thoughts/2026-04-03.md',
+        frontmatter: {
+          title: 'AI Synthesis idea',
+          tags: ['ai-synthesis'],
+        },
+        body: '# AI Synthesis\n\nInitial body.',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(written.created).toBe(true)
+
+    const patched = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'patch_note_frontmatter',
+      input: {
+        path: 'lifeblood_systems/thinkingspace.ai/thoughts/2026-04-03.md',
+        set: {
+          related_concepts: ['reference-experiential-operational'],
+        },
+        append_unique: {
+          tags: ['thinking-space', 'ai-synthesis'],
+        },
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(patched.frontmatter.related_concepts).toEqual(['reference-experiential-operational'])
+    expect(patched.frontmatter.tags).toEqual(['ai-synthesis', 'thinking-space'])
+
+    const read = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'read_note',
+      input: {
+        path: 'lifeblood_systems/thinkingspace.ai/thoughts/2026-04-03.md',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(read.body).toBe('# AI Synthesis\n\nInitial body.')
+    expect(read.frontmatter.title).toBe('AI Synthesis idea')
+  })
+
+  it('creates AI Synthesis note scaffolds at canonical paths', async () => {
+    const fs = new FakeVaultFS()
+
+    const resolved = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'resolve_ai_synthesis_path',
+      input: {
+        domain_root: 'lifeblood_systems/Understanding Myself',
+        layer: 'reference',
+        synthesis_type: 'concept',
+        slug: 'what-are-habits',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(resolved.path).toBe('lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Concepts/what-are-habits.md')
+
+    const created = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'create_ai_synthesis_note',
+      input: {
+        domain_root: 'lifeblood_systems/Understanding Myself',
+        layer: 'reference',
+        synthesis_type: 'concept',
+        title: 'Concept - What Are Habits?',
+        slug: 'what-are-habits',
+        derived_from: [
+          'lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Sources/science-of-making-and-breaking-habits.md',
+        ],
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(created.created).toBe(true)
+    expect(created.path).toBe(resolved.path)
+    expect(created.frontmatter.type).toBe('ai_synthesis')
+    expect(created.frontmatter.compile_status).toBe('stub')
+    expect(created.body).toContain('# Concept - What Are Habits?')
+  })
+
+  it('resolves source-shaped and concept-shaped reference paths', async () => {
+    const fs = new FakeVaultFS()
+
+    const sourcePath = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'resolve_ai_synthesis_path',
+      input: {
+        domain_root: 'lifeblood_systems/Understanding Myself',
+        layer: 'reference',
+        synthesis_type: 'source_summary',
+        source_title: 'The Science of Making and Breaking Habits - Huberman',
+        slug: 'limbic-friction',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(sourcePath.path).toBe(
+      'lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Sources/The Science of Making and Breaking Habits - Huberman/limbic-friction.md',
+    )
+
+    const conceptPath = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'resolve_ai_synthesis_path',
+      input: {
+        domain_root: 'lifeblood_systems/Understanding Myself',
+        layer: 'reference',
+        synthesis_type: 'concept',
+        concept_root: 'Habits',
+        concept_subpath: ['Formation'],
+        slug: 'what-are-habits',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(conceptPath.path).toBe(
+      'lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Concepts/Habits/Formation/what-are-habits.md',
+    )
+  })
+
+  it('creates grouped AI Synthesis scaffolds for source and concept folders', async () => {
+    const fs = new FakeVaultFS()
+
+    const sourceSummary = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'create_ai_synthesis_note',
+      input: {
+        domain_root: 'lifeblood_systems/Understanding Myself',
+        layer: 'reference',
+        synthesis_type: 'source_summary',
+        source_title: 'The Science of Making and Breaking Habits - Huberman',
+        title: 'Source Summary - Limbic Friction',
+        slug: 'limbic-friction',
+        derived_from: ['lifeblood_systems/Understanding Myself/raw/habits-huberman.md'],
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(sourceSummary.path).toBe(
+      'lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Sources/The Science of Making and Breaking Habits - Huberman/limbic-friction.md',
+    )
+
+    const concept = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'create_ai_synthesis_note',
+      input: {
+        domain_root: 'lifeblood_systems/Understanding Myself',
+        layer: 'reference',
+        synthesis_type: 'concept',
+        concept_root: 'Habits',
+        concept_subpath: ['Formation'],
+        title: 'Concept - What Are Habits?',
+        slug: 'what-are-habits',
+        derived_from: [sourceSummary.path],
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(concept.path).toBe(
+      'lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Concepts/Habits/Formation/what-are-habits.md',
+    )
+  })
+
+  it('plans impacted AI Synthesis notes from changed raw notes', async () => {
+    const fs = new FakeVaultFS()
+
+    await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'write_note',
+      input: {
+        path: 'lifeblood_systems/Understanding Myself/thoughts/2025-12-19.md',
+        frontmatter: {
+          title: 'Habits reflection',
+          kind: 'thought',
+        },
+        body: '# Habits reflection',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'create_ai_synthesis_note',
+      input: {
+        domain_root: 'lifeblood_systems/Understanding Myself',
+        layer: 'experiential',
+        synthesis_type: 'pattern',
+        title: 'Pattern - Habits',
+        slug: 'habits',
+        derived_from: ['lifeblood_systems/Understanding Myself/thoughts/2025-12-19.md'],
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const impacted = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'get_impacted_ai_synthesis_notes',
+      input: {
+        changed_paths: ['lifeblood_systems/Understanding Myself/thoughts/2025-12-19.md'],
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(impacted.domain_root).toBe('lifeblood_systems/Understanding Myself')
+    expect(impacted.likely_impacted).toContain('lifeblood_systems/Understanding Myself/AI Synthesis/Experiential/Patterns/habits.md')
+    expect(impacted.missing_candidates).toContain('lifeblood_systems/Understanding Myself/AI Synthesis/Questions/open-questions.md')
+  })
+
+  it('updates compile state and reports health findings for a domain', async () => {
+    const fs = new FakeVaultFS()
+
+    await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'create_ai_synthesis_note',
+      input: {
+        domain_root: 'acceleration_core/F9',
+        layer: 'reference',
+        synthesis_type: 'concept',
+        title: 'Concept - Moats',
+        slug: 'moats',
+        derived_from: ['acceleration_core/F9/learnings/moats.md'],
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'update_ai_synthesis_compile_state',
+      input: {
+        path: 'acceleration_core/F9/AI Synthesis/Reference/Concepts/moats.md',
+        compile_status: 'stale',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'write_note',
+      input: {
+        path: 'acceleration_core/F9/AI Synthesis/Outputs/Answers/what-is-a-moat.md',
+        frontmatter: {
+          title: 'Answer - What Is A Moat?',
+        },
+        body: '# Answer',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    const health = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'list_domain_ai_synthesis_health',
+      input: {
+        domain_root: 'acceleration_core/F9',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(health.stale_pages).toContain('acceleration_core/F9/AI Synthesis/Reference/Concepts/moats.md')
+    expect(health.missing_canonical_pages).toContain('acceleration_core/F9/AI Synthesis/index.md')
+    expect(health.orphan_outputs).toContain('acceleration_core/F9/AI Synthesis/Outputs/Answers/what-is-a-moat.md')
   })
 
   it('writes structured comment metadata on update', async () => {

@@ -63,8 +63,14 @@
   },
   "mac": {
     "category": "public.app-category.productivity",
-    "target": "dmg",
+    "target": ["dmg", "pkg"],
     "icon": "assets/appIcon.png"
+  },
+  "pkg": {
+    "scripts": "pkg-scripts",
+    "installLocation": "/Applications",
+    "allowCurrentUserHome": false,
+    "allowAnywhere": false
   },
   "linux": {
     "target": "AppImage",
