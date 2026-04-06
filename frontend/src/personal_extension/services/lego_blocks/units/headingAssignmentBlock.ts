@@ -118,9 +118,17 @@ export function sanitizeHeadingAssignmentPresetStoreBlock(input: unknown): Headi
 export function buildHeadingAssignmentExportBlock(
   headings: HeadingAssignmentHeadingBlock[],
   assignments: Record<string, string>,
+  tagAssignments: Record<string, string[]> = {},
 ): string {
   return headings
-    .map((heading) => `${normalizeExportFieldBlock(heading.title)}|${normalizeExportFieldBlock(assignments[heading.id] ?? '')}`)
+    .map((heading) => {
+      const tags = tagAssignments[heading.id] ?? []
+      return [
+        normalizeExportFieldBlock(heading.title),
+        normalizeExportFieldBlock(assignments[heading.id] ?? ''),
+        normalizeExportFieldBlock(tags.join(', ')),
+      ].join('|')
+    })
     .join('\n')
 }
 

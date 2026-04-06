@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FolderOpen, RefreshCw, Save } from 'lucide-react'
+import { FolderOpen, RefreshCw, Save, X } from 'lucide-react'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
+import { TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import {
   UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK,
   buildPathSearchCandidatesBlock,
@@ -17,12 +18,22 @@ import {
 } from '@/components/lego_blocks/units/ui/select'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import {
+  normalizeTagListBlock,
+  splitTagInputBlock,
+  tagColorClassBlock,
+  tagColorStyleBlock,
+  tagLookupKeyBlock,
+  tagsEqualBlock,
+} from '@/services/lego_blocks/units/tagBlock'
+import {
   deleteHeadingAssignmentPresetOrch,
   listHeadingAssignmentFileOptionsOrch,
   loadHeadingAssignmentPresetsOrch,
+  loadHeadingAssignmentTagSettingsOrch,
   readHeadingAssignmentDocumentOrch,
   saveHeadingAssignmentPresetOrch,
   saveHeadingAssignmentExportOrch,
+  saveHeadingAssignmentTagSettingsOrch,
   type HeadingAssignmentFileOptionOrch,
 } from '../../services/orchestrators/headingAssignmentOrch'
 import {
@@ -49,6 +60,7 @@ const TOOL_ITEMS: Array<{
 const fieldClassName = 'flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2'
 const textareaClassName = 'flex min-h-[132px] w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2'
 const ASSIGNMENT_EMPTY_VALUE = '__unassigned__'
+const TAG_SELECT_EMPTY_VALUE = '__select_tag__'
 const DEFAULT_EXPORT_FILE_NAME = 'heading-assignment.txt'
 
 function sameStringArrayBlock(left: string[], right: string[]): boolean {
@@ -62,6 +74,13 @@ function sameAssignmentsBlock(left: Record<string, string>, right: Record<string
   return leftKeys.every((key) => left[key] === right[key])
 }
 
+function sameTagAssignmentsBlock(left: Record<string, string[]>, right: Record<string, string[]>): boolean {
+  const leftKeys = Object.keys(left)
+  const rightKeys = Object.keys(right)
+  if (leftKeys.length !== rightKeys.length) return false
+  return leftKeys.every((key) => tagsEqualBlock(left[key] ?? [], right[key] ?? []))
+}
+
 function getParentFolderPathBlock(filePath: string): string {
   const normalizedPath = filePath
     .replace(/\\/g, '/')
@@ -73,6 +92,16 @@ function getParentFolderPathBlock(filePath: string): string {
   return lastSlashIndex >= 0 ? normalizedPath.slice(0, lastSlashIndex) : ''
 }
 
+function reconcileHeadingTagsBlock(tags: string[], availableTags: string[]): string[] {
+  const availableByKey = new Map(
+    availableTags.map(tag => [tagLookupKeyBlock(tag), tag]),
+  )
+
+  return normalizeTagListBlock(tags)
+    .map(tag => availableByKey.get(tagLookupKeyBlock(tag)) ?? null)
+    .filter((tag): tag is string => typeof tag === 'string' && tag.length > 0)
+}
+
 export default function PersonalToolsOrch() {
   const { openFile } = useMarkdownViewer()
   const [activeToolId, setActiveToolId] = useState<PersonalToolId>('heading-assignments')
@@ -81,13 +110,18 @@ export default function PersonalToolsOrch() {
   const [selectedFilePath, setSelectedFilePath] = useState('')
   const [headings, setHeadings] = useState<HeadingAssignmentHeadingBlock[]>([])
   const [assignments, setAssignments] = useState<Record<string, string>>({})
+  const [tagAssignments, setTagAssignments] = useState<Record<string, string[]>>({})
   const [dropdownValuesText, setDropdownValuesText] = useState('')
   const [presets, setPresets] = useState<HeadingAssignmentPresetBlock[]>([])
   const [selectedPresetId, setSelectedPresetId] = useState('')
   const [presetName, setPresetName] = useState('')
+  const [availableTags, setAvailableTags] = useState<string[]>([])
+  const [tagColors, setTagColors] = useState<Record<string, string>>({})
+  const [tagDraftValue, setTagDraftValue] = useState('')
   const [exportFileName, setExportFileName] = useState(DEFAULT_EXPORT_FILE_NAME)
   const [bootstrapLoading, setBootstrapLoading] = useState(true)
   const [documentLoading, setDocumentLoading] = useState(false)
+  const [tagSettingsLoaded, setTagSettingsLoaded] = useState(false)
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
   const [documentError, setDocumentError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -107,12 +141,16 @@ export default function PersonalToolsOrch() {
     [fileOptions, selectedFilePath],
   )
   const outputText = useMemo(
-    () => buildHeadingAssignmentExportBlock(headings, assignments),
-    [assignments, headings],
+    () => buildHeadingAssignmentExportBlock(headings, assignments, tagAssignments),
+    [assignments, headings, tagAssignments],
   )
   const exportFolderPath = useMemo(
     () => getParentFolderPathBlock(selectedFilePath),
     [selectedFilePath],
+  )
+  const tagColorForTag = useCallback(
+    (tag: string) => tagColors[tagLookupKeyBlock(tag)],
+    [tagColors],
   )
 
   const loadDocument = useCallback(async (path: string) => {
@@ -120,6 +158,7 @@ export default function PersonalToolsOrch() {
     if (!trimmedPath) {
       setHeadings([])
       setAssignments({})
+      setTagAssignments({})
       setDocumentError(null)
       return
     }
@@ -136,9 +175,17 @@ export default function PersonalToolsOrch() {
         const nextAssignments = Object.fromEntries(nextEntries)
         return sameAssignmentsBlock(previous, nextAssignments) ? previous : nextAssignments
       })
+      setTagAssignments((previous) => {
+        const validHeadingIds = new Set(document.headings.map((heading) => heading.id))
+        const nextEntries = Object.entries(previous)
+          .filter(([headingId]) => validHeadingIds.has(headingId))
+        const nextAssignments = Object.fromEntries(nextEntries)
+        return sameTagAssignmentsBlock(previous, nextAssignments) ? previous : nextAssignments
+      })
     } catch (error) {
       setHeadings([])
       setAssignments({})
+      setTagAssignments({})
       setDocumentError(error instanceof Error ? error.message : 'Failed to read the selected markdown file.')
     } finally {
       setDocumentLoading(false)
@@ -151,11 +198,15 @@ export default function PersonalToolsOrch() {
     void Promise.all([
       listHeadingAssignmentFileOptionsOrch(),
       loadHeadingAssignmentPresetsOrch(),
+      Promise.resolve(loadHeadingAssignmentTagSettingsOrch()),
     ])
-      .then(([nextFileOptions, nextPresets]) => {
+      .then(([nextFileOptions, nextPresets, nextTagSettings]) => {
         if (cancelled) return
         setFileOptions(nextFileOptions)
         setPresets(nextPresets)
+        setAvailableTags(nextTagSettings.tags)
+        setTagColors(nextTagSettings.tagColors)
+        setTagSettingsLoaded(true)
         setBootstrapError(null)
       })
       .catch((error) => {
@@ -187,6 +238,27 @@ export default function PersonalToolsOrch() {
       return sameAssignmentsBlock(previous, next) ? previous : next
     })
   }, [dropdownValues, headings])
+
+  useEffect(() => {
+    const allowedHeadingIds = new Set(headings.map((heading) => heading.id))
+    setTagAssignments((previous) => {
+      const next = Object.fromEntries(
+        Object.entries(previous)
+          .filter(([headingId]) => allowedHeadingIds.has(headingId))
+          .map(([headingId, tags]) => [headingId, reconcileHeadingTagsBlock(tags, availableTags)] as const)
+          .filter(([, tags]) => tags.length > 0),
+      )
+      return sameTagAssignmentsBlock(previous, next) ? previous : next
+    })
+  }, [availableTags, headings])
+
+  useEffect(() => {
+    if (!tagSettingsLoaded) return
+    saveHeadingAssignmentTagSettingsOrch({
+      tags: availableTags,
+      tagColors,
+    })
+  }, [availableTags, tagColors, tagSettingsLoaded])
 
   const handlePresetSelect = useCallback((presetId: string) => {
     setSelectedPresetId(presetId)
@@ -244,6 +316,58 @@ export default function PersonalToolsOrch() {
       } else {
         next[headingId] = value
       }
+      return next
+    })
+  }, [])
+
+  const handleAddAvailableTags = useCallback(() => {
+    const nextTags = splitTagInputBlock(tagDraftValue)
+    if (nextTags.length === 0) return
+    setAvailableTags((previous) => normalizeTagListBlock([...previous, ...nextTags]))
+    setTagDraftValue('')
+    setFeedback(`Added ${nextTags.length} tag${nextTags.length === 1 ? '' : 's'} for heading assignments.`)
+    setActionError(null)
+  }, [tagDraftValue])
+
+  const handleRemoveAvailableTag = useCallback((tag: string) => {
+    setAvailableTags((previous) => previous.filter((item) => tagLookupKeyBlock(item) !== tagLookupKeyBlock(tag)))
+    setTagColors((previous) => {
+      const next = { ...previous }
+      delete next[tagLookupKeyBlock(tag)]
+      return next
+    })
+    setFeedback(`Removed tag “${tag}”.`)
+    setActionError(null)
+  }, [])
+
+  const handleChangeTagColor = useCallback((tag: string, color: string | null) => {
+    setTagColors((previous) => {
+      const next = { ...previous }
+      const tagKey = tagLookupKeyBlock(tag)
+      if (color) next[tagKey] = color
+      else delete next[tagKey]
+      return next
+    })
+  }, [])
+
+  const handleAddTagToHeading = useCallback((headingId: string, tag: string) => {
+    if (tag === TAG_SELECT_EMPTY_VALUE) return
+    setTagAssignments((previous) => {
+      const next = {
+        ...previous,
+        [headingId]: reconcileHeadingTagsBlock([...(previous[headingId] ?? []), tag], availableTags),
+      }
+      if ((next[headingId] ?? []).length === 0) delete next[headingId]
+      return next
+    })
+  }, [availableTags])
+
+  const handleRemoveTagFromHeading = useCallback((headingId: string, tag: string) => {
+    setTagAssignments((previous) => {
+      const nextTags = (previous[headingId] ?? []).filter((item) => tagLookupKeyBlock(item) !== tagLookupKeyBlock(tag))
+      const next = { ...previous }
+      if (nextTags.length === 0) delete next[headingId]
+      else next[headingId] = nextTags
       return next
     })
   }, [])
@@ -485,9 +609,33 @@ export default function PersonalToolsOrch() {
 
         <Card>
           <CardHeader>
+            <CardTitle>Tags</CardTitle>
+            <CardDescription>
+              Define colored tags for heading rows. These stay on this device.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TagListEditorBlock
+              heading="Available tags"
+              tags={availableTags}
+              tagColors={tagColors}
+              emptyMessage="No tags defined yet."
+              draftValue={tagDraftValue}
+              onDraftValueChange={setTagDraftValue}
+              onAddTag={handleAddAvailableTags}
+              addPlaceholder="Add tags (comma separated)"
+              addDisabled={splitTagInputBlock(tagDraftValue).length === 0}
+              onRemoveTag={handleRemoveAvailableTag}
+              onChangeTagColor={handleChangeTagColor}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Heading assignments</CardTitle>
             <CardDescription>
-              Each markdown heading from the selected file gets one dropdown selector.
+              Each markdown heading from the selected file gets one dropdown selector and optional tags.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -499,17 +647,22 @@ export default function PersonalToolsOrch() {
             )}
             {headings.length > 0 && (
               <div className="overflow-x-auto rounded-md border border-border/60 bg-white">
-                <table className="w-full min-w-[840px] table-fixed text-left text-sm">
+                <table className="w-full min-w-[1120px] table-fixed text-left text-sm">
                   <thead className="border-b border-border/50 bg-muted/20 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2 font-medium">Heading</th>
-                      <th className="w-[280px] px-3 py-2 font-medium">Assigned Value</th>
+                      <th className="w-[336px] px-3 py-2 font-medium">Assigned Value</th>
+                      <th className="w-[132px] px-2 py-2 text-center font-medium">Tags</th>
                     </tr>
                   </thead>
                   <tbody>
                     {headings.map((heading, index) => {
                       const assignedValue = assignments[heading.id] ?? ''
                       const assigned = assignedValue.length > 0
+                      const selectedTags = tagAssignments[heading.id] ?? []
+                      const availableRowTags = availableTags.filter((tag) => !selectedTags.some(
+                        selectedTag => tagLookupKeyBlock(selectedTag) === tagLookupKeyBlock(tag),
+                      ))
                       const rowBorderClassName = index > 0 ? 'border-t border-slate-200' : ''
                       return (
                         <tr key={heading.id}>
@@ -520,6 +673,23 @@ export default function PersonalToolsOrch() {
                                   Assigned
                                 </span>
                               )}
+                              {selectedTags.map(tag => (
+                                <span
+                                  key={`${heading.id}-selected-tag-${tag}`}
+                                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${tagColorClassBlock(tag, 'solid')}`}
+                                  style={tagColorStyleBlock(tag, 'solid', tagColorForTag(tag))}
+                                >
+                                  <span>{tag}</span>
+                                  <button
+                                    type="button"
+                                    className="opacity-70 hover:opacity-100"
+                                    onClick={() => handleRemoveTagFromHeading(heading.id, tag)}
+                                    aria-label={`Remove ${tag} from ${heading.title}`}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </span>
+                              ))}
                             </div>
                             <div
                               className="break-words font-medium leading-6"
@@ -534,8 +704,10 @@ export default function PersonalToolsOrch() {
                               onValueChange={(value) => handleAssignmentChange(heading.id, value)}
                               disabled={dropdownValues.length === 0}
                             >
-                              <SelectTrigger className={assigned ? 'border-emerald-300 bg-white shadow-sm focus:ring-emerald-500' : 'border-slate-200 bg-white shadow-sm'}>
-                                <SelectValue placeholder={dropdownValues.length === 0 ? 'Add values first' : 'Choose a value'} />
+                              <SelectTrigger className={assigned ? 'h-auto min-h-[3.5rem] items-start border-emerald-300 bg-white py-2 shadow-sm focus:ring-emerald-500 [&>span]:line-clamp-none' : 'h-auto min-h-[3.5rem] items-start border-slate-200 bg-white py-2 shadow-sm [&>span]:line-clamp-none'}>
+                                <span className={`block whitespace-normal break-words pr-2 text-left leading-5 ${assigned ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                  {assignedValue || (dropdownValues.length === 0 ? 'Add values first' : 'Choose a value')}
+                                </span>
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value={ASSIGNMENT_EMPTY_VALUE}>Unassigned</SelectItem>
@@ -546,6 +718,34 @@ export default function PersonalToolsOrch() {
                                 ))}
                               </SelectContent>
                             </Select>
+                          </td>
+                          <td className={`w-[132px] px-2 py-3 align-top ${rowBorderClassName}`}>
+                            <div className="flex w-full flex-col items-center space-y-2">
+                              <select
+                                value={TAG_SELECT_EMPTY_VALUE}
+                                onChange={(event) => handleAddTagToHeading(heading.id, event.target.value)}
+                                className="mx-auto h-8 w-28 rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                                disabled={availableTags.length === 0 || availableRowTags.length === 0}
+                              >
+                                <option value={TAG_SELECT_EMPTY_VALUE}>
+                                  {availableTags.length === 0
+                                    ? 'Add tags above first'
+                                    : availableRowTags.length === 0
+                                      ? 'All tags selected'
+                                      : 'Add tag'}
+                                </option>
+                                {availableRowTags.map(tag => (
+                                  <option key={`${heading.id}-tag-option-${tag}`} value={tag}>
+                                    {tag}
+                                  </option>
+                                ))}
+                              </select>
+                              {selectedTags.length > 0 && (
+                                <p className="text-xs text-muted-foreground">
+                                  {selectedTags.length} tag{selectedTags.length === 1 ? '' : 's'} selected
+                                </p>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       )

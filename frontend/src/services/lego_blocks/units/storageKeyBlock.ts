@@ -44,6 +44,8 @@ export const STORAGE_KEYS = {
   aiWebsites: 'ltm-ai-websites',
   webSites: 'ltm-web-sites',
   fileActivityIgnoredPaths: 'ltm-file-activity-ignored-paths',
+  headingAssignmentTags: 'ltm-heading-assignment-tags',
+  headingAssignmentTagColors: 'ltm-heading-assignment-tag-colors',
 } as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]

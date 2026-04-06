@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { Settings2 } from 'lucide-react'
 import ColorPaletteGridBlock from '@/components/lego_blocks/units/ColorPaletteGridBlock'
+import ExcalidrawHighlighterPresetPickerBlock from '@/components/lego_blocks/integrations/ExcalidrawHighlighterPresetPickerBlock'
 import type { ExcalidrawHighlighterPresetBlock } from '@/services/orchestrators/excalidrawHighlighterOrch'
 import type { ExcalidrawPenDefaultsOrch } from '@/services/orchestrators/excalidrawPenDefaultsOrch'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
@@ -63,39 +64,16 @@ export default function ExcalidrawPenPaletteBlock({
     >
       {/* Main palette card — relative so popups can anchor to it */}
       <div className="relative flex flex-col items-center gap-1 rounded-xl border border-border/70 bg-background/90 p-1 shadow-sm backdrop-blur">
-        {presets.map((preset, index) => {
-          const isActive = activePresetId === preset.id
-          const penNumber = index + 1
-          const customColor = perPresetSettings?.[preset.id]?.strokeColor
-          const swatchColor = customColor ?? (
-            preset.backgroundColor !== 'transparent' ? preset.backgroundColor : preset.strokeColor
-          )
-          return (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => onSelectPreset(preset.id)}
-              className={cn(
-                'relative flex h-7 w-7 items-center justify-center rounded-full transition-all',
-                isActive
-                  ? 'ring-2 ring-primary ring-offset-1 ring-offset-background'
-                  : 'hover:bg-muted/80',
-              )}
-              title={`Pen ${penNumber}: ${preset.label}`}
-              aria-label={`Pen ${penNumber}: ${preset.label}`}
-            >
-              <span
-                className="flex h-5 w-5 items-center justify-center rounded-full border border-border/50 text-[8px] font-bold"
-                style={{
-                  backgroundColor: swatchColor,
-                  color: isLightColor(swatchColor) ? '#374151' : '#ffffff',
-                }}
-              >
-                {penNumber <= 9 ? penNumber : 0}
-              </span>
-            </button>
-          )
-        })}
+        <ExcalidrawHighlighterPresetPickerBlock
+          presets={presets.map((preset) => ({
+            ...preset,
+            backgroundColor: perPresetSettings?.[preset.id]?.strokeColor
+              ?? preset.backgroundColor,
+          }))}
+          activePresetId={activePresetId}
+          onSelectPreset={onSelectPreset}
+          chrome={false}
+        />
 
         {onStrokeWidthChange && (
           <>
@@ -239,22 +217,4 @@ export default function ExcalidrawPenPaletteBlock({
       </div>
     </div>
   )
-}
-
-function isLightColor(color: string): boolean {
-  if (color === 'transparent') return true
-  const hex = color.replace('#', '')
-  if (hex.length === 6) {
-    const r = parseInt(hex.slice(0, 2), 16)
-    const g = parseInt(hex.slice(2, 4), 16)
-    const b = parseInt(hex.slice(4, 6), 16)
-    return (r * 299 + g * 587 + b * 114) / 1000 > 150
-  }
-  if (hex.length === 3) {
-    const r = parseInt(hex[0] + hex[0], 16)
-    const g = parseInt(hex[1] + hex[1], 16)
-    const b = parseInt(hex[2] + hex[2], 16)
-    return (r * 299 + g * 587 + b * 114) / 1000 > 150
-  }
-  return color.includes('fff') || color.includes('yellow') || color.includes('db')
 }

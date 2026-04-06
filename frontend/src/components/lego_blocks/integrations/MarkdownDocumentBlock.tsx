@@ -7,6 +7,7 @@ import {
   useState,
   type ComponentPropsWithoutRef,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -46,6 +47,10 @@ import GoogleDocDocumentBlock from '@/components/lego_blocks/integrations/Google
 import ImageDocumentBlock from '@/components/lego_blocks/integrations/ImageDocumentBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/MarkdownMiniNavBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
+import MarkdownAnchorAnnotationBlock from '@/components/lego_blocks/integrations/MarkdownAnchorAnnotationBlock'
+import MarkdownAnnotationEditorBlock from '@/components/lego_blocks/integrations/MarkdownAnnotationEditorBlock'
+import ExcalidrawHighlighterPresetPickerBlock from '@/components/lego_blocks/integrations/ExcalidrawHighlighterPresetPickerBlock'
+import MarkupToolIconBlock from '@/components/lego_blocks/units/MarkupToolIconBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
 import { cn } from '@/lib/utils'
 import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/integrations/markdownUrlTransformBlock'
@@ -53,6 +58,12 @@ import {
   readMarkdownEditorSettingsOrch,
   type MarkdownEditorSettingsBlock,
 } from '@/services/orchestrators/markdownEditorSettingsOrch'
+import {
+  EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH,
+  type ExcalidrawHighlighterPresetBlock,
+} from '@/services/orchestrators/excalidrawHighlighterOrch'
+import { readExcalidrawActivePresetIdOrch, writeExcalidrawActivePresetIdOrch } from '@/services/orchestrators/excalidrawPenDefaultsOrch'
+import { subscribeNativePencilBridgeOrch } from '@/services/orchestrators/pencilBridgeOrch'
 import { STORAGE_KEYS, getStorageItem } from '@/services/orchestrators/storageOrch'
 import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import { type StewardMetadataSuggestion } from '@/services/orchestrators/stewardMetadataOrch'
@@ -83,6 +94,26 @@ import {
   clearExcalidrawCrashMarkerBlock,
   markExcalidrawCrashStageBlock,
 } from '@/services/lego_blocks/units/excalidrawCrashMarkerBlock'
+import {
+  buildMarkdownAnchorIdBlock,
+  buildMarkdownAnnotationIdBlock,
+  composeMarkdownAnnotationDocumentBlock,
+  findMarkdownAnchorAfterOffsetBlock,
+  findMarkdownHighlightByVisibleOffsetBlock,
+  getMarkdownAnchorAnnotationBlock,
+  insertMarkdownAnchorAfterBlockOffsetBlock,
+  insertMarkdownHighlightAtRangeBlock,
+  parseMarkdownHighlightSegmentsBlock,
+  parseMarkdownAnchorIdBlock,
+  removeMarkdownHighlightByVisibleOffsetBlock,
+  removeMarkdownAnchorAnnotationBlock,
+  remarkMarkdownSourceSpansBlock,
+  splitMarkdownAnnotationDocumentBlock,
+  updateMarkdownHighlightPresetByVisibleOffsetBlock,
+  upsertMarkdownAnchorAnnotationBlock,
+  type MarkdownAnchorAnnotationBlock as MarkdownAnchorAnnotationModelBlock,
+  type MarkdownAnnotationStoreBlock,
+} from '@/services/lego_blocks/units/markdownAnnotationBlock'
 
 export type MarkdownViewerMode = 'view' | 'edit'
 
@@ -213,6 +244,141 @@ function MarkdownWikilinkImageBlock({
   )
 }
 
+function resolveMarkdownHighlightColorBlock(
+  presetId: string | null,
+  presets: readonly ExcalidrawHighlighterPresetBlock[],
+): string {
+  if (!presetId) return '#fde68a'
+  const preset = presets.find((entry) => entry.id === presetId)
+  if (!preset) return '#fde68a'
+  return preset.backgroundColor !== 'transparent' ? preset.backgroundColor : preset.strokeColor
+}
+
+function renderHighlightedSourceSpanBlock(
+  text: string,
+  sourceStart: number,
+  keyPrefix: string,
+  presets: readonly ExcalidrawHighlighterPresetBlock[],
+): ReactNode[] {
+  return parseMarkdownHighlightSegmentsBlock(text).map((segment, index) => {
+    const absoluteStart = sourceStart + segment.rawStart
+    const absoluteEnd = sourceStart + segment.rawEnd
+    if (segment.kind === 'highlight') {
+      return (
+        <mark
+          key={`${keyPrefix}-${index}`}
+          data-md-source-start={absoluteStart}
+          data-md-source-end={absoluteEnd}
+          data-md-highlight-preset={segment.presetId ?? ''}
+          className="rounded px-1 py-0.5 text-inherit shadow-[inset_0_-1px_0_rgba(180,83,9,0.18)]"
+          style={{ backgroundColor: resolveMarkdownHighlightColorBlock(segment.presetId, presets) }}
+        >
+          {segment.visibleText}
+        </mark>
+      )
+    }
+    return (
+      <span
+        key={`${keyPrefix}-${index}`}
+        data-md-source-start={absoluteStart}
+        data-md-source-end={absoluteEnd}
+      >
+        {segment.visibleText}
+      </span>
+    )
+  })
+}
+
+interface ViewerHighlightSelectionBlock {
+  start: number
+  end: number
+  text: string
+  top: number
+  left: number
+}
+
+interface ViewerExistingHighlightTargetBlock {
+  offset: number
+  start: number
+  end: number
+  text: string
+  presetId: string | null
+}
+
+interface ViewerPencilHighlightGestureBlock {
+  start: number
+  end: number
+  blockElement: HTMLElement
+}
+
+function findClosestElementBlock(node: Node | null, selector: string): HTMLElement | null {
+  let current: Node | null = node
+  while (current) {
+    if (current instanceof HTMLElement && current.matches(selector)) return current
+    current = current.parentNode
+  }
+  return null
+}
+
+function getTextOffsetWithinElementBlock(element: HTMLElement, node: Node, offset: number): number {
+  const range = document.createRange()
+  range.selectNodeContents(element)
+  try {
+    range.setEnd(node, offset)
+  } catch {
+    return 0
+  }
+  return range.toString().length
+}
+
+function getCaretAtClientPointBlock(x: number, y: number): { node: Node; offset: number } | null {
+  const candidateDocument = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+    caretRangeFromPoint?: (x: number, y: number) => Range | null
+  }
+  if (typeof candidateDocument.caretPositionFromPoint === 'function') {
+    const position = candidateDocument.caretPositionFromPoint(x, y)
+    if (position?.offsetNode) {
+      return {
+        node: position.offsetNode,
+        offset: position.offset,
+      }
+    }
+  }
+  if (typeof candidateDocument.caretRangeFromPoint === 'function') {
+    const range = candidateDocument.caretRangeFromPoint(x, y)
+    if (range?.startContainer) {
+      return {
+        node: range.startContainer,
+        offset: range.startOffset,
+      }
+    }
+  }
+  return null
+}
+
+function resolveRawMarkdownOffsetFromSpanBlock(
+  spanElement: HTMLElement,
+  node: Node,
+  offset: number,
+): number | null {
+  const sourceStart = Number(spanElement.dataset.mdSourceStart ?? '')
+  if (!Number.isFinite(sourceStart)) return null
+  return sourceStart + getTextOffsetWithinElementBlock(spanElement, node, offset)
+}
+
+function readMarkdownNodeEndOffsetBlock(node: unknown): number | null {
+  if (!node || typeof node !== 'object') return null
+  const candidate = node as {
+    position?: {
+      end?: {
+        offset?: number
+      }
+    }
+  }
+  return typeof candidate.position?.end?.offset === 'number' ? candidate.position.end.offset : null
+}
+
 function MarkdownTextDocumentRuntimeBlock({
   path,
   initialMode = 'view',
@@ -260,9 +426,23 @@ function MarkdownTextDocumentRuntimeBlock({
   const [isHeaderRenameActive, setIsHeaderRenameActive] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameError, setRenameError] = useState<string | null>(null)
+  const [activeAnnotationAnchorId, setActiveAnnotationAnchorId] = useState<string | null>(null)
+  const [annotationSaveError, setAnnotationSaveError] = useState<string | null>(null)
+  const [annotationSaving, setAnnotationSaving] = useState(false)
+  const [viewerAnnotateMode, setViewerAnnotateMode] = useState(false)
+  const [viewerAnnotateSessionBody, setViewerAnnotateSessionBody] = useState<string | null>(null)
+  const [viewerHighlightSelection, setViewerHighlightSelection] = useState<ViewerHighlightSelectionBlock | null>(null)
+  const [viewerExistingHighlightTarget, setViewerExistingHighlightTarget] = useState<ViewerExistingHighlightTargetBlock | null>(null)
+  const [viewerHighlightSaving, setViewerHighlightSaving] = useState(false)
+  const [viewerHighlightError, setViewerHighlightError] = useState<string | null>(null)
+  const [viewerHighlightPresets] = useState<readonly ExcalidrawHighlighterPresetBlock[]>(EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH)
+  const [activeViewerHighlightPresetId, setActiveViewerHighlightPresetId] = useState<string | null>(
+    () => readExcalidrawActivePresetIdOrch() ?? EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH[0]?.id ?? null,
+  )
   const isExcalidrawDoc = isExcalidrawPathBlock(path)
   const chromeContainerRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
+  const markdownViewRootRef = useRef<HTMLDivElement | null>(null)
   const headerRenameInputRef = useRef<HTMLInputElement | null>(null)
   const manualSaveFeedbackTimeoutRef = useRef<number | null>(null)
   const excalidrawSceneRef = useRef<ParsedExcalidrawScene | null>(null)
@@ -273,6 +453,9 @@ function MarkdownTextDocumentRuntimeBlock({
   const markdownSaveInFlightRef = useRef(false)
   const markdownSavePromiseRef = useRef<Promise<boolean> | null>(null)
   const markdownEditBaselineRef = useRef<MarkdownEditBaselineState | null>(null)
+  const viewerPencilHighlightGestureRef = useRef<ViewerPencilHighlightGestureBlock | null>(null)
+  const viewerPencilBridgeStopRef = useRef<(() => Promise<void>) | null>(null)
+  const viewerSuppressSelectionCaptureUntilRef = useRef(0)
   const markdownCancelRevertInFlightRef = useRef(false)
   const excalidrawCrashMarkerClearTimeoutRef = useRef<number | null>(null)
   const preserveExcalidrawCrashMarkerOnUnmountRef = useRef(false)
@@ -286,6 +469,16 @@ function MarkdownTextDocumentRuntimeBlock({
     setConflict(null)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(false)
+    setActiveAnnotationAnchorId(null)
+    setAnnotationSaveError(null)
+    setAnnotationSaving(false)
+    setViewerAnnotateMode(false)
+    setViewerAnnotateSessionBody(null)
+    setViewerHighlightSelection(null)
+    setViewerExistingHighlightTarget(null)
+    setViewerHighlightSaving(false)
+    setViewerHighlightError(null)
+    viewerPencilHighlightGestureRef.current = null
     markdownEditBaselineRef.current = null
     markdownCancelRevertInFlightRef.current = false
     excalidrawSceneRef.current = null
@@ -293,8 +486,9 @@ function MarkdownTextDocumentRuntimeBlock({
     ignoreInitialExcalidrawChangeRef.current = true
     try {
       const data = await readMarkdownDocument(path, { includeHash: false })
+      const nextMarkdownContent = isExcalidrawDoc ? data.content : splitMarkdownAnnotationDocumentBlock(data.content).body
       setContent(data.content)
-      setDraft(seedDraft && !isExcalidrawDoc ? data.content : '')
+      setDraft(seedDraft && !isExcalidrawDoc ? nextMarkdownContent : '')
       setBaseMtime(data.mtime)
       setBaseCtime(data.ctime)
       setBaseHash(data.hash)
@@ -382,7 +576,19 @@ function MarkdownTextDocumentRuntimeBlock({
   const isEditing = mode === 'edit'
   const effectiveTopBarHidden = topBarHiddenProp !== undefined ? topBarHiddenProp : topBarHiddenInViewMode
   const hideTopBarInView = !isEditing && effectiveTopBarHidden
-  const hasTextChanges = isEditing && content !== null && draft !== content
+  const annotationDocument = useMemo(
+    () => (isExcalidrawDoc || content === null ? null : splitMarkdownAnnotationDocumentBlock(content)),
+    [content, isExcalidrawDoc],
+  )
+  const persistedMarkdownContent = annotationDocument?.body ?? (content ?? '')
+  const annotationStore = annotationDocument?.store ?? { version: 1, annotations: [] }
+  const annotationParseError = annotationDocument?.parseError ?? null
+  const annotationRawFenceBlock = annotationDocument?.rawFenceBlock ?? null
+  const activeAnnotation = useMemo(
+    () => (activeAnnotationAnchorId ? getMarkdownAnchorAnnotationBlock(annotationStore, activeAnnotationAnchorId) : null),
+    [activeAnnotationAnchorId, annotationStore],
+  )
+  const hasTextChanges = isEditing && content !== null && draft !== persistedMarkdownContent
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
   const saveButtonLabel = saving ? 'Saving...' : manualSaveFeedbackVisible ? 'Saved' : 'Save'
   const saveButtonClassName = cn(
@@ -394,15 +600,23 @@ function MarkdownTextDocumentRuntimeBlock({
   )
   const shouldPadViewerContent = !isEditing && !isExcalidrawDoc
   const showMiniNavRail = layout.mode === 'desktop' && !layout.isCapacitorNative
+  const persistedFrontmatterSplit = useMemo(
+    () => splitFrontmatter(persistedMarkdownContent),
+    [persistedMarkdownContent],
+  )
   const displayContent = useMemo(
-    () => (content !== null ? stripFrontmatter(content) : ''),
-    [content],
+    () => stripFrontmatter(persistedMarkdownContent),
+    [persistedMarkdownContent],
+  )
+  const activeViewerMarkdownBody = useMemo(
+    () => (viewerAnnotateMode && viewerAnnotateSessionBody !== null ? viewerAnnotateSessionBody : displayContent),
+    [displayContent, viewerAnnotateMode, viewerAnnotateSessionBody],
   )
   const displayDraft = useMemo(
     () => stripFrontmatter(draft),
     [draft],
   )
-  const frontmatterMetaSource = isEditing ? draft : (content ?? '')
+  const frontmatterMetaSource = isEditing ? draft : persistedMarkdownContent
   const frontmatterMeta = useMemo(
     () => buildFrontmatterMetaState(frontmatterMetaSource),
     [frontmatterMetaSource],
@@ -514,7 +728,10 @@ function MarkdownTextDocumentRuntimeBlock({
     }
     applyStewardSuggestionToDraft(suggestion)
   }, [applyStewardSuggestionToDraft, frontmatterMeta.parseError])
-  const markdownRemarkPlugins = useMemo(() => [remarkGfm, remarkObsidianWikilinksOrch], [])
+  const markdownRemarkPlugins = useMemo(
+    () => [remarkGfm, remarkObsidianWikilinksOrch, remarkMarkdownSourceSpansBlock],
+    [],
+  )
   const renderedViewMarkdown = useMemo(
     () => (
       editorSettings.preserveNewlinesInViewMode
@@ -527,6 +744,70 @@ function MarkdownTextDocumentRuntimeBlock({
   type MarkdownAnchorProps = ComponentPropsWithoutRef<'a'> & { node?: unknown }
   type MarkdownParagraphProps = ComponentPropsWithoutRef<'p'> & { node?: unknown }
   type MarkdownImageProps = ComponentPropsWithoutRef<'img'> & { node?: unknown }
+  type MarkdownHeadingProps = ComponentPropsWithoutRef<'h1'> & { node?: unknown }
+  type MarkdownListItemProps = ComponentPropsWithoutRef<'li'> & { node?: unknown }
+  type MarkdownBlockquoteProps = ComponentPropsWithoutRef<'blockquote'> & { node?: unknown }
+  type MarkdownSpanProps = ComponentPropsWithoutRef<'span'> & { node?: unknown }
+
+  async function openViewerAnnotationForBlockBlock(blockEndOffset: number | null) {
+    if (blockEndOffset === null || annotationParseError) return
+    const { frontmatter } = persistedFrontmatterSplit
+    const body = activeViewerMarkdownBody
+    const existingAnchorId = findMarkdownAnchorAfterOffsetBlock(body, blockEndOffset)
+    if (existingAnchorId) {
+      setActiveAnnotationAnchorId(existingAnchorId)
+      setAnnotationSaveError(null)
+      return
+    }
+
+    const anchorId = buildMarkdownAnchorIdBlock()
+    const patch = insertMarkdownAnchorAfterBlockOffsetBlock(body, blockEndOffset, anchorId)
+    const didSave = await persistViewerMarkdownContent(`${frontmatter}${patch.value}`)
+    if (didSave) {
+      setViewerAnnotateSessionBody(patch.value)
+      setActiveAnnotationAnchorId(anchorId)
+      setAnnotationSaveError(null)
+    }
+  }
+
+  function renderViewerNoteActionBlock(blockEndOffset: number | null): ReactNode {
+    if (!viewerAnnotateMode || blockEndOffset === null) return null
+    const existingAnchorId = findMarkdownAnchorAfterOffsetBlock(activeViewerMarkdownBody, blockEndOffset)
+    return (
+      <div className="mt-1 flex justify-end">
+        <button
+          type="button"
+          onClick={() => { void openViewerAnnotationForBlockBlock(blockEndOffset) }}
+          disabled={annotationSaving || !!annotationParseError}
+          className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-background/70 px-2 py-1 text-[11px] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Pencil className="h-3 w-3" />
+          {existingAnchorId ? 'Edit note' : 'Add note'}
+        </button>
+      </div>
+    )
+  }
+
+  function resolveViewerHighlightRangeFromPointBlock(clientX: number, clientY: number): {
+    offset: number
+    blockElement: HTMLElement
+  } | null {
+    const root = markdownViewRootRef.current
+    if (!root) return null
+    const caret = getCaretAtClientPointBlock(clientX, clientY)
+    if (!caret) return null
+    if (!root.contains(caret.node)) return null
+    const blockElement = findClosestElementBlock(caret.node, '[data-md-selectable-block="true"]')
+    const spanElement = findClosestElementBlock(caret.node, '[data-md-source-start]')
+    if (!blockElement || !spanElement) return null
+    const rawOffset = resolveRawMarkdownOffsetFromSpanBlock(spanElement, caret.node, caret.offset)
+    if (rawOffset === null) return null
+    return {
+      offset: rawOffset,
+      blockElement,
+    }
+  }
+
   const markdownComponents = useMemo(() => ({
     a: ({ href, children, ...props }: MarkdownAnchorProps) => {
       const isWikilink = isThinkingSpaceWikilinkHrefOrch(href)
@@ -594,12 +875,114 @@ function MarkdownTextDocumentRuntimeBlock({
         </a>
       )
     },
-    p: ({ children, ...props }: MarkdownParagraphProps) => {
+    p: ({ children, node, ...props }: MarkdownParagraphProps) => {
       const text = extractTextFromNode(children).replace(/\u00a0/g, ' ').trim()
       if (isBlankLineMarkerText(text)) {
         return <div className="ltm-markdown-blank-line" aria-hidden="true" />
       }
-      return <p {...props}>{children}</p>
+      const anchorId = parseMarkdownAnchorIdBlock(text)
+      if (anchorId) {
+        return (
+          <MarkdownAnchorAnnotationBlock
+            anchorId={anchorId}
+            annotation={getMarkdownAnchorAnnotationBlock(annotationStore, anchorId)}
+            disabled={!!annotationParseError}
+            disabledReason={annotationParseError ? 'Fix the annotation block JSON before adding or editing notes.' : null}
+            hideWhenEmpty={!viewerAnnotateMode}
+            onOpenEditor={(nextAnchorId) => {
+              setActiveAnnotationAnchorId(nextAnchorId)
+              setAnnotationSaveError(null)
+            }}
+          />
+        )
+      }
+      const blockEndOffset = readMarkdownNodeEndOffsetBlock(node)
+      return (
+        <div>
+          <p {...props} data-md-selectable-block="true">{children}</p>
+          {renderViewerNoteActionBlock(blockEndOffset)}
+        </div>
+      )
+    },
+    h1: ({ children, node, ...props }: MarkdownHeadingProps) => {
+      const blockEndOffset = readMarkdownNodeEndOffsetBlock(node)
+      return (
+        <div>
+          <h1 {...props} data-md-selectable-block="true">{children}</h1>
+          {renderViewerNoteActionBlock(blockEndOffset)}
+        </div>
+      )
+    },
+    h2: ({ children, node, ...props }: MarkdownHeadingProps) => {
+      const blockEndOffset = readMarkdownNodeEndOffsetBlock(node)
+      return (
+        <div>
+          <h2 {...props} data-md-selectable-block="true">{children}</h2>
+          {renderViewerNoteActionBlock(blockEndOffset)}
+        </div>
+      )
+    },
+    h3: ({ children, node, ...props }: MarkdownHeadingProps) => {
+      const blockEndOffset = readMarkdownNodeEndOffsetBlock(node)
+      return (
+        <div>
+          <h3 {...props} data-md-selectable-block="true">{children}</h3>
+          {renderViewerNoteActionBlock(blockEndOffset)}
+        </div>
+      )
+    },
+    h4: ({ children, node, ...props }: MarkdownHeadingProps) => {
+      const blockEndOffset = readMarkdownNodeEndOffsetBlock(node)
+      return (
+        <div>
+          <h4 {...props} data-md-selectable-block="true">{children}</h4>
+          {renderViewerNoteActionBlock(blockEndOffset)}
+        </div>
+      )
+    },
+    h5: ({ children, node, ...props }: MarkdownHeadingProps) => {
+      const blockEndOffset = readMarkdownNodeEndOffsetBlock(node)
+      return (
+        <div>
+          <h5 {...props} data-md-selectable-block="true">{children}</h5>
+          {renderViewerNoteActionBlock(blockEndOffset)}
+        </div>
+      )
+    },
+    h6: ({ children, node, ...props }: MarkdownHeadingProps) => {
+      const blockEndOffset = readMarkdownNodeEndOffsetBlock(node)
+      return (
+        <div>
+          <h6 {...props} data-md-selectable-block="true">{children}</h6>
+          {renderViewerNoteActionBlock(blockEndOffset)}
+        </div>
+      )
+    },
+    li: ({ children, ...props }: MarkdownListItemProps) => <li {...props} data-md-selectable-block="true">{children}</li>,
+    blockquote: ({ children, node, ...props }: MarkdownBlockquoteProps) => {
+      const blockEndOffset = readMarkdownNodeEndOffsetBlock(node)
+      return (
+        <div>
+          <blockquote {...props} data-md-selectable-block="true">{children}</blockquote>
+          {renderViewerNoteActionBlock(blockEndOffset)}
+        </div>
+      )
+    },
+    span: ({ children, ...props }: MarkdownSpanProps) => {
+      const dataProps = props as MarkdownSpanProps & {
+        'data-md-source-start'?: string | number
+        'data-md-source-end'?: string | number
+      }
+      const sourceStart = Number(dataProps['data-md-source-start'] ?? '')
+      const sourceEnd = Number(dataProps['data-md-source-end'] ?? '')
+      if (typeof children === 'string' && Number.isFinite(sourceStart) && Number.isFinite(sourceEnd)) {
+        return (
+          <span {...props}>
+            {renderHighlightedSourceSpanBlock(children, sourceStart, `span-${sourceStart}`, viewerHighlightPresets)}
+          </span>
+        )
+      }
+      return <span {...props}>{children}</span>
     },
     img: ({ src, alt }: MarkdownImageProps) => (
       <MarkdownWikilinkImageBlock
@@ -608,7 +991,163 @@ function MarkdownTextDocumentRuntimeBlock({
         currentPath={path}
       />
     ),
-  }), [openLinkedPath, path])
+  }), [activeViewerMarkdownBody, annotationParseError, annotationSaving, annotationStore, content, openLinkedPath, path, viewerAnnotateMode, viewerHighlightPresets])
+
+  const clearViewerHighlightSelection = useCallback(() => {
+    setViewerHighlightSelection(null)
+    setViewerExistingHighlightTarget(null)
+    setViewerHighlightError(null)
+  }, [])
+
+  const captureViewerHighlightSelection = useCallback(() => {
+    if (isEditing || isExcalidrawDoc || pendingFullRender || viewerHighlightSaving) return
+    if (Date.now() < viewerSuppressSelectionCaptureUntilRef.current) return
+    const root = markdownViewRootRef.current
+    const selection = window.getSelection()
+    if (!root || !selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      clearViewerHighlightSelection()
+      return
+    }
+
+    const range = selection.getRangeAt(0)
+    const selectedText = selection.toString()
+    if (!selectedText.trim()) {
+      clearViewerHighlightSelection()
+      return
+    }
+
+    if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) {
+      clearViewerHighlightSelection()
+      return
+    }
+
+    const startBlock = findClosestElementBlock(range.startContainer, '[data-md-selectable-block="true"]')
+    const endBlock = findClosestElementBlock(range.endContainer, '[data-md-selectable-block="true"]')
+    if (!startBlock || !endBlock || startBlock !== endBlock) {
+      clearViewerHighlightSelection()
+      return
+    }
+
+    const startSpan = findClosestElementBlock(range.startContainer, '[data-md-source-start]')
+    const endSpan = findClosestElementBlock(range.endContainer, '[data-md-source-start]')
+    if (!startSpan || !endSpan) {
+      clearViewerHighlightSelection()
+      return
+    }
+
+    const startRawOffset = resolveRawMarkdownOffsetFromSpanBlock(startSpan, range.startContainer, range.startOffset)
+    const endRawOffset = resolveRawMarkdownOffsetFromSpanBlock(endSpan, range.endContainer, range.endOffset)
+    if (startRawOffset === null || endRawOffset === null) {
+      clearViewerHighlightSelection()
+      return
+    }
+
+    const start = Math.min(startRawOffset, endRawOffset)
+    const end = Math.max(startRawOffset, endRawOffset)
+    if (end <= start) {
+      clearViewerHighlightSelection()
+      return
+    }
+
+    const rect = range.getBoundingClientRect()
+    const nextSelection = {
+      start,
+      end,
+      text: selectedText,
+      top: rect.top + window.scrollY - 44,
+      left: rect.left + window.scrollX + (rect.width / 2),
+    }
+
+    setViewerHighlightSelection(nextSelection)
+    setViewerExistingHighlightTarget(null)
+  }, [
+    clearViewerHighlightSelection,
+    isEditing,
+    isExcalidrawDoc,
+    pendingFullRender,
+    viewerHighlightSaving,
+  ])
+
+  useEffect(() => {
+    if (viewerAnnotateMode) return
+    viewerPencilHighlightGestureRef.current = null
+    clearViewerHighlightSelection()
+  }, [clearViewerHighlightSelection, viewerAnnotateMode])
+
+  useEffect(() => {
+    if (!viewerAnnotateMode || isEditing || isExcalidrawDoc || pendingFullRender) return undefined
+    let cancelled = false
+    void subscribeNativePencilBridgeOrch({
+      onMetrics: (event) => {
+        const clientX = event.locationX
+        const clientY = event.locationY
+        if (typeof clientX !== 'number' || typeof clientY !== 'number') return
+        if (event.phase === 'began') {
+          viewerSuppressSelectionCaptureUntilRef.current = Date.now() + 600
+          const start = resolveViewerHighlightRangeFromPointBlock(clientX, clientY)
+          viewerPencilHighlightGestureRef.current = start ? {
+            start: start.offset,
+            end: start.offset,
+            blockElement: start.blockElement,
+          } : null
+          return
+        }
+
+        const point = resolveViewerHighlightRangeFromPointBlock(clientX, clientY)
+        const gesture = viewerPencilHighlightGestureRef.current
+        if (!gesture) {
+          if (point && event.phase === 'moved') {
+            viewerPencilHighlightGestureRef.current = {
+              start: point.offset,
+              end: point.offset,
+              blockElement: point.blockElement,
+            }
+          }
+          if (event.phase === 'ended' || event.phase === 'cancelled') {
+            viewerPencilHighlightGestureRef.current = null
+          }
+          return
+        }
+        if (point && point.blockElement === gesture.blockElement) {
+          gesture.end = point.offset
+        }
+
+        if (event.phase === 'ended' || event.phase === 'cancelled') {
+          viewerSuppressSelectionCaptureUntilRef.current = Date.now() + 300
+          const completed = viewerPencilHighlightGestureRef.current
+          viewerPencilHighlightGestureRef.current = null
+          if (!completed) return
+          const start = Math.min(completed.start, completed.end)
+          const end = Math.max(completed.start, completed.end)
+          if (end <= start) return
+          void applyViewerHighlightRangeBlock(start, end, activeViewerHighlightPresetId ?? undefined)
+        }
+      },
+    })
+      .then((subscription) => {
+        if (!subscription) return
+        if (cancelled) {
+          void subscription.stop()
+          return
+        }
+        viewerPencilBridgeStopRef.current = () => subscription.stop()
+      })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+      viewerPencilHighlightGestureRef.current = null
+      const stop = viewerPencilBridgeStopRef.current
+      viewerPencilBridgeStopRef.current = null
+      if (stop) void stop()
+    }
+  }, [
+    activeViewerHighlightPresetId,
+    isEditing,
+    isExcalidrawDoc,
+    pendingFullRender,
+    viewerAnnotateMode,
+  ])
 
   useEffect(() => {
     if (!hasChanges || !manualSaveFeedbackVisible) return
@@ -636,9 +1175,9 @@ function MarkdownTextDocumentRuntimeBlock({
     const cancelDeferred = scheduleDeferredWork(() => {
       if (cancelled) return
       setMeta({
-        lines: content.split('\n').length,
-        words: content.split(/\s+/).filter(Boolean).length,
-        headings: (content.match(/^#{1,6}\s/gm) || []).length,
+        lines: persistedMarkdownContent.split('\n').length,
+        words: persistedMarkdownContent.split(/\s+/).filter(Boolean).length,
+        headings: (persistedMarkdownContent.match(/^#{1,6}\s/gm) || []).length,
         size: formatBytes(sizeBytes),
         createdAt: formatUnixTimestampForMeta(baseCtime),
         updatedAt: formatUnixTimestampForMeta(baseMtime),
@@ -649,27 +1188,27 @@ function MarkdownTextDocumentRuntimeBlock({
       cancelled = true
       cancelDeferred()
     }
-  }, [baseCtime, baseMtime, content, showMeta, sizeBytes])
+  }, [baseCtime, baseMtime, content, persistedMarkdownContent, showMeta, sizeBytes])
 
   useEffect(() => {
     if (content === null || isEditing || isExcalidrawDoc) {
       setPendingFullRender(false)
-      setViewMarkdown(displayContent)
+      setViewMarkdown(activeViewerMarkdownBody)
       return
     }
 
-    if (displayContent.length <= DEFERRED_RENDER_CHARS) {
+    if (activeViewerMarkdownBody.length <= DEFERRED_RENDER_CHARS) {
       setPendingFullRender(false)
-      setViewMarkdown(displayContent)
+      setViewMarkdown(activeViewerMarkdownBody)
       return
     }
 
     let cancelled = false
-    setViewMarkdown(displayContent.slice(0, DEFERRED_RENDER_CHARS))
+    setViewMarkdown(activeViewerMarkdownBody.slice(0, DEFERRED_RENDER_CHARS))
     setPendingFullRender(true)
     const cancelDeferred = scheduleDeferredWork(() => {
       if (cancelled) return
-      setViewMarkdown(displayContent)
+      setViewMarkdown(activeViewerMarkdownBody)
       setPendingFullRender(false)
     })
 
@@ -677,7 +1216,7 @@ function MarkdownTextDocumentRuntimeBlock({
       cancelled = true
       cancelDeferred()
     }
-  }, [content, displayContent, isEditing, isExcalidrawDoc, path])
+  }, [activeViewerMarkdownBody, content, isEditing, isExcalidrawDoc, path])
 
   const handleExcalidrawSceneChange = useCallback((scene: ParsedExcalidrawScene) => {
     if (!isIosSurface) {
@@ -770,8 +1309,13 @@ function MarkdownTextDocumentRuntimeBlock({
       preserveExcalidrawCrashMarkerOnUnmountRef.current = true
       markExcalidrawCrashStageBlock(path, 'edit_requested')
     }
+    setViewerHighlightSelection(null)
+    setViewerExistingHighlightTarget(null)
+    setViewerHighlightError(null)
+    setViewerAnnotateSessionBody(null)
+    setViewerAnnotateMode(false)
     setMode('edit')
-    setDraft(isExcalidrawDoc ? '' : (content ?? ''))
+    setDraft(isExcalidrawDoc ? '' : persistedMarkdownContent)
     markdownEditBaselineRef.current = isExcalidrawDoc
       ? null
       : { content: content ?? '' }
@@ -799,6 +1343,9 @@ function MarkdownTextDocumentRuntimeBlock({
     setShowAiPanel(false)
     setAutoSaving(false)
     setNavigationError(null)
+    setViewerHighlightSelection(null)
+    setViewerExistingHighlightTarget(null)
+    setViewerAnnotateSessionBody(null)
     setHasExcalidrawChanges(false)
     setExcalidrawImmersive(false)
     excalidrawSceneRef.current = null
@@ -813,7 +1360,7 @@ function MarkdownTextDocumentRuntimeBlock({
     preserveExcalidrawCrashMarkerOnUnmountRef.current = false
     clearExcalidrawCrashMarkerBlock()
     setContent(conflict.currentContent)
-    setDraft(isExcalidrawDoc ? '' : conflict.currentContent)
+    setDraft(isExcalidrawDoc ? '' : splitMarkdownAnnotationDocumentBlock(conflict.currentContent).body)
     setBaseMtime(conflict.currentMtime)
     setBaseHash(conflict.currentHash)
     setSaveError(null)
@@ -827,9 +1374,13 @@ function MarkdownTextDocumentRuntimeBlock({
   const saveMarkdownDraft = useCallback(async (_reason: 'auto' | 'manual' = 'manual'): Promise<boolean> => {
     if (markdownSaveInFlightRef.current) return markdownSavePromiseRef.current ?? false
     if (isExcalidrawDoc || content === null || baseMtime === null) return false
-    if (draft === content) return true
-
     const draftToSave = draft
+    const rawDraftToSave = composeMarkdownAnnotationDocumentBlock(draftToSave, annotationStore, {
+      preserveRawFenceBlock: annotationRawFenceBlock,
+      preserveParseError: annotationParseError,
+    })
+    if (rawDraftToSave === content) return true
+
     const savePromise = (async () => {
       markdownSaveInFlightRef.current = true
       setSaveError(null)
@@ -837,18 +1388,18 @@ function MarkdownTextDocumentRuntimeBlock({
       try {
         const result = await saveMarkdownDocument({
           path,
-          content: draftToSave,
+          content: rawDraftToSave,
           baseMtime,
           baseHash,
           baseContent: content,
         })
-        setContent(draftToSave)
+        setContent(rawDraftToSave)
         setBaseMtime(result.mtime)
         setBaseCtime(result.ctime)
         setBaseHash(result.hash)
         setSizeBytes(result.size)
         // Keep cancel baseline aligned with the latest persisted draft, including auto-saves.
-        markdownEditBaselineRef.current = { content: draftToSave }
+        markdownEditBaselineRef.current = { content: rawDraftToSave }
         onSaved?.(result)
         return true
       } catch (err) {
@@ -867,7 +1418,225 @@ function MarkdownTextDocumentRuntimeBlock({
 
     markdownSavePromiseRef.current = savePromise
     return savePromise
-  }, [baseHash, baseMtime, content, draft, isExcalidrawDoc, onSaved, path])
+  }, [annotationParseError, annotationRawFenceBlock, annotationStore, baseHash, baseMtime, content, draft, isExcalidrawDoc, onSaved, path])
+
+  const persistAnnotationStore = useCallback(async (
+    nextStore: MarkdownAnnotationStoreBlock,
+  ): Promise<boolean> => {
+    if (isExcalidrawDoc || content === null || baseMtime === null) return false
+    if (annotationParseError) {
+      setAnnotationSaveError(`Annotation block is invalid: ${annotationParseError}`)
+      return false
+    }
+
+    const nextContent = composeMarkdownAnnotationDocumentBlock(persistedMarkdownContent, nextStore, {
+      preserveRawFenceBlock: annotationRawFenceBlock,
+      preserveParseError: annotationParseError,
+    })
+
+    if (nextContent === content) {
+      setAnnotationSaveError(null)
+      return true
+    }
+
+    setAnnotationSaving(true)
+    setAnnotationSaveError(null)
+    try {
+      const result = await saveMarkdownDocument({
+        path,
+        content: nextContent,
+        baseMtime,
+        baseHash,
+        baseContent: content,
+      })
+      setContent(nextContent)
+      setBaseMtime(result.mtime)
+      setBaseCtime(result.ctime)
+      setBaseHash(result.hash)
+      setSizeBytes(result.size)
+      markdownEditBaselineRef.current = { content: nextContent }
+      onSaved?.(result)
+      return true
+    } catch (err) {
+      if (err instanceof MarkdownDocumentConflictError) {
+        setConflict(err)
+        setAnnotationSaveError(err.message)
+      } else {
+        setAnnotationSaveError(err instanceof Error ? err.message : 'Failed to save annotation')
+      }
+      return false
+    } finally {
+      setAnnotationSaving(false)
+    }
+  }, [annotationParseError, annotationRawFenceBlock, baseHash, baseMtime, content, isExcalidrawDoc, onSaved, path, persistedMarkdownContent])
+
+  const handleSaveAnnotation = useCallback(async (
+    anchorId: string,
+    draftAnnotation: {
+      text: string
+      transcript: string
+      ocrText: string
+      ocrStatus: MarkdownAnchorAnnotationModelBlock['ocrStatus']
+      ocrUpdatedAt: string | null
+      strokes: MarkdownAnchorAnnotationModelBlock['strokes']
+    },
+  ) => {
+    const now = new Date().toISOString()
+    const existing = getMarkdownAnchorAnnotationBlock(annotationStore, anchorId)
+    const nextAnnotation: MarkdownAnchorAnnotationModelBlock = {
+      id: existing?.id ?? buildMarkdownAnnotationIdBlock(),
+      anchorId,
+      text: draftAnnotation.text,
+      transcript: draftAnnotation.transcript,
+      ocrText: draftAnnotation.ocrText,
+      ocrStatus: draftAnnotation.ocrStatus,
+      ocrUpdatedAt: draftAnnotation.ocrUpdatedAt,
+      strokes: draftAnnotation.strokes,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    }
+    const didSave = await persistAnnotationStore(upsertMarkdownAnchorAnnotationBlock(annotationStore, nextAnnotation))
+    if (didSave) {
+      setActiveAnnotationAnchorId(null)
+      setAnnotationSaveError(null)
+    }
+  }, [annotationStore, persistAnnotationStore])
+
+  const handleDeleteAnnotation = useCallback(async () => {
+    if (!activeAnnotationAnchorId) return
+    const didSave = await persistAnnotationStore(removeMarkdownAnchorAnnotationBlock(annotationStore, activeAnnotationAnchorId))
+    if (didSave) {
+      setActiveAnnotationAnchorId(null)
+      setAnnotationSaveError(null)
+    }
+  }, [activeAnnotationAnchorId, annotationStore, persistAnnotationStore])
+
+  const persistViewerMarkdownContent = useCallback(async (nextPersistedMarkdownContent: string): Promise<boolean> => {
+    if (isExcalidrawDoc || content === null || baseMtime === null) return false
+    const nextContent = composeMarkdownAnnotationDocumentBlock(nextPersistedMarkdownContent, annotationStore, {
+      preserveRawFenceBlock: annotationRawFenceBlock,
+      preserveParseError: annotationParseError,
+    })
+    if (nextContent === content) return true
+
+    setViewerHighlightSaving(true)
+    setViewerHighlightError(null)
+    try {
+      const result = await saveMarkdownDocument({
+        path,
+        content: nextContent,
+        baseMtime,
+        baseHash,
+        baseContent: content,
+      })
+      setContent(nextContent)
+      setBaseMtime(result.mtime)
+      setBaseCtime(result.ctime)
+      setBaseHash(result.hash)
+      setSizeBytes(result.size)
+      markdownEditBaselineRef.current = { content: nextContent }
+      onSaved?.(result)
+      return true
+    } catch (err) {
+      if (err instanceof MarkdownDocumentConflictError) {
+        setConflict(err)
+        setViewerHighlightError(err.message)
+      } else {
+        setViewerHighlightError(err instanceof Error ? err.message : 'Failed to save highlight')
+      }
+      return false
+    } finally {
+      setViewerHighlightSaving(false)
+    }
+  }, [annotationParseError, annotationRawFenceBlock, annotationStore, baseHash, baseMtime, content, isExcalidrawDoc, onSaved, path])
+
+  async function applyViewerHighlightRangeBlock(
+    start: number,
+    end: number,
+    presetIdOverride?: string,
+  ) {
+    if (end <= start) return false
+    const nextBody = insertMarkdownHighlightAtRangeBlock(
+      activeViewerMarkdownBody,
+      start,
+      end,
+      presetIdOverride ?? activeViewerHighlightPresetId,
+    )
+    setViewerAnnotateSessionBody(nextBody)
+    setViewerHighlightSelection(null)
+    setViewerExistingHighlightTarget(null)
+    setViewerHighlightError(null)
+    window.getSelection()?.removeAllRanges()
+    return true
+  }
+
+  const handleApplyViewerHighlight = useCallback(async (presetIdOverride?: string) => {
+    if (viewerExistingHighlightTarget) {
+      const nextBody = updateMarkdownHighlightPresetByVisibleOffsetBlock(
+        activeViewerMarkdownBody,
+        viewerExistingHighlightTarget.offset,
+        presetIdOverride ?? activeViewerHighlightPresetId ?? null,
+      )
+      setViewerAnnotateSessionBody(nextBody)
+      setViewerExistingHighlightTarget((current) => current ? {
+        ...current,
+        presetId: presetIdOverride ?? activeViewerHighlightPresetId ?? null,
+      } : null)
+      setViewerHighlightSelection(null)
+      setViewerHighlightError(null)
+      return
+    }
+    if (!viewerHighlightSelection) return
+    await applyViewerHighlightRangeBlock(
+      viewerHighlightSelection.start,
+      viewerHighlightSelection.end,
+      presetIdOverride ?? activeViewerHighlightPresetId ?? undefined,
+    )
+  }, [activeViewerHighlightPresetId, activeViewerMarkdownBody, viewerExistingHighlightTarget, viewerHighlightSelection])
+
+  const handleRemoveExistingViewerHighlight = useCallback(() => {
+    if (!viewerExistingHighlightTarget) return
+    const nextBody = removeMarkdownHighlightByVisibleOffsetBlock(
+      activeViewerMarkdownBody,
+      viewerExistingHighlightTarget.offset,
+    )
+    setViewerAnnotateSessionBody(nextBody)
+    setViewerExistingHighlightTarget(null)
+    setViewerHighlightSelection(null)
+    setViewerHighlightError(null)
+  }, [activeViewerMarkdownBody, viewerExistingHighlightTarget])
+
+  const toggleViewerAnnotateMode = useCallback(async () => {
+    if (viewerHighlightSaving) return
+    if (!viewerAnnotateMode) {
+      setViewerAnnotateSessionBody(displayContent)
+      setViewerAnnotateMode(true)
+      setViewerHighlightSelection(null)
+      setViewerExistingHighlightTarget(null)
+      setViewerHighlightError(null)
+      setShowMeta(false)
+      return
+    }
+
+    const nextBody = viewerAnnotateSessionBody ?? displayContent
+    if (nextBody !== displayContent) {
+      const didSave = await persistViewerMarkdownContent(`${persistedFrontmatterSplit.frontmatter}${nextBody}`)
+      if (!didSave) return
+    }
+    setViewerAnnotateMode(false)
+    setViewerAnnotateSessionBody(null)
+    setViewerHighlightSelection(null)
+    setViewerExistingHighlightTarget(null)
+    setViewerHighlightError(null)
+    window.getSelection()?.removeAllRanges()
+  }, [
+    displayContent,
+    persistedFrontmatterSplit.frontmatter,
+    persistViewerMarkdownContent,
+    viewerAnnotateMode,
+    viewerAnnotateSessionBody,
+    viewerHighlightSaving,
+  ])
 
   const handleSave = async () => {
     if (baseMtime === null) return
@@ -1107,7 +1876,24 @@ function MarkdownTextDocumentRuntimeBlock({
                 'flex shrink-0 items-center gap-1',
                 isIosPhone && 'w-full min-w-0 flex-wrap justify-start gap-1.5',
               )}>
-                <InfoPanelToggleButtonBlock active={showMeta} onToggle={() => setShowMeta(v => !v)} />
+                {!viewerAnnotateMode && (
+                  <InfoPanelToggleButtonBlock active={showMeta} onToggle={() => setShowMeta(v => !v)} />
+                )}
+
+                {!isEditing && !isExcalidrawDoc && (
+                  <button
+                    type="button"
+                    onClick={() => { void toggleViewerAnnotateMode() }}
+                    disabled={loading || !!error || viewerHighlightSaving}
+                    className={cn(
+                      'rounded-lg p-1.5 disabled:cursor-not-allowed disabled:opacity-50',
+                      viewerAnnotateMode ? 'bg-amber-100 text-amber-900 hover:bg-amber-200' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                    )}
+                    title={viewerAnnotateMode ? 'Exit annotation mode' : 'Enter annotation mode'}
+                  >
+                    <MarkupToolIconBlock className="h-4 w-4" />
+                  </button>
+                )}
 
                 {!isEditing && (
                   <button
@@ -1332,24 +2118,101 @@ function MarkdownTextDocumentRuntimeBlock({
             </div>
           )}
 
+          {!loading && !error && viewerHighlightError && (
+            <div className={cn(isIosPhone ? 'px-3 pt-2.5' : 'px-6 pt-4')}>
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {viewerHighlightError}
+              </div>
+            </div>
+          )}
+
+          {!loading && !error && !isExcalidrawDoc && annotationParseError && (
+            <div className={cn(isIosPhone ? 'px-3 pt-2.5' : 'px-6 pt-4')}>
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                Annotation metadata is invalid JSON. Highlights still render, but anchored note editing is disabled until the hidden annotation block is fixed.
+              </div>
+            </div>
+          )}
+
           {!loading && !error && content !== null && !isEditing && isExcalidrawDoc && (
             <ExcalidrawDocumentBlock content={content} filePath={path} onOpenPath={openLinkedPath} className="flex-1 min-h-0" />
           )}
 
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && (
             <div className={cn('space-y-2', isIosPhone ? 'px-5 py-5' : 'px-8 py-7')}>
+              {viewerAnnotateMode && (
+                <style>{`
+                  [data-markdown-nav-root].ltm-markdown-annotate-mode ::selection {
+                    background: var(--ltm-active-highlight-color);
+                    color: inherit;
+                  }
+                  [data-markdown-nav-root].ltm-markdown-annotate-mode mark::selection {
+                    background: var(--ltm-active-highlight-color);
+                    color: inherit;
+                  }
+                `}</style>
+              )}
               {pendingFullRender && (
                 <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                   Rendering full document...
                 </div>
               )}
               <div
+                ref={markdownViewRootRef}
                 className={cn(
                   'prose',
                   editorSettings.preserveSpacesInViewMode && 'ltm-markdown-preserve-spaces',
                   editorSettings.preserveNewlinesInViewMode && 'ltm-markdown-preserve-newlines',
+                  viewerAnnotateMode && 'ltm-markdown-annotate-mode',
                 )}
+                style={viewerAnnotateMode ? {
+                  ['--ltm-active-highlight-color' as string]: resolveMarkdownHighlightColorBlock(activeViewerHighlightPresetId, viewerHighlightPresets),
+                } : undefined}
                 data-markdown-nav-root
+                onMouseDownCapture={() => {
+                  if (!viewerAnnotateMode) return
+                  setViewerHighlightSelection(null)
+                  setViewerHighlightError(null)
+                }}
+                onTouchStartCapture={() => {
+                  if (!viewerAnnotateMode) return
+                  setViewerHighlightSelection(null)
+                  setViewerExistingHighlightTarget(null)
+                  setViewerHighlightError(null)
+                }}
+                onClickCapture={(event) => {
+                  if (!viewerAnnotateMode) return
+                  const target = event.target
+                  if (!(target instanceof HTMLElement)) return
+                  const highlightElement = target.closest('mark[data-md-source-start]')
+                  if (!(highlightElement instanceof HTMLElement)) return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  const start = Number(highlightElement.dataset.mdSourceStart ?? '')
+                  if (!Number.isFinite(start)) return
+                  const match = findMarkdownHighlightByVisibleOffsetBlock(activeViewerMarkdownBody, start)
+                  if (!match) return
+                  setViewerHighlightSelection(null)
+                  setViewerExistingHighlightTarget({
+                    offset: start,
+                    start: match.visibleStart,
+                    end: match.visibleEnd,
+                    text: match.visibleText,
+                    presetId: match.presetId,
+                  })
+                  setViewerHighlightError(null)
+                  window.getSelection()?.removeAllRanges()
+                }}
+                onMouseUp={() => {
+                  window.setTimeout(() => {
+                    captureViewerHighlightSelection()
+                  }, 0)
+                }}
+                onTouchEnd={() => {
+                  window.setTimeout(() => {
+                    captureViewerHighlightSelection()
+                  }, 0)
+                }}
               >
                 <ReactMarkdown
                   remarkPlugins={markdownRemarkPlugins}
@@ -1359,6 +2222,72 @@ function MarkdownTextDocumentRuntimeBlock({
                   {renderedViewMarkdown}
                 </ReactMarkdown>
               </div>
+              {viewerAnnotateMode && (
+                <div
+                  className={cn(
+                    'fixed z-[72]',
+                    isIosPhone ? 'right-3 top-[calc(var(--ltm-safe-top,0px)+7rem)]' : 'right-4 top-1/2 -translate-y-1/2',
+                  )}
+                >
+                  <div
+                    onMouseDown={(event) => event.preventDefault()}
+                    onTouchStart={(event) => event.preventDefault()}
+                    className="space-y-2"
+                  >
+                    <ExcalidrawHighlighterPresetPickerBlock
+                      presets={viewerHighlightPresets}
+                      activePresetId={activeViewerHighlightPresetId}
+                      onSelectPreset={(presetId) => {
+                        setActiveViewerHighlightPresetId(presetId)
+                        writeExcalidrawActivePresetIdOrch(presetId)
+                        if (viewerHighlightSelection) {
+                          void handleApplyViewerHighlight(presetId)
+                        }
+                      }}
+                      orientation="vertical"
+                    />
+                    {viewerExistingHighlightTarget && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveExistingViewerHighlight}
+                        className="w-full rounded-lg border border-destructive/40 bg-background/90 px-2 py-1 text-[11px] font-medium text-destructive shadow-sm"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {!viewerAnnotateMode && viewerHighlightSelection && (
+                <div
+                  className="fixed z-[72] -translate-x-1/2"
+                  style={{
+                    top: Math.max(12, viewerHighlightSelection.top),
+                    left: viewerHighlightSelection.left,
+                  }}
+                >
+                  <div className="rounded-2xl border border-border/70 bg-background/95 p-2 shadow-lg backdrop-blur">
+                    <div className="px-1 pb-1 text-[11px] font-medium text-muted-foreground">
+                      {viewerHighlightSaving ? 'Highlighting…' : 'Choose highlighter'}
+                    </div>
+                    <div
+                      onMouseDown={(event) => event.preventDefault()}
+                      onTouchStart={(event) => event.preventDefault()}
+                    >
+                      <ExcalidrawHighlighterPresetPickerBlock
+                        presets={viewerHighlightPresets}
+                        activePresetId={activeViewerHighlightPresetId}
+                        onSelectPreset={(presetId) => {
+                          setActiveViewerHighlightPresetId(presetId)
+                          writeExcalidrawActivePresetIdOrch(presetId)
+                          void handleApplyViewerHighlight(presetId)
+                        }}
+                        orientation="horizontal"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1467,6 +2396,9 @@ function MarkdownTextDocumentRuntimeBlock({
 
         {!loading && !error && content !== null && isEditing && !isExcalidrawDoc && (
           <div className={cn('space-y-4', isIosPhone && 'px-3 pb-[calc(var(--ltm-safe-bottom,0px)+0.4rem)]')}>
+            <div className="rounded-lg border border-amber-300/50 bg-amber-50/70 px-3 py-2 text-xs text-amber-950/80">
+              Use <code>==highlight==</code> for text-native highlights. The editor’s <strong>Note anchor</strong> button inserts a <code>^anchor</code> line; save the document, then tap that anchor in view mode to add typed or Apple Pencil notes.
+            </div>
             <div data-ltm-edge-swipe-ignore="true">
               <MarkdownRichEditorBlock
                 value={displayDraft}
@@ -1488,6 +2420,9 @@ function MarkdownTextDocumentRuntimeBlock({
                 onRelatedThoughtOpenPathInNewTab={(relatedPath) => {
                   if (normalizePathForCompare(relatedPath) === normalizePathForCompare(path)) return
                   openFileInNewTabOrch(relatedPath)
+                }}
+                onInsertAnnotationAnchor={() => {
+                  setAnnotationSaveError(null)
                 }}
                 onChange={(next) => {
                   setDraft(`${draftFrontmatter}${next}`)
@@ -1521,6 +2456,26 @@ function MarkdownTextDocumentRuntimeBlock({
         )}
 
         </div>
+
+        {!isExcalidrawDoc && (
+          <MarkdownAnnotationEditorBlock
+            open={activeAnnotationAnchorId !== null}
+            anchorId={activeAnnotationAnchorId}
+            annotation={activeAnnotation}
+            saving={annotationSaving}
+            error={annotationSaveError}
+            onClose={() => {
+              if (annotationSaving) return
+              setActiveAnnotationAnchorId(null)
+              setAnnotationSaveError(null)
+            }}
+            onSave={(draftAnnotation) => {
+              if (!activeAnnotationAnchorId) return
+              void handleSaveAnnotation(activeAnnotationAnchorId, draftAnnotation)
+            }}
+            onDelete={activeAnnotation ? (() => { void handleDeleteAnnotation() }) : null}
+          />
+        )}
 
         {!loading && !error && content !== null && !isExcalidrawDoc && !pendingFullRender && showMiniNavRail && (
           <MarkdownMiniNavBlock

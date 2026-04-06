@@ -43,11 +43,15 @@ describe('headingAssignmentBlock', () => {
         'heading-1-alpha': 'High|Urgent',
         'heading-2-bravo': 'Low',
       },
+      {
+        'heading-1-alpha': ['Mindset', 'Compounders|Only'],
+        'heading-2-bravo': [],
+      },
     )
 
     expect(output).toBe([
-      'Alpha\\|One|High\\|Urgent',
-      'Bravo|Low',
+      'Alpha\\|One|High\\|Urgent|Mindset, Compounders\\|Only',
+      'Bravo|Low|',
     ].join('\n'))
   })
 

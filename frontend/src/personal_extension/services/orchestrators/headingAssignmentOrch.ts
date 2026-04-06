@@ -10,6 +10,11 @@ import {
   readHeadingAssignmentPresetStoreBlock,
   writeHeadingAssignmentPresetStoreBlock,
 } from '../lego_blocks/units/headingAssignmentPresetStorageBlock'
+import {
+  readHeadingAssignmentTagSettingsBlock,
+  writeHeadingAssignmentTagSettingsBlock,
+  type HeadingAssignmentTagSettingsBlock,
+} from '../lego_blocks/units/headingAssignmentTagStorageBlock'
 
 export interface HeadingAssignmentFileOptionOrch {
   path: string
@@ -53,6 +58,16 @@ export async function readHeadingAssignmentDocumentOrch(path: string): Promise<H
 export async function loadHeadingAssignmentPresetsOrch(): Promise<HeadingAssignmentPresetBlock[]> {
   const store = await readHeadingAssignmentPresetStoreBlock()
   return sortPresetsBlock(store.presets)
+}
+
+export function loadHeadingAssignmentTagSettingsOrch(): HeadingAssignmentTagSettingsBlock {
+  return readHeadingAssignmentTagSettingsBlock()
+}
+
+export function saveHeadingAssignmentTagSettingsOrch(
+  input: HeadingAssignmentTagSettingsBlock,
+): HeadingAssignmentTagSettingsBlock {
+  return writeHeadingAssignmentTagSettingsBlock(input)
 }
 
 export async function saveHeadingAssignmentPresetOrch(input: {
@@ -134,3 +149,4 @@ export async function saveHeadingAssignmentExportOrch(input: {
 }
 
 export { buildHeadingAssignmentDownloadNameBlock }
+export type { HeadingAssignmentTagSettingsBlock }

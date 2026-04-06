@@ -121,6 +121,49 @@ export function preserveExtraBlankLinesInMarkdown(content: string): string {
   return output.join('\n')
 }
 
+export function mapRenderedMarkdownOffsetToSourceOffset(source: string, renderedOffset: number): number {
+  if (renderedOffset <= 0) return 0
+  const normalizedSource = source.replace(/\r\n/g, '\n')
+  const rendered = preserveExtraBlankLinesInMarkdown(normalizedSource)
+  if (rendered === normalizedSource) return Math.min(renderedOffset, normalizedSource.length)
+
+  const mapping = new Array<number>(rendered.length + 1).fill(0)
+  let sourceIndex = 0
+  let renderedIndex = 0
+
+  while (renderedIndex < rendered.length) {
+    mapping[renderedIndex] = sourceIndex
+
+    if (rendered.startsWith(MARKDOWN_BLANK_LINE_MARKER, renderedIndex)) {
+      for (let index = 0; index < MARKDOWN_BLANK_LINE_MARKER.length; index += 1) {
+        mapping[renderedIndex + index] = sourceIndex
+      }
+      renderedIndex += MARKDOWN_BLANK_LINE_MARKER.length
+      continue
+    }
+
+    let skippedLegacy = false
+    for (const marker of LEGACY_MARKDOWN_BLANK_LINE_MARKERS) {
+      if (!rendered.startsWith(marker, renderedIndex)) continue
+      for (let index = 0; index < marker.length; index += 1) {
+        mapping[renderedIndex + index] = sourceIndex
+      }
+      renderedIndex += marker.length
+      skippedLegacy = true
+      break
+    }
+    if (skippedLegacy) continue
+
+    if (sourceIndex < normalizedSource.length && normalizedSource[sourceIndex] === rendered[renderedIndex]) {
+      sourceIndex += 1
+    }
+    renderedIndex += 1
+  }
+
+  mapping[rendered.length] = sourceIndex
+  return mapping[Math.min(renderedOffset, rendered.length)] ?? normalizedSource.length
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`

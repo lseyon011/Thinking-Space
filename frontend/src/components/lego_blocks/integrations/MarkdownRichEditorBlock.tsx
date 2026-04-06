@@ -8,6 +8,7 @@ import {
   Bold,
   Code,
   Heading1,
+  Highlighter,
   Italic,
   Link2,
   List,
@@ -78,6 +79,10 @@ import {
   type InlineTextDiffRenderedHunkBlock,
   type InlineTextDiffSessionBlock,
 } from '@/services/lego_blocks/units/inlineTextDiffBlock'
+import {
+  buildMarkdownAnchorIdBlock,
+  insertMarkdownAnchorAtSelectionBlock,
+} from '@/services/lego_blocks/units/markdownAnnotationBlock'
 import { cn } from '@/lib/utils'
 
 interface MarkdownRichEditorBlockProps {
@@ -127,6 +132,8 @@ interface MarkdownRichEditorBlockProps {
   onRelatedThoughtOpenPath?: (path: string) => void
   /** Called when user opens a related-thought result in a new app tab. */
   onRelatedThoughtOpenPathInNewTab?: (path: string) => void
+  /** Called after the editor inserts an anchored note marker. */
+  onInsertAnnotationAnchor?: (anchorId: string) => void
 }
 
 export interface MarkdownRichEditorBlockHandle {
@@ -501,6 +508,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   relatedThoughtsMinChars = 24,
   onRelatedThoughtOpenPath,
   onRelatedThoughtOpenPathInNewTab,
+  onInsertAnnotationAnchor,
 }, ref) {
   const { layout } = useUILayoutBlock()
   const { colorModeId } = useUIThemeBlock()
@@ -1210,7 +1218,7 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
     return nextExtensions
   }, [compactMobile, inlineDiffDecorations, inlineDiffRender, placeholder])
 
-  const applyPatch = (patchFactory: (text: string, from: number, to: number) => { value: string; start: number; end: number }) => {
+  const applyPatch = useCallback((patchFactory: (text: string, from: number, to: number) => { value: string; start: number; end: number }) => {
     const view = editorViewRef.current
     if (!view) return
     const state = view.state
@@ -1229,7 +1237,13 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
       },
     })
     view.focus()
-  }
+  }, [])
+
+  const insertAnnotationAnchor = useCallback(() => {
+    const anchorId = buildMarkdownAnchorIdBlock()
+    applyPatch((text, from, to) => insertMarkdownAnchorAtSelectionBlock(text, from, to, anchorId))
+    onInsertAnnotationAnchor?.(anchorId)
+  }, [applyPatch, onInsertAnnotationAnchor])
 
   const jumpToHeadingLine = useCallback((lineNumber: number) => {
     const view = editorViewRef.current
@@ -1340,6 +1354,9 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '**', '**', 'bold text'))} className={TOOLBAR_BTN} title="Bold">
             <Bold className="h-4 w-4" />
           </button>
+          <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '==', '==', 'highlighted text'))} className={TOOLBAR_BTN} title="Highlight">
+            <Highlighter className="h-4 w-4" />
+          </button>
           <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '*', '*', 'italic text'))} className={TOOLBAR_BTN} title="Italic">
             <Italic className="h-4 w-4" />
           </button>
@@ -1376,6 +1393,14 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
           </button>
           <button type="button" onClick={() => applyPatch((text, from, to) => prefixSelectionLines(text, from, to, (line, i) => `${i + 1}. ${line}`))} className={TOOLBAR_BTN} title="Numbered list">
             <ListOrdered className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={insertAnnotationAnchor}
+            className="rounded-md px-2 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Insert anchored note marker"
+          >
+            Note anchor
           </button>
           <MarkdownTableOfContentsBlock
             content={value}

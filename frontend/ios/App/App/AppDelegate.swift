@@ -2,6 +2,7 @@ import UIKit
 import Capacitor
 import UniformTypeIdentifiers
 import WebKit
+import Vision
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -105,6 +106,7 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
         
         bridge?.registerPluginInstance(FolderPickerPlugin())
         bridge?.registerPluginInstance(PencilEventsPlugin())
+        bridge?.registerPluginInstance(InkRecognitionPlugin())
         let webViewPlugin = InlineWebViewPlugin()
         inlineWebViewPlugin = webViewPlugin
         bridge?.registerPluginInstance(webViewPlugin)
@@ -476,6 +478,80 @@ public class FolderPickerPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDe
     public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
         pendingCall?.reject("User cancelled folder selection")
         pendingCall = nil
+    }
+}
+
+// MARK: - InkRecognitionPlugin
+
+/// Native Capacitor plugin that runs on-device handwriting OCR using Vision.
+@objc(InkRecognitionPlugin)
+public class InkRecognitionPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "InkRecognitionPlugin"
+    public let jsName = "InkRecognition"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "recognizeInk", returnType: CAPPluginReturnPromise),
+    ]
+
+    @objc func recognizeInk(_ call: CAPPluginCall) {
+        guard let imageDataUrl = call.getString("imageDataUrl"), let image = decodeImage(dataUrl: imageDataUrl) else {
+            call.reject("Invalid imageDataUrl")
+            return
+        }
+
+        guard let cgImage = image.cgImage else {
+            call.reject("Unable to decode image for recognition")
+            return
+        }
+
+        let request = VNRecognizeTextRequest { request, error in
+            if let error = error {
+                call.reject("Handwriting recognition failed: \(error.localizedDescription)")
+                return
+            }
+
+            let observations = request.results as? [VNRecognizedTextObservation] ?? []
+            let lines = observations.compactMap { observation in
+                observation.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            }.filter { !$0.isEmpty }
+
+            call.resolve([
+                "text": lines.joined(separator: "\n"),
+            ])
+        }
+
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        request.minimumTextHeight = 0.015
+
+        if #available(iOS 16.0, *) {
+            request.recognitionLanguages = ["en-US"]
+            request.automaticallyDetectsLanguage = true
+        } else {
+            request.recognitionLanguages = ["en-US"]
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            do {
+                try handler.perform([request])
+            } catch {
+                call.reject("Handwriting recognition failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func decodeImage(dataUrl: String) -> UIImage? {
+        let prefix = "base64,"
+        let payload: String
+        if let range = dataUrl.range(of: prefix) {
+            payload = String(dataUrl[range.upperBound...])
+        } else {
+            payload = dataUrl
+        }
+        guard let data = Data(base64Encoded: payload, options: [.ignoreUnknownCharacters]) else {
+            return nil
+        }
+        return UIImage(data: data)
     }
 }
 
