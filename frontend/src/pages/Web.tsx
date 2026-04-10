@@ -1,4 +1,5 @@
 import WebOrch from '@/components/orchestrators/WebOrch'
+import RouteActivityProviderBlock from '@/components/lego_blocks/units/RouteActivityProviderBlock'
 
 interface WebPageProps {
   active?: boolean
@@ -12,8 +13,10 @@ export default function Web({
   onSelectSiteId,
 }: WebPageProps) {
   return (
-    <div className="h-full min-h-0">
-      <WebOrch active={active} selectedSiteId={selectedSiteId} onSelectSiteId={onSelectSiteId} />
-    </div>
+    <RouteActivityProviderBlock active={active}>
+      <div className="h-full min-h-0">
+        <WebOrch active={active} selectedSiteId={selectedSiteId} onSelectSiteId={onSelectSiteId} />
+      </div>
+    </RouteActivityProviderBlock>
   )
 }

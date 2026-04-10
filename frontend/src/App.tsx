@@ -88,9 +88,13 @@ import {
   getJsonStorageItem,
   getStoredVaultRoot,
   getStorageItem,
-  setJsonStorageItem,
   setStorageItem,
 } from './services/orchestrators/storageOrch'
+import {
+  getWindowContextBlock,
+  subscribeWindowContextBlock,
+  type WindowContextBlock,
+} from './services/lego_blocks/units/windowContextBlock'
 import {
   readScheduledTaskLastAttemptByIdOrch,
   readSchedulerSettingsOrch,
@@ -335,6 +339,63 @@ function parseTabRoute(route: string): { pathname: string; search: URLSearchPara
   }
 }
 
+function getWindowScopedStorageKey(baseKey: string, sessionId: string): string {
+  return `${baseKey}:${sessionId}`
+}
+
+function getWindowScopedAppShellTabsStorageKey(windowContext: WindowContextBlock): string {
+  return getWindowScopedStorageKey(STORAGE_KEYS.appShellTabs, windowContext.sessionId)
+}
+
+function getWindowScopedAppShellActiveTabStorageKey(windowContext: WindowContextBlock): string {
+  return getWindowScopedStorageKey(STORAGE_KEYS.appShellActiveTabId, windowContext.sessionId)
+}
+
+function getDynamicStorageItemBlock(key: string): string | null {
+  try {
+    if (typeof localStorage === 'undefined') return null
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function setDynamicStorageItemBlock(key: string, value: string): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    localStorage.setItem(key, value)
+  } catch {
+    // Ignore storage write failures in restricted runtimes.
+  }
+}
+
+function getDynamicJsonStorageItemBlock<T>(key: string, fallback: T): T {
+  const raw = getDynamicStorageItemBlock(key)
+  if (!raw) return fallback
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
+function readScopedAppShellTabsBlock(windowContext: WindowContextBlock): AppWorkspaceTab[] {
+  const scopedTabs = getDynamicJsonStorageItemBlock<AppWorkspaceTab[]>(
+    getWindowScopedAppShellTabsStorageKey(windowContext),
+    [],
+  )
+  if (scopedTabs.length > 0) return scopedTabs
+  if (!windowContext.isMainWindow) return []
+  return getJsonStorageItem<AppWorkspaceTab[]>(STORAGE_KEYS.appShellTabs, [])
+}
+
+function readScopedAppShellActiveTabIdBlock(windowContext: WindowContextBlock): string {
+  const scopedActiveTabId = getDynamicStorageItemBlock(getWindowScopedAppShellActiveTabStorageKey(windowContext))
+  if (scopedActiveTabId) return scopedActiveTabId
+  if (!windowContext.isMainWindow) return ''
+  return getStorageItem(STORAGE_KEYS.appShellActiveTabId) ?? ''
+}
+
 function toTitleCase(value: string): string {
   return value
     .split(/[\s_-]+/)
@@ -537,7 +598,9 @@ function App() {
   const nativeChromeScrollTargetRef = useRef<EventTarget | null>(null)
   const nativeChromeLastScrollTopRef = useRef(0)
   const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
-  const activeWorkspaceTabIdRef = useRef(getStorageItem(STORAGE_KEYS.appShellActiveTabId) ?? '')
+  const initialWindowContextRef = useRef<WindowContextBlock>(getWindowContextBlock())
+  const [windowContext, setWindowContext] = useState<WindowContextBlock>(initialWindowContextRef.current)
+  const activeWorkspaceTabIdRef = useRef(readScopedAppShellActiveTabIdBlock(initialWindowContextRef.current))
   const currentRouteRef = useRef(currentRoute)
   const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerPanelSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -551,7 +614,7 @@ function App() {
     return false
   })
   const [workspaceTabs, setWorkspaceTabs] = useState<AppWorkspaceTab[]>(() => {
-    const savedTabs = getJsonStorageItem<AppWorkspaceTab[]>(STORAGE_KEYS.appShellTabs, [])
+    const savedTabs = readScopedAppShellTabsBlock(initialWindowContextRef.current)
       .filter((candidate) => (
         !!candidate
         && typeof candidate.id === 'string'
@@ -573,7 +636,7 @@ function App() {
     return [{ id: createWorkspaceTabId(), route: normalizeTabRoute(currentRoute) }]
   })
   const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState(
-    () => getStorageItem(STORAGE_KEYS.appShellActiveTabId) ?? '',
+    () => readScopedAppShellActiveTabIdBlock(initialWindowContextRef.current),
   )
   const [persistentChatTabIds, setPersistentChatTabIds] = useState<string[]>(
     () => workspaceTabs
@@ -614,6 +677,14 @@ function App() {
     thinkingSpace: location.pathname === '/thinking-space',
     webull: location.pathname === '/webull',
   }))
+  const appShellTabsStorageKey = useMemo(
+    () => getWindowScopedAppShellTabsStorageKey(windowContext),
+    [windowContext],
+  )
+  const appShellActiveTabStorageKey = useMemo(
+    () => getWindowScopedAppShellActiveTabStorageKey(windowContext),
+    [windowContext],
+  )
 
   // Pre-compute a Set of mounted tab IDs for O(1) lookups in persistent route rendering
   // (replaces O(n) workspaceTabs.some() calls inside .map() loops)
@@ -741,6 +812,19 @@ function App() {
     })
     return entries
   }, [baseCommandItems])
+
+  useEffect(() => {
+    return subscribeWindowContextBlock((nextContext) => {
+      setWindowContext((prev) => (
+        prev.browserWindowId === nextContext.browserWindowId
+          && prev.sessionId === nextContext.sessionId
+          && prev.isMainWindow === nextContext.isMainWindow
+          && prev.isBackgroundAuthority === nextContext.isBackgroundAuthority
+          ? prev
+          : nextContext
+      ))
+    })
+  }, [])
 
   const activeWorkspaceTab = useMemo(
     () => workspaceTabs.find(tab => tab.id === activeWorkspaceTabId) ?? null,
@@ -1995,7 +2079,7 @@ function App() {
   })
 
   useEffect(() => {
-    if (needsVaultSetup) return
+    if (needsVaultSetup || !windowContext.isBackgroundAuthority) return
     smartSync()
       .then((result) => {
         setLastSyncedAt(getLastSyncTimestamp())
@@ -2015,7 +2099,7 @@ function App() {
         })
         console.error('Failed to sync vault to IndexedDB cache', err)
       })
-  }, [needsVaultSetup])
+  }, [needsVaultSetup, windowContext.isBackgroundAuthority])
 
   useEffect(() => {
     return () => {
@@ -2032,7 +2116,7 @@ function App() {
       schedulerTimeoutRef.current = null
     }
 
-    if (needsVaultSetup || syncActionRunning) return
+    if (needsVaultSetup || syncActionRunning || !windowContext.isBackgroundAuthority) return
 
     const enabledTasks = schedulerSettings.tasks.filter(task => task.enabled)
     if (enabledTasks.length === 0) return
@@ -2084,7 +2168,7 @@ function App() {
         schedulerTimeoutRef.current = null
       }
     }
-  }, [lastSyncAttemptAt, lastSyncedAt, needsVaultSetup, runScheduledTask, schedulerSettings, syncActionRunning])
+  }, [lastSyncAttemptAt, lastSyncedAt, needsVaultSetup, runScheduledTask, schedulerSettings, syncActionRunning, windowContext.isBackgroundAuthority])
 
   useEffect(() => {
     if (!syncPanelOpen) return
@@ -2229,20 +2313,20 @@ function App() {
   useEffect(() => {
     if (tabsPersistTimerRef.current) clearTimeout(tabsPersistTimerRef.current)
     tabsPersistTimerRef.current = setTimeout(() => {
-      setJsonStorageItem(STORAGE_KEYS.appShellTabs, workspaceTabs)
+      setDynamicStorageItemBlock(appShellTabsStorageKey, JSON.stringify(workspaceTabs))
     }, 500)
     return () => { if (tabsPersistTimerRef.current) clearTimeout(tabsPersistTimerRef.current) }
-  }, [workspaceTabs])
+  }, [appShellTabsStorageKey, workspaceTabs])
 
   const activeTabPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (!activeWorkspaceTabId) return
     if (activeTabPersistTimerRef.current) clearTimeout(activeTabPersistTimerRef.current)
     activeTabPersistTimerRef.current = setTimeout(() => {
-      setStorageItem(STORAGE_KEYS.appShellActiveTabId, activeWorkspaceTabId)
+      setDynamicStorageItemBlock(appShellActiveTabStorageKey, activeWorkspaceTabId)
     }, 300)
     return () => { if (activeTabPersistTimerRef.current) clearTimeout(activeTabPersistTimerRef.current) }
-  }, [activeWorkspaceTabId])
+  }, [activeWorkspaceTabId, appShellActiveTabStorageKey])
 
   useEffect(() => {
     const onOpenRouteInNewTab = (event: Event) => {
@@ -3050,7 +3134,7 @@ function App() {
                     aria-hidden={!thinkingSpaceSurfaceActive}
                   >
                     <FrozenRouteBlock active={thinkingSpaceSurfaceActive}>
-                      <ThinkingSpace routeOverride={thinkingSpaceTabRoute} />
+                      <ThinkingSpace active={thinkingSpaceSurfaceActive} routeOverride={thinkingSpaceTabRoute} />
                     </FrozenRouteBlock>
                   </div>
                 )

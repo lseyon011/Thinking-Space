@@ -3,6 +3,8 @@ import { ChevronLeft, ExternalLink, Globe, Loader2, RotateCw, X } from 'lucide-r
 import { useNavigate } from 'react-router-dom'
 import { useElectronWebviewConsoleMessageBlock } from '@/components/lego_blocks/hooks/shared/useElectronWebviewConsoleMessageBlock'
 import { useElectronWebviewLoadErrorBlock } from '@/components/lego_blocks/hooks/shared/useElectronWebviewLoadErrorBlock'
+import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
+import { useWindowActivityBlock } from '@/components/lego_blocks/hooks/shared/useWindowActivityBlock'
 import PasswordAutofillOverlayBlock from '@/components/lego_blocks/integrations/PasswordAutofillOverlayBlock'
 import { readUrlShortcutOrch } from '@/services/orchestrators/urlShortcutOrch'
 import { isValidHttpUrlBlock } from '@/services/lego_blocks/units/urlShortcutBlock'
@@ -35,6 +37,7 @@ import {
 import { cn } from '@/lib/utils'
 
 const LINK_WEBVIEW_PARTITION = 'persist:thinking-space-links'
+const ELECTRON_WEBVIEW_UNLOAD_DELAY_MS = 60_000
 type ElectronWebviewRefBlock = React.MutableRefObject<ElectronWebviewElementBlock | null>
 
 interface ElectronWebviewElementBlock extends HTMLElement {
@@ -112,8 +115,12 @@ function UrlDocumentBlock({
   const contentAreaRef = useRef<HTMLDivElement | null>(null)
   const passwordProbeInFlightRef = useRef(false)
   const isElectronRuntime = Boolean(window.electronAPI?.isElectron)
+  const routeActive = useRouteActivityBlock()
+  const windowActive = useWindowActivityBlock()
   // InlineWebView is iOS-only; exclude Electron even though Capacitor reports isNativePlatform() there
   const isCapacitorRuntime = isCapacitorNative() && !isElectronRuntime
+  const shouldPauseElectronGuest = isElectronRuntime && (!routeActive || !windowActive || Boolean(suspended))
+  const [electronGuestMounted, setElectronGuestMounted] = useState(() => !shouldPauseElectronGuest)
 
   // Resolve URL from .url file
   useEffect(() => {
@@ -152,13 +159,13 @@ function UrlDocumentBlock({
     [resolvedUrl],
   )
   useElectronWebviewLoadErrorBlock({
-    enabled: isElectronRuntime && isTrusted,
+    enabled: isElectronRuntime && isTrusted && electronGuestMounted,
     webviewRef,
     resolvedUrl,
     logSource: 'webview',
   })
   useElectronWebviewConsoleMessageBlock({
-    enabled: isElectronRuntime && isTrusted,
+    enabled: isElectronRuntime && isTrusted && electronGuestMounted,
     webviewRef,
     resolvedUrl,
   })
@@ -182,7 +189,7 @@ function UrlDocumentBlock({
     try { return new URL(displayUrl).hostname }
     catch { return 'Website' }
   }, [displayUrl])
-  const passwordAutofillEnabled = isElectronRuntime && isTrusted && !suspended
+  const passwordAutofillEnabled = isElectronRuntime && isTrusted && !shouldPauseElectronGuest
   const passwordAutofillMatches = useMemo(
     () => passwordAutofillContext && passwordSession.vaultState
       ? findMatchingPasswordEntriesBlock(passwordSession.vaultState.vault.entries, passwordAutofillContext)
@@ -218,6 +225,23 @@ function UrlDocumentBlock({
       top: Math.min(Math.max(rect.bottom + 10, fallbackTop), maxTop),
     }
   }, [passwordAutofillContext, passwordSession.unlocked])
+
+  useEffect(() => {
+    if (!isElectronRuntime) return
+    if (!shouldPauseElectronGuest) {
+      setElectronGuestMounted(true)
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setElectronGuestMounted(false)
+      setCanGoBack(false)
+    }, ELECTRON_WEBVIEW_UNLOAD_DELAY_MS)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [isElectronRuntime, shouldPauseElectronGuest])
 
   const getElectronWebviewBlock = useCallback((): ElectronWebviewElementBlock | null => {
     if (!isElectronRuntime) return null
@@ -292,7 +316,7 @@ function UrlDocumentBlock({
   }, [resolvedUrl])
 
   useEffect(() => {
-    if (!isElectronRuntime || !isTrusted) return
+    if (!isElectronRuntime || !isTrusted || !electronGuestMounted) return
     const webview = getElectronWebviewBlock()
     if (!webview) return
 
@@ -308,7 +332,7 @@ function UrlDocumentBlock({
       webview.removeEventListener('did-navigate-in-page', updateCanGoBack)
       webview.removeEventListener('did-finish-load', updateCanGoBack as EventListener)
     }
-  }, [getElectronWebviewBlock, isElectronRuntime, isTrusted])
+  }, [electronGuestMounted, getElectronWebviewBlock, isElectronRuntime, isTrusted])
 
   // macOS 2-finger swipe gesture forwarded from BrowserWindow 'swipe' event
   useEffect(() => {
@@ -545,13 +569,17 @@ function UrlDocumentBlock({
       {/* Content area */}
       <div ref={contentAreaRef} className="relative min-h-0 flex-1 overflow-hidden">
         {isElectronRuntime ? (
-          <ElectronPersistentWebviewBlock
-            webviewRef={webviewRef}
-            title={displayTitle}
-            partition={partition ?? LINK_WEBVIEW_PARTITION}
-            useragent={webviewUserAgent}
-            className="absolute inset-0 bg-background"
-          />
+          electronGuestMounted ? (
+            <ElectronPersistentWebviewBlock
+              webviewRef={webviewRef}
+              title={displayTitle}
+              partition={partition ?? LINK_WEBVIEW_PARTITION}
+              useragent={webviewUserAgent}
+              className="absolute inset-0 bg-background"
+            />
+          ) : (
+            <div className="absolute inset-0 bg-background" />
+          )
         ) : isCapacitorRuntime ? (
           // Native WKWebView is overlaid by the plugin — render a transparent
           // placeholder so the React layout reserves the same space.

@@ -35,6 +35,8 @@ import {
   type CodexProfileDashboardDataOrch,
 } from '@/services/orchestrators/codexProfileOrch'
 import { cn } from '@/lib/utils'
+import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
+import { useWindowActivityBlock } from '@/components/lego_blocks/hooks/shared/useWindowActivityBlock'
 
 function formatTimestamp(value: string | null | undefined): string | null {
   if (!value) return null
@@ -71,6 +73,8 @@ function headlineToneClass(tone: 'healthy' | 'warning' | 'critical' | null): str
 
 export default function CodexUsageDashboardOrch() {
   const navigate = useNavigate()
+  const routeActive = useRouteActivityBlock()
+  const windowActive = useWindowActivityBlock()
   const [data, setData] = useState<CodexProfileDashboardDataOrch | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -412,7 +416,7 @@ export default function CodexUsageDashboardOrch() {
         </>
       )}
 
-      {data && (
+      {data && routeActive && windowActive && (
         <CodexUsageProbeBlock
           sites={data.rows.map((r) => r.site)}
           refreshToken={probeRefreshToken}

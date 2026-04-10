@@ -54,6 +54,18 @@ function isAlreadyExistsFilesystemErrorBlock(error: unknown): boolean {
 
 interface ElectronAPI {
   isElectron: true
+  windowGetContext?(): {
+    browserWindowId: number | null
+    sessionId: string
+    isMainWindow: boolean
+    isBackgroundAuthority: boolean
+  }
+  onWindowContext?(handler: (context: {
+    browserWindowId: number | null
+    sessionId: string
+    isMainWindow: boolean
+    isBackgroundAuthority: boolean
+  }) => void): () => void
   versions?: {
     app: string
     electron: string

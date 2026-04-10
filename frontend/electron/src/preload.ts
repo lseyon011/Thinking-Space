@@ -4,6 +4,20 @@ require('./rt/electron-rt');
 
 import { contextBridge, ipcRenderer } from 'electron';
 
+interface ElectronWindowContextBlock {
+  browserWindowId: number | null
+  sessionId: string
+  isMainWindow: boolean
+  isBackgroundAuthority: boolean
+}
+
+const DEFAULT_WINDOW_CONTEXT_BLOCK: ElectronWindowContextBlock = {
+  browserWindowId: null,
+  sessionId: 'default',
+  isMainWindow: false,
+  isBackgroundAuthority: true,
+}
+
 function normalizePersistedVaultRootBlock(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const normalized = value.trim()
@@ -19,15 +33,48 @@ function readPersistedVaultRootSyncBlock(): string | null {
   }
 }
 
+function normalizeWindowContextBlock(value: unknown): ElectronWindowContextBlock {
+  if (!value || typeof value !== 'object') return DEFAULT_WINDOW_CONTEXT_BLOCK
+  const record = value as Record<string, unknown>
+  const browserWindowId = typeof record.browserWindowId === 'number' && Number.isFinite(record.browserWindowId)
+    ? record.browserWindowId
+    : null
+  const sessionId = typeof record.sessionId === 'string' && record.sessionId.trim().length > 0
+    ? record.sessionId.trim()
+    : DEFAULT_WINDOW_CONTEXT_BLOCK.sessionId
+  return {
+    browserWindowId,
+    sessionId,
+    isMainWindow: Boolean(record.isMainWindow),
+    isBackgroundAuthority: record.isBackgroundAuthority === undefined
+      ? DEFAULT_WINDOW_CONTEXT_BLOCK.isBackgroundAuthority
+      : Boolean(record.isBackgroundAuthority),
+  }
+}
+
+function readWindowContextSyncBlock(): ElectronWindowContextBlock {
+  try {
+    const value = ipcRenderer.sendSync('window:context:getSync')
+    return normalizeWindowContextBlock(value)
+  } catch {
+    return DEFAULT_WINDOW_CONTEXT_BLOCK
+  }
+}
+
 // Cache the sync IPC result so we only make ONE synchronous round-trip at preload time.
 // Subsequent calls return the cached value without blocking the renderer.
 let persistedVaultRootBlock: string | null = readPersistedVaultRootSyncBlock()
+let windowContextBlock: ElectronWindowContextBlock = readWindowContextSyncBlock()
 
 function getPersistedVaultRootBlock(): string | null {
   // Return cached value — no additional sync IPC calls needed.
   // The value is updated via vaultRootSetPersisted below.
   return persistedVaultRootBlock
 }
+
+ipcRenderer.on('window:context-changed', (_event, value: unknown) => {
+  windowContextBlock = normalizeWindowContextBlock(value)
+})
 
 // Fetch app version asynchronously to avoid blocking the renderer at preload.
 // The contextBridge getter returns '' until the async call resolves.
@@ -190,6 +237,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Window management
   newWindow: (route?: string) => ipcRenderer.invoke('window:new', route),
+  windowGetContext: (): ElectronWindowContextBlock => windowContextBlock,
+  onWindowContext: (handler: (context: ElectronWindowContextBlock) => void) => {
+    const channel = 'window:context-changed'
+    const listener = (_: unknown, value: unknown) => {
+      windowContextBlock = normalizeWindowContextBlock(value)
+      handler(windowContextBlock)
+    }
+    ipcRenderer.on(channel, listener)
+    return () => { ipcRenderer.removeListener(channel, listener) }
+  },
   debugPerformanceSnapshot: (): Promise<{
     appCpuPercent: number
     appMemoryWorkingSetBytes: number

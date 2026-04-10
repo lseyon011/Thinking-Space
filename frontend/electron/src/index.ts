@@ -375,6 +375,14 @@ ipcMain.handle('window:new', async (_event, route?: string) => {
   await myCapacitorApp.createWindow(route);
 });
 
+ipcMain.on('window:context:getSync', (event) => {
+  event.returnValue = myCapacitorApp.getWindowContextForWebContents(event.sender);
+});
+
+ipcMain.handle('window:context:get', (event) => {
+  return myCapacitorApp.getWindowContextForWebContents(event.sender);
+});
+
 ipcMain.handle('debug:performance:get', async () => {
   return readDebugPerformanceSnapshotBlock();
 });

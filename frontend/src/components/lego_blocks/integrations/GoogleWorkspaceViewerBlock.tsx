@@ -1,9 +1,12 @@
-import { memo, useCallback, useMemo, useRef } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useElectronWebviewLoadErrorBlock } from '@/components/lego_blocks/hooks/shared/useElectronWebviewLoadErrorBlock'
+import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
+import { useWindowActivityBlock } from '@/components/lego_blocks/hooks/shared/useWindowActivityBlock'
 import { cn } from '@/lib/utils'
 import { openExternalUrlOrch } from '@/services/orchestrators/fileSystemOrch'
 
 const GOOGLE_WEBVIEW_PARTITION_BLOCK = 'persist:thinking-space-google'
+const GOOGLE_WEBVIEW_UNLOAD_DELAY_MS = 60_000
 
 interface GoogleWorkspaceViewerBlockProps {
   url: string
@@ -30,10 +33,14 @@ function GoogleWorkspaceViewerBlock({
   className,
 }: GoogleWorkspaceViewerBlockProps) {
   const isElectronRuntime = Boolean(window.electronAPI?.isElectron)
+  const routeActive = useRouteActivityBlock()
+  const windowActive = useWindowActivityBlock()
   const trustedUrl = useMemo(() => isTrustedGoogleWorkspaceUrlBlock(url), [url])
   const webviewRef = useRef<HTMLElement | null>(null)
+  const shouldPauseWebview = isElectronRuntime && (!routeActive || !windowActive)
+  const [webviewMounted, setWebviewMounted] = useState(() => !shouldPauseWebview)
   const loadError = useElectronWebviewLoadErrorBlock({
-    enabled: isElectronRuntime && trustedUrl,
+    enabled: isElectronRuntime && trustedUrl && webviewMounted,
     webviewRef,
     resolvedUrl: url,
     logSource: 'google-workspace-webview',
@@ -41,6 +48,22 @@ function GoogleWorkspaceViewerBlock({
   const handleOpenExternal = useCallback(() => {
     void openExternalUrlOrch(url).catch(() => undefined)
   }, [url])
+
+  useEffect(() => {
+    if (!isElectronRuntime) return
+    if (!shouldPauseWebview) {
+      setWebviewMounted(true)
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setWebviewMounted(false)
+    }, GOOGLE_WEBVIEW_UNLOAD_DELAY_MS)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [isElectronRuntime, shouldPauseWebview])
 
   if (!trustedUrl) {
     return (
@@ -71,14 +94,18 @@ function GoogleWorkspaceViewerBlock({
 
     return (
       <div className="relative h-full min-h-0">
-        <webview
-          ref={webviewRef}
-          title={title}
-          src={url}
-          partition={GOOGLE_WEBVIEW_PARTITION_BLOCK}
-          allowpopups
-          className={cn('h-full min-h-0 w-full bg-background', className)}
-        />
+        {webviewMounted ? (
+          <webview
+            ref={webviewRef}
+            title={title}
+            src={url}
+            partition={GOOGLE_WEBVIEW_PARTITION_BLOCK}
+            allowpopups
+            className={cn('h-full min-h-0 w-full bg-background', className)}
+          />
+        ) : (
+          <div className={cn('h-full min-h-0 w-full bg-background', className)} />
+        )}
       </div>
     )
   }

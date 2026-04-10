@@ -10,6 +10,7 @@ import { app, BrowserWindow, clipboard, Menu, MenuItem, nativeImage, screen, Tra
 import electronIsDev from 'electron-is-dev';
 import electronServe from 'electron-serve';
 import windowStateKeeper from 'electron-window-state';
+import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
@@ -38,6 +39,13 @@ interface SafeWindowBoundsBlock {
   y?: number;
   width: number;
   height: number;
+}
+
+export interface AppWindowContextBlock {
+  browserWindowId: number;
+  sessionId: string;
+  isMainWindow: boolean;
+  isBackgroundAuthority: boolean;
 }
 
 function isFiniteNumberBlock(value: unknown): value is number {
@@ -271,6 +279,9 @@ export function setupReloadWatcher(electronCapacitorApp: ElectronCapacitorApp): 
 // Define our class to manage our app.
 export class ElectronCapacitorApp {
   private windows: BrowserWindow[] = [];
+  private windowSessionIdById = new Map<number, string>();
+  private mainWindowId: number | null = null;
+  private backgroundAuthorityWindowId: number | null = null;
   private SplashScreen: CapacitorSplashScreen | null = null;
   private TrayIcon: Tray | null = null;
   private CapacitorFileConfig: CapacitorElectronConfig;
@@ -328,6 +339,12 @@ export class ElectronCapacitorApp {
     return this.windows.length;
   }
 
+  getWindowContextForWebContents(targetContents: WebContents): AppWindowContextBlock | null {
+    const targetWindow = BrowserWindow.fromWebContents(targetContents);
+    if (!targetWindow) return null;
+    return this.buildWindowContextBlock(targetWindow);
+  }
+
   getCustomURLScheme(): string {
     return this.customScheme;
   }
@@ -338,6 +355,59 @@ export class ElectronCapacitorApp {
 
   getLiveSourceUrl(): string | null {
     return this.liveSourceUrl;
+  }
+
+  private registerAppWindowContextBlock(targetWindow: BrowserWindow, options: { isMainWindow: boolean }): void {
+    const sessionId = options.isMainWindow
+      ? 'main-window'
+      : `window-${randomUUID()}`;
+    this.windowSessionIdById.set(targetWindow.id, sessionId);
+    if (options.isMainWindow) {
+      this.mainWindowId = targetWindow.id;
+    }
+    if (this.backgroundAuthorityWindowId === null || !this.windowSessionIdById.has(this.backgroundAuthorityWindowId)) {
+      this.backgroundAuthorityWindowId = targetWindow.id;
+    }
+    this.broadcastWindowContextChangesBlock();
+  }
+
+  private handleTrackedWindowClosedBlock(targetWindow: BrowserWindow): void {
+    const closingWindowId = targetWindow.id;
+    this.windows = this.windows.filter((windowRef) => windowRef !== targetWindow);
+    this.windowSessionIdById.delete(closingWindowId);
+    if (this.mainWindowId === closingWindowId) {
+      this.mainWindowId = null;
+    }
+    if (this.backgroundAuthorityWindowId === closingWindowId) {
+      this.backgroundAuthorityWindowId = this.resolveNextBackgroundAuthorityWindowIdBlock();
+    }
+    this.broadcastWindowContextChangesBlock();
+  }
+
+  private resolveNextBackgroundAuthorityWindowIdBlock(): number | null {
+    for (const targetWindow of this.windows) {
+      if (targetWindow.isDestroyed()) continue;
+      if (!this.windowSessionIdById.has(targetWindow.id)) continue;
+      return targetWindow.id;
+    }
+    return null;
+  }
+
+  private buildWindowContextBlock(targetWindow: BrowserWindow): AppWindowContextBlock {
+    const sessionId = this.windowSessionIdById.get(targetWindow.id) ?? `window-${targetWindow.id}`;
+    return {
+      browserWindowId: targetWindow.id,
+      sessionId,
+      isMainWindow: this.mainWindowId === targetWindow.id,
+      isBackgroundAuthority: this.backgroundAuthorityWindowId === targetWindow.id,
+    };
+  }
+
+  private broadcastWindowContextChangesBlock(): void {
+    for (const targetWindow of this.windows) {
+      if (targetWindow.isDestroyed()) continue;
+      targetWindow.webContents.send('window:context-changed', this.buildWindowContextBlock(targetWindow));
+    }
   }
 
   reloadAllWindows(): void {
@@ -564,8 +634,9 @@ export class ElectronCapacitorApp {
 
     // Track window and remove on close.
     this.windows.push(newWindow);
+    this.registerAppWindowContextBlock(newWindow, { isMainWindow: false });
     newWindow.on('closed', () => {
-      this.windows = this.windows.filter(w => w !== newWindow);
+      this.handleTrackedWindowClosedBlock(newWindow);
     });
 
     // Security
@@ -634,6 +705,7 @@ export class ElectronCapacitorApp {
     this.applyMacWindowButtonVisibility(mainWindow);
     this.applyNativeMenuBarVisibility(mainWindow);
     this.windows = [mainWindow];
+    this.registerAppWindowContextBlock(mainWindow, { isMainWindow: true });
     this.attachNativeContextMenu(mainWindow);
     setupWindowSwipeNavigation(mainWindow);
 
@@ -643,7 +715,7 @@ export class ElectronCapacitorApp {
 
     // If we close the main window with the splashscreen enabled we need to destroy the ref.
     mainWindow.on('closed', () => {
-      this.windows = this.windows.filter(w => w !== mainWindow);
+      this.handleTrackedWindowClosedBlock(mainWindow);
       if (this.SplashScreen?.getSplashWindow() && !this.SplashScreen.getSplashWindow().isDestroyed()) {
         this.SplashScreen.getSplashWindow().close();
       }
