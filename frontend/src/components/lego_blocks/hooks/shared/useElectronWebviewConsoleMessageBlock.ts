@@ -10,6 +10,7 @@ interface ElectronWebviewConsoleMessageEventBlock {
 
 interface UseElectronWebviewConsoleMessageBlockParams {
   enabled: boolean
+  captureToDebugLog?: boolean
   webviewRef: RefObject<HTMLElement | null>
   resolvedUrl?: string | null
   minLevel?: number
@@ -84,6 +85,7 @@ function buildConsoleDetailsBlock(
 
 export function useElectronWebviewConsoleMessageBlock({
   enabled,
+  captureToDebugLog = false,
   webviewRef,
   resolvedUrl,
   minLevel = 2,
@@ -98,7 +100,7 @@ export function useElectronWebviewConsoleMessageBlock({
   }, [resolvedUrl])
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || !captureToDebugLog) return
     const webview = webviewRef.current
     if (!webview) return
 
@@ -126,5 +128,5 @@ export function useElectronWebviewConsoleMessageBlock({
     return () => {
       webview.removeEventListener('console-message', handleConsoleMessage as EventListener)
     }
-  }, [enabled, minLevel, resolvedUrl, sourceLabel, webviewRef])
+  }, [captureToDebugLog, enabled, minLevel, resolvedUrl, sourceLabel, webviewRef])
 }

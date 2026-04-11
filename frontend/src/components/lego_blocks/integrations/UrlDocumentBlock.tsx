@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ExternalLink, Globe, Loader2, RotateCw, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { useElectronWebviewConsoleMessageBlock } from '@/components/lego_blocks/hooks/shared/useElectronWebviewConsoleMessageBlock'
 import { useElectronWebviewLoadErrorBlock } from '@/components/lego_blocks/hooks/shared/useElectronWebviewLoadErrorBlock'
 import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
 import { useWindowActivityBlock } from '@/components/lego_blocks/hooks/shared/useWindowActivityBlock'
@@ -163,11 +162,6 @@ function UrlDocumentBlock({
     webviewRef,
     resolvedUrl,
     logSource: 'webview',
-  })
-  useElectronWebviewConsoleMessageBlock({
-    enabled: isElectronRuntime && isTrusted && electronGuestMounted,
-    webviewRef,
-    resolvedUrl,
   })
 
   // Strip Electron/app tokens so webview looks like a plain Chrome browser to sites like Gmail.
