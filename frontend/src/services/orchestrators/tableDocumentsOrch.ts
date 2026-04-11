@@ -1,4 +1,5 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { pruneRevisionHistoryBlock } from '@/services/lego_blocks/integrations/revisionRetentionBlock'
 import {
   decodeTableDocumentBlock,
   encodeTableDocumentBlock,
@@ -155,6 +156,11 @@ export async function saveTableDocument(params: {
   }
 
   await writeRawBytesBlock(params.path, nextBytes)
+  if (revisionPath) {
+    await pruneRevisionHistoryBlock(revisionPath).catch((error) => {
+      console.warn('[tableDocumentsOrch] Failed to prune revision history:', error)
+    })
+  }
   const savedStat = await fs.stat(params.path)
   return {
     output_path: params.path,
@@ -165,4 +171,3 @@ export async function saveTableDocument(params: {
     hash: nextHash,
   }
 }
-

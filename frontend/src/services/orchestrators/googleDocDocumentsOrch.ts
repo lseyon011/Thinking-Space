@@ -1,4 +1,5 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { pruneRevisionHistoryBlock } from '@/services/lego_blocks/integrations/revisionRetentionBlock'
 import {
   decodeGoogleDocDocumentBlock,
   encodeGoogleDocDocumentBlock,
@@ -151,6 +152,11 @@ export async function saveGoogleDocDocument(params: {
   }
 
   await fs.writeBytes(params.path, nextBytes)
+  if (revisionPath) {
+    await pruneRevisionHistoryBlock(revisionPath).catch((error) => {
+      console.warn('[googleDocDocumentsOrch] Failed to prune revision history:', error)
+    })
+  }
   const savedStat = await fs.stat(params.path)
   return {
     output_path: params.path,

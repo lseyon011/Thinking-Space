@@ -1,4 +1,5 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { pruneRevisionHistoryBlock } from '@/services/lego_blocks/integrations/revisionRetentionBlock'
 
 function hashContent(content: string): string {
   // FNV-1a 32-bit hash is fast and stable enough for local conflict detection.
@@ -227,6 +228,11 @@ export async function saveMarkdownDocument(params: {
   }
 
   await fs.write(params.path, params.content)
+  if (revisionPath) {
+    await pruneRevisionHistoryBlock(revisionPath).catch((error) => {
+      console.warn('[markdownDocumentsOrch] Failed to prune revision history:', error)
+    })
+  }
   const savedStat = await fs.stat(params.path)
   const savedHash = hashContent(params.content)
   writeCacheEntry(params.path, {
