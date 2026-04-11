@@ -6,8 +6,8 @@ import {
   Bug,
   ChevronDown,
   Compass,
-  FolderKanban,
   FileText,
+  FolderKanban,
   GitBranch,
   Loader2,
   Menu,
@@ -22,6 +22,7 @@ import {
   Settings as SettingsIcon,
   Sparkles,
   Terminal,
+  Wrench,
   X,
 } from 'lucide-react'
 import treeOfLifeLogo from './assets/tree-of-life-logo.jpg'
@@ -48,6 +49,7 @@ const ExtensionBuilder = lazy(() => import('./pages/ExtensionBuilder'))
 const PasswordManager = lazy(() => import('./pages/PasswordManager'))
 const TerminalPage = lazy(() => import('./pages/TerminalPage'))
 const WebullPage = lazy(() => import('./personal_extension/pages/WebullPage'))
+const PersonalToolsPage = lazy(() => import('./personal_extension/pages/PersonalToolsPage'))
 import { FrozenRouteBlock } from './components/lego_blocks/units/FrozenRouteBlock'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import AppTabsBlock, { type AppWorkspaceTabBlockModel } from './components/lego_blocks/units/AppTabsBlock'
@@ -756,6 +758,10 @@ function App() {
     () => primaryNavItems.find(item => item.to === '/password-manager') ?? { to: '/password-manager', label: 'Passwords', icon: KeyRound },
     [primaryNavItems],
   )
+  const personalToolsNavItem = useMemo<NavItem>(
+    () => ({ to: '/personal-tools', label: 'Personal Tools', icon: Wrench }),
+    [],
+  )
 
   const utilityNavItems = useMemo(() => {
     const items: NavItem[] = [
@@ -785,6 +791,12 @@ function App() {
       activePaths: item.activePaths,
     })),
     {
+      to: personalToolsNavItem.to,
+      label: personalToolsNavItem.label,
+      group: 'Workspace' as const,
+      activePaths: personalToolsNavItem.activePaths,
+    },
+    {
       to: EXCALIDRAW_NAV_ITEM.to,
       label: EXCALIDRAW_NAV_ITEM.label,
       group: 'Excalidraw++' as const,
@@ -796,7 +808,7 @@ function App() {
       group: 'Excalidraw++' as const,
       activePaths: [tool.legacyRoute],
     })),
-  ]), [primaryNavItems, utilityNavItems])
+  ]), [personalToolsNavItem, primaryNavItems, utilityNavItems])
 
   const allCommandItems = useMemo<CommandItem[]>(
     () => [...baseCommandItems, ...commandFileItems],
@@ -874,6 +886,7 @@ function App() {
       case '/chat':
       case '/web':
       case '/webull':
+      case '/personal-tools':
       case '/terminal':
       case '/settings':
         return location.pathname
@@ -2980,6 +2993,24 @@ function App() {
                         </Link>
                       )
                     })()}
+                    {(() => {
+                      const Icon = personalToolsNavItem.icon
+                      const active = isNavItemActive(location.pathname, personalToolsNavItem)
+                      return (
+                        <Link
+                          to={personalToolsNavItem.to}
+                          title={sidebarCollapsed ? personalToolsNavItem.label : undefined}
+                          className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
+                            sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                          } ${
+                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {!sidebarCollapsed && <span className="truncate">{personalToolsNavItem.label}</span>}
+                        </Link>
+                      )
+                    })()}
                   </div>
                 </div>
 
@@ -3172,7 +3203,8 @@ function App() {
                   <Route path="/terminal" element={<TerminalPage />} />
                   <Route path="/password-manager" element={<PasswordManager />} />
                   <Route path="/webull" element={<WebullPage pageLabel={webullTabLabel} />} />
-                  <Route path="/personal-extension" element={<Navigate to="/webull" replace />} />
+                  <Route path="/personal-tools" element={<PersonalToolsPage />} />
+                  <Route path="/personal-extension" element={<Navigate to="/personal-tools" replace />} />
                   <Route
                     path="/settings"
                     element={
@@ -3330,6 +3362,22 @@ function App() {
                       >
                         <Icon className="h-4 w-4" />
                         <span className="truncate">{passwordNavItem.label}</span>
+                      </Link>
+                    )
+                  })()}
+                  {(() => {
+                    const Icon = personalToolsNavItem.icon
+                    const active = isNavItemActive(location.pathname, personalToolsNavItem)
+                    return (
+                      <Link
+                        to={personalToolsNavItem.to}
+                        onClick={() => setDrawerOpen(false)}
+                        className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span className="truncate">{personalToolsNavItem.label}</span>
                       </Link>
                     )
                   })()}
