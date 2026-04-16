@@ -13,6 +13,59 @@ interface MarkdownTableOfContentsBlockProps {
   onSelectHeading: (heading: MarkdownTableOfContentsItemBlock) => void
 }
 
+interface MarkdownTableOfContentsDisplayItemBlock extends MarkdownTableOfContentsItemBlock {
+  outlineLabel: string
+}
+
+function toRomanNumeralBlock(value: number): string {
+  const numerals: Array<{ value: number; symbol: string }> = [
+    { value: 1000, symbol: 'm' },
+    { value: 900, symbol: 'cm' },
+    { value: 500, symbol: 'd' },
+    { value: 400, symbol: 'cd' },
+    { value: 100, symbol: 'c' },
+    { value: 90, symbol: 'xc' },
+    { value: 50, symbol: 'l' },
+    { value: 40, symbol: 'xl' },
+    { value: 10, symbol: 'x' },
+    { value: 9, symbol: 'ix' },
+    { value: 5, symbol: 'v' },
+    { value: 4, symbol: 'iv' },
+    { value: 1, symbol: 'i' },
+  ]
+  let remainder = Math.max(1, Math.floor(value))
+  let result = ''
+  for (const numeral of numerals) {
+    while (remainder >= numeral.value) {
+      result += numeral.symbol
+      remainder -= numeral.value
+    }
+  }
+  return result
+}
+
+function toAlphabeticIndexBlock(value: number): string {
+  let remainder = Math.max(1, Math.floor(value))
+  let result = ''
+  while (remainder > 0) {
+    remainder -= 1
+    result = String.fromCharCode(97 + (remainder % 26)) + result
+    remainder = Math.floor(remainder / 26)
+  }
+  return result
+}
+
+function formatOutlineCounterBlock(value: number, depth: number): string {
+  switch (depth % 3) {
+    case 0:
+      return String(value)
+    case 1:
+      return toRomanNumeralBlock(value)
+    default:
+      return toAlphabeticIndexBlock(value)
+  }
+}
+
 export default function MarkdownTableOfContentsBlock({
   content,
   currentLine,
@@ -23,6 +76,18 @@ export default function MarkdownTableOfContentsBlock({
   const rootRef = useRef<HTMLDivElement | null>(null)
   const activeItemRef = useRef<HTMLButtonElement | null>(null)
   const items = useMemo(() => parseMarkdownTableOfContentsBlock(content), [content])
+  const displayItems = useMemo<MarkdownTableOfContentsDisplayItemBlock[]>(() => {
+    const counters: number[] = []
+    return items.map((item) => {
+      while (counters.length <= item.depth) counters.push(0)
+      counters[item.depth] += 1
+      counters.length = item.depth + 1
+      return {
+        ...item,
+        outlineLabel: formatOutlineCounterBlock(counters[item.depth], item.depth),
+      }
+    })
+  }, [items])
   const activeItem = useMemo(() => {
     let lastMatch: MarkdownTableOfContentsItemBlock | null = null
     for (const item of items) {
@@ -101,7 +166,7 @@ export default function MarkdownTableOfContentsBlock({
           {items.length > 0 ? (
             <div className={cn('overflow-auto p-2', compact ? 'max-h-[55vh]' : 'max-h-[24rem]')}>
               <div className="flex min-w-max flex-col gap-0.5">
-                {items.map((item) => {
+                {displayItems.map((item) => {
                   const isActive = item.id === activeItem?.id
                   return (
                     <button
@@ -117,7 +182,7 @@ export default function MarkdownTableOfContentsBlock({
                         isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
                       )}
                       style={{ paddingLeft: `${0.65 + (item.depth * 0.85)}rem` }}
-                      title={`Jump to line ${item.line}`}
+                      title={`Jump to section ${item.outlineLabel} • line ${item.line}`}
                     >
                       <span className={cn(
                         'inline-flex h-5 min-w-5 items-center justify-center rounded-md border text-[10px] font-semibold',
@@ -129,6 +194,12 @@ export default function MarkdownTableOfContentsBlock({
                         'h-5 w-px shrink-0 rounded-full',
                         isActive ? 'bg-primary/40' : 'bg-border/50',
                       )} />
+                      <span className={cn(
+                        'shrink-0 rounded bg-background/80 px-1.5 py-0.5 font-mono text-[10px] leading-none',
+                        isActive ? 'text-primary' : 'text-muted-foreground',
+                      )}>
+                        {item.outlineLabel}
+                      </span>
                       <span className="min-w-0 flex-1 truncate text-sm">{item.title}</span>
                       <span className="shrink-0 text-[10px] text-muted-foreground">L{item.line}</span>
                       <ChevronRight className={cn(

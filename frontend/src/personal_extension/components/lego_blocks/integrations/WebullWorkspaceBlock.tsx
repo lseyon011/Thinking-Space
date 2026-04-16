@@ -29,7 +29,11 @@ import {
 import { normalizeTagBlock, normalizeTagListBlock, splitTagInputBlock, tagsEqualBlock } from '@/services/lego_blocks/units/tagBlock'
 import type { NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { listMarkdownEntries, listPdfFiles } from '@/services/orchestrators/fileSystemOrch'
-import type { WebullRuntimeSurfaceOrch, WebullSelectedAccountOrch } from '@/personal_extension/services/orchestrators/webullOverallOrch'
+import type {
+  WebullAccountSnapshotOrch,
+  WebullRuntimeSurfaceOrch,
+  WebullSelectedAccountOrch,
+} from '@/personal_extension/services/orchestrators/webullOverallOrch'
 import type {
   WebullCompanyOverviewBlock,
   WebullExecutionOverviewBlock,
@@ -72,6 +76,7 @@ interface WebullWorkspaceBlockProps {
     marketQuotes: string | null
   }
   selectedAccount: WebullSelectedAccountOrch | null
+  accounts: WebullAccountSnapshotOrch[]
   accountList: unknown
   accountBalanceLegacy: unknown | null
   accountPositionsLegacy: unknown | null
@@ -292,6 +297,36 @@ function formatOverallValueBlock(balanceData: unknown): string {
   return formatCurrencyBlock(value)
 }
 
+function resolveOverallCashValueBlock(balanceData: unknown): number | null {
+  if (!balanceData || typeof balanceData !== 'object' || Array.isArray(balanceData)) return null
+  const row = balanceData as Record<string, unknown>
+  const topLevelCash = firstNumberBlock(row.total_cash, row.totalCash)
+  if (topLevelCash !== null) return topLevelCash
+  const currencyAssets = asRecordArrayBlock(row.account_currency_assets)
+  let total = 0
+  let hasCash = false
+  for (const asset of currencyAssets) {
+    const cashValue = firstNumberBlock(
+      asset.total_cash,
+      asset.totalCash,
+      asset.cash_balance,
+      asset.cashBalance,
+      asset.settled_cash,
+      asset.settledCash,
+      asset.available_cash,
+      asset.availableCash,
+      asset.withdrawable_cash,
+      asset.withdrawableCash,
+      asset.cash,
+      asset.balance,
+    )
+    if (cashValue === null) continue
+    total += cashValue
+    hasCash = true
+  }
+  return hasCash ? total : null
+}
+
 function formatFetchedTimestampBlock(value: string | null): string {
   if (!value) return 'No saved refresh yet'
   const parsed = new Date(value)
@@ -382,20 +417,28 @@ function asYamlCommentsBlock(value: unknown): YAMLCommentEntry[] {
 }
 
 function positionTitleFromSummaryBlock(position: WebullPositionSummaryBlock): string {
+  const accountSuffix = firstStringBlock(position.accountNumber, position.accountId)
   const symbol = firstStringBlock(position.symbol) || 'UNKNOWN'
+  const instrumentType = firstStringBlock(position.instrumentType).toUpperCase()
+  if (instrumentType === 'CASH') {
+    const cashCurrency = firstStringBlock(position.cashCurrency).toUpperCase() || 'USD'
+    const title = cashCurrency === 'USD' ? 'Cash' : `${cashCurrency} Cash`
+    return accountSuffix ? `${title} · ${accountSuffix}` : title
+  }
   const optionType = firstStringBlock(position.optionType).toUpperCase()
   const optionExpireDate = firstStringBlock(position.optionExpireDate)
   const optionStrike = normalizeStrikeForDisplayBlock(position.optionExercisePrice)
   if (optionType && optionExpireDate && optionStrike) {
-    return `${symbol}${optionStrike}-${optionExpireDate}-${optionType}`
+    const title = `${symbol}${optionStrike}-${optionExpireDate}-${optionType}`
+    return accountSuffix ? `${title} · ${accountSuffix}` : title
   }
-  const instrumentType = firstStringBlock(position.instrumentType).toUpperCase()
   if (instrumentType === 'STOCK') {
-    return `${symbol}STOCK`
+    const title = `${symbol}STOCK`
+    return accountSuffix ? `${title} · ${accountSuffix}` : title
   }
   const fromFileName = firstStringBlock(position.fileName)
-  if (fromFileName.toLowerCase().endsWith('.md')) return fromFileName.slice(0, -3)
-  return symbol
+  const title = fromFileName.toLowerCase().endsWith('.md') ? fromFileName.slice(0, -3) : symbol
+  return accountSuffix ? `${title} · ${accountSuffix}` : title
 }
 
 function compareWebullPositionsAscendingBlock(a: WebullPositionSummaryBlock, b: WebullPositionSummaryBlock): number {
@@ -415,7 +458,14 @@ function sortWebullPositionsAscendingBlock(positions: WebullPositionSummaryBlock
 function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, unknown>>): WebullCompanyOverviewBlock[] {
   const grouped = new Map<string, WebullPositionSummaryBlock[]>()
   for (const row of rows) {
-    const ticker = firstStringBlock(row.symbol, row.ticker, row.position_symbol, row.stock_code).toUpperCase()
+    const instrumentType = firstStringBlock(row.instrument_type, row.type).toUpperCase()
+    const ticker = firstStringBlock(
+      row.symbol,
+      row.ticker,
+      row.position_symbol,
+      row.stock_code,
+      instrumentType === 'CASH' ? 'CASH' : '',
+    ).toUpperCase()
     if (!ticker) continue
     const legId = firstStringBlock(row.leg_id, row.id) || `${ticker}-${grouped.get(ticker)?.length ?? 0}`
     const fileName = `${toOverallPositionTitleBlock(row).replace(/\s+/g, '-')}.md`
@@ -427,6 +477,9 @@ function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, u
       symbol: ticker,
       status,
       source: 'overall_payload',
+      accountId: firstStringBlock(row.account_id, row.accountId) || null,
+      accountNumber: firstStringBlock(row.account_number, row.accountNumber) || null,
+      cashCurrency: firstStringBlock(row.cash_currency, row.cashCurrency, row.currency, row.currency_code, row.currencyCode) || null,
       instrumentType: firstStringBlock(row.instrument_type, row.type) || null,
       optionType: firstStringBlock(row.option_type) || null,
       optionExpireDate: firstStringBlock(row.option_expire_date) || null,
@@ -460,14 +513,22 @@ function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, u
 }
 
 function toOverallPositionTitleBlock(row: Record<string, unknown>): string {
+  const instrumentType = firstStringBlock(row.instrument_type, row.type).toUpperCase()
+  const accountSuffix = firstStringBlock(row.account_number, row.account_id)
+  if (instrumentType === 'CASH') {
+    const cashCurrency = firstStringBlock(row.cash_currency, row.cashCurrency, row.currency, row.currency_code, row.currencyCode).toUpperCase() || 'USD'
+    const title = cashCurrency === 'USD' ? 'Cash' : `${cashCurrency} Cash`
+    return accountSuffix ? `${title} ${accountSuffix}` : title
+  }
   const symbol = firstStringBlock(row.symbol, row.ticker, row.position_symbol, row.stock_code) || 'UNKNOWN'
   const optionType = firstStringBlock(row.option_type).toUpperCase()
   const optionExpireDate = firstStringBlock(row.option_expire_date)
   const optionStrike = firstStringBlock(row.option_exercise_price)
   if (optionType && optionExpireDate && optionStrike) {
-    return `${symbol} ${optionStrike} ${optionExpireDate} ${optionType}`
+    const title = `${symbol} ${optionStrike} ${optionExpireDate} ${optionType}`
+    return accountSuffix ? `${title} ${accountSuffix}` : title
   }
-  return symbol
+  return accountSuffix ? `${symbol} ${accountSuffix}` : symbol
 }
 
 function toJsonBlock(value: unknown): string {
@@ -545,6 +606,9 @@ function positionPayloadFromSummaryBlock(position: WebullPositionSummaryBlock): 
     symbol: position.symbol,
     status: position.status,
     source: position.source,
+    account_id: position.accountId,
+    account_number: position.accountNumber,
+    cash_currency: position.cashCurrency,
     instrument_type: position.instrumentType,
     option_type: position.optionType,
     option_expire_date: position.optionExpireDate,
@@ -693,6 +757,7 @@ export default function WebullWorkspaceBlock({
   fetchedAt,
   endpoints,
   selectedAccount,
+  accounts,
   accountBalanceLegacy,
   accountPositionsLegacy,
   assetsAccount,
@@ -729,6 +794,10 @@ export default function WebullWorkspaceBlock({
   const overallRows = asRecordArrayBlock(assetsPositions).length > 0
     ? asRecordArrayBlock(assetsPositions)
     : asRecordArrayBlock(accountPositionsLegacy)
+  const overallCashValue = useMemo(
+    () => resolveOverallCashValueBlock(accountBalanceLegacy ?? assetsAccount),
+    [accountBalanceLegacy, assetsAccount],
+  )
   const [preserveOverallContext, setPreserveOverallContext] = useState(false)
   const [sideTabsCollapsed, setSideTabsCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false
@@ -1820,7 +1889,7 @@ export default function WebullWorkspaceBlock({
           )}
 
           {overallTabActive && (
-            <div className="grid gap-3 text-sm sm:grid-cols-3">
+            <div className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-5">
               <div className="rounded-lg border bg-background p-3">
                 <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Fetched</p>
                 <p className="mt-1 font-medium">{formatFetchedTimestampBlock(fetchedAt)}</p>
@@ -1829,8 +1898,21 @@ export default function WebullWorkspaceBlock({
                 </p>
               </div>
               <div className="rounded-lg border bg-background p-3">
+                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Accounts</p>
+                <p className="mt-1 font-medium">{accounts.length || (selectedAccount ? 1 : 0)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {accounts.length > 1
+                    ? accounts.map(accountSnapshot => accountSnapshot.account.accountNumber ?? accountSnapshot.account.accountId).join(' · ')
+                    : (selectedAccount?.accountNumber ?? selectedAccount?.accountId ?? 'No account metadata')}
+                </p>
+              </div>
+              <div className="rounded-lg border bg-background p-3">
                 <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Overall Value</p>
                 <p className="mt-1 font-medium">{formatOverallValueBlock(accountBalanceLegacy ?? assetsAccount)}</p>
+              </div>
+              <div className="rounded-lg border bg-background p-3">
+                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Total Cash</p>
+                <p className="mt-1 font-medium">{formatCurrencyBlock(overallCashValue)}</p>
               </div>
               <div className="rounded-lg border bg-background p-3">
                 <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Indexed Companies</p>
@@ -2179,8 +2261,24 @@ export default function WebullWorkspaceBlock({
               <p><span className="font-medium text-foreground">Execution Companies:</span> {executionCompanyCount}</p>
               <p><span className="font-medium text-foreground">Execution Positions:</span> {executionPositionCount}</p>
               <p><span className="font-medium text-foreground">Execution Source:</span> {executionSyncSource}</p>
-              <p><span className="font-medium text-foreground">Account Id:</span> {selectedAccount?.accountId ?? 'Not available'}</p>
-              <p><span className="font-medium text-foreground">Account Number:</span> {selectedAccount?.accountNumber ?? 'Not available'}</p>
+              <p><span className="font-medium text-foreground">Account Count:</span> {accounts.length || (selectedAccount ? 1 : 0)}</p>
+              {accounts.length > 0 ? (
+                <div className="space-y-1">
+                  {accounts.map((accountSnapshot) => (
+                    <p key={accountSnapshot.account.accountId}>
+                      <span className="font-medium text-foreground">Account:</span>{' '}
+                      {accountSnapshot.account.accountNumber ?? accountSnapshot.account.accountId}
+                      {' · '}
+                      {accountSnapshot.account.accountId}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <p><span className="font-medium text-foreground">Account Id:</span> {selectedAccount?.accountId ?? 'Not available'}</p>
+                  <p><span className="font-medium text-foreground">Account Number:</span> {selectedAccount?.accountNumber ?? 'Not available'}</p>
+                </>
+              )}
               <p><span className="font-medium text-foreground">Endpoint Account list:</span> {endpoints.accountList ?? 'Not requested'}</p>
               <p><span className="font-medium text-foreground">Endpoint Legacy balance:</span> {endpoints.accountBalanceLegacy ?? 'Not requested'}</p>
               <p><span className="font-medium text-foreground">Endpoint Legacy positions:</span> {endpoints.accountPositionsLegacy ?? 'Not requested'}</p>

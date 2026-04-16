@@ -54,6 +54,9 @@ export interface WebullPositionSummaryBlock {
   symbol: string
   status: string
   source: string
+  accountId: string | null
+  accountNumber: string | null
+  cashCurrency: string | null
   instrumentType: string | null
   optionType: string | null
   optionExpireDate: string | null
@@ -101,6 +104,7 @@ export interface WebullOverallCacheBlock {
   fetchedAt: string
   runtime: string
   selectedAccount: unknown
+  accounts: unknown
   accountList: unknown
   accountBalanceLegacy: unknown | null
   accountPositionsLegacy: unknown | null
@@ -113,6 +117,7 @@ export interface SyncWebullExecutionInputBlock {
   fetchedAt: string
   runtime: string
   selectedAccount: unknown
+  accounts: unknown
   accountList: unknown
   accountBalanceLegacy: unknown | null
   accountPositionsLegacy: unknown | null
@@ -259,6 +264,7 @@ export async function syncWebullExecutionStorageBlock(
     fetched_at: input.fetchedAt,
     runtime: input.runtime,
     selected_account: input.selectedAccount,
+    accounts: input.accounts,
     source: selected.source,
     positions_payload: selected.payload,
     account_list: input.accountList,
@@ -444,6 +450,7 @@ export async function readWebullOverallCacheBlock(
     fetchedAt: readStringFieldBlock(parsed.fetched_at),
     runtime: readStringFieldBlock(parsed.runtime),
     selectedAccount: parsed.selected_account ?? null,
+    accounts: parsed.accounts ?? null,
     accountList: parsed.account_list ?? null,
     accountBalanceLegacy: parsed.account_balance_legacy ?? null,
     accountPositionsLegacy: parsed.account_positions_legacy ?? null,
@@ -841,6 +848,9 @@ async function upsertCompanyIndexBlock(input: {
       symbol: summary.symbol,
       status: summary.status,
       source: summary.source,
+      account_id: summary.accountId,
+      account_number: summary.accountNumber,
+      cash_currency: summary.cashCurrency,
       instrument_type: summary.instrumentType,
       option_type: summary.optionType,
       option_expire_date: summary.optionExpireDate,
@@ -989,7 +999,38 @@ async function readExistingPositionRecordsBlock(
       dedupedById.set(record.id, record)
     }
   }
-  return [...dedupedById.values()]
+  const dedupedRecords = [...dedupedById.values()]
+  const scopedEconomicKeys = new Set(
+    dedupedRecords
+      .filter(record => hasAccountScopeBlock(record.frontmatter))
+      .map(record => resolveEconomicPositionKeyBlock(record.frontmatter, record.summary)),
+  )
+  const dedupedByEconomicKey = new Map<string, ExistingPositionRecordBlock>()
+  for (const record of dedupedRecords) {
+    const economicKey = resolveEconomicPositionKeyBlock(record.frontmatter, record.summary)
+    if (!hasAccountScopeBlock(record.frontmatter) && scopedEconomicKeys.has(economicKey)) {
+      continue
+    }
+    const dedupeKey = hasAccountScopeBlock(record.frontmatter)
+      ? `${resolveAccountScopeValueBlock(record.frontmatter)}::${economicKey}`
+      : `legacy::${economicKey}`
+    const current = dedupedByEconomicKey.get(dedupeKey)
+    if (!current) {
+      dedupedByEconomicKey.set(dedupeKey, record)
+      continue
+    }
+    const preferredFileName = buildPreferredFileNameBlock(
+      normalizePositionRowForStorageBlock(record.frontmatter, record.summary.symbol),
+      record.summary.symbol,
+      record.id,
+    )
+    const currentScore = existingRecordPreferenceScoreBlock(current, preferredFileName)
+    const nextScore = existingRecordPreferenceScoreBlock(record, preferredFileName)
+    if (nextScore > currentScore) {
+      dedupedByEconomicKey.set(dedupeKey, record)
+    }
+  }
+  return [...dedupedByEconomicKey.values()]
 }
 
 function existingRecordPreferenceScoreBlock(
@@ -1001,6 +1042,35 @@ function existingRecordPreferenceScoreBlock(
   const updatedAt = Date.parse(readStringFieldBlock(record.frontmatter.updated_at))
   if (Number.isFinite(updatedAt)) score += Math.floor(updatedAt / 1000)
   return score
+}
+
+function hasAccountScopeBlock(frontmatter: Record<string, unknown>): boolean {
+  return Boolean(resolveAccountScopeValueBlock(frontmatter))
+}
+
+function resolveEconomicPositionKeyBlock(
+  frontmatter: Record<string, unknown>,
+  summary: WebullPositionSummaryBlock,
+): string {
+  const webullId = readStringFieldBlock(frontmatter.webull_id)
+    || readStringFieldBlock(frontmatter.leg_id)
+    || readStringFieldBlock(frontmatter.position_id)
+    || readStringFieldBlock(frontmatter.instrument_id)
+  if (webullId) return webullId
+  const instrumentType = readStringFieldBlock(frontmatter.instrument_type).toUpperCase()
+  if (instrumentType.includes('CASH')) {
+    return `cash:${readStringFieldBlock(frontmatter.cash_currency) || summary.cashCurrency || 'USD'}`
+  }
+  const optionType = readStringFieldBlock(frontmatter.option_type).toUpperCase()
+  const optionExpireDate = readStringFieldBlock(frontmatter.option_expire_date)
+  const optionStrike = readStringFieldBlock(frontmatter.option_exercise_price)
+  if (optionType && optionExpireDate && optionStrike) {
+    return `option:${summary.symbol}:${optionStrike}:${optionExpireDate}:${optionType}`
+  }
+  if (instrumentType.includes('STOCK')) {
+    return `stock:${summary.symbol}`
+  }
+  return `position:${summary.symbol}:${removeMdExtensionBlock(summary.fileName)}`
 }
 
 async function refreshCompanyIndexFromPositionsBlock(input: {
@@ -1047,6 +1117,9 @@ function buildPositionSummaryFromFrontmatterBlock(
     symbol,
     status: normalizePositionStatusBlock(readStringFieldBlock(frontmatter.status) || 'taken'),
     source: readStringFieldBlock(frontmatter.source) || 'manual',
+    accountId: readNullableStringFieldBlock(frontmatter.account_id),
+    accountNumber: readNullableStringFieldBlock(frontmatter.account_number),
+    cashCurrency: readNullableStringFieldBlock(frontmatter.cash_currency),
     instrumentType: readNullableStringFieldBlock(frontmatter.instrument_type),
     optionType: readNullableStringFieldBlock(frontmatter.option_type),
     optionExpireDate: readNullableStringFieldBlock(frontmatter.option_expire_date),
@@ -1078,6 +1151,9 @@ function asPositionSummaryListBlock(value: unknown): WebullPositionSummaryBlock[
       symbol: normalizeTickerBlock(record.symbol) || 'UNKNOWN',
       status: normalizePositionStatusBlock(readStringFieldBlock(record.status) || 'taken'),
       source: readStringFieldBlock(record.source) || 'manual',
+      accountId: readNullableStringFieldBlock(record.account_id),
+      accountNumber: readNullableStringFieldBlock(record.account_number),
+      cashCurrency: readNullableStringFieldBlock(record.cash_currency),
       instrumentType: readNullableStringFieldBlock(record.instrument_type),
       optionType: readNullableStringFieldBlock(record.option_type),
       optionExpireDate: readNullableStringFieldBlock(record.option_expire_date),
@@ -1151,7 +1227,17 @@ function resolveTickerForRowBlock(row: Record<string, unknown>): string | null {
     || readStringFieldBlock(row.ticker)
     || readStringFieldBlock(row.position_symbol)
     || readStringFieldBlock(row.stock_code)
-  return normalizeTickerBlock(raw)
+  const normalized = normalizeTickerBlock(raw)
+  if (normalized) return normalized
+  const cashCurrency = normalizeMissingTokenBlock(
+    readStringFieldBlock(row.cash_currency)
+    || readStringFieldBlock(row.currency)
+    || readStringFieldBlock(row.currency_code),
+  ).toUpperCase()
+  if (cashCurrency) return 'CASH'
+  const instrumentType = readStringFieldBlock(row.instrument_type).toUpperCase()
+  if (instrumentType.includes('CASH')) return 'CASH'
+  return null
 }
 
 function normalizePositionRowForStorageBlock(
@@ -1159,22 +1245,32 @@ function normalizePositionRowForStorageBlock(
   fallbackTicker: string,
 ): Record<string, unknown> {
   const firstLeg = readFirstLegRecordBlock(row)
-  const symbol = normalizeTickerBlock(
+  const cashCurrency = normalizeMissingTokenBlock(
+    readFirstStringFromFieldsBlock(row, firstLeg, ['cash_currency', 'cashCurrency', 'currency', 'currency_code', 'currencyCode']),
+  ).toUpperCase()
+  const rawSymbol = normalizeTickerBlock(
     readFirstStringFromFieldsBlock(row, firstLeg, ['symbol', 'ticker', 'position_symbol', 'stock_code']),
-  ) ?? fallbackTicker
+  )
   const optionType = normalizeMissingTokenBlock(
     readFirstStringFromFieldsBlock(row, firstLeg, ['option_type', 'optionType']),
   ).toUpperCase()
   const instrumentTypeRaw = normalizeMissingTokenBlock(
     readFirstStringFromFieldsBlock(row, firstLeg, ['instrument_type', 'instrumentType']),
   ).toUpperCase()
+  const instrumentTypeHint = rawSymbol === 'CASH' || cashCurrency ? 'CASH' : ''
   const instrumentType = instrumentTypeRaw
+    || instrumentTypeHint
     || (optionType ? 'OPTION' : 'STOCK')
+  const symbol = rawSymbol ?? (instrumentType === 'CASH' ? 'CASH' : fallbackTicker)
 
   return {
     ...firstLeg,
     ...row,
     symbol,
+    account_id: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['account_id', 'accountId'])),
+    account_number: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['account_number', 'accountNumber'])),
+    subscription_id: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['subscription_id', 'subscriptionId'])),
+    cash_currency: cashCurrency,
     cost: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['cost', 'avg_cost', 'average_cost', 'cost_price'])),
     proportion: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['proportion', 'weight'])),
     leg_id: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['leg_id', 'legId'])),
@@ -1239,15 +1335,48 @@ function normalizeMissingTokenBlock(value: string): string {
   return normalized
 }
 
+function resolveAccountScopeValueBlock(row: Record<string, unknown>): string {
+  return readStringFieldBlock(row.account_id)
+    || readStringFieldBlock(row.account_number)
+}
+
+function resolveAccountScopeFileFragmentBlock(row: Record<string, unknown>): string {
+  return sanitizeFileFragmentBlock(
+    readStringFieldBlock(row.account_number)
+    || readStringFieldBlock(row.account_id),
+  )
+}
+
+function resolveCashCurrencyBlock(row: Record<string, unknown>): string {
+  return normalizeMissingTokenBlock(
+    readStringFieldBlock(row.cash_currency)
+    || readStringFieldBlock(row.currency)
+    || readStringFieldBlock(row.currency_code),
+  ).toUpperCase()
+}
+
+function isCashRowBlock(row: Record<string, unknown>): boolean {
+  const instrumentType = readStringFieldBlock(row.instrument_type)?.toUpperCase() ?? ''
+  if (instrumentType.includes('CASH')) return true
+  return resolveCashCurrencyBlock(row).length > 0 && readStringFieldBlock(row.symbol).toUpperCase() === 'CASH'
+}
+
 function resolvePositionIdBlock(row: Record<string, unknown>, ticker: string): string {
   const fromPayload = readStringFieldBlock(row.leg_id)
     || readStringFieldBlock(row.position_id)
     || readStringFieldBlock(row.instrument_id)
     || readStringFieldBlock(row.ticker_id)
     || readStringFieldBlock(row.id)
-  if (fromPayload) return fromPayload
+  const accountScope = resolveAccountScopeValueBlock(row)
+  if (fromPayload) return accountScope ? `${accountScope}::${fromPayload}` : fromPayload
+  if (isCashRowBlock(row)) {
+    const cashCurrency = resolveCashCurrencyBlock(row) || 'USD'
+    const cashId = `${ticker}-cash-${cashCurrency.toLowerCase()}`
+    return accountScope ? `${accountScope}::${cashId}` : cashId
+  }
   const stockSuffix = isStockRowBlock(row) ? 'stock' : 'position'
-  return `${ticker}-${stockSuffix}`
+  const fallbackId = `${ticker}-${stockSuffix}`
+  return accountScope ? `${accountScope}::${fallbackId}` : fallbackId
 }
 
 function buildPreferredFileNameBlock(
@@ -1255,20 +1384,29 @@ function buildPreferredFileNameBlock(
   ticker: string,
   positionId: string,
 ): string {
+  const accountFragment = resolveAccountScopeFileFragmentBlock(row)
   const optionType = sanitizeFileFragmentBlock(normalizeMissingTokenBlock(readStringFieldBlock(row.option_type)).toUpperCase())
   const optionExpireDate = sanitizeFileFragmentBlock(normalizeMissingTokenBlock(readStringFieldBlock(row.option_expire_date)))
   const strike = normalizeStrikeForFileNameBlock(normalizeMissingTokenBlock(readStringFieldBlock(row.option_exercise_price)))
+  if (isCashRowBlock(row)) {
+    const baseName = `${sanitizeFileFragmentBlock(resolveCashCurrencyBlock(row) || 'USD')}CASH`
+    return accountFragment ? `${baseName}-${accountFragment}.md` : `${baseName}.md`
+  }
   if (optionType && optionExpireDate && strike) {
-    return `${ticker}${strike}-${optionExpireDate}-${optionType}.md`
+    const baseName = `${ticker}${strike}-${optionExpireDate}-${optionType}`
+    return accountFragment ? `${baseName}-${accountFragment}.md` : `${baseName}.md`
   }
   if (isStockRowBlock(row)) {
-    return `${ticker}STOCK.md`
+    const baseName = `${ticker}STOCK`
+    return accountFragment ? `${baseName}-${accountFragment}.md` : `${baseName}.md`
   }
   const suffix = sanitizeFileFragmentBlock(positionId) || 'position'
-  return `${ticker}-${suffix}.md`
+  const baseName = `${ticker}-${suffix}`
+  return accountFragment ? `${baseName}-${accountFragment}.md` : `${baseName}.md`
 }
 
 function isStockRowBlock(row: Record<string, unknown>): boolean {
+  if (isCashRowBlock(row)) return false
   const instrumentType = readStringFieldBlock(row.instrument_type)?.toUpperCase() ?? ''
   if (instrumentType.includes('OPTION')) return false
   if (instrumentType.includes('STOCK')) return true

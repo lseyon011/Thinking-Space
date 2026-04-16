@@ -55,7 +55,7 @@ function dispatchFileOpRefresh(): void {
 
 const FILE_QUERY_PARAM = 'file'
 const NOTEBOOK_QUERY_PARAM = 'notebook'
-const MAX_MOUNTED_INLINE_DOCS = 8
+const MAX_MOUNTED_INLINE_DOCS = 3
 const EXPLORER_DEFAULT_WIDTH_PX = 320
 const EXPLORER_MIN_WIDTH_PX = 220
 const IPHONE_EXPLORER_DEFAULT_WIDTH_PX = 380
@@ -810,6 +810,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
       >
         <MarkdownDocumentBlock
           path={path}
+          active={inlinePath === path}
           initialMode={inlineInitialModeByPath[path] ?? 'view'}
           onOpenPath={handleInlineOpenPath}
           onOpenPathForEdit={handleInlineOpenPathForEdit}

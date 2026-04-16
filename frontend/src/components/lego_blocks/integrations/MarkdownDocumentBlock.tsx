@@ -10,7 +10,7 @@ import {
 } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X, FileText, ExternalLink, Pencil, Save, FolderOpen } from 'lucide-react'
+import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -44,7 +44,9 @@ import TableDocumentBlock from '@/components/lego_blocks/integrations/TableDocum
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
 import GoogleDocDocumentBlock from '@/components/lego_blocks/integrations/GoogleDocDocumentBlock'
 import ImageDocumentBlock from '@/components/lego_blocks/integrations/ImageDocumentBlock'
+import MarkdownMindmapPanelBlock from '@/components/lego_blocks/integrations/MarkdownMindmapPanelBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/MarkdownMiniNavBlock'
+import MarkdownTableOfContentsBlock from '@/components/lego_blocks/integrations/MarkdownTableOfContentsBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
 import { cn } from '@/lib/utils'
@@ -83,11 +85,16 @@ import {
   clearExcalidrawCrashMarkerBlock,
   markExcalidrawCrashStageBlock,
 } from '@/services/lego_blocks/units/excalidrawCrashMarkerBlock'
+import {
+  parseMarkdownTableOfContentsBlock,
+  type MarkdownTableOfContentsItemBlock,
+} from '@/services/lego_blocks/units/markdownTableOfContentsBlock'
 
 export type MarkdownViewerMode = 'view' | 'edit'
 
 interface MarkdownDocumentBlockProps {
   path: string
+  active?: boolean
   initialMode?: MarkdownViewerMode
   onSaved?: (result: { output_path: string; revision_path: string | null }) => void
   onOpenPath?: (path: string) => void
@@ -215,6 +222,7 @@ function MarkdownWikilinkImageBlock({
 
 function MarkdownTextDocumentRuntimeBlock({
   path,
+  active = true,
   initialMode = 'view',
   onSaved,
   onOpenPath,
@@ -249,6 +257,7 @@ function MarkdownTextDocumentRuntimeBlock({
     () => getStorageItem(STORAGE_KEYS.markdownDocumentTopBarHidden) === '1',
   )
   const [showAiPanel, setShowAiPanel] = useState(false)
+  const [viewMindmapPanelOpen, setViewMindmapPanelOpen] = useState(false)
   const [editorSettings] = useState<MarkdownEditorSettingsBlock>(
     () => readMarkdownEditorSettingsOrch(),
   )
@@ -380,6 +389,9 @@ function MarkdownTextDocumentRuntimeBlock({
   ), [])
 
   const isEditing = mode === 'edit'
+  const supportsMindmap = !isExcalidrawDoc
+    && /\.md$/i.test(path)
+    && !/\.excalidraw\.md$/i.test(path)
   const effectiveTopBarHidden = topBarHiddenProp !== undefined ? topBarHiddenProp : topBarHiddenInViewMode
   const hideTopBarInView = !isEditing && effectiveTopBarHidden
   const hasTextChanges = isEditing && content !== null && draft !== content
@@ -401,6 +413,10 @@ function MarkdownTextDocumentRuntimeBlock({
   const displayDraft = useMemo(
     () => stripFrontmatter(draft),
     [draft],
+  )
+  const viewerTableOfContents = useMemo(
+    () => parseMarkdownTableOfContentsBlock(displayContent),
+    [displayContent],
   )
   const frontmatterMetaSource = isEditing ? draft : (content ?? '')
   const frontmatterMeta = useMemo(
@@ -525,90 +541,132 @@ function MarkdownTextDocumentRuntimeBlock({
   )
 
   type MarkdownAnchorProps = ComponentPropsWithoutRef<'a'> & { node?: unknown }
+  type MarkdownHeadingProps = ComponentPropsWithoutRef<'h1'> & { node?: unknown }
   type MarkdownParagraphProps = ComponentPropsWithoutRef<'p'> & { node?: unknown }
   type MarkdownImageProps = ComponentPropsWithoutRef<'img'> & { node?: unknown }
-  const markdownComponents = useMemo(() => ({
-    a: ({ href, children, ...props }: MarkdownAnchorProps) => {
-      const isWikilink = isThinkingSpaceWikilinkHrefOrch(href)
-
-      const onClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
-        if (!isWikilink || !href) {
-          props.onClick?.(event)
-          return
-        }
-        event.preventDefault()
-        setNavigationError(null)
-        const openInNewTab = event.metaKey || event.ctrlKey
-
-        const parsed = parseThinkingSpaceWikilinkHrefOrch(href)
-        if (!parsed) {
-          setNavigationError('Invalid wikilink target.')
-          return
-        }
-
-        void (async () => {
-          try {
-            const resolved = await resolveWikilinkTargetOrch({
-              currentPath: path,
-              target: parsed.target,
-            })
-
-            const resolvedPath = resolved.path ?? await resolveWikilinkAssetTargetOrch({
-              currentPath: path,
-              target: parsed.target,
-            })
-
-            if (!resolvedPath) {
-              setNavigationError(`Linked file not found: [[${parsed.target}]]`)
-              return
-            }
-
-            if (resolvedPath === path) return
-            if (openInNewTab) {
-              openFileInNewTabOrch(resolvedPath)
-              setNavigationError(null)
-              return
-            }
-
-            if (!openLinkedPath) {
-              setNavigationError('Linked file navigation is unavailable in this view.')
-              return
-            }
-
-            openLinkedPath(resolvedPath)
-            setNavigationError(null)
-          } catch (err) {
-            setNavigationError(err instanceof Error ? err.message : 'Failed to open linked file')
-          }
-        })()
-      }
-
+  const markdownComponents = useMemo(() => {
+    let headingIndex = 0
+    const renderHeading = (tag: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6') => (
+      { children, ...props }: MarkdownHeadingProps,
+    ) => {
+      const HeadingTag = tag
+      const tocItem = viewerTableOfContents[headingIndex++] ?? null
       return (
-        <a
+        <HeadingTag
           {...props}
-          href={href}
-          onClick={onClick}
-          className={cn(props.className, isWikilink && 'cursor-pointer')}
+          data-markdown-heading-id={tocItem?.id}
         >
           {children}
-        </a>
+        </HeadingTag>
       )
-    },
-    p: ({ children, ...props }: MarkdownParagraphProps) => {
-      const text = extractTextFromNode(children).replace(/\u00a0/g, ' ').trim()
-      if (isBlankLineMarkerText(text)) {
-        return <div className="ltm-markdown-blank-line" aria-hidden="true" />
-      }
-      return <p {...props}>{children}</p>
-    },
-    img: ({ src, alt }: MarkdownImageProps) => (
-      <MarkdownWikilinkImageBlock
-        src={src}
-        alt={alt}
-        currentPath={path}
-      />
-    ),
-  }), [openLinkedPath, path])
+    }
+
+    return {
+      a: ({ href, children, ...props }: MarkdownAnchorProps) => {
+        const isWikilink = isThinkingSpaceWikilinkHrefOrch(href)
+
+        const onClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+          if (!isWikilink || !href) {
+            props.onClick?.(event)
+            return
+          }
+          event.preventDefault()
+          setNavigationError(null)
+          const openInNewTab = event.metaKey || event.ctrlKey
+
+          const parsed = parseThinkingSpaceWikilinkHrefOrch(href)
+          if (!parsed) {
+            setNavigationError('Invalid wikilink target.')
+            return
+          }
+
+          void (async () => {
+            try {
+              const resolved = await resolveWikilinkTargetOrch({
+                currentPath: path,
+                target: parsed.target,
+              })
+
+              const resolvedPath = resolved.path ?? await resolveWikilinkAssetTargetOrch({
+                currentPath: path,
+                target: parsed.target,
+              })
+
+              if (!resolvedPath) {
+                setNavigationError(`Linked file not found: [[${parsed.target}]]`)
+                return
+              }
+
+              if (resolvedPath === path) return
+              if (openInNewTab) {
+                openFileInNewTabOrch(resolvedPath)
+                setNavigationError(null)
+                return
+              }
+
+              if (!openLinkedPath) {
+                setNavigationError('Linked file navigation is unavailable in this view.')
+                return
+              }
+
+              openLinkedPath(resolvedPath)
+              setNavigationError(null)
+            } catch (err) {
+              setNavigationError(err instanceof Error ? err.message : 'Failed to open linked file')
+            }
+          })()
+        }
+
+        return (
+          <a
+            {...props}
+            href={href}
+            onClick={onClick}
+            className={cn(props.className, isWikilink && 'cursor-pointer')}
+          >
+            {children}
+          </a>
+        )
+      },
+      h1: renderHeading('h1'),
+      h2: renderHeading('h2'),
+      h3: renderHeading('h3'),
+      h4: renderHeading('h4'),
+      h5: renderHeading('h5'),
+      h6: renderHeading('h6'),
+      p: ({ children, ...props }: MarkdownParagraphProps) => {
+        const text = extractTextFromNode(children).replace(/\u00a0/g, ' ').trim()
+        if (isBlankLineMarkerText(text)) {
+          return <div className="ltm-markdown-blank-line" aria-hidden="true" />
+        }
+        return <p {...props}>{children}</p>
+      },
+      img: ({ src, alt }: MarkdownImageProps) => (
+        <MarkdownWikilinkImageBlock
+          src={src}
+          alt={alt}
+          currentPath={path}
+        />
+      ),
+    }
+  }, [openLinkedPath, path, viewerTableOfContents])
+
+  const scrollViewToHeading = useCallback(async (heading: MarkdownTableOfContentsItemBlock) => {
+    if (pendingFullRender) {
+      setViewMarkdown(displayContent)
+      setPendingFullRender(false)
+      await yieldToNextFrame()
+      await yieldToNextFrame()
+    }
+
+    const container = contentScrollRef.current
+    const headingElements = container
+      ? Array.from(container.querySelectorAll<HTMLElement>('[data-markdown-heading-id]'))
+      : Array.from(document.querySelectorAll<HTMLElement>('[data-markdown-heading-id]'))
+  const target = headingElements.find((element) => element.dataset.markdownHeadingId === heading.id)
+  if (!target) return
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [displayContent, pendingFullRender])
 
   useEffect(() => {
     if (!hasChanges || !manualSaveFeedbackVisible) return
@@ -770,6 +828,7 @@ function MarkdownTextDocumentRuntimeBlock({
       preserveExcalidrawCrashMarkerOnUnmountRef.current = true
       markExcalidrawCrashStageBlock(path, 'edit_requested')
     }
+    setViewMindmapPanelOpen(false)
     setMode('edit')
     setDraft(isExcalidrawDoc ? '' : (content ?? ''))
     markdownEditBaselineRef.current = isExcalidrawDoc
@@ -1034,6 +1093,10 @@ function MarkdownTextDocumentRuntimeBlock({
     })
   }, [canOpenInSystem, path])
 
+  if (!active) {
+    return <div className={cn('h-full min-h-0 bg-card', className)} aria-hidden="true" />
+  }
+
   return (
     <div
       className={cn('flex h-full min-h-0 flex-col bg-card p-2', className)}
@@ -1111,7 +1174,7 @@ function MarkdownTextDocumentRuntimeBlock({
 
                 {!isEditing && (
                   <button
-                    onClick={startEditing}
+                    onClick={() => startEditing()}
                     disabled={loading || !!error}
                     className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     title="Edit file"
@@ -1337,27 +1400,57 @@ function MarkdownTextDocumentRuntimeBlock({
           )}
 
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && (
-            <div className={cn('space-y-2', isIosPhone ? 'px-5 py-5' : 'px-8 py-7')}>
-              {pendingFullRender && (
-                <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                  Rendering full document...
-                </div>
-              )}
-              <div
-                className={cn(
-                  'prose',
-                  editorSettings.preserveSpacesInViewMode && 'ltm-markdown-preserve-spaces',
-                  editorSettings.preserveNewlinesInViewMode && 'ltm-markdown-preserve-newlines',
+            <div>
+              <div className="sticky top-0 z-30 flex flex-wrap items-center gap-1 border-b border-border/20 bg-background p-2">
+                <MarkdownTableOfContentsBlock
+                  content={displayContent}
+                  currentLine={0}
+                  compact={isIosPhone}
+                  onSelectHeading={scrollViewToHeading}
+                />
+                {supportsMindmap && (
+                  <button
+                    type="button"
+                    onClick={() => setViewMindmapPanelOpen(prev => !prev)}
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground',
+                      viewMindmapPanelOpen && 'bg-muted text-foreground',
+                    )}
+                    title={viewMindmapPanelOpen ? 'Hide mindmap preview' : 'Show mindmap preview'}
+                  >
+                    <Workflow className="h-3.5 w-3.5" />
+                    Mindmap
+                  </button>
                 )}
-                data-markdown-nav-root
-              >
-                <ReactMarkdown
-                  remarkPlugins={markdownRemarkPlugins}
-                  components={markdownComponents}
-                  urlTransform={thinkingSpaceMarkdownUrlTransformBlock}
+              </div>
+              <MarkdownMindmapPanelBlock
+                inputPath={path}
+                content={displayContent}
+                open={supportsMindmap && viewMindmapPanelOpen}
+              />
+
+              <div className={cn('space-y-2', isIosPhone ? 'px-5 py-5' : 'px-8 py-7')}>
+                {pendingFullRender && (
+                  <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    Rendering full document...
+                  </div>
+                )}
+                <div
+                  className={cn(
+                    'prose',
+                    editorSettings.preserveSpacesInViewMode && 'ltm-markdown-preserve-spaces',
+                    editorSettings.preserveNewlinesInViewMode && 'ltm-markdown-preserve-newlines',
+                  )}
+                  data-markdown-nav-root
                 >
-                  {renderedViewMarkdown}
-                </ReactMarkdown>
+                  <ReactMarkdown
+                    remarkPlugins={markdownRemarkPlugins}
+                    components={markdownComponents}
+                    urlTransform={thinkingSpaceMarkdownUrlTransformBlock}
+                  >
+                    {renderedViewMarkdown}
+                  </ReactMarkdown>
+                </div>
               </div>
             </div>
           )}
@@ -1784,6 +1877,7 @@ function MarkdownDocumentBlock(props: MarkdownDocumentBlockProps) {
     return (
       <UrlDocumentBlock
         path={props.path}
+        suspended={props.active === false}
         onClose={props.onClose}
         showCloseButton={props.showCloseButton}
         className={props.className}

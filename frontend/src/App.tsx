@@ -51,6 +51,7 @@ const TerminalPage = lazy(() => import('./pages/TerminalPage'))
 const WebullPage = lazy(() => import('./personal_extension/pages/WebullPage'))
 const PersonalToolsPage = lazy(() => import('./personal_extension/pages/PersonalToolsPage'))
 import { FrozenRouteBlock } from './components/lego_blocks/units/FrozenRouteBlock'
+import RouteActivityProviderBlock from './components/lego_blocks/units/RouteActivityProviderBlock'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import AppTabsBlock, { type AppWorkspaceTabBlockModel } from './components/lego_blocks/units/AppTabsBlock'
 import { copyTextToClipboard } from './components/lego_blocks/units/BacklogListDomainBlock'
@@ -317,6 +318,10 @@ const EXCALIDRAW_NAV_ITEM: NavItem = {
   activePaths: EXCALIDRAW_PLUS_TOOL_ROUTES.flatMap(tool => [tool.route, tool.legacyRoute]),
 }
 
+const MAX_HIDDEN_PERSISTENT_CHAT_SURFACES = 1
+const MAX_HIDDEN_PERSISTENT_WEB_SURFACES = 1
+const MAX_HIDDEN_PERSISTENT_THINKING_SPACE_SURFACES = 2
+
 function isNavItemActive(pathname: string, item: NavItem): boolean {
   if (pathname === item.to) return true
   return (item.activePaths ?? []).includes(pathname)
@@ -339,6 +344,55 @@ function parseTabRoute(route: string): { pathname: string; search: URLSearchPara
   } catch {
     return { pathname: '/', search: new URLSearchParams() }
   }
+}
+
+function dedupeTabIds(tabIds: string[]): string[] {
+  const next: string[] = []
+  for (const tabId of tabIds) {
+    if (!next.includes(tabId)) next.push(tabId)
+  }
+  return next
+}
+
+function sameTabIdSequence(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((tabId, index) => tabId === right[index])
+}
+
+function applyPersistentSurfaceBudget(
+  tabIds: string[],
+  hiddenLimit: number,
+  activeTabId?: string | null,
+): string[] {
+  const deduped = dedupeTabIds(tabIds)
+  if (deduped.length === 0) return deduped
+
+  const normalizedHiddenLimit = Math.max(0, hiddenLimit)
+  const requestedActiveTabId = activeTabId?.trim() ? activeTabId : null
+  const protectedActiveTabId = requestedActiveTabId && deduped.includes(requestedActiveTabId)
+    ? requestedActiveTabId
+    : null
+  if (!protectedActiveTabId) {
+    return deduped.length <= normalizedHiddenLimit
+      ? deduped
+      : deduped.slice(-normalizedHiddenLimit)
+  }
+
+  const hiddenTabIds = deduped.filter((tabId) => tabId !== protectedActiveTabId)
+  const keptHiddenTabIds = hiddenTabIds.slice(-normalizedHiddenLimit)
+  return [...keptHiddenTabIds, protectedActiveTabId]
+}
+
+function appendPersistentSurfaceTabId(
+  tabIds: string[],
+  tabId: string,
+  hiddenLimit: number,
+  activeTabId?: string | null,
+): string[] {
+  return applyPersistentSurfaceBudget(
+    [...tabIds.filter((candidate) => candidate !== tabId), tabId],
+    hiddenLimit,
+    activeTabId,
+  )
 }
 
 function getWindowScopedStorageKey(baseKey: string, sessionId: string): string {
@@ -641,14 +695,20 @@ function App() {
     () => readScopedAppShellActiveTabIdBlock(initialWindowContextRef.current),
   )
   const [persistentChatTabIds, setPersistentChatTabIds] = useState<string[]>(
-    () => workspaceTabs
-      .filter((tab) => parseTabRoute(tab.route).pathname === '/chat')
-      .map((tab) => tab.id),
+    () => applyPersistentSurfaceBudget(
+      workspaceTabs
+        .filter((tab) => parseTabRoute(tab.route).pathname === '/chat')
+        .map((tab) => tab.id),
+      MAX_HIDDEN_PERSISTENT_CHAT_SURFACES,
+    ),
   )
   const [persistentWebTabIds, setPersistentWebTabIds] = useState<string[]>(
-    () => workspaceTabs
-      .filter((tab) => parseTabRoute(tab.route).pathname === '/web')
-      .map((tab) => tab.id),
+    () => applyPersistentSurfaceBudget(
+      workspaceTabs
+        .filter((tab) => parseTabRoute(tab.route).pathname === '/web')
+        .map((tab) => tab.id),
+      MAX_HIDDEN_PERSISTENT_WEB_SURFACES,
+    ),
   )
   const [persistentWebSiteIdByTabId, setPersistentWebSiteIdByTabId] = useState<Record<string, string | null>>(
     () => Object.fromEntries(
@@ -659,9 +719,12 @@ function App() {
     ),
   )
   const [persistentThinkingSpaceTabIds, setPersistentThinkingSpaceTabIds] = useState<string[]>(
-    () => workspaceTabs
-      .filter((tab) => parseTabRoute(tab.route).pathname === '/thinking-space')
-      .map((tab) => tab.id),
+    () => applyPersistentSurfaceBudget(
+      workspaceTabs
+        .filter((tab) => parseTabRoute(tab.route).pathname === '/thinking-space')
+        .map((tab) => tab.id),
+      MAX_HIDDEN_PERSISTENT_THINKING_SPACE_SURFACES,
+    ),
   )
   const [persistentOrganizerRouteByTabId, setPersistentOrganizerRouteByTabId] = useState<Record<string, string>>(
     () => Object.fromEntries(
@@ -1652,16 +1715,28 @@ function App() {
       && pending.route !== normalizedCurrentRoute
 
     if (isChatRoute) {
-      setPersistentChatTabIds((prev) => (
-        prev.includes(activeWorkspaceTabId) ? prev : [...prev, activeWorkspaceTabId]
-      ))
+      setPersistentChatTabIds((prev) => {
+        const next = appendPersistentSurfaceTabId(
+          prev,
+          activeWorkspaceTabId,
+          MAX_HIDDEN_PERSISTENT_CHAT_SURFACES,
+          activeWorkspaceTabId,
+        )
+        return sameTabIdSequence(next, prev) ? prev : next
+      })
     }
 
     if (isWebRoute) {
       const selectedSiteId = new URLSearchParams(location.search).get('site')
-      setPersistentWebTabIds((prev) => (
-        prev.includes(activeWorkspaceTabId) ? prev : [...prev, activeWorkspaceTabId]
-      ))
+      setPersistentWebTabIds((prev) => {
+        const next = appendPersistentSurfaceTabId(
+          prev,
+          activeWorkspaceTabId,
+          MAX_HIDDEN_PERSISTENT_WEB_SURFACES,
+          activeWorkspaceTabId,
+        )
+        return sameTabIdSequence(next, prev) ? prev : next
+      })
       // Only update the stored site ID when the URL explicitly carries a site param.
       // Navigating to bare /web (e.g. via sidebar) must not wipe a previously stored selection.
       if (!activeTabRoutePending && selectedSiteId !== null) {
@@ -1674,9 +1749,15 @@ function App() {
     }
 
     if (isThinkingSpaceRoute) {
-      setPersistentThinkingSpaceTabIds((prev) => (
-        prev.includes(activeWorkspaceTabId) ? prev : [...prev, activeWorkspaceTabId]
-      ))
+      setPersistentThinkingSpaceTabIds((prev) => {
+        const next = appendPersistentSurfaceTabId(
+          prev,
+          activeWorkspaceTabId,
+          MAX_HIDDEN_PERSISTENT_THINKING_SPACE_SURFACES,
+          activeWorkspaceTabId,
+        )
+        return sameTabIdSequence(next, prev) ? prev : next
+      })
     }
 
     if (isOrganizerRoute) {
@@ -1820,15 +1901,21 @@ function App() {
   const handlePersistentWebSiteSelect = useCallback((tabId: string, siteId: string) => {
     const nextSearch = new URLSearchParams()
     nextSearch.set('site', siteId)
-    setPersistentWebTabIds((prev) => (
-      prev.includes(tabId) ? prev : [...prev, tabId]
-    ))
+    setPersistentWebTabIds((prev) => {
+      const next = appendPersistentSurfaceTabId(
+        prev,
+        tabId,
+        MAX_HIDDEN_PERSISTENT_WEB_SURFACES,
+        isWebRoute ? activeWorkspaceTabId : null,
+      )
+      return sameTabIdSequence(next, prev) ? prev : next
+    })
     setPersistentWebSiteIdByTabId((prev) => (
       prev[tabId] === siteId ? prev : { ...prev, [tabId]: siteId }
     ))
     if (tabId !== activeWorkspaceTabId) return
     navigate(`/web?${nextSearch.toString()}`, { replace: true })
-  }, [activeWorkspaceTabId, navigate])
+  }, [activeWorkspaceTabId, isWebRoute, navigate])
 
   const handleDrawerTouchStart = useCallback((event: React.TouchEvent<HTMLElement>) => {
     const touch = event.touches[0]
@@ -2259,16 +2346,28 @@ function App() {
   useEffect(() => {
     const tabIds = new Set(workspaceTabs.map((tab) => tab.id))
     setPersistentChatTabIds((prev) => {
-      const next = prev.filter((tabId) => tabIds.has(tabId))
-      return next.length === prev.length ? prev : next
+      const next = applyPersistentSurfaceBudget(
+        prev.filter((tabId) => tabIds.has(tabId)),
+        MAX_HIDDEN_PERSISTENT_CHAT_SURFACES,
+        isChatRoute ? activeWorkspaceTabId : null,
+      )
+      return sameTabIdSequence(next, prev) ? prev : next
     })
     setPersistentWebTabIds((prev) => {
-      const next = prev.filter((tabId) => tabIds.has(tabId))
-      return next.length === prev.length ? prev : next
+      const next = applyPersistentSurfaceBudget(
+        prev.filter((tabId) => tabIds.has(tabId)),
+        MAX_HIDDEN_PERSISTENT_WEB_SURFACES,
+        isWebRoute ? activeWorkspaceTabId : null,
+      )
+      return sameTabIdSequence(next, prev) ? prev : next
     })
     setPersistentThinkingSpaceTabIds((prev) => {
-      const next = prev.filter((tabId) => tabIds.has(tabId))
-      return next.length === prev.length ? prev : next
+      const next = applyPersistentSurfaceBudget(
+        prev.filter((tabId) => tabIds.has(tabId)),
+        MAX_HIDDEN_PERSISTENT_THINKING_SPACE_SURFACES,
+        isThinkingSpaceRoute ? activeWorkspaceTabId : null,
+      )
+      return sameTabIdSequence(next, prev) ? prev : next
     })
     setPersistentWebSiteIdByTabId((prev) => {
       const nextEntries = Object.entries(prev).filter(([tabId]) => tabIds.has(tabId))
@@ -2278,7 +2377,7 @@ function App() {
       const nextEntries = Object.entries(prev).filter(([tabId]) => tabIds.has(tabId))
       return nextEntries.length === Object.keys(prev).length ? prev : Object.fromEntries(nextEntries)
     })
-  }, [workspaceTabs])
+  }, [activeWorkspaceTabId, isChatRoute, isThinkingSpaceRoute, isWebRoute, workspaceTabs])
 
   useEffect(() => {
     if (!activeWorkspaceTabId) return
@@ -3099,9 +3198,11 @@ function App() {
                     style={{ visibility: chatSurfaceActive ? 'visible' : 'hidden', pointerEvents: chatSurfaceActive ? 'auto' : 'none' }}
                     aria-hidden={!chatSurfaceActive}
                   >
-                    <FrozenRouteBlock active={chatSurfaceActive}>
-                      <Chat active={chatSurfaceActive} />
-                    </FrozenRouteBlock>
+                    <RouteActivityProviderBlock active={chatSurfaceActive}>
+                      <FrozenRouteBlock active={chatSurfaceActive}>
+                        <Chat active={chatSurfaceActive} />
+                      </FrozenRouteBlock>
+                    </RouteActivityProviderBlock>
                   </div>
                 )
               })}
@@ -3120,13 +3221,15 @@ function App() {
                     }}
                     aria-hidden={!webSurfaceActive}
                   >
-                    <FrozenRouteBlock active={webSurfaceActive}>
-                      <Web
-                        active={webSurfaceActive}
-                        selectedSiteId={persistentWebSiteIdByTabId[tabId] ?? null}
-                        onSelectSiteId={(siteId) => handlePersistentWebSiteSelect(tabId, siteId)}
-                      />
-                    </FrozenRouteBlock>
+                    <RouteActivityProviderBlock active={webSurfaceActive}>
+                      <FrozenRouteBlock active={webSurfaceActive}>
+                        <Web
+                          active={webSurfaceActive}
+                          selectedSiteId={persistentWebSiteIdByTabId[tabId] ?? null}
+                          onSelectSiteId={(siteId) => handlePersistentWebSiteSelect(tabId, siteId)}
+                        />
+                      </FrozenRouteBlock>
+                    </RouteActivityProviderBlock>
                   </div>
                 )
               })}
@@ -3136,9 +3239,11 @@ function App() {
                   style={{ visibility: isOrganizerRoute ? 'visible' : 'hidden', pointerEvents: isOrganizerRoute ? 'auto' : 'none' }}
                   aria-hidden={!isOrganizerRoute}
                 >
-                  <FrozenRouteBlock active={isOrganizerRoute}>
-                    <ThinkingOrganizer active={isOrganizerRoute} />
-                  </FrozenRouteBlock>
+                  <RouteActivityProviderBlock active={isOrganizerRoute}>
+                    <FrozenRouteBlock active={isOrganizerRoute}>
+                      <ThinkingOrganizer active={isOrganizerRoute} />
+                    </FrozenRouteBlock>
+                  </RouteActivityProviderBlock>
                 </div>
               )}
               {persistentRouteMounts.newThought && (
@@ -3147,9 +3252,11 @@ function App() {
                   style={{ visibility: isNewThoughtRoute ? 'visible' : 'hidden', pointerEvents: isNewThoughtRoute ? 'auto' : 'none' }}
                   aria-hidden={!isNewThoughtRoute}
                 >
-                  <FrozenRouteBlock active={isNewThoughtRoute}>
-                    <NewThought />
-                  </FrozenRouteBlock>
+                  <RouteActivityProviderBlock active={isNewThoughtRoute}>
+                    <FrozenRouteBlock active={isNewThoughtRoute}>
+                      <NewThought />
+                    </FrozenRouteBlock>
+                  </RouteActivityProviderBlock>
                 </div>
               )}
               {renderedPersistentThinkingSpaceTabIds.map((tabId) => {
@@ -3164,9 +3271,11 @@ function App() {
                     style={{ visibility: thinkingSpaceSurfaceActive ? 'visible' : 'hidden', pointerEvents: thinkingSpaceSurfaceActive ? 'auto' : 'none' }}
                     aria-hidden={!thinkingSpaceSurfaceActive}
                   >
-                    <FrozenRouteBlock active={thinkingSpaceSurfaceActive}>
-                      <ThinkingSpace active={thinkingSpaceSurfaceActive} routeOverride={thinkingSpaceTabRoute} />
-                    </FrozenRouteBlock>
+                    <RouteActivityProviderBlock active={thinkingSpaceSurfaceActive}>
+                      <FrozenRouteBlock active={thinkingSpaceSurfaceActive}>
+                        <ThinkingSpace active={thinkingSpaceSurfaceActive} routeOverride={thinkingSpaceTabRoute} />
+                      </FrozenRouteBlock>
+                    </RouteActivityProviderBlock>
                   </div>
                 )
               })}
@@ -3176,9 +3285,11 @@ function App() {
                   style={{ visibility: isWebullRoute ? 'visible' : 'hidden', pointerEvents: isWebullRoute ? 'auto' : 'none' }}
                   aria-hidden={!isWebullRoute}
                 >
-                  <FrozenRouteBlock active={isWebullRoute}>
-                    <WebullPage pageLabel={webullTabLabel} />
-                  </FrozenRouteBlock>
+                  <RouteActivityProviderBlock active={isWebullRoute}>
+                    <FrozenRouteBlock active={isWebullRoute}>
+                      <WebullPage pageLabel={webullTabLabel} />
+                    </FrozenRouteBlock>
+                  </RouteActivityProviderBlock>
                 </div>
               )}
               {!usesPersistentRouteSurface && (

@@ -57,6 +57,7 @@ export async function syncWebullExecutionFromOverallOrch(
     fetchedAt: snapshot.fetchedAt,
     runtime: snapshot.runtime,
     selectedAccount: snapshot.selectedAccount,
+    accounts: snapshot.accounts,
     accountList: snapshot.accountList,
     accountBalanceLegacy: snapshot.accountBalanceLegacy,
     accountPositionsLegacy: snapshot.accountPositionsLegacy,

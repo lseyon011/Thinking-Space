@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { openExternalUrlOrch } from '@/services/orchestrators/fileSystemOrch'
 
 const GOOGLE_WEBVIEW_PARTITION_BLOCK = 'persist:thinking-space-google'
-const GOOGLE_WEBVIEW_UNLOAD_DELAY_MS = 60_000
+const GOOGLE_WEBVIEW_UNLOAD_DELAY_MS = 3 * 60 * 60 * 1000
 
 interface GoogleWorkspaceViewerBlockProps {
   url: string
@@ -39,12 +39,17 @@ function GoogleWorkspaceViewerBlock({
   const webviewRef = useRef<HTMLElement | null>(null)
   const shouldPauseWebview = isElectronRuntime && (!routeActive || !windowActive)
   const [webviewMounted, setWebviewMounted] = useState(() => !shouldPauseWebview)
+  const [webviewInstanceKey, setWebviewInstanceKey] = useState(0)
   const loadError = useElectronWebviewLoadErrorBlock({
     enabled: isElectronRuntime && trustedUrl && webviewMounted,
     webviewRef,
     resolvedUrl: url,
     logSource: 'google-workspace-webview',
   })
+  const handleReloadWebview = useCallback(() => {
+    setWebviewMounted(true)
+    setWebviewInstanceKey(value => value + 1)
+  }, [])
   const handleOpenExternal = useCallback(() => {
     void openExternalUrlOrch(url).catch(() => undefined)
   }, [url])
@@ -96,6 +101,7 @@ function GoogleWorkspaceViewerBlock({
       <div className="relative h-full min-h-0">
         {webviewMounted ? (
           <webview
+            key={webviewInstanceKey}
             ref={webviewRef}
             title={title}
             src={url}
@@ -104,7 +110,21 @@ function GoogleWorkspaceViewerBlock({
             className={cn('h-full min-h-0 w-full bg-background', className)}
           />
         ) : (
-          <div className={cn('h-full min-h-0 w-full bg-background', className)} />
+          <div className={cn('flex h-full min-h-0 w-full items-center justify-center bg-background p-6', className)}>
+            <div className="w-full max-w-md rounded-2xl border border-border/50 bg-muted/20 p-6 text-center">
+              <div className="text-sm font-medium text-foreground">Webview inactive</div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This workspace view was suspended after inactivity. Reload to restore it.
+              </p>
+              <button
+                type="button"
+                onClick={handleReloadWebview}
+                className="mt-4 inline-flex rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                Reload webview
+              </button>
+            </div>
+          </div>
         )}
       </div>
     )

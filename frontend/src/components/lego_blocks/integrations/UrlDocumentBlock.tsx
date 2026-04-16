@@ -36,7 +36,7 @@ import {
 import { cn } from '@/lib/utils'
 
 const LINK_WEBVIEW_PARTITION = 'persist:thinking-space-links'
-const ELECTRON_WEBVIEW_UNLOAD_DELAY_MS = 60_000
+const ELECTRON_WEBVIEW_UNLOAD_DELAY_MS = 3 * 60 * 60 * 1000
 type ElectronWebviewRefBlock = React.MutableRefObject<ElectronWebviewElementBlock | null>
 
 interface ElectronWebviewElementBlock extends HTMLElement {
@@ -110,6 +110,7 @@ function UrlDocumentBlock({
   const [error, setError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [canGoBack, setCanGoBack] = useState(false)
+  const [electronWebviewInstanceKey, setElectronWebviewInstanceKey] = useState(0)
   const webviewRef = useRef<ElectronWebviewElementBlock | null>(null)
   const contentAreaRef = useRef<HTMLDivElement | null>(null)
   const passwordProbeInFlightRef = useRef(false)
@@ -242,6 +243,12 @@ function UrlDocumentBlock({
     return webviewRef.current
   }, [isElectronRuntime])
 
+  const remountElectronWebviewBlock = useCallback(() => {
+    setCanGoBack(false)
+    setElectronGuestMounted(true)
+    setElectronWebviewInstanceKey(value => value + 1)
+  }, [])
+
   // Electron guest views can reload when React re-applies the same `src`
   // during parent re-renders. Set `src` imperatively only when the target URL
   // actually changes so workspace-tab switches preserve the live page state.
@@ -347,11 +354,24 @@ function UrlDocumentBlock({
 
   const handleReload = useCallback(() => {
     if (isElectronRuntime) {
-      getElectronWebviewBlock()?.reload?.()
+      const webview = getElectronWebviewBlock()
+      if (!electronGuestMounted || !webview?.reload) {
+        remountElectronWebviewBlock()
+        return
+      }
+      try {
+        webview.reload()
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('dom-ready')) {
+          remountElectronWebviewBlock()
+          return
+        }
+        throw error
+      }
     } else {
       setReloadKey(k => k + 1)
     }
-  }, [getElectronWebviewBlock, isElectronRuntime])
+  }, [electronGuestMounted, getElectronWebviewBlock, isElectronRuntime, remountElectronWebviewBlock])
 
   useEffect(() => {
     if (!passwordAutofillEnabled) {
@@ -565,6 +585,7 @@ function UrlDocumentBlock({
         {isElectronRuntime ? (
           electronGuestMounted ? (
             <ElectronPersistentWebviewBlock
+              key={electronWebviewInstanceKey}
               webviewRef={webviewRef}
               title={displayTitle}
               partition={partition ?? LINK_WEBVIEW_PARTITION}
@@ -572,7 +593,21 @@ function UrlDocumentBlock({
               className="absolute inset-0 bg-background"
             />
           ) : (
-            <div className="absolute inset-0 bg-background" />
+            <div className="absolute inset-0 flex items-center justify-center bg-background p-6">
+              <div className="w-full max-w-md rounded-2xl border border-border/50 bg-muted/20 p-6 text-center">
+                <div className="text-sm font-medium text-foreground">Webview inactive</div>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  This page was suspended after inactivity. Reload to restore it.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleReload}
+                  className="mt-4 inline-flex rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                >
+                  Reload webview
+                </button>
+              </div>
+            </div>
           )
         ) : isCapacitorRuntime ? (
           // Native WKWebView is overlaid by the plugin — render a transparent

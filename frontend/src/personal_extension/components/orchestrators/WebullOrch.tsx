@@ -4,7 +4,9 @@ import {
   fetchWebullOverallSnapshotOrch,
   getWebullRuntimeSurfaceOrch,
   type WebullRuntimeSurfaceOrch,
+  type WebullAccountSnapshotOrch,
   type WebullOverallSnapshotOrch,
+  type WebullSelectedAccountOrch,
 } from '../../services/orchestrators/webullOverallOrch'
 import {
   createWebullCompanyOrch,
@@ -33,6 +35,50 @@ const Webull_SUBTABS: Array<{ id: WebullSubtabId; label: string }> = [
   { id: 'memory', label: 'Pin Board' },
 ]
 
+function parseSelectedAccountBlock(value: unknown): WebullSelectedAccountOrch | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const record = value as Record<string, unknown>
+  const accountId = String(record.accountId ?? record.account_id ?? '').trim()
+  if (!accountId) return null
+  const accountNumber = String(record.accountNumber ?? record.account_number ?? '').trim()
+  const subscriptionId = String(record.subscriptionId ?? record.subscription_id ?? '').trim()
+  return {
+    accountId,
+    accountNumber: accountNumber || null,
+    subscriptionId: subscriptionId || null,
+  }
+}
+
+function parseAccountSnapshotsFromCacheBlock(cache: WebullOverallCacheBlock): WebullAccountSnapshotOrch[] {
+  if (Array.isArray(cache.accounts)) {
+    return cache.accounts.flatMap((value) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return []
+      const record = value as Record<string, unknown>
+      const account = parseSelectedAccountBlock(record.account)
+      if (!account) return []
+      return [{
+        account,
+        accountBalanceLegacy: record.accountBalanceLegacy ?? record.account_balance_legacy ?? null,
+        accountPositionsLegacy: record.accountPositionsLegacy ?? record.account_positions_legacy ?? null,
+        assetsPositions: record.assetsPositions ?? record.assets_positions ?? null,
+        warnings: Array.isArray(record.warnings)
+          ? record.warnings.map((warning) => String(warning))
+          : [],
+      }]
+    })
+  }
+
+  const selectedAccount = parseSelectedAccountBlock(cache.selectedAccount)
+  if (!selectedAccount) return []
+  return [{
+    account: selectedAccount,
+    accountBalanceLegacy: cache.accountBalanceLegacy,
+    accountPositionsLegacy: cache.accountPositionsLegacy,
+    assetsPositions: cache.assetsPositions,
+    warnings: [],
+  }]
+}
+
 function toSnapshotFromCacheBlock(
   cache: WebullOverallCacheBlock,
   runtime: WebullRuntimeSurfaceOrch,
@@ -44,19 +90,8 @@ function toSnapshotFromCacheBlock(
   const warning = runtime === 'electron'
     ? `Loaded saved Webull data from ${cache.overallPath}.`
     : `Showing saved Webull data from ${cache.overallPath}. Refresh from Electron app (last refresh runtime: ${runtimeHint}).`
-  const selectedAccountRecord = (cache.selectedAccount && typeof cache.selectedAccount === 'object')
-    ? cache.selectedAccount as Record<string, unknown>
-    : null
-  const selectedAccountId = selectedAccountRecord
-    ? String(selectedAccountRecord.accountId ?? selectedAccountRecord.account_id ?? '')
-    : ''
-  const selectedAccount = selectedAccountId
-    ? {
-      accountId: selectedAccountId,
-      accountNumber: String(selectedAccountRecord?.accountNumber ?? selectedAccountRecord?.account_number ?? '') || null,
-      subscriptionId: String(selectedAccountRecord?.subscriptionId ?? selectedAccountRecord?.subscription_id ?? '') || null,
-    }
-    : null
+  const accounts = parseAccountSnapshotsFromCacheBlock(cache)
+  const selectedAccount = accounts[0]?.account ?? parseSelectedAccountBlock(cache.selectedAccount)
 
   return {
     runtime: refreshRuntime ?? runtime,
@@ -70,15 +105,7 @@ function toSnapshotFromCacheBlock(
       marketQuotes: null,
     },
     selectedAccount,
-    accounts: selectedAccount
-      ? [{
-        account: selectedAccount,
-        accountBalanceLegacy: cache.accountBalanceLegacy,
-        accountPositionsLegacy: cache.accountPositionsLegacy,
-        assetsPositions: cache.assetsPositions,
-        warnings: [],
-      }]
-      : [],
+    accounts,
     accountList: cache.accountList,
     accountBalanceLegacy: cache.accountBalanceLegacy,
     accountPositionsLegacy: cache.accountPositionsLegacy,
@@ -479,6 +506,7 @@ export default function WebullOrch() {
         marketQuotes: null,
       }}
       selectedAccount={snapshot?.selectedAccount ?? null}
+      accounts={snapshot?.accounts ?? []}
       accountList={snapshot?.accountList ?? null}
       accountBalanceLegacy={snapshot?.accountBalanceLegacy ?? null}
       accountPositionsLegacy={snapshot?.accountPositionsLegacy ?? null}
