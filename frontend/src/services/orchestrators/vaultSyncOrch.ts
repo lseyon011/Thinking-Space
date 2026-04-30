@@ -3,10 +3,13 @@
 
 import { getPlatformName, getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import type { VaultFS, VaultEntry } from '@/services/lego_blocks/integrations/fsBlock'
+import { getCapabilityFeatureFlags } from '@/services/lego_blocks/integrations/capabilityFeatureFlagsBlock'
 import {
   parseNote,
+  stringifyNote,
   hasFrontmatter,
   type YAMLFrontmatter,
+  type YAMLNote,
 } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { parseOrganizerBodySections } from '@/services/lego_blocks/integrations/organizerBodyBlock'
 import {
@@ -15,6 +18,7 @@ import {
   bulkDeleteNodesByPaths,
   bulkDeleteLinksForFiles,
   getAllFilePaths,
+  getNodeByKey,
   clearAll,
   clearAllLinks,
   getNodeCount,
@@ -25,6 +29,10 @@ import {
   type LinkRecord,
 } from '@/services/lego_blocks/integrations/dbBlock'
 import { extractLinksFromContentBlock } from '@/services/lego_blocks/units/linkIndexBlock'
+import {
+  mergeWikiLinksIntoFrontmatterBlock,
+  resolveGeneratedWikiLinksForFrontmatterBlock,
+} from '@/services/lego_blocks/units/wikiLinksBlock'
 
 // ── Types ──
 
@@ -89,6 +97,7 @@ function normalizeEpochSeconds(value: number): number {
 export async function fullSync(fs?: VaultFS, options?: VaultSyncOptions): Promise<SyncResult> {
   const vaultFs = fs ?? getVaultFS()
   const start = Date.now()
+  const autoHealEnabled = getCapabilityFeatureFlags().yaml_fields_auto_heal_enabled
 
   await clearAll()
   await clearAllLinks()
@@ -96,7 +105,10 @@ export async function fullSync(fs?: VaultFS, options?: VaultSyncOptions): Promis
   const entries = await vaultFs.walkVault(['.md'])
   const candidatePaths = entries.map(e => e.path)
   setCachedFilePaths(new Set(candidatePaths))
-  const result = await syncEntries(vaultFs, entries, options, candidatePaths)
+  const parentKeyToPath = autoHealEnabled
+    ? await buildParentKeyToPathIndex(vaultFs, entries, resolveMaxSyncFileSizeBytes(options))
+    : undefined
+  const result = await syncEntries(vaultFs, entries, options, candidatePaths, parentKeyToPath, autoHealEnabled)
 
   result.durationMs = Date.now() - start
   return result
@@ -113,6 +125,7 @@ export async function incrementalSync(
 ): Promise<SyncResult> {
   const vaultFs = fs ?? getVaultFS()
   const start = Date.now()
+  const autoHealEnabled = getCapabilityFeatureFlags().yaml_fields_auto_heal_enabled
 
   const allEntries = await vaultFs.walkVault(['.md'])
 
@@ -137,7 +150,10 @@ export async function incrementalSync(
 
   const candidatePaths = allEntries.map(e => e.path)
   setCachedFilePaths(new Set(candidatePaths))
-  const result = await syncEntries(vaultFs, updatedEntries, options, candidatePaths)
+  // Incremental sync: skip the full-vault prepass and rely on getNodeByKey lookups
+  // against IndexedDB for parent path resolution. Scanning every file here would
+  // defeat the purpose of incremental sync.
+  const result = await syncEntries(vaultFs, updatedEntries, options, candidatePaths, undefined, autoHealEnabled)
   result.deletedNodes = deletedCount
   result.totalFiles = allEntries.length
   result.durationMs = Date.now() - start
@@ -161,11 +177,16 @@ export async function syncSingleFile(
     const stat = await vaultFs.stat(filePath)
     if (stat.size > maxFileSizeBytes) return false
 
-    const content = await vaultFs.read(filePath)
+    let content = await vaultFs.read(filePath)
     if (!hasFrontmatter(content)) return false
 
     const note = parseNote(content)
     if (!note) return false
+
+    if (getCapabilityFeatureFlags().yaml_fields_auto_heal_enabled) {
+      const healed = await healWikiLinksForNote(vaultFs, filePath, note)
+      if (healed) content = healed
+    }
 
     const record = frontmatterToRecord(note.frontmatter, filePath, note.body)
     await upsertNode(record)
@@ -251,6 +272,8 @@ async function syncEntries(
   entries: VaultEntry[],
   options?: VaultSyncOptions,
   candidatePaths?: string[],
+  parentKeyToPath?: Map<string, string>,
+  autoHealEnabled?: boolean,
 ): Promise<SyncResult> {
   const maxFileSizeBytes = resolveMaxSyncFileSizeBytes(options)
   const result: SyncResult = {
@@ -306,8 +329,7 @@ async function syncEntries(
         continue
       }
 
-      const content = await fs.read(entry.path)
-
+      let content = await fs.read(entry.path)
       if (!hasFrontmatter(content)) {
         result.skippedFiles++
         continue
@@ -317,6 +339,11 @@ async function syncEntries(
       if (!note) {
         result.skippedFiles++
         continue
+      }
+
+      if (autoHealEnabled) {
+        const healed = await healWikiLinksForNote(fs, entry.path, note, parentKeyToPath)
+        if (healed) content = healed
       }
 
       const record = frontmatterToRecord(note.frontmatter, entry.path, note.body)
@@ -353,6 +380,66 @@ async function syncEntries(
   await flushLinks()
 
   return result
+}
+
+// Fast key extractor for the full-sync prepass: avoids a full YAML parse.
+// Matches a top-level `key: <value>` line inside the leading frontmatter block.
+const FRONTMATTER_KEY_RE = /^key:\s*["']?([^"'\n]+?)["']?\s*$/m
+
+async function buildParentKeyToPathIndex(
+  fs: VaultFS,
+  entries: VaultEntry[],
+  maxFileSizeBytes: number,
+): Promise<Map<string, string>> {
+  const keyToPath = new Map<string, string>()
+  for (const entry of entries) {
+    if (entry.size > maxFileSizeBytes) continue
+    try {
+      const content = await fs.read(entry.path)
+      if (!hasFrontmatter(content)) continue
+      const match = FRONTMATTER_KEY_RE.exec(content)
+      const key = match?.[1]?.trim()
+      if (!key) continue
+      keyToPath.set(key, entry.path)
+    } catch {
+      // Ignore index misses; sync will report file-level issues separately.
+    }
+  }
+  return keyToPath
+}
+
+/**
+ * Heal generated wiki_links on an already-parsed note. Mutates note.frontmatter
+ * in place and writes the file when something changed. Returns the rewritten
+ * content if a write occurred, otherwise undefined (caller keeps original).
+ */
+async function healWikiLinksForNote(
+  fs: VaultFS,
+  filePath: string,
+  note: YAMLNote,
+  parentKeyToPath?: Map<string, string>,
+): Promise<string | undefined> {
+  const parentKey = typeof note.frontmatter.parent === 'string'
+    ? note.frontmatter.parent.trim()
+    : ''
+  const parentFilePath = parentKey
+    ? (parentKeyToPath?.get(parentKey) ?? (await getNodeByKey(parentKey))?.filePath)
+    : undefined
+  const { frontmatter: nextFrontmatter, changed } = mergeWikiLinksIntoFrontmatterBlock(
+    note.frontmatter as Record<string, unknown>,
+    {
+      generatedLinks: resolveGeneratedWikiLinksForFrontmatterBlock(
+        note.frontmatter as Record<string, unknown>,
+        { parentFilePath },
+      ),
+    },
+  )
+  if (!changed) return undefined
+
+  note.frontmatter = nextFrontmatter as YAMLFrontmatter
+  const rewritten = stringifyNote(note)
+  await fs.write(filePath, rewritten)
+  return rewritten
 }
 
 function formatNodeKeyConflictError(conflict: NodeKeyConflictBlock): string {
