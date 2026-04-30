@@ -141,6 +141,8 @@ describe('thinkspc CLI integration', () => {
     expect(content).toContain("title: Concept - O'Brien habits")
     expect(content).toContain('derived_from:')
     expect(content).toContain('notes/source one.md')
+    expect(content).toContain('wiki_links:')
+    expect(content).toContain('[[notes/source one]]')
   })
 
   it('resolves source-shaped AI synthesis paths with quoted source titles', async () => {
@@ -197,6 +199,28 @@ describe('thinkspc CLI integration', () => {
     expect(read.data.frontmatter.related_concepts).toEqual(['moats', 'capital-allocation'])
     expect(read.data.frontmatter.tags).toEqual(['existing', 'investing'])
     expect(read.data.body).toBe('# Body\n\nKeep this body.\n')
+  })
+
+  it('saves cleaned transcripts through the CLI using the injected vault filesystem', async () => {
+    const { repoRoot, callerCwd, vaultRoot } = await createCliWorkspace()
+
+    const response = await runThinkspc(repoRoot, callerCwd, vaultRoot, [
+      '--json',
+      'tools.transcript.clean_save',
+      '--input_text', '(0s): Welcome everyone\n(10s): Today we discuss planning.',
+      '--headings_text', '00:00:00 Intro\n00:00:10 Planning',
+      '--output_folder', 'transcripts/cli',
+      '--output_name', 'meeting-notes',
+    ])
+
+    expect(response.ok).toBe(true)
+    expect(response.data.result.success).toBe(true)
+    expect(response.data.result.output_path).toBe('transcripts/cli/meeting-notes.md')
+
+    const written = await fs.readFile(path.join(vaultRoot, 'transcripts', 'cli', 'meeting-notes.md'), 'utf-8')
+    expect(written).toContain('## Intro')
+    expect(written).toContain('Welcome everyone')
+    expect(written).toContain('## Planning')
   })
 
   it('uses the vault selected in the app as the default for the packaged standalone cli', async () => {

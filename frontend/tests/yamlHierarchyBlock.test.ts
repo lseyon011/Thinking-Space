@@ -215,6 +215,9 @@ describe('yamlHierarchyBlock project storage', () => {
     expect(epicNote!.frontmatter.key).toBe(generateKey(epicNote!.frontmatter.title))
     expect(epic.filePath).toBe(`projects/delta/thinking-organizer/epics/epic-${epicNote!.frontmatter.key}.md`)
     expect(epicNote!.frontmatter.parent).toBe(program.key)
+    expect(epicNote!.frontmatter.wiki_links).toEqual([
+      `[[${program.filePath.slice(0, -3)}]]`,
+    ])
   })
 
   it('writes description and comments into frontmatter and markdown body when creating a node', async () => {
@@ -279,5 +282,47 @@ describe('yamlHierarchyBlock project storage', () => {
     ])
     expect(note!.frontmatter.comments?.every(comment => comment.added_by === 'unknown')).toBe(true)
     expect(note!.frontmatter.comments?.every(comment => Boolean(comment.added_at))).toBe(true)
+  })
+
+  it('updates generated obsidian hierarchy links when a node is moved', async () => {
+    const fs = new FakeVaultFS()
+    const { createYamlNode, moveYamlNode } = await import('@/services/lego_blocks/integrations/yamlHierarchyBlock')
+
+    const programA = await createYamlNode({
+      type: 'program',
+      title: 'Program A',
+      projectRoot: 'projects/a',
+      fs,
+    })
+
+    const programB = await createYamlNode({
+      type: 'program',
+      title: 'Program B',
+      projectRoot: 'projects/b',
+      fs,
+    })
+
+    const epic = await createYamlNode({
+      type: 'epic',
+      title: 'Epic 1',
+      parentKey: programA.key,
+      parentUuid: programA.uuid,
+      parentType: 'program',
+      fs,
+    })
+
+    const moved = await moveYamlNode(epic.uuid, programB.key, fs)
+    const movedNote = parseNote(await fs.read(moved.filePath))
+    expect(movedNote).not.toBeNull()
+    expect(movedNote!.frontmatter.parent).toBe(programB.key)
+    expect(movedNote!.frontmatter.wiki_links).toEqual([
+      `[[${programB.filePath.slice(0, -3)}]]`,
+    ])
+
+    const detached = await moveYamlNode(epic.uuid, null, fs)
+    const detachedNote = parseNote(await fs.read(detached.filePath))
+    expect(detachedNote).not.toBeNull()
+    expect(detachedNote!.frontmatter.parent).toBeUndefined()
+    expect(detachedNote!.frontmatter.wiki_links).toBeUndefined()
   })
 })

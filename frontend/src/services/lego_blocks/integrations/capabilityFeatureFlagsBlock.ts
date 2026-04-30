@@ -5,6 +5,7 @@ export interface CapabilityFeatureFlags {
   fastapi_capability_adapter_enabled: boolean
   extension_host_enabled: boolean
   extension_builder_enabled: boolean
+  yaml_fields_auto_heal_enabled: boolean
 }
 
 const DEFAULT_FLAGS: CapabilityFeatureFlags = {
@@ -12,13 +13,24 @@ const DEFAULT_FLAGS: CapabilityFeatureFlags = {
   fastapi_capability_adapter_enabled: false,
   extension_host_enabled: false,
   extension_builder_enabled: false,
+  yaml_fields_auto_heal_enabled: false,
 }
 
 export function getCapabilityFeatureFlags(): CapabilityFeatureFlags {
-  return getJsonStorageItem<CapabilityFeatureFlags>(
+  const stored = getJsonStorageItem<Record<string, unknown>>(
     STORAGE_KEYS.capabilityFeatureFlags,
-    DEFAULT_FLAGS,
+    DEFAULT_FLAGS as unknown as Record<string, unknown>,
   )
+
+  return {
+    ...DEFAULT_FLAGS,
+    ...stored,
+    yaml_fields_auto_heal_enabled: Boolean(
+      stored.yaml_fields_auto_heal_enabled
+      ?? stored.wiki_links_auto_heal_enabled
+      ?? DEFAULT_FLAGS.yaml_fields_auto_heal_enabled
+    ),
+  }
 }
 
 export function setCapabilityFeatureFlags(flags: CapabilityFeatureFlags): void {

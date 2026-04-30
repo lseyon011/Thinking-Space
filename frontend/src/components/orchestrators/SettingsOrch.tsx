@@ -81,6 +81,10 @@ import type { WebSitePreferencesBlock } from '@/services/lego_blocks/units/webSi
 import DeveloperSetupBlock from '@/components/lego_blocks/integrations/DeveloperSetupBlock'
 import { readFileActivityIgnoredPaths, writeFileActivityIgnoredPaths } from '@/services/orchestrators/fileActivityOrch'
 import { setFileActivityIgnoredPathsOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
+import {
+  getCapabilityFeatureFlags,
+  setCapabilityFeatureFlag,
+} from '@/services/lego_blocks/integrations/capabilityFeatureFlagsBlock'
 
 export type SettingsTabId = 'theme' | 'explorer' | 'activity' | 'scheduler' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
@@ -186,6 +190,9 @@ export default function SettingsOrch({
   const [activityIgnoredPaths, setActivityIgnoredPaths] = useState<string[]>(() => readFileActivityIgnoredPaths())
   const [activityNewPathInput, setActivityNewPathInput] = useState('')
   const [activityDirty, setActivityDirty] = useState(false)
+  const [yamlFieldsAutoHealEnabled, setYamlFieldsAutoHealEnabled] = useState(
+    () => getCapabilityFeatureFlags().yaml_fields_auto_heal_enabled,
+  )
 
   const handleActivityAddPath = useCallback(() => {
     const trimmed = activityNewPathInput.trim()
@@ -1434,7 +1441,25 @@ export default function SettingsOrch({
               Modify Thinking Space with AI assistance — see changes live, then build a permanent version.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <div className="rounded-md border border-border/60 px-3 py-2.5">
+              <label className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <div className="text-sm text-foreground">Auto-heal YAML fields during sync</div>
+                  <div className="text-xs text-muted-foreground">
+                    When enabled, Thinking Space repairs known YAML field shapes and appends missing generated `wiki_links` on touched notes.
+                  </div>
+                </div>
+                <Switch
+                  checked={yamlFieldsAutoHealEnabled}
+                  onCheckedChange={(checked) => {
+                    setCapabilityFeatureFlag('yaml_fields_auto_heal_enabled', checked)
+                    setYamlFieldsAutoHealEnabled(checked)
+                  }}
+                  aria-label="Auto-heal YAML fields during sync"
+                />
+              </label>
+            </div>
             <DeveloperSetupBlock />
           </CardContent>
         </Card>

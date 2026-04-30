@@ -775,7 +775,7 @@ async function executeCapability<Name extends CapabilityName>(
       assertNonEmptyString(payload.input_text, 'input_text')
       assertNonEmptyString(payload.output_folder, 'output_folder')
       assertNonEmptyString(payload.output_name, 'output_name')
-      const result = await cleanAndSave(payload)
+      const result = await cleanAndSave({ ...payload, fs })
       return { result } as CapabilityOutputMap[Name]
     }
     default:

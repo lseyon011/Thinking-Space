@@ -52,6 +52,7 @@ interface BacklogNodeRowBlockProps {
   detailsOpen: boolean
   inlineNotesSaving: boolean
   statusBusy: boolean
+  allowStatusEditingInReadOnly?: boolean
   canEditTaskStatus: boolean
   canEditNodeStatus: boolean
   canToggleDetails: boolean
@@ -105,6 +106,7 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
   detailsOpen,
   inlineNotesSaving,
   statusBusy,
+  allowStatusEditingInReadOnly = false,
   canEditTaskStatus,
   canEditNodeStatus,
   canToggleDetails,
@@ -139,6 +141,7 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
   const Icon = iconForNodeType(node.type)
   const taskNode = isTaskNode(node)
   const taskStatus = getTaskStatusBadge(node)
+  const statusReadOnly = readOnly && !allowStatusEditingInReadOnly
   const applicableColumns = rowColumns.filter(column => !column.showForTypes || column.showForTypes.includes(node.type))
   const shouldRenderTagSlot = rowPresetTags.visible.length > 0 || reserveTagsSlotWhenEmpty
 
@@ -245,7 +248,7 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
       )}
       {!linksBeforeTags && linksSlot}
       {taskNode ? (
-        readOnly || !canEditTaskStatus ? (
+        statusReadOnly || !canEditTaskStatus ? (
           <div className={cn(
             'shrink-0 self-center',
             actionsRightEdge && (statusRightAligned || (!linksSlot && !shouldRenderTagSlot)) && 'ml-auto',
@@ -258,7 +261,9 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
               'flex self-center items-center gap-1',
               actionsRightEdge && (statusRightAligned || (!linksSlot && !shouldRenderTagSlot)) && 'ml-auto',
             )}
-            onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+            onPointerDown={(event) => { event.stopPropagation() }}
+            onMouseDown={(event) => { event.stopPropagation() }}
+            onClick={(event) => { event.stopPropagation() }}
           >
             {statusBusy ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
@@ -288,7 +293,7 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
           </div>
         )
       ) : (
-        readOnly || !canEditNodeStatus ? (
+        statusReadOnly || !canEditNodeStatus ? (
           <div className={cn(
             'shrink-0 self-center',
             actionsRightEdge && (statusRightAligned || (!linksSlot && !shouldRenderTagSlot)) && 'ml-auto',
@@ -301,7 +306,9 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
               'flex self-center items-center gap-1',
               actionsRightEdge && (statusRightAligned || (!linksSlot && !shouldRenderTagSlot)) && 'ml-auto',
             )}
-            onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+            onPointerDown={(event) => { event.stopPropagation() }}
+            onMouseDown={(event) => { event.stopPropagation() }}
+            onClick={(event) => { event.stopPropagation() }}
           >
             {statusBusy ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />

@@ -244,7 +244,9 @@ export function BacklogProgramRowBlock({
               'flex self-center items-center gap-1',
               actionsRightEdge && (statusRightAligned || (!linksSlot && !shouldRenderTagSlot)) && 'ml-auto',
             )}
-            onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+            onPointerDown={(event) => { event.stopPropagation() }}
+            onMouseDown={(event) => { event.stopPropagation() }}
+            onClick={(event) => { event.stopPropagation() }}
           >
             {statusBusy ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />

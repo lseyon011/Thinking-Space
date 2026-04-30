@@ -116,7 +116,7 @@ class FakeVaultFS implements VaultFS {
 let fakeIdb: typeof import('fake-indexeddb') | null = null
 
 beforeEach(async () => {
-  if (typeof globalThis.localStorage === 'undefined') {
+  if (typeof globalThis.localStorage === 'undefined' || typeof globalThis.localStorage.clear !== 'function') {
     Object.defineProperty(globalThis, 'localStorage', {
       value: createMemoryLocalStorage(),
       configurable: true,
@@ -364,6 +364,59 @@ describe('vaultSyncOrch', () => {
     const epic = nodes.find(n => n.type === 'epic')
     expect(epic).toBeDefined()
     expect(epic!.parent).toBe('personal-growth')
+  })
+
+  it('fullSync auto-heals missing generated wiki_links when the setting is enabled', async () => {
+    if (!fakeIdb) return
+
+    const { setCapabilityFeatureFlag } = await import('@/services/lego_blocks/integrations/capabilityFeatureFlagsBlock')
+    const { fullSync } = await import('@/services/orchestrators/vaultSyncOrch')
+
+    setCapabilityFeatureFlag('yaml_fields_auto_heal_enabled', true)
+
+    const fs = new FakeVaultFS()
+    const program = createNote({ type: 'program', title: 'Program Root' })
+    fs.seedFile('programs/program-root.md', stringifyNote(program))
+
+    const child = createNote({
+      type: 'epic',
+      title: 'Child Epic',
+      parent: program.frontmatter.key,
+      parent_uuid: program.frontmatter.uuid,
+      parent_type: 'program',
+    })
+    child.frontmatter.wiki_links = ['[[manual/reference]]']
+    fs.seedFile('epics/child-epic.md', stringifyNote(child))
+
+    const source = createNote({ type: 'thought', title: 'Source Thought' })
+    fs.seedFile('thoughts/source-thought.md', stringifyNote(source))
+
+    const derived = createNote({ type: 'thought', title: 'Derived Thought' })
+    derived.frontmatter.derived_from = ['thoughts/source-thought.md']
+    derived.frontmatter.wiki_links = ['[[manual/reference]]']
+    fs.seedFile('thoughts/derived-thought.md', stringifyNote(derived))
+
+    const sourced = createNote({ type: 'thought', title: 'Sourced Thought' })
+    sourced.frontmatter.source_files = ['[[thoughts/source-thought]]']
+    sourced.frontmatter.wiki_links = ['[[manual/reference]]']
+    fs.seedFile('thoughts/sourced-thought.md', stringifyNote(sourced))
+
+    await fullSync(fs)
+
+    const childContent = await fs.read('epics/child-epic.md')
+    expect(childContent).toContain('wiki_links:')
+    expect(childContent).toContain('[[manual/reference]]')
+    expect(childContent).toContain('[[programs/program-root]]')
+
+    const derivedContent = await fs.read('thoughts/derived-thought.md')
+    expect(derivedContent).toContain('wiki_links:')
+    expect(derivedContent).toContain('[[manual/reference]]')
+    expect(derivedContent).toContain('[[thoughts/source-thought]]')
+
+    const sourcedContent = await fs.read('thoughts/sourced-thought.md')
+    expect(sourcedContent).toContain('wiki_links:')
+    expect(sourcedContent).toContain('[[manual/reference]]')
+    expect(sourcedContent).toContain('[[thoughts/source-thought]]')
   })
 
   it('smartSync keeps last sync timestamp unchanged when incremental sync has errors', async () => {

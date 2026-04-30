@@ -1,5 +1,5 @@
 import { cleanTranscript } from '@/services/lego_blocks/units/transcriptCleanerBlock'
-import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { getVaultFS, type VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import type { CleanResult, TranscriptOptions } from '@/services/lego_blocks/units/typesBlock'
 
 /** Preview runs locally — pure text transform, no backend needed. */
@@ -29,10 +29,11 @@ export async function cleanAndSave(params: {
   output_name: string
   base_folder: string | null
   options: TranscriptOptions
+  fs?: VaultFS
 }): Promise<CleanResult> {
   const cleaned = cleanTranscript(params.input_text, params.headings_text, params.options)
 
-  const fs = getVaultFS()
+  const fs = params.fs ?? getVaultFS()
   const basePath = params.base_folder
     ? `${params.base_folder}/${params.output_folder}`
     : params.output_folder

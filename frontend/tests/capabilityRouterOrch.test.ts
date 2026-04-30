@@ -347,6 +347,146 @@ describe('capabilityRouterOrch', () => {
     expect(read.frontmatter.title).toBe('AI Synthesis idea')
   })
 
+  it('auto-derives wiki_links when AI synthesis notes are written or patched generically', async () => {
+    const fs = new FakeVaultFS()
+
+    const written = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'write_note',
+      input: {
+        path: 'lifeblood_systems/Understanding Myself/AI Synthesis/Experiential/Period Summaries/2026-04.md',
+        frontmatter: {
+          title: 'April 2026',
+          type: 'ai_synthesis',
+          layer: 'experiential',
+          synthesis_type: 'period_summary',
+          derived_from: [
+            'lifeblood_systems/Understanding Myself/sfdl/thoughts/2026-04-11.md',
+          ],
+        },
+        body: '# April 2026',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(written.frontmatter.wiki_links).toEqual([
+      '[[lifeblood_systems/Understanding Myself/sfdl/thoughts/2026-04-11]]',
+    ])
+
+    const patched = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'patch_note_frontmatter',
+      input: {
+        path: 'lifeblood_systems/Understanding Myself/AI Synthesis/Experiential/Period Summaries/2026-04.md',
+        append_unique: {
+          derived_from: [
+            'lifeblood_systems/Understanding Myself/sfdl/thoughts/2026-04-12.md',
+          ],
+        },
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(patched.frontmatter.wiki_links).toEqual([
+      '[[lifeblood_systems/Understanding Myself/sfdl/thoughts/2026-04-11]]',
+      '[[lifeblood_systems/Understanding Myself/sfdl/thoughts/2026-04-12]]',
+    ])
+  })
+
+  it('auto-derives wiki_links from source_files on generic note writes', async () => {
+    const fs = new FakeVaultFS()
+
+    const written = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'write_note',
+      input: {
+        path: 'lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Sources/sample.md',
+        frontmatter: {
+          title: 'Sample',
+          source_files: [
+            'acceleration_core/F9/Synthesis/FF08 Iterations/F9-iterations-overview.md',
+            'acceleration_core/F9/Synthesis/Original-F9-freeform.md',
+          ],
+        },
+        body: '# Sample',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(written.frontmatter.wiki_links).toEqual([
+      '[[acceleration_core/F9/Synthesis/FF08 Iterations/F9-iterations-overview]]',
+      '[[acceleration_core/F9/Synthesis/Original-F9-freeform]]',
+    ])
+  })
+
+  it('preserves already-formed wikilinks in source_files without double-wrapping', async () => {
+    const fs = new FakeVaultFS()
+
+    const written = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'write_note',
+      input: {
+        path: 'lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Sources/sample-2.md',
+        frontmatter: {
+          title: 'Sample 2',
+          source_files: [
+            '[[acceleration_core/F9/Synthesis/FF08 Iterations/F9-iterations-overview]]',
+            'acceleration_core/F9/Synthesis/Original-F9-freeform.md',
+            '[[acceleration_core/F9/Synthesis/FF08 Iterations/iterations/Mark 0/core strategy]]',
+            '[[acceleration_core/F9/Synthesis/FF08 Iterations/learnings/reflections/April 2025/All Guiding Heuristics and learnings so far]]',
+          ],
+        },
+        body: '# Sample 2',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(written.frontmatter.wiki_links).toEqual([
+      '[[acceleration_core/F9/Synthesis/FF08 Iterations/F9-iterations-overview]]',
+      '[[acceleration_core/F9/Synthesis/Original-F9-freeform]]',
+      '[[acceleration_core/F9/Synthesis/FF08 Iterations/iterations/Mark 0/core strategy]]',
+      '[[acceleration_core/F9/Synthesis/FF08 Iterations/learnings/reflections/April 2025/All Guiding Heuristics and learnings so far]]',
+    ])
+  })
+
+  it('coerces JSON-string array metadata into real YAML arrays before writing', async () => {
+    const fs = new FakeVaultFS()
+
+    const written = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'write_note',
+      input: {
+        path: 'lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Sources/sample-3.md',
+        frontmatter: {
+          title: 'Sample 3',
+          source_files: '["[[acceleration_core/F9/Synthesis/Original-F9-freeform]]","acceleration_core/F9/Synthesis/FF08 Iterations/F9-iterations-overview.md"]',
+          related_concepts: '["[[what-is-risk]]","[[mr-market]]"]',
+        },
+        body: '# Sample 3',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(written.frontmatter.source_files).toEqual([
+      '[[acceleration_core/F9/Synthesis/Original-F9-freeform]]',
+      'acceleration_core/F9/Synthesis/FF08 Iterations/F9-iterations-overview.md',
+    ])
+    expect(written.frontmatter.related_concepts).toEqual([
+      '[[what-is-risk]]',
+      '[[mr-market]]',
+    ])
+    expect(written.frontmatter.wiki_links).toEqual([
+      '[[acceleration_core/F9/Synthesis/Original-F9-freeform]]',
+      '[[acceleration_core/F9/Synthesis/FF08 Iterations/F9-iterations-overview]]',
+    ])
+
+    const reread = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'read_note',
+      input: {
+        path: 'lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Sources/sample-3.md',
+      },
+      actor: ACTOR,
+    }, { fs })
+
+    expect(reread.frontmatter.source_files).toEqual(written.frontmatter.source_files)
+    expect(reread.frontmatter.related_concepts).toEqual(written.frontmatter.related_concepts)
+  })
+
   it('creates AI Synthesis note scaffolds at canonical paths', async () => {
     const fs = new FakeVaultFS()
 
@@ -382,6 +522,9 @@ describe('capabilityRouterOrch', () => {
     expect(created.path).toBe(resolved.path)
     expect(created.frontmatter.type).toBe('ai_synthesis')
     expect(created.frontmatter.compile_status).toBe('stub')
+    expect(created.frontmatter.wiki_links).toEqual([
+      '[[lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Sources/science-of-making-and-breaking-habits]]',
+    ])
     expect(created.body).toContain('# Concept - What Are Habits?')
   })
 
@@ -461,6 +604,9 @@ describe('capabilityRouterOrch', () => {
     expect(concept.path).toBe(
       'lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Concepts/Habits/Formation/what-are-habits.md',
     )
+    expect(concept.frontmatter.wiki_links).toEqual([
+      '[[lifeblood_systems/Understanding Myself/AI Synthesis/Reference/Sources/The Science of Making and Breaking Habits - Huberman/limbic-friction]]',
+    ])
   })
 
   it('plans impacted AI Synthesis notes from changed raw notes', async () => {

@@ -164,6 +164,7 @@ export interface BacklogListBlockProps {
   showProgramCopyButton?: boolean
   preferInlineDetailsButton?: boolean
   allowInlineNotesInReadOnly?: boolean
+  allowStatusEditingInReadOnly?: boolean
   allowProgramLayoutEditingInReadOnly?: boolean
   showProgramLayoutToggle?: boolean
   programLayoutEditMode?: boolean
@@ -227,6 +228,7 @@ export default function BacklogListBlock({
   showProgramCopyButton = true,
   preferInlineDetailsButton = false,
   allowInlineNotesInReadOnly = false,
+  allowStatusEditingInReadOnly = false,
   allowProgramLayoutEditingInReadOnly = false,
   showProgramLayoutToggle = true,
   programLayoutEditMode,
@@ -274,6 +276,7 @@ export default function BacklogListBlock({
   const allowProgramLayoutEditing = allowProgramLayoutModeToggle && (
     controlledProgramLayoutEditMode ? programLayoutEditMode : internalProgramLayoutEditMode
   )
+  const allowStatusEditing = !readOnly || allowStatusEditingInReadOnly
   const programNounSingular = toSentenceCaseLabelBlock(programLabelSingular, 'program')
   const programNounPlural = toSentenceCaseLabelBlock(programLabelPlural, 'programs')
   const programNounSingularTitle = toTitleCaseLabelBlock(programLabelSingular, 'program')
@@ -674,7 +677,7 @@ export default function BacklogListBlock({
   ])
 
   const handleInlineNodeStatusChange = useCallback(async (node: NodeRecord, nextStatus: NodeStatus) => {
-    if (readOnly || !onUpdateNodeStatus) return
+    if (!allowStatusEditing || !onUpdateNodeStatus) return
     if (node.status === nextStatus) return
 
     setStatusBusyByNode(prev => ({ ...prev, [node.uuid]: true }))
@@ -687,7 +690,7 @@ export default function BacklogListBlock({
     } finally {
       setStatusBusyByNode(prev => ({ ...prev, [node.uuid]: false }))
     }
-  }, [onUpdateNodeStatus, patchCachedNode, readOnly])
+  }, [allowStatusEditing, onUpdateNodeStatus, patchCachedNode])
 
   const handleInlineTaskStatusChange = useCallback(async (node: NodeRecord, nextTaskStatus: TaskStatusOption) => {
     if (readOnly || !onUpdateTaskStatus) return
@@ -906,6 +909,7 @@ export default function BacklogListBlock({
           detailsOpen={detailsOpen}
           inlineNotesSaving={detailsBusy}
           statusBusy={!!statusBusyByNode[node.uuid]}
+          allowStatusEditingInReadOnly={allowStatusEditingInReadOnly}
           canEditTaskStatus={!!onUpdateTaskStatus}
           canEditNodeStatus={!!onUpdateNodeStatus}
           canToggleDetails={canToggleDetails}

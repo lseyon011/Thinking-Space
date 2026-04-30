@@ -27,7 +27,7 @@ import {
   type PinBoardPanelBlock,
 } from '@/services/lego_blocks/integrations/organizerUiStateBlock'
 import { normalizeTagBlock, normalizeTagListBlock, splitTagInputBlock, tagsEqualBlock } from '@/services/lego_blocks/units/tagBlock'
-import type { NodePriority, NodeStatus, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
+import { NODE_STATUSES, type NodePriority, type NodeStatus, type YAMLCommentEntry, type YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { listMarkdownEntries, listPdfFiles } from '@/services/orchestrators/fileSystemOrch'
 import type {
   WebullAccountSnapshotOrch,
@@ -105,7 +105,7 @@ interface WebullWorkspaceBlockProps {
   onCreateCompany: (companyTicker: string) => Promise<void>
   onCreateManualPosition: (input: {
     title?: string
-    status?: 'taken' | 'planned' | 'watchlist'
+    status?: NodeStatus
     instrumentType?: 'STOCK' | 'OPTION'
     optionType?: 'CALL' | 'PUT' | null
     optionExpireDate?: string | null
@@ -115,7 +115,7 @@ interface WebullWorkspaceBlockProps {
   }) => Promise<void>
   onUpdatePositionOverlay: (input: {
     fileName?: string
-    status?: 'taken' | 'planned' | 'watchlist'
+    status?: NodeStatus
     linkedIdeaId?: string | null
     title?: string | null
     priority?: NodePriority | null
@@ -248,6 +248,22 @@ function firstNumberBlock(...values: unknown[]): number | null {
   return null
 }
 
+function firstNumberFromRecordBlock(record: Record<string, unknown>, ...keys: string[]): number | null {
+  return firstNumberBlock(...keys.map((key) => record[key]))
+}
+
+function sumRecordNumberFieldsBlock(records: Array<Record<string, unknown>>, ...keys: string[]): number | null {
+  let total = 0
+  let hasValue = false
+  for (const record of records) {
+    const value = firstNumberFromRecordBlock(record, ...keys)
+    if (value === null) continue
+    total += value
+    hasValue = true
+  }
+  return hasValue ? total : null
+}
+
 function formatCurrencyBlock(value: number | null): string {
   if (value === null) return '—'
   return value.toLocaleString(undefined, {
@@ -276,25 +292,53 @@ function formatPercentBlock(value: number | null): string {
   return `${value.toFixed(1)}%`
 }
 
-function formatOverallValueBlock(balanceData: unknown): string {
-  if (!balanceData || typeof balanceData !== 'object') return '—'
+function resolveOverallValueNumberBlock(balanceData: unknown): number | null {
+  if (!balanceData || typeof balanceData !== 'object' || Array.isArray(balanceData)) return null
   const row = balanceData as Record<string, unknown>
-  const currencyAssets = Array.isArray(row.account_currency_assets)
-    ? row.account_currency_assets.find(item => !!item && typeof item === 'object') as Record<string, unknown> | undefined
-    : undefined
-  const value = firstNumberBlock(
-    row.total_market_value,
-    row.totalMarketValue,
-    currencyAssets?.net_liquidation_value,
-    currencyAssets?.positions_market_value,
+  const currencyAssets = asRecordArrayBlock(row.account_currency_assets)
+  const explicitOverallValue = firstNumberBlock(
+    row.net_liquidation_value,
+    row.netLiquidationValue,
     row.total_asset,
     row.total_assets,
     row.total_value,
     row.totalValue,
-    row.net_liquidation_value,
-    row.netLiquidationValue,
   )
-  return formatCurrencyBlock(value)
+  if (explicitOverallValue !== null) return explicitOverallValue
+
+  const summedCurrencyOverallValue = sumRecordNumberFieldsBlock(
+    currencyAssets,
+    'net_liquidation_value',
+    'netLiquidationValue',
+    'total_asset',
+    'total_assets',
+    'total_value',
+    'totalValue',
+  )
+  if (summedCurrencyOverallValue !== null) return summedCurrencyOverallValue
+
+  const totalCash = resolveOverallCashValueBlock(balanceData)
+  const marketValuePlusCash = firstNumberBlock(row.total_market_value, row.totalMarketValue)
+  if (marketValuePlusCash !== null && totalCash !== null) return marketValuePlusCash + totalCash
+
+  const summedCurrencyMarketValue = sumRecordNumberFieldsBlock(
+    currencyAssets,
+    'positions_market_value',
+    'positionsMarketValue',
+    'total_market_value',
+    'totalMarketValue',
+  )
+  if (summedCurrencyMarketValue !== null && totalCash !== null) return summedCurrencyMarketValue + totalCash
+
+  return firstNumberBlock(
+    row.total_market_value,
+    row.totalMarketValue,
+    summedCurrencyMarketValue,
+  )
+}
+
+function formatOverallValueBlock(balanceData: unknown): string {
+  return formatCurrencyBlock(resolveOverallValueNumberBlock(balanceData))
 }
 
 function resolveOverallCashValueBlock(balanceData: unknown): number | null {
@@ -358,29 +402,76 @@ function normalizeStrikeForDisplayBlock(value: string | null | undefined): strin
 }
 
 function mapPositionStatusToNodeStatusBlock(status: string | null | undefined): NodeRecord['status'] {
+  return normalizePositionStatusBlock(status)
+}
+
+function mapNodeStatusToPositionStatusBlock(status: NodeStatus): NodeStatus {
+  return normalizePositionStatusBlock(status)
+}
+
+function normalizePositionStatusBlock(status: string | null | undefined): NodeStatus {
   const normalized = (status ?? '').trim().toLowerCase()
-  if (normalized === 'taken' || normalized === 'planned' || normalized === 'watchlist') {
-    return normalized
+  if (!normalized) return 'taken'
+  if (normalized === 'done' || normalized === 'complete' || normalized === 'completed' || normalized === 'closed' || normalized === 'resolved' || normalized === 'shipped') {
+    return 'completed'
   }
-  if (normalized === 'active' || normalized === 'completed') return 'taken'
-  if (normalized === 'paused') return 'watchlist'
-  if (normalized === 'incomplete') return 'planned'
-  if (normalized === 'cancelled') return 'cancelled'
-  if (normalized === 'archived') return 'archived'
+  if (normalized === 'ready') return 'planned'
+  if (normalized === 'in_progress') return 'active'
+  if (normalized === 'blocked') return 'paused'
+  if ((NODE_STATUSES as readonly string[]).includes(normalized)) return normalized as NodeStatus
   return 'taken'
 }
 
-function mapNodeStatusToPositionStatusBlock(status: NodeStatus): 'taken' | 'planned' | 'watchlist' {
-  if (status === 'watchlist' || status === 'planned' || status === 'taken') return status
-  if (status === 'paused' || status === 'cancelled' || status === 'archived') return 'watchlist'
-  if (status === 'incomplete') return 'planned'
-  return 'taken'
+interface WebullAccountLabelEntryBlock {
+  label: string
+  accountId: string | null
+  accountNumber: string | null
 }
 
-function normalizePositionStatusBlock(status: string | null | undefined): 'taken' | 'planned' | 'watchlist' {
-  const normalized = (status ?? '').trim().toLowerCase()
-  if (normalized === 'planned' || normalized === 'watchlist' || normalized === 'taken') return normalized
-  return 'taken'
+function buildAccountLabelEntriesBlock(
+  accounts: WebullAccountSnapshotOrch[],
+  selectedAccount: WebullSelectedAccountOrch | null,
+): WebullAccountLabelEntryBlock[] {
+  const sourceAccounts = accounts.length > 0
+    ? accounts.map((snapshot) => snapshot.account)
+    : (selectedAccount ? [selectedAccount] : [])
+  const seen = new Set<string>()
+  const entries: WebullAccountLabelEntryBlock[] = []
+
+  for (const account of sourceAccounts) {
+    const accountId = firstStringBlock(account.accountId) || null
+    const accountNumber = firstStringBlock(account.accountNumber) || null
+    if (!accountId && !accountNumber) continue
+    const dedupeKey = `${accountId ?? ''}::${accountNumber ?? ''}`
+    if (seen.has(dedupeKey)) continue
+    seen.add(dedupeKey)
+    entries.push({
+      label: `Account ${entries.length + 1}`,
+      accountId,
+      accountNumber,
+    })
+  }
+
+  return entries
+}
+
+function resolveAccountLabelBlock(
+  accountLabels: WebullAccountLabelEntryBlock[],
+  accountId: unknown,
+  accountNumber: unknown,
+): string | null {
+  const normalizedAccountId = firstStringBlock(accountId) || null
+  const normalizedAccountNumber = firstStringBlock(accountNumber) || null
+  for (const entry of accountLabels) {
+    if (normalizedAccountId && entry.accountId === normalizedAccountId) return entry.label
+    if (normalizedAccountNumber && entry.accountNumber === normalizedAccountNumber) return entry.label
+  }
+  return null
+}
+
+function formatAccountDescriptorBlock(entry: WebullAccountLabelEntryBlock): string {
+  const suffix = entry.accountNumber ?? entry.accountId
+  return suffix ? `${entry.label} (${suffix})` : entry.label
 }
 
 function normalizePriorityFromUnknownBlock(value: unknown): NodePriority | null {
@@ -417,28 +508,23 @@ function asYamlCommentsBlock(value: unknown): YAMLCommentEntry[] {
 }
 
 function positionTitleFromSummaryBlock(position: WebullPositionSummaryBlock): string {
-  const accountSuffix = firstStringBlock(position.accountNumber, position.accountId)
   const symbol = firstStringBlock(position.symbol) || 'UNKNOWN'
   const instrumentType = firstStringBlock(position.instrumentType).toUpperCase()
   if (instrumentType === 'CASH') {
     const cashCurrency = firstStringBlock(position.cashCurrency).toUpperCase() || 'USD'
-    const title = cashCurrency === 'USD' ? 'Cash' : `${cashCurrency} Cash`
-    return accountSuffix ? `${title} · ${accountSuffix}` : title
+    return cashCurrency === 'USD' ? 'Cash' : `${cashCurrency} Cash`
   }
   const optionType = firstStringBlock(position.optionType).toUpperCase()
   const optionExpireDate = firstStringBlock(position.optionExpireDate)
   const optionStrike = normalizeStrikeForDisplayBlock(position.optionExercisePrice)
   if (optionType && optionExpireDate && optionStrike) {
-    const title = `${symbol}${optionStrike}-${optionExpireDate}-${optionType}`
-    return accountSuffix ? `${title} · ${accountSuffix}` : title
+    return `${symbol}${optionStrike}-${optionExpireDate}-${optionType}`
   }
   if (instrumentType === 'STOCK') {
-    const title = `${symbol}STOCK`
-    return accountSuffix ? `${title} · ${accountSuffix}` : title
+    return `${symbol}STOCK`
   }
   const fromFileName = firstStringBlock(position.fileName)
-  const title = fromFileName.toLowerCase().endsWith('.md') ? fromFileName.slice(0, -3) : symbol
-  return accountSuffix ? `${title} · ${accountSuffix}` : title
+  return fromFileName.toLowerCase().endsWith('.md') ? fromFileName.slice(0, -3) : symbol
 }
 
 function compareWebullPositionsAscendingBlock(a: WebullPositionSummaryBlock, b: WebullPositionSummaryBlock): number {
@@ -1193,6 +1279,23 @@ export default function WebullWorkspaceBlock({
     }
   }, [backlogTableModel.positionRefByNodeUuid, onUpdatePositionOverlay])
 
+  const onUpdateBacklogNodeStatus = useCallback(async (
+    node: NodeRecord,
+    status: NodeStatus,
+  ): Promise<NodeRecord | void> => {
+    if (node.type !== 'epic') return node
+    const positionRef = backlogTableModel.positionRefByNodeUuid.get(node.uuid)
+    if (!positionRef) return node
+    await onUpdatePositionOverlay({
+      fileName: positionRef.fileName,
+      status,
+    })
+    return {
+      ...node,
+      status,
+    }
+  }, [backlogTableModel.positionRefByNodeUuid, onUpdatePositionOverlay])
+
   useEffect(() => {
     let cancelled = false
     void Promise.allSettled([
@@ -1290,8 +1393,34 @@ export default function WebullWorkspaceBlock({
     setCompanyPdfViewerNonce((prev) => prev + 1)
   }, [onUpdateCompanyOverlay, selectedCompany])
 
+  const accountLabelEntries = useMemo(
+    () => buildAccountLabelEntriesBlock(accounts, selectedAccount),
+    [accounts, selectedAccount],
+  )
+
   const webullRowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
     return [
+      {
+        id: 'account',
+        label: 'Account',
+        widthClassName: 'w-[7rem]',
+        align: 'center',
+        render: (node) => {
+          if (node.type !== 'epic') return '—'
+          const metadata = asMetadataRecordBlock(node)
+          const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
+          const accountLabel = resolveAccountLabelBlock(
+            accountLabelEntries,
+            payload?.account_id ?? payload?.accountId,
+            payload?.account_number ?? payload?.accountNumber,
+          )
+          return accountLabel ? (
+            <span className="inline-flex items-center rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+              {accountLabel}
+            </span>
+          ) : '—'
+        },
+      },
       {
         id: 'cost',
         label: 'Cost',
@@ -1341,7 +1470,7 @@ export default function WebullWorkspaceBlock({
         },
       },
     ]
-  }, [])
+  }, [accountLabelEntries])
 
   const linkOptionsByPath = useMemo(() => {
     const map = new Map<string, WebullLinkOptionBlock>()
@@ -1364,6 +1493,11 @@ export default function WebullWorkspaceBlock({
     const payloadEntries = metadataEntriesFromRecordBlock(payload)
     const status = normalizePositionStatusBlock(firstStringBlock(metadata.webull_position_status, payload?.status))
     const instrumentType = firstStringBlock(payload?.instrument_type, payload?.type) || '—'
+    const accountLabel = resolveAccountLabelBlock(
+      accountLabelEntries,
+      payload?.account_id ?? payload?.accountId,
+      payload?.account_number ?? payload?.accountNumber,
+    )
     const linkedIdeaId = firstStringBlock(metadata.webull_linked_idea_id, payload?.linked_idea_id)
     const tags = normalizeTagListBlock(node.tags ?? []).filter(tag => tag !== 'webull' && tag !== 'execution')
     const relatedNodePaths = (node.relatedNodes ?? asStringArrayBlock(payload?.related_nodes))
@@ -1372,11 +1506,18 @@ export default function WebullWorkspaceBlock({
 
     return (
       <div className="space-y-1.5 text-xs text-muted-foreground">
-        <p>
-          <span className="font-medium text-foreground">Status:</span> {status}
-          {' · '}
-          <span className="font-medium text-foreground">Type:</span> {instrumentType}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          {accountLabel && (
+            <span className="inline-flex items-center rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+              {accountLabel}
+            </span>
+          )}
+          <p>
+            <span className="font-medium text-foreground">Status:</span> {status}
+            {' · '}
+            <span className="font-medium text-foreground">Type:</span> {instrumentType}
+          </p>
+        </div>
         <p>
           <span className="font-medium text-foreground">Current Price:</span> {formatCurrencyFromUnknownBlock(payload?.last_price)}
           {' · '}
@@ -1435,7 +1576,7 @@ export default function WebullWorkspaceBlock({
         )}
       </div>
     )
-  }, [linkOptionsByPath, onOpenNodeFile])
+  }, [accountLabelEntries, linkOptionsByPath, onOpenNodeFile])
 
   const detailPanelNodeBase = useMemo(
     () => (detailPanelNodeId ? backlogTableModel.nodeByUuid.get(detailPanelNodeId) ?? null : null),
@@ -1508,7 +1649,7 @@ export default function WebullWorkspaceBlock({
 
   const [newCompanyTicker, setNewCompanyTicker] = useState('')
   const [newPositionTitle, setNewPositionTitle] = useState('')
-  const [newPositionStatus, setNewPositionStatus] = useState<'taken' | 'planned' | 'watchlist'>('planned')
+  const [newPositionStatus, setNewPositionStatus] = useState<NodeStatus>('planned')
   const [newInstrumentType, setNewInstrumentType] = useState<'STOCK' | 'OPTION'>('STOCK')
   const [newOptionType, setNewOptionType] = useState<'CALL' | 'PUT'>('CALL')
   const [newOptionExpiry, setNewOptionExpiry] = useState('')
@@ -1901,8 +2042,8 @@ export default function WebullWorkspaceBlock({
                 <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Accounts</p>
                 <p className="mt-1 font-medium">{accounts.length || (selectedAccount ? 1 : 0)}</p>
                 <p className="text-xs text-muted-foreground">
-                  {accounts.length > 1
-                    ? accounts.map(accountSnapshot => accountSnapshot.account.accountNumber ?? accountSnapshot.account.accountId).join(' · ')
+                  {accountLabelEntries.length > 0
+                    ? accountLabelEntries.map(formatAccountDescriptorBlock).join(' · ')
                     : (selectedAccount?.accountNumber ?? selectedAccount?.accountId ?? 'No account metadata')}
                 </p>
               </div>
@@ -1998,6 +2139,7 @@ export default function WebullWorkspaceBlock({
                     loadChildren={loadBacklogChildren}
                     selectedNodeId={selectedBacklogNodeId}
                     readOnly
+                    allowStatusEditingInReadOnly
                     allowProgramLayoutEditingInReadOnly
                     onSelectNode={onSelectBacklogNode}
                     programGroups={activeProjectProgramGroups}
@@ -2007,6 +2149,7 @@ export default function WebullWorkspaceBlock({
                     onToggleProgramGroupCollapsed={toggleActiveProjectCompanyGroupCollapsed}
                     onAssignProgramToGroup={assignProgramToActiveProjectCompanyGroup}
                     onOpenNodeDetails={onOpenBacklogNodeDetails}
+                    onUpdateNodeStatus={onUpdateBacklogNodeStatus}
                     onUpdateNodeNotes={onUpdateBacklogNodeNotes}
                     relatedNodeOptions={linkOptions}
                     onOpenRelatedNode={(path) => onOpenNodeFile(path)}
@@ -2053,12 +2196,13 @@ export default function WebullWorkspaceBlock({
                   />
                   <select
                     value={newPositionStatus}
-                    onChange={(event) => setNewPositionStatus(event.target.value as 'taken' | 'planned' | 'watchlist')}
+                    onChange={(event) => setNewPositionStatus(event.target.value as NodeStatus)}
                     className="h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring"
                   >
                     <option value="planned">planned</option>
                     <option value="watchlist">watchlist</option>
                     <option value="taken">taken</option>
+                    <option value="completed">completed</option>
                   </select>
                   <select
                     value={newInstrumentType}
@@ -2195,6 +2339,7 @@ export default function WebullWorkspaceBlock({
                   loadChildren={loadBacklogChildren}
                   selectedNodeId={selectedBacklogNodeId}
                   readOnly
+                  allowStatusEditingInReadOnly
                   allowProgramLayoutEditingInReadOnly
                   onSelectNode={onSelectBacklogNode}
                   programGroups={activeProjectProgramGroups}
@@ -2204,6 +2349,7 @@ export default function WebullWorkspaceBlock({
                   onToggleProgramGroupCollapsed={toggleActiveProjectCompanyGroupCollapsed}
                   onAssignProgramToGroup={assignProgramToActiveProjectCompanyGroup}
                   onOpenNodeDetails={onOpenBacklogNodeDetails}
+                  onUpdateNodeStatus={onUpdateBacklogNodeStatus}
                   onUpdateNodeNotes={onUpdateBacklogNodeNotes}
                   relatedNodeOptions={linkOptions}
                   onOpenRelatedNode={(path) => onOpenNodeFile(path)}
@@ -2262,14 +2408,13 @@ export default function WebullWorkspaceBlock({
               <p><span className="font-medium text-foreground">Execution Positions:</span> {executionPositionCount}</p>
               <p><span className="font-medium text-foreground">Execution Source:</span> {executionSyncSource}</p>
               <p><span className="font-medium text-foreground">Account Count:</span> {accounts.length || (selectedAccount ? 1 : 0)}</p>
-              {accounts.length > 0 ? (
+              {accountLabelEntries.length > 0 ? (
                 <div className="space-y-1">
-                  {accounts.map((accountSnapshot) => (
-                    <p key={accountSnapshot.account.accountId}>
-                      <span className="font-medium text-foreground">Account:</span>{' '}
-                      {accountSnapshot.account.accountNumber ?? accountSnapshot.account.accountId}
-                      {' · '}
-                      {accountSnapshot.account.accountId}
+                  {accountLabelEntries.map((entry) => (
+                    <p key={entry.accountId ?? entry.accountNumber ?? entry.label}>
+                      <span className="font-medium text-foreground">{entry.label}:</span>{' '}
+                      {entry.accountNumber ?? entry.accountId ?? 'Unknown'}
+                      {entry.accountId && entry.accountNumber ? ` · ${entry.accountId}` : ''}
                     </p>
                   ))}
                 </div>

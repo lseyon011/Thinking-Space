@@ -27,6 +27,7 @@ import {
 import { readWebullCredentialStatusBlock } from '../../services/lego_blocks/units/webullConfigBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
+import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
 
 type WebullSubtabId = 'overall' | 'memory'
 
@@ -357,7 +358,7 @@ export default function WebullOrch() {
 
   const onCreateManualPosition = useCallback(async (input: {
     title?: string
-    status?: 'taken' | 'planned' | 'watchlist'
+    status?: NodeStatus
     instrumentType?: 'STOCK' | 'OPTION'
     optionType?: 'CALL' | 'PUT' | null
     optionExpireDate?: string | null
@@ -386,7 +387,7 @@ export default function WebullOrch() {
 
   const onUpdatePositionOverlay = useCallback(async (input: {
     fileName?: string
-    status?: 'taken' | 'planned' | 'watchlist'
+    status?: NodeStatus
     linkedIdeaId?: string | null
     title?: string | null
     priority?: 'low' | 'medium' | 'high' | 'critical' | null

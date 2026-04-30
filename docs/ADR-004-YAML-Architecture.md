@@ -67,8 +67,12 @@ ai_suggestions:
 
 # INTEGRATIONS
 excalidraw:   "canvases/thinking-space-hierarchy.excalidraw.md"   # optional link
+wiki_links:
+  - "[[projects/delta/thinking-organizer/programs/program-delta-initiative]]" # optional generated graph-visible links
 ---
 ```
+
+`parent` / `parent_uuid` / `parent_type` remain the source-of-truth hierarchy fields. When Thinking Space creates or reparents nodes, it may also generate `wiki_links` as a derived field so Obsidian graph/backlinks can see structural connections without changing the metadata-driven hierarchy model.
 
 ### Agent Orchestration Extensions
 

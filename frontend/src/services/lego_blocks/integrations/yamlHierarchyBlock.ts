@@ -18,6 +18,12 @@ import {
   NODE_TYPE_LEVEL,
 } from '@/services/lego_blocks/units/yamlNoteBlock'
 import {
+  mergeWikiLinksIntoFrontmatterBlock,
+  resolveGeneratedWikiLinksForFrontmatterBlock,
+  toWikiLinkFromVaultPathBlock,
+  WIKI_LINKS_FIELD_BLOCK,
+} from '@/services/lego_blocks/units/wikiLinksBlock'
+import {
   parseOrganizerBodySections,
   upsertOrganizerBodySections,
 } from '@/services/lego_blocks/integrations/organizerBodyBlock'
@@ -104,6 +110,15 @@ export async function createYamlNode(params: {
     tags: params.tags,
     body: params.body,
   })
+
+  if (params.parentKey) {
+    const parentRecord = await getNodeByKey(params.parentKey)
+    note.frontmatter = mergeWikiLinksIntoFrontmatterBlock(note.frontmatter, {
+      generatedLinks: resolveGeneratedWikiLinksForFrontmatterBlock(note.frontmatter, {
+        parentFilePath: parentRecord?.filePath,
+      }),
+    }).frontmatter as YAMLFrontmatter
+  }
 
   const description = params.description?.trim()
   const comments = normalizeCommentEntries(params.comments)
@@ -290,6 +305,9 @@ export async function moveYamlNode(
   const content = await vaultFs.read(record.filePath)
   const note = parseNote(content)
   if (!note) throw new Error(`Failed to parse YAML for: ${record.filePath}`)
+  const previousParentLink = record.parent
+    ? toWikiLinkFromVaultPathBlock((await getNodeByKey(record.parent))?.filePath ?? '')
+    : undefined
 
   // Update node's parent fields
   if (newParentKey) {
@@ -306,6 +324,12 @@ export async function moveYamlNode(
     })
     if (projectRoot) note.frontmatter.project_root = projectRoot
     else delete note.frontmatter.project_root
+    note.frontmatter = mergeWikiLinksIntoFrontmatterBlock(note.frontmatter, {
+      generatedLinks: resolveGeneratedWikiLinksForFrontmatterBlock(note.frontmatter, {
+        parentFilePath: parentRecord.filePath,
+      }),
+      removeLinks: previousParentLink ? [previousParentLink] : [],
+    }).frontmatter as YAMLFrontmatter
   } else {
     delete note.frontmatter.parent
     delete note.frontmatter.parent_uuid
@@ -313,6 +337,10 @@ export async function moveYamlNode(
     if (note.frontmatter.type !== 'program') {
       delete note.frontmatter.project_root
     }
+    note.frontmatter = mergeWikiLinksIntoFrontmatterBlock(note.frontmatter, {
+      generatedLinks: [],
+      removeLinks: previousParentLink ? [previousParentLink] : [],
+    }).frontmatter as YAMLFrontmatter
   }
 
   note.frontmatter.updated_at = new Date().toISOString()
@@ -624,6 +652,7 @@ function applyExtraFrontmatterFields(
     'priority',
     'project_root',
     'ticket',
+    WIKI_LINKS_FIELD_BLOCK,
     'description',
     'comments',
     'created_at',

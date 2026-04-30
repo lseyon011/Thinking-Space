@@ -17,6 +17,7 @@ import {
 } from '../lego_blocks/integrations/webullExecutionStorageBlock'
 import { readWebullExecutionSettingsOrch } from './webullExecutionSettingsOrch'
 import type { WebullOverallSnapshotOrch } from './webullOverallOrch'
+import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
 
 export type {
   WebullCompanyOverviewBlock,
@@ -107,7 +108,7 @@ export async function createWebullCompanyOrch(companyTicker: string): Promise<We
 export async function createWebullManualPositionOrch(input: {
   companyTicker: string
   title?: string
-  status?: 'taken' | 'planned' | 'watchlist'
+  status?: NodeStatus
   instrumentType?: 'STOCK' | 'OPTION'
   optionType?: 'CALL' | 'PUT' | null
   optionExpireDate?: string | null
@@ -125,7 +126,7 @@ export async function createWebullManualPositionOrch(input: {
 export async function updateWebullPositionOverlayOrch(input: {
   companyTicker: string
   fileName: string
-  status?: 'taken' | 'planned' | 'watchlist'
+  status?: NodeStatus
   linkedIdeaId?: string | null
   title?: string | null
   priority?: 'low' | 'medium' | 'high' | 'critical' | null

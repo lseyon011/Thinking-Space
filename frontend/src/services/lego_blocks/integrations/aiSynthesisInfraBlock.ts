@@ -6,6 +6,13 @@ import {
   patchFrontmatterValuesBlock,
   stringifyMarkdownFrontmatterBlock,
 } from '@/services/lego_blocks/units/markdownFrontmatterBlock'
+import {
+  mergeWikiLinksIntoFrontmatterBlock,
+  normalizeFrontmatterArrayLikeFieldsBlock,
+  normalizeStringArrayBlock,
+  resolveGeneratedWikiLinksForFrontmatterBlock,
+  uniqueStringsBlock,
+} from '@/services/lego_blocks/units/wikiLinksBlock'
 
 export type AISynthesisLayer = 'reference' | 'experiential' | 'operational' | 'integrated'
 
@@ -139,7 +146,7 @@ export async function writeNoteBlock(
   }
 
   const body = (input.body ?? '').replace(/\r\n/g, '\n')
-  const frontmatter = { ...(input.frontmatter ?? {}) }
+  const frontmatter = normalizeAiSynthesisFrontmatterBlock({ ...(input.frontmatter ?? {}) })
   const raw = stringifyMarkdownFrontmatterBlock({ frontmatter, body })
   await fs.write(normalizedPath, raw)
 
@@ -171,8 +178,9 @@ export async function patchNoteFrontmatterBlock(
     set: input.set,
     appendUnique: input.append_unique,
   })
+  const normalizedFrontmatter = normalizeAiSynthesisFrontmatterBlock(nextFrontmatter)
   const raw = stringifyMarkdownFrontmatterBlock({
-    frontmatter: nextFrontmatter,
+    frontmatter: normalizedFrontmatter,
     body: existing.body,
   })
   await fs.write(existing.path, raw)
@@ -180,7 +188,7 @@ export async function patchNoteFrontmatterBlock(
   return {
     path: existing.path,
     patched: true,
-    frontmatter: nextFrontmatter,
+    frontmatter: normalizedFrontmatter,
   }
 }
 
@@ -278,10 +286,11 @@ export async function createAiSynthesisNoteBlock(
     open_questions: [],
     summary: '',
   }
+  const normalizedFrontmatter = normalizeAiSynthesisFrontmatterBlock(frontmatter)
   const body = renderTemplateBodyBlock(title, input.synthesis_type)
   await writeNoteBlock(fs, {
     path: resolved.path,
-    frontmatter,
+    frontmatter: normalizedFrontmatter,
     body,
     overwrite: ifExists === 'overwrite',
   })
@@ -289,7 +298,7 @@ export async function createAiSynthesisNoteBlock(
   return {
     created: true,
     path: resolved.path,
-    frontmatter,
+    frontmatter: normalizedFrontmatter,
     body,
   }
 }
@@ -445,6 +454,18 @@ export async function listDomainAiSynthesisHealthBlock(
     unanswered_questions: unansweredQuestions.sort(),
     orphan_outputs: orphanOutputs,
   }
+}
+
+function normalizeAiSynthesisFrontmatterBlock(frontmatter: Record<string, unknown>): Record<string, unknown> {
+  const next = normalizeFrontmatterArrayLikeFieldsBlock(frontmatter)
+  const derivedFrom = normalizeStringArrayBlock(next.derived_from).map(normalizeVaultPathBlock)
+  if (derivedFrom.length > 0) {
+    next.derived_from = uniqueStringsBlock(derivedFrom)
+  }
+  const { frontmatter: normalizedFrontmatter } = mergeWikiLinksIntoFrontmatterBlock(next, {
+    generatedLinks: resolveGeneratedWikiLinksForFrontmatterBlock(next),
+  })
+  return normalizedFrontmatter
 }
 
 interface ParsedVaultNote {
@@ -678,17 +699,8 @@ function joinVaultPathBlock(...parts: string[]): string {
   return normalizeVaultPathBlock(parts.filter(Boolean).join('/'))
 }
 
-function uniqueStringsBlock(values: string[]): string[] {
-  return [...new Set(values.map(value => value.trim()).filter(Boolean))]
-}
-
 function asTrimmedStringBlock(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
   return trimmed || null
-}
-
-function normalizeStringArrayBlock(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  return uniqueStringsBlock(value.map(item => String(item)))
 }

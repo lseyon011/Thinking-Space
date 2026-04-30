@@ -2,7 +2,7 @@ import yaml from 'js-yaml'
 import { getVaultFS, type VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { normalizeTagListBlock } from '@/services/lego_blocks/units/tagBlock'
-import type { NodePriority, YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
+import { NODE_STATUSES, type NodePriority, type NodeStatus, type YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
 
 const POSITION_PAYLOAD_KEYS_BLOCK = [
   'holdings',
@@ -52,7 +52,7 @@ export interface WebullPositionSummaryBlock {
   id: string
   fileName: string
   symbol: string
-  status: string
+  status: NodeStatus
   source: string
   accountId: string | null
   accountNumber: string | null
@@ -144,7 +144,7 @@ export interface CreateWebullManualPositionInputBlock {
   executionFolderPath: string
   companyTicker: string
   title?: string
-  status?: 'taken' | 'planned' | 'watchlist'
+  status?: NodeStatus
   instrumentType?: 'STOCK' | 'OPTION'
   optionType?: 'CALL' | 'PUT' | null
   optionExpireDate?: string | null
@@ -158,7 +158,7 @@ export interface UpdateWebullPositionOverlayInputBlock {
   executionFolderPath: string
   companyTicker: string
   fileName: string
-  status?: 'taken' | 'planned' | 'watchlist'
+  status?: NodeStatus
   linkedIdeaId?: string | null
   title?: string | null
   priority?: NodePriority | null
@@ -1515,11 +1515,17 @@ function normalizePriorityBlock(value: unknown): NodePriority | null {
   return null
 }
 
-function normalizePositionStatusBlock(value: string): string {
+function normalizePositionStatusBlock(value: string): NodeStatus {
   const normalized = value.trim().toLowerCase()
   if (!normalized) return 'taken'
-  if (normalized === 'planned' || normalized === 'watchlist' || normalized === 'taken') return normalized
-  return normalized
+  if (normalized === 'done' || normalized === 'complete' || normalized === 'completed' || normalized === 'closed' || normalized === 'resolved' || normalized === 'shipped') {
+    return 'completed'
+  }
+  if (normalized === 'ready') return 'planned'
+  if (normalized === 'in_progress') return 'active'
+  if (normalized === 'blocked') return 'paused'
+  if ((NODE_STATUSES as readonly string[]).includes(normalized)) return normalized as NodeStatus
+  return 'taken'
 }
 
 function normalizeTickerBlock(value: unknown): string | null {

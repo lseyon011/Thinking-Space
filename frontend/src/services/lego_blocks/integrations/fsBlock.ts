@@ -7,6 +7,7 @@ import { Capacitor } from '@capacitor/core'
 import { EXCLUDED_DIRS } from '@/services/lego_blocks/units/vaultConstantsBlock'
 import { getStoredVaultRoot, setStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { notifyFileChanged } from '@/services/lego_blocks/units/crossWindowSyncBlock'
+import { logWarn } from '@/services/lego_blocks/units/debugLogBlock'
 import {
   base64ToBytesBlock,
   bytesToBase64Block,
@@ -33,6 +34,103 @@ export interface VaultStat {
   mtime: number
   ctime?: number
   isDirectory?: boolean
+}
+
+function normalizeVaultPathForValidationBlock(path: string): string {
+  return String(path || '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+|\/+$/g, '')
+    .trim()
+}
+
+const warnedInvalidVaultPathKeysBlock = new Set<string>()
+const warnedRepairedVaultPathKeysBlock = new Set<string>()
+
+// Collapse runs of repeated ".md" suffixes (e.g. "foo.md.md.md" -> "foo.md").
+// Some callers wrap a path that already has ".md" with another ".md" appender;
+// rather than refuse the read entirely we repair the path and warn once so the
+// upstream caller is visible without breaking the user's data flow.
+function repairDuplicateMarkdownExtensionBlock(path: string): string {
+  let next = path
+  while (/\.md\.md$/i.test(next)) next = next.slice(0, -3)
+  return next
+}
+
+function maybeRepairVaultPathBlock(op: string, path: string): string {
+  const repaired = repairDuplicateMarkdownExtensionBlock(path)
+  if (repaired === path) return path
+  const key = `${op}::${path}`
+  if (!warnedRepairedVaultPathKeysBlock.has(key)) {
+    warnedRepairedVaultPathKeysBlock.add(key)
+    logWarn(
+      'Repaired duplicate .md extension before filesystem call',
+      `op=${op} from=${path} to=${repaired}`,
+      'fsBlock',
+    )
+  }
+  return repaired
+}
+
+function invalidVaultPathReasonBlock(path: string, options?: { allowEmpty?: boolean }): string | null {
+  const normalized = normalizeVaultPathForValidationBlock(path)
+  if (!normalized) return options?.allowEmpty ? null : 'empty path'
+  if (normalized === '.md') return `invalid normalized path "${normalized}"`
+
+  const segments = normalized.split('/').filter(Boolean)
+  if (segments.some(segment => segment.trim() === '' || segment.trim() === '.')) return 'contains invalid empty path segment'
+
+  // '?' segments/filenames are legitimate user data on disk; the iOS Filesystem
+  // plugin previously mis-parsed them as URL queries, but CapacitorVaultFS now
+  // percent-encodes them in resolve(). Don't reject — let them through.
+  return null
+}
+
+function warnRejectedVaultPathBlock(op: string, path: string, reason: string): void {
+  const key = `${op}::${path}::${reason}`
+  if (warnedInvalidVaultPathKeysBlock.has(key)) return
+  warnedInvalidVaultPathKeysBlock.add(key)
+  logWarn(
+    `Rejected invalid vault path before filesystem call`,
+    `op=${op} path=${path} reason=${reason}`,
+    'fsBlock',
+  )
+}
+
+function assertValidVaultPathBlock(op: string, path: string, options?: { allowEmpty?: boolean }): string {
+  const repaired = maybeRepairVaultPathBlock(op, path)
+  const reason = invalidVaultPathReasonBlock(repaired, options)
+  if (!reason) return repaired
+  warnRejectedVaultPathBlock(op, repaired, reason)
+  throw new Error(`Rejected invalid vault path for ${op}: ${repaired} (${reason})`)
+}
+
+function isValidVaultPathBlock(path: string, options?: { allowEmpty?: boolean }): boolean {
+  const repaired = maybeRepairVaultPathBlock('exists', path)
+  const reason = invalidVaultPathReasonBlock(repaired, options)
+  if (!reason) return true
+  warnRejectedVaultPathBlock('exists', repaired, reason)
+  return false
+}
+
+function repairedVaultPathOrNullBlock(op: string, path: string, options?: { allowEmpty?: boolean }): string | null {
+  const repaired = maybeRepairVaultPathBlock(op, path)
+  const reason = invalidVaultPathReasonBlock(repaired, options)
+  if (reason) {
+    warnRejectedVaultPathBlock(op, repaired, reason)
+    return null
+  }
+  return repaired
+}
+
+// Encode characters that the iOS Filesystem plugin would mis-parse when the
+// path is interpreted as a URL. We deliberately do NOT encodeURIComponent the
+// whole segment — the plugin already handles spaces and Unicode correctly,
+// and double-encoding would break filenames that already contain literal %.
+function encodeFileUriSegmentBlock(segment: string): string {
+  return segment
+    .replace(/%/g, '%25')
+    .replace(/\?/g, '%3F')
+    .replace(/#/g, '%23')
 }
 
 function isAlreadyExistsFilesystemErrorBlock(error: unknown): boolean {
@@ -358,7 +456,8 @@ export interface VaultFS {
 
 class WebVaultFS implements VaultFS {
   async read(path: string): Promise<string> {
-    const res = await fetch(`/api/tools/file-content?path=${encodeURIComponent(path)}`)
+    const safePath = assertValidVaultPathBlock('read', path)
+    const res = await fetch(`/api/tools/file-content?path=${encodeURIComponent(safePath)}`)
     if (!res.ok) {
       let detail = ''
       try {
@@ -375,6 +474,7 @@ class WebVaultFS implements VaultFS {
   }
 
   async write(path: string, data: string): Promise<void> {
+    assertValidVaultPathBlock('write', path)
     const res = await fetch('/api/tools/vault/write', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -385,6 +485,7 @@ class WebVaultFS implements VaultFS {
   }
 
   async readBytes(path: string): Promise<Uint8Array> {
+    assertValidVaultPathBlock('readBytes', path)
     const res = await fetch(`/api/tools/vault/read-bytes?path=${encodeURIComponent(path)}`)
     if (!res.ok) {
       let detail = ''
@@ -402,6 +503,7 @@ class WebVaultFS implements VaultFS {
   }
 
   async writeBytes(path: string, data: Uint8Array): Promise<void> {
+    assertValidVaultPathBlock('writeBytes', path)
     const res = await fetch('/api/tools/vault/write-bytes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -420,6 +522,7 @@ class WebVaultFS implements VaultFS {
   }
 
   async list(path: string): Promise<ListedFiles> {
+    assertValidVaultPathBlock('list', path, { allowEmpty: true })
     const res = await fetch(`/api/tools/vault/readdir?path=${encodeURIComponent(path)}`)
     if (!res.ok) throw new Error(`Failed to list directory: ${path}`)
     const json = await res.json()
@@ -448,6 +551,7 @@ class WebVaultFS implements VaultFS {
   }
 
   async stat(path: string): Promise<VaultStat> {
+    assertValidVaultPathBlock('stat', path)
     const res = await fetch(`/api/tools/vault/stat?path=${encodeURIComponent(path)}`)
     if (!res.ok) throw new Error(`Failed to stat: ${path}`)
     const s = await res.json()
@@ -460,6 +564,7 @@ class WebVaultFS implements VaultFS {
   }
 
   async exists(path: string): Promise<boolean> {
+    if (!isValidVaultPathBlock(path)) return false
     try {
       await this.stat(path)
       return true
@@ -469,6 +574,7 @@ class WebVaultFS implements VaultFS {
   }
 
   async mkdir(path: string): Promise<void> {
+    assertValidVaultPathBlock('mkdir', path, { allowEmpty: true })
     const res = await fetch('/api/tools/vault/mkdir', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -478,6 +584,7 @@ class WebVaultFS implements VaultFS {
   }
 
   async delete(path: string): Promise<void> {
+    assertValidVaultPathBlock('delete', path)
     const res = await fetch('/api/tools/vault/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -506,30 +613,34 @@ class ElectronVaultFS implements VaultFS {
   }
 
   async read(path: string): Promise<string> {
-    return this.api.read(this.vaultRoot, path)
+    const safePath = assertValidVaultPathBlock('read', path)
+    return this.api.read(this.vaultRoot, safePath)
   }
 
   async write(path: string, data: string): Promise<void> {
-    await this.api.write(this.vaultRoot, path, data)
-    notifyFileChanged(path)
+    const safePath = assertValidVaultPathBlock('write', path)
+    await this.api.write(this.vaultRoot, safePath, data)
+    notifyFileChanged(safePath)
   }
 
   async readBytes(path: string): Promise<Uint8Array> {
+    const safePath = assertValidVaultPathBlock('readBytes', path)
     if (this.api.readBytesBase64) {
-      const base64 = await this.api.readBytesBase64(this.vaultRoot, path)
+      const base64 = await this.api.readBytesBase64(this.vaultRoot, safePath)
       return base64ToBytesBlock(base64)
     }
-    const text = await this.read(path)
+    const text = await this.read(safePath)
     return utf8ToBytesBlock(text)
   }
 
   async writeBytes(path: string, data: Uint8Array): Promise<void> {
+    const safePath = assertValidVaultPathBlock('writeBytes', path)
     if (this.api.writeBytesBase64) {
-      await this.api.writeBytesBase64(this.vaultRoot, path, bytesToBase64Block(data))
-      notifyFileChanged(path)
+      await this.api.writeBytesBase64(this.vaultRoot, safePath, bytesToBase64Block(data))
+      notifyFileChanged(safePath)
       return
     }
-    await this.write(path, bytesToUtf8Block(data))
+    await this.write(safePath, bytesToUtf8Block(data))
   }
 
   async create(path: string, data: string): Promise<void> {
@@ -538,7 +649,8 @@ class ElectronVaultFS implements VaultFS {
   }
 
   async list(path: string): Promise<ListedFiles> {
-    return this.api.list(this.vaultRoot, path || '.')
+    const safePath = assertValidVaultPathBlock('list', path, { allowEmpty: true })
+    return this.api.list(this.vaultRoot, safePath || '.')
   }
 
   async walkVault(extensions: string[] = ['.md']): Promise<VaultEntry[]> {
@@ -546,20 +658,25 @@ class ElectronVaultFS implements VaultFS {
   }
 
   async stat(path: string): Promise<VaultStat> {
-    return this.api.stat(this.vaultRoot, path)
+    const safePath = assertValidVaultPathBlock('stat', path)
+    return this.api.stat(this.vaultRoot, safePath)
   }
 
   async exists(path: string): Promise<boolean> {
-    return this.api.exists(this.vaultRoot, path)
+    const safePath = repairedVaultPathOrNullBlock('exists', path)
+    if (safePath === null) return false
+    return this.api.exists(this.vaultRoot, safePath)
   }
 
   async mkdir(path: string): Promise<void> {
-    return this.api.mkdir(this.vaultRoot, path)
+    const safePath = assertValidVaultPathBlock('mkdir', path, { allowEmpty: true })
+    return this.api.mkdir(this.vaultRoot, safePath)
   }
 
   async delete(path: string): Promise<void> {
+    const safePath = assertValidVaultPathBlock('delete', path)
     if (this.api.deletePath) {
-      await this.api.deletePath(this.vaultRoot, path, false)
+      await this.api.deletePath(this.vaultRoot, safePath, false)
     }
   }
 
@@ -587,9 +704,17 @@ class CapacitorVaultFS implements VaultFS {
 
   private resolve(path: string): string {
     const base = path ? `${this.vaultRoot}/${path}` : this.vaultRoot
-    // Capacitor Filesystem needs file:// URIs for absolute paths.
-    // Don't pre-encode — the native Filesystem plugin handles encoding internally.
-    if (this.isAbsolute) return `file://${base}`
+    // Capacitor Filesystem on iOS parses absolute paths as URLs, so '?' and '#'
+    // would be interpreted as query/fragment separators and silently truncate
+    // the path. Percent-encode them (and stray '%') per-segment before building
+    // the file:// URI. The native plugin handles spaces/Unicode itself.
+    if (this.isAbsolute) {
+      const encoded = base
+        .split('/')
+        .map(encodeFileUriSegmentBlock)
+        .join('/')
+      return `file://${encoded}`
+    }
     return base
   }
 
@@ -602,22 +727,25 @@ class CapacitorVaultFS implements VaultFS {
   }
 
   async read(path: string): Promise<string> {
+    const safePath = assertValidVaultPathBlock('read', path)
     const { Filesystem, Encoding } = await import('@capacitor/filesystem')
-    const opts = await this.fsOpts(path)
+    const opts = await this.fsOpts(safePath)
     const result = await Filesystem.readFile({ ...opts, encoding: Encoding.UTF8 })
     return result.data as string
   }
 
   async write(path: string, data: string): Promise<void> {
+    const safePath = assertValidVaultPathBlock('write', path)
     const { Filesystem, Encoding } = await import('@capacitor/filesystem')
-    const opts = await this.fsOpts(path)
+    const opts = await this.fsOpts(safePath)
     await Filesystem.writeFile({ ...opts, data, encoding: Encoding.UTF8, recursive: true })
-    notifyFileChanged(path)
+    notifyFileChanged(safePath)
   }
 
   async readBytes(path: string): Promise<Uint8Array> {
+    const safePath = assertValidVaultPathBlock('readBytes', path)
     const { Filesystem } = await import('@capacitor/filesystem')
-    const opts = await this.fsOpts(path)
+    const opts = await this.fsOpts(safePath)
     const result = await Filesystem.readFile(opts)
     if (typeof result.data === 'string') {
       return base64ToBytesBlock(result.data)
@@ -627,14 +755,15 @@ class CapacitorVaultFS implements VaultFS {
   }
 
   async writeBytes(path: string, data: Uint8Array): Promise<void> {
+    const safePath = assertValidVaultPathBlock('writeBytes', path)
     const { Filesystem } = await import('@capacitor/filesystem')
-    const opts = await this.fsOpts(path)
+    const opts = await this.fsOpts(safePath)
     await Filesystem.writeFile({
       ...opts,
       data: bytesToBase64Block(data),
       recursive: true,
     })
-    notifyFileChanged(path)
+    notifyFileChanged(safePath)
   }
 
   async create(path: string, data: string): Promise<void> {
@@ -643,10 +772,11 @@ class CapacitorVaultFS implements VaultFS {
   }
 
   async list(path: string): Promise<ListedFiles> {
+    const safePath = assertValidVaultPathBlock('list', path, { allowEmpty: true })
     const { Filesystem } = await import('@capacitor/filesystem')
-    const exists = await this.exists(path).catch(() => false)
+    const exists = await this.exists(safePath).catch(() => false)
     if (!exists) return { files: [], folders: [] }
-    const opts = await this.fsOpts(path)
+    const opts = await this.fsOpts(safePath)
     const result = await Filesystem.readdir(opts)
     const files: string[] = []
     const folders: string[] = []
@@ -721,8 +851,9 @@ class CapacitorVaultFS implements VaultFS {
   }
 
   async stat(path: string): Promise<VaultStat> {
+    const safePath = assertValidVaultPathBlock('stat', path)
     const { Filesystem } = await import('@capacitor/filesystem')
-    const opts = await this.fsOpts(path)
+    const opts = await this.fsOpts(safePath)
     const st = await Filesystem.stat(opts)
     return {
       size: st.size,
@@ -732,9 +863,11 @@ class CapacitorVaultFS implements VaultFS {
   }
 
   async exists(path: string): Promise<boolean> {
-    if (!path) return true
+    const safePath = repairedVaultPathOrNullBlock('exists', path, { allowEmpty: true })
+    if (safePath === null) return false
+    if (!safePath) return true
 
-    const normalized = path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    const normalized = safePath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
     if (!normalized) return true
 
     const slashIndex = normalized.lastIndexOf('/')
@@ -755,9 +888,10 @@ class CapacitorVaultFS implements VaultFS {
   }
 
   async mkdir(path: string): Promise<void> {
+    const safePath = assertValidVaultPathBlock('mkdir', path, { allowEmpty: true })
     const { Filesystem } = await import('@capacitor/filesystem')
-    const opts = await this.fsOpts(path)
-    const exists = await this.exists(path).catch(() => false)
+    const opts = await this.fsOpts(safePath)
+    const exists = await this.exists(safePath).catch(() => false)
     if (exists) return
     try {
       await Filesystem.mkdir({ ...opts, recursive: true })
@@ -768,8 +902,9 @@ class CapacitorVaultFS implements VaultFS {
   }
 
   async delete(path: string): Promise<void> {
+    const safePath = assertValidVaultPathBlock('delete', path)
     const { Filesystem } = await import('@capacitor/filesystem')
-    const opts = await this.fsOpts(path)
+    const opts = await this.fsOpts(safePath)
     await Filesystem.deleteFile(opts)
   }
 
@@ -826,6 +961,7 @@ export class BrowserVaultFS implements VaultFS {
   }
 
   private async resolveFile(filePath: string, create = false): Promise<FileSystemFileHandle> {
+    assertValidVaultPathBlock(create ? 'write' : 'read', filePath)
     const parts = filePath.split('/').filter(Boolean)
     const fileName = parts.pop()!
     let dir = this.root
@@ -836,6 +972,7 @@ export class BrowserVaultFS implements VaultFS {
   }
 
   private async resolveDir(dirPath: string, create = false): Promise<FileSystemDirectoryHandle> {
+    assertValidVaultPathBlock(create ? 'mkdir' : 'list', dirPath, { allowEmpty: true })
     const parts = dirPath.split('/').filter(Boolean)
     let dir = this.root
     for (const segment of parts) {
@@ -935,6 +1072,7 @@ export class BrowserVaultFS implements VaultFS {
   }
 
   async stat(filePath: string): Promise<VaultStat> {
+    assertValidVaultPathBlock('stat', filePath)
     // Try as file first, then as directory
     try {
       const handle = await this.resolveFile(filePath)
@@ -953,6 +1091,7 @@ export class BrowserVaultFS implements VaultFS {
   }
 
   async exists(filePath: string): Promise<boolean> {
+    if (!isValidVaultPathBlock(filePath, { allowEmpty: true })) return false
     try {
       await this.stat(filePath)
       return true
@@ -966,6 +1105,7 @@ export class BrowserVaultFS implements VaultFS {
   }
 
   async delete(filePath: string): Promise<void> {
+    assertValidVaultPathBlock('delete', filePath)
     const parts = filePath.split('/').filter(Boolean)
     const fileName = parts.pop()!
     let dir = this.root

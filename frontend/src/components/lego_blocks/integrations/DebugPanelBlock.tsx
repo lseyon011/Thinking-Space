@@ -42,11 +42,53 @@ interface DebugHostPerformanceSnapshotBlock {
   topProcesses: DebugHostProcessMetricBlock[]
 }
 
-const LEVEL_CONFIG: Record<DebugLogLevel, { icon: typeof AlertCircle; badge: string; text: string; dot: string }> = {
-  error: { icon: AlertCircle, badge: 'bg-red-500/20 text-red-400 border-red-500/30', text: 'text-red-400', dot: 'bg-red-500' },
-  warn:  { icon: AlertTriangle, badge: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', text: 'text-yellow-400', dot: 'bg-yellow-400' },
-  info:  { icon: Info, badge: 'bg-blue-500/20 text-blue-400 border-blue-500/30', text: 'text-blue-400', dot: 'bg-blue-400' },
-  debug: { icon: Info, badge: 'bg-muted/60 text-muted-foreground border-border/40', text: 'text-muted-foreground', dot: 'bg-muted-foreground/50' },
+const LEVEL_CONFIG: Record<DebugLogLevel, {
+  icon: typeof AlertCircle
+  badge: string
+  text: string
+  rail: string
+  bg: string
+}> = {
+  error: {
+    icon: AlertCircle,
+    badge: 'bg-red-500/15 text-red-600 dark:text-red-300 border-red-500/30',
+    text: 'text-red-500 dark:text-red-400',
+    rail: 'bg-red-500',
+    bg: 'hover:bg-red-500/[0.04]',
+  },
+  warn: {
+    icon: AlertTriangle,
+    badge: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+    text: 'text-amber-600 dark:text-amber-400',
+    rail: 'bg-amber-500',
+    bg: 'hover:bg-amber-500/[0.04]',
+  },
+  info: {
+    icon: Info,
+    badge: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30',
+    text: 'text-blue-600 dark:text-blue-400',
+    rail: 'bg-blue-500',
+    bg: 'hover:bg-blue-500/[0.04]',
+  },
+  debug: {
+    icon: Info,
+    badge: 'bg-muted/60 text-muted-foreground border-border/40',
+    text: 'text-muted-foreground',
+    rail: 'bg-muted-foreground/40',
+    bg: 'hover:bg-muted/30',
+  },
+}
+
+function humanizeMessageBlock(message: string): string {
+  if (!message) return message
+  return message.replace(/file:\/\/[^\s'"]+/g, uri => {
+    try {
+      const decoded = decodeURI(uri).replace(/^file:\/\/+/, '')
+      return decoded || uri
+    } catch {
+      return uri
+    }
+  })
 }
 
 function formatTime(ts: number): string {
@@ -81,40 +123,38 @@ function LogEntry({ entry }: { entry: DebugLogEntryBlock }) {
     }
   }
 
-  return (
-    <div className="group border-b border-border/30 px-3 py-2 hover:bg-muted/30">
-      <div className="flex items-start gap-2">
-        {/* Level indicator */}
-        <div className="mt-0.5 flex shrink-0 items-center gap-1.5">
-          <Icon className={`h-3.5 w-3.5 ${cfg.text}`} />
-        </div>
+  const message = humanizeMessageBlock(entry.message)
 
-        {/* Main content */}
+  return (
+    <div className={`group relative border-b border-border/40 py-2.5 pl-4 pr-3 transition-colors ${cfg.bg}`}>
+      {/* Coloured rail aligned with the level */}
+      <span className={`pointer-events-none absolute inset-y-2 left-1 w-0.5 rounded-full ${cfg.rail}`} aria-hidden />
+
+      <div className="flex items-start gap-2.5">
+        <Icon className={`mt-[3px] h-3.5 w-3.5 shrink-0 ${cfg.text}`} />
+
         <div className="min-w-0 flex-1">
-          {/* Meta row */}
-          <div className="mb-0.5 flex items-center gap-1.5 flex-wrap">
-            <span className="font-mono text-[10px] text-muted-foreground/70 tabular-nums">
-              {formatTime(entry.timestamp)}
-            </span>
-            <span className={`inline-flex items-center rounded border px-1 py-px text-[10px] font-semibold uppercase tracking-wide ${cfg.badge}`}>
+          <div className="mb-1 flex flex-wrap items-center gap-1.5">
+            <span className={`inline-flex items-center rounded-md border px-1.5 py-px text-[10px] font-semibold uppercase tracking-[0.06em] ${cfg.badge}`}>
               {entry.level}
             </span>
             {entry.source && (
-              <span className="rounded bg-muted/50 px-1.5 py-px text-[10px] text-muted-foreground">
+              <span className="rounded-md bg-muted/60 px-1.5 py-px font-mono text-[10px] text-muted-foreground">
                 {entry.source}
               </span>
             )}
+            <span className="ml-auto font-mono text-[10px] tabular-nums text-muted-foreground/60">
+              {formatTime(entry.timestamp)}
+            </span>
           </div>
 
-          {/* Message */}
-          <p className="text-xs leading-relaxed text-foreground/90 break-words">{entry.message}</p>
+          <p className="break-words text-[13px] leading-snug text-foreground/90">{message}</p>
 
-          {/* Expandable extra */}
           {hasExtra && (
             <button
               type="button"
               onClick={() => setExpanded(v => !v)}
-              className={`mt-1 flex items-center gap-0.5 text-[11px] ${cfg.text} hover:opacity-80`}
+              className="mt-1.5 inline-flex items-center gap-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
             >
               {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
               {expanded ? 'Hide details' : 'Show details'}
@@ -124,12 +164,12 @@ function LogEntry({ entry }: { entry: DebugLogEntryBlock }) {
           {expanded && (
             <div className="mt-2 space-y-2">
               {entry.details && (
-                <pre className="whitespace-pre-wrap break-all rounded bg-muted/50 px-2.5 py-2 font-mono text-[11px] text-muted-foreground">
-                  {entry.details}
+                <pre className="whitespace-pre-wrap break-words rounded-md border border-border/40 bg-muted/30 px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+                  {humanizeMessageBlock(entry.details)}
                 </pre>
               )}
               {entry.stack && (
-                <pre className="whitespace-pre-wrap break-all rounded bg-red-950/30 px-2.5 py-2 font-mono text-[11px] text-red-300/80">
+                <pre className="whitespace-pre-wrap break-words rounded-md border border-red-500/20 bg-red-500/[0.06] px-3 py-2 font-mono text-[11px] leading-relaxed text-red-600/90 dark:text-red-300/80">
                   {entry.stack}
                 </pre>
               )}
@@ -137,14 +177,13 @@ function LogEntry({ entry }: { entry: DebugLogEntryBlock }) {
           )}
         </div>
 
-        {/* Copy button — visible on hover */}
         <button
           type="button"
           onClick={handleCopy}
           aria-label="Copy entry"
-          className="mt-0.5 shrink-0 rounded p-1 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
+          className="mt-0.5 shrink-0 rounded-md p-1 text-muted-foreground/50 opacity-0 transition-all hover:bg-muted/60 hover:text-foreground group-hover:opacity-100"
         >
-          {copied ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+          {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
         </button>
       </div>
     </div>
