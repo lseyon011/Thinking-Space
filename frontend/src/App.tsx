@@ -3894,7 +3894,10 @@ function App() {
           onClear={() => { setDebugLogEntries([]); setDebugUnreadCount(0) }}
         />
         {debugToast && (
-          <div className="pointer-events-none fixed bottom-4 right-4 z-[100]">
+          <div
+            className="pointer-events-none fixed right-4 z-[100]"
+            style={{ bottom: 'calc(var(--ltm-safe-bottom, 0px) + 5.5rem)' }}
+          >
             <DebugToastBlock
               entry={debugToast}
               onDismiss={() => {

@@ -180,7 +180,10 @@ export default function RuntimeErrorSurfaceBlock({
   const latestMessage = humanizeReportMessageBlock(latestReport.message)
 
   return (
-    <div className="fixed bottom-3 right-3 z-[95] w-[min(28rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-border/70 bg-background/95 shadow-lg shadow-black/5 ring-1 ring-black/5 backdrop-blur-xl">
+    <div
+      className="fixed right-3 z-[95] w-[min(28rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-border/70 bg-background/95 shadow-lg shadow-black/5 ring-1 ring-black/5 backdrop-blur-xl"
+      style={{ bottom: 'calc(var(--ltm-safe-bottom, 0px) + 5.5rem)' }}
+    >
       <span className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-amber-500" aria-hidden />
       <div className="flex items-start gap-2.5 px-3.5 py-3 pl-4">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
