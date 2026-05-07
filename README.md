@@ -29,9 +29,12 @@ Thinking Space does not impose a fixed way of thinking or organization. Your str
 
 Thinking Space is source-available and designed to be extendable with AI. You can inspect the source code, add features, and shape the app to fit your workflow under the terms in [LICENSE](LICENSE).
 
+- A chill markdown viewer — point it at a folder and read your notes
+- A small, extendable Electron app you can use as a home for the little tools you build for yourself
 - Works alongside Obsidian — no conflicts
 - Local-first and portable (plain Markdown + YAML)
 - No lock-in to one AI provider
+- iOS app that actually opens big vaults. Obsidian on my iPhone usually just spins forever — this one doesn't.
 
 Humans are beautiful.
 
