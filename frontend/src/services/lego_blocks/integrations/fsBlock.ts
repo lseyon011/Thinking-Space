@@ -7,7 +7,7 @@ import { Capacitor } from '@capacitor/core'
 import { EXCLUDED_DIRS } from '@/services/lego_blocks/units/vaultConstantsBlock'
 import { getStoredVaultRoot, setStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { notifyFileChanged } from '@/services/lego_blocks/units/crossWindowSyncBlock'
-import { logWarn } from '@/services/lego_blocks/units/debugLogBlock'
+import { logDebug, logWarn } from '@/services/lego_blocks/units/debugLogBlock'
 import {
   base64ToBytesBlock,
   bytesToBase64Block,
@@ -44,32 +44,6 @@ function normalizeVaultPathForValidationBlock(path: string): string {
 }
 
 const warnedInvalidVaultPathKeysBlock = new Set<string>()
-const warnedRepairedVaultPathKeysBlock = new Set<string>()
-
-// Collapse runs of repeated ".md" suffixes (e.g. "foo.md.md.md" -> "foo.md").
-// Some callers wrap a path that already has ".md" with another ".md" appender;
-// rather than refuse the read entirely we repair the path and warn once so the
-// upstream caller is visible without breaking the user's data flow.
-function repairDuplicateMarkdownExtensionBlock(path: string): string {
-  let next = path
-  while (/\.md\.md$/i.test(next)) next = next.slice(0, -3)
-  return next
-}
-
-function maybeRepairVaultPathBlock(op: string, path: string): string {
-  const repaired = repairDuplicateMarkdownExtensionBlock(path)
-  if (repaired === path) return path
-  const key = `${op}::${path}`
-  if (!warnedRepairedVaultPathKeysBlock.has(key)) {
-    warnedRepairedVaultPathKeysBlock.add(key)
-    logWarn(
-      'Repaired duplicate .md extension before filesystem call',
-      `op=${op} from=${path} to=${repaired}`,
-      'fsBlock',
-    )
-  }
-  return repaired
-}
 
 function invalidVaultPathReasonBlock(path: string, options?: { allowEmpty?: boolean }): string | null {
   const normalized = normalizeVaultPathForValidationBlock(path)
@@ -97,40 +71,38 @@ function warnRejectedVaultPathBlock(op: string, path: string, reason: string): v
 }
 
 function assertValidVaultPathBlock(op: string, path: string, options?: { allowEmpty?: boolean }): string {
-  const repaired = maybeRepairVaultPathBlock(op, path)
-  const reason = invalidVaultPathReasonBlock(repaired, options)
-  if (!reason) return repaired
-  warnRejectedVaultPathBlock(op, repaired, reason)
-  throw new Error(`Rejected invalid vault path for ${op}: ${repaired} (${reason})`)
+  const reason = invalidVaultPathReasonBlock(path, options)
+  if (!reason) return path
+  warnRejectedVaultPathBlock(op, path, reason)
+  throw new Error(`Rejected invalid vault path for ${op}: ${path} (${reason})`)
 }
 
 function isValidVaultPathBlock(path: string, options?: { allowEmpty?: boolean }): boolean {
-  const repaired = maybeRepairVaultPathBlock('exists', path)
-  const reason = invalidVaultPathReasonBlock(repaired, options)
+  const reason = invalidVaultPathReasonBlock(path, options)
   if (!reason) return true
-  warnRejectedVaultPathBlock('exists', repaired, reason)
+  warnRejectedVaultPathBlock('exists', path, reason)
   return false
 }
 
-function repairedVaultPathOrNullBlock(op: string, path: string, options?: { allowEmpty?: boolean }): string | null {
-  const repaired = maybeRepairVaultPathBlock(op, path)
-  const reason = invalidVaultPathReasonBlock(repaired, options)
+function vaultPathOrNullBlock(op: string, path: string, options?: { allowEmpty?: boolean }): string | null {
+  const reason = invalidVaultPathReasonBlock(path, options)
   if (reason) {
-    warnRejectedVaultPathBlock(op, repaired, reason)
+    warnRejectedVaultPathBlock(op, path, reason)
     return null
   }
-  return repaired
+  return path
 }
 
-// Encode characters that the iOS Filesystem plugin would mis-parse when the
-// path is interpreted as a URL. We deliberately do NOT encodeURIComponent the
-// whole segment — the plugin already handles spaces and Unicode correctly,
-// and double-encoding would break filenames that already contain literal %.
+// Build a fully-valid URL segment for the iOS Filesystem plugin. The plugin
+// runs `URL(string:)` on the file:// URI; if any character is invalid (e.g. a
+// raw space, '?', or '#'), construction fails and the plugin falls back to
+// `addingPercentEncoding` over the whole string, which re-encodes our literal
+// '%' characters (turning a '?' we encoded as '%3F' into '%253F') and breaks
+// the path. encodeURIComponent encodes everything the URL parser needs —
+// including spaces, '?', '#', and literal '%' — so the plugin accepts the
+// URI as-is and decodes it correctly when hitting the filesystem.
 function encodeFileUriSegmentBlock(segment: string): string {
-  return segment
-    .replace(/%/g, '%25')
-    .replace(/\?/g, '%3F')
-    .replace(/#/g, '%23')
+  return encodeURIComponent(segment)
 }
 
 function isAlreadyExistsFilesystemErrorBlock(error: unknown): boolean {
@@ -663,7 +635,7 @@ class ElectronVaultFS implements VaultFS {
   }
 
   async exists(path: string): Promise<boolean> {
-    const safePath = repairedVaultPathOrNullBlock('exists', path)
+    const safePath = vaultPathOrNullBlock('exists', path)
     if (safePath === null) return false
     return this.api.exists(this.vaultRoot, safePath)
   }
@@ -816,7 +788,18 @@ class CapacitorVaultFS implements VaultFS {
 
         if (item.type === 'directory') {
           const childDir = `${dirPath}/${item.name}`
-          subdirPromises.push(walk(childDir, itemUri ?? null, relPath))
+          subdirPromises.push(
+            walk(childDir, itemUri ?? null, relPath).catch(err => {
+              // iCloud may list folder metadata for directories that were
+              // deleted upstream but whose deletion hasn't synced down to this
+              // device yet. The parent readdir returns them as type='directory',
+              // but readdir on the child fails with OS-PLUG-FILE-0008. Catch
+              // here so the failure doesn't bubble through the iOS plugin into
+              // console.error (where it would surface in the debug panel).
+              const message = err instanceof Error ? err.message : String(err)
+              logDebug(`Skipped iCloud-stale subdirectory during walk: ${relPath}`, message, 'fsBlock')
+            }),
+          )
         } else {
           const ext = '.' + item.name.split('.').pop()?.toLowerCase()
           if (!extSet.has(ext || '')) continue
@@ -835,8 +818,9 @@ class CapacitorVaultFS implements VaultFS {
                 ctime: (st.ctime || st.mtime || 0) / 1000,
               })
             }).catch(err => {
-              // Skip files that can't be stat'd (e.g. iCloud placeholders not yet downloaded)
-              console.warn(`[CapacitorVaultFS] Skipping file that failed stat: ${relPath}`, err)
+              // iCloud placeholders not yet downloaded — same race as above.
+              const message = err instanceof Error ? err.message : String(err)
+              logDebug(`Skipped iCloud-stale file during walk stat: ${relPath}`, message, 'fsBlock')
             }),
           )
         }
@@ -863,7 +847,7 @@ class CapacitorVaultFS implements VaultFS {
   }
 
   async exists(path: string): Promise<boolean> {
-    const safePath = repairedVaultPathOrNullBlock('exists', path, { allowEmpty: true })
+    const safePath = vaultPathOrNullBlock('exists', path, { allowEmpty: true })
     if (safePath === null) return false
     if (!safePath) return true
 
