@@ -183,6 +183,9 @@ interface ElectronAPI {
   }): Promise<{ status: number; body: string }>
   vaultRootGetPersisted?(): string | null
   vaultRootSetPersisted?(vaultRoot: string | null): Promise<void>
+  vaultWatchStart?(vaultRoot: string): Promise<{ ok: boolean; error?: string }>
+  vaultWatchStop?(vaultRoot: string): Promise<{ ok: boolean }>
+  onVaultWatchEvent?(handler: (event: { kind: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir'; path: string }) => void): () => void
   newWindow?(route?: string): Promise<void>
   markdownEditorOnPasteAsTable?(handler: () => void): () => void
   sourceConfigGet?(): Promise<{ mode: string; sourcePath: string | null; vitePort: number; viteRunning: boolean }>

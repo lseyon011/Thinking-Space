@@ -41,6 +41,11 @@ import {
   writePersistedVaultRootBlock,
 } from './lego_blocks/vaultRootPersistenceBlock';
 import {
+  startVaultWatcherBlock,
+  stopVaultWatcherBlock,
+  stopAllVaultWatcherBlocks,
+} from './lego_blocks/vaultWatcherBlock';
+import {
   readSourceConfigBlock,
   writeSourceConfigBlock,
 } from './lego_blocks/sourceConfigBlock';
@@ -1350,6 +1355,31 @@ ipcMain.handle('vault:root:setPersisted', async (_event, vaultRoot: string | nul
     throw new Error('Persisted vault root must be a string or null.');
   }
   writePersistedVaultRootBlock(vaultRoot);
+});
+
+ipcMain.handle('vault:watch:start', async (_event, vaultRoot: string) => {
+  if (typeof vaultRoot !== 'string' || !vaultRoot.trim()) {
+    return { ok: false, error: 'vault:watch:start requires a vault root string.' };
+  }
+  return startVaultWatcherBlock(vaultRoot, {
+    onEvent: (_root, event) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (win.isDestroyed()) continue;
+        win.webContents.send('vault:watch:event', event);
+      }
+    },
+  });
+});
+
+ipcMain.handle('vault:watch:stop', async (_event, vaultRoot: string) => {
+  if (typeof vaultRoot !== 'string' || !vaultRoot.trim()) {
+    return { ok: true };
+  }
+  return stopVaultWatcherBlock(vaultRoot);
+});
+
+app.on('before-quit', () => {
+  stopAllVaultWatcherBlocks();
 });
 
 // -- Open external URL in default browser --

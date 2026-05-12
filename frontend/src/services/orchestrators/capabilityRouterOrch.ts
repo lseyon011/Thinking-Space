@@ -36,6 +36,7 @@ import {
   updateYamlNode,
 } from '@/services/lego_blocks/integrations/yamlHierarchyBlock'
 import { getVaultFS, type VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { startActivity } from '@/services/lego_blocks/units/backgroundActivityBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { getUserCommentAuthorBlock } from '@/services/lego_blocks/units/userProfileBlock'
 import { createThought } from './thoughtsOrch'
@@ -186,6 +187,14 @@ export async function invokeCapabilityOrch<Name extends CapabilityName>(
   const warnings: string[] = []
   const fs = options?.fs
 
+  const activity = startActivity({
+    kind: 'capability',
+    label: formatCapabilityLabel(request.capability),
+    detail: dryRun ? 'Dry run' : undefined,
+  })
+
+  try {
+
   const definition = getCapabilityDefinition(request.capability)
   if (!definition) {
     const response: CapabilityInvokeFailure<Name> = {
@@ -333,6 +342,10 @@ export async function invokeCapabilityOrch<Name extends CapabilityName>(
       fs,
     })
     return failure
+  }
+
+  } finally {
+    activity.end()
   }
 }
 
@@ -1111,6 +1124,33 @@ async function applyEpicStatusPolicyForAffectedNodes(params: {
     }, params.fs)
     nodesByKey.set(updated.key, updated)
   }
+}
+
+const CAPABILITY_LABELS: Partial<Record<CapabilityName, string>> = {
+  'organizer.nodes.search': 'Searching organizer…',
+  'organizer.nodes.list_all': 'Loading organizer…',
+  'organizer.nodes.list_roots': 'Loading organizer roots…',
+  'organizer.nodes.list_children': 'Loading children…',
+  'organizer.node.create': 'Creating node…',
+  'organizer.node.update': 'Updating node…',
+  'organizer.node.move': 'Moving node…',
+  'organizer.node.rename': 'Renaming node…',
+  'organizer.node.delete': 'Deleting node…',
+  'read_note': 'Reading note…',
+  'write_note': 'Writing note…',
+  'patch_note_frontmatter': 'Updating note…',
+  'task.claim': 'Claiming task…',
+  'task.update_status': 'Updating task…',
+  'handoff.create': 'Creating handoff…',
+  'comment.add': 'Adding comment…',
+  'run.log': 'Logging run…',
+  'thoughts.create': 'Saving thought…',
+  'todos.create': 'Saving todo…',
+  'todos.toggle': 'Updating todo…',
+}
+
+function formatCapabilityLabel(capability: CapabilityName): string {
+  return CAPABILITY_LABELS[capability] ?? `Running ${capability}…`
 }
 
 function currentDateStamp(): string {

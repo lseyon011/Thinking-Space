@@ -29,6 +29,7 @@ import {
   type LinkRecord,
 } from '@/services/lego_blocks/integrations/dbBlock'
 import { extractLinksFromContentBlock } from '@/services/lego_blocks/units/linkIndexBlock'
+import { startActivity } from '@/services/lego_blocks/units/backgroundActivityBlock'
 import {
   mergeWikiLinksIntoFrontmatterBlock,
   resolveGeneratedWikiLinksForFrontmatterBlock,
@@ -99,19 +100,37 @@ export async function fullSync(fs?: VaultFS, options?: VaultSyncOptions): Promis
   const start = Date.now()
   const autoHealEnabled = getCapabilityFeatureFlags().yaml_fields_auto_heal_enabled
 
-  await clearAll()
-  await clearAllLinks()
+  const activity = startActivity({
+    kind: 'sync',
+    label: 'Syncing vault…',
+    detail: 'Full scan',
+  })
+  try {
+    await clearAll()
+    await clearAllLinks()
 
-  const entries = await vaultFs.walkVault(['.md'])
-  const candidatePaths = entries.map(e => e.path)
-  setCachedFilePaths(new Set(candidatePaths))
-  const parentKeyToPath = autoHealEnabled
-    ? await buildParentKeyToPathIndex(vaultFs, entries, resolveMaxSyncFileSizeBytes(options))
-    : undefined
-  const result = await syncEntries(vaultFs, entries, options, candidatePaths, parentKeyToPath, autoHealEnabled)
+    const entries = await vaultFs.walkVault(['.md'])
+    activity.update({ total: entries.length, completed: 0, detail: `Full scan — ${entries.length} files` })
+    const candidatePaths = entries.map(e => e.path)
+    setCachedFilePaths(new Set(candidatePaths))
+    const parentKeyToPath = autoHealEnabled
+      ? await buildParentKeyToPathIndex(vaultFs, entries, resolveMaxSyncFileSizeBytes(options))
+      : undefined
+    const result = await syncEntries(
+      vaultFs,
+      entries,
+      options,
+      candidatePaths,
+      parentKeyToPath,
+      autoHealEnabled,
+      (completed) => activity.update({ completed }),
+    )
 
-  result.durationMs = Date.now() - start
-  return result
+    result.durationMs = Date.now() - start
+    return result
+  } finally {
+    activity.end()
+  }
 }
 
 /**
@@ -127,6 +146,12 @@ export async function incrementalSync(
   const start = Date.now()
   const autoHealEnabled = getCapabilityFeatureFlags().yaml_fields_auto_heal_enabled
 
+  const activity = startActivity({
+    kind: 'sync',
+    label: 'Syncing vault…',
+    detail: 'Checking for changes',
+  })
+  try {
   const allEntries = await vaultFs.walkVault(['.md'])
 
   // Find files modified since last sync
@@ -150,15 +175,33 @@ export async function incrementalSync(
 
   const candidatePaths = allEntries.map(e => e.path)
   setCachedFilePaths(new Set(candidatePaths))
+  activity.update({
+    total: updatedEntries.length,
+    completed: 0,
+    detail: updatedEntries.length === 0
+      ? 'Up to date'
+      : `${updatedEntries.length} changed${deletedCount ? `, ${deletedCount} removed` : ''}`,
+  })
   // Incremental sync: skip the full-vault prepass and rely on getNodeByKey lookups
   // against IndexedDB for parent path resolution. Scanning every file here would
   // defeat the purpose of incremental sync.
-  const result = await syncEntries(vaultFs, updatedEntries, options, candidatePaths, undefined, autoHealEnabled)
+  const result = await syncEntries(
+    vaultFs,
+    updatedEntries,
+    options,
+    candidatePaths,
+    undefined,
+    autoHealEnabled,
+    (completed) => activity.update({ completed }),
+  )
   result.deletedNodes = deletedCount
   result.totalFiles = allEntries.length
   result.durationMs = Date.now() - start
 
   return result
+  } finally {
+    activity.end()
+  }
 }
 
 /**
@@ -274,6 +317,7 @@ async function syncEntries(
   candidatePaths?: string[],
   parentKeyToPath?: Map<string, string>,
   autoHealEnabled?: boolean,
+  onProgress?: (completed: number) => void,
 ): Promise<SyncResult> {
   const maxFileSizeBytes = resolveMaxSyncFileSizeBytes(options)
   const result: SyncResult = {
@@ -322,7 +366,15 @@ async function syncEntries(
     }
   }
 
+  let progressCount = 0
+  let nextProgressReport = 0
   for (const entry of entries) {
+    progressCount++
+    if (onProgress && progressCount >= nextProgressReport) {
+      onProgress(progressCount)
+      // Report every ~2% of work, min every 5 files, to avoid bus churn.
+      nextProgressReport = progressCount + Math.max(5, Math.floor(entries.length / 50))
+    }
     try {
       if (entry.size > maxFileSizeBytes) {
         result.skippedFiles++

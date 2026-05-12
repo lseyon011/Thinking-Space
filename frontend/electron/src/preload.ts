@@ -122,6 +122,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     dryRun?: boolean
   }) => ipcRenderer.invoke('extension-runtime:invoke', payload),
 
+  // Vault filesystem watcher
+  vaultWatchStart: (vaultRoot: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('vault:watch:start', vaultRoot),
+  vaultWatchStop: (vaultRoot: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('vault:watch:stop', vaultRoot),
+  onVaultWatchEvent: (handler: (event: { kind: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir'; path: string }) => void) => {
+    const channel = 'vault:watch:event';
+    const listener = (_: unknown, data: unknown) => handler(data as { kind: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir'; path: string });
+    ipcRenderer.on(channel, listener);
+    return () => { ipcRenderer.removeListener(channel, listener); };
+  },
+
   // Live source config
   sourceConfigGet: (): Promise<{ mode: string; sourcePath: string | null; vitePort: number; viteRunning: boolean }> =>
     ipcRenderer.invoke('source:config:get'),

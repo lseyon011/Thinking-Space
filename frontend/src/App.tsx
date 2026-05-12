@@ -59,6 +59,8 @@ import { Button } from './components/lego_blocks/units/ui/button'
 import RuntimeErrorBoundaryBlock from './components/lego_blocks/integrations/RuntimeErrorBoundaryBlock'
 import RuntimeErrorSurfaceBlock from './components/lego_blocks/integrations/RuntimeErrorSurfaceBlock'
 import DebugPanelBlock from './components/lego_blocks/integrations/DebugPanelBlock'
+import BackgroundActivityBannerBlock from './components/lego_blocks/integrations/BackgroundActivityBannerBlock'
+import { startStallDetector } from './services/lego_blocks/units/mainThreadStallBlock'
 import DebugToastBlock from './components/lego_blocks/units/DebugToastBlock'
 import {
   addDebugLogListenerBlock,
@@ -78,6 +80,7 @@ import { useNativeTopChromeBlock } from './components/lego_blocks/hooks/shared/u
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { fullSync, getLastSyncTimestamp, setLastSyncTimestamp, smartSync, type SyncResult } from './services/orchestrators/vaultSyncOrch'
+import { startVaultLiveRefresh } from './services/orchestrators/vaultLiveRefreshOrch'
 import { listMarkdownEntries } from './services/orchestrators/fileSystemOrch'
 import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import {
@@ -560,6 +563,8 @@ function App() {
   const navigate = useNavigate()
   const { layout } = useUILayoutBlock()
   const currentRoute = `${location.pathname}${location.search}${location.hash}`
+
+  useEffect(() => startStallDetector(), [])
 
   const featureFlags = getCapabilityFeatureFlags()
   const extensionBuilderEnabled = featureFlags.extension_host_enabled && featureFlags.extension_builder_enabled
@@ -2177,6 +2182,16 @@ function App() {
     onSelectTab: handleSelectWorkspaceTab,
     onCloseTab: handleCloseWorkspaceTab,
   })
+
+  useEffect(() => {
+    if (needsVaultSetup || !windowContext.isBackgroundAuthority) return
+    return startVaultLiveRefresh(() => getStoredVaultRoot(), {
+      onSynced: () => {
+        setLastSyncedAt(getLastSyncTimestamp())
+        setLastSyncAttemptAt(Date.now())
+      },
+    })
+  }, [needsVaultSetup, windowContext.isBackgroundAuthority])
 
   useEffect(() => {
     if (needsVaultSetup || !windowContext.isBackgroundAuthority) return
@@ -3879,6 +3894,7 @@ function App() {
     >
       <>
         {appContent}
+        <BackgroundActivityBannerBlock />
         <RuntimeErrorSurfaceBlock
           reports={runtimeErrorReports}
           copiedToken={runtimeErrorCopiedToken}
