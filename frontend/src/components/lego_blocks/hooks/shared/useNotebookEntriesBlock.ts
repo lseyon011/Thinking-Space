@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { getNodeByPath } from '@/services/lego_blocks/integrations/dbBlock'
@@ -20,11 +20,14 @@ export interface NotebookEntry extends NotebookEntryBase {
   children?: NotebookEntry[]
 }
 
+type NotebookFolderFilterBlock = (folderPath: string, depth: number) => boolean
+
 async function loadEntriesRecursive(
   folderPath: string,
   depth: number,
   maxDepth: number,
   sidecarMap: Map<string, string[]>,
+  includeFolder: NotebookFolderFilterBlock = () => true,
 ): Promise<NotebookEntryBase[]> {
   const { folders, files } = await listFolderEntries(folderPath)
   const entries: NotebookEntryBase[] = []
@@ -38,9 +41,10 @@ async function loadEntriesRecursive(
   // Folders first (matching explorer order)
   for (const folder of folders) {
     const fullPath = folderPath ? `${folderPath}/${folder}` : folder
+    if (!includeFolder(fullPath, depth)) continue
     let children: NotebookEntryBase[] = []
     if (depth < maxDepth) {
-      children = await loadEntriesRecursive(fullPath, depth + 1, maxDepth, sidecarMap)
+      children = await loadEntriesRecursive(fullPath, depth + 1, maxDepth, sidecarMap, includeFolder)
     }
     entries.push({ path: fullPath, name: folder, kind: 'folder', depth, sortOrder: null, children })
   }
@@ -192,6 +196,59 @@ export function useNotebookEntriesBlock(folderPath: string, maxDepth = 5) {
   useEffect(() => {
     void reload()
   }, [reload])
+
+  return { entries, loading, error, reload }
+}
+
+export function useExpandedNotebookEntriesBlock(expandedFolderPaths: string[]) {
+  const [entries, setEntries] = useState<NotebookEntry[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const loadIdRef = useRef(0)
+
+  const normalizedExpandedPaths = useMemo(
+    () => expandedFolderPaths
+      .map((path) => path.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+      .filter((path) => path.length > 0)
+      .sort(),
+    [expandedFolderPaths],
+  )
+
+  const expandedPathsKey = normalizedExpandedPaths.join('\n')
+
+  const reload = useCallback(async () => {
+    const id = ++loadIdRef.current
+
+    setLoading(true)
+    setError(null)
+
+    try {
+      const expandedPathSet = new Set(normalizedExpandedPaths)
+      const sidecarMap = new Map<string, string[]>()
+      const raw = await loadEntriesRecursive(
+        '',
+        0,
+        Number.MAX_SAFE_INTEGER,
+        sidecarMap,
+        (folderPath) => expandedPathSet.has(folderPath),
+      )
+      const sorted = sortEntries(raw, sidecarMap)
+
+      if (id === loadIdRef.current) {
+        setEntries(assignPositions(sorted))
+        setLoading(false)
+      }
+    } catch (err) {
+      if (id === loadIdRef.current) {
+        setError(err instanceof Error ? err.message : 'Failed to load expanded folders.')
+        setLoading(false)
+      }
+    }
+  }, [normalizedExpandedPaths])
+
+  useEffect(() => {
+    void reload()
+  }, [expandedPathsKey, reload])
 
   return { entries, loading, error, reload }
 }

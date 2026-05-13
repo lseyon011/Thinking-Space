@@ -325,6 +325,7 @@ export default function NotebookViewOrch({
             >
               <NotebookTocBlock
                 entries={entries}
+                activeEntryPath={showSinglePage ? displayPath : activePagePath}
                 activePagePath={showSinglePage ? displayPath : activePagePath}
                 onScrollToPage={scrollToPage}
                 onSelectPage={handleSelectPage}

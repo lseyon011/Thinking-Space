@@ -132,6 +132,12 @@ export default function RuledNotebookDocumentBlock({
     const compute = () => {
       const paperPx = paperEl.clientHeight
       if (!paperPx) return
+      const contentStyle = window.getComputedStyle(blocksEl)
+      const lineHeightPx = parseFloat(contentStyle.lineHeight || '0') || 0
+      // Keep pagination slightly conservative so subpixel line boxes and
+      // font-rendering differences do not push the final live lines below the
+      // paper's clipping edge.
+      const pageBudgetPx = Math.max(0, paperPx - Math.max(4, Math.round(lineHeightPx * 0.35)))
       const blockEls = Array.from(blocksEl.children) as HTMLElement[]
       const heights = blockEls.map((el) => {
         const rect = el.getBoundingClientRect()
@@ -139,7 +145,7 @@ export default function RuledNotebookDocumentBlock({
         const marginBottom = parseFloat(style.marginBottom || '0') || 0
         return rect.height + marginBottom
       })
-      setPages(paginateBlocksByHeightBlock(blocks, heights, paperPx))
+      setPages(paginateBlocksByHeightBlock(blocks, heights, pageBudgetPx))
     }
 
     compute()

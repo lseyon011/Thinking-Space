@@ -3,6 +3,7 @@ require('./rt/electron-rt');
 // Expose vault filesystem and platform detection to renderer
 
 import { contextBridge, ipcRenderer } from 'electron';
+import { isTerminalEnabledBlock } from './lego_blocks/terminalSupportBlock';
 
 interface ElectronWindowContextBlock {
   browserWindowId: number | null
@@ -85,6 +86,7 @@ ipcRenderer.invoke('app:version:get').then((v: unknown) => {
 
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
+  terminalSupported: isTerminalEnabledBlock(),
   versions: {
     app: appVersion,
     electron: process.versions.electron,

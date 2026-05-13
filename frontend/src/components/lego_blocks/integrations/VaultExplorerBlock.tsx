@@ -34,10 +34,15 @@ import {
   Loader2,
 } from 'lucide-react'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
+import NotebookTocBlock, { type NotebookTocViewMode } from '@/components/lego_blocks/integrations/NotebookTocBlock'
 import {
   buildPathSearchCandidatesBlock,
   UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK,
 } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
+import {
+  countNotebookPages,
+  type NotebookEntry,
+} from '@/components/lego_blocks/hooks/shared/useNotebookEntriesBlock'
 import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPathBlock'
 import TagChipListBlock from '@/components/lego_blocks/units/TagChipListBlock'
 import {
@@ -57,6 +62,15 @@ import { rankFuzzyItemsBlock } from '@/services/lego_blocks/units/fuzzySearchBlo
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import { cn } from '@/lib/utils'
 import ContextMenuBlock, { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/lego_blocks/units/ui/select'
+import { writeSortOrdersBlock } from '@/services/lego_blocks/units/notebookOrderBlock'
+import { writeNotebookSidecarBlock } from '@/services/lego_blocks/units/notebookSidecarBlock'
 
 interface FolderEntries {
   folders: string[]
@@ -82,6 +96,8 @@ interface InlineRenameState {
   kind: ExplorerPathKind
   value: string
 }
+
+type ExplorerViewModeBlock = 'tree' | NotebookTocViewMode
 
 interface VaultExplorerBlockProps {
   loadEntries: (path: string) => Promise<FolderEntries>
@@ -151,6 +167,52 @@ function collectRefreshPaths(path: string): string[] {
   return [...chain]
 }
 
+function buildNotebookEntriesFromLoadedNodes(
+  nodes: Record<string, NodeState>,
+  expandedPaths: string[],
+): NotebookEntry[] {
+  const expandedPathSet = new Set(expandedPaths.filter((path) => path.length > 0))
+  let position = 0
+
+  function buildFolderEntries(path: string, depth: number): NotebookEntry[] {
+    const node = nodes[path]
+    if (!node?.loaded) return []
+
+    const result: NotebookEntry[] = []
+
+    for (const folderName of node.folders) {
+      const folderPath = joinPath(path, folderName)
+      if (!expandedPathSet.has(folderPath)) continue
+      position += 1
+      result.push({
+        path: folderPath,
+        name: folderName,
+        kind: 'folder',
+        depth,
+        sortOrder: null,
+        position,
+        children: buildFolderEntries(folderPath, depth + 1),
+      })
+    }
+
+    for (const fileName of node.files) {
+      position += 1
+      result.push({
+        path: joinPath(path, fileName),
+        name: fileName,
+        kind: 'file',
+        depth,
+        sortOrder: null,
+        position,
+      })
+    }
+
+    return result
+  }
+
+  return buildFolderEntries('', 0)
+}
+
 export default function VaultExplorerBlock({
   loadEntries,
   onOpenFile,
@@ -201,6 +263,11 @@ export default function VaultExplorerBlock({
     () => (typeof initialPersistedState?.selectedFilePath === 'string'
       ? initialPersistedState.selectedFilePath
       : null),
+  )
+  const [viewMode, setViewMode] = useState<ExplorerViewModeBlock>(
+    () => (initialPersistedState?.viewMode === 'list' || initialPersistedState?.viewMode === 'grid'
+      ? initialPersistedState.viewMode
+      : 'tree'),
   )
   const [query, setQuery] = useState('')
   const [dropOverPath, setDropOverPath] = useState<string | null>(null)
@@ -292,6 +359,11 @@ export default function VaultExplorerBlock({
     setSelectedFilePath(
       typeof persisted?.selectedFilePath === 'string' ? persisted.selectedFilePath : null,
     )
+    setViewMode(
+      persisted?.viewMode === 'list' || persisted?.viewMode === 'grid'
+        ? persisted.viewMode
+        : 'tree',
+    )
     setNodes({})
     void loadPath('', true)
   }, [loadPath, storageKey])
@@ -319,14 +391,16 @@ export default function VaultExplorerBlock({
         expandedPaths: normalizePersistedExpandedPaths(expandedPaths),
         selectedFolderPath,
         selectedFilePath,
+        viewMode,
       }
       window.localStorage.setItem(storageKey, JSON.stringify(payload))
     } catch {
       // Ignore persistence failures; explorer should still work in-memory.
     }
-  }, [expandedPaths, selectedFilePath, selectedFolderPath, storageKey])
+  }, [expandedPaths, selectedFilePath, selectedFolderPath, storageKey, viewMode])
 
   const activeFilePath = selectedFilePath ?? selectedPath ?? null
+
   useEffect(() => {
     if (!showInfoPanel || !activeFilePath || !loadFileTags) {
       setInfoPanelTags(null)
@@ -513,6 +587,86 @@ export default function VaultExplorerBlock({
   }, [canDropNodes, canDropPaths, loadPath, onDropNode, onMovePath])
 
   const isExpanded = useCallback((path: string) => expandedPaths.includes(path), [expandedPaths])
+
+  const filteredNotebookEntries = useMemo(() => {
+    const notebookEntries = buildNotebookEntriesFromLoadedNodes(nodes, expandedPaths)
+    if (!normalizedQuery) return notebookEntries
+
+    function filterEntries(items: NotebookEntry[]): NotebookEntry[] {
+      const next: NotebookEntry[] = []
+
+      for (const item of items) {
+        if (item.kind === 'file') {
+          if (pathMatchesSearch(item.path)) next.push(item)
+          continue
+        }
+
+        const children = item.children ? filterEntries(item.children) : []
+        if (pathMatchesSearch(item.path) || children.length > 0) {
+          next.push({ ...item, children })
+        }
+      }
+
+      return next
+    }
+
+    return filterEntries(notebookEntries)
+  }, [expandedPaths, nodes, normalizedQuery, pathMatchesSearch])
+
+  const handleNotebookReorderFiles = useCallback(async (folderPath: string, orderedPaths: string[]) => {
+    try {
+      await writeSortOrdersBlock(orderedPaths)
+      await writeNotebookSidecarBlock(folderPath, orderedPaths)
+      void loadPath(folderPath, true)
+    } catch (err) {
+      console.error('Failed to persist explorer notebook reorder:', err)
+    }
+  }, [loadPath])
+
+  const handleNotebookSelectPage = useCallback((path: string) => {
+    setSelectedFilePath(path)
+    setSelectedFolderPath(getParentPath(path))
+    onSelectFile?.(path)
+    onOpenFile(path)
+  }, [onOpenFile, onSelectFile])
+
+  const handleNotebookSelectFolder = useCallback((path: string) => {
+    setSelectedFilePath(null)
+    setSelectedFolderPath(path)
+  }, [])
+
+  const handleNotebookEntryContextMenu = useCallback((entry: NotebookEntry, event: React.MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (entry.kind === 'file') {
+      setSelectedFilePath(entry.path)
+      setSelectedFolderPath(getParentPath(entry.path))
+    } else {
+      setSelectedFolderPath(entry.path)
+    }
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      path: entry.path,
+      kind: entry.kind,
+    })
+  }, [])
+
+  const handleNotebookEntryContextMenuRequest = useCallback((entry: NotebookEntry, anchorRect: DOMRect) => {
+    if (entry.kind === 'file') {
+      setSelectedFilePath(entry.path)
+      setSelectedFolderPath(getParentPath(entry.path))
+    } else {
+      setSelectedFilePath(null)
+      setSelectedFolderPath(entry.path)
+    }
+    setContextMenu({
+      x: anchorRect.left + Math.min(anchorRect.width / 2, 24),
+      y: anchorRect.top + Math.min(anchorRect.height / 2, 16),
+      path: entry.path,
+      kind: entry.kind,
+    })
+  }, [])
 
   const rowRefKey = useCallback((kind: ExplorerPathKind, path: string) => `${kind}:${path}`, [])
 
@@ -1057,7 +1211,7 @@ export default function VaultExplorerBlock({
 
   const rootNode = getNode('')
 
-  const content = useMemo(() => {
+  const treeContent = useMemo(() => {
     if (rootNode.loading && !rootNode.loaded) {
       return (
         <div className="flex items-center gap-2 px-3 py-4 text-sm text-muted-foreground">
@@ -1078,6 +1232,53 @@ export default function VaultExplorerBlock({
 
     return rows
   }, [normalizedQuery, renderPath, rootNode.loaded, rootNode.loading])
+
+  const notebookContent = useMemo(() => {
+    if (viewMode === 'tree') return null
+    if (filteredNotebookEntries.length === 0) {
+      return (
+        <div className="px-3 py-4 text-sm text-muted-foreground">
+          {normalizedQuery
+            ? 'No matching files in the expanded folders.'
+            : 'Expand one or more folders to use notebook list or grid view.'}
+        </div>
+      )
+    }
+
+    return (
+      <NotebookTocBlock
+        entries={filteredNotebookEntries}
+        activeEntryPath={selectedFilePath ?? selectedFolderPath}
+        activePagePath={activeFilePath}
+        onScrollToPage={() => {}}
+        onSelectPage={handleNotebookSelectPage}
+        onSelectFolder={handleNotebookSelectFolder}
+        onToggleFolder={toggleFolder}
+        onOpenFile={onOpenFile}
+        onReorderFiles={handleNotebookReorderFiles}
+        viewMode={viewMode}
+        onViewModeChange={() => {}}
+        totalPages={countNotebookPages(filteredNotebookEntries)}
+        showHeader={false}
+        onEntryContextMenu={handleNotebookEntryContextMenu}
+        onEntryContextMenuRequest={handleNotebookEntryContextMenuRequest}
+      />
+    )
+  }, [
+    activeFilePath,
+    filteredNotebookEntries,
+    handleNotebookEntryContextMenu,
+    handleNotebookEntryContextMenuRequest,
+    handleNotebookReorderFiles,
+    handleNotebookSelectPage,
+    handleNotebookSelectFolder,
+    normalizedQuery,
+    onOpenFile,
+    selectedFilePath,
+    selectedFolderPath,
+    toggleFolder,
+    viewMode,
+  ])
 
 
   return (
@@ -1162,7 +1363,22 @@ export default function VaultExplorerBlock({
                   disabled={!onCreateDrawing}
                   onClick={() => { void runContextAction(onCreateDrawing ? () => onCreateDrawing(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) }}
                 />
-                <div className="ml-auto">
+                <div className="ml-auto flex items-center gap-1">
+                  <Select value={viewMode} onValueChange={(value) => setViewMode(value as ExplorerViewModeBlock)}>
+                    <SelectTrigger
+                      className="h-8 w-auto min-w-0 gap-2 rounded-md border-0 bg-background/80 px-2 pr-1.5 text-xs font-normal text-muted-foreground shadow-none ring-0 focus:ring-0 focus:ring-offset-0 hover:text-foreground data-[state=open]:text-foreground [&>svg]:text-muted-foreground hover:[&>svg]:text-foreground data-[state=open]:[&>svg]:text-foreground"
+                      title="Explorer view"
+                    >
+                      <SelectValue aria-label={viewMode}>
+                        {viewMode === 'tree' ? 'Tree view' : viewMode === 'list' ? 'Numbered list' : 'Grid view'}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="tree">Tree view</SelectItem>
+                      <SelectItem value="list">Numbered list</SelectItem>
+                      <SelectItem value="grid">Grid view</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <ToolbarBtn
                     icon={Info}
                     label="File info"
@@ -1205,6 +1421,7 @@ export default function VaultExplorerBlock({
       <div
         className={cn(
           'min-h-0 flex-1 overflow-auto px-1.5 py-2',
+          viewMode !== 'tree' && 'px-0 py-0',
           canDropOnRows && dropOverPath === '' && 'ring-2 ring-blue-500/60 bg-blue-500/5',
         )}
         onDragOver={canDropOnRows ? (event) => {
@@ -1217,7 +1434,7 @@ export default function VaultExplorerBlock({
           void handleDropOnTarget(event, '')
         } : undefined}
       >
-        {content}
+        {viewMode === 'tree' ? treeContent : notebookContent}
       </div>
       {contextMenu && (() => {
         const parentPath = contextMenu.kind === 'folder' ? contextMenu.path : getParentPath(contextMenu.path)

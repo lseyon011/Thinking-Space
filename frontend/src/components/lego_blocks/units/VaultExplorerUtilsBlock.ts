@@ -4,6 +4,7 @@ export interface PersistedExplorerState {
   expandedPaths?: string[]
   selectedFolderPath?: string | null
   selectedFilePath?: string | null
+  viewMode?: 'tree' | 'list' | 'grid'
 }
 
 export type ExplorerPathKindBlock = 'file' | 'folder'

@@ -70,15 +70,7 @@ import {
   MIN_APP_BUILD_NODE_MAJOR_BLOCK,
   nodeMeetsAppBuildMinimumBlock,
 } from './lego_blocks/nodeEnvCheckBlock';
-import {
-  createPtyBlock,
-  detachPtyBlock,
-  killPtysForWebContentsBlock,
-  killPtyBlock,
-  reattachPtyBlock,
-  resizePtyBlock,
-  writePtyBlock,
-} from './lego_blocks/ptyManagerBlock';
+import { isTerminalEnabledBlock } from './lego_blocks/terminalSupportBlock';
 import { readDebugPerformanceSnapshotBlock } from './lego_blocks/debugMetricsBlock';
 import {
   createHierarchyEdgeOrch,
@@ -103,6 +95,20 @@ import {
   invokeSandboxedExtensionActionBlock,
   type ExtensionRuntimeInvokePayload,
 } from './lego_blocks/extensionRuntimeSandboxBlock';
+
+type PtyManagerBlockModule = typeof import('./lego_blocks/ptyManagerBlock');
+
+let ptyManagerBlockModule: PtyManagerBlockModule | null = null;
+
+function getPtyManagerBlockModule(): PtyManagerBlockModule {
+  if (!isTerminalEnabledBlock()) {
+    throw new Error('Embedded terminal is disabled in this build.');
+  }
+  if (!ptyManagerBlockModule) {
+    ptyManagerBlockModule = require('./lego_blocks/ptyManagerBlock') as PtyManagerBlockModule;
+  }
+  return ptyManagerBlockModule;
+}
 
 // Graceful handling of unhandled errors.
 unhandled();
@@ -353,7 +359,8 @@ app.on('will-quit', () => {
 // Clean up PTYs when a window is closed.
 app.on('web-contents-created', (_event, wc) => {
   wc.on('destroyed', () => {
-    killPtysForWebContentsBlock(wc.id);
+    if (!isTerminalEnabledBlock()) return;
+    getPtyManagerBlockModule().killPtysForWebContentsBlock(wc.id);
   });
 });
 
@@ -396,36 +403,38 @@ ipcMain.handle('debug:performance:get', async () => {
 // IPC Handlers — Embedded Terminal (node-pty)
 // =====================================================================
 
-ipcMain.handle('terminal:create', (event, opts: { cwd?: string; cols: number; rows: number; env?: Record<string, string> }) => {
-  const id = createPtyBlock({
-    cwd: opts.cwd,
-    cols: opts.cols,
-    rows: opts.rows,
-    webContentsId: event.sender.id,
-    env: opts.env,
+if (isTerminalEnabledBlock()) {
+  ipcMain.handle('terminal:create', (event, opts: { cwd?: string; cols: number; rows: number; env?: Record<string, string> }) => {
+    const id = getPtyManagerBlockModule().createPtyBlock({
+      cwd: opts.cwd,
+      cols: opts.cols,
+      rows: opts.rows,
+      webContentsId: event.sender.id,
+      env: opts.env,
+    });
+    return { id };
   });
-  return { id };
-});
 
-ipcMain.handle('terminal:input', (_event, { id, data }: { id: string; data: string }) => {
-  writePtyBlock(id, data);
-});
+  ipcMain.handle('terminal:input', (_event, { id, data }: { id: string; data: string }) => {
+    getPtyManagerBlockModule().writePtyBlock(id, data);
+  });
 
-ipcMain.handle('terminal:resize', (_event, { id, cols, rows }: { id: string; cols: number; rows: number }) => {
-  resizePtyBlock(id, cols, rows);
-});
+  ipcMain.handle('terminal:resize', (_event, { id, cols, rows }: { id: string; cols: number; rows: number }) => {
+    getPtyManagerBlockModule().resizePtyBlock(id, cols, rows);
+  });
 
-ipcMain.handle('terminal:kill', (_event, { id }: { id: string }) => {
-  killPtyBlock(id);
-});
+  ipcMain.handle('terminal:kill', (_event, { id }: { id: string }) => {
+    getPtyManagerBlockModule().killPtyBlock(id);
+  });
 
-ipcMain.handle('terminal:detach', (_event, { id }: { id: string }) => {
-  detachPtyBlock(id);
-});
+  ipcMain.handle('terminal:detach', (_event, { id }: { id: string }) => {
+    getPtyManagerBlockModule().detachPtyBlock(id);
+  });
 
-ipcMain.handle('terminal:reattach', (event, { id }: { id: string }) => {
-  return reattachPtyBlock(id, event.sender.id);
-});
+  ipcMain.handle('terminal:reattach', (event, { id }: { id: string }) => {
+    return getPtyManagerBlockModule().reattachPtyBlock(id, event.sender.id);
+  });
+}
 
 ipcMain.handle('codex:profiles:list', (_event, siteIds: string[]) => {
   return listCodexProfilesBlock(Array.isArray(siteIds) ? siteIds : []);
