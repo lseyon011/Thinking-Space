@@ -86,6 +86,7 @@ interface InlineRenameState {
 interface VaultExplorerBlockProps {
   loadEntries: (path: string) => Promise<FolderEntries>
   onOpenFile: (path: string) => void
+  onOpenFileAsRuledNotebook?: (path: string) => void
   onCreateFolder?: (parentPath: string) => ExplorerActionResult
   onCreateFile?: (parentPath: string) => ExplorerActionResult
   onCreateCsvFile?: (parentPath: string) => ExplorerActionResult
@@ -153,6 +154,7 @@ function collectRefreshPaths(path: string): string[] {
 export default function VaultExplorerBlock({
   loadEntries,
   onOpenFile,
+  onOpenFileAsRuledNotebook,
   onCreateFolder,
   onCreateFile,
   onCreateCsvFile,
@@ -661,6 +663,65 @@ export default function VaultExplorerBlock({
     [],
   )
 
+  /* Long-press → context menu, primarily for iPad where there's no right-click.
+     Pointer events let us cover touch + pen without breaking mouse behavior. */
+  const longPressTimerRef = useRef<number | null>(null)
+  const longPressTargetRef = useRef<{ path: string; kind: ExplorerPathKind; x: number; y: number } | null>(null)
+  const longPressFiredRef = useRef(false)
+  const suppressNextClickRef = useRef(false)
+
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+    longPressTargetRef.current = null
+  }, [])
+
+  useEffect(() => () => cancelLongPress(), [cancelLongPress])
+
+  const handleRowPointerDown = useCallback(
+    (event: React.PointerEvent, path: string, kind: ExplorerPathKind) => {
+      if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return
+      longPressFiredRef.current = false
+      longPressTargetRef.current = { path, kind, x: event.clientX, y: event.clientY }
+      if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
+      const startX = event.clientX
+      const startY = event.clientY
+      longPressTimerRef.current = window.setTimeout(() => {
+        const target = longPressTargetRef.current
+        if (!target) return
+        longPressFiredRef.current = true
+        suppressNextClickRef.current = true
+        setPendingRename(null)
+        if (target.kind === 'file') {
+          setSelectedFilePath(target.path)
+          setSelectedFolderPath(getParentPath(target.path))
+        } else {
+          setSelectedFolderPath(target.path)
+        }
+        setContextMenu({ x: startX, y: startY, path: target.path, kind: target.kind })
+      }, 500)
+    },
+    [],
+  )
+
+  const handleRowPointerMove = useCallback((event: React.PointerEvent) => {
+    const target = longPressTargetRef.current
+    if (!target) return
+    const dx = event.clientX - target.x
+    const dy = event.clientY - target.y
+    if (Math.hypot(dx, dy) > 10) cancelLongPress()
+  }, [cancelLongPress])
+
+  const handleRowClickCapture = useCallback((event: React.MouseEvent) => {
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false
+      event.preventDefault()
+      event.stopPropagation()
+    }
+  }, [])
+
   useEffect(() => {
     if (!pendingRename) return
     const key = rowRefKey(pendingRename.kind, pendingRename.path)
@@ -784,6 +845,11 @@ export default function VaultExplorerBlock({
                 }
               }}
               onContextMenu={event => openContextMenu(event, folderPath, 'folder')}
+              onPointerDown={event => handleRowPointerDown(event, folderPath, 'folder')}
+              onPointerMove={handleRowPointerMove}
+              onPointerUp={cancelLongPress}
+              onPointerCancel={cancelLongPress}
+              onClickCapture={handleRowClickCapture}
               onClick={() => {
                 setSelectedFolderPath(folderPath)
                 setPendingRename(prev => (
@@ -921,6 +987,11 @@ export default function VaultExplorerBlock({
                 }
               }}
               onContextMenu={event => openContextMenu(event, filePath, 'file')}
+              onPointerDown={event => handleRowPointerDown(event, filePath, 'file')}
+              onPointerMove={handleRowPointerMove}
+              onPointerUp={cancelLongPress}
+              onPointerCancel={cancelLongPress}
+              onClickCapture={handleRowClickCapture}
               onClick={(event) => {
                 setSelectedFilePath(filePath)
                 setSelectedFolderPath(getParentPath(filePath))
@@ -1152,6 +1223,7 @@ export default function VaultExplorerBlock({
         const parentPath = contextMenu.kind === 'folder' ? contextMenu.path : getParentPath(contextMenu.path)
         const filePath = contextMenu.path
         const showFileActions = contextMenu.kind === 'file'
+        const canOpenFileAsRuledNotebook = filePath.toLowerCase().endsWith('.md') && !isExcalidrawPathBlock(filePath)
         const entries: ContextMenuEntryBlock[] = [
           { key: 'new-folder', label: 'New Folder', disabled: !onCreateFolder, onClick: () => { void runContextAction(onCreateFolder ? () => onCreateFolder(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'folder' }) } },
           { key: 'new-file', label: 'New File', disabled: !onCreateFile, onClick: () => { void runContextAction(onCreateFile ? () => onCreateFile(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) } },
@@ -1165,6 +1237,7 @@ export default function VaultExplorerBlock({
             { key: 'sep1', kind: 'separator' as const },
             { key: 'open-tab', label: 'Open in New Tab', disabled: !onOpenInNewTab, onClick: () => { void runContextAction(onOpenInNewTab ? () => onOpenInNewTab(filePath) : undefined) } },
             { key: 'open-win', label: 'Open in New Window', disabled: !onOpenInNewWindow, onClick: () => { void runContextAction(onOpenInNewWindow ? () => onOpenInNewWindow(filePath) : undefined) } },
+            { key: 'open-ruled-notebook', label: 'Open This Page as Ruled Notebook', disabled: !onOpenFileAsRuledNotebook || !canOpenFileAsRuledNotebook, onClick: () => { if (onOpenFileAsRuledNotebook && canOpenFileAsRuledNotebook) onOpenFileAsRuledNotebook(filePath) } },
             { key: 'duplicate', label: 'Duplicate', disabled: !onDuplicateFile, onClick: () => { void runContextAction(onDuplicateFile ? () => onDuplicateFile(filePath) : undefined, { refreshPath: parentPath }) } },
             { key: 'delete-file', label: 'Delete', disabled: !onDeleteFile, destructive: true, onClick: () => { void runContextAction(onDeleteFile ? () => onDeleteFile(filePath) : undefined, { refreshPath: parentPath }) } },
             { key: 'finder-file', label: 'Open in Finder', disabled: !onOpenInFinder, onClick: () => { void runContextAction(onOpenInFinder ? () => onOpenInFinder(filePath) : undefined) } },

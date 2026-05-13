@@ -40,6 +40,7 @@ import { getNodeByPath } from '@/services/lego_blocks/integrations/dbBlock'
 import RssFeedPanelBlock from '@/components/lego_blocks/integrations/RssFeedPanelBlock'
 import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
 import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentBlock'
+import RuledNotebookDocumentBlock from '@/components/lego_blocks/integrations/RuledNotebookDocumentBlock'
 import type { RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import type { UILayoutState } from '@/services/lego_blocks/units/uiLayoutBlock'
 import NotebookViewOrch from '@/components/orchestrators/NotebookViewOrch'
@@ -55,6 +56,7 @@ function dispatchFileOpRefresh(): void {
 
 const FILE_QUERY_PARAM = 'file'
 const NOTEBOOK_QUERY_PARAM = 'notebook'
+const RULED_NOTEBOOK_QUERY_PARAM = 'ruledNotebook'
 const MAX_MOUNTED_INLINE_DOCS = 3
 const EXPLORER_DEFAULT_WIDTH_PX = 320
 const EXPLORER_MIN_WIDTH_PX = 220
@@ -144,6 +146,10 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     ? readThinkingSpaceRouteParamBlock(routeOverride, NOTEBOOK_QUERY_PARAM)
     : (searchParams.get(NOTEBOOK_QUERY_PARAM)?.trim() || null)
   const [notebookFolderPath, setNotebookFolderPath] = useState<string | null>(notebookPathFromRoute)
+  const ruledNotebookPathFromRoute = routeOverride !== undefined
+    ? readThinkingSpaceRouteParamBlock(routeOverride, RULED_NOTEBOOK_QUERY_PARAM)
+    : (searchParams.get(RULED_NOTEBOOK_QUERY_PARAM)?.trim() || null)
+  const [ruledNotebookFilePath, setRuledNotebookFilePath] = useState<string | null>(ruledNotebookPathFromRoute)
   const [linkPromptOpen, setLinkPromptOpen] = useState(false)
   const linkPromptResolveRef = useRef<((url: string | null) => void) | null>(null)
   const [isExplorerResizing, setIsExplorerResizing] = useState(false)
@@ -247,21 +253,29 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     setNotebookFolderPath(notebookPathFromRoute)
   }, [notebookFolderPath, notebookPathFromRoute])
 
+  useEffect(() => {
+    if (ruledNotebookPathFromRoute === ruledNotebookFilePath) return
+    setRuledNotebookFilePath(ruledNotebookPathFromRoute)
+  }, [ruledNotebookFilePath, ruledNotebookPathFromRoute])
+
   const setInlinePathAndSyncUrl = useCallback((path: string | null, mode: MarkdownViewerMode = 'view') => {
     if (path) {
       rememberMountedInlinePath(path, mode)
       setBrowserUrl(null) // clear browser URL when opening a file
+      setRssActiveArticle(null)
     }
     setInlinePath(path)
+    setNotebookFolderPath(null)
+    setRuledNotebookFilePath(null)
     setSearchParams((prev) => {
-      const current = prev.get(FILE_QUERY_PARAM)?.trim() || null
-      if (current === path) return prev
       const next = new URLSearchParams(prev)
       if (path) {
         next.set(FILE_QUERY_PARAM, path)
       } else {
         next.delete(FILE_QUERY_PARAM)
       }
+      next.delete(NOTEBOOK_QUERY_PARAM)
+      next.delete(RULED_NOTEBOOK_QUERY_PARAM)
       return next
     }, { replace: true })
   }, [rememberMountedInlinePath, setSearchParams])
@@ -281,13 +295,42 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
   }, [setInlinePathAndSyncUrl])
 
   const openNotebookView = useCallback((folderPath: string | null) => {
+    setInlinePath(null)
+    setMountedInlinePaths([])
+    setInlineInitialModeByPath({})
     setNotebookFolderPath(folderPath)
+    setBrowserUrl(null)
+    setRssActiveArticle(null)
+    setRuledNotebookFilePath(null)
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
+      next.delete(FILE_QUERY_PARAM)
+      next.delete(RULED_NOTEBOOK_QUERY_PARAM)
       if (folderPath) {
         next.set(NOTEBOOK_QUERY_PARAM, folderPath)
       } else {
         next.delete(NOTEBOOK_QUERY_PARAM)
+      }
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const openRuledNotebookView = useCallback((filePath: string | null) => {
+    setInlinePath(null)
+    setMountedInlinePaths([])
+    setInlineInitialModeByPath({})
+    setNotebookFolderPath(null)
+    setBrowserUrl(null)
+    setRssActiveArticle(null)
+    setRuledNotebookFilePath(filePath)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete(FILE_QUERY_PARAM)
+      next.delete(NOTEBOOK_QUERY_PARAM)
+      if (filePath) {
+        next.set(RULED_NOTEBOOK_QUERY_PARAM, filePath)
+      } else {
+        next.delete(RULED_NOTEBOOK_QUERY_PARAM)
       }
       return next
     }, { replace: true })
@@ -577,9 +620,9 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
       enabled: true,
       explorerCollapsed,
       headerVisible: !inlineDocHeaderHidden,
-      showHeaderToggle: Boolean(inlinePath || notebookFolderPath),
+      showHeaderToggle: Boolean(inlinePath || notebookFolderPath || ruledNotebookFilePath),
     })
-  }, [explorerCollapsed, inlineDocHeaderHidden, inlinePath, notebookFolderPath, rssActiveArticle, rssUrlBarVisible, isIosSurface])
+  }, [explorerCollapsed, inlineDocHeaderHidden, inlinePath, notebookFolderPath, ruledNotebookFilePath, rssActiveArticle, rssUrlBarVisible, isIosSurface])
 
   useEffect(() => {
     return () => {
@@ -765,9 +808,10 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
         <div className="min-h-0 flex-1">
           <VaultExplorerBlock
             loadEntries={listFolderEntries}
-            selectedPath={inlinePath}
+            selectedPath={ruledNotebookFilePath ?? inlinePath}
             listenToGlobalSyncRefresh
             onOpenFile={setInlinePathAndSyncUrl}
+            onOpenFileAsRuledNotebook={openRuledNotebookView}
             onCreateFolder={handleExplorerCreateFolder}
             onCreateFile={handleExplorerCreateFile}
             onCreateCsvFile={handleExplorerCreateCsvFile}
@@ -797,7 +841,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
         </div>
       ) : null}
     </>
-  ), [handleExplorerCreateCsvFile, inlinePath, rssExplorerToggleButton, rssPanelOpen, setInlinePathAndSyncUrl, useTopRssExplorerToggle])
+  ), [handleExplorerCreateCsvFile, inlinePath, openRuledNotebookView, rssExplorerToggleButton, rssPanelOpen, ruledNotebookFilePath, setInlinePathAndSyncUrl, useTopRssExplorerToggle])
 
   const inlineDocumentContent = useMemo(() => {
     if (mountedInlinePaths.length === 0) return null
@@ -911,6 +955,15 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
                 url={browserUrl}
                 onClose={() => setBrowserUrl(null)}
                 showCloseButton
+              />
+            </div>
+          ) : ruledNotebookFilePath ? (
+            <div className="h-full min-h-0">
+              <RuledNotebookDocumentBlock
+                path={ruledNotebookFilePath}
+                onClose={() => openRuledNotebookView(null)}
+                className="h-full min-h-0"
+                topBarHidden={inlineDocHeaderHidden}
               />
             </div>
           ) : notebookFolderPath ? (

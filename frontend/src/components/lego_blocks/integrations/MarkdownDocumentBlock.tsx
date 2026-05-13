@@ -44,11 +44,13 @@ import TableDocumentBlock from '@/components/lego_blocks/integrations/TableDocum
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
 import GoogleDocDocumentBlock from '@/components/lego_blocks/integrations/GoogleDocDocumentBlock'
 import ImageDocumentBlock from '@/components/lego_blocks/integrations/ImageDocumentBlock'
+import HtmlDocumentBlock from '@/components/lego_blocks/integrations/HtmlDocumentBlock'
 import MarkdownMindmapPanelBlock from '@/components/lego_blocks/integrations/MarkdownMindmapPanelBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/MarkdownMiniNavBlock'
 import MarkdownTableOfContentsBlock from '@/components/lego_blocks/integrations/MarkdownTableOfContentsBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
+import { resolveFrontmatterDatesBlock } from '@/services/lego_blocks/units/frontmatterDatesBlock'
 import { cn } from '@/lib/utils'
 import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/integrations/markdownUrlTransformBlock'
 import {
@@ -80,6 +82,7 @@ import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocument
 import { isGoogleDocDocumentPathBlock } from '@/services/lego_blocks/units/googleDocDocumentPathBlock'
 import { isImageDocumentPathBlock } from '@/services/lego_blocks/units/imageDocumentPathBlock'
 import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPathBlock'
+import { isHtmlDocumentPathBlock } from '@/services/lego_blocks/units/htmlDocumentPathBlock'
 import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOrch'
 import {
   clearExcalidrawCrashMarkerBlock,
@@ -389,7 +392,9 @@ function MarkdownTextDocumentRuntimeBlock({
   ), [])
 
   const isEditing = mode === 'edit'
+  const isHtmlDoc = isHtmlDocumentPathBlock(path)
   const supportsMindmap = !isExcalidrawDoc
+    && !isHtmlDoc
     && /\.md$/i.test(path)
     && !/\.excalidraw\.md$/i.test(path)
   const effectiveTopBarHidden = topBarHiddenProp !== undefined ? topBarHiddenProp : topBarHiddenInViewMode
@@ -404,8 +409,8 @@ function MarkdownTextDocumentRuntimeBlock({
       ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-600'
       : 'bg-transparent',
   )
-  const shouldPadViewerContent = !isEditing && !isExcalidrawDoc
-  const showMiniNavRail = layout.mode === 'desktop' && !layout.isCapacitorNative
+  const shouldPadViewerContent = !isEditing && !isExcalidrawDoc && !isHtmlDoc
+  const showMiniNavRail = layout.mode === 'desktop' && !layout.isCapacitorNative && !isHtmlDoc
   const displayContent = useMemo(
     () => (content !== null ? stripFrontmatter(content) : ''),
     [content],
@@ -415,8 +420,8 @@ function MarkdownTextDocumentRuntimeBlock({
     [draft],
   )
   const viewerTableOfContents = useMemo(
-    () => parseMarkdownTableOfContentsBlock(displayContent),
-    [displayContent],
+    () => (isHtmlDoc ? [] : parseMarkdownTableOfContentsBlock(displayContent)),
+    [displayContent, isHtmlDoc],
   )
   const frontmatterMetaSource = isEditing ? draft : (content ?? '')
   const frontmatterMeta = useMemo(
@@ -679,13 +684,22 @@ function MarkdownTextDocumentRuntimeBlock({
       return
     }
 
+    // Prefer YAML frontmatter dates (e.g. obsidian `created_at`/`updated_at`) over
+    // fs stats — on iCloud/cloud-mirrored vaults birthtime and mtime are often equal.
+    const resolved = resolveFrontmatterDatesBlock(content, {
+      ctimeSeconds: baseCtime,
+      mtimeSeconds: baseMtime,
+    })
+    const createdLabel = resolved.created ? resolved.created.toLocaleString() : formatUnixTimestampForMeta(baseCtime)
+    const updatedLabel = resolved.updated ? resolved.updated.toLocaleString() : formatUnixTimestampForMeta(baseMtime)
+
     setMeta({
       lines: null,
       words: null,
       headings: null,
       size: formatBytes(sizeBytes),
-      createdAt: formatUnixTimestampForMeta(baseCtime),
-      updatedAt: formatUnixTimestampForMeta(baseMtime),
+      createdAt: createdLabel,
+      updatedAt: updatedLabel,
     })
 
     if (!showMeta) return
@@ -698,8 +712,8 @@ function MarkdownTextDocumentRuntimeBlock({
         words: content.split(/\s+/).filter(Boolean).length,
         headings: (content.match(/^#{1,6}\s/gm) || []).length,
         size: formatBytes(sizeBytes),
-        createdAt: formatUnixTimestampForMeta(baseCtime),
-        updatedAt: formatUnixTimestampForMeta(baseMtime),
+        createdAt: createdLabel,
+        updatedAt: updatedLabel,
       })
     })
 
@@ -710,7 +724,7 @@ function MarkdownTextDocumentRuntimeBlock({
   }, [baseCtime, baseMtime, content, showMeta, sizeBytes])
 
   useEffect(() => {
-    if (content === null || isEditing || isExcalidrawDoc) {
+    if (content === null || isEditing || isExcalidrawDoc || isHtmlDoc) {
       setPendingFullRender(false)
       setViewMarkdown(displayContent)
       return
@@ -735,7 +749,7 @@ function MarkdownTextDocumentRuntimeBlock({
       cancelled = true
       cancelDeferred()
     }
-  }, [content, displayContent, isEditing, isExcalidrawDoc, path])
+  }, [content, displayContent, isEditing, isExcalidrawDoc, isHtmlDoc, path])
 
   const handleExcalidrawSceneChange = useCallback((scene: ParsedExcalidrawScene) => {
     if (!isIosSurface) {
@@ -1399,7 +1413,13 @@ function MarkdownTextDocumentRuntimeBlock({
             <ExcalidrawDocumentBlock content={content} filePath={path} onOpenPath={openLinkedPath} className="flex-1 min-h-0" />
           )}
 
-          {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && (
+          {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && isHtmlDoc && (
+            <div className={cn('h-full min-h-0', isIosPhone ? 'px-5 py-5' : 'px-6 py-5')}>
+              <HtmlDocumentBlock html={displayContent} className="h-full min-h-[60vh]" />
+            </div>
+          )}
+
+          {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && (
             <div>
               <div className="sticky top-0 z-30 flex flex-wrap items-center gap-1 border-b border-border/20 bg-background p-2">
                 <MarkdownTableOfContentsBlock

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPathBlock'
+import { isHtmlDocumentPathBlock } from '@/services/lego_blocks/units/htmlDocumentPathBlock'
 
 interface ClickablePathProps {
   path: string
@@ -12,7 +13,7 @@ export default function ClickablePath({ path, children, className }: ClickablePa
   const { openFile } = useMarkdownViewer()
 
   const lower = path.toLowerCase()
-  const isClickable = lower.endsWith('.md') || isExcalidrawPathBlock(lower)
+  const isClickable = lower.endsWith('.md') || isExcalidrawPathBlock(lower) || isHtmlDocumentPathBlock(lower)
 
   if (!isClickable) {
     return <span className={className}>{children}</span>

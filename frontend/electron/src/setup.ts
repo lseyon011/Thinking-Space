@@ -927,6 +927,7 @@ export function setupContentSecurityPolicy(customScheme: string): void {
   ].join(' ');
   const frameSrc = [
     `${customScheme}://*`,
+    'blob:',
     'https://accounts.google.com',
     'https://docs.google.com',
     'https://drive.google.com',

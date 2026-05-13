@@ -17,7 +17,7 @@ override func viewDidAppear(_ animated: Bool) {
         print("[TEST] Collapsing chrome...")
         self.chromeState.isTopBarCollapsed = true
         self.chromeState.isBottomBarCollapsed = true
-    }
+    }p;
     
     // TEST: Expand after 6 seconds
     DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {

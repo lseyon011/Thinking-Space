@@ -5,6 +5,7 @@ import {
   parseMarkdownTableOfContentsBlock,
   type MarkdownTableOfContentsItemBlock,
 } from '@/services/lego_blocks/units/markdownTableOfContentsBlock'
+import { assignOutlineLabelsBlock } from '@/services/lego_blocks/units/outlineCounterBlock'
 
 interface MarkdownTableOfContentsBlockProps {
   content: string
@@ -15,55 +16,6 @@ interface MarkdownTableOfContentsBlockProps {
 
 interface MarkdownTableOfContentsDisplayItemBlock extends MarkdownTableOfContentsItemBlock {
   outlineLabel: string
-}
-
-function toRomanNumeralBlock(value: number): string {
-  const numerals: Array<{ value: number; symbol: string }> = [
-    { value: 1000, symbol: 'm' },
-    { value: 900, symbol: 'cm' },
-    { value: 500, symbol: 'd' },
-    { value: 400, symbol: 'cd' },
-    { value: 100, symbol: 'c' },
-    { value: 90, symbol: 'xc' },
-    { value: 50, symbol: 'l' },
-    { value: 40, symbol: 'xl' },
-    { value: 10, symbol: 'x' },
-    { value: 9, symbol: 'ix' },
-    { value: 5, symbol: 'v' },
-    { value: 4, symbol: 'iv' },
-    { value: 1, symbol: 'i' },
-  ]
-  let remainder = Math.max(1, Math.floor(value))
-  let result = ''
-  for (const numeral of numerals) {
-    while (remainder >= numeral.value) {
-      result += numeral.symbol
-      remainder -= numeral.value
-    }
-  }
-  return result
-}
-
-function toAlphabeticIndexBlock(value: number): string {
-  let remainder = Math.max(1, Math.floor(value))
-  let result = ''
-  while (remainder > 0) {
-    remainder -= 1
-    result = String.fromCharCode(97 + (remainder % 26)) + result
-    remainder = Math.floor(remainder / 26)
-  }
-  return result
-}
-
-function formatOutlineCounterBlock(value: number, depth: number): string {
-  switch (depth % 3) {
-    case 0:
-      return String(value)
-    case 1:
-      return toRomanNumeralBlock(value)
-    default:
-      return toAlphabeticIndexBlock(value)
-  }
 }
 
 export default function MarkdownTableOfContentsBlock({
@@ -77,16 +29,8 @@ export default function MarkdownTableOfContentsBlock({
   const activeItemRef = useRef<HTMLButtonElement | null>(null)
   const items = useMemo(() => parseMarkdownTableOfContentsBlock(content), [content])
   const displayItems = useMemo<MarkdownTableOfContentsDisplayItemBlock[]>(() => {
-    const counters: number[] = []
-    return items.map((item) => {
-      while (counters.length <= item.depth) counters.push(0)
-      counters[item.depth] += 1
-      counters.length = item.depth + 1
-      return {
-        ...item,
-        outlineLabel: formatOutlineCounterBlock(counters[item.depth], item.depth),
-      }
-    })
+    const labels = assignOutlineLabelsBlock(items.map((item) => item.level))
+    return items.map((item, idx) => ({ ...item, outlineLabel: labels[idx] }))
   }, [items])
   const activeItem = useMemo(() => {
     let lastMatch: MarkdownTableOfContentsItemBlock | null = null

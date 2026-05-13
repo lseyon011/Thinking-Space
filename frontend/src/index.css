@@ -1014,6 +1014,26 @@
   }
 }
 
+/* Hide stray Excalidraw chrome (bottom toolbar, zoom controls, side panels) coming
+   from background tabs while the ruled notebook is the visible view. On iPad,
+   Excalidraw switches to mobile mode and renders a fixed bottom bar that bleeds
+   through to other views in the same shell. */
+body.ltm-ruled-notebook-active .excalidraw .App-bottom-bar,
+body.ltm-ruled-notebook-active .excalidraw .App-toolbar,
+body.ltm-ruled-notebook-active .excalidraw .zoom-actions,
+body.ltm-ruled-notebook-active .excalidraw .FixedSideContainer,
+body.ltm-ruled-notebook-active .excalidraw .layer-ui__wrapper {
+  display: none !important;
+}
+
+/* Suppress iOS Safari's long-press callout (image save / link share / text
+   selection) on explorer rows so our custom long-press → context menu can fire. */
+.ltm-explorer-row {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 @keyframes ltm-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -1045,6 +1065,459 @@
 }
 .animate-slide-in {
   animation: slide-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ltm-ruled-notebook-shell {
+  position: relative;
+  /* Tuned so a paragraph sits cleanly on each rule.
+     Single visible page; targets ~700 words via dense 28px rules and a wide page. */
+  --ltm-ruled-line-height: 28px;
+  --ltm-ruled-margin-x: 64px;
+  --ltm-ruled-page-width: min(100%, 1100px);
+  /* Letter-ish portrait page. */
+  --ltm-ruled-page-aspect: 1.32;
+  --ltm-ruled-paper: #fbf6e7;
+  --ltm-ruled-paper-back: #f4ecd5;
+  --ltm-ruled-ink: #1f2c45;
+  --ltm-ruled-line: rgba(72, 110, 175, 0.30);
+  --ltm-ruled-margin: rgba(196, 82, 82, 0.48);
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.92), rgba(242, 233, 212, 0.78)),
+    linear-gradient(180deg, rgba(164, 145, 111, 0.12), rgba(255, 255, 255, 0));
+}
+
+.ltm-ruled-notebook-toc-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(40, 30, 12, 0.18);
+  backdrop-filter: blur(2px);
+  z-index: 40;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.ltm-ruled-notebook-toc-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(380px, 92vw);
+  z-index: 41;
+  background: linear-gradient(180deg, #fbf6e7 0%, #f4ecd5 100%);
+  border-left: 1px solid rgba(120, 95, 50, 0.18);
+  box-shadow: -16px 0 40px rgba(70, 50, 16, 0.18);
+  display: flex;
+  flex-direction: column;
+  animation: ltm-ruled-toc-slide-in 240ms cubic-bezier(0.22, 0.85, 0.22, 1);
+}
+@keyframes ltm-ruled-toc-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.ltm-ruled-notebook-toc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(120, 95, 50, 0.12);
+}
+.ltm-ruled-notebook-toc-list {
+  list-style: none;
+  padding: 8px 0;
+  margin: 0;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+.ltm-ruled-notebook-toc-item {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px 8px 12px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  font-family: "Iowan Old Style", "Charter", Georgia, serif;
+  font-size: 14px;
+  color: #2a3a55;
+  cursor: pointer;
+  border-radius: 0;
+}
+.ltm-ruled-notebook-toc-item:hover {
+  background: rgba(120, 95, 50, 0.08);
+}
+.ltm-ruled-notebook-toc-item-active {
+  background: rgba(150, 100, 40, 0.14);
+  color: #14233e;
+  font-weight: 600;
+}
+.ltm-ruled-notebook-toc-item-label {
+  flex: 0 0 auto;
+  min-width: 24px;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(110, 80, 38, 0.85);
+  letter-spacing: 0.05em;
+}
+.ltm-ruled-notebook-toc-item-active .ltm-ruled-notebook-toc-item-label {
+  color: #5f3a14;
+}
+.ltm-ruled-notebook-toc-item-title {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ltm-ruled-notebook-toc-item-page {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: rgba(66, 84, 111, 0.7);
+  letter-spacing: 0.05em;
+}
+
+.ltm-ruled-notebook-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  background: rgba(120, 95, 50, 0.10);
+  overflow: hidden;
+  pointer-events: none;
+}
+.ltm-ruled-notebook-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #b18746, #5f3a14);
+  transition: width 320ms cubic-bezier(0.22, 0.85, 0.22, 1);
+  box-shadow: 0 0 8px rgba(150, 100, 40, 0.5);
+}
+
+.ltm-ruled-notebook-stage {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  padding: 16px 0 36px;
+  perspective: 2400px;
+}
+
+.ltm-ruled-notebook-stack {
+  position: relative;
+  width: var(--ltm-ruled-page-width);
+  aspect-ratio: 1 / var(--ltm-ruled-page-aspect);
+  transform-style: preserve-3d;
+  z-index: 2;
+}
+
+.ltm-ruled-notebook-page-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  padding: 16px 20px 14px;
+  color: var(--ltm-ruled-ink);
+  background: linear-gradient(180deg, var(--ltm-ruled-paper) 0%, #fdf8ea 100%);
+  box-shadow:
+    0 22px 50px rgba(70, 50, 16, 0.18),
+    0 6px 14px rgba(110, 80, 38, 0.12),
+    inset 0 0 0 1px rgba(120, 95, 50, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  backface-visibility: hidden;
+}
+
+.ltm-ruled-notebook-page-left {
+  background: linear-gradient(180deg, var(--ltm-ruled-paper-back) 0%, #f7eed3 100%);
+}
+
+.ltm-ruled-notebook-page-layer {
+  will-change: transform, opacity;
+}
+.ltm-ruled-notebook-page-layer-current { z-index: 2; transform-origin: left center; }
+.ltm-ruled-notebook-page-layer-outgoing { z-index: 1; }
+.ltm-ruled-notebook-page-layer-turning { z-index: 3; transform-origin: left center; }
+
+.ltm-ruled-notebook-page-meta,
+.ltm-ruled-notebook-footer {
+  display: flex;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(66, 84, 111, 0.55);
+  padding: 0 4px;
+}
+
+.ltm-ruled-notebook-footer {
+  padding-top: 8px;
+}
+
+.ltm-ruled-notebook-paper {
+  position: relative;
+  margin-top: var(--ltm-ruled-line-height);
+  flex: 1 1 auto;
+  border-radius: 4px;
+  overflow: hidden;
+  background-image:
+    repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent calc(var(--ltm-ruled-line-height) - 1px),
+      var(--ltm-ruled-line) calc(var(--ltm-ruled-line-height) - 1px),
+      var(--ltm-ruled-line) var(--ltm-ruled-line-height)
+    );
+  background-color: transparent;
+}
+
+/* Created date jotted in the left-hand margin column on page 1 only —
+   horizontal, sitting on the first ruled line, the way a kid would write the
+   date at the top of a fresh notebook page. */
+.ltm-ruled-notebook-margin-date {
+  position: absolute;
+  top: 0;
+  left: 4px;
+  width: calc(var(--ltm-ruled-margin-x) - 6px);
+  height: var(--ltm-ruled-line-height);
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  font-family: "Iowan Old Style", "Charter", Georgia, serif;
+  font-size: 11px;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  color: rgba(110, 80, 38, 0.85);
+  line-height: var(--ltm-ruled-line-height);
+  white-space: nowrap;
+  z-index: 2;
+  pointer-events: none;
+  transform: rotate(-2deg);
+  transform-origin: left bottom;
+}
+
+/* Margin line — always on the left side of every page (school-notebook convention). */
+.ltm-ruled-notebook-paper::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--ltm-ruled-margin-x);
+  width: 1px;
+  background: var(--ltm-ruled-margin);
+  z-index: 1;
+}
+
+.ltm-ruled-notebook-content {
+  position: relative;
+  font-family: "Iowan Old Style", "Charter", "Hoefler Text", "Constantia", Georgia, serif;
+  font-size: 15px;
+  line-height: var(--ltm-ruled-line-height);
+  color: var(--ltm-ruled-ink);
+  letter-spacing: 0.005em;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  z-index: 2;
+}
+/* Same content padding for every page — content starts past the red margin on the left. */
+.ltm-ruled-notebook-content {
+  padding: 0 28px 0 calc(var(--ltm-ruled-margin-x) + 16px);
+}
+
+/* Every top-level block leaves exactly one ruled line of whitespace after it,
+   so subsequent text baselines stay on the rule grid. */
+.ltm-ruled-notebook-content > * {
+  margin: 0 0 var(--ltm-ruled-line-height) 0;
+}
+.ltm-ruled-notebook-content > *:last-child {
+  margin-bottom: 0;
+}
+
+.ltm-ruled-notebook-content p {
+  margin: 0 0 var(--ltm-ruled-line-height) 0;
+  line-height: var(--ltm-ruled-line-height);
+}
+
+.ltm-ruled-notebook-content h1,
+.ltm-ruled-notebook-content h2,
+.ltm-ruled-notebook-content h3,
+.ltm-ruled-notebook-content h4,
+.ltm-ruled-notebook-content h5,
+.ltm-ruled-notebook-content h6 {
+  font-family: inherit;
+  color: #14233e;
+  font-weight: 700;
+  /* Keep heading height a multiple of the rule stride to preserve rhythm. */
+  line-height: var(--ltm-ruled-line-height);
+  margin: 0 0 var(--ltm-ruled-line-height) 0;
+}
+.ltm-ruled-notebook-content h1 { font-size: 22px; }
+.ltm-ruled-notebook-content h2 { font-size: 19px; }
+.ltm-ruled-notebook-content h3 { font-size: 16px; font-style: italic; }
+.ltm-ruled-notebook-content h4,
+.ltm-ruled-notebook-content h5,
+.ltm-ruled-notebook-content h6 { font-size: 15px; font-style: italic; }
+
+.ltm-ruled-notebook-content ul,
+.ltm-ruled-notebook-content ol {
+  padding-left: 2em;
+  margin: 0 0 var(--ltm-ruled-line-height) 0;
+}
+
+.ltm-ruled-notebook-content li {
+  line-height: var(--ltm-ruled-line-height);
+  margin: 0;
+}
+/* Inside a list item, paragraphs should not add extra margin — stays on rhythm. */
+.ltm-ruled-notebook-content li > p {
+  margin: 0;
+  line-height: var(--ltm-ruled-line-height);
+}
+
+.ltm-ruled-notebook-content blockquote {
+  margin: 0 0 var(--ltm-ruled-line-height) 0;
+  padding: 0 0 0 12px;
+  border-left: 2px solid rgba(72, 90, 130, 0.32);
+  color: #3a4c6c;
+  font-style: italic;
+  line-height: var(--ltm-ruled-line-height);
+}
+
+.ltm-ruled-notebook-content code {
+  font-family: "SFMono-Regular", ui-monospace, "Menlo", monospace;
+  font-size: 0.92em;
+  background: rgba(60, 80, 130, 0.06);
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+.ltm-ruled-notebook-content pre {
+  margin: 0 0 var(--ltm-ruled-line-height) 0;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: rgba(50, 70, 110, 0.06);
+  overflow-x: auto;
+  line-height: var(--ltm-ruled-line-height);
+}
+.ltm-ruled-notebook-content pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.ltm-ruled-notebook-content strong { font-weight: 700; color: #102140; }
+.ltm-ruled-notebook-content em { font-style: italic; }
+.ltm-ruled-notebook-content a { color: #2a4d8a; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.ltm-ruled-notebook-content hr {
+  border: 0;
+  border-top: 1px dashed rgba(72, 90, 130, 0.45);
+  margin: var(--ltm-ruled-line-height) 0;
+}
+
+/* Peek — a slim strip of the next page poking out from behind the right edge of the current page. */
+.ltm-ruled-notebook-page-peek {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  right: -18px;
+  width: 26px;
+  z-index: 0;
+  border-radius: 0 12px 12px 0;
+  background: linear-gradient(90deg, rgba(244, 236, 213, 0.85), rgba(251, 246, 231, 0.95));
+  box-shadow:
+    0 16px 36px rgba(70, 50, 16, 0.14),
+    inset 0 0 0 1px rgba(120, 95, 50, 0.10);
+  transform: rotate(0.4deg) translateY(4px);
+  pointer-events: none;
+  transition: transform 380ms cubic-bezier(0.22, 0.85, 0.22, 1);
+}
+.ltm-ruled-notebook-page-peek-shift {
+  transform: translateX(-12px) rotate(0deg) translateY(0);
+}
+
+/* Page-over: the outgoing sheet rotates around the spine (its left edge) revealing the back side. */
+@keyframes ltm-ruled-page-over {
+  0%   { transform: rotateY(0deg); box-shadow: 0 22px 50px rgba(70, 50, 16, 0.18), 0 6px 14px rgba(110, 80, 38, 0.12); }
+  60%  { transform: rotateY(-110deg); box-shadow: 18px 28px 60px rgba(70, 50, 16, 0.22); }
+  100% { transform: rotateY(-178deg); box-shadow: 24px 18px 36px rgba(70, 50, 16, 0.1); }
+}
+@keyframes ltm-ruled-page-over-reverse {
+  0%   { transform: rotateY(-178deg); }
+  100% { transform: rotateY(0deg); }
+}
+.ltm-ruled-notebook-animate-page-over {
+  animation: ltm-ruled-page-over 640ms cubic-bezier(0.4, 0.05, 0.2, 1) forwards;
+}
+.ltm-ruled-notebook-animate-page-over-reverse {
+  animation: ltm-ruled-page-over-reverse 640ms cubic-bezier(0.4, 0.05, 0.2, 1) forwards;
+}
+
+/* Page-slide: whole sheet slides off to next sheet stack. */
+@keyframes ltm-ruled-slide-in-forward {
+  0% { transform: translateX(40px); opacity: 0.5; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes ltm-ruled-slide-in-backward {
+  0% { transform: translateX(-40px); opacity: 0.5; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes ltm-ruled-slide-out-forward {
+  0% { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(-48px); opacity: 0; }
+}
+@keyframes ltm-ruled-slide-out-backward {
+  0% { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(48px); opacity: 0; }
+}
+.ltm-ruled-notebook-animate-slide-in-forward {
+  animation: ltm-ruled-slide-in-forward 380ms cubic-bezier(0.22, 0.85, 0.22, 1);
+}
+.ltm-ruled-notebook-animate-slide-in-backward {
+  animation: ltm-ruled-slide-in-backward 380ms cubic-bezier(0.22, 0.85, 0.22, 1);
+}
+.ltm-ruled-notebook-animate-slide-out-forward {
+  animation: ltm-ruled-slide-out-forward 380ms cubic-bezier(0.22, 0.85, 0.22, 1) forwards;
+}
+.ltm-ruled-notebook-animate-slide-out-backward {
+  animation: ltm-ruled-slide-out-backward 380ms cubic-bezier(0.22, 0.85, 0.22, 1) forwards;
+}
+
+/* Hidden measurement layer — same width and aspect as the live page. */
+.ltm-ruled-notebook-measure-host {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--ltm-ruled-page-width);
+  aspect-ratio: 1 / var(--ltm-ruled-page-aspect);
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+/* flow-root creates a block formatting context so the inner block's
+   margin-bottom doesn't collapse out of the wrapper. Without this, measured
+   heights miss ~one line-height per block and pages over-fill, hiding the
+   last lines behind the paper's `overflow: hidden`. The own margin is zeroed
+   so we don't double-count the inter-block gap (the inner block's
+   margin-bottom already lives inside the wrapper now). */
+.ltm-ruled-notebook-measure-block {
+  display: flow-root;
+  margin-bottom: 0 !important;
+}
+
+@media (max-width: 768px) {
+  .ltm-ruled-notebook-shell {
+    --ltm-ruled-line-height: 26px;
+    --ltm-ruled-margin-x: 42px;
+  }
+  .ltm-ruled-notebook-page-frame {
+    padding: 12px 12px 10px;
+    border-radius: 10px;
+  }
+  .ltm-ruled-notebook-page-right .ltm-ruled-notebook-content,
+  .ltm-ruled-notebook-page-left .ltm-ruled-notebook-content {
+    font-size: 14px;
+  }
 }
 
 /* Cupertino animations — enabled by shell motion profile */
