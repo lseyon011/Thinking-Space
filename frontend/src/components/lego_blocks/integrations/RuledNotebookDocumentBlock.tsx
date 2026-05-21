@@ -2,7 +2,12 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { BookOpenText, ChevronLeft, ChevronRight, List, Loader2, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import {
+  markdownMathRehypePluginsBlock,
+  markdownMathRemarkPluginsBlock,
+} from '@/services/lego_blocks/integrations/markdownMathPluginsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
+import TikzDiagramBlock from '@/components/lego_blocks/units/TikzDiagramBlock'
 import { cn } from '@/lib/utils'
 import { splitFrontmatter } from '@/components/lego_blocks/units/MarkdownDocumentContentBlock'
 import { readMarkdownDocument } from '@/services/orchestrators/markdownDocumentsOrch'
@@ -30,7 +35,19 @@ interface TransitionState {
 }
 
 const PAGE_TURN_MS = 640
-const REMARK_PLUGINS = [remarkGfm]
+const REMARK_PLUGINS = [remarkGfm, ...markdownMathRemarkPluginsBlock]
+const REHYPE_PLUGINS = markdownMathRehypePluginsBlock as any
+
+const MARKDOWN_COMPONENTS = {
+  code: ({ className, children, ...props }: any) => {
+    const lang = /language-(\w+)/.exec(className || '')?.[1]
+    if (lang === 'tikz') {
+      const source = Array.isArray(children) ? children.join('') : String(children ?? '')
+      return <TikzDiagramBlock source={source.replace(/\n$/, '')} />
+    }
+    return <code className={className} {...props}>{children}</code>
+  },
+} as const
 
 function leafNameOf(path: string): string {
   const idx = path.lastIndexOf('/')
@@ -73,7 +90,7 @@ function PageFace({ page, index, title, className, marginDate }: PageFaceProps) 
           </div>
         ) : null}
         <div className="ltm-ruled-notebook-content">
-          <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{page.source}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS}>{page.source}</ReactMarkdown>
         </div>
       </div>
       <div className="ltm-ruled-notebook-footer">
@@ -473,7 +490,7 @@ export default function RuledNotebookDocumentBlock({
             <div className="ltm-ruled-notebook-content" ref={blocksMeasureRef}>
               {blocks.map((block, idx) => (
                 <div key={idx} className="ltm-ruled-notebook-measure-block">
-                  <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{block.source}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS}>{block.source}</ReactMarkdown>
                 </div>
               ))}
             </div>

@@ -34,6 +34,7 @@ import {
   saveCodexProfileDashboardPreferencesOrch,
   type CodexProfileDashboardDataOrch,
 } from '@/services/orchestrators/codexProfileOrch'
+import { isEmbeddedTerminalSupported } from '@/services/orchestrators/runtimeOrch'
 import { cn } from '@/lib/utils'
 import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
 import { useWindowActivityBlock } from '@/components/lego_blocks/hooks/shared/useWindowActivityBlock'
@@ -73,6 +74,7 @@ function headlineToneClass(tone: 'healthy' | 'warning' | 'critical' | null): str
 
 export default function CodexUsageDashboardOrch() {
   const navigate = useNavigate()
+  const terminalSupported = isEmbeddedTerminalSupported()
   const routeActive = useRouteActivityBlock()
   const windowActive = useWindowActivityBlock()
   const [data, setData] = useState<CodexProfileDashboardDataOrch | null>(null)
@@ -310,16 +312,18 @@ export default function CodexUsageDashboardOrch() {
 
                       {/* Actions */}
                       <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => void handleUseInTerminal(site.id, site.name)}
-                          disabled={busy}
-                          className="h-7 gap-1 border-0 bg-foreground px-3 text-[11px] font-medium text-background hover:bg-foreground/90 dark:bg-white dark:text-slate-950 dark:hover:bg-white/90"
-                        >
-                          <TerminalSquare className="h-3 w-3" />
-                          {runtime?.hasAuthFile ? 'Terminal' : 'Login'}
-                        </Button>
+                        {terminalSupported && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => void handleUseInTerminal(site.id, site.name)}
+                            disabled={busy}
+                            className="h-7 gap-1 border-0 bg-foreground px-3 text-[11px] font-medium text-background hover:bg-foreground/90 dark:bg-white dark:text-slate-950 dark:hover:bg-white/90"
+                          >
+                            <TerminalSquare className="h-3 w-3" />
+                            {runtime?.hasAuthFile ? 'Terminal' : 'Login'}
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           size="sm"

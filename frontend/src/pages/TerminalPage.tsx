@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import TerminalBlock, { releaseTerminalSession } from '@/components/lego_blocks/integrations/TerminalBlock'
-import { isElectron } from '@/services/orchestrators/runtimeOrch'
+import { isElectron, isEmbeddedTerminalSupported } from '@/services/orchestrators/runtimeOrch'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 interface TerminalTab {
@@ -55,6 +55,9 @@ function getInitialTerminalPageSessionState(): TerminalPageSessionState {
 type EditModeStatus = 'unknown' | 'not-set-up' | 'off' | 'active'
 
 export default function TerminalPage() {
+  const electronRuntime = isElectron()
+  const terminalSupported = isEmbeddedTerminalSupported()
+
   const initialSessionStateRef = useRef<TerminalPageSessionState>(getInitialTerminalPageSessionState())
   const [tabs, setTabs] = useState<TerminalTab[]>(() => initialSessionStateRef.current.tabs)
   const [activeTabId, setActiveTabId] = useState<string>(() => initialSessionStateRef.current.activeTabId)
@@ -66,6 +69,7 @@ export default function TerminalPage() {
   const location = useLocation()
 
   useEffect(() => {
+    if (!electronRuntime || !terminalSupported) return
     if (tabs.length === 0) return
     const nextActiveTabId = tabs.some(tab => tab.id === activeTabId) ? activeTabId : tabs[0].id
     if (nextActiveTabId !== activeTabId) {
@@ -77,7 +81,7 @@ export default function TerminalPage() {
 
   // Resolve default cwd and edit mode status from source config on first render
   useEffect(() => {
-    if (initialized.current || !isElectron()) return
+    if (initialized.current || !electronRuntime || !terminalSupported) return
     initialized.current = true
     void window.electronAPI?.sourceConfigGet?.().then((config) => {
       if (config.sourcePath) setDefaultCwd(config.sourcePath)
@@ -94,6 +98,7 @@ export default function TerminalPage() {
   }
 
   useEffect(() => {
+    if (!electronRuntime || !terminalSupported) return
     const params = new URLSearchParams(location.search)
     const nonce = params.get('nonce')
     const requestedProfile = params.get('codexProfile')
@@ -133,6 +138,14 @@ export default function TerminalPage() {
 
   const markExited = (id: string, exitCode: number) => {
     setTabs(prev => prev.map(t => t.id === id ? { ...t, exitCode } : t))
+  }
+
+  if (!electronRuntime) {
+    return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Terminal is only available in the desktop app.</div>
+  }
+
+  if (!terminalSupported) {
+    return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Terminal is disabled in this build.</div>
   }
 
   return (

@@ -20,6 +20,10 @@ import {
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import {
+  markdownMathRehypePluginsBlock,
+  markdownMathRemarkPluginsBlock,
+} from '@/services/lego_blocks/integrations/markdownMathPluginsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
   Select,
@@ -829,7 +833,7 @@ export default function NodeDetailPanelBlock({
                 </>
               ) : (
                 <div className="prose prose-sm max-w-none rounded-md border border-border/60 bg-card p-3 leading-relaxed">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, ...markdownMathRemarkPluginsBlock]} rehypePlugins={markdownMathRehypePluginsBlock as any}>
                     {noteBodyDraft || '_No notes yet._'}
                   </ReactMarkdown>
                 </div>
@@ -859,7 +863,7 @@ export default function NodeDetailPanelBlock({
               />
             ) : (
               <div className="prose prose-sm max-w-none rounded-md border border-border/60 bg-card p-3 leading-relaxed">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <ReactMarkdown remarkPlugins={[remarkGfm, ...markdownMathRemarkPluginsBlock]} rehypePlugins={markdownMathRehypePluginsBlock as any}>
                   {descriptionDraft || '_No description yet._'}
                 </ReactMarkdown>
               </div>
@@ -1040,7 +1044,7 @@ export default function NodeDetailPanelBlock({
                           <p className="text-sm font-semibold text-foreground">{comment.added_by ?? 'Unknown'}</p>
                           <p className="text-[11px] text-muted-foreground">{formatTimestamp(comment.added_at)}</p>
                           <div className="prose prose-sm max-w-none leading-relaxed">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            <ReactMarkdown remarkPlugins={[remarkGfm, ...markdownMathRemarkPluginsBlock]} rehypePlugins={markdownMathRehypePluginsBlock as any}>
                               {comment.text}
                             </ReactMarkdown>
                           </div>

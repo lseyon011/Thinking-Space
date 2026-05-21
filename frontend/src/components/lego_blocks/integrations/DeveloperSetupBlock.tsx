@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
+import { isEmbeddedTerminalSupported } from '@/services/orchestrators/runtimeOrch'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import { isElectron } from '@/services/orchestrators/runtimeOrch'
 import SourceEnvCheckBlock from './SourceEnvCheckBlock'
@@ -58,6 +59,7 @@ function StepRow({
 }
 
 export default function DeveloperSetupBlock() {
+  const terminalSupported = isEmbeddedTerminalSupported()
   const [config, setConfig] = useState<SourceConfig | null>(null)
   const [envStatus, setEnvStatus] = useState<EnvStatus | null>(null)
   const [saving, setSaving] = useState(false)
@@ -201,23 +203,31 @@ export default function DeveloperSetupBlock() {
           </div>
           <div className="min-w-0 flex-1">
             <p className={['text-sm font-medium leading-6', !fullyReady ? 'text-muted-foreground' : 'text-foreground'].join(' ')}>
-              Open the terminal and ask Claude to make changes
+              {terminalSupported ? 'Open the terminal and ask Claude to make changes' : 'Terminal-based edit mode is unavailable in this build'}
             </p>
             {fullyReady && (
               <div className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-3 space-y-2.5">
                 <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
                   Ready — Edit Mode is on
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  Open the <strong>Terminal</strong> tab and run:
-                </p>
-                <code className="block rounded bg-black/20 px-2 py-1.5 text-xs font-mono text-emerald-700 dark:text-emerald-300">
-                  claude
-                </code>
-                <p className="text-xs text-muted-foreground">
-                  Tell Claude what you want to change. If the change is on an app screen, you should
-                  usually see it live in this window.
-                </p>
+                {terminalSupported ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      Open the <strong>Terminal</strong> tab and run:
+                    </p>
+                    <code className="block rounded bg-black/20 px-2 py-1.5 text-xs font-mono text-emerald-700 dark:text-emerald-300">
+                      claude
+                    </code>
+                    <p className="text-xs text-muted-foreground">
+                      Tell Claude what you want to change. If the change is on an app screen, you should
+                      usually see it live in this window.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    This build keeps the live-source tooling, but omits the embedded terminal. Use a full desktop build if you need in-app Claude or Codex terminal workflows.
+                  </p>
+                )}
                 <div className="rounded-md border border-emerald-500/20 bg-background/60 px-3 py-2 text-xs text-muted-foreground space-y-1.5">
                   <p className="font-medium text-foreground">If you do not see your change</p>
                   <p>1. Make sure you restarted the app after turning on Edit Mode.</p>

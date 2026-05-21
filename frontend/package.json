@@ -51,6 +51,7 @@
     "feedsmith": "^2.9.0",
     "heic2any": "^0.0.4",
     "js-yaml": "^4.1.1",
+    "katex": "^0.16.47",
     "lucide-react": "^0.468.0",
     "markdown-table": "^3.0.4",
     "openai": "^6.21.0",
@@ -62,7 +63,9 @@
     "react-pdf": "^10.4.1",
     "react-router-dom": "^7.1.0",
     "recharts": "^3.8.0",
+    "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "tailwind-merge": "^2.5.0",
     "uuid": "^13.0.0"
   },

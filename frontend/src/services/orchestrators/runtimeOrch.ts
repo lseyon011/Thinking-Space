@@ -1,5 +1,6 @@
 import {
   getVaultFS,
+  isEmbeddedTerminalSupported,
   isCapacitorNative,
   isDesktop,
   isElectron,
@@ -9,6 +10,7 @@ import {
 
 export {
   getVaultFS,
+  isEmbeddedTerminalSupported,
   isCapacitorNative,
   isDesktop,
   isElectron,

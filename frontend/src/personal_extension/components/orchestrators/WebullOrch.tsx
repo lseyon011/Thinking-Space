@@ -26,7 +26,6 @@ import {
 } from '../../services/orchestrators/webullExecutionOrch'
 import { readWebullCredentialStatusBlock } from '../../services/lego_blocks/units/webullConfigBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
-import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
 
 type WebullSubtabId = 'overall' | 'memory'
@@ -35,6 +34,8 @@ const Webull_SUBTABS: Array<{ id: WebullSubtabId; label: string }> = [
   { id: 'overall', label: 'Overall Positions' },
   { id: 'memory', label: 'Pin Board' },
 ]
+
+const WEBULL_AUTO_REFRESH_STALENESS_MS = 60_000
 
 function parseSelectedAccountBlock(value: unknown): WebullSelectedAccountOrch | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
@@ -285,12 +286,6 @@ export default function WebullOrch() {
   }, [activeCompanyTicker, executionOverview])
 
   useEffect(() => {
-    return addGlobalSyncRefreshListenerBlock(() => {
-      void refreshOverall()
-    })
-  }, [refreshOverall])
-
-  useEffect(() => {
     if (!activeCompany) {
       setActivePositionFileName(null)
       setActivePositionDetail(null)
@@ -484,8 +479,14 @@ export default function WebullOrch() {
       void loadSavedOverallSnapshot()
       return
     }
+    // Skip the auto-fetch (which rewrites every position/company .md file)
+    // when we already have a recent snapshot. Tab switches shouldn't churn
+    // the vault — the manual refresh button stays available for an immediate update.
+    const fetchedAtMs = snapshot?.fetchedAt ? Date.parse(snapshot.fetchedAt) : NaN
+    const isFresh = Number.isFinite(fetchedAtMs) && (Date.now() - fetchedAtMs) < WEBULL_AUTO_REFRESH_STALENESS_MS
+    if (isFresh) return
     void refreshOverall()
-  }, [activeSubtabId, hasConfig, loadSavedOverallSnapshot, refreshOverall, runtime])
+  }, [activeSubtabId, hasConfig, loadSavedOverallSnapshot, refreshOverall, runtime, snapshot?.fetchedAt])
 
   return (
     <WebullWorkspaceBlock

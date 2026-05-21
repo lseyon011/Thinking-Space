@@ -14,12 +14,14 @@
   "main": "build/src/index.js",
   "scripts": {
     "build": "tsc && electron-rebuild",
+    "build:lite": "node ./scripts/build-lite.js",
     "electron:start-live": "node ./live-runner.js",
     "electron:start": "npm run build && electron --inspect=5858 ./",
     "electron:pack": "npm run build && electron-builder build --dir -c ./electron-builder.config.json",
     "electron:make": "npm run build && electron-builder build -c ./electron-builder.config.json -p always",
     "electron:make:mac": "npm run build && electron-builder build --mac -c ./electron-builder.config.json",
     "electron:make:win": "npm run build && electron-builder build --win --x64 -c ./electron-builder.config.json",
+    "electron:make:win:lite": "npm run build:lite && electron-builder build --win --x64 --publish never -c.npmRebuild=false -c.nodeGypRebuild=false -c ./electron-builder.win-lite.config.cjs",
     "electron:make:win:arm64": "npm run build && electron-builder build --win --arm64 -c ./electron-builder.config.json",
     "electron:make:linux": "npm run build && electron-builder build --linux -c ./electron-builder.config.json"
   },

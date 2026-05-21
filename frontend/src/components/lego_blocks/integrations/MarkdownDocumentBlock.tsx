@@ -10,6 +10,11 @@ import {
 } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import {
+  markdownMathRehypePluginsBlock,
+  markdownMathRemarkPluginsBlock,
+} from '@/services/lego_blocks/integrations/markdownMathPluginsBlock'
+import TikzDiagramBlock from '@/components/lego_blocks/units/TikzDiagramBlock'
 import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
@@ -535,7 +540,11 @@ function MarkdownTextDocumentRuntimeBlock({
     }
     applyStewardSuggestionToDraft(suggestion)
   }, [applyStewardSuggestionToDraft, frontmatterMeta.parseError])
-  const markdownRemarkPlugins = useMemo(() => [remarkGfm, remarkObsidianWikilinksOrch], [])
+  const markdownRemarkPlugins = useMemo(
+    () => [remarkGfm, ...markdownMathRemarkPluginsBlock, remarkObsidianWikilinksOrch],
+    [],
+  )
+  const markdownRehypePlugins = useMemo(() => [...markdownMathRehypePluginsBlock], [])
   const renderedViewMarkdown = useMemo(
     () => (
       editorSettings.preserveNewlinesInViewMode
@@ -653,6 +662,14 @@ function MarkdownTextDocumentRuntimeBlock({
           currentPath={path}
         />
       ),
+      code: ({ className, children, ...props }: any) => {
+        const lang = /language-(\w+)/.exec(className || '')?.[1]
+        if (lang === 'tikz') {
+          const source = Array.isArray(children) ? children.join('') : String(children ?? '')
+          return <TikzDiagramBlock source={source.replace(/\n$/, '')} />
+        }
+        return <code className={className} {...props}>{children}</code>
+      },
     }
   }, [openLinkedPath, path, viewerTableOfContents])
 
@@ -1465,6 +1482,7 @@ function MarkdownTextDocumentRuntimeBlock({
                 >
                   <ReactMarkdown
                     remarkPlugins={markdownRemarkPlugins}
+                    rehypePlugins={markdownRehypePlugins as any}
                     components={markdownComponents}
                     urlTransform={thinkingSpaceMarkdownUrlTransformBlock}
                   >

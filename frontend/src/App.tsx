@@ -78,7 +78,7 @@ import { UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK } from './components/lego_b
 import { useUILayoutBlock } from './components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useNativeTopChromeBlock } from './components/lego_blocks/hooks/shared/useNativeTopChromeBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
-import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
+import { isElectron, isEmbeddedTerminalSupported, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { fullSync, getLastSyncTimestamp, setLastSyncTimestamp, smartSync, type SyncResult } from './services/orchestrators/vaultSyncOrch'
 import { startVaultLiveRefresh } from './services/orchestrators/vaultLiveRefreshOrch'
 import { listMarkdownEntries } from './services/orchestrators/fileSystemOrch'
@@ -563,6 +563,7 @@ function App() {
   const navigate = useNavigate()
   const { layout } = useUILayoutBlock()
   const currentRoute = `${location.pathname}${location.search}${location.hash}`
+  const terminalSupported = isEmbeddedTerminalSupported()
 
   useEffect(() => startStallDetector(), [])
 
@@ -833,15 +834,17 @@ function App() {
 
   const utilityNavItems = useMemo(() => {
     const items: NavItem[] = [
-      { to: '/terminal', label: 'Terminal', icon: Terminal },
       { to: '/settings', label: 'Settings', icon: SettingsIcon },
       { to: '/capabilities', label: 'Capabilities', icon: Bot },
     ]
+    if (terminalSupported) {
+      items.unshift({ to: '/terminal', label: 'Terminal', icon: Terminal })
+    }
     if (extensionBuilderEnabled) {
-      items.splice(1, 0, { to: '/extension-builder', label: 'Extension Builder', icon: Sparkles })
+      items.splice(terminalSupported ? 1 : 0, 0, { to: '/extension-builder', label: 'Extension Builder', icon: Sparkles })
     }
     return items
-  }, [extensionBuilderEnabled])
+  }, [extensionBuilderEnabled, terminalSupported])
 
   const baseCommandItems = useMemo<CommandItem[]>(() => ([
     { to: '/', label: 'Home', group: 'Core', keywords: 'dashboard start' },
@@ -3326,7 +3329,7 @@ function App() {
                   <Route path="/pdf-to-markdown" element={<Navigate to="/excalidraw-plus/pdf" replace />} />
                   <Route path="/transcript-cleaner" element={<Navigate to="/excalidraw-plus/transcript" replace />} />
                   <Route path="/git-insights" element={<GitInsights />} />
-                  <Route path="/terminal" element={<TerminalPage />} />
+                  <Route path="/terminal" element={terminalSupported ? <TerminalPage /> : <Navigate to="/settings?tab=developer" replace />} />
                   <Route path="/password-manager" element={<PasswordManager />} />
                   <Route path="/webull" element={<WebullPage pageLabel={webullTabLabel} />} />
                   <Route path="/personal-tools" element={<PersonalToolsPage />} />

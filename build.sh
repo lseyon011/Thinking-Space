@@ -11,6 +11,7 @@ set -euo pipefail
 #   electron:pack    Package Electron app (unpacked, for testing)
 #   mac              Package Electron .dmg for macOS
 #   win              Package Electron .nsis for Windows
+#   win-lite         Package Windows x64 without embedded terminal
 #   linux            Package Electron .AppImage for Linux
 #   ios              Build for iOS and open Xcode
 #   backend          Start FastAPI backend dev server
@@ -249,6 +250,31 @@ cmd_mac()   { _cmd_platform "--mac"   "macOS"   "*.dmg"; }
 cmd_win()   { _cmd_platform "--win"   "Windows" "*.exe"; }
 cmd_linux() { _cmd_platform "--linux" "Linux"   "*.AppImage"; }
 
+cmd_win_lite() {
+  check_node && check_npm
+  ensure_frontend_deps
+  ensure_electron_deps
+  _build_start=$(date +%s)
+  echo ""
+  echo -e "  ${BOLD}Thinking Space${NC}  ${DIM}›  Windows x64 lite build${NC}"
+  echo ""
+  _build_frontend
+  do_step "Electron compile (lite)" \
+    bash -c "cd '$ELECTRON_DIR' && THINKING_SPACE_ENABLE_TERMINAL=false npx tsc"
+  do_step "Package (lite)" \
+    bash -c "cd '$ELECTRON_DIR' && npx electron-builder build --win --x64 --publish never -c.npmRebuild=false -c.nodeGypRebuild=false -c electron-builder.win-lite.config.cjs"
+  echo ""
+  _divider
+  local artifact
+  artifact=$(ls "$ELECTRON_DIR/dist/"*.exe 2>/dev/null | head -1 || true)
+  if [ -n "$artifact" ]; then
+    ok "${BOLD}$(basename "$artifact")${NC}  ${DIM}in $(_total_time)${NC}"
+  else
+    ok "electron/dist/  ${DIM}in $(_total_time)${NC}"
+  fi
+  echo ""
+}
+
 cmd_ios() {
   check_node && check_npm
   ensure_frontend_deps
@@ -342,6 +368,7 @@ cmd_help() {
   printf "  %-18s  %s\n" "electron:pack" "Package app unpacked (for testing)"
   printf "  %-18s  %s\n" "mac"           "Package .dmg for macOS"
   printf "  %-18s  %s\n" "win"           "Package .exe for Windows"
+  printf "  %-18s  %s\n" "win-lite"      "Package x64 Windows build without terminal"
   printf "  %-18s  %s\n" "linux"         "Package .AppImage for Linux"
   printf "  %-18s  %s\n" "ios"           "Build for iOS and open Xcode"
   printf "  %-18s  %s\n" "backend"       "Start FastAPI backend dev server"
@@ -365,6 +392,7 @@ case "$COMMAND" in
   electron:pack)  cmd_electron_pack ;;
   mac)            cmd_mac ;;
   win)            cmd_win ;;
+  win-lite)       cmd_win_lite ;;
   linux)          cmd_linux ;;
   ios)            cmd_ios ;;
   backend)        cmd_backend ;;

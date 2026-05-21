@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
-import { isElectron } from '@/services/orchestrators/runtimeOrch'
+import { isElectron, isEmbeddedTerminalSupported } from '@/services/orchestrators/runtimeOrch'
 
 const ITERM2_THEME = {
   background: '#1a1d24',
@@ -70,7 +70,7 @@ export default function TerminalBlock({ cwd, className = '', onExit, envPatch, i
   useEffect(() => { onExitRef.current = onExit }, [onExit])
 
   useEffect(() => {
-    if (!isElectron() || !containerRef.current) return
+    if (!isElectron() || !isEmbeddedTerminalSupported() || !containerRef.current) return
 
     const api = window.electronAPI!
     const container = containerRef.current
@@ -207,6 +207,14 @@ export default function TerminalBlock({ cwd, className = '', onExit, envPatch, i
     return (
       <div className={`flex items-center justify-center text-sm text-muted-foreground ${className}`}>
         Terminal is only available in the desktop app.
+      </div>
+    )
+  }
+
+  if (!isEmbeddedTerminalSupported()) {
+    return (
+      <div className={`flex items-center justify-center text-sm text-muted-foreground ${className}`}>
+        Terminal is not available in this build.
       </div>
     )
   }

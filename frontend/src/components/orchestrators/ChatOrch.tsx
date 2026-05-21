@@ -5,6 +5,10 @@ import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useEx
 import SidebarGroupHeaderBlock from '@/components/lego_blocks/units/ui/SidebarGroupHeaderBlock'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import {
+  markdownMathRehypePluginsBlock,
+  markdownMathRemarkPluginsBlock,
+} from '@/services/lego_blocks/integrations/markdownMathPluginsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent } from '@/components/lego_blocks/units/ui/card'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
@@ -464,7 +468,7 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
                     <CardContent className="p-3">
                       {msg.role === 'assistant' ? (
                         <div className="prose prose-sm dark:prose-invert max-w-none [&_pre]:overflow-x-auto [&_code]:break-all">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                          <ReactMarkdown remarkPlugins={[remarkGfm, ...markdownMathRemarkPluginsBlock]} rehypePlugins={markdownMathRehypePluginsBlock as any}>{msg.content}</ReactMarkdown>
                         </div>
                       ) : (
                         <p className="whitespace-pre-wrap text-sm">{msg.content}</p>

@@ -124,6 +124,7 @@ function isAlreadyExistsFilesystemErrorBlock(error: unknown): boolean {
 
 interface ElectronAPI {
   isElectron: true
+  terminalSupported?: boolean
   windowGetContext?(): {
     browserWindowId: number | null
     sessionId: string
@@ -1164,6 +1165,11 @@ function createVaultFS(): VaultFS {
 export function isElectron(): boolean {
   if (typeof window === 'undefined') return false
   return !!window.electronAPI?.isElectron
+}
+
+export function isEmbeddedTerminalSupported(): boolean {
+  if (!isElectron()) return false
+  return window.electronAPI?.terminalSupported !== false
 }
 
 export function isCapacitorNative(): boolean {

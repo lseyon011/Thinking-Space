@@ -259,6 +259,7 @@ Opens at `http://localhost:5173` — pick a local folder as your vault and you'r
 | `./build.sh electron` | Build & launch Electron app |
 | `./build.sh mac` | Package macOS `.dmg` |
 | `./build.sh win` | Package Windows installer |
+| `./build.sh win-lite` | Package Windows x64 installer without embedded terminal |
 | `./build.sh linux` | Package Linux `.AppImage` |
 | `./build.sh ios` | Build for iOS + open Xcode |
 | `./build.sh backend` | Start FastAPI backend (optional) |

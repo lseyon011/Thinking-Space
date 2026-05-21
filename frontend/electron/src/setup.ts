@@ -932,8 +932,9 @@ export function setupContentSecurityPolicy(customScheme: string): void {
     'https://docs.google.com',
     'https://drive.google.com',
   ].join(' ');
-  const devCsp = `default-src ${customScheme}://* 'unsafe-inline' devtools://* 'unsafe-eval' data:; img-src ${customScheme}://* data: blob: https:; media-src ${customScheme}://* data: blob: https:; connect-src ${customScheme}://* ${aiConnectSrc} devtools://*; frame-src ${frameSrc}`
-  const prodCsp = `default-src ${customScheme}://* 'unsafe-inline' data:; img-src ${customScheme}://* data: blob: https:; media-src ${customScheme}://* data: blob: https:; connect-src ${customScheme}://* ${aiConnectSrc}; frame-src ${frameSrc}`
+  const tikzJaxSrc = 'https://tikzjax.com'
+  const devCsp = `default-src ${customScheme}://* 'unsafe-inline' devtools://* 'unsafe-eval' data: ${tikzJaxSrc}; img-src ${customScheme}://* data: blob: https:; media-src ${customScheme}://* data: blob: https:; connect-src ${customScheme}://* ${aiConnectSrc} ${tikzJaxSrc} devtools://*; frame-src ${frameSrc}`
+  const prodCsp = `default-src ${customScheme}://* 'unsafe-inline' data: ${tikzJaxSrc}; img-src ${customScheme}://* data: blob: https:; media-src ${customScheme}://* data: blob: https:; connect-src ${customScheme}://* ${aiConnectSrc} ${tikzJaxSrc}; frame-src ${frameSrc}`
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     if (!details.url.startsWith(`${customScheme}://`)) {
       callback({ responseHeaders: details.responseHeaders });
