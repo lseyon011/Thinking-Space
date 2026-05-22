@@ -315,6 +315,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   schedulesDelete: (key: string) => ipcRenderer.invoke('schedules:delete', key),
   schedulesServerInfo: () => ipcRenderer.invoke('schedules:server-info'),
   schedulesKickstart: (label: string) => ipcRenderer.invoke('schedules:kickstart', label),
+  schedulesFireNow: (key: string) => ipcRenderer.invoke('schedules:fire-now', key),
   schedulesStatus: (label: string) => ipcRenderer.invoke('schedules:status', label),
   schedulesListLaunchdLabels: () => ipcRenderer.invoke('schedules:list-launchd-labels'),
 

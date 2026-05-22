@@ -85,6 +85,7 @@ interface ScheduleBridgeApi {
   schedulesDelete?(key: string): Promise<boolean>
   schedulesServerInfo?(): Promise<ScheduleServerInfoBlock | null>
   schedulesKickstart?(label: string): Promise<void>
+  schedulesFireNow?(key: string): Promise<ScheduleRunResultBlock>
   schedulesStatus?(label: string): Promise<ScheduleStatusBlock>
   schedulesListLaunchdLabels?(): Promise<string[]>
 }
@@ -137,6 +138,12 @@ export async function kickstartScheduleBlock(label: string): Promise<void> {
   const bridge = requireBridge()
   if (!bridge.schedulesKickstart) throw new Error('schedulesKickstart bridge unavailable')
   await bridge.schedulesKickstart(label)
+}
+
+export async function fireScheduleByIpcBlock(key: string): Promise<ScheduleRunResultBlock> {
+  const bridge = requireBridge()
+  if (!bridge.schedulesFireNow) throw new Error('schedulesFireNow bridge unavailable')
+  return bridge.schedulesFireNow(key)
 }
 
 export async function getLaunchctlStatusBlock(label: string): Promise<ScheduleStatusBlock> {

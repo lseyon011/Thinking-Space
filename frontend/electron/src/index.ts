@@ -80,6 +80,7 @@ import {
   getLaunchctlStatusBlock,
   listExternalAgentsBlock,
 } from './lego_blocks/launchctlBlock';
+import { runScheduleBlock } from './lego_blocks/scheduleRunnerBlock';
 import {
   applyRebuildBlock,
   runRebuildPipelineBlock,
@@ -467,6 +468,12 @@ ipcMain.handle('schedules:server-info', async () => {
 
 ipcMain.handle('schedules:kickstart', async (_event, label: string) => {
   await kickstartPlistBlock(label);
+});
+
+ipcMain.handle('schedules:fire-now', async (_event, key: string) => {
+  const spec = readScheduleBlock(key);
+  if (!spec) throw new Error(`Schedule not found: ${key}`);
+  return runScheduleBlock(spec);
 });
 
 ipcMain.handle('schedules:status', async (_event, label: string) => {

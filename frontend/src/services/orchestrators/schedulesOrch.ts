@@ -4,9 +4,9 @@
 
 import {
   deleteScheduleBlock,
+  fireScheduleByIpcBlock,
   getLaunchctlStatusBlock,
   getScheduleBlock,
-  getScheduleServerInfoBlock,
   kickstartScheduleBlock,
   listLaunchdLabelsBlock,
   listSchedulesBlock,
@@ -51,21 +51,11 @@ export async function deleteAndUnloadScheduleOrch(key: string): Promise<boolean>
 }
 
 export async function fireScheduleNowOrch(spec: ScheduleSpecBlock): Promise<ScheduleRunResultBlock> {
-  const info = await getScheduleServerInfoBlock()
-  if (!info) {
-    throw new Error('Schedule HTTP server not running')
-  }
-  const response = await fetch(`${info.baseUrl}/schedules/${spec.key}/fire`, {
-    method: 'POST',
-    headers: { 'X-Schedule-Secret': info.secret },
-  })
-  if (!response.ok) {
-    const message = await response.text().catch(() => response.statusText)
-    throw new Error(`Fire failed: ${response.status} ${message}`)
-  }
-  const body = (await response.json()) as { ok: boolean; result: ScheduleRunResultBlock }
-  if (!body.ok) throw new Error('Fire returned non-ok response')
-  return body.result
+  // Fire via IPC (not the loopback HTTP server) — CSP would block fetch() to
+  // 127.0.0.1 from the renderer, and IPC is the correct channel for in-app
+  // calls. The HTTP server exists only so launchd-triggered curl can fire
+  // schedules.
+  return fireScheduleByIpcBlock(spec.key)
 }
 
 export async function kickstartScheduleViaLaunchctlOrch(label: string): Promise<void> {
