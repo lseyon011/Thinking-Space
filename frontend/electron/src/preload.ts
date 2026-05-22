@@ -321,6 +321,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('schedules:list-transcripts', key),
   schedulesReadTranscript: (payload: { key: string; filename: string }) =>
     ipcRenderer.invoke('schedules:read-transcript', payload),
+  notificationsConfigGet: () => ipcRenderer.invoke('notifications:config:get'),
+  notificationsConfigSet: (partial: unknown) => ipcRenderer.invoke('notifications:config:set', partial),
+  notificationsTest: () => ipcRenderer.invoke('notifications:test'),
   onScheduleRunChunk: (streamChannel: string, handler: (chunk: { channel: 'stdout' | 'stderr'; data: string }) => void) => {
     const fullChannel = `schedules:run:event:${streamChannel}`;
     const listener = (_: unknown, data: unknown) => handler(data as { channel: 'stdout' | 'stderr'; data: string });

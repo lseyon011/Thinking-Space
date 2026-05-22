@@ -92,6 +92,15 @@ export interface ScheduleServerInfoBlock {
   baseUrl: string
 }
 
+export interface NotificationsConfigBlock {
+  ntfy: {
+    topic: string | null
+    server: string
+    onSuccess: boolean
+    onFailure: boolean
+  }
+}
+
 interface ScheduleBridgeApi {
   schedulesList?(): Promise<ScheduleSpecBlock[]>
   schedulesGet?(key: string): Promise<ScheduleSpecBlock | null>
@@ -105,6 +114,9 @@ interface ScheduleBridgeApi {
   schedulesListTranscripts?(key: string): Promise<TranscriptEntryBlock[]>
   schedulesReadTranscript?(payload: { key: string; filename: string }): Promise<string>
   onScheduleRunChunk?(streamChannel: string, handler: (chunk: ScheduleRunChunkBlock) => void): () => void
+  notificationsConfigGet?(): Promise<NotificationsConfigBlock>
+  notificationsConfigSet?(partial: Partial<NotificationsConfigBlock>): Promise<NotificationsConfigBlock>
+  notificationsTest?(): Promise<{ sent: boolean; reason?: string }>
 }
 
 function getBridge(): ScheduleBridgeApi | null {
@@ -184,6 +196,27 @@ export function subscribeRunChunksBlock(
   const bridge = requireBridge()
   if (!bridge.onScheduleRunChunk) return () => undefined
   return bridge.onScheduleRunChunk(streamChannel, handler)
+}
+
+const DEFAULT_NOTIFICATIONS_CONFIG: NotificationsConfigBlock = {
+  ntfy: { topic: null, server: 'ntfy.sh', onSuccess: false, onFailure: true },
+}
+
+export async function getNotificationsConfigBlock(): Promise<NotificationsConfigBlock> {
+  const bridge = requireBridge()
+  return (await bridge.notificationsConfigGet?.()) ?? DEFAULT_NOTIFICATIONS_CONFIG
+}
+
+export async function setNotificationsConfigBlock(partial: Partial<NotificationsConfigBlock>): Promise<NotificationsConfigBlock> {
+  const bridge = requireBridge()
+  if (!bridge.notificationsConfigSet) throw new Error('notificationsConfigSet bridge unavailable')
+  return bridge.notificationsConfigSet(partial)
+}
+
+export async function testNotificationBlock(): Promise<{ sent: boolean; reason?: string }> {
+  const bridge = requireBridge()
+  if (!bridge.notificationsTest) throw new Error('notificationsTest bridge unavailable')
+  return bridge.notificationsTest()
 }
 
 export async function getLaunchctlStatusBlock(label: string): Promise<ScheduleStatusBlock> {

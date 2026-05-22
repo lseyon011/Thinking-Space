@@ -111,7 +111,7 @@ function isValidSchedule(value: unknown): value is ScheduleTriggerBlock {
   return false;
 }
 
-function sanitizeSpec(raw: unknown): ScheduleSpecBlock | null {
+export function sanitizeScheduleSpecBlock(raw: unknown): ScheduleSpecBlock | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.key !== 'string' || !SCHEDULE_KEY_PATTERN.test(r.key)) return null;
@@ -137,14 +137,14 @@ function sanitizeSpec(raw: unknown): ScheduleSpecBlock | null {
 export function readScheduleBlock(key: string): ScheduleSpecBlock | null {
   try {
     const raw = fs.readFileSync(getScheduleFilePathBlock(key), 'utf-8');
-    return sanitizeSpec(JSON.parse(raw));
+    return sanitizeScheduleSpecBlock(JSON.parse(raw));
   } catch {
     return null;
   }
 }
 
 export function writeScheduleBlock(spec: ScheduleSpecBlock): ScheduleSpecBlock {
-  const sanitized = sanitizeSpec({ ...spec, updatedAt: new Date().toISOString() });
+  const sanitized = sanitizeScheduleSpecBlock({ ...spec, updatedAt: new Date().toISOString() });
   if (!sanitized) throw new Error('Invalid schedule spec');
   const filePath = getScheduleFilePathBlock(sanitized.key);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });

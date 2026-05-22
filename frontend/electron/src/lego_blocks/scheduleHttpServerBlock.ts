@@ -3,8 +3,9 @@ import { createServer, IncomingMessage, ServerResponse, Server } from 'http';
 import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { readScheduleBlock } from './scheduleStorageBlock';
+import { readScheduleBlock, type ScheduleSpecBlock } from './scheduleStorageBlock';
 import { runScheduleBlock, ScheduleRunResultBlock } from './scheduleRunnerBlock';
+import { notifyNtfyBlock, readNotificationsConfigBlock } from './notificationsBlock';
 
 export interface ScheduleServerInfoBlock {
   port: number;
@@ -20,6 +21,23 @@ let activeServer: Server | null = null;
 let activeInfo: ScheduleServerInfoBlock | null = null;
 const lastResults: Map<string, ScheduleRunResultBlock> = new Map();
 const inFlight: Set<string> = new Set();
+
+function notifyAfterRunBlock(spec: ScheduleSpecBlock, result: ScheduleRunResultBlock): void {
+  const cfg = readNotificationsConfigBlock();
+  if (!cfg.ntfy.topic) return;
+  const failed = result.exitCode !== 0 || result.errorMessage;
+  if (failed && !cfg.ntfy.onFailure) return;
+  if (!failed && !cfg.ntfy.onSuccess) return;
+  const reason = result.errorMessage
+    ? `error: ${result.errorMessage}`
+    : `exit ${result.exitCode ?? 'null'}${result.signal ? ` (signal ${result.signal})` : ''}`;
+  notifyNtfyBlock({
+    title: `${failed ? '❌' : '✅'} ${spec.title}`,
+    message: `${reason} · ${result.durationMs}ms\ntranscript: ${result.transcriptFilename}`,
+    priority: failed ? 'high' : 'low',
+    tags: failed ? ['rotating_light'] : ['white_check_mark'],
+  }).catch((err) => console.warn('[notifications] post failed', err));
+}
 
 function getServerInfoPathBlock(): string {
   return path.join(app.getPath('userData'), 'state', 'schedule-server.json');
@@ -84,6 +102,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, secret: 
     try {
       const result = await runScheduleBlock(spec);
       lastResults.set(key, result);
+      notifyAfterRunBlock(spec, result);
       sendJson(res, 200, { ok: true, result });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

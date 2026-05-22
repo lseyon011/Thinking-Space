@@ -4,6 +4,7 @@ import SubNavTabsBlock from '@/components/lego_blocks/units/ui/SubNavTabsBlock'
 import ScheduleListBlock from '@/components/lego_blocks/integrations/ScheduleListBlock'
 import ScheduleFormBlock from '@/components/lego_blocks/integrations/ScheduleFormBlock'
 import ScheduleRunControlsBlock from '@/components/lego_blocks/integrations/ScheduleRunControlsBlock'
+import NotificationsConfigBlock from '@/components/lego_blocks/integrations/NotificationsConfigBlock'
 import type { ScheduleSpecBlock } from '@/services/lego_blocks/integrations/schedulesBlock'
 
 interface SchedulesOrchProps {
@@ -62,8 +63,11 @@ export default function SchedulesOrch(_props: SchedulesOrchProps) {
           )}
 
           {mode === 'list' && (
-            <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-              Pick a schedule from the left to edit it, or click <strong>New schedule</strong> to create one.
+            <div className="space-y-4">
+              <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                Pick a schedule from the left to edit it, or click <strong>New schedule</strong> to create one.
+              </div>
+              <NotificationsConfigBlock />
             </div>
           )}
 

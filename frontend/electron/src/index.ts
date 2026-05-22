@@ -80,8 +80,16 @@ import {
   getLaunchctlStatusBlock,
   listExternalAgentsBlock,
 } from './lego_blocks/launchctlBlock';
-import { runScheduleBlock, type ScheduleRunChunkBlock } from './lego_blocks/scheduleRunnerBlock';
+import { runScheduleBlock, type ScheduleRunChunkBlock, type ScheduleRunResultBlock } from './lego_blocks/scheduleRunnerBlock';
 import { listTranscriptsBlock, readTranscriptBlock } from './lego_blocks/transcriptStoreBlock';
+import { startHeartbeatBlock, stopHeartbeatBlock } from './lego_blocks/heartbeatBlock';
+import {
+  notifyNtfyBlock,
+  readNotificationsConfigBlock,
+  writeNotificationsConfigBlock,
+  type NotificationsConfigBlock,
+} from './lego_blocks/notificationsBlock';
+import type { ScheduleSpecBlock as RunnerScheduleSpec } from './lego_blocks/scheduleStorageBlock';
 import {
   applyRebuildBlock,
   runRebuildPipelineBlock,
@@ -357,6 +365,9 @@ if (hasSingleInstanceLock) {
       } catch (err) {
         console.error('[schedules] Failed to start HTTP server:', err);
       }
+      // Heartbeat file so external tools can detect when the app is alive
+      // (touches ~/.thinking-space-alive every minute).
+      startHeartbeatBlock();
       // Initialize our app, build windows, and load content.
       await myCapacitorApp.init();
       configureAppIconMenu();
@@ -387,6 +398,7 @@ app.on('will-quit', () => {
   stopScheduleHttpServerBlock().catch((err) =>
     console.warn('[schedules] HTTP server stop failed', err),
   );
+  stopHeartbeatBlock();
 });
 
 // Clean up PTYs when a window is closed.
@@ -471,6 +483,27 @@ ipcMain.handle('schedules:kickstart', async (_event, label: string) => {
   await kickstartPlistBlock(label);
 });
 
+function maybeNotifyAfterRun(spec: RunnerScheduleSpec, result: ScheduleRunResultBlock): void {
+  const cfg = readNotificationsConfigBlock();
+  if (!cfg.ntfy.topic) return;
+  const failed = result.exitCode !== 0 || result.errorMessage;
+  if (failed && !cfg.ntfy.onFailure) return;
+  if (!failed && !cfg.ntfy.onSuccess) return;
+  const title = failed
+    ? `❌ ${spec.title}`
+    : `✅ ${spec.title}`;
+  const reason = result.errorMessage
+    ? `error: ${result.errorMessage}`
+    : `exit ${result.exitCode ?? 'null'}${result.signal ? ` (signal ${result.signal})` : ''}`;
+  const message = `${reason} · ${result.durationMs}ms\ntranscript: ${result.transcriptFilename}`;
+  notifyNtfyBlock({
+    title,
+    message,
+    priority: failed ? 'high' : 'low',
+    tags: failed ? ['rotating_light'] : ['white_check_mark'],
+  }).catch((err) => console.warn('[notifications] post failed', err));
+}
+
 ipcMain.handle('schedules:fire-now', async (event, key: string, options: { streamChannel?: string } = {}) => {
   const spec = readScheduleBlock(key);
   if (!spec) throw new Error(`Schedule not found: ${key}`);
@@ -478,12 +511,31 @@ ipcMain.handle('schedules:fire-now', async (event, key: string, options: { strea
   const streamChannel = typeof options?.streamChannel === 'string' && options.streamChannel.length > 0
     ? `schedules:run:event:${options.streamChannel}`
     : null;
-  return runScheduleBlock(spec, {
+  const result = await runScheduleBlock(spec, {
     onChunk: streamChannel
       ? (chunk: ScheduleRunChunkBlock) => {
           if (!sender.isDestroyed()) sender.send(streamChannel, chunk);
         }
       : undefined,
+  });
+  maybeNotifyAfterRun(spec, result);
+  return result;
+});
+
+ipcMain.handle('notifications:config:get', async (): Promise<NotificationsConfigBlock> => {
+  return readNotificationsConfigBlock();
+});
+
+ipcMain.handle('notifications:config:set', async (_event, partial: Partial<NotificationsConfigBlock>) => {
+  return writeNotificationsConfigBlock(partial);
+});
+
+ipcMain.handle('notifications:test', async () => {
+  return notifyNtfyBlock({
+    title: '🔔 Thinking Space test',
+    message: 'If you see this on your device, ntfy is wired up correctly.',
+    priority: 'low',
+    tags: ['bell'],
   });
 });
 

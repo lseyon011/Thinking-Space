@@ -5,6 +5,10 @@ import type { ScheduleSpecBlock } from './scheduleStorageBlock';
 export interface PlistBuildContextBlock {
   baseUrl: string;
   secret: string;
+  /** Optional override for stdout log path; if absent, derived from userData. */
+  stdoutPath?: string;
+  /** Optional override for stderr log path; if absent, derived from userData. */
+  stderrPath?: string;
 }
 
 function escapeXml(value: string): string {
@@ -61,7 +65,11 @@ function getLogPathsBlock(spec: ScheduleSpecBlock): { stdout: string; stderr: st
 
 export function buildPlistBlock(spec: ScheduleSpecBlock, ctx: PlistBuildContextBlock): string {
   const args = programArgsBlock(spec, ctx);
-  const logs = getLogPathsBlock(spec);
+  const fallbackLogs = ctx.stdoutPath && ctx.stderrPath ? null : getLogPathsBlock(spec);
+  const logs = {
+    stdout: ctx.stdoutPath ?? fallbackLogs!.stdout,
+    stderr: ctx.stderrPath ?? fallbackLogs!.stderr,
+  };
   const calendarBlock = renderCalendarEntries(spec);
   const intervalBlock = renderIntervalSeconds(spec);
 
