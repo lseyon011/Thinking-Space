@@ -13,7 +13,16 @@ function wrapTikzSource(source: string): string {
   return `\\begin{tikzpicture}\n${trimmed}\n\\end{tikzpicture}`
 }
 
-function waitForTikzRenderBlock(container: HTMLDivElement, timeoutMs = 8000): Promise<void> {
+const TIKZ_PER_DIAGRAM_BUDGET_MS = 6000
+const TIKZ_MIN_TIMEOUT_MS = 15000
+
+function computeTikzRenderTimeoutBlock(): number {
+  if (typeof document === 'undefined') return TIKZ_MIN_TIMEOUT_MS
+  const pending = document.querySelectorAll('script[type="text/tikz"]').length
+  return Math.max(TIKZ_MIN_TIMEOUT_MS, pending * TIKZ_PER_DIAGRAM_BUDGET_MS)
+}
+
+function waitForTikzRenderBlock(container: HTMLDivElement, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     if (container.querySelector('svg')) {
       resolve()
@@ -57,9 +66,10 @@ export default function TikzDiagramBlock({ source, className }: TikzDiagramBlock
     script.text = wrapTikzSource(source)
     container.appendChild(script)
 
+    const renderTimeoutMs = computeTikzRenderTimeoutBlock()
     requestTikzJaxProcessBlock()
       .then(() => {
-        return waitForTikzRenderBlock(container)
+        return waitForTikzRenderBlock(container, renderTimeoutMs)
       })
       .then(() => {
         if (!cancelled) {
