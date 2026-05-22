@@ -308,6 +308,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
+  // Schedules / scheduled jobs
+  schedulesList: () => ipcRenderer.invoke('schedules:list'),
+  schedulesGet: (key: string) => ipcRenderer.invoke('schedules:get', key),
+  schedulesSave: (spec: unknown) => ipcRenderer.invoke('schedules:save', spec),
+  schedulesDelete: (key: string) => ipcRenderer.invoke('schedules:delete', key),
+  schedulesServerInfo: () => ipcRenderer.invoke('schedules:server-info'),
+  schedulesKickstart: (label: string) => ipcRenderer.invoke('schedules:kickstart', label),
+  schedulesStatus: (label: string) => ipcRenderer.invoke('schedules:status', label),
+  schedulesListLaunchdLabels: () => ipcRenderer.invoke('schedules:list-launchd-labels'),
+
   // Vault folder picker dialog
   selectVaultFolder: () => ipcRenderer.invoke('vault:selectFolder'),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
