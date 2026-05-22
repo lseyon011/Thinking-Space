@@ -7,7 +7,6 @@ import { cn } from '@/lib/utils'
 import {
   getScheduleByKeyOrch,
   saveAndSyncScheduleOrch,
-  deleteAndUnloadScheduleOrch,
 } from '@/services/orchestrators/schedulesOrch'
 import type {
   ScheduleSpecBlock,
@@ -22,6 +21,10 @@ const LABEL_PREFIX = 'com.thinkingspace.'
 interface ScheduleFormBlockProps {
   mode: 'create' | 'edit'
   editKey?: string
+  /** Fires after a successful save so parents can refresh state / re-fetch. */
+  onSaved?: (spec: ScheduleSpecBlock) => void
+  /** Notified when the spec for editKey is loaded (lets parents render run controls). */
+  onLoaded?: (spec: ScheduleSpecBlock) => void
 }
 
 type ExecutionKind = ScheduleExecutionSpecBlock['kind']
@@ -165,7 +168,7 @@ function buildSpec(s: FormState, originalCreatedAt?: string): ScheduleSpecBlock 
 const FIELD_LABEL = 'text-xs font-medium text-muted-foreground mb-1'
 const INPUT_BASE = 'w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-export default function ScheduleFormBlock({ mode, editKey }: ScheduleFormBlockProps) {
+export default function ScheduleFormBlock({ mode, editKey, onSaved, onLoaded }: ScheduleFormBlockProps) {
   const navigate = useNavigate()
   const [state, setState] = useState<FormState>(defaultState)
   const [loading, setLoading] = useState(mode === 'edit')
@@ -185,6 +188,7 @@ export default function ScheduleFormBlock({ mode, editKey }: ScheduleFormBlockPr
         } else {
           setState(stateFromSpec(spec))
           setOriginalCreatedAt(spec.createdAt)
+          onLoaded?.(spec)
         }
       })
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : 'Failed to load'))
@@ -204,27 +208,17 @@ export default function ScheduleFormBlock({ mode, editKey }: ScheduleFormBlockPr
     setBusy(true)
     try {
       const spec = buildSpec(state, originalCreatedAt)
-      await saveAndSyncScheduleOrch(spec)
-      navigate('/ai/schedules')
+      const saved = await saveAndSyncScheduleOrch(spec)
+      onSaved?.(saved)
+      if (mode === 'create') {
+        navigate(`/ai/schedules/${saved.key}`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
     } finally {
       setBusy(false)
     }
-  }, [state, originalCreatedAt, navigate])
-
-  const handleDelete = useCallback(async () => {
-    if (mode !== 'edit' || !editKey) return
-    if (!confirm(`Delete schedule "${state.title || editKey}"? This removes the launchd plist.`)) return
-    setBusy(true)
-    try {
-      await deleteAndUnloadScheduleOrch(editKey)
-      navigate('/ai/schedules')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed')
-      setBusy(false)
-    }
-  }, [mode, editKey, state.title, navigate])
+  }, [state, originalCreatedAt, mode, navigate, onSaved])
 
   if (loading) {
     return (
@@ -237,17 +231,9 @@ export default function ScheduleFormBlock({ mode, editKey }: ScheduleFormBlockPr
 
   return (
     <div className="space-y-6">
-      <header className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight">
-            {mode === 'create' ? 'New schedule' : 'Edit schedule'}
-          </h2>
-          <p className="mt-1 text-xs text-muted-foreground">Label: <code className="font-mono">{previewLabel}</code></p>
-        </div>
-        <Button variant="ghost" size="sm" onClick={() => navigate('/ai/schedules')} disabled={busy}>
-          Cancel
-        </Button>
-      </header>
+      <p className="text-xs text-muted-foreground">
+        Label: <code className="font-mono">{previewLabel}</code>
+      </p>
 
       {error && (
         <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
@@ -524,22 +510,11 @@ export default function ScheduleFormBlock({ mode, editKey }: ScheduleFormBlockPr
       </section>
 
       {/* ── Actions ── */}
-      <div className="flex items-center justify-between">
-        {mode === 'edit' ? (
-          <Button variant="ghost" size="sm" onClick={handleDelete} disabled={busy} className="text-destructive">
-            <Trash2 className="mr-1 h-4 w-4" />
-            Delete
-          </Button>
-        ) : <div />}
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/ai/schedules')} disabled={busy}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={busy}>
-            {busy && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
-            {mode === 'create' ? 'Create schedule' : 'Save changes'}
-          </Button>
-        </div>
+      <div className="flex items-center justify-end">
+        <Button onClick={handleSave} disabled={busy}>
+          {busy && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+          {mode === 'create' ? 'Create schedule' : 'Save changes'}
+        </Button>
       </div>
     </div>
   )
