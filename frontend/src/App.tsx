@@ -328,7 +328,8 @@ const MAX_HIDDEN_PERSISTENT_THINKING_SPACE_SURFACES = 2
 
 function isNavItemActive(pathname: string, item: NavItem): boolean {
   if (pathname === item.to) return true
-  return (item.activePaths ?? []).includes(pathname)
+  const activePaths = item.activePaths ?? []
+  return activePaths.some((path) => pathname === path || pathname.startsWith(`${path}/`))
 }
 
 function createWorkspaceTabId(): string {
@@ -3321,7 +3322,7 @@ function App() {
                 <Routes>
                   <Route path="/" element={<Home />} />
                   <Route path="/ai" element={<Navigate to="/ai/chat" replace />} />
-                  <Route path="/ai/schedules" element={<Schedules />} />
+                  <Route path="/ai/schedules/*" element={<Schedules />} />
                   <Route path="/chat" element={<Navigate to="/ai/chat" replace />} />
                   <Route path="/thinking-space" element={<ThinkingSpace />} />
                   <Route path="/excalidraw-plus" element={<ExcalidrawPlus />}>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Play, Trash2, AlertCircle, RefreshCw } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Loader2, Play, Trash2, AlertCircle, RefreshCw, Plus, Pencil } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import { cn } from '@/lib/utils'
@@ -163,6 +164,13 @@ function ScheduleRow({ row, onAfterChange }: ScheduleRowProps) {
               <Play className="h-4 w-4" />
             )}
           </Button>
+          <Link
+            to={`/ai/schedules/${row.spec.key}`}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
+            title="Edit"
+          >
+            <Pencil className="h-4 w-4 text-muted-foreground" />
+          </Link>
           <Button
             variant="ghost"
             size="sm"
@@ -213,9 +221,18 @@ export default function ScheduleListBlock() {
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             Managed schedules
           </h2>
-          <Button variant="ghost" size="sm" onClick={refresh} title="Refresh" disabled={loading}>
-            <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={refresh} title="Refresh" disabled={loading}>
+              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+            </Button>
+            <Link
+              to="/ai/schedules/new"
+              className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New schedule
+            </Link>
+          </div>
         </div>
         {error && (
           <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
@@ -224,7 +241,7 @@ export default function ScheduleListBlock() {
         )}
         {!loading && rows.length === 0 && !error && (
           <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-            No schedules yet. Create one from the DevTools console (UI editor is coming in the next layer).
+            No schedules yet. Click <strong>New schedule</strong> to create one.
           </div>
         )}
         <div className="space-y-2">
