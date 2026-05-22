@@ -112,7 +112,7 @@ export default function ScheduleListBlock({ onRefresh }: ScheduleListBlockProps)
                 className={cn(
                   'flex items-center gap-2 rounded px-2 py-1.5 text-xs',
                   isActive
-                    ? 'bg-accent text-accent-foreground'
+                    ? 'bg-primary text-primary-foreground'
                     : 'text-foreground hover:bg-accent/60',
                 )}
                 title={spec.description ?? spec.title}
@@ -122,7 +122,10 @@ export default function ScheduleListBlock({ onRefresh }: ScheduleListBlockProps)
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{spec.title}</span>
-                  <span className="block truncate text-[10px] text-muted-foreground">
+                  <span className={cn(
+                    'block truncate text-[10px]',
+                    isActive ? 'text-primary-foreground/70' : 'text-muted-foreground',
+                  )}>
                     {summarizeSchedule(spec.schedule)}
                   </span>
                 </span>
