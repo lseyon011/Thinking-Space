@@ -69,7 +69,8 @@ export interface ScheduleRunResultBlock {
 
 export interface ScheduleRunChunkBlock {
   channel: 'stdout' | 'stderr'
-  data: string
+  timestamp: string
+  line: string
 }
 
 export interface TranscriptEntryBlock {

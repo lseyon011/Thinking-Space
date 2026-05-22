@@ -57,7 +57,8 @@ export interface ScheduleRunResultBlock {
 
 export interface ScheduleRunChunkBlock {
   channel: 'stdout' | 'stderr';
-  data: string;
+  timestamp: string;
+  line: string;
 }
 
 export interface ScheduleRunOptionsBlock {
@@ -109,21 +110,33 @@ export async function runScheduleBlock(
   let bytesWritten = header.length;
   let truncated = false;
   const emit = options.onChunk;
-  const appendChunk = (channel: 'out' | 'err', chunk: Buffer) => {
-    const text = chunk.toString('utf-8');
-    if (emit) {
-      emit({ channel: channel === 'err' ? 'stderr' : 'stdout', data: text });
-    }
+  const lineBuffers: Record<'stdout' | 'stderr', string> = { stdout: '', stderr: '' };
+
+  const flushLine = (channel: 'stdout' | 'stderr', line: string) => {
+    const ts = new Date();
+    const timestamp = ts.toISOString();
+    const hhmmss = `${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}:${String(ts.getSeconds()).padStart(2, '0')}`;
+    if (emit) emit({ channel, timestamp, line });
     if (truncated) return;
-    if (bytesWritten + chunk.length > MAX_TRANSCRIPT_BYTES) {
+    const marker = channel === 'stderr' ? '!' : ' ';
+    const formatted = `${hhmmss} ${marker} ${line}\n`;
+    if (bytesWritten + formatted.length > MAX_TRANSCRIPT_BYTES) {
       transcript.write(`\n[transcript truncated at ${MAX_TRANSCRIPT_BYTES} bytes]\n`);
       truncated = true;
       return;
     }
-    const prefix = channel === 'err' ? '[err] ' : '';
-    if (prefix) transcript.write(prefix);
-    transcript.write(chunk);
-    bytesWritten += chunk.length + prefix.length;
+    transcript.write(formatted);
+    bytesWritten += formatted.length;
+  };
+
+  const ingest = (channel: 'stdout' | 'stderr', chunk: Buffer) => {
+    lineBuffers[channel] += chunk.toString('utf-8');
+    let newlineIdx: number;
+    while ((newlineIdx = lineBuffers[channel].indexOf('\n')) !== -1) {
+      const line = lineBuffers[channel].slice(0, newlineIdx).replace(/\r$/, '');
+      lineBuffers[channel] = lineBuffers[channel].slice(newlineIdx + 1);
+      flushLine(channel, line);
+    }
   };
 
   const child = spawn(resolved.command, resolved.args, {
@@ -132,8 +145,8 @@ export async function runScheduleBlock(
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  child.stdout?.on('data', (chunk: Buffer) => appendChunk('out', chunk));
-  child.stderr?.on('data', (chunk: Buffer) => appendChunk('err', chunk));
+  child.stdout?.on('data', (chunk: Buffer) => ingest('stdout', chunk));
+  child.stderr?.on('data', (chunk: Buffer) => ingest('stderr', chunk));
 
   const timeoutHandle = setTimeout(() => {
     if (!child.killed) {
@@ -151,6 +164,9 @@ export async function runScheduleBlock(
   return new Promise<ScheduleRunResultBlock>((resolve) => {
     child.on('close', (exitCode, signal) => {
       clearTimeout(timeoutHandle);
+      // Flush any unterminated trailing data.
+      if (lineBuffers.stdout) { flushLine('stdout', lineBuffers.stdout); lineBuffers.stdout = ''; }
+      if (lineBuffers.stderr) { flushLine('stderr', lineBuffers.stderr); lineBuffers.stderr = ''; }
       const endedAt = new Date();
       const footer =
         `---\n` +

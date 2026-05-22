@@ -59,7 +59,7 @@ export default function ScheduleRunControlsBlock({ spec, onChanged }: Props) {
   const [enabled, setEnabled] = useState(spec.enabled)
   const [status, setStatus] = useState<ScheduleStatusBlock>({ loaded: false, pid: null, lastExitCode: null })
   const [feedback, setFeedback] = useState<RunFeedback>({ state: 'idle' })
-  const [liveLog, setLiveLog] = useState<string[]>([])
+  const [liveLog, setLiveLog] = useState<ScheduleRunChunkBlock[]>([])
   const [transcripts, setTranscripts] = useState<TranscriptEntryBlock[]>([])
   const [openTranscript, setOpenTranscript] = useState<string | null>(null)
   const [openTranscriptBody, setOpenTranscriptBody] = useState<string>('')
@@ -103,12 +103,7 @@ export default function ScheduleRunControlsBlock({ spec, onChanged }: Props) {
 
   const handleChunk = useCallback((chunk: ScheduleRunChunkBlock) => {
     setLiveLog((prev) => {
-      const lines = chunk.data.split('\n')
-      const prefixed = lines.map((line, idx) => {
-        if (idx === lines.length - 1 && line === '') return null
-        return chunk.channel === 'stderr' ? `[err] ${line}` : line
-      }).filter((x): x is string => x !== null)
-      const next = [...prev, ...prefixed]
+      const next = [...prev, chunk]
       return next.length > MAX_LIVE_LINES ? next.slice(-MAX_LIVE_LINES) : next
     })
   }, [])
@@ -248,9 +243,21 @@ export default function ScheduleRunControlsBlock({ spec, onChanged }: Props) {
           </div>
           <pre
             ref={liveLogRef}
-            className="max-h-72 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-snug whitespace-pre-wrap break-words"
+            className="max-h-72 overflow-y-auto bg-zinc-950 px-3 py-2 font-mono text-[11px] leading-snug text-zinc-100"
           >
-            {liveLog.length === 0 ? <span className="text-muted-foreground">(no output yet)</span> : liveLog.join('\n')}
+            {liveLog.length === 0
+              ? <span className="text-zinc-500">(no output yet)</span>
+              : liveLog.map((chunk, i) => {
+                  const hhmmss = chunk.timestamp.slice(11, 19)
+                  return (
+                    <div key={i} className="whitespace-pre-wrap break-words">
+                      <span className="select-none pr-2 text-zinc-500">{hhmmss}</span>
+                      <span className={chunk.channel === 'stderr' ? 'text-red-400' : 'text-zinc-100'}>
+                        {chunk.line || ' '}
+                      </span>
+                    </div>
+                  )
+                })}
           </pre>
         </section>
       )}
@@ -287,7 +294,7 @@ export default function ScheduleRunControlsBlock({ spec, onChanged }: Props) {
                     <span className="text-[10px] text-muted-foreground">{formatBytes(t.sizeBytes)}</span>
                   </button>
                   {isOpen && (
-                    <pre className="max-h-72 overflow-y-auto bg-muted/30 px-3 py-2 font-mono text-[11px] leading-snug whitespace-pre-wrap break-words">
+                    <pre className="max-h-72 overflow-y-auto bg-zinc-950 px-3 py-2 font-mono text-[11px] leading-snug whitespace-pre-wrap break-words text-zinc-100">
                       {openTranscriptBody}
                     </pre>
                   )}
