@@ -9,7 +9,7 @@ import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const HEARTBEAT_INTERVAL_MS = 60_000;
+const HEARTBEAT_INTERVAL_MS = 5 * 60_000;
 
 let timer: NodeJS.Timeout | null = null;
 
