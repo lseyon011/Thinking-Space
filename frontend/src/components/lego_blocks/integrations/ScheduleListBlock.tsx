@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Plus, RefreshCw, Loader2 } from 'lucide-react'
+import { Plus, RefreshCw, Loader2, ChevronRight, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { cn } from '@/lib/utils'
 import {
@@ -37,6 +37,7 @@ export default function ScheduleListBlock({ onRefresh }: ScheduleListBlockProps)
   const [external, setExternal] = useState<ExternalLaunchdAgentBlock[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [externalExpanded, setExternalExpanded] = useState(false)
   const { pathname } = useLocation()
 
   const refresh = useCallback(async () => {
@@ -136,18 +137,33 @@ export default function ScheduleListBlock({ onRefresh }: ScheduleListBlockProps)
 
         {external.length > 0 && (
           <div className="mt-4 px-1">
-            <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              External agents
-            </div>
-            {external.map((agent) => (
-              <div
-                key={agent.label}
-                className="truncate rounded px-2 py-1 font-mono text-[10px] text-muted-foreground"
-                title={agent.label}
-              >
-                {agent.label}
+            <button
+              type="button"
+              onClick={() => setExternalExpanded((v) => !v)}
+              className="flex w-full items-center gap-1 rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:bg-accent/60"
+              aria-expanded={externalExpanded}
+            >
+              {externalExpanded
+                ? <ChevronDown className="h-3 w-3" />
+                : <ChevronRight className="h-3 w-3" />}
+              <span>External agents</span>
+              <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-normal normal-case tracking-normal text-muted-foreground">
+                {external.length}
+              </span>
+            </button>
+            {externalExpanded && (
+              <div className="mt-1">
+                {external.map((agent) => (
+                  <div
+                    key={agent.label}
+                    className="truncate rounded px-2 py-1 font-mono text-[10px] text-muted-foreground"
+                    title={agent.label}
+                  >
+                    {agent.label}
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
         )}
       </div>
