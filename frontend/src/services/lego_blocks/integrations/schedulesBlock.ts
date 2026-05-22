@@ -6,13 +6,29 @@
 // ElectronAPI declaration in fsBlock.ts — schedules methods are optional on
 // the window.electronAPI surface and only present when running in Electron.
 
-export type ScheduleExecutionSpecBlock = {
-  kind: 'shell'
-  command: string
-  args: string[]
-  env?: Record<string, string>
-  cwd?: string | null
-}
+export type ScheduleSessionModeBlock = 'new' | 'continue' | 'resume'
+
+export type ScheduleExecutionSpecBlock =
+  | {
+      kind: 'shell'
+      command: string
+      args: string[]
+      env?: Record<string, string>
+      cwd?: string | null
+    }
+  | {
+      kind: 'claude-code'
+      prompt: string
+      cwd: string
+      session?: {
+        mode: ScheduleSessionModeBlock
+        id?: string | null
+      }
+      model?: string | null
+      skipPermissions?: boolean
+      claudeBinary?: string | null
+      env?: Record<string, string>
+    }
 
 export type ScheduleTriggerSpecBlock =
   | {

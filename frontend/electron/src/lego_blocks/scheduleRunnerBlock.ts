@@ -2,7 +2,46 @@ import { app } from 'electron';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ScheduleSpecBlock } from './scheduleStorageBlock';
+import type { ScheduleExecutionBlock, ScheduleSpecBlock } from './scheduleStorageBlock';
+
+const DEFAULT_CLAUDE_BINARY = '/opt/homebrew/bin/claude';
+
+interface ResolvedSpawnBlock {
+  command: string;
+  args: string[];
+  cwd: string | undefined;
+  env: Record<string, string>;
+}
+
+function resolveSpawnBlock(execution: ScheduleExecutionBlock): ResolvedSpawnBlock {
+  if (execution.kind === 'shell') {
+    return {
+      command: execution.command,
+      args: execution.args,
+      cwd: execution.cwd ?? undefined,
+      env: { ...process.env, ...(execution.env ?? {}) } as Record<string, string>,
+    };
+  }
+  // claude-code
+  const args: string[] = [];
+  if (execution.skipPermissions) args.push('--dangerously-skip-permissions');
+  if (execution.model) args.push('--model', execution.model);
+  const sessionMode = execution.session?.mode ?? 'new';
+  if (sessionMode === 'continue') {
+    args.push('--continue');
+  } else if (sessionMode === 'resume') {
+    const id = execution.session?.id;
+    if (!id) throw new Error('claude-code resume mode requires session.id');
+    args.push('--resume', id);
+  }
+  args.push('-p', execution.prompt);
+  return {
+    command: execution.claudeBinary ?? DEFAULT_CLAUDE_BINARY,
+    args,
+    cwd: execution.cwd,
+    env: { ...process.env, ...(execution.env ?? {}) } as Record<string, string>,
+  };
+}
 
 export interface ScheduleRunResultBlock {
   key: string;
@@ -34,9 +73,8 @@ export async function runScheduleBlock(spec: ScheduleSpecBlock): Promise<Schedul
   if (!spec.enabled) {
     throw new Error(`Schedule ${spec.key} is disabled`);
   }
-  if (spec.execution.kind !== 'shell') {
-    throw new Error(`Unsupported execution kind: ${spec.execution.kind}`);
-  }
+
+  const resolved = resolveSpawnBlock(spec.execution);
 
   const startedAt = new Date();
   const dir = getTranscriptDirBlock(spec.key);
@@ -47,9 +85,10 @@ export async function runScheduleBlock(spec: ScheduleSpecBlock): Promise<Schedul
   const header =
     `# schedule: ${spec.key}\n` +
     `# label: ${spec.label}\n` +
+    `# kind: ${spec.execution.kind}\n` +
     `# started: ${startedAt.toISOString()}\n` +
-    `# command: ${spec.execution.command} ${spec.execution.args.join(' ')}\n` +
-    `# cwd: ${spec.execution.cwd ?? process.cwd()}\n` +
+    `# command: ${resolved.command} ${resolved.args.join(' ')}\n` +
+    `# cwd: ${resolved.cwd ?? process.cwd()}\n` +
     `---\n`;
   transcript.write(header);
 
@@ -68,9 +107,9 @@ export async function runScheduleBlock(spec: ScheduleSpecBlock): Promise<Schedul
     bytesWritten += chunk.length + prefix.length;
   };
 
-  const child = spawn(spec.execution.command, spec.execution.args, {
-    cwd: spec.execution.cwd ?? undefined,
-    env: { ...process.env, ...(spec.execution.env ?? {}) },
+  const child = spawn(resolved.command, resolved.args, {
+    cwd: resolved.cwd,
+    env: resolved.env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 

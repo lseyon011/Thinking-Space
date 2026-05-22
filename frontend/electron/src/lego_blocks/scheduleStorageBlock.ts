@@ -2,6 +2,8 @@ import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
+export type ScheduleSessionModeBlock = 'new' | 'continue' | 'resume';
+
 export type ScheduleExecutionBlock =
   | {
       kind: 'shell';
@@ -9,6 +11,19 @@ export type ScheduleExecutionBlock =
       args: string[];
       env?: Record<string, string>;
       cwd?: string | null;
+    }
+  | {
+      kind: 'claude-code';
+      prompt: string;
+      cwd: string;
+      session?: {
+        mode: ScheduleSessionModeBlock;
+        id?: string | null;
+      };
+      model?: string | null;
+      skipPermissions?: boolean;
+      claudeBinary?: string | null;
+      env?: Record<string, string>;
     };
 
 export type ScheduleTriggerBlock =
@@ -52,10 +67,23 @@ function getScheduleFilePathBlock(key: string): string {
 function isValidExecution(value: unknown): value is ScheduleExecutionBlock {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
-  if (v.kind !== 'shell') return false;
-  if (typeof v.command !== 'string' || !v.command.trim()) return false;
-  if (!Array.isArray(v.args) || !v.args.every((a) => typeof a === 'string')) return false;
-  return true;
+  if (v.kind === 'shell') {
+    if (typeof v.command !== 'string' || !v.command.trim()) return false;
+    if (!Array.isArray(v.args) || !v.args.every((a) => typeof a === 'string')) return false;
+    return true;
+  }
+  if (v.kind === 'claude-code') {
+    if (typeof v.prompt !== 'string' || !v.prompt.trim()) return false;
+    if (typeof v.cwd !== 'string' || !v.cwd.trim()) return false;
+    if (v.session !== undefined) {
+      if (!v.session || typeof v.session !== 'object') return false;
+      const s = v.session as Record<string, unknown>;
+      if (s.mode !== 'new' && s.mode !== 'continue' && s.mode !== 'resume') return false;
+      if (s.mode === 'resume' && (typeof s.id !== 'string' || !s.id.trim())) return false;
+    }
+    return true;
+  }
+  return false;
 }
 
 function isValidSchedule(value: unknown): value is ScheduleTriggerBlock {

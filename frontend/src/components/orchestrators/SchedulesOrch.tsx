@@ -1,4 +1,5 @@
 import SubNavTabsBlock from '@/components/lego_blocks/units/ui/SubNavTabsBlock'
+import ScheduleListBlock from '@/components/lego_blocks/integrations/ScheduleListBlock'
 
 interface SchedulesOrchProps {
   active?: boolean
@@ -20,8 +21,7 @@ export default function SchedulesOrch(_props: SchedulesOrchProps) {
           />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3 text-xs text-muted-foreground">
-          {/* Future: list of schedules will live here */}
-          No schedules yet.
+          {/* Future: schedule filter / category nav */}
         </div>
       </aside>
 
@@ -40,9 +40,7 @@ export default function SchedulesOrch(_props: SchedulesOrchProps) {
             so the app needs to be running at the scheduled time for jobs to fire. Quitting the app pauses your schedules.
           </div>
 
-          <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
-            Schedule management UI coming soon. Backend (Electron HTTP + launchd integration) is wired up — UI is layer 3.
-          </div>
+          <ScheduleListBlock />
         </div>
       </div>
     </div>
