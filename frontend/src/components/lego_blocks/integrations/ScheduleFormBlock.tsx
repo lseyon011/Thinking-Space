@@ -60,7 +60,7 @@ function defaultState(): FormState {
     triggerKind: 'calendar',
     calendarEntries: [{ hour: 9, minute: 0 }],
     intervalSeconds: 3600,
-    executionKind: 'shell',
+    executionKind: 'claude-code',
     shellCommand: '',
     shellArgsText: '',
     shellCwd: '',
