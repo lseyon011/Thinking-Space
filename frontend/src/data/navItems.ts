@@ -22,7 +22,7 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/thinking-space', label: 'Thinking Space', icon: Compass },
   { to: '/new-thought', label: 'New Note', icon: PlusSquare },
   { to: '/git-insights', label: 'Insights', icon: GitBranch },
-  { to: '/chat', label: 'AI', icon: MessageSquare },
+  { to: '/ai/chat', label: 'AI', icon: MessageSquare, activePaths: ['/ai/schedules'] },
   { to: '/password-manager', label: 'Passwords', icon: KeyRound },
   { to: '/thinking-organizer', label: 'Thinking Organizer', icon: FolderKanban, activePaths: ['/file-organizer'] },
 ]

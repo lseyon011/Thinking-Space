@@ -33,6 +33,8 @@ import NewThought from './pages/NewThought'
 import ThinkingSpace from './pages/ThinkingSpace'
 import ThinkingOrganizer from './pages/ThinkingOrganizer'
 import Chat from './pages/Chat'
+import Schedules from './pages/Schedules'
+import SubNavTabsBlock from './components/lego_blocks/units/ui/SubNavTabsBlock'
 import Web from './pages/Web'
 import Settings from './pages/Settings'
 
@@ -250,7 +252,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/thinking-space', label: 'Thinking Space', icon: Compass },
   { to: '/new-thought', label: 'New Note', icon: PlusSquare },
   { to: '/git-insights', label: 'Insights', icon: GitBranch },
-  { to: '/chat', label: 'AI', icon: AINavIcon },
+  { to: '/ai/chat', label: 'AI', icon: AINavIcon },
   { to: '/password-manager', label: 'Passwords', icon: KeyRound },
   { to: '/web', label: 'Web', icon: WebNavIcon },
   { to: '/webull', label: 'Webull', icon: WebullNavIcon },
@@ -337,7 +339,12 @@ function createWorkspaceTabId(): string {
 function normalizeTabRoute(route: string): string {
   const trimmed = route.trim()
   if (!trimmed) return '/'
-  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  const withSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  // Migrate legacy /chat tabs to /ai/chat (preserves query/hash).
+  if (withSlash === '/chat' || withSlash.startsWith('/chat?') || withSlash.startsWith('/chat#')) {
+    return `/ai/chat${withSlash.slice('/chat'.length)}`
+  }
+  return withSlash
 }
 
 function parseTabRoute(route: string): { pathname: string; search: URLSearchParams } {
@@ -486,7 +493,7 @@ function getTabLabel(route: string, labelByPath: Map<string, string>, chatLabel?
     if (tab) return `Organizer · ${toTitleCase(tab)}`
   }
 
-  if (pathname === '/chat' && chatLabel) return chatLabel
+  if (pathname === '/ai/chat' && chatLabel) return chatLabel
 
   if (pathname === '/web') {
     const siteId = search.get('site')
@@ -505,7 +512,7 @@ function getTabLabel(route: string, labelByPath: Map<string, string>, chatLabel?
 
 function resolvePreferredSameRouteTabLabel(pathname: string, cachedLabel: string | undefined, derivedLabel: string): string {
   const trimmedCachedLabel = cachedLabel?.trim()
-  const genericLabel = pathname === '/chat'
+  const genericLabel = pathname === '/ai/chat'
     ? 'AI'
     : (pathname === '/web' ? 'Web' : null)
 
@@ -703,7 +710,7 @@ function App() {
   const [persistentChatTabIds, setPersistentChatTabIds] = useState<string[]>(
     () => applyPersistentSurfaceBudget(
       workspaceTabs
-        .filter((tab) => parseTabRoute(tab.route).pathname === '/chat')
+        .filter((tab) => parseTabRoute(tab.route).pathname === '/ai/chat')
         .map((tab) => tab.id),
       MAX_HIDDEN_PERSISTENT_CHAT_SURFACES,
     ),
@@ -766,7 +773,7 @@ function App() {
 
   const showGoogleWorkspaceChromeControls = location.pathname === '/thinking-space'
     && thinkingSpaceGoogleWorkspaceChromeState.enabled
-  const showChatSidebarChromeControl = location.pathname === '/chat'
+  const showChatSidebarChromeControl = location.pathname === '/ai/chat'
     && chatSidebarChromeState.enabled
   const showChatHeaderToggle = showChatSidebarChromeControl && chatSidebarChromeState.showHeaderToggle
   const showWebSidebarChromeControl = location.pathname === '/web' && webSidebarChromeState.enabled
@@ -795,7 +802,7 @@ function App() {
     && layout.surface !== 'capacitor-android'
   const showThinkingSpaceHeaderToggle = showGoogleWorkspaceChromeControls
     && thinkingSpaceGoogleWorkspaceChromeState.showHeaderToggle
-  const isChatRoute = location.pathname === '/chat'
+  const isChatRoute = location.pathname === '/ai/chat'
   const isWebRoute = location.pathname === '/web'
   const isOrganizerRoute = location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer'
   const isNewThoughtRoute = location.pathname === '/new-thought'
@@ -954,7 +961,7 @@ function App() {
       case '/thinking-space':
       case '/new-thought':
       case '/git-insights':
-      case '/chat':
+      case '/ai/chat':
       case '/web':
       case '/webull':
       case '/personal-tools':
@@ -1803,7 +1810,7 @@ function App() {
       case '/thinking-space':
       case '/new-thought':
       case '/git-insights':
-      case '/chat':
+      case '/ai/chat':
       case '/web':
       case '/webull':
       case '/thinking-organizer':
@@ -2410,7 +2417,7 @@ function App() {
       }
       const pathname = parseTabRoute(normalizedCurrentRoute).pathname
       const prevPathname = parseTabRoute(prev[index].route).pathname
-      const nextLabel = (pathname === '/chat' || pathname === '/web') && prevPathname === pathname
+      const nextLabel = (pathname === '/ai/chat' || pathname === '/web') && prevPathname === pathname
         ? resolvePreferredSameRouteTabLabel(pathname, prev[index].label, derivedActiveWorkspaceTabLabel)
         : derivedActiveWorkspaceTabLabel
       if (prev[index].route === normalizedCurrentRoute && prev[index].label === nextLabel) return prev
@@ -2509,7 +2516,7 @@ function App() {
         showHeaderToggle: Boolean(detail.showHeaderToggle),
         label: nextLabel,
       })
-      if (parseTabRoute(currentRouteRef.current).pathname !== '/chat') return
+      if (parseTabRoute(currentRouteRef.current).pathname !== '/ai/chat') return
       const tabId = activeWorkspaceTabIdRef.current
       if (!tabId) return
       setWorkspaceTabs((prev) => {
@@ -3205,6 +3212,19 @@ function App() {
             style={mainStageStyle}
           >
             <div className="relative h-full min-h-0">
+              {location.pathname.startsWith('/ai/') && (
+                <div className="pointer-events-none absolute inset-x-0 top-2 z-30 flex justify-center">
+                  <div className="pointer-events-auto">
+                    <SubNavTabsBlock
+                      ariaLabel="AI section"
+                      tabs={[
+                        { to: '/ai/chat', label: 'Chat' },
+                        { to: '/ai/schedules', label: 'Schedules' },
+                      ]}
+                    />
+                  </div>
+                </div>
+              )}
               {renderedPersistentChatTabIds.map((tabId) => {
                 const chatTabMounted = mountedTabIdSet.has(tabId)
                 if (!chatTabMounted) return null
@@ -3314,6 +3334,9 @@ function App() {
                 <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>}>
                 <Routes>
                   <Route path="/" element={<Home />} />
+                  <Route path="/ai" element={<Navigate to="/ai/chat" replace />} />
+                  <Route path="/ai/schedules" element={<Schedules />} />
+                  <Route path="/chat" element={<Navigate to="/ai/chat" replace />} />
                   <Route path="/thinking-space" element={<ThinkingSpace />} />
                   <Route path="/excalidraw-plus" element={<ExcalidrawPlus />}>
                     <Route index element={<Navigate to="plugin" replace />} />
