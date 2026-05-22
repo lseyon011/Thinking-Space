@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ensureTikzJaxLoadedBlock } from '@/services/lego_blocks/integrations/tikzJaxLoaderBlock'
+import { requestTikzJaxProcessBlock } from '@/services/lego_blocks/integrations/tikzJaxLoaderBlock'
 
 interface TikzDiagramBlockProps {
   source: string
@@ -13,6 +13,30 @@ function wrapTikzSource(source: string): string {
   return `\\begin{tikzpicture}\n${trimmed}\n\\end{tikzpicture}`
 }
 
+function waitForTikzRenderBlock(container: HTMLDivElement, timeoutMs = 8000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (container.querySelector('svg')) {
+      resolve()
+      return
+    }
+
+    const deadline = window.setTimeout(() => {
+      observer.disconnect()
+      reject(new Error('Timed out waiting for TikZ SVG output'))
+    }, timeoutMs)
+
+    const observer = new MutationObserver(() => {
+      if (container.querySelector('svg')) {
+        window.clearTimeout(deadline)
+        observer.disconnect()
+        resolve()
+      }
+    })
+
+    observer.observe(container, { childList: true, subtree: true })
+  })
+}
+
 export default function TikzDiagramBlock({ source, className }: TikzDiagramBlockProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
@@ -23,18 +47,24 @@ export default function TikzDiagramBlock({ source, className }: TikzDiagramBlock
     setStatus('loading')
     setErrorMessage(null)
 
-    ensureTikzJaxLoadedBlock()
+    const container = containerRef.current
+    if (!container) return
+
+    container.innerHTML = ''
+    const script = document.createElement('script')
+    script.type = 'text/tikz'
+    script.setAttribute('data-show-console', 'true')
+    script.text = wrapTikzSource(source)
+    container.appendChild(script)
+
+    requestTikzJaxProcessBlock()
       .then(() => {
-        if (cancelled) return
-        const container = containerRef.current
-        if (!container) return
-        container.innerHTML = ''
-        const script = document.createElement('script')
-        script.type = 'text/tikz'
-        script.setAttribute('data-show-console', 'true')
-        script.text = wrapTikzSource(source)
-        container.appendChild(script)
-        setStatus('ready')
+        return waitForTikzRenderBlock(container)
+      })
+      .then(() => {
+        if (!cancelled) {
+          setStatus('ready')
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return

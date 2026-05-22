@@ -553,6 +553,10 @@ function MarkdownTextDocumentRuntimeBlock({
     ),
     [editorSettings.preserveNewlinesInViewMode, viewMarkdown],
   )
+  const shouldRelaxWhitespacePreservation = useMemo(
+    () => /```tikz\b|(^|[^\\])\$\$|(^|[^\\])\$[^$\n]+\$/m.test(renderedViewMarkdown),
+    [renderedViewMarkdown],
+  )
 
   type MarkdownAnchorProps = ComponentPropsWithoutRef<'a'> & { node?: unknown }
   type MarkdownHeadingProps = ComponentPropsWithoutRef<'h1'> & { node?: unknown }
@@ -1475,8 +1479,8 @@ function MarkdownTextDocumentRuntimeBlock({
                 <div
                   className={cn(
                     'prose',
-                    editorSettings.preserveSpacesInViewMode && 'ltm-markdown-preserve-spaces',
-                    editorSettings.preserveNewlinesInViewMode && 'ltm-markdown-preserve-newlines',
+                    editorSettings.preserveSpacesInViewMode && !shouldRelaxWhitespacePreservation && 'ltm-markdown-preserve-spaces',
+                    editorSettings.preserveNewlinesInViewMode && !shouldRelaxWhitespacePreservation && 'ltm-markdown-preserve-newlines',
                   )}
                   data-markdown-nav-root
                 >

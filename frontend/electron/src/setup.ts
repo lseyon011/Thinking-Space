@@ -933,8 +933,8 @@ export function setupContentSecurityPolicy(customScheme: string): void {
     'https://drive.google.com',
   ].join(' ');
   const tikzJaxSrc = 'https://tikzjax.com'
-  const devCsp = `default-src ${customScheme}://* 'unsafe-inline' devtools://* 'unsafe-eval' data: ${tikzJaxSrc}; img-src ${customScheme}://* data: blob: https:; media-src ${customScheme}://* data: blob: https:; connect-src ${customScheme}://* ${aiConnectSrc} ${tikzJaxSrc} devtools://*; frame-src ${frameSrc}`
-  const prodCsp = `default-src ${customScheme}://* 'unsafe-inline' data: ${tikzJaxSrc}; img-src ${customScheme}://* data: blob: https:; media-src ${customScheme}://* data: blob: https:; connect-src ${customScheme}://* ${aiConnectSrc} ${tikzJaxSrc}; frame-src ${frameSrc}`
+  const devCsp = `default-src ${customScheme}://* data: ${tikzJaxSrc}; script-src ${customScheme}://* 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' devtools://* ${tikzJaxSrc}; style-src ${customScheme}://* 'unsafe-inline' ${tikzJaxSrc}; img-src ${customScheme}://* data: blob: https:; media-src ${customScheme}://* data: blob: https:; connect-src ${customScheme}://* ${aiConnectSrc} ${tikzJaxSrc} devtools://*; frame-src ${frameSrc}`
+  const prodCsp = `default-src ${customScheme}://* data: ${tikzJaxSrc}; script-src ${customScheme}://* 'unsafe-inline' 'wasm-unsafe-eval' ${tikzJaxSrc}; style-src ${customScheme}://* 'unsafe-inline' ${tikzJaxSrc}; img-src ${customScheme}://* data: blob: https:; media-src ${customScheme}://* data: blob: https:; connect-src ${customScheme}://* ${aiConnectSrc} ${tikzJaxSrc}; frame-src ${frameSrc}`
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     if (!details.url.startsWith(`${customScheme}://`)) {
       callback({ responseHeaders: details.responseHeaders });

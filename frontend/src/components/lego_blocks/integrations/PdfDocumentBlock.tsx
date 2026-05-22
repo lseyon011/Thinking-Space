@@ -27,6 +27,10 @@ const MIN_SCALE_BLOCK = 0.6
 const MAX_SCALE_BLOCK = 2.5
 const TRACKPAD_ZOOM_SENSITIVITY_BLOCK = 0.0015
 const TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK = 120
+const PDFJS_DOCUMENT_OPTIONS_BLOCK = {
+  cMapUrl: '/pdfjs/cmaps/',
+  cMapPacked: true,
+} as const
 
 function isElectronRuntimeBlock(): boolean {
   if (typeof window === 'undefined') return false
@@ -547,6 +551,7 @@ export default function PdfDocumentBlock({
             <Document
               key={`${path}:${renderNonce}`}
               file={documentFile}
+              options={PDFJS_DOCUMENT_OPTIONS_BLOCK}
               onLoadSuccess={(doc) => {
                 const measurementToken = documentMeasurementTokenRef.current
                 setNumPages(doc.numPages)

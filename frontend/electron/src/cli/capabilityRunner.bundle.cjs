@@ -211,8 +211,8 @@ var require_index_cjs = __commonJS({
       }
       addListener(eventName, listenerFunc) {
         let firstListener = false;
-        const listeners = this.listeners[eventName];
-        if (!listeners) {
+        const listeners2 = this.listeners[eventName];
+        if (!listeners2) {
           this.listeners[eventName] = [];
           firstListener = true;
         }
@@ -236,8 +236,8 @@ var require_index_cjs = __commonJS({
         this.windowListeners = {};
       }
       notifyListeners(eventName, data, retainUntilConsumed) {
-        const listeners = this.listeners[eventName];
-        if (!listeners) {
+        const listeners2 = this.listeners[eventName];
+        if (!listeners2) {
           if (retainUntilConsumed) {
             let args = this.retainedEventArguments[eventName];
             if (!args) {
@@ -248,7 +248,7 @@ var require_index_cjs = __commonJS({
           }
           return;
         }
-        listeners.forEach((listener) => listener(data));
+        listeners2.forEach((listener) => listener(data));
       }
       hasListeners(eventName) {
         var _a;
@@ -271,11 +271,11 @@ var require_index_cjs = __commonJS({
         return new Capacitor2.Exception(msg, exports2.ExceptionCode.Unavailable);
       }
       async removeListener(eventName, listenerFunc) {
-        const listeners = this.listeners[eventName];
-        if (!listeners) {
+        const listeners2 = this.listeners[eventName];
+        if (!listeners2) {
           return;
         }
-        const index = listeners.indexOf(listenerFunc);
+        const index = listeners2.indexOf(listenerFunc);
         this.listeners[eventName].splice(index, 1);
         if (!this.listeners[eventName].length) {
           this.removeWindowListener(this.windowListeners[eventName]);
@@ -2019,10 +2019,10 @@ var require_dexie = __commonJS({
           endMicroTickScope();
       }
       function propagateAllListeners(promise) {
-        var listeners = promise._listeners;
+        var listeners2 = promise._listeners;
         promise._listeners = [];
-        for (var i = 0, len = listeners.length; i < len; ++i) {
-          propagateToListener(promise, listeners[i]);
+        for (var i = 0, len = listeners2.length; i < len; ++i) {
+          propagateToListener(promise, listeners2[i]);
         }
         var psd = promise._PSD;
         --psd.ref || psd.finalize();
@@ -14068,6 +14068,22 @@ function notifyFileChanged(filePath) {
   });
 }
 
+// src/services/lego_blocks/units/debugLogBlock.ts
+var DEBUG_LOG_EVENT = "ltm:debug:log-entry";
+function makeId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+function dispatchDebugLogBlock(entry) {
+  const full = { id: makeId(), timestamp: Date.now(), ...entry };
+  window.dispatchEvent(new CustomEvent(DEBUG_LOG_EVENT, { detail: full }));
+}
+function logWarn(message, details, source) {
+  dispatchDebugLogBlock({ level: "warn", message, details, source });
+}
+function logDebug(message, details, source) {
+  dispatchDebugLogBlock({ level: "debug", message, details, source });
+}
+
 // src/services/lego_blocks/units/byteEncodingBlock.ts
 function utf8ToBytesBlock(input) {
   return new TextEncoder().encode(input);
@@ -14109,6 +14125,51 @@ function base64ToBytesBlock(base64) {
 }
 
 // src/services/lego_blocks/integrations/fsBlock.ts
+function normalizeVaultPathForValidationBlock(path3) {
+  return String(path3 || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").trim();
+}
+var warnedInvalidVaultPathKeysBlock = /* @__PURE__ */ new Set();
+function invalidVaultPathReasonBlock(path3, options) {
+  const normalized = normalizeVaultPathForValidationBlock(path3);
+  if (!normalized) return options?.allowEmpty ? null : "empty path";
+  if (normalized === ".md") return `invalid normalized path "${normalized}"`;
+  const segments = normalized.split("/").filter(Boolean);
+  if (segments.some((segment) => segment.trim() === "" || segment.trim() === ".")) return "contains invalid empty path segment";
+  return null;
+}
+function warnRejectedVaultPathBlock(op, path3, reason) {
+  const key = `${op}::${path3}::${reason}`;
+  if (warnedInvalidVaultPathKeysBlock.has(key)) return;
+  warnedInvalidVaultPathKeysBlock.add(key);
+  logWarn(
+    `Rejected invalid vault path before filesystem call`,
+    `op=${op} path=${path3} reason=${reason}`,
+    "fsBlock"
+  );
+}
+function assertValidVaultPathBlock(op, path3, options) {
+  const reason = invalidVaultPathReasonBlock(path3, options);
+  if (!reason) return path3;
+  warnRejectedVaultPathBlock(op, path3, reason);
+  throw new Error(`Rejected invalid vault path for ${op}: ${path3} (${reason})`);
+}
+function isValidVaultPathBlock(path3, options) {
+  const reason = invalidVaultPathReasonBlock(path3, options);
+  if (!reason) return true;
+  warnRejectedVaultPathBlock("exists", path3, reason);
+  return false;
+}
+function vaultPathOrNullBlock(op, path3, options) {
+  const reason = invalidVaultPathReasonBlock(path3, options);
+  if (reason) {
+    warnRejectedVaultPathBlock(op, path3, reason);
+    return null;
+  }
+  return path3;
+}
+function encodeFileUriSegmentBlock(segment) {
+  return encodeURIComponent(segment);
+}
 function isAlreadyExistsFilesystemErrorBlock(error) {
   const maybeRecord = typeof error === "object" && error !== null ? error : null;
   const code = typeof maybeRecord?.code === "string" ? maybeRecord.code : "";
@@ -14118,7 +14179,8 @@ function isAlreadyExistsFilesystemErrorBlock(error) {
 }
 var WebVaultFS = class {
   async read(path3) {
-    const res = await fetch(`/api/tools/file-content?path=${encodeURIComponent(path3)}`);
+    const safePath = assertValidVaultPathBlock("read", path3);
+    const res = await fetch(`/api/tools/file-content?path=${encodeURIComponent(safePath)}`);
     if (!res.ok) {
       let detail = "";
       try {
@@ -14133,6 +14195,7 @@ var WebVaultFS = class {
     return data.content;
   }
   async write(path3, data) {
+    assertValidVaultPathBlock("write", path3);
     const res = await fetch("/api/tools/vault/write", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -14142,6 +14205,7 @@ var WebVaultFS = class {
     notifyFileChanged(path3);
   }
   async readBytes(path3) {
+    assertValidVaultPathBlock("readBytes", path3);
     const res = await fetch(`/api/tools/vault/read-bytes?path=${encodeURIComponent(path3)}`);
     if (!res.ok) {
       let detail = "";
@@ -14157,6 +14221,7 @@ var WebVaultFS = class {
     return base64ToBytesBlock(payload.data_base64 || "");
   }
   async writeBytes(path3, data) {
+    assertValidVaultPathBlock("writeBytes", path3);
     const res = await fetch("/api/tools/vault/write-bytes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -14173,6 +14238,7 @@ var WebVaultFS = class {
     await this.write(path3, data);
   }
   async list(path3) {
+    assertValidVaultPathBlock("list", path3, { allowEmpty: true });
     const res = await fetch(`/api/tools/vault/readdir?path=${encodeURIComponent(path3)}`);
     if (!res.ok) throw new Error(`Failed to list directory: ${path3}`);
     const json2 = await res.json();
@@ -14197,6 +14263,7 @@ var WebVaultFS = class {
     }));
   }
   async stat(path3) {
+    assertValidVaultPathBlock("stat", path3);
     const res = await fetch(`/api/tools/vault/stat?path=${encodeURIComponent(path3)}`);
     if (!res.ok) throw new Error(`Failed to stat: ${path3}`);
     const s = await res.json();
@@ -14208,6 +14275,7 @@ var WebVaultFS = class {
     };
   }
   async exists(path3) {
+    if (!isValidVaultPathBlock(path3)) return false;
     try {
       await this.stat(path3);
       return true;
@@ -14216,6 +14284,7 @@ var WebVaultFS = class {
     }
   }
   async mkdir(path3) {
+    assertValidVaultPathBlock("mkdir", path3, { allowEmpty: true });
     const res = await fetch("/api/tools/vault/mkdir", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -14224,6 +14293,7 @@ var WebVaultFS = class {
     if (!res.ok) throw new Error(`Failed to mkdir: ${path3}`);
   }
   async delete(path3) {
+    assertValidVaultPathBlock("delete", path3);
     const res = await fetch("/api/tools/vault/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -14245,50 +14315,60 @@ var ElectronVaultFS = class {
     return window.electronAPI;
   }
   async read(path3) {
-    return this.api.read(this.vaultRoot, path3);
+    const safePath = assertValidVaultPathBlock("read", path3);
+    return this.api.read(this.vaultRoot, safePath);
   }
   async write(path3, data) {
-    await this.api.write(this.vaultRoot, path3, data);
-    notifyFileChanged(path3);
+    const safePath = assertValidVaultPathBlock("write", path3);
+    await this.api.write(this.vaultRoot, safePath, data);
+    notifyFileChanged(safePath);
   }
   async readBytes(path3) {
+    const safePath = assertValidVaultPathBlock("readBytes", path3);
     if (this.api.readBytesBase64) {
-      const base64 = await this.api.readBytesBase64(this.vaultRoot, path3);
+      const base64 = await this.api.readBytesBase64(this.vaultRoot, safePath);
       return base64ToBytesBlock(base64);
     }
-    const text = await this.read(path3);
+    const text = await this.read(safePath);
     return utf8ToBytesBlock(text);
   }
   async writeBytes(path3, data) {
+    const safePath = assertValidVaultPathBlock("writeBytes", path3);
     if (this.api.writeBytesBase64) {
-      await this.api.writeBytesBase64(this.vaultRoot, path3, bytesToBase64Block(data));
-      notifyFileChanged(path3);
+      await this.api.writeBytesBase64(this.vaultRoot, safePath, bytesToBase64Block(data));
+      notifyFileChanged(safePath);
       return;
     }
-    await this.write(path3, bytesToUtf8Block(data));
+    await this.write(safePath, bytesToUtf8Block(data));
   }
   async create(path3, data) {
     if (await this.exists(path3)) throw new Error(`File already exists: ${path3}`);
     await this.write(path3, data);
   }
   async list(path3) {
-    return this.api.list(this.vaultRoot, path3 || ".");
+    const safePath = assertValidVaultPathBlock("list", path3, { allowEmpty: true });
+    return this.api.list(this.vaultRoot, safePath || ".");
   }
   async walkVault(extensions = [".md"]) {
     return this.api.walkVault(this.vaultRoot, extensions);
   }
   async stat(path3) {
-    return this.api.stat(this.vaultRoot, path3);
+    const safePath = assertValidVaultPathBlock("stat", path3);
+    return this.api.stat(this.vaultRoot, safePath);
   }
   async exists(path3) {
-    return this.api.exists(this.vaultRoot, path3);
+    const safePath = vaultPathOrNullBlock("exists", path3);
+    if (safePath === null) return false;
+    return this.api.exists(this.vaultRoot, safePath);
   }
   async mkdir(path3) {
-    return this.api.mkdir(this.vaultRoot, path3);
+    const safePath = assertValidVaultPathBlock("mkdir", path3, { allowEmpty: true });
+    return this.api.mkdir(this.vaultRoot, safePath);
   }
   async delete(path3) {
+    const safePath = assertValidVaultPathBlock("delete", path3);
     if (this.api.deletePath) {
-      await this.api.deletePath(this.vaultRoot, path3, false);
+      await this.api.deletePath(this.vaultRoot, safePath, false);
     }
   }
   async process(path3, fn) {
@@ -14305,7 +14385,10 @@ var CapacitorVaultFS = class {
   }
   resolve(path3) {
     const base = path3 ? `${this.vaultRoot}/${path3}` : this.vaultRoot;
-    if (this.isAbsolute) return `file://${base}`;
+    if (this.isAbsolute) {
+      const encoded = base.split("/").map(encodeFileUriSegmentBlock).join("/");
+      return `file://${encoded}`;
+    }
     return base;
   }
   async fsOpts(path3) {
@@ -14316,20 +14399,23 @@ var CapacitorVaultFS = class {
     return { path: this.resolve(path3), directory: Directory.Documents };
   }
   async read(path3) {
+    const safePath = assertValidVaultPathBlock("read", path3);
     const { Filesystem, Encoding } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const opts = await this.fsOpts(path3);
+    const opts = await this.fsOpts(safePath);
     const result = await Filesystem.readFile({ ...opts, encoding: Encoding.UTF8 });
     return result.data;
   }
   async write(path3, data) {
+    const safePath = assertValidVaultPathBlock("write", path3);
     const { Filesystem, Encoding } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const opts = await this.fsOpts(path3);
+    const opts = await this.fsOpts(safePath);
     await Filesystem.writeFile({ ...opts, data, encoding: Encoding.UTF8, recursive: true });
-    notifyFileChanged(path3);
+    notifyFileChanged(safePath);
   }
   async readBytes(path3) {
+    const safePath = assertValidVaultPathBlock("readBytes", path3);
     const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const opts = await this.fsOpts(path3);
+    const opts = await this.fsOpts(safePath);
     const result = await Filesystem.readFile(opts);
     if (typeof result.data === "string") {
       return base64ToBytesBlock(result.data);
@@ -14338,24 +14424,26 @@ var CapacitorVaultFS = class {
     return new Uint8Array(arrayBuffer);
   }
   async writeBytes(path3, data) {
+    const safePath = assertValidVaultPathBlock("writeBytes", path3);
     const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const opts = await this.fsOpts(path3);
+    const opts = await this.fsOpts(safePath);
     await Filesystem.writeFile({
       ...opts,
       data: bytesToBase64Block(data),
       recursive: true
     });
-    notifyFileChanged(path3);
+    notifyFileChanged(safePath);
   }
   async create(path3, data) {
     if (await this.exists(path3)) throw new Error(`File already exists: ${path3}`);
     await this.write(path3, data);
   }
   async list(path3) {
+    const safePath = assertValidVaultPathBlock("list", path3, { allowEmpty: true });
     const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const exists = await this.exists(path3).catch(() => false);
+    const exists = await this.exists(safePath).catch(() => false);
     if (!exists) return { files: [], folders: [] };
-    const opts = await this.fsOpts(path3);
+    const opts = await this.fsOpts(safePath);
     const result = await Filesystem.readdir(opts);
     const files = [];
     const folders = [];
@@ -14381,7 +14469,12 @@ var CapacitorVaultFS = class {
         const itemUri = item.uri;
         if (item.type === "directory") {
           const childDir = `${dirPath}/${item.name}`;
-          subdirPromises.push(walk(childDir, itemUri ?? null, relPath));
+          subdirPromises.push(
+            walk(childDir, itemUri ?? null, relPath).catch((err) => {
+              const message = err instanceof Error ? err.message : String(err);
+              logDebug(`Skipped iCloud-stale subdirectory during walk: ${relPath}`, message, "fsBlock");
+            })
+          );
         } else {
           const ext = "." + item.name.split(".").pop()?.toLowerCase();
           if (!extSet.has(ext || "")) continue;
@@ -14395,7 +14488,8 @@ var CapacitorVaultFS = class {
                 ctime: (st.ctime || st.mtime || 0) / 1e3
               });
             }).catch((err) => {
-              console.warn(`[CapacitorVaultFS] Skipping file that failed stat: ${relPath}`, err);
+              const message = err instanceof Error ? err.message : String(err);
+              logDebug(`Skipped iCloud-stale file during walk stat: ${relPath}`, message, "fsBlock");
             })
           );
         }
@@ -14406,8 +14500,9 @@ var CapacitorVaultFS = class {
     return entries;
   }
   async stat(path3) {
+    const safePath = assertValidVaultPathBlock("stat", path3);
     const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const opts = await this.fsOpts(path3);
+    const opts = await this.fsOpts(safePath);
     const st = await Filesystem.stat(opts);
     return {
       size: st.size,
@@ -14416,8 +14511,10 @@ var CapacitorVaultFS = class {
     };
   }
   async exists(path3) {
-    if (!path3) return true;
-    const normalized = path3.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+    const safePath = vaultPathOrNullBlock("exists", path3, { allowEmpty: true });
+    if (safePath === null) return false;
+    if (!safePath) return true;
+    const normalized = safePath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
     if (!normalized) return true;
     const slashIndex = normalized.lastIndexOf("/");
     const parent = slashIndex >= 0 ? normalized.slice(0, slashIndex) : "";
@@ -14433,9 +14530,10 @@ var CapacitorVaultFS = class {
     }
   }
   async mkdir(path3) {
+    const safePath = assertValidVaultPathBlock("mkdir", path3, { allowEmpty: true });
     const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const opts = await this.fsOpts(path3);
-    const exists = await this.exists(path3).catch(() => false);
+    const opts = await this.fsOpts(safePath);
+    const exists = await this.exists(safePath).catch(() => false);
     if (exists) return;
     try {
       await Filesystem.mkdir({ ...opts, recursive: true });
@@ -14445,8 +14543,9 @@ var CapacitorVaultFS = class {
     }
   }
   async delete(path3) {
+    const safePath = assertValidVaultPathBlock("delete", path3);
     const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const opts = await this.fsOpts(path3);
+    const opts = await this.fsOpts(safePath);
     await Filesystem.deleteFile(opts);
   }
   async process(path3, fn) {
@@ -14517,6 +14616,114 @@ function normalizeCapacitorStoredVaultRoot(storedRoot) {
     vaultRoot: resolved,
     normalizedStoredRoot: null
   };
+}
+
+// src/services/lego_blocks/units/wikiLinksBlock.ts
+var WIKI_LINKS_FIELD_BLOCK = "wiki_links";
+var LEGACY_SOURCE_LINKS_FIELD_BLOCK = "source_links";
+var ARRAY_LIKE_FRONTMATTER_FIELDS_BLOCK = /* @__PURE__ */ new Set([
+  "derived_from",
+  "source_files",
+  "related_concepts",
+  "related_entities",
+  "related_notes",
+  "coverage",
+  "open_questions",
+  "answer_paths",
+  "output_paths",
+  WIKI_LINKS_FIELD_BLOCK,
+  LEGACY_SOURCE_LINKS_FIELD_BLOCK
+]);
+function toWikiLinkFromVaultPathBlock(filePath) {
+  const normalized = String(filePath || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").trim();
+  if (!normalized) return void 0;
+  const withoutMarkdownExt = normalized.endsWith(".md") ? normalized.slice(0, -3) : normalized;
+  if (!withoutMarkdownExt) return void 0;
+  return `[[${withoutMarkdownExt}]]`;
+}
+function normalizeWikiLinkOrPathBlock(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return void 0;
+  const wikilinkMatch = /^\[\[([\s\S]+)\]\]$/.exec(trimmed);
+  if (wikilinkMatch) {
+    const inner = wikilinkMatch[1]?.trim() ?? "";
+    if (!inner) return void 0;
+    return `[[${inner}]]`;
+  }
+  return toWikiLinkFromVaultPathBlock(trimmed);
+}
+function uniqueStringsBlock(values) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+function normalizeStringArrayBlock(value) {
+  if (!Array.isArray(value)) return [];
+  return uniqueStringsBlock(value.map((item) => String(item)));
+}
+function normalizeFrontmatterArrayLikeFieldsBlock(frontmatter) {
+  const next = { ...frontmatter };
+  for (const key of ARRAY_LIKE_FRONTMATTER_FIELDS_BLOCK) {
+    const normalized = normalizeArrayLikeFieldValueBlock(next[key]);
+    if (normalized !== void 0) {
+      next[key] = normalized;
+    }
+  }
+  return next;
+}
+function resolveGeneratedWikiLinksForFrontmatterBlock(frontmatter, options) {
+  const generated = [];
+  const parentLink = options?.parentFilePath ? toWikiLinkFromVaultPathBlock(options.parentFilePath) : void 0;
+  if (parentLink) generated.push(parentLink);
+  const derivedFrom = normalizeStringArrayBlock(frontmatter.derived_from);
+  for (const path3 of derivedFrom) {
+    const link = normalizeWikiLinkOrPathBlock(path3);
+    if (link) generated.push(link);
+  }
+  const sourceFiles = normalizeStringArrayBlock(frontmatter.source_files);
+  for (const path3 of sourceFiles) {
+    const link = normalizeWikiLinkOrPathBlock(path3);
+    if (link) generated.push(link);
+  }
+  return uniqueStringsBlock(generated);
+}
+function mergeWikiLinksIntoFrontmatterBlock(frontmatter, options) {
+  const next = { ...frontmatter };
+  const existingWikiLinks = normalizeStringArrayBlock(next[WIKI_LINKS_FIELD_BLOCK]);
+  const legacySourceLinks = normalizeStringArrayBlock(next[LEGACY_SOURCE_LINKS_FIELD_BLOCK]);
+  const removeLinks = new Set(uniqueStringsBlock(options.removeLinks ?? []));
+  const preservedExisting = existingWikiLinks.filter((link) => !removeLinks.has(link));
+  const mergedWikiLinks = uniqueStringsBlock([
+    ...preservedExisting,
+    ...legacySourceLinks,
+    ...options.generatedLinks
+  ]);
+  if (mergedWikiLinks.length > 0) next[WIKI_LINKS_FIELD_BLOCK] = mergedWikiLinks;
+  else delete next[WIKI_LINKS_FIELD_BLOCK];
+  const hadLegacySourceLinks = Object.prototype.hasOwnProperty.call(next, LEGACY_SOURCE_LINKS_FIELD_BLOCK);
+  delete next[LEGACY_SOURCE_LINKS_FIELD_BLOCK];
+  return {
+    frontmatter: next,
+    changed: hadLegacySourceLinks || !areStringArraysEqualBlock(existingWikiLinks, mergedWikiLinks)
+  };
+}
+function areStringArraysEqualBlock(left, right) {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+function normalizeArrayLikeFieldValueBlock(value) {
+  if (Array.isArray(value)) return uniqueStringsBlock(value.map((item) => String(item)));
+  if (typeof value !== "string") return void 0;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return void 0;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!Array.isArray(parsed)) return void 0;
+    return uniqueStringsBlock(parsed.map((item) => String(item)));
+  } catch {
+    return void 0;
+  }
 }
 
 // src/services/lego_blocks/integrations/organizerBodyBlock.ts
@@ -14967,6 +15174,28 @@ var TYPE_FOLDERS = {
 function getProjectStoragePath(projectRoot, nodeType) {
   const root = projectRoot.replace(/\/+$/, "");
   return `${root}/${THINKING_ORGANIZER_DIR}/${TYPE_FOLDERS[nodeType]}`;
+}
+
+// src/services/lego_blocks/integrations/capabilityFeatureFlagsBlock.ts
+var DEFAULT_FLAGS = {
+  agent_capabilities_enabled: false,
+  fastapi_capability_adapter_enabled: false,
+  extension_host_enabled: false,
+  extension_builder_enabled: false,
+  yaml_fields_auto_heal_enabled: false
+};
+function getCapabilityFeatureFlags() {
+  const stored = getJsonStorageItem(
+    STORAGE_KEYS.capabilityFeatureFlags,
+    DEFAULT_FLAGS
+  );
+  return {
+    ...DEFAULT_FLAGS,
+    ...stored,
+    yaml_fields_auto_heal_enabled: Boolean(
+      stored.yaml_fields_auto_heal_enabled ?? stored.wiki_links_auto_heal_enabled ?? DEFAULT_FLAGS.yaml_fields_auto_heal_enabled
+    )
+  };
 }
 
 // src/services/lego_blocks/integrations/obsidianWikilinkBlock.ts
@@ -15432,6 +15661,49 @@ function extractLinksFromContentBlock(content, filePath, candidatePaths) {
   return wikilinks.concat(markdownLinks, yamlLinks);
 }
 
+// src/services/lego_blocks/units/backgroundActivityBlock.ts
+var activities = /* @__PURE__ */ new Map();
+var listeners = /* @__PURE__ */ new Set();
+var counter = 0;
+function snapshot() {
+  return Array.from(activities.values()).sort((a, b) => a.startedAt - b.startedAt);
+}
+function emit() {
+  const list = snapshot();
+  listeners.forEach((l) => {
+    try {
+      l(list);
+    } catch {
+    }
+  });
+}
+function startActivity(input) {
+  const id = input.id ?? `act-${++counter}-${Date.now()}`;
+  const activity = {
+    id,
+    kind: input.kind,
+    label: input.label,
+    detail: input.detail,
+    total: input.total,
+    completed: input.total !== void 0 ? 0 : void 0,
+    startedAt: Date.now()
+  };
+  activities.set(id, activity);
+  emit();
+  return {
+    id,
+    update(patch) {
+      const cur = activities.get(id);
+      if (!cur) return;
+      activities.set(id, { ...cur, ...patch });
+      emit();
+    },
+    end() {
+      if (activities.delete(id)) emit();
+    }
+  };
+}
+
 // src/services/orchestrators/vaultSyncOrch.ts
 var _cachedFilePaths = null;
 var _cachedFilePathsAge = 0;
@@ -15458,14 +15730,34 @@ function resolveMaxSyncFileSizeBytes(options) {
 async function fullSync(fs, options) {
   const vaultFs = fs ?? getVaultFS();
   const start = Date.now();
-  await clearAll();
-  await clearAllLinks();
-  const entries = await vaultFs.walkVault([".md"]);
-  const candidatePaths = entries.map((e) => e.path);
-  setCachedFilePaths(new Set(candidatePaths));
-  const result = await syncEntries(vaultFs, entries, options, candidatePaths);
-  result.durationMs = Date.now() - start;
-  return result;
+  const autoHealEnabled = getCapabilityFeatureFlags().yaml_fields_auto_heal_enabled;
+  const activity = startActivity({
+    kind: "sync",
+    label: "Syncing vault\u2026",
+    detail: "Full scan"
+  });
+  try {
+    await clearAll();
+    await clearAllLinks();
+    const entries = await vaultFs.walkVault([".md"]);
+    activity.update({ total: entries.length, completed: 0, detail: `Full scan \u2014 ${entries.length} files` });
+    const candidatePaths = entries.map((e) => e.path);
+    setCachedFilePaths(new Set(candidatePaths));
+    const parentKeyToPath = autoHealEnabled ? await buildParentKeyToPathIndex(vaultFs, entries, resolveMaxSyncFileSizeBytes(options)) : void 0;
+    const result = await syncEntries(
+      vaultFs,
+      entries,
+      options,
+      candidatePaths,
+      parentKeyToPath,
+      autoHealEnabled,
+      (completed) => activity.update({ completed })
+    );
+    result.durationMs = Date.now() - start;
+    return result;
+  } finally {
+    activity.end();
+  }
 }
 async function syncSingleFile(filePath, fs, options) {
   const vaultFs = fs ?? getVaultFS();
@@ -15473,10 +15765,14 @@ async function syncSingleFile(filePath, fs, options) {
   try {
     const stat2 = await vaultFs.stat(filePath);
     if (stat2.size > maxFileSizeBytes) return false;
-    const content = await vaultFs.read(filePath);
+    let content = await vaultFs.read(filePath);
     if (!hasFrontmatter(content)) return false;
     const note = parseNote(content);
     if (!note) return false;
+    if (getCapabilityFeatureFlags().yaml_fields_auto_heal_enabled) {
+      const healed = await healWikiLinksForNote(vaultFs, filePath, note);
+      if (healed) content = healed;
+    }
     const record = frontmatterToRecord(note.frontmatter, filePath, note.body);
     await upsertNode(record);
     const candidatePaths = getCachedFilePaths() ?? await getAllFilePaths();
@@ -15494,7 +15790,7 @@ async function syncSingleFile(filePath, fs, options) {
   }
 }
 var LINK_BATCH_SIZE = 500;
-async function syncEntries(fs, entries, options, candidatePaths) {
+async function syncEntries(fs, entries, options, candidatePaths, parentKeyToPath, autoHealEnabled, onProgress) {
   const maxFileSizeBytes = resolveMaxSyncFileSizeBytes(options);
   const result = {
     totalFiles: entries.length,
@@ -15536,13 +15832,20 @@ async function syncEntries(fs, entries, options, candidatePaths) {
       }
     }
   }
+  let progressCount = 0;
+  let nextProgressReport = 0;
   for (const entry of entries) {
+    progressCount++;
+    if (onProgress && progressCount >= nextProgressReport) {
+      onProgress(progressCount);
+      nextProgressReport = progressCount + Math.max(5, Math.floor(entries.length / 50));
+    }
     try {
       if (entry.size > maxFileSizeBytes) {
         result.skippedFiles++;
         continue;
       }
-      const content = await fs.read(entry.path);
+      let content = await fs.read(entry.path);
       if (!hasFrontmatter(content)) {
         result.skippedFiles++;
         continue;
@@ -15551,6 +15854,10 @@ async function syncEntries(fs, entries, options, candidatePaths) {
       if (!note) {
         result.skippedFiles++;
         continue;
+      }
+      if (autoHealEnabled) {
+        const healed = await healWikiLinksForNote(fs, entry.path, note, parentKeyToPath);
+        if (healed) content = healed;
       }
       const record = frontmatterToRecord(note.frontmatter, entry.path, note.body);
       pendingNodes.push(record);
@@ -15580,6 +15887,41 @@ async function syncEntries(fs, entries, options, candidatePaths) {
   await flushNodes();
   await flushLinks();
   return result;
+}
+var FRONTMATTER_KEY_RE = /^key:\s*["']?([^"'\n]+?)["']?\s*$/m;
+async function buildParentKeyToPathIndex(fs, entries, maxFileSizeBytes) {
+  const keyToPath = /* @__PURE__ */ new Map();
+  for (const entry of entries) {
+    if (entry.size > maxFileSizeBytes) continue;
+    try {
+      const content = await fs.read(entry.path);
+      if (!hasFrontmatter(content)) continue;
+      const match = FRONTMATTER_KEY_RE.exec(content);
+      const key = match?.[1]?.trim();
+      if (!key) continue;
+      keyToPath.set(key, entry.path);
+    } catch {
+    }
+  }
+  return keyToPath;
+}
+async function healWikiLinksForNote(fs, filePath, note, parentKeyToPath) {
+  const parentKey = typeof note.frontmatter.parent === "string" ? note.frontmatter.parent.trim() : "";
+  const parentFilePath = parentKey ? parentKeyToPath?.get(parentKey) ?? (await getNodeByKey(parentKey))?.filePath : void 0;
+  const { frontmatter: nextFrontmatter, changed } = mergeWikiLinksIntoFrontmatterBlock(
+    note.frontmatter,
+    {
+      generatedLinks: resolveGeneratedWikiLinksForFrontmatterBlock(
+        note.frontmatter,
+        { parentFilePath }
+      )
+    }
+  );
+  if (!changed) return void 0;
+  note.frontmatter = nextFrontmatter;
+  const rewritten = stringifyNote(note);
+  await fs.write(filePath, rewritten);
+  return rewritten;
 }
 function formatNodeKeyConflictError(conflict) {
   return `Duplicate YAML key "${conflict.key}" conflicts with "${conflict.conflictingFilePath}". Node keys must be unique.`;
@@ -15789,6 +16131,14 @@ async function createYamlNode(params) {
     tags: params.tags,
     body: params.body
   });
+  if (params.parentKey) {
+    const parentRecord = await getNodeByKey(params.parentKey);
+    note.frontmatter = mergeWikiLinksIntoFrontmatterBlock(note.frontmatter, {
+      generatedLinks: resolveGeneratedWikiLinksForFrontmatterBlock(note.frontmatter, {
+        parentFilePath: parentRecord?.filePath
+      })
+    }).frontmatter;
+  }
   const description = params.description?.trim();
   const comments = normalizeCommentEntries(params.comments);
   if (description) {
@@ -15903,6 +16253,7 @@ async function moveYamlNode(uuid, newParentKey, fs) {
   const content = await vaultFs.read(record.filePath);
   const note = parseNote(content);
   if (!note) throw new Error(`Failed to parse YAML for: ${record.filePath}`);
+  const previousParentLink = record.parent ? toWikiLinkFromVaultPathBlock((await getNodeByKey(record.parent))?.filePath ?? "") : void 0;
   if (newParentKey) {
     const parentRecord = await getNodeByKey(newParentKey);
     if (!parentRecord) throw new Error(`Parent not found: ${newParentKey}`);
@@ -15915,6 +16266,12 @@ async function moveYamlNode(uuid, newParentKey, fs) {
     });
     if (projectRoot) note.frontmatter.project_root = projectRoot;
     else delete note.frontmatter.project_root;
+    note.frontmatter = mergeWikiLinksIntoFrontmatterBlock(note.frontmatter, {
+      generatedLinks: resolveGeneratedWikiLinksForFrontmatterBlock(note.frontmatter, {
+        parentFilePath: parentRecord.filePath
+      }),
+      removeLinks: previousParentLink ? [previousParentLink] : []
+    }).frontmatter;
   } else {
     delete note.frontmatter.parent;
     delete note.frontmatter.parent_uuid;
@@ -15922,6 +16279,10 @@ async function moveYamlNode(uuid, newParentKey, fs) {
     if (note.frontmatter.type !== "program") {
       delete note.frontmatter.project_root;
     }
+    note.frontmatter = mergeWikiLinksIntoFrontmatterBlock(note.frontmatter, {
+      generatedLinks: [],
+      removeLinks: previousParentLink ? [previousParentLink] : []
+    }).frontmatter;
   }
   note.frontmatter.updated_at = (/* @__PURE__ */ new Date()).toISOString();
   await vaultFs.write(record.filePath, stringifyNote(note));
@@ -16111,6 +16472,7 @@ function applyExtraFrontmatterFields(frontmatter, extraFields) {
     "priority",
     "project_root",
     "ticket",
+    WIKI_LINKS_FIELD_BLOCK,
     "description",
     "comments",
     "created_at",
@@ -17220,7 +17582,7 @@ function previewTranscript(inputText, headingsText, options) {
 }
 async function cleanAndSave(params) {
   const cleaned = cleanTranscript(params.input_text, params.headings_text, params.options);
-  const fs = getVaultFS();
+  const fs = params.fs ?? getVaultFS();
   const basePath = params.base_folder ? `${params.base_folder}/${params.output_folder}` : params.output_folder;
   await fs.mkdir(basePath);
   const outputPath = `${basePath}/${params.output_name}.md`;
@@ -17231,20 +17593,6 @@ async function cleanAndSave(params) {
     preview: cleaned.slice(0, 2e3) + (cleaned.length > 2e3 ? "..." : ""),
     message: "Transcript cleaned and saved"
   };
-}
-
-// src/services/lego_blocks/integrations/capabilityFeatureFlagsBlock.ts
-var DEFAULT_FLAGS = {
-  agent_capabilities_enabled: false,
-  fastapi_capability_adapter_enabled: false,
-  extension_host_enabled: false,
-  extension_builder_enabled: false
-};
-function getCapabilityFeatureFlags() {
-  return getJsonStorageItem(
-    STORAGE_KEYS.capabilityFeatureFlags,
-    DEFAULT_FLAGS
-  );
 }
 
 // src/services/lego_blocks/integrations/aiSynthesisInfraBlock.ts
@@ -17452,7 +17800,7 @@ async function writeNoteBlock(fs, input) {
     throw new Error(`File already exists: ${normalizedPath}. Pass overwrite=true to replace it.`);
   }
   const body = (input.body ?? "").replace(/\r\n/g, "\n");
-  const frontmatter = { ...input.frontmatter ?? {} };
+  const frontmatter = normalizeAiSynthesisFrontmatterBlock({ ...input.frontmatter ?? {} });
   const raw = stringifyMarkdownFrontmatterBlock({ frontmatter, body });
   await fs.write(normalizedPath, raw);
   return {
@@ -17470,15 +17818,16 @@ async function patchNoteFrontmatterBlock(fs, input) {
     set: input.set,
     appendUnique: input.append_unique
   });
+  const normalizedFrontmatter = normalizeAiSynthesisFrontmatterBlock(nextFrontmatter);
   const raw = stringifyMarkdownFrontmatterBlock({
-    frontmatter: nextFrontmatter,
+    frontmatter: normalizedFrontmatter,
     body: existing.body
   });
   await fs.write(existing.path, raw);
   return {
     path: existing.path,
     patched: true,
-    frontmatter: nextFrontmatter
+    frontmatter: normalizedFrontmatter
   };
 }
 async function resolveAiSynthesisPathBlock(_fs, input) {
@@ -17536,17 +17885,18 @@ async function createAiSynthesisNoteBlock(fs, input) {
     open_questions: [],
     summary: ""
   };
+  const normalizedFrontmatter = normalizeAiSynthesisFrontmatterBlock(frontmatter);
   const body = renderTemplateBodyBlock(title, input.synthesis_type);
   await writeNoteBlock(fs, {
     path: resolved.path,
-    frontmatter,
+    frontmatter: normalizedFrontmatter,
     body,
     overwrite: ifExists === "overwrite"
   });
   return {
     created: true,
     path: resolved.path,
-    frontmatter,
+    frontmatter: normalizedFrontmatter,
     body
   };
 }
@@ -17652,6 +18002,17 @@ async function listDomainAiSynthesisHealthBlock(fs, input) {
     unanswered_questions: unansweredQuestions.sort(),
     orphan_outputs: orphanOutputs
   };
+}
+function normalizeAiSynthesisFrontmatterBlock(frontmatter) {
+  const next = normalizeFrontmatterArrayLikeFieldsBlock(frontmatter);
+  const derivedFrom = normalizeStringArrayBlock(next.derived_from).map(normalizeVaultPathBlock);
+  if (derivedFrom.length > 0) {
+    next.derived_from = uniqueStringsBlock(derivedFrom);
+  }
+  const { frontmatter: normalizedFrontmatter } = mergeWikiLinksIntoFrontmatterBlock(next, {
+    generatedLinks: resolveGeneratedWikiLinksForFrontmatterBlock(next)
+  });
+  return normalizedFrontmatter;
 }
 async function listMarkdownNotesUnderBlock(fs, rootPath) {
   const normalizedRoot = normalizeVaultPathBlock(rootPath);
@@ -17823,17 +18184,10 @@ function normalizeVaultPathBlock(value) {
 function joinVaultPathBlock(...parts) {
   return normalizeVaultPathBlock(parts.filter(Boolean).join("/"));
 }
-function uniqueStringsBlock(values) {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-}
 function asTrimmedStringBlock(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed || null;
-}
-function normalizeStringArrayBlock(value) {
-  if (!Array.isArray(value)) return [];
-  return uniqueStringsBlock(value.map((item) => String(item)));
 }
 
 // src/services/orchestrators/aiSynthesisInfraOrch.ts
@@ -17899,72 +18253,15 @@ async function invokeCapabilityOrch(request, options) {
   const dryRun = !!request.dryRun;
   const warnings = [];
   const fs = options?.fs;
-  const definition = getCapabilityDefinition(request.capability);
-  if (!definition) {
-    const response = {
-      ok: false,
-      capability: request.capability,
-      requestId,
-      actor,
-      dryRun,
-      auditId,
-      warnings,
-      error: {
-        code: "CAPABILITY_NOT_FOUND",
-        message: `Unknown capability: ${request.capability}`
-      }
-    };
-    await auditCapability({
-      auditId,
-      requestId,
-      request,
-      actor,
-      dryRun,
-      warnings,
-      ok: false,
-      errorCode: response.error.code,
-      errorMessage: response.error.message,
-      fs
-    });
-    return response;
-  }
+  const activity = startActivity({
+    kind: "capability",
+    label: formatCapabilityLabel(request.capability),
+    detail: dryRun ? "Dry run" : void 0
+  });
   try {
-    if (actor.kind === "agent" && !getCapabilityFeatureFlags().agent_capabilities_enabled) {
-      throw new Error("Agent capabilities are disabled by feature flag.");
-    }
-    validateCapabilityPolicy({
-      capability: request.capability,
-      input: request.input,
-      actor
-    });
-    if (dryRun && WRITE_CAPABILITIES2.has(request.capability)) {
-      const preview = await executeDryRunCapability(request.capability, request.input);
-      if (preview) {
-        warnings.push("Dry-run preview only. No files were modified.");
-        const success2 = {
-          ok: true,
-          capability: request.capability,
-          requestId,
-          actor,
-          dryRun,
-          auditId,
-          warnings,
-          data: preview
-        };
-        await auditCapability({
-          auditId,
-          requestId,
-          request,
-          actor,
-          dryRun,
-          warnings,
-          ok: true,
-          touchedPaths: extractTouchedPaths(request.capability, success2.data),
-          fs
-        });
-        return success2;
-      }
-      const unsupported = {
+    const definition = getCapabilityDefinition(request.capability);
+    if (!definition) {
+      const response = {
         ok: false,
         capability: request.capability,
         requestId,
@@ -17973,8 +18270,8 @@ async function invokeCapabilityOrch(request, options) {
         auditId,
         warnings,
         error: {
-          code: "CAPABILITY_DRY_RUN_UNSUPPORTED",
-          message: `Dry-run is not implemented for ${request.capability}.`
+          code: "CAPABILITY_NOT_FOUND",
+          message: `Unknown capability: ${request.capability}`
         }
       };
       await auditCapability({
@@ -17985,62 +18282,128 @@ async function invokeCapabilityOrch(request, options) {
         dryRun,
         warnings,
         ok: false,
-        errorCode: unsupported.error.code,
-        errorMessage: unsupported.error.message,
+        errorCode: response.error.code,
+        errorMessage: response.error.message,
         fs
       });
-      return unsupported;
+      return response;
     }
-    const data = await executeCapability(request.capability, request.input, fs);
-    const success = {
-      ok: true,
-      capability: request.capability,
-      requestId,
-      actor,
-      dryRun,
-      auditId,
-      warnings,
-      data
-    };
-    await auditCapability({
-      auditId,
-      requestId,
-      request,
-      actor,
-      dryRun,
-      warnings,
-      ok: true,
-      touchedPaths: extractTouchedPaths(request.capability, data),
-      fs
-    });
-    return success;
-  } catch (error) {
-    const failure = {
-      ok: false,
-      capability: request.capability,
-      requestId,
-      actor,
-      dryRun,
-      auditId,
-      warnings,
-      error: {
-        code: "CAPABILITY_EXECUTION_FAILED",
-        message: error instanceof Error ? error.message : String(error)
+    try {
+      if (actor.kind === "agent" && !getCapabilityFeatureFlags().agent_capabilities_enabled) {
+        throw new Error("Agent capabilities are disabled by feature flag.");
       }
-    };
-    await auditCapability({
-      auditId,
-      requestId,
-      request,
-      actor,
-      dryRun,
-      warnings,
-      ok: false,
-      errorCode: failure.error.code,
-      errorMessage: failure.error.message,
-      fs
-    });
-    return failure;
+      validateCapabilityPolicy({
+        capability: request.capability,
+        input: request.input,
+        actor
+      });
+      if (dryRun && WRITE_CAPABILITIES2.has(request.capability)) {
+        const preview = await executeDryRunCapability(request.capability, request.input);
+        if (preview) {
+          warnings.push("Dry-run preview only. No files were modified.");
+          const success2 = {
+            ok: true,
+            capability: request.capability,
+            requestId,
+            actor,
+            dryRun,
+            auditId,
+            warnings,
+            data: preview
+          };
+          await auditCapability({
+            auditId,
+            requestId,
+            request,
+            actor,
+            dryRun,
+            warnings,
+            ok: true,
+            touchedPaths: extractTouchedPaths(request.capability, success2.data),
+            fs
+          });
+          return success2;
+        }
+        const unsupported = {
+          ok: false,
+          capability: request.capability,
+          requestId,
+          actor,
+          dryRun,
+          auditId,
+          warnings,
+          error: {
+            code: "CAPABILITY_DRY_RUN_UNSUPPORTED",
+            message: `Dry-run is not implemented for ${request.capability}.`
+          }
+        };
+        await auditCapability({
+          auditId,
+          requestId,
+          request,
+          actor,
+          dryRun,
+          warnings,
+          ok: false,
+          errorCode: unsupported.error.code,
+          errorMessage: unsupported.error.message,
+          fs
+        });
+        return unsupported;
+      }
+      const data = await executeCapability(request.capability, request.input, fs);
+      const success = {
+        ok: true,
+        capability: request.capability,
+        requestId,
+        actor,
+        dryRun,
+        auditId,
+        warnings,
+        data
+      };
+      await auditCapability({
+        auditId,
+        requestId,
+        request,
+        actor,
+        dryRun,
+        warnings,
+        ok: true,
+        touchedPaths: extractTouchedPaths(request.capability, data),
+        fs
+      });
+      return success;
+    } catch (error) {
+      const failure = {
+        ok: false,
+        capability: request.capability,
+        requestId,
+        actor,
+        dryRun,
+        auditId,
+        warnings,
+        error: {
+          code: "CAPABILITY_EXECUTION_FAILED",
+          message: error instanceof Error ? error.message : String(error)
+        }
+      };
+      await auditCapability({
+        auditId,
+        requestId,
+        request,
+        actor,
+        dryRun,
+        warnings,
+        ok: false,
+        errorCode: failure.error.code,
+        errorMessage: failure.error.message,
+        fs
+      });
+      return failure;
+    }
+  } finally {
+    activity.end();
   }
 }
 async function executeCapability(capability, input, fs) {
@@ -18449,7 +18812,7 @@ async function executeCapability(capability, input, fs) {
       assertNonEmptyString(payload.input_text, "input_text");
       assertNonEmptyString(payload.output_folder, "output_folder");
       assertNonEmptyString(payload.output_name, "output_name");
-      const result = await cleanAndSave(payload);
+      const result = await cleanAndSave({ ...payload, fs });
       return { result };
     }
     default:
@@ -18713,6 +19076,31 @@ async function applyEpicStatusPolicyForAffectedNodes(params) {
     }, params.fs);
     nodesByKey.set(updated.key, updated);
   }
+}
+var CAPABILITY_LABELS = {
+  "organizer.nodes.search": "Searching organizer\u2026",
+  "organizer.nodes.list_all": "Loading organizer\u2026",
+  "organizer.nodes.list_roots": "Loading organizer roots\u2026",
+  "organizer.nodes.list_children": "Loading children\u2026",
+  "organizer.node.create": "Creating node\u2026",
+  "organizer.node.update": "Updating node\u2026",
+  "organizer.node.move": "Moving node\u2026",
+  "organizer.node.rename": "Renaming node\u2026",
+  "organizer.node.delete": "Deleting node\u2026",
+  "read_note": "Reading note\u2026",
+  "write_note": "Writing note\u2026",
+  "patch_note_frontmatter": "Updating note\u2026",
+  "task.claim": "Claiming task\u2026",
+  "task.update_status": "Updating task\u2026",
+  "handoff.create": "Creating handoff\u2026",
+  "comment.add": "Adding comment\u2026",
+  "run.log": "Logging run\u2026",
+  "thoughts.create": "Saving thought\u2026",
+  "todos.create": "Saving todo\u2026",
+  "todos.toggle": "Updating todo\u2026"
+};
+function formatCapabilityLabel(capability) {
+  return CAPABILITY_LABELS[capability] ?? `Running ${capability}\u2026`;
 }
 function currentDateStamp() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);

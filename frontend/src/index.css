@@ -4,6 +4,19 @@
 @tailwind components;
 @tailwind utilities;
 
+.katex,
+.katex-display {
+  white-space: normal !important;
+}
+.katex-display {
+  display: block !important;
+  margin: 1em 0 !important;
+  text-align: center !important;
+}
+.katex {
+  display: inline-block !important;
+}
+
 @layer base {
   :root {
     --background: var(--ltm-theme-bg-hsl, 240 14% 97%);
@@ -161,11 +174,17 @@
   .prose td {
     @apply border-b border-border/50 py-1.5 pr-3;
   }
-  .prose.ltm-markdown-preserve-newlines :is(p, li, blockquote, td, th, a, strong, em, span) {
+  .prose.ltm-markdown-preserve-newlines :is(p, li, blockquote, td, th, a, strong, em, span):not(.katex):not(.katex *) {
     white-space: pre-wrap;
   }
-  .prose.ltm-markdown-preserve-spaces :is(p, li, blockquote, td, th, a, strong, em, span) {
+  .prose.ltm-markdown-preserve-spaces :is(p, li, blockquote, td, th, a, strong, em, span):not(.katex):not(.katex *) {
     white-space: break-spaces;
+  }
+  .prose.ltm-markdown-preserve-newlines .katex,
+  .prose.ltm-markdown-preserve-spaces .katex,
+  .prose.ltm-markdown-preserve-newlines .katex-display,
+  .prose.ltm-markdown-preserve-spaces .katex-display {
+    white-space: normal !important;
   }
   .prose .ltm-markdown-blank-line {
     height: 1lh;
