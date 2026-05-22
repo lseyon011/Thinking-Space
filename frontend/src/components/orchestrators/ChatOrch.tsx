@@ -39,6 +39,7 @@ import {
   dispatchChatSidebarChromeStateBlock,
 } from '@/services/lego_blocks/units/chatSidebarChromeBlock'
 import CodexUsageDashboardOrch from '@/components/orchestrators/CodexUsageDashboardOrch'
+import SubNavTabsBlock from '@/components/lego_blocks/units/ui/SubNavTabsBlock'
 
 const USAGE_DASHBOARD_SITE_ID_BLOCK = '__usage_dashboard__'
 
@@ -270,10 +271,15 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
         aria-hidden={sidebarCollapsed}
       >
         {/* Sidebar header */}
-        <div className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between px-2">
-          <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            AI
-          </span>
+        <div className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between gap-1 px-2">
+          <SubNavTabsBlock
+            ariaLabel="AI section"
+            className="text-xs"
+            tabs={[
+              { to: '/ai/chat', label: 'Chat' },
+              { to: '/ai/schedules', label: 'Schedules' },
+            ]}
+          />
           <Button
             variant="ghost"
             size="icon"

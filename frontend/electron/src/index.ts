@@ -61,6 +61,26 @@ import {
   stopViteServerBlock,
 } from './lego_blocks/viteServerBlock';
 import {
+  startScheduleHttpServerBlock,
+  stopScheduleHttpServerBlock,
+  getScheduleServerInfoBlock,
+} from './lego_blocks/scheduleHttpServerBlock';
+import {
+  listSchedulesBlock,
+  readScheduleBlock,
+  writeScheduleBlock,
+  deleteScheduleBlock,
+  type ScheduleSpecBlock,
+} from './lego_blocks/scheduleStorageBlock';
+import {
+  writePlistBlock,
+  bootstrapPlistBlock,
+  removePlistBlock,
+  kickstartPlistBlock,
+  getLaunchctlStatusBlock,
+  listExternalAgentsBlock,
+} from './lego_blocks/launchctlBlock';
+import {
   applyRebuildBlock,
   runRebuildPipelineBlock,
 } from './lego_blocks/viteRebuildBlock';
@@ -327,6 +347,14 @@ if (hasSingleInstanceLock) {
           // Fall back to locked mode — don't block startup
         }
       }
+      // Start the schedule HTTP server (loopback only). Used by launchd-fired
+      // curl calls to trigger scheduled jobs while the app is running.
+      try {
+        const info = await startScheduleHttpServerBlock();
+        console.log('[schedules] HTTP server ready on', info.baseUrl);
+      } catch (err) {
+        console.error('[schedules] Failed to start HTTP server:', err);
+      }
       // Initialize our app, build windows, and load content.
       await myCapacitorApp.init();
       configureAppIconMenu();
@@ -354,6 +382,9 @@ if (hasSingleInstanceLock) {
 // Stop Vite dev server when quitting.
 app.on('will-quit', () => {
   stopViteServerBlock();
+  stopScheduleHttpServerBlock().catch((err) =>
+    console.warn('[schedules] HTTP server stop failed', err),
+  );
 });
 
 // Clean up PTYs when a window is closed.
@@ -397,6 +428,53 @@ ipcMain.handle('window:context:get', (event) => {
 
 ipcMain.handle('debug:performance:get', async () => {
   return readDebugPerformanceSnapshotBlock();
+});
+
+ipcMain.handle('schedules:list', async () => {
+  return listSchedulesBlock();
+});
+
+ipcMain.handle('schedules:get', async (_event, key: string) => {
+  return readScheduleBlock(key);
+});
+
+ipcMain.handle('schedules:save', async (_event, spec: ScheduleSpecBlock) => {
+  const saved = writeScheduleBlock(spec);
+  if (saved.managedBy === 'thinking-space') {
+    const info = getScheduleServerInfoBlock();
+    if (!info) throw new Error('Schedule HTTP server not running');
+    await writePlistBlock(saved, { baseUrl: info.baseUrl, secret: info.secret });
+    if (saved.enabled) {
+      await bootstrapPlistBlock(saved);
+    } else {
+      await removePlistBlock(saved.label);
+    }
+  }
+  return saved;
+});
+
+ipcMain.handle('schedules:delete', async (_event, key: string) => {
+  const spec = readScheduleBlock(key);
+  if (spec && spec.managedBy === 'thinking-space') {
+    await removePlistBlock(spec.label);
+  }
+  return deleteScheduleBlock(key);
+});
+
+ipcMain.handle('schedules:server-info', async () => {
+  return getScheduleServerInfoBlock();
+});
+
+ipcMain.handle('schedules:kickstart', async (_event, label: string) => {
+  await kickstartPlistBlock(label);
+});
+
+ipcMain.handle('schedules:status', async (_event, label: string) => {
+  return getLaunchctlStatusBlock(label);
+});
+
+ipcMain.handle('schedules:list-launchd-labels', async () => {
+  return listExternalAgentsBlock();
 });
 
 // =====================================================================

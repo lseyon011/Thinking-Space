@@ -34,7 +34,6 @@ import ThinkingSpace from './pages/ThinkingSpace'
 import ThinkingOrganizer from './pages/ThinkingOrganizer'
 import Chat from './pages/Chat'
 import Schedules from './pages/Schedules'
-import SubNavTabsBlock from './components/lego_blocks/units/ui/SubNavTabsBlock'
 import Web from './pages/Web'
 import Settings from './pages/Settings'
 
@@ -3212,19 +3211,6 @@ function App() {
             style={mainStageStyle}
           >
             <div className="relative h-full min-h-0">
-              {location.pathname.startsWith('/ai/') && (
-                <div className="pointer-events-none absolute inset-x-0 top-2 z-30 flex justify-center">
-                  <div className="pointer-events-auto">
-                    <SubNavTabsBlock
-                      ariaLabel="AI section"
-                      tabs={[
-                        { to: '/ai/chat', label: 'Chat' },
-                        { to: '/ai/schedules', label: 'Schedules' },
-                      ]}
-                    />
-                  </div>
-                </div>
-              )}
               {renderedPersistentChatTabIds.map((tabId) => {
                 const chatTabMounted = mountedTabIdSet.has(tabId)
                 if (!chatTabMounted) return null
