@@ -62,8 +62,21 @@ export interface ScheduleRunResultBlock {
   exitCode: number | null
   signal: string | null
   transcriptPath: string
+  transcriptFilename: string
   durationMs: number
   errorMessage?: string
+}
+
+export interface ScheduleRunChunkBlock {
+  channel: 'stdout' | 'stderr'
+  data: string
+}
+
+export interface TranscriptEntryBlock {
+  filename: string
+  startedAt: string
+  sizeBytes: number
+  modifiedAt: string
 }
 
 export interface ScheduleStatusBlock {
@@ -85,9 +98,12 @@ interface ScheduleBridgeApi {
   schedulesDelete?(key: string): Promise<boolean>
   schedulesServerInfo?(): Promise<ScheduleServerInfoBlock | null>
   schedulesKickstart?(label: string): Promise<void>
-  schedulesFireNow?(key: string): Promise<ScheduleRunResultBlock>
+  schedulesFireNow?(key: string, options?: { streamChannel?: string }): Promise<ScheduleRunResultBlock>
   schedulesStatus?(label: string): Promise<ScheduleStatusBlock>
   schedulesListLaunchdLabels?(): Promise<string[]>
+  schedulesListTranscripts?(key: string): Promise<TranscriptEntryBlock[]>
+  schedulesReadTranscript?(payload: { key: string; filename: string }): Promise<string>
+  onScheduleRunChunk?(streamChannel: string, handler: (chunk: ScheduleRunChunkBlock) => void): () => void
 }
 
 function getBridge(): ScheduleBridgeApi | null {
@@ -140,10 +156,33 @@ export async function kickstartScheduleBlock(label: string): Promise<void> {
   await bridge.schedulesKickstart(label)
 }
 
-export async function fireScheduleByIpcBlock(key: string): Promise<ScheduleRunResultBlock> {
+export async function fireScheduleByIpcBlock(
+  key: string,
+  options?: { streamChannel?: string },
+): Promise<ScheduleRunResultBlock> {
   const bridge = requireBridge()
   if (!bridge.schedulesFireNow) throw new Error('schedulesFireNow bridge unavailable')
-  return bridge.schedulesFireNow(key)
+  return bridge.schedulesFireNow(key, options)
+}
+
+export async function listTranscriptsBlock(key: string): Promise<TranscriptEntryBlock[]> {
+  const bridge = requireBridge()
+  return (await bridge.schedulesListTranscripts?.(key)) ?? []
+}
+
+export async function readTranscriptBlock(key: string, filename: string): Promise<string> {
+  const bridge = requireBridge()
+  if (!bridge.schedulesReadTranscript) throw new Error('schedulesReadTranscript bridge unavailable')
+  return bridge.schedulesReadTranscript({ key, filename })
+}
+
+export function subscribeRunChunksBlock(
+  streamChannel: string,
+  handler: (chunk: ScheduleRunChunkBlock) => void,
+): () => void {
+  const bridge = requireBridge()
+  if (!bridge.onScheduleRunChunk) return () => undefined
+  return bridge.onScheduleRunChunk(streamChannel, handler)
 }
 
 export async function getLaunchctlStatusBlock(label: string): Promise<ScheduleStatusBlock> {

@@ -315,7 +315,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   schedulesDelete: (key: string) => ipcRenderer.invoke('schedules:delete', key),
   schedulesServerInfo: () => ipcRenderer.invoke('schedules:server-info'),
   schedulesKickstart: (label: string) => ipcRenderer.invoke('schedules:kickstart', label),
-  schedulesFireNow: (key: string) => ipcRenderer.invoke('schedules:fire-now', key),
+  schedulesFireNow: (key: string, options?: { streamChannel?: string }) =>
+    ipcRenderer.invoke('schedules:fire-now', key, options ?? {}),
+  schedulesListTranscripts: (key: string) =>
+    ipcRenderer.invoke('schedules:list-transcripts', key),
+  schedulesReadTranscript: (payload: { key: string; filename: string }) =>
+    ipcRenderer.invoke('schedules:read-transcript', payload),
+  onScheduleRunChunk: (streamChannel: string, handler: (chunk: { channel: 'stdout' | 'stderr'; data: string }) => void) => {
+    const fullChannel = `schedules:run:event:${streamChannel}`;
+    const listener = (_: unknown, data: unknown) => handler(data as { channel: 'stdout' | 'stderr'; data: string });
+    ipcRenderer.on(fullChannel, listener);
+    return () => { ipcRenderer.removeListener(fullChannel, listener); };
+  },
   schedulesStatus: (label: string) => ipcRenderer.invoke('schedules:status', label),
   schedulesListLaunchdLabels: () => ipcRenderer.invoke('schedules:list-launchd-labels'),
 

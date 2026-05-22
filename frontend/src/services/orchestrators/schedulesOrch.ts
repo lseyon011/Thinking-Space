@@ -10,10 +10,15 @@ import {
   kickstartScheduleBlock,
   listLaunchdLabelsBlock,
   listSchedulesBlock,
+  listTranscriptsBlock,
+  readTranscriptBlock,
   saveScheduleBlock,
+  subscribeRunChunksBlock,
+  type ScheduleRunChunkBlock,
   type ScheduleRunResultBlock,
   type ScheduleSpecBlock,
   type ScheduleStatusBlock,
+  type TranscriptEntryBlock,
 } from '@/services/lego_blocks/integrations/schedulesBlock'
 
 export interface ScheduleWithStatusBlock {
@@ -50,12 +55,32 @@ export async function deleteAndUnloadScheduleOrch(key: string): Promise<boolean>
   return deleteScheduleBlock(key)
 }
 
-export async function fireScheduleNowOrch(spec: ScheduleSpecBlock): Promise<ScheduleRunResultBlock> {
+export async function fireScheduleNowOrch(
+  spec: ScheduleSpecBlock,
+  options?: { onChunk?: (chunk: ScheduleRunChunkBlock) => void },
+): Promise<ScheduleRunResultBlock> {
   // Fire via IPC (not the loopback HTTP server) — CSP would block fetch() to
   // 127.0.0.1 from the renderer, and IPC is the correct channel for in-app
   // calls. The HTTP server exists only so launchd-triggered curl can fire
   // schedules.
-  return fireScheduleByIpcBlock(spec.key)
+  if (!options?.onChunk) {
+    return fireScheduleByIpcBlock(spec.key)
+  }
+  const streamChannel = `run-${spec.key}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const unsubscribe = subscribeRunChunksBlock(streamChannel, options.onChunk)
+  try {
+    return await fireScheduleByIpcBlock(spec.key, { streamChannel })
+  } finally {
+    unsubscribe()
+  }
+}
+
+export async function listScheduleTranscriptsOrch(key: string): Promise<TranscriptEntryBlock[]> {
+  return listTranscriptsBlock(key)
+}
+
+export async function readScheduleTranscriptOrch(key: string, filename: string): Promise<string> {
+  return readTranscriptBlock(key, filename)
 }
 
 export async function kickstartScheduleViaLaunchctlOrch(label: string): Promise<void> {

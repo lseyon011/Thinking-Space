@@ -80,7 +80,8 @@ import {
   getLaunchctlStatusBlock,
   listExternalAgentsBlock,
 } from './lego_blocks/launchctlBlock';
-import { runScheduleBlock } from './lego_blocks/scheduleRunnerBlock';
+import { runScheduleBlock, type ScheduleRunChunkBlock } from './lego_blocks/scheduleRunnerBlock';
+import { listTranscriptsBlock, readTranscriptBlock } from './lego_blocks/transcriptStoreBlock';
 import {
   applyRebuildBlock,
   runRebuildPipelineBlock,
@@ -470,10 +471,28 @@ ipcMain.handle('schedules:kickstart', async (_event, label: string) => {
   await kickstartPlistBlock(label);
 });
 
-ipcMain.handle('schedules:fire-now', async (_event, key: string) => {
+ipcMain.handle('schedules:fire-now', async (event, key: string, options: { streamChannel?: string } = {}) => {
   const spec = readScheduleBlock(key);
   if (!spec) throw new Error(`Schedule not found: ${key}`);
-  return runScheduleBlock(spec);
+  const sender = event.sender;
+  const streamChannel = typeof options?.streamChannel === 'string' && options.streamChannel.length > 0
+    ? `schedules:run:event:${options.streamChannel}`
+    : null;
+  return runScheduleBlock(spec, {
+    onChunk: streamChannel
+      ? (chunk: ScheduleRunChunkBlock) => {
+          if (!sender.isDestroyed()) sender.send(streamChannel, chunk);
+        }
+      : undefined,
+  });
+});
+
+ipcMain.handle('schedules:list-transcripts', async (_event, key: string) => {
+  return listTranscriptsBlock(key);
+});
+
+ipcMain.handle('schedules:read-transcript', async (_event, payload: { key: string; filename: string }) => {
+  return readTranscriptBlock(payload.key, payload.filename);
 });
 
 ipcMain.handle('schedules:status', async (_event, label: string) => {

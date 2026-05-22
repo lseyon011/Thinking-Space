@@ -50,8 +50,18 @@ export interface ScheduleRunResultBlock {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
   transcriptPath: string;
+  transcriptFilename: string;
   durationMs: number;
   errorMessage?: string;
+}
+
+export interface ScheduleRunChunkBlock {
+  channel: 'stdout' | 'stderr';
+  data: string;
+}
+
+export interface ScheduleRunOptionsBlock {
+  onChunk?: (chunk: ScheduleRunChunkBlock) => void;
 }
 
 const MAX_TRANSCRIPT_BYTES = 5 * 1024 * 1024;
@@ -69,7 +79,10 @@ function timestampSlug(date: Date): string {
   );
 }
 
-export async function runScheduleBlock(spec: ScheduleSpecBlock): Promise<ScheduleRunResultBlock> {
+export async function runScheduleBlock(
+  spec: ScheduleSpecBlock,
+  options: ScheduleRunOptionsBlock = {},
+): Promise<ScheduleRunResultBlock> {
   if (!spec.enabled) {
     throw new Error(`Schedule ${spec.key} is disabled`);
   }
@@ -79,7 +92,8 @@ export async function runScheduleBlock(spec: ScheduleSpecBlock): Promise<Schedul
   const startedAt = new Date();
   const dir = getTranscriptDirBlock(spec.key);
   fs.mkdirSync(dir, { recursive: true });
-  const transcriptPath = path.join(dir, `${timestampSlug(startedAt)}.log`);
+  const transcriptFilename = `${timestampSlug(startedAt)}.log`;
+  const transcriptPath = path.join(dir, transcriptFilename);
   const transcript = fs.createWriteStream(transcriptPath, { flags: 'w', encoding: 'utf-8' });
 
   const header =
@@ -94,7 +108,12 @@ export async function runScheduleBlock(spec: ScheduleSpecBlock): Promise<Schedul
 
   let bytesWritten = header.length;
   let truncated = false;
+  const emit = options.onChunk;
   const appendChunk = (channel: 'out' | 'err', chunk: Buffer) => {
+    const text = chunk.toString('utf-8');
+    if (emit) {
+      emit({ channel: channel === 'err' ? 'stderr' : 'stdout', data: text });
+    }
     if (truncated) return;
     if (bytesWritten + chunk.length > MAX_TRANSCRIPT_BYTES) {
       transcript.write(`\n[transcript truncated at ${MAX_TRANSCRIPT_BYTES} bytes]\n`);
@@ -147,6 +166,7 @@ export async function runScheduleBlock(spec: ScheduleSpecBlock): Promise<Schedul
           exitCode,
           signal,
           transcriptPath,
+          transcriptFilename,
           durationMs: endedAt.getTime() - startedAt.getTime(),
           errorMessage,
         });
