@@ -24,6 +24,15 @@ describe('excalidrawHighlighterOrch', () => {
     const fs = createFsMock(async () => JSON.stringify({
       customPens: [
         {
+          type: 'default',
+          strokeColor: '#000000',
+          backgroundColor: 'transparent',
+          strokeWidth: 1,
+          penOptions: {
+            highlighter: false,
+          },
+        },
+        {
           type: 'highlighter',
           strokeColor: '#fff',
           backgroundColor: '#fff9db',
@@ -39,9 +48,11 @@ describe('excalidrawHighlighterOrch', () => {
     }))
 
     const presets = await loadExcalidrawHighlighterPresetsOrch({ fs })
-    expect(presets).toHaveLength(1)
-    expect(presets[0]?.label).toBe('Highlighter')
-    expect(presets[0]?.strokeColor).toBe('#fff9db')
+    expect(presets).toHaveLength(2)
+    expect(presets[0]?.label).toBe('Default')
+    expect(presets[0]?.strokeOptions.highlighter).toBe(false)
+    expect(presets[1]?.label).toBe('Highlighter')
+    expect(presets[1]?.strokeColor).toBe('#fff9db')
   })
 
   it('falls back to built-in presets when plugin settings are unavailable', async () => {

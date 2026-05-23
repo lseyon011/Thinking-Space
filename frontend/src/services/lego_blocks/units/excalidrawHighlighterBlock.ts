@@ -126,76 +126,104 @@ const HIGHLIGHTER_STROKE: StrokeOptionOverrides = {
 }
 
 // ---------------------------------------------------------------------------
-// Default pen seeds (matching Obsidian's 10-pen layout)
+// Default pen seeds (matching Obsidian's 10-pen quick palette layout)
 // ---------------------------------------------------------------------------
 
 const OBSIDIAN_DEFAULT_CUSTOM_PENS_SEED: readonly ObsidianCustomPenSeed[] = [
-  // 1. Default pen
   makePenSeed(),
 
-  // 2. Default highlighter
   makePenSeed({
-    freedrawOnly: true, strokeColor: '#ffffff', backgroundColor: '#fff9db',
-    fillStyle: 'solid', strokeWidth: 2.6,
+    penType: 'yellow',
+    freedrawOnly: true,
+    strokeColor: '#fff9db',
+    backgroundColor: '#fff9db',
+    fillStyle: 'solid',
+    strokeWidth: 2.6,
     strokeOptions: HIGHLIGHTER_STROKE,
   }),
 
-  // 3. Fine tip
   makePenSeed({
-    penType: 'finetip', strokeWidth: 0.5,
+    penType: 'finetip',
+    strokeWidth: 0.5,
     strokeOptions: {
-      outlineWidth: 0, thinning: -0.5, smoothing: 0.4, streamline: 0.4,
-      easing: 'linear', startTaper: 5, startCap: false, endTaper: 5, endCap: false,
+      outlineWidth: 0,
+      thinning: -0.5,
+      smoothing: 0.4,
+      streamline: 0.4,
+      easing: 'linear',
+      startTaper: 5,
+      startCap: false,
+      endTaper: 5,
+      endCap: false,
     },
   }),
 
-  // 4. Fountain pen
   makePenSeed({
-    penType: 'fountain', strokeWidth: 2,
+    penType: 'fountain',
+    strokeWidth: 2,
     strokeOptions: {
-      smoothing: 0.2, streamline: 0.2, easing: 'easeInOutSine', startTaper: 150, endTaper: 1,
+      smoothing: 0.2,
+      streamline: 0.2,
+      easing: 'easeInOutSine',
+      startTaper: 150,
+      endTaper: 1,
     },
   }),
 
-  // 5. Marker
   makePenSeed({
-    penType: 'marker', freedrawOnly: true,
-    strokeColor: '#B83E3E', backgroundColor: '#FF7C7C',
-    fillStyle: 'dashed', strokeWidth: 2, roughness: 3,
+    penType: 'marker',
+    freedrawOnly: true,
+    strokeColor: '#b83e3e',
+    backgroundColor: '#ff7c7c',
+    fillStyle: 'dashed',
+    strokeWidth: 2,
+    roughness: 3,
     strokeOptions: {
-      constantPressure: true, hasOutline: true, outlineWidth: 4,
-      thinning: 1, easing: 'linear',
+      constantPressure: true,
+      hasOutline: true,
+      outlineWidth: 4,
+      thinning: 1,
+      easing: 'linear',
     },
   }),
 
-  // 6. Thick-thin highlighter
   makePenSeed({
-    penType: 'thick-thin', freedrawOnly: true,
-    strokeColor: '#CECDCC',
+    penType: 'thick-thin',
+    freedrawOnly: true,
+    strokeColor: '#cecdcc',
     strokeOptions: {
-      highlighter: true, constantPressure: true, thinning: 1, easing: 'linear', endTaper: true,
+      highlighter: true,
+      constantPressure: true,
+      thinning: 1,
+      easing: 'linear',
+      endTaper: true,
     },
   }),
 
-  // 7. Thin-thick-thin highlighter
   makePenSeed({
-    penType: 'thin-thick-thin', freedrawOnly: true,
-    strokeColor: '#CECDCC',
+    penType: 'thin-thick-thin',
+    freedrawOnly: true,
+    strokeColor: '#cecdcc',
     strokeOptions: {
-      highlighter: true, constantPressure: true, thinning: 1, easing: 'linear',
-      startTaper: true, endTaper: true,
+      highlighter: true,
+      constantPressure: true,
+      thinning: 1,
+      easing: 'linear',
+      startTaper: true,
+      endTaper: true,
     },
   }),
 
-  // 8. Pink highlighter
   makePenSeed({
-    penType: 'highlighter',
-    strokeColor: '#fff0f6', backgroundColor: '#fff0f6',
-    fillStyle: 'solid', strokeWidth: 2,
+    penType: 'pink',
+    freedrawOnly: true,
+    strokeColor: '#fff0f6',
+    backgroundColor: '#fff0f6',
+    fillStyle: 'solid',
+    strokeWidth: 2.6,
     strokeOptions: HIGHLIGHTER_STROKE,
   }),
 
-  // 9-10. Extra default pen slots (matching Obsidian's 10-pen layout)
   makePenSeed(),
   makePenSeed(),
 ]
@@ -479,14 +507,19 @@ export function extractObsidianHighlighterPresetsFromPluginDataBlock(
     const penOptions = isRecord(item.penOptions) ? item.penOptions : {}
     const parsedOptions = resolveStrokeOptionsFromObsidianPen(penOptions)
     const isHighlighter = parsedOptions.highlighter
+    const backgroundColor = asString(item.backgroundColor, isHighlighter ? '#fff9db' : 'transparent')
+    const rawStrokeColor = asString(item.strokeColor, isHighlighter ? '#ffffff' : '#000000')
+    const strokeColor = normalizeColor(rawStrokeColor) === '#ffffff' || normalizeColor(rawStrokeColor) === '#fff'
+      ? backgroundColor
+      : rawStrokeColor
 
     presets.push({
       id: makePresetId(penType, index, seenIds),
       label: toDisplayLabel(item.type, index),
       penType,
       freedrawOnly: asBoolean(item.freedrawOnly, false),
-      strokeColor: asString(item.strokeColor, isHighlighter ? '#ffffff' : '#000000'),
-      backgroundColor: asString(item.backgroundColor, isHighlighter ? '#fff9db' : 'transparent'),
+      strokeColor,
+      backgroundColor,
       fillStyle: asFillStyle(item.fillStyle, isHighlighter ? 'solid' : 'hachure'),
       strokeWidth: Math.max(asNumber(item.strokeWidth, isHighlighter ? 2.6 : 0), 0),
       roughness: Math.max(asNumber(item.roughness, 0), 0),

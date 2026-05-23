@@ -10,14 +10,15 @@ import {
 } from '../src/services/lego_blocks/units/excalidrawHighlighterBlock'
 
 describe('excalidrawHighlighterBlock', () => {
-  it('defines Obsidian-style highlighter presets for quick pen switching', () => {
-    expect(EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK.length).toBeGreaterThanOrEqual(5)
+  it('defines Obsidian-style 10-slot presets for quick pen switching', () => {
+    expect(EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK).toHaveLength(10)
+    expect(EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK.map((preset) => preset.id)).toContain('default')
     expect(EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK.map((preset) => preset.id)).toContain('yellow')
+    expect(EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK.map((preset) => preset.id)).toContain('finetip')
+    expect(EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK.map((preset) => preset.id)).toContain('fountain')
     expect(EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK.map((preset) => preset.id)).toContain('pink')
-    for (const preset of EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK) {
-      expect(preset.strokeOptions.highlighter).toBe(true)
-      expect(preset.strokeWidth).toBeGreaterThan(0)
-    }
+    expect(EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK.some((preset) => !preset.strokeOptions.highlighter)).toBe(true)
+    expect(EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK.some((preset) => preset.strokeOptions.highlighter)).toBe(true)
   })
 
   it('matches known presets from appState when highlighter mode is active', () => {
@@ -46,7 +47,8 @@ describe('excalidrawHighlighterBlock', () => {
   })
 
   it('builds highlighter patch that switches tool to freedraw with highlighter options', () => {
-    const preset = EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK[0]
+    const preset = EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK.find((item) => item.id === 'yellow')
+    expect(preset).toBeDefined()
     const patch = buildExcalidrawHighlighterAppStatePatchBlock(preset, {
       activeTool: {
         type: 'selection',
@@ -109,7 +111,7 @@ describe('excalidrawHighlighterBlock', () => {
     expect((presets[0]?.strokeOptions.options.end.taper)).toBe(true)
   })
 
-  it('parses Obsidian plugin settings JSON and ignores non-highlighter pens', () => {
+  it('parses Obsidian plugin settings JSON without dropping non-highlighter pens', () => {
     const raw = JSON.stringify({
       customPens: [
         {
@@ -130,7 +132,10 @@ describe('excalidrawHighlighterBlock', () => {
     })
 
     const parsed = parseObsidianHighlighterPresetsJsonBlock(raw)
-    expect(parsed).toHaveLength(1)
-    expect(parsed[0]?.label).toBe('Marker')
+    expect(parsed).toHaveLength(2)
+    expect(parsed[0]?.label).toBe('Default')
+    expect(parsed[0]?.strokeOptions.highlighter).toBe(false)
+    expect(parsed[1]?.label).toBe('Marker')
+    expect(parsed[1]?.strokeOptions.highlighter).toBe(true)
   })
 })

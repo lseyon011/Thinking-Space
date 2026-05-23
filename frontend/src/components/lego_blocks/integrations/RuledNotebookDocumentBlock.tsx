@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { BookOpenText, ChevronLeft, ChevronRight, List, Loader2, X } from 'lucide-react'
+import { BookOpenText, ChevronLeft, ChevronRight, Eraser, List, Loader2, Pencil, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -10,7 +10,7 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import TikzDiagramBlock from '@/components/lego_blocks/units/TikzDiagramBlock'
 import { cn } from '@/lib/utils'
 import { splitFrontmatter } from '@/components/lego_blocks/units/MarkdownDocumentContentBlock'
-import { readMarkdownDocument } from '@/services/orchestrators/markdownDocumentsOrch'
+import { readMarkdownDocument, saveMarkdownDocument } from '@/services/orchestrators/markdownDocumentsOrch'
 import {
   splitMarkdownIntoBlocksBlock,
   paginateBlocksByHeightBlock,
@@ -18,6 +18,40 @@ import {
 } from '@/services/lego_blocks/units/ruledNotebookPaginationBlock'
 import { assignOutlineLabelsBlock } from '@/services/lego_blocks/units/outlineCounterBlock'
 import { resolveFrontmatterDatesBlock } from '@/services/lego_blocks/units/frontmatterDatesBlock'
+import {
+  joinInkFencedBlock,
+  splitInkFencedBlock,
+} from '@/services/lego_blocks/units/inkFencedBlock'
+import {
+  buildAnchorForBlockIndex,
+  resolveInkAnchorsBlock,
+} from '@/services/lego_blocks/units/inkAnchorBlock'
+import {
+  createInkStrokeIdBlock,
+  type InkStroke,
+} from '@/services/lego_blocks/units/inkStrokeBlock'
+import InkOverlayBlock, {
+  type InkOverlayMode,
+  type InkStrokeDraft,
+  type RenderableInkStroke,
+} from '@/components/lego_blocks/integrations/InkOverlayBlock'
+import ExcalidrawPenPaletteBlock from '@/components/lego_blocks/integrations/ExcalidrawPenPaletteBlock'
+import {
+  EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH,
+  loadExcalidrawHighlighterPresetsOrch,
+  type ExcalidrawHighlighterPresetBlock,
+} from '@/services/orchestrators/excalidrawHighlighterOrch'
+import {
+  FREEHAND_PEN_ID,
+  getDefaultExcalidrawPenDefaultsOrch,
+  readAllExcalidrawPerPresetSettingsOrch,
+  readExcalidrawActivePresetIdOrch,
+  readExcalidrawPenDefaultsOrch,
+  writeAllExcalidrawPerPresetSettingsOrch,
+  writeExcalidrawActivePresetIdOrch,
+  writeExcalidrawPenDefaultsOrch,
+  type ExcalidrawPenDefaultsOrch,
+} from '@/services/orchestrators/excalidrawPenDefaultsOrch'
 
 interface RuledNotebookDocumentBlockProps {
   path: string
@@ -49,6 +83,18 @@ const MARKDOWN_COMPONENTS = {
   },
 } as const
 
+function colorWithOpacity(color: string, opacity: number): string {
+  const alpha = Math.min(Math.max(Math.round(opacity), 1), 100) / 100
+  if (alpha >= 1) return color
+  const hex = color.replace('#', '')
+  if (hex.length !== 6) return color
+  const r = parseInt(hex.slice(0, 2), 16)
+  const g = parseInt(hex.slice(2, 4), 16)
+  const b = parseInt(hex.slice(4, 6), 16)
+  if ([r, g, b].some((n) => !Number.isFinite(n))) return color
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
 function leafNameOf(path: string): string {
   const idx = path.lastIndexOf('/')
   return idx < 0 ? path : path.slice(idx + 1)
@@ -59,6 +105,19 @@ function sideOf(index: number): 'right' | 'left' {
   return index % 2 === 0 ? 'right' : 'left'
 }
 
+interface PageFaceInkProps {
+  enabled: boolean
+  mode: InkOverlayMode
+  /* Strokes that anchor to one of this page's blocks. Index in the tuple
+     is local to this page (0..page.blocks.length-1). */
+  pageStrokes: Array<{ stroke: InkStroke; pageBlockIndex: number }>
+  onStrokeCommit: (params: { draft: InkStrokeDraft; pageBlockIndex: number }) => void
+  onStrokesErase: (strokeIds: string[]) => void
+  penColor: string
+  penWidth: number
+  pressureSensitive: boolean
+}
+
 interface PageFaceProps {
   page: RuledNotebookPageBlock | null
   index: number
@@ -66,10 +125,67 @@ interface PageFaceProps {
   className?: string
   /* Optional date jotted into the page-1 left margin (the column to the left of the red rule). */
   marginDate?: string | null
+  ink?: PageFaceInkProps
 }
 
-function PageFace({ page, index, title, className, marginDate }: PageFaceProps) {
+function PageFace({ page, index, title, className, marginDate, ink }: PageFaceProps) {
   const side = sideOf(index)
+  const paperRef = useRef<HTMLDivElement | null>(null)
+  const blockRefs = useRef<Array<HTMLDivElement | null>>([])
+  const [layoutVersion, setLayoutVersion] = useState(0)
+
+  useLayoutEffect(() => {
+    blockRefs.current = blockRefs.current.slice(0, page?.blocks.length ?? 0)
+    setLayoutVersion((version) => version + 1)
+  }, [page])
+
+  const getBlockRectLocal = useCallback((blockIdx: number) => {
+    const blockEl = blockRefs.current[blockIdx]
+    const paperEl = paperRef.current
+    if (!blockEl || !paperEl) return null
+    const b = blockEl.getBoundingClientRect()
+    const p = paperEl.getBoundingClientRect()
+    return { left: b.left - p.left, top: b.top - p.top, width: b.width, height: b.height }
+  }, [])
+
+  const renderableStrokes = useMemo<RenderableInkStroke[]>(() => {
+    if (!ink) return []
+    return ink.pageStrokes.map(({ stroke, pageBlockIndex }) => ({
+      stroke,
+      blockRect: getBlockRectLocal(pageBlockIndex),
+    }))
+    /* getBlockRectLocal is stable; we intentionally recompute rects on
+       every render of the parent (e.g., after resize) by reading refs. */
+  }, [ink, getBlockRectLocal, layoutVersion])
+
+  const hitTestBlock = useCallback((x: number, y: number) => {
+    /* Two-pass: first try direct hit (point inside a block). If the user
+       drew in a margin, on whitespace between blocks, or below the last
+       block, fall back to the block closest by vertical distance — that
+       way annotations work anywhere on the page, not just on text. */
+    let bestIdx = -1
+    let bestRect: { left: number; top: number; width: number; height: number } | null = null
+    let bestDist = Infinity
+    for (let i = 0; i < blockRefs.current.length; i++) {
+      const rect = getBlockRectLocal(i)
+      if (!rect) continue
+      if (x >= rect.left && x <= rect.left + rect.width && y >= rect.top && y <= rect.top + rect.height) {
+        return { blockIndex: i, blockRect: rect }
+      }
+      const centerY = rect.top + rect.height / 2
+      const dist = Math.abs(y - centerY)
+      if (dist < bestDist) {
+        bestDist = dist
+        bestIdx = i
+        bestRect = rect
+      }
+    }
+    if (bestIdx >= 0 && bestRect) {
+      return { blockIndex: bestIdx, blockRect: bestRect }
+    }
+    return null
+  }, [getBlockRectLocal])
+
   if (!page) return null
   return (
     <div
@@ -83,15 +199,36 @@ function PageFace({ page, index, title, className, marginDate }: PageFaceProps) 
         <span>{title}</span>
         <span>Page {index + 1}</span>
       </div>
-      <div className="ltm-ruled-notebook-paper">
+      <div ref={paperRef} className="ltm-ruled-notebook-paper relative">
         {marginDate ? (
           <div className="ltm-ruled-notebook-margin-date" aria-label={`Created ${marginDate}`}>
             {marginDate}
           </div>
         ) : null}
         <div className="ltm-ruled-notebook-content">
-          <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS}>{page.source}</ReactMarkdown>
+          {page.blocks.map((block, blockIdx) => (
+            <div
+              key={blockIdx}
+              ref={(el) => { blockRefs.current[blockIdx] = el }}
+              data-block-idx={blockIdx}
+            >
+              <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MARKDOWN_COMPONENTS}>{block.source}</ReactMarkdown>
+            </div>
+          ))}
         </div>
+        {ink ? (
+          <InkOverlayBlock
+            enabled={ink.enabled}
+            mode={ink.mode}
+            renderableStrokes={renderableStrokes}
+            hitTestBlock={hitTestBlock}
+            onStrokeCommit={(draft) => ink.onStrokeCommit({ draft, pageBlockIndex: draft.blockIndex })}
+            onStrokesErase={ink.onStrokesErase}
+            penColor={ink.penColor}
+            penWidth={ink.penWidth}
+            pressureSensitive={ink.pressureSensitive}
+          />
+        ) : null}
       </div>
       <div className="ltm-ruled-notebook-footer">
         <span>{side}</span>
@@ -115,6 +252,14 @@ export default function RuledNotebookDocumentBlock({
   const [pages, setPages] = useState<RuledNotebookPageBlock[]>([])
   const [tocOpen, setTocOpen] = useState(false)
   const [createdSeconds, setCreatedSeconds] = useState<number | null>(null)
+  const [inkStrokes, setInkStrokes] = useState<InkStroke[]>([])
+  const [tool, setTool] = useState<'off' | 'pen' | 'eraser'>('off')
+  const [penDefaults, setPenDefaults] = useState<ExcalidrawPenDefaultsOrch>(() => getDefaultExcalidrawPenDefaultsOrch())
+  const [presets, setPresets] = useState<readonly ExcalidrawHighlighterPresetBlock[]>(EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH)
+  const [activePresetId, setActivePresetId] = useState<string | null>(null)
+  const [perPresetSettings, setPerPresetSettings] = useState<Record<string, ExcalidrawPenDefaultsOrch>>({})
+  const baseMtimeRef = useRef<number>(0)
+  const saveTimerRef = useRef<number | null>(null)
 
   const paperMeasureRef = useRef<HTMLDivElement | null>(null)
   const blocksMeasureRef = useRef<HTMLDivElement | null>(null)
@@ -131,11 +276,29 @@ export default function RuledNotebookDocumentBlock({
     return created.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
   }, [content, createdSeconds])
 
-  const blocks = useMemo(() => {
-    if (content === null) return []
-    const { body } = splitFrontmatter(content)
-    return splitMarkdownIntoBlocksBlock(body)
+  /* Strip the trailing ```ink``` annotation block before any other parsing —
+     it isn't prose and should never be rendered as markdown or paginated. */
+  const renderableContent = useMemo(() => {
+    if (content === null) return null
+    return splitInkFencedBlock(content).body
   }, [content])
+
+  const blocks = useMemo(() => {
+    if (renderableContent === null) return []
+    const { body } = splitFrontmatter(renderableContent)
+    return splitMarkdownIntoBlocksBlock(body)
+  }, [renderableContent])
+
+  /* Map each stroke to its current global block index using the resolver.
+     `null` blockIndex = orphan (anchor text disappeared). */
+  const inkResolutions = useMemo(() => {
+    if (inkStrokes.length === 0) return new Map<string, number | null>()
+    const blockTexts = blocks.map((b) => b.source)
+    const resolved = resolveInkAnchorsBlock(inkStrokes, { blockTexts })
+    const out = new Map<string, number | null>()
+    for (const r of resolved) out.set(r.strokeId, r.blockIndex)
+    return out
+  }, [inkStrokes, blocks])
 
   useLayoutEffect(() => {
     if (blocks.length === 0) {
@@ -212,7 +375,10 @@ export default function RuledNotebookDocumentBlock({
       try {
         const document = await readMarkdownDocument(path, { includeHash: false })
         if (!cancelled) {
+          const { strokes } = splitInkFencedBlock(document.content)
           setContent(document.content)
+          setInkStrokes(strokes)
+          baseMtimeRef.current = document.mtime
           setCreatedSeconds(document.ctime ?? null)
           setLoading(false)
         }
@@ -254,6 +420,172 @@ export default function RuledNotebookDocumentBlock({
     const timeout = window.setTimeout(() => setTransition(null), PAGE_TURN_MS)
     return () => window.clearTimeout(timeout)
   }, [transition])
+
+  /* Debounced persist: write the .md with the current ink fence whenever
+     `inkStrokes` changes. We rebuild from `renderableContent` (body without
+     any existing fence) so we never accidentally nest fences. */
+  const scheduleInkSave = useCallback((nextStrokes: InkStroke[]) => {
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = window.setTimeout(async () => {
+      saveTimerRef.current = null
+      if (content === null) return
+      const body = splitInkFencedBlock(content).body
+      const next = joinInkFencedBlock(body, nextStrokes)
+      if (next === content) return
+      try {
+        const result = await saveMarkdownDocument({
+          path,
+          content: next,
+          baseMtime: baseMtimeRef.current,
+          baseContent: content,
+        })
+        baseMtimeRef.current = result.mtime
+        setContent(next)
+      } catch (err) {
+        /* Conflict / IO error: surface in console for now; pen mode stays
+           on, user can retry by drawing again. Avoid a noisy toast for v1. */
+        console.warn('[ruled-notebook] ink save failed', err)
+      }
+    }, 600)
+  }, [content, path])
+
+  const handleStrokeCommit = useCallback<(params: {
+    draft: InkStrokeDraft
+    pageBlockIndex: number
+    pageStartGlobalBlockIdx: number
+  }) => void>((params) => {
+    const { draft, pageBlockIndex, pageStartGlobalBlockIdx } = params
+    const globalIdx = pageStartGlobalBlockIdx + pageBlockIndex
+    const blockTexts = blocks.map((b) => b.source)
+    if (globalIdx < 0 || globalIdx >= blockTexts.length) return
+    const { anchorText, anchorContext } = buildAnchorForBlockIndex(blockTexts, globalIdx)
+    const stroke: InkStroke = {
+      id: createInkStrokeIdBlock(),
+      anchorText,
+      anchorContext,
+      type: 'freedraw',
+      x: draft.x,
+      y: draft.y,
+      width: draft.width,
+      height: draft.height,
+      points: draft.points,
+      pressures: draft.pressures,
+      simulatePressure: draft.simulatePressure,
+      strokeColor: colorWithOpacity(penDefaults.strokeColor, penDefaults.opacity),
+      strokeWidth: penDefaults.strokeWidth,
+      opacity: penDefaults.opacity,
+      createdAt: Date.now(),
+    }
+    setInkStrokes((prev) => {
+      const next = [...prev, stroke]
+      scheduleInkSave(next)
+      return next
+    })
+  }, [blocks, scheduleInkSave, penDefaults])
+
+  useEffect(() => () => {
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
+  }, [])
+
+  /* Mount-once: load persisted pen settings + Obsidian-shared highlighter
+     presets. Failures fall back to built-in defaults silently. */
+  useEffect(() => {
+    setPenDefaults(readExcalidrawPenDefaultsOrch())
+    setActivePresetId(readExcalidrawActivePresetIdOrch())
+    setPerPresetSettings(readAllExcalidrawPerPresetSettingsOrch())
+    let cancelled = false
+    void loadExcalidrawHighlighterPresetsOrch().then((p) => {
+      if (!cancelled && p.length > 0) setPresets(p)
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [])
+
+  const handlePenDefaultsChange = useCallback((next: ExcalidrawPenDefaultsOrch) => {
+    setPenDefaults(next)
+    writeExcalidrawPenDefaultsOrch(next)
+    if (activePresetId && activePresetId !== FREEHAND_PEN_ID) {
+      setPerPresetSettings((prev) => {
+        const merged = { ...prev, [activePresetId]: next }
+        writeAllExcalidrawPerPresetSettingsOrch(merged)
+        return merged
+      })
+    }
+  }, [activePresetId])
+
+  const handleStrokeWidthChange = useCallback((width: number) => {
+    handlePenDefaultsChange({ ...penDefaults, strokeWidth: width })
+  }, [handlePenDefaultsChange, penDefaults])
+
+  const applyHighlighterPreset = useCallback((presetId: string) => {
+    setActivePresetId(presetId)
+    writeExcalidrawActivePresetIdOrch(presetId)
+    const preset = presets.find((p) => p.id === presetId)
+    if (!preset) return
+    const stored = perPresetSettings[presetId]
+    const presetColor = preset.backgroundColor !== 'transparent' ? preset.backgroundColor : preset.strokeColor
+    const next: ExcalidrawPenDefaultsOrch = stored ?? {
+      strokeColor: presetColor !== 'transparent' ? presetColor : penDefaults.strokeColor,
+      strokeWidth: preset.strokeWidth > 0 ? preset.strokeWidth : penDefaults.strokeWidth,
+      opacity: preset.opacity,
+      pressureSensitive: penDefaults.pressureSensitive,
+    }
+    setPenDefaults(next)
+    writeExcalidrawPenDefaultsOrch(next)
+  }, [presets, perPresetSettings, penDefaults])
+
+  const handleStrokesErase = useCallback((strokeIds: string[]) => {
+    if (strokeIds.length === 0) return
+    setInkStrokes((prev) => {
+      const drop = new Set(strokeIds)
+      const next = prev.filter((s) => !drop.has(s.id))
+      if (next.length === prev.length) return prev
+      scheduleInkSave(next)
+      return next
+    })
+  }, [scheduleInkSave])
+
+  /* For each page, derive the slice of global block indices it covers.
+     Pagination is sequential so this is just a prefix sum. */
+  const pageStartGlobalBlockIdxByPage = useMemo(() => {
+    const out: number[] = []
+    let acc = 0
+    for (const page of pages) {
+      out.push(acc)
+      acc += page.blocks.length
+    }
+    return out
+  }, [pages])
+
+  /* Filter strokes to those whose resolved global block index falls in the
+     current page's range, expressed as page-local index for PageFace. */
+  const buildPageStrokes = useCallback((pageIdx: number) => {
+    const start = pageStartGlobalBlockIdxByPage[pageIdx] ?? 0
+    const len = pages[pageIdx]?.blocks.length ?? 0
+    const out: Array<{ stroke: InkStroke; pageBlockIndex: number }> = []
+    for (const stroke of inkStrokes) {
+      const gIdx = inkResolutions.get(stroke.id)
+      if (gIdx === null || gIdx === undefined) continue
+      if (gIdx < start || gIdx >= start + len) continue
+      out.push({ stroke, pageBlockIndex: gIdx - start })
+    }
+    return out
+  }, [inkStrokes, inkResolutions, pageStartGlobalBlockIdxByPage, pages])
+
+  const inkPropsForPage = useCallback((pageIdx: number): PageFaceInkProps => ({
+    enabled: tool !== 'off',
+    mode: tool === 'eraser' ? 'eraser' : 'pen',
+    pageStrokes: buildPageStrokes(pageIdx),
+    onStrokeCommit: ({ draft, pageBlockIndex }) =>
+      handleStrokeCommit({
+        draft,
+        pageBlockIndex,
+        pageStartGlobalBlockIdx: pageStartGlobalBlockIdxByPage[pageIdx] ?? 0,
+      }),
+    onStrokesErase: handleStrokesErase,
+    penColor: penDefaults.strokeColor,
+    penWidth: penDefaults.strokeWidth,
+    pressureSensitive: penDefaults.pressureSensitive,
+  }), [tool, buildPageStrokes, handleStrokeCommit, handleStrokesErase, pageStartGlobalBlockIdxByPage, penDefaults])
 
   const handleMovePage = useCallback(
     (direction: 'forward' | 'backward') => {
@@ -326,6 +658,24 @@ export default function RuledNotebookDocumentBlock({
             <span className="hidden text-xs text-muted-foreground sm:inline">
               {pageIndex + 1} / {Math.max(pages.length, 1)}
             </span>
+            <Button
+              variant={tool === 'pen' ? 'default' : 'ghost'}
+              size="icon"
+              onClick={() => setTool((t) => (t === 'pen' ? 'off' : 'pen'))}
+              title={tool === 'pen' ? 'Disable pencil' : 'Annotate with pencil'}
+              aria-pressed={tool === 'pen'}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={tool === 'eraser' ? 'default' : 'ghost'}
+              size="icon"
+              onClick={() => setTool((t) => (t === 'eraser' ? 'off' : 'eraser'))}
+              title={tool === 'eraser' ? 'Disable eraser' : 'Erase ink'}
+              aria-pressed={tool === 'eraser'}
+            >
+              <Eraser className="h-4 w-4" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -418,6 +768,18 @@ export default function RuledNotebookDocumentBlock({
           </div>
 
           <div className="ltm-ruled-notebook-stage">
+            {tool === 'pen' ? (
+              <ExcalidrawPenPaletteBlock
+                presets={presets}
+                activePresetId={activePresetId}
+                onSelectPreset={applyHighlighterPreset}
+                penDefaults={penDefaults}
+                onPenDefaultsChange={handlePenDefaultsChange}
+                currentStrokeWidth={penDefaults.strokeWidth}
+                onStrokeWidthChange={handleStrokeWidthChange}
+                perPresetSettings={perPresetSettings}
+              />
+            ) : null}
             <div className="ltm-ruled-notebook-stack">
               {/* Peek: a slim strip of the next page poking out from the right edge */}
               {peekPage ? (
@@ -452,6 +814,7 @@ export default function RuledNotebookDocumentBlock({
                 index={pageIndex}
                 title={pageTitle}
                 marginDate={pageIndex === 0 ? createdLabel : null}
+                ink={inkPropsForPage(pageIndex)}
                 className={cn(
                   'ltm-ruled-notebook-page-layer ltm-ruled-notebook-page-layer-current',
                   transitionKind === 'page-slide' && transitionDirection === 'forward' && 'ltm-ruled-notebook-animate-slide-in-forward',
