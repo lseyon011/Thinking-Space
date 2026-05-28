@@ -82,7 +82,7 @@ import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigat
 import { isElectron, isEmbeddedTerminalSupported, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { fullSync, getLastSyncTimestamp, setLastSyncTimestamp, smartSync, type SyncResult } from './services/orchestrators/vaultSyncOrch'
 import { startVaultLiveRefresh } from './services/orchestrators/vaultLiveRefreshOrch'
-import { listMarkdownEntries } from './services/orchestrators/fileSystemOrch'
+import { listMarkdownPaths } from './services/orchestrators/fileSystemOrch'
 import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import {
   gitCommitAllOrch,
@@ -1398,11 +1398,11 @@ function App() {
   const ensureCommandFilesLoaded = useCallback(async () => {
     if (needsVaultSetup) return
     if (Date.now() - commandFilesLastLoadedAt < 20_000) return
-    const entries = await listMarkdownEntries()
+    const paths = await listMarkdownPaths()
     const seen = new Set<string>()
     const fileItems: CommandItem[] = []
-    for (const entry of entries) {
-      const path = entry.path.trim()
+    for (const rawPath of paths) {
+      const path = rawPath.trim()
       if (!path || seen.has(path)) continue
       seen.add(path)
       const fileName = path.split('/').pop() || path

@@ -188,7 +188,7 @@ export class NodeVaultFS implements VaultFS {
 // ── CLI arg parsing for direct capability invocation ──
 
 const NUMBER_FIELDS = new Set(['limit', 'lineNumber'])
-const ARRAY_FIELDS = new Set(['tags', 'items', 'artifacts', 'relatedNodes', 'emotions', 'comments', 'derived_from', 'changed_paths', 'concept_subpath'])
+const ARRAY_FIELDS = new Set(['tags', 'items', 'artifacts', 'relatedNodes', 'emotions', 'comments', 'derived_from', 'changed_paths', 'concept_subpath', 'insights', 'files_touched', 'linked_notes'])
 const BOOLEAN_FIELDS = new Set(['dryRun', 'dry-run', 'date_header', 'text-stdin', 'overwrite'])
 const JSON_FIELDS = new Set(['frontmatter', 'set', 'append_unique'])
 const GREEDY_TEXT_FIELDS = new Set([
@@ -746,6 +746,10 @@ const CAPABILITY_EXAMPLES: Record<string, string[]> = {
   'thoughts.create': [
     'thinkspc thoughts.create --folder_path "journal" --filename "reflection" --content "Today I learned..." --title "Daily reflection" --date_header --emotions "curious,focused"',
   ],
+  'daily.log_insight': [
+    'thinkspc daily.log_insight --insights-file ./today-insights.txt --teachers_note-file ./teacher.md',
+    'thinkspc daily.log_insight --insights \'["First insight","Second insight"]\' --files_touched "src/foo.ts,src/bar.ts"',
+  ],
   'todos.create': [
     'thinkspc todos.create --folderPath "todos" --date "2025-01-15" --items "Buy groceries,Fix bug,Review PR"',
   ],
@@ -946,6 +950,14 @@ const CAPABILITY_INPUT_FIELDS: Record<string, Array<{ flag: string; required: bo
     { flag: 'title', required: false },
     { flag: 'date_header', required: false, note: 'boolean flag' },
     { flag: 'emotions', required: false, note: 'comma-separated' },
+  ],
+  'daily.log_insight': [
+    { flag: 'insights', required: true, note: 'newline-separated via --insights-file, or JSON array' },
+    { flag: 'files_touched', required: false, note: 'comma-separated or JSON array' },
+    { flag: 'linked_notes', required: false, note: 'comma-separated or JSON array' },
+    { flag: 'teachers_note', required: false, note: 'prefer --teachers_note-file for long text' },
+    { flag: 'date', required: false, note: 'YYYY-MM-DD, defaults to today' },
+    { flag: 'mode', required: false, note: 'append (default) or replace' },
   ],
   'todos.create': [
     { flag: 'folderPath', required: true },

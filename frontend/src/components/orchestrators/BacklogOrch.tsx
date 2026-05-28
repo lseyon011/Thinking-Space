@@ -24,7 +24,6 @@ import {
   getVaultFsOrch,
   hierarchyToExcalidrawMdOrch,
 } from '@/services/orchestrators/backlogProjectOrch'
-import { listMarkdownEntries } from '@/services/orchestrators/fileSystemOrch'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { defaultNodeKindLabel } from '@/components/lego_blocks/integrations/HierarchyTreeBlock'
 import {
@@ -683,38 +682,28 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
 
   useEffect(() => {
     let cancelled = false
-    void Promise.allSettled([
-      listMarkdownEntries(),
-      getAllNodes(),
-    ]).then((results) => {
-      if (cancelled) return
-      const markdownResult = results[0]
-      const nodesResult = results[1]
-      const nodes = (nodesResult.status === 'fulfilled') ? nodesResult.value : []
-      const nodeByPath = new Map(
-        nodes.map(node => [normalizePath(node.filePath), node] as const),
-      )
-
-      if (markdownResult.status !== 'fulfilled') {
+    void getAllNodes()
+      .then((nodes) => {
+        if (cancelled) return
+        const options: PinBoardFileOptionBlock[] = []
+        const seen = new Set<string>()
+        for (const node of nodes) {
+          const path = normalizePath(node.filePath)
+          if (!path || seen.has(path)) continue
+          seen.add(path)
+          options.push({
+            path,
+            label: node.title?.trim() || labelFromMarkdownPath(path),
+            summary: node.aiSummary?.trim() || node.bodyExcerpt?.trim() || node.description?.trim() || undefined,
+          })
+        }
+        options.sort((a, b) => a.label.localeCompare(b.label))
+        setPinBoardFileOptions(options)
+      })
+      .catch(() => {
+        if (cancelled) return
         setPinBoardFileOptions([])
-        return
-      }
-
-      const options: PinBoardFileOptionBlock[] = []
-      for (const entry of markdownResult.value) {
-        const path = normalizePath(entry.path)
-        if (!path) continue
-        const node = nodeByPath.get(path)
-        options.push({
-          path,
-          label: node?.title?.trim() || labelFromMarkdownPath(path),
-          summary: node?.aiSummary?.trim() || node?.bodyExcerpt?.trim() || node?.description?.trim() || undefined,
-        })
-      }
-
-      options.sort((a, b) => a.label.localeCompare(b.label))
-      setPinBoardFileOptions(options)
-    })
+      })
     return () => {
       cancelled = true
     }

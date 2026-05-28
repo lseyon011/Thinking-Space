@@ -49,6 +49,7 @@ export type CapabilityName =
   | 'handoff.create'
   | 'comment.add'
   | 'thoughts.create'
+  | 'daily.log_insight'
   | 'todos.create'
   | 'todos.toggle'
   | 'tools.files.list_markdown'
@@ -226,6 +227,14 @@ export interface CapabilityInputMap {
     date_header: boolean
     emotions: string[]
   }
+  'daily.log_insight': {
+    insights: string[]
+    files_touched?: string[]
+    linked_notes?: string[]
+    teachers_note?: string
+    date?: string
+    mode?: 'append' | 'replace'
+  }
   'todos.create': {
     folderPath: string
     date: string
@@ -390,6 +399,11 @@ export interface CapabilityOutputMap {
   }
   'thoughts.create': {
     output_path: string
+  }
+  'daily.log_insight': {
+    output_path: string
+    was_created: boolean
+    insights_count: number
   }
   'todos.create': {
     output_path: string
@@ -563,6 +577,11 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
   {
     name: 'thoughts.create',
     description: 'Create a thought markdown note with YAML metadata.',
+    readOnly: false,
+  },
+  {
+    name: 'daily.log_insight',
+    description: 'Upsert today’s daily insights note (record_kind: insight) with insights, files touched, linked notes, and a teacher’s note.',
     readOnly: false,
   },
   {

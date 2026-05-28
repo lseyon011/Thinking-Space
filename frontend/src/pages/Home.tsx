@@ -1,10 +1,13 @@
 import { Link } from 'react-router-dom'
 import Starfield from '@/components/lego_blocks/units/StarfieldBlock'
 import TodayFileActivityOrch from '@/components/orchestrators/TodayFileActivityOrch'
+import HomeDashboardOrch from '@/components/orchestrators/HomeDashboardOrch'
 import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
+import { useDashboardActivityBlock } from '@/components/lego_blocks/hooks/shared/useDashboardActivityBlock'
 
 export default function Home() {
   const { profile } = useUserProfileBlock()
+  const activity = useDashboardActivityBlock('30d')
 
   return (
     <div className="relative isolate ltm-page">
@@ -32,6 +35,10 @@ export default function Home() {
         <div className="mt-10 h-32 sm:mt-12 sm:h-36 md:mt-14 md:h-40" aria-hidden="true" />
 
         <section>
+          <HomeDashboardOrch activity={activity} />
+        </section>
+
+        <section className="mt-10">
           <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4">
             <h2 className="text-base font-semibold">What you did today</h2>
             <Link to="/git-insights" className="text-sm text-muted-foreground hover:text-foreground">
@@ -39,7 +46,10 @@ export default function Home() {
             </Link>
           </div>
           <div className="mt-4">
-            <TodayFileActivityOrch />
+            <TodayFileActivityOrch
+              highlights={activity.series?.highlights ?? null}
+              highlightsLoading={activity.loading}
+            />
           </div>
         </section>
       </div>

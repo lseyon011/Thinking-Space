@@ -1,5 +1,5 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
-import { getFileContent, listMarkdownEntries } from '@/services/orchestrators/fileSystemOrch'
+import { getFileContent, listMarkdownPaths } from '@/services/orchestrators/fileSystemOrch'
 import {
   buildHeadingAssignmentDownloadNameBlock,
   parseMarkdownHeadingsBlock,
@@ -34,9 +34,9 @@ function createPresetIdBlock(): string {
 }
 
 export async function listHeadingAssignmentFileOptionsOrch(): Promise<HeadingAssignmentFileOptionOrch[]> {
-  const entries = await listMarkdownEntries()
-  return entries
-    .map((entry) => entry.path.trim())
+  const paths = await listMarkdownPaths()
+  return paths
+    .map((path) => path.trim())
     .filter(path => path.length > 0 && !path.endsWith('.excalidraw.md'))
     .sort((left, right) => left.localeCompare(right))
     .map(path => ({ path, label: path }))

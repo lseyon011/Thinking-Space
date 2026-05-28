@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { BookOpenText, ChevronLeft, ChevronRight, Eraser, List, Loader2, Pencil, X } from 'lucide-react'
+import { BookOpenText, Brain, ChevronLeft, ChevronRight, Eraser, List, Loader2, Pencil, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -18,6 +18,7 @@ import {
 } from '@/services/lego_blocks/units/ruledNotebookPaginationBlock'
 import { assignOutlineLabelsBlock } from '@/services/lego_blocks/units/outlineCounterBlock'
 import { resolveFrontmatterDatesBlock } from '@/services/lego_blocks/units/frontmatterDatesBlock'
+import { appendTodayMemorizedSession } from '@/services/lego_blocks/units/memorizedSessionsBlock'
 import {
   joinInkFencedBlock,
   splitInkFencedBlock,
@@ -254,6 +255,7 @@ export default function RuledNotebookDocumentBlock({
   const [createdSeconds, setCreatedSeconds] = useState<number | null>(null)
   const [inkStrokes, setInkStrokes] = useState<InkStroke[]>([])
   const [tool, setTool] = useState<'off' | 'pen' | 'eraser'>('off')
+  const [memorizing, setMemorizing] = useState(false)
   const [penDefaults, setPenDefaults] = useState<ExcalidrawPenDefaultsOrch>(() => getDefaultExcalidrawPenDefaultsOrch())
   const [presets, setPresets] = useState<readonly ExcalidrawHighlighterPresetBlock[]>(EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH)
   const [activePresetId, setActivePresetId] = useState<string | null>(null)
@@ -487,6 +489,40 @@ export default function RuledNotebookDocumentBlock({
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
   }, [])
 
+  const commitMemorizedSession = useCallback(async () => {
+    if (content === null) return
+    const next = appendTodayMemorizedSession(content)
+    if (next === null) return
+    try {
+      const result = await saveMarkdownDocument({
+        path,
+        content: next,
+        baseMtime: baseMtimeRef.current,
+        baseContent: content,
+      })
+      baseMtimeRef.current = result.mtime
+      setContent(next)
+    } catch (err) {
+      console.warn('[ruled-notebook] memorized session save failed', err)
+    }
+  }, [content, path])
+
+  const memorizingRef = useRef(false)
+  useEffect(() => { memorizingRef.current = memorizing }, [memorizing])
+  const commitMemorizedSessionRef = useRef(commitMemorizedSession)
+  useEffect(() => { commitMemorizedSessionRef.current = commitMemorizedSession }, [commitMemorizedSession])
+
+  useEffect(() => () => {
+    if (memorizingRef.current) void commitMemorizedSessionRef.current()
+  }, [])
+
+  const handleToggleMemorize = useCallback(() => {
+    setMemorizing((active) => {
+      if (active) void commitMemorizedSession()
+      return !active
+    })
+  }, [commitMemorizedSession])
+
   /* Mount-once: load persisted pen settings + Obsidian-shared highlighter
      presets. Failures fall back to built-in defaults silently. */
   useEffect(() => {
@@ -675,6 +711,15 @@ export default function RuledNotebookDocumentBlock({
               aria-pressed={tool === 'eraser'}
             >
               <Eraser className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={memorizing ? 'default' : 'ghost'}
+              size="icon"
+              onClick={handleToggleMemorize}
+              title={memorizing ? 'Stop memorizing (saves today’s session)' : 'Start memorizing'}
+              aria-pressed={memorizing}
+            >
+              <Brain className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"

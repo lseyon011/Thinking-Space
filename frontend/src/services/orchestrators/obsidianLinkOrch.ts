@@ -13,7 +13,7 @@ import {
   type ResolveWikilinkPathBlockResult,
   type WikilinkSuggestionBlock,
 } from '@/services/lego_blocks/integrations/obsidianWikilinkBlock'
-import { listMarkdownEntries } from './fileSystemOrch'
+import { listMarkdownPaths } from './fileSystemOrch'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 
 export function buildObsidianOpenUrlOrch(path: string): string {
@@ -110,8 +110,7 @@ async function getCachedMarkdownPaths(): Promise<string[]> {
 }
 
 async function refreshMarkdownPathCache(): Promise<string[]> {
-  const entries = await listMarkdownEntries()
-  const nextPaths = entries.map((entry) => entry.path)
+  const nextPaths = await listMarkdownPaths()
   wikilinkPathCache = {
     paths: nextPaths,
     expiresAt: nowMs() + WIKILINK_CACHE_TTL_MS,

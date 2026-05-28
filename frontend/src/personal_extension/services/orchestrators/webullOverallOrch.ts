@@ -309,7 +309,10 @@ function waitMsBlock(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-const WEBULL_API_STAGGER_MS_BLOCK = 350
+// Webull's OpenAPI rate limits are strict (roughly 1 req/sec sustained per
+// account scope). Combined with retry-with-backoff in the API block this
+// stagger keeps the steady-state below the limit so retries are rare.
+const WEBULL_API_STAGGER_MS_BLOCK = 800
 
 async function fetchAccountSnapshotBlock(
   account: WebullSelectedAccountOrch,

@@ -40,6 +40,7 @@ import { startActivity } from '@/services/lego_blocks/units/backgroundActivityBl
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { getUserCommentAuthorBlock } from '@/services/lego_blocks/units/userProfileBlock'
 import { createThought } from './thoughtsOrch'
+import { logDailyInsight } from './dailyInsightsOrch'
 import { createTodos, toggleTodo } from './todosOrch'
 import { listFiles, listFolders, listPdfFiles } from './fileSystemOrch'
 import { formatAndSave, previewFormat } from './formatExcalidrawOrch'
@@ -121,6 +122,7 @@ const WRITE_CAPABILITIES = new Set<CapabilityName>([
   'handoff.create',
   'comment.add',
   'thoughts.create',
+  'daily.log_insight',
   'todos.create',
   'todos.toggle',
   'tools.excalidraw.format',
@@ -719,6 +721,14 @@ async function executeCapability<Name extends CapabilityName>(
       const output = await createThought(payload)
       return output as CapabilityOutputMap[Name]
     }
+    case 'daily.log_insight': {
+      const payload = input as CapabilityInputMap['daily.log_insight']
+      if (!Array.isArray(payload.insights)) {
+        throw new Error('insights must be an array of strings')
+      }
+      const output = await logDailyInsight(payload, fs ?? getVaultFS())
+      return output as CapabilityOutputMap[Name]
+    }
     case 'todos.create': {
       const payload = input as CapabilityInputMap['todos.create']
       assertNonEmptyString(payload.folderPath, 'folderPath')
@@ -951,6 +961,10 @@ function extractTouchedPaths<Name extends CapabilityName>(
       const output = data as CapabilityOutputMap['thoughts.create']
       return output.output_path ? [output.output_path] : []
     }
+    case 'daily.log_insight': {
+      const output = data as CapabilityOutputMap['daily.log_insight']
+      return output.output_path ? [output.output_path] : []
+    }
     case 'todos.create': {
       const output = data as CapabilityOutputMap['todos.create']
       return output.output_path ? [output.output_path] : []
@@ -1145,6 +1159,7 @@ const CAPABILITY_LABELS: Partial<Record<CapabilityName, string>> = {
   'comment.add': 'Adding comment…',
   'run.log': 'Logging run…',
   'thoughts.create': 'Saving thought…',
+  'daily.log_insight': 'Saving daily insights…',
   'todos.create': 'Saving todo…',
   'todos.toggle': 'Updating todo…',
 }

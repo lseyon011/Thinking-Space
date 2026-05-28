@@ -6,6 +6,7 @@ import * as path from 'path';
 import { readScheduleBlock, type ScheduleSpecBlock } from './scheduleStorageBlock';
 import { runScheduleBlock, ScheduleRunResultBlock } from './scheduleRunnerBlock';
 import { notifyNtfyBlock, readNotificationsConfigBlock } from './notificationsBlock';
+import { armPmsetWakesForScheduleBlock } from './pmsetWakeBlock';
 
 export interface ScheduleServerInfoBlock {
   port: number;
@@ -103,6 +104,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, secret: 
       const result = await runScheduleBlock(spec);
       lastResults.set(key, result);
       notifyAfterRunBlock(spec, result);
+      // Refill the pmset wake queue — the wake we just consumed needs to be
+      // replaced with the next future entry so the rolling horizon stays full.
+      armPmsetWakesForScheduleBlock(spec).catch((err) =>
+        console.warn('[pmset] re-arm after launchd fire failed', err),
+      );
       sendJson(res, 200, { ok: true, result });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

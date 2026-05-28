@@ -80,6 +80,11 @@ import {
   getLaunchctlStatusBlock,
   listExternalAgentsBlock,
 } from './lego_blocks/launchctlBlock';
+import {
+  armAllPmsetWakesBlock,
+  armPmsetWakesForScheduleBlock,
+  cancelPmsetWakesForLabelBlock,
+} from './lego_blocks/pmsetWakeBlock';
 import { runScheduleBlock, type ScheduleRunChunkBlock, type ScheduleRunResultBlock } from './lego_blocks/scheduleRunnerBlock';
 import { listTranscriptsBlock, readTranscriptBlock } from './lego_blocks/transcriptStoreBlock';
 import { startHeartbeatBlock, stopHeartbeatBlock } from './lego_blocks/heartbeatBlock';
@@ -365,6 +370,15 @@ if (hasSingleInstanceLock) {
       } catch (err) {
         console.error('[schedules] Failed to start HTTP server:', err);
       }
+      // Top up pmset wake queue so the Mac wakes from sleep for calendar
+      // schedules. launchd will not wake the system on its own.
+      try {
+        const armed = await armAllPmsetWakesBlock(listSchedulesBlock());
+        const total = armed.reduce((n, r) => n + r.scheduled, 0);
+        console.log(`[pmset] armed ${total} wake event(s) across ${armed.length} schedule(s)`);
+      } catch (err) {
+        console.warn('[pmset] startup arm failed', err);
+      }
       // Heartbeat file so external tools can detect when the app is alive
       // (touches ~/.thinking-space-alive every minute).
       startHeartbeatBlock();
@@ -463,6 +477,11 @@ ipcMain.handle('schedules:save', async (_event, spec: ScheduleSpecBlock) => {
     } else {
       await removePlistBlock(saved.label);
     }
+    // Re-arm pmset wake events so the Mac wakes from sleep to actually run
+    // calendar-based schedules. Cancels prior wakes for this label first.
+    await armPmsetWakesForScheduleBlock(saved).catch((err) =>
+      console.warn('[pmset] arm after save failed', err),
+    );
   }
   return saved;
 });
@@ -471,6 +490,9 @@ ipcMain.handle('schedules:delete', async (_event, key: string) => {
   const spec = readScheduleBlock(key);
   if (spec && spec.managedBy === 'thinking-space') {
     await removePlistBlock(spec.label);
+    await cancelPmsetWakesForLabelBlock(spec.label).catch((err) =>
+      console.warn('[pmset] cancel after delete failed', err),
+    );
   }
   return deleteScheduleBlock(key);
 });
@@ -519,6 +541,11 @@ ipcMain.handle('schedules:fire-now', async (event, key: string, options: { strea
       : undefined,
   });
   maybeNotifyAfterRun(spec, result);
+  // The fire we just consumed left a hole in the pmset wake queue. Re-arm so
+  // the rolling horizon stays filled.
+  armPmsetWakesForScheduleBlock(spec).catch((err) =>
+    console.warn('[pmset] re-arm after fire-now failed', err),
+  );
   return result;
 });
 

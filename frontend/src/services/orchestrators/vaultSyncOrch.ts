@@ -19,6 +19,7 @@ import {
   bulkDeleteLinksForFiles,
   getAllFilePaths,
   getNodeByKey,
+  getNodeByPath,
   clearAll,
   clearAllLinks,
   getNodeCount,
@@ -175,6 +176,18 @@ export async function incrementalSync(
 
   const candidatePaths = allEntries.map(e => e.path)
   setCachedFilePaths(new Set(candidatePaths))
+
+  // Build a path -> cached updated_at map so syncEntries can skip files whose
+  // content is unchanged even though the OS bumped their mtime (typical on
+  // iCloud-backed vaults). Per-path lookups parallelize cheaply via Dexie.
+  const cachedUpdatedAtByPath = new Map<string, string>()
+  await Promise.all(
+    updatedEntries.map(async (entry) => {
+      const node = await getNodeByPath(entry.path)
+      if (node?.updatedAt) cachedUpdatedAtByPath.set(entry.path, node.updatedAt)
+    }),
+  )
+
   activity.update({
     total: updatedEntries.length,
     completed: 0,
@@ -193,6 +206,7 @@ export async function incrementalSync(
     undefined,
     autoHealEnabled,
     (completed) => activity.update({ completed }),
+    cachedUpdatedAtByPath,
   )
   result.deletedNodes = deletedCount
   result.totalFiles = allEntries.length
@@ -303,7 +317,23 @@ export async function smartSync(fs?: VaultFS, options?: VaultSyncOptions): Promi
   }
 
   setLastSyncTimestamp()
+
+  // Fire-and-forget cross-device Home snapshot refresh. No-ops on
+  // non-Electron platforms, where the snapshot is read-only.
+  void regenerateHomeSnapshotAfterSync()
+
   return result
+}
+
+async function regenerateHomeSnapshotAfterSync(): Promise<void> {
+  try {
+    const { regenerateHomeSnapshot } = await import(
+      '@/services/lego_blocks/integrations/homeSnapshotBlock'
+    )
+    await regenerateHomeSnapshot()
+  } catch (err) {
+    console.warn('[vaultSyncOrch] home snapshot regenerate failed', err)
+  }
 }
 
 // ── Internals ──
@@ -318,6 +348,7 @@ async function syncEntries(
   parentKeyToPath?: Map<string, string>,
   autoHealEnabled?: boolean,
   onProgress?: (completed: number) => void,
+  skipIfUpdatedAtMatches?: Map<string, string>,
 ): Promise<SyncResult> {
   const maxFileSizeBytes = resolveMaxSyncFileSizeBytes(options)
   const result: SyncResult = {
@@ -387,6 +418,22 @@ async function syncEntries(
         continue
       }
 
+      // iCloud-aware fast path: if the file's frontmatter `updated_at` matches
+      // what we already cached for this path, skip the full parse + upsert.
+      // iCloud frequently bumps mtimes when it re-materializes files in the
+      // background, which would otherwise force a redundant reparse on every
+      // focus event.
+      if (skipIfUpdatedAtMatches && skipIfUpdatedAtMatches.size > 0) {
+        const cachedUpdatedAt = skipIfUpdatedAtMatches.get(entry.path)
+        if (cachedUpdatedAt) {
+          const fileUpdatedAt = peekFrontmatterUpdatedAt(content)
+          if (fileUpdatedAt && fileUpdatedAt === cachedUpdatedAt) {
+            result.skippedFiles++
+            continue
+          }
+        }
+      }
+
       const note = parseNote(content)
       if (!note) {
         result.skippedFiles++
@@ -437,6 +484,17 @@ async function syncEntries(
 // Fast key extractor for the full-sync prepass: avoids a full YAML parse.
 // Matches a top-level `key: <value>` line inside the leading frontmatter block.
 const FRONTMATTER_KEY_RE = /^key:\s*["']?([^"'\n]+?)["']?\s*$/m
+
+// Fast `updated_at` peek used by incremental sync to skip work on files whose
+// content is unchanged despite a new mtime (common on iCloud-backed vaults
+// where iCloud re-materializes files in the background).
+const FRONTMATTER_UPDATED_AT_RE = /^updated_at:\s*["']?([^"'\n]+?)["']?\s*$/m
+
+function peekFrontmatterUpdatedAt(content: string): string | null {
+  if (!hasFrontmatter(content)) return null
+  const match = FRONTMATTER_UPDATED_AT_RE.exec(content)
+  return match?.[1]?.trim() ?? null
+}
 
 async function buildParentKeyToPathIndex(
   fs: VaultFS,

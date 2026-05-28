@@ -57,6 +57,7 @@ const QUOTE_QUERY_VARIANTS_BLOCK: Array<Record<string, string>> = [
 const DEFAULT_POSITIONS_PAGE_SIZE_BLOCK = 100
 const MAX_POSITIONS_PAGE_FETCH_BLOCK = 50
 const MAX_INSTRUMENT_LOOKUP_IDS_PER_REQUEST_BLOCK = 40
+const WEBULL_PAGINATION_STAGGER_MS_BLOCK = 350
 
 const INSTRUMENT_QUERY_VARIANTS_BLOCK: Array<(idsCsv: string) => Record<string, string>> = [
   idsCsv => ({ ticker_ids: idsCsv }),
@@ -143,6 +144,25 @@ function withOpenApiBaseUrlBlock(config: WebullConfigBlock): WebullConfigBlock {
   }
 }
 
+const WEBULL_RATE_LIMIT_RETRY_MAX_BLOCK = 4
+const WEBULL_RATE_LIMIT_RETRY_BASE_MS_BLOCK = 800
+const WEBULL_RATE_LIMIT_RETRY_CAP_MS_BLOCK = 8_000
+
+function computeRetryDelayMsBlock(attemptIndex: number): number {
+  // Exponential backoff with jitter: 800ms, 1600ms, 3200ms, 6400ms (capped at 8s) +/- 25%.
+  const base = Math.min(
+    WEBULL_RATE_LIMIT_RETRY_CAP_MS_BLOCK,
+    WEBULL_RATE_LIMIT_RETRY_BASE_MS_BLOCK * Math.pow(2, attemptIndex),
+  )
+  const jitter = base * 0.25 * (Math.random() * 2 - 1)
+  return Math.max(0, Math.floor(base + jitter))
+}
+
+function isRetryableRateLimitStatusBlock(status: number): boolean {
+  // 429 = explicit rate limit; 503 = backend overloaded.
+  return status === 429 || status === 503
+}
+
 async function signedRequestBlock(
   method: 'GET' | 'POST',
   endpoint: string,
@@ -155,17 +175,31 @@ async function signedRequestBlock(
   if (!window.electronAPI?.webullSignedRequest) {
     throw new Error('Webull Webull signed bridge is unavailable in this Electron build.')
   }
-  const response = await window.electronAPI.webullSignedRequest({
-    method,
-    url: endpoint,
-    version: options?.version,
-    accessToken: options?.accessToken,
-    body: options?.body,
-  })
-  return {
-    status: response.status,
-    data: parseJsonSafelyBlock(response.body),
+
+  let lastResponse: { status: number; data: unknown } | null = null
+  for (let attempt = 0; attempt <= WEBULL_RATE_LIMIT_RETRY_MAX_BLOCK; attempt += 1) {
+    const response = await window.electronAPI.webullSignedRequest({
+      method,
+      url: endpoint,
+      version: options?.version,
+      accessToken: options?.accessToken,
+      body: options?.body,
+    })
+    lastResponse = {
+      status: response.status,
+      data: parseJsonSafelyBlock(response.body),
+    }
+
+    if (!isRetryableRateLimitStatusBlock(response.status)) {
+      return lastResponse
+    }
+    if (attempt === WEBULL_RATE_LIMIT_RETRY_MAX_BLOCK) {
+      return lastResponse
+    }
+    await waitForMsBlock(computeRetryDelayMsBlock(attempt))
   }
+
+  return lastResponse!
 }
 
 async function signedV2RequestBlock(
@@ -488,6 +522,9 @@ async function fetchPaginatedPositionsByCandidatePathsBlock(
     let lastPageRecord: Record<string, unknown> | null = null
 
     for (let pageIndex = 0; pageIndex < MAX_POSITIONS_PAGE_FETCH_BLOCK; pageIndex += 1) {
+      if (pageIndex > 0) {
+        await waitForMsBlock(WEBULL_PAGINATION_STAGGER_MS_BLOCK)
+      }
       const endpoint = buildEndpointBlock(config.baseUrl, path, {
         account_id: accountId,
         page_size: DEFAULT_POSITIONS_PAGE_SIZE_BLOCK,

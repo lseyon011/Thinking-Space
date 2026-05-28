@@ -82,6 +82,7 @@ import {
   yamlTextToFrontmatterBlock,
   yieldToNextFrame,
 } from '@/components/lego_blocks/units/MarkdownDocumentContentBlock'
+import { readMemorizedSessions } from '@/services/lego_blocks/units/memorizedSessionsBlock'
 import { isTableDocumentPathBlock } from '@/services/lego_blocks/units/tableDocumentPathBlock'
 import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocumentPathBlock'
 import { isGoogleDocDocumentPathBlock } from '@/services/lego_blocks/units/googleDocDocumentPathBlock'
@@ -431,6 +432,10 @@ function MarkdownTextDocumentRuntimeBlock({
   const frontmatterMetaSource = isEditing ? draft : (content ?? '')
   const frontmatterMeta = useMemo(
     () => buildFrontmatterMetaState(frontmatterMetaSource),
+    [frontmatterMetaSource],
+  )
+  const memorizedSessions = useMemo(
+    () => readMemorizedSessions(frontmatterMetaSource),
     [frontmatterMetaSource],
   )
   const draftFrontmatter = useMemo(
@@ -1350,6 +1355,19 @@ function MarkdownTextDocumentRuntimeBlock({
                   <span>Created: <strong className="text-foreground/70">{meta.createdAt ?? '—'}</strong></span>
                   <span>Updated: <strong className="text-foreground/70">{meta.updatedAt ?? '—'}</strong></span>
                 </div>
+
+                {memorizedSessions.length > 0 && (
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Memorized
+                    </span>
+                    <span className="flex flex-wrap gap-x-2 gap-y-1">
+                      {memorizedSessions.map((date) => (
+                        <strong key={date} className="text-foreground/70">{date}</strong>
+                      ))}
+                    </span>
+                  </div>
+                )}
 
                 {!isExcalidrawDoc && (
                   <div className="space-y-1.5 border-t border-border/30 pt-2">

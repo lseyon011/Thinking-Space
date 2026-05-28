@@ -77,6 +77,7 @@ export const ALLOWED_RECORD_KINDS = [
   'decision',
   'principle',
   'note',
+  'insight',
 ] as const
 
 export type RecordKind = typeof ALLOWED_RECORD_KINDS[number]
@@ -163,6 +164,10 @@ export interface YAMLFrontmatter {
   schema_version?: string
   record_kind?: RecordKind
   state_history?: YAMLStateHistoryEntry[]
+
+  // Memorization tracking — dates (YYYY-MM-DD) when the user toggled
+  // memorization mode in the ruled notebook view. One entry per day.
+  memorized_sessions?: string[]
 
   // Legacy compat — preserve unknown fields roundtrip
   [extra: string]: unknown

@@ -699,6 +699,20 @@ export async function listMarkdownEntries(): Promise<VaultEntry[]> {
   return fs.walkVault(['.md'])
 }
 
+/**
+ * Path-only variant of {@link listMarkdownEntries} served from the Dexie cache.
+ * Falls back to a vault walk on cold start (before sync has populated IDB).
+ * Prefer this in callers that only need paths — it skips the iCloud FS walk
+ * on iPhone/iPad once the first sync has completed.
+ */
+export async function listMarkdownPaths(): Promise<string[]> {
+  const cached = await getAllFilePaths()
+  if (cached.size > 0) return [...cached]
+  const fs = getVaultFS()
+  const entries = await fs.walkVault(['.md'])
+  return entries.map(e => e.path)
+}
+
 export async function listVaultEntries(extensions: string[]): Promise<VaultEntry[]> {
   const fs = getVaultFS()
   return fs.walkVault(extensions)
