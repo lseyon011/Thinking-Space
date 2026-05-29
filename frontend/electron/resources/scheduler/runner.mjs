@@ -14,7 +14,7 @@ import { createWriteStream, mkdirSync, openSync, futimesSync, closeSync,
          readFileSync, writeFileSync, renameSync, statSync, appendFileSync,
          readdirSync, existsSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, dirname, basename } from 'node:path';
+import { join, dirname } from 'node:path';
 
 const HOME = homedir();
 // userData path is injected by the Electron provisioner via the plist
@@ -473,14 +473,14 @@ async function catchupCheck({ dryRun = false } = {}) {
 
     const mostRecent = computeMostRecentScheduledTime(spec, now);
     if (!mostRecent) continue;
-    const ageMs_ = now.getTime() - mostRecent.getTime();
-    if (ageMs_ < CATCHUP_MIN_AGE_MS) continue; // launchd should be handling it
+    const slotAgeMs = now.getTime() - mostRecent.getTime();
+    if (slotAgeMs < CATCHUP_MIN_AGE_MS) continue; // launchd should be handling it
 
     const lastSlotIso = state.schedules?.[key]?.lastScheduledSlot ?? null;
     const lastSlot = lastSlotIso ? Date.parse(lastSlotIso) : 0;
     if (lastSlot >= mostRecent.getTime()) continue; // already claimed
 
-    fires.push({ key, scheduledSlot: mostRecent.toISOString(), ageMs: ageMs_ });
+    fires.push({ key, scheduledSlot: mostRecent.toISOString(), ageMs: slotAgeMs });
   }
 
   if (dryRun) {

@@ -97,7 +97,6 @@ function writeConfigIfChanged(payload: ConfigPayload): { changed: boolean } {
   const dst = getConfigPathBlock();
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   const content = JSON.stringify(payload, null, 2);
-  let existing: string | null = null;
   try {
     const raw = fs.readFileSync(dst, 'utf-8');
     // Compare without updatedAt (which changes every launch) so we only
@@ -106,9 +105,7 @@ function writeConfigIfChanged(payload: ConfigPayload): { changed: boolean } {
     const b = JSON.parse(content);
     delete a.updatedAt; delete b.updatedAt;
     if (JSON.stringify(a) === JSON.stringify(b)) return { changed: false };
-    existing = raw;
   } catch { /* missing or unreadable; fall through to write */ }
-  void existing;
   const tmp = `${dst}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, content, { encoding: 'utf-8', mode: 0o600 });
   fs.renameSync(tmp, dst);

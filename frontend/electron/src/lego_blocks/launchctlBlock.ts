@@ -53,9 +53,13 @@ export async function writeRawPlistBlock(
 }
 
 export async function bootstrapPlistBlock(spec: ScheduleSpecBlock): Promise<void> {
-  const plistPath = getPlistPathBlock(spec.label);
+  return bootstrapByLabelBlock(spec.label);
+}
+
+export async function bootstrapByLabelBlock(label: string): Promise<void> {
+  const plistPath = getPlistPathBlock(label);
   // bootout first (ignore errors — may not be loaded yet)
-  await execFileAsync('/bin/launchctl', ['bootout', `${getGuiTargetBlock()}/${spec.label}`]).catch(() => undefined);
+  await execFileAsync('/bin/launchctl', ['bootout', `${getGuiTargetBlock()}/${label}`]).catch(() => undefined);
   await execFileAsync('/bin/launchctl', ['bootstrap', getGuiTargetBlock(), plistPath]);
 }
 

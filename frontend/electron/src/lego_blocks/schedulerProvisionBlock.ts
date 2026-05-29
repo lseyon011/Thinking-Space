@@ -17,6 +17,7 @@ import {
 } from './launchdPlistBlock';
 import {
   bootstrapPlistBlock,
+  bootstrapByLabelBlock,
   bootoutPlistBlock,
   writePlistBlock,
   writeRawPlistBlock,
@@ -119,9 +120,8 @@ async function provisionBuiltinAgent(
     const content = buildBuiltinPlistBlock(label, command, intervalSeconds, ctx);
     const { changed } = await writeRawPlistBlock(label, content);
     if (changed) {
-      // bootout then bootstrap so launchd reloads the new content
-      await bootoutPlistBlock(label);
-      await execAsync_bootstrap(label);
+      // bootout-then-bootstrap so launchd reloads the new content
+      await bootstrapByLabelBlock(label);
       return { changed: true, bootstrapped: true };
     }
     return { changed: false, bootstrapped: false };
@@ -132,15 +132,6 @@ async function provisionBuiltinAgent(
       error: err instanceof Error ? err.message : String(err),
     };
   }
-}
-
-async function execAsync_bootstrap(label: string): Promise<void> {
-  const { execFile } = await import('child_process');
-  const { promisify } = await import('util');
-  const run = promisify(execFile);
-  const target = `gui/${process.getuid?.() ?? 501}`;
-  const plistPath = path.join(app.getPath('home'), 'Library', 'LaunchAgents', `${label}.plist`);
-  await run('/bin/launchctl', ['bootstrap', target, plistPath]);
 }
 
 export async function provisionSchedulerBlock(): Promise<ProvisionResultBlock> {
