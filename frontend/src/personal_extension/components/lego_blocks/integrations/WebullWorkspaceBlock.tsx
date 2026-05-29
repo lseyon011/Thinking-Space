@@ -9,6 +9,7 @@ import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/Markdow
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
 import PinBoardBlock from '@/components/lego_blocks/integrations/PinBoardBlock'
+import WebullStudyBlock from './WebullStudyBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
@@ -41,8 +42,10 @@ import type {
   WebullPositionSummaryBlock,
 } from '@/personal_extension/services/orchestrators/webullExecutionOrch'
 
+type WebullSubtabIdBlock = 'overall' | 'memory' | 'study'
+
 interface WebullSubtabBlock {
-  id: 'overall' | 'memory'
+  id: WebullSubtabIdBlock
   label: string
 }
 
@@ -59,8 +62,8 @@ interface WebullPdfOptionBlock {
 
 interface WebullWorkspaceBlockProps {
   subtabs: WebullSubtabBlock[]
-  activeSubtabId: 'overall' | 'memory'
-  onSelectSubtab: (id: 'overall' | 'memory') => void
+  activeSubtabId: WebullSubtabIdBlock
+  onSelectSubtab: (id: WebullSubtabIdBlock) => void
   hasConfig: boolean
   liveRefreshAvailable: boolean
   error: string | null
@@ -1802,14 +1805,17 @@ export default function WebullWorkspaceBlock({
     : ''
   const memoryTabActive = !showCompanyView && activeSubtabId === 'memory'
   const overallTabActive = !showCompanyView && activeSubtabId === 'overall'
+  const studyTabActive = !showCompanyView && activeSubtabId === 'study'
   const workspaceTitle = showCompanyView && selectedCompany
     ? `${selectedCompany.companyTicker} Positions`
-    : (memoryTabActive ? 'Pin Board' : 'Overall Positions')
+    : (studyTabActive ? 'Study' : (memoryTabActive ? 'Pin Board' : 'Overall Positions'))
   const workspaceDescription = showCompanyView && selectedCompany
     ? 'Company-specific position rows and overlay edits.'
-    : (memoryTabActive
-      ? 'Project-level pinned notes files.'
-      : 'Canonical overall positions from Webull sync.')
+    : (studyTabActive
+      ? 'Company study records (watchlist + held) with live prices.'
+      : (memoryTabActive
+        ? 'Project-level pinned notes files.'
+        : 'Canonical overall positions from Webull sync.'))
 
   return (
     <div className={cn('grid gap-4', sideTabsCollapsed ? 'grid-cols-1' : 'lg:grid-cols-[200px_minmax(0,1fr)]')}>
@@ -1934,6 +1940,10 @@ export default function WebullWorkspaceBlock({
                 disabled={workspaceBusy}
               />
             </div>
+          )}
+
+          {studyTabActive && (
+            <WebullStudyBlock />
           )}
 
           {memoryTabActive && (
