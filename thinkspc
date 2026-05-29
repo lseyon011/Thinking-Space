@@ -1,68 +1,67 @@
 #!/usr/bin/env bash
-# thinkspc — thin wrapper for the Thinking Space capability runner
-# Usage:
-#   ./thinkspc list
-#   ./thinkspc organizer.nodes.list_roots --typeFilter program
-#   ./thinkspc organizer.context --url "http://localhost:5173/thinking-space/thinking-organizer?tab=backlog&projectRoot=operations%2Fsfw"
-#   ./thinkspc invoke < payload.json
+# thinkspc — Thinking Space CLI dispatcher.
+#
+# Single source of truth: always runs the bundled CLI via Electron-as-Node.
+# No vite-node, no node_modules, no separate dev runtime.
+#
+# Bundle location precedence:
+#   1. Repo bundle at frontend/electron/resources/cli/thinkspc-runner.mjs
+#      (present in dev after `node frontend/scripts/bundle-cli.mjs` or any
+#      electron build). Lets you iterate by re-running the bundle.
+#   2. Installed bundle at ~/.thinking-space/bin/thinkspc-runner.mjs
+#      (written by the Electron app on launch — provisionCliBlock).
+#
+# Either path uses the SAME runtime: ELECTRON_RUN_AS_NODE=1 against the
+# packaged Thinking Space.app binary.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
-FRONTEND_DIR="$REPO_ROOT/frontend"
-CALLER_CWD="$PWD"
+ELECTRON_BIN="/Applications/Thinking Space.app/Contents/MacOS/Thinking Space"
+REPO_BUNDLE="$REPO_ROOT/frontend/electron/resources/cli/thinkspc-runner.mjs"
+INSTALLED_BUNDLE="$HOME/.thinking-space/bin/thinkspc-runner.mjs"
 
-ORIGINAL_THINKSPC_VAULT_ROOT="${THINKSPC_VAULT_ROOT-__UNSET__}"
-ORIGINAL_LTM_VAULT_ROOT="${LTM_VAULT_ROOT-__UNSET__}"
-ORIGINAL_THINK_SPACE_VAULT_ROOT="${THINK_SPACE_VAULT_ROOT-__UNSET__}"
-ORIGINAL_LTM_OUTPUT_FORMAT="${LTM_OUTPUT_FORMAT-__UNSET__}"
-ORIGINAL_LTM_OUTPUT_BRIEF="${LTM_OUTPUT_BRIEF-__UNSET__}"
+# Pick the bundle: prefer repo (dev iteration), fall back to installed (prod).
+if [ -f "$REPO_BUNDLE" ]; then
+  BUNDLE="$REPO_BUNDLE"
+elif [ -f "$INSTALLED_BUNDLE" ]; then
+  BUNDLE="$INSTALLED_BUNDLE"
+else
+  cat >&2 <<EOF
+Error: thinkspc bundle not found.
 
-if [ -f "$REPO_ROOT/.env" ]; then
+  Tried:
+    $REPO_BUNDLE   (run: node frontend/scripts/bundle-cli.mjs)
+    $INSTALLED_BUNDLE (provisioned when you launch Thinking Space.app)
+
+  Either build the bundle for local dev, or install + launch the app once.
+EOF
+  exit 1
+fi
+
+if [ ! -x "$ELECTRON_BIN" ]; then
+  echo "Error: Thinking Space.app not installed at $ELECTRON_BIN" >&2
+  echo "Build with ./build.sh mac and install the DMG to /Applications/." >&2
+  exit 1
+fi
+
+# Vault root: env wins; else read from config.json (written by the app on
+# launch); else source repo .env if present; else the runner itself will
+# error with a clear message.
+if [ -z "${THINKSPC_VAULT_ROOT:-}${LTM_VAULT_ROOT:-}" ] && [ -f "$REPO_ROOT/.env" ]; then
   set -a
   # shellcheck disable=SC1091
   source "$REPO_ROOT/.env"
   set +a
 fi
 
-if [ "$ORIGINAL_THINKSPC_VAULT_ROOT" != "__UNSET__" ]; then
-  THINKSPC_VAULT_ROOT="$ORIGINAL_THINKSPC_VAULT_ROOT"
-fi
-if [ "$ORIGINAL_LTM_VAULT_ROOT" != "__UNSET__" ]; then
-  LTM_VAULT_ROOT="$ORIGINAL_LTM_VAULT_ROOT"
-fi
-if [ "$ORIGINAL_THINK_SPACE_VAULT_ROOT" != "__UNSET__" ]; then
-  THINK_SPACE_VAULT_ROOT="$ORIGINAL_THINK_SPACE_VAULT_ROOT"
-fi
-if [ "$ORIGINAL_LTM_OUTPUT_FORMAT" != "__UNSET__" ]; then
-  LTM_OUTPUT_FORMAT="$ORIGINAL_LTM_OUTPUT_FORMAT"
-fi
-if [ "$ORIGINAL_LTM_OUTPUT_BRIEF" != "__UNSET__" ]; then
-  LTM_OUTPUT_BRIEF="$ORIGINAL_LTM_OUTPUT_BRIEF"
-fi
-
-# Compatibility bridge — three env var names, any one sets all:
-# - THINKSPC_VAULT_ROOT (canonical)
-# - LTM_VAULT_ROOT (legacy)
-# - THINK_SPACE_VAULT_ROOT (legacy alternate)
-: "${THINKSPC_VAULT_ROOT:=${LTM_VAULT_ROOT:-${THINK_SPACE_VAULT_ROOT:-}}}"
-: "${LTM_VAULT_ROOT:=${THINKSPC_VAULT_ROOT:-}}"
 : "${LTM_OUTPUT_FORMAT:=text}"
 : "${LTM_OUTPUT_BRIEF:=1}"
-
-export THINKSPC_VAULT_ROOT
-export LTM_VAULT_ROOT
-export THINKSPC_CALLER_CWD="$CALLER_CWD"
-export LTM_OUTPUT_FORMAT
-export LTM_OUTPUT_BRIEF
+export LTM_OUTPUT_FORMAT LTM_OUTPUT_BRIEF
 export LTM_AGENT_CAPABILITIES_ENABLED=1
 export LTM_CAPABILITY_RUNNER_CLI=1
+export THINKSPC_CALLER_CWD="$PWD"
+[ -n "${THINKSPC_VAULT_ROOT:-}" ] && export THINKSPC_VAULT_ROOT
+[ -n "${LTM_VAULT_ROOT:-}" ] && export LTM_VAULT_ROOT
 
-if [ -z "${LTM_VAULT_ROOT:-}" ]; then
-  echo "Error: THINKSPC_VAULT_ROOT/LTM_VAULT_ROOT is not set." >&2
-  echo "Set it in $REPO_ROOT/.env or export it before running." >&2
-  exit 1
-fi
-
-cd "$FRONTEND_DIR"
-exec npx vite-node scripts/agent/capabilityRunner.ts "$@"
+exec env ELECTRON_RUN_AS_NODE=1 "$ELECTRON_BIN" "$BUNDLE" "$@"

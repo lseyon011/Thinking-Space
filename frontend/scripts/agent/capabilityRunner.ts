@@ -1,5 +1,6 @@
 import 'fake-indexeddb/auto'
 
+import * as fs from 'node:fs'
 import * as fsPromises from 'node:fs/promises'
 import * as path from 'node:path'
 import process from 'node:process'
@@ -597,14 +598,38 @@ function writeCLIWarnings(warnings: string[]): void {
   }
 }
 
+function readVaultRootFromConfig(): string | null {
+  // Falls back to ~/.thinking-space/config.json (written by the Electron app
+  // on every launch via provisionCliBlock). This lets the packaged thinkspc
+  // shim work from any directory without a repo-root .env.
+  try {
+    const home = process.env.HOME || process.env.USERPROFILE
+    if (!home) return null
+    const configPath = path.join(home, '.thinking-space', 'config.json')
+    const raw = fs.readFileSync(configPath, 'utf-8')
+    const parsed = JSON.parse(raw) as { vaultRoot?: unknown }
+    if (typeof parsed.vaultRoot === 'string' && parsed.vaultRoot.trim().length > 0) {
+      return parsed.vaultRoot.trim()
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 export function buildCLIInvokePayload(
   capability: string,
   cliArgs: string[],
 ): { payload: InvokePayload; warnings: string[] } {
-  const vaultRoot = process.env.THINKSPC_VAULT_ROOT || process.env.LTM_VAULT_ROOT
+  const vaultRoot =
+    process.env.THINKSPC_VAULT_ROOT
+    || process.env.LTM_VAULT_ROOT
+    || readVaultRootFromConfig()
   if (!vaultRoot) {
     throw new Error(
-      'THINKSPC_VAULT_ROOT/LTM_VAULT_ROOT is not set. Use thinkspc (or the ltm compatibility alias), or set it in .env.',
+      'THINKSPC_VAULT_ROOT/LTM_VAULT_ROOT is not set and no vaultRoot in ~/.thinking-space/config.json. ' +
+      'Launch the Thinking Space app once (it provisions the config) or set the env var, ' +
+      'or use the repo ./thinkspc wrapper which loads .env.',
     )
   }
 

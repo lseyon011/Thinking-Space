@@ -12,6 +12,7 @@ frontend/public/fonts/
 frontend/electron/dist/
 frontend/electron/dist-*/
 frontend/electron/app/
+frontend/electron/resources/cli/thinkspc-runner.mjs
 
 # Local tooling outputs
 .vite/

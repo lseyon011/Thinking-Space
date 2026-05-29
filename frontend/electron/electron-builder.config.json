@@ -26,6 +26,11 @@
       "filter": ["**/*"]
     },
     {
+      "from": "resources/cli",
+      "to": "cli",
+      "filter": ["**/*"]
+    },
+    {
       "from": "../",
       "to": "source",
       "filter": [

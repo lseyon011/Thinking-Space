@@ -13,7 +13,7 @@
   "license": "SEE LICENSE IN LICENSE",
   "main": "build/src/index.js",
   "scripts": {
-    "build": "tsc && electron-rebuild",
+    "build": "tsc && electron-rebuild && node ../scripts/bundle-cli.mjs",
     "build:lite": "node ./scripts/build-lite.js",
     "electron:start-live": "node ./live-runner.js",
     "electron:start": "npm run build && electron --inspect=5858 ./",

@@ -172,7 +172,11 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - Follow `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md`.
 
 ## Capability Runner Pattern
-Use the `./thinkspc` wrapper from the repo root. It auto-loads `.env` (for `THINKSPC_VAULT_ROOT` or legacy `LTM_VAULT_ROOT`), sets runner flags, and defaults to `actor: {kind: "agent", id: "claude-code"}`.
+Two equivalent invocations — both run the same bundled CLI via Electron-as-Node, single source of truth:
+- **`thinkspc`** (no `./`) from any directory once the Thinking Space app has been launched at least once (it provisions a shim at `~/.local/bin/thinkspc` + config at `~/.thinking-space/config.json`). Recommended.
+- **`./thinkspc`** from the repo root — same runtime, but also picks up a fresh repo bundle (after `node frontend/scripts/bundle-cli.mjs`) so source edits are testable without re-installing the app. Sources repo `.env` if no env var/config is set.
+
+Both default to `actor: {kind: "agent", id: "claude-code"}`. Cold start ~0.1s (no vite-node, no `node_modules` required, single bundled .mjs invoked via ELECTRON_RUN_AS_NODE=1 against `/Applications/Thinking Space.app/Contents/MacOS/Thinking Space`).
 Legacy alias: `./ltm` forwards to `./thinkspc`.
 Wrapper defaults are token-efficient (`text` + `brief` output). Use `--full` for detailed text or `--json` for machine parsing.
 Global output flags (`--json`, `--text`, `--brief`, `--full`) must appear before the command.

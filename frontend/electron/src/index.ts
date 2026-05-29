@@ -75,6 +75,7 @@ import {
   listExternalAgentsBlock,
 } from './lego_blocks/launchctlBlock';
 import { provisionSchedulerBlock } from './lego_blocks/schedulerProvisionBlock';
+import { provisionCliBlock } from './lego_blocks/cliProvisionBlock';
 import {
   armAllPmsetWakesBlock,
   armPmsetWakesForScheduleBlock,
@@ -374,6 +375,21 @@ if (hasSingleInstanceLock) {
         }
       } catch (err) {
         console.error('[schedules] provisioning failed:', err);
+      }
+      // Provision the thinkspc CLI: copy bundled runner to ~/.thinking-space/
+      // bin, write the shell shim to ~/.local/bin/thinkspc, sync config.json
+      // with the current vault root. Idempotent.
+      try {
+        const cli = await provisionCliBlock();
+        console.log('[cli] provisioned', {
+          runnerChanged: cli.runnerChanged,
+          shimChanged: cli.shimChanged,
+          configChanged: cli.configChanged,
+          shimPath: cli.shimPath,
+        });
+        for (const e of cli.errors) console.warn(`[cli] ${e}`);
+      } catch (err) {
+        console.error('[cli] provisioning failed:', err);
       }
       // Top up pmset wake queue so the Mac wakes from sleep for calendar
       // schedules. launchd will not wake the system on its own.
