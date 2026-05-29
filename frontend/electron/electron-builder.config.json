@@ -21,6 +21,11 @@
       "filter": ["**/*"]
     },
     {
+      "from": "resources/scheduler",
+      "to": "scheduler",
+      "filter": ["**/*"]
+    },
+    {
       "from": "../",
       "to": "source",
       "filter": [

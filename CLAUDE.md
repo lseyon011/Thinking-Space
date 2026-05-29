@@ -16,6 +16,28 @@ Also mirror durable project knowledge to:
 - `AGENTS.md` (cross-tool contract)
 - organizer principles/decision records in `coding-projects/thinking-space/thinking-organizer/*`
 
+## Proactive Notification Channel (Telegram → Anurag)
+You can send messages directly to Anurag's phone via the Kai Telegram bot. Use this proactively when:
+- A long-running task you started is finished and Anurag stepped away.
+- You hit a blocker that needs human input and the session has been idle.
+- Anurag asked you to "let me know when X" / "ping me if Y".
+
+Do NOT use it for:
+- Routine task-complete pings the user is watching you do.
+- Anything that would just be noise — the channel is meant to be high-signal.
+
+How to send:
+```bash
+TOKEN=$(/usr/bin/jq -r .telegram.bot_token ~/.thinking-space/secrets.json)
+CHAT=$(/usr/bin/jq -r .telegram.chat_id ~/.thinking-space/secrets.json)
+curl -sS -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+  -H "Content-Type: application/json" \
+  -d "$(/usr/bin/jq -nc --argjson chat "$CHAT" --arg text "your message here" \
+      '{chat_id:$chat,text:$text,parse_mode:"Markdown"}')"
+```
+
+Credentials live at `~/.thinking-space/secrets.json` (mode 0600, never committed). Bot is `@anurag_kai_cc_bot`. Messages support Markdown and `obsidian://open?vault=...&file=...` links to make notifications tappable into vault notes.
+
 ## Working Style (Inherited + Project-Specific)
 - Think from first principles, then map to concrete code tradeoffs.
 - Be concise and direct.

@@ -17,14 +17,39 @@ export interface LaunchctlStatusBlock {
   lastExitCode: number | null;
 }
 
-export async function writePlistBlock(spec: ScheduleSpecBlock, ctx: PlistBuildContextBlock): Promise<string> {
+/**
+ * Write a plist atomically. Returns the existing content if unchanged so
+ * callers can decide whether to skip bootstrap.
+ */
+export async function writePlistBlock(
+  spec: ScheduleSpecBlock,
+  ctx: PlistBuildContextBlock,
+): Promise<{ path: string; changed: boolean }> {
   const plistPath = getPlistPathBlock(spec.label);
   fs.mkdirSync(path.dirname(plistPath), { recursive: true });
   const content = buildPlistBlock(spec, ctx);
+  let existing: string | null = null;
+  try { existing = fs.readFileSync(plistPath, 'utf-8'); } catch { /* missing */ }
+  if (existing === content) return { path: plistPath, changed: false };
   const tempPath = `${plistPath}.${process.pid}.tmp`;
   fs.writeFileSync(tempPath, content, { encoding: 'utf-8', mode: 0o644 });
   fs.renameSync(tempPath, plistPath);
-  return plistPath;
+  return { path: plistPath, changed: true };
+}
+
+export async function writeRawPlistBlock(
+  label: string,
+  content: string,
+): Promise<{ path: string; changed: boolean }> {
+  const plistPath = getPlistPathBlock(label);
+  fs.mkdirSync(path.dirname(plistPath), { recursive: true });
+  let existing: string | null = null;
+  try { existing = fs.readFileSync(plistPath, 'utf-8'); } catch { /* missing */ }
+  if (existing === content) return { path: plistPath, changed: false };
+  const tempPath = `${plistPath}.${process.pid}.tmp`;
+  fs.writeFileSync(tempPath, content, { encoding: 'utf-8', mode: 0o644 });
+  fs.renameSync(tempPath, plistPath);
+  return { path: plistPath, changed: true };
 }
 
 export async function bootstrapPlistBlock(spec: ScheduleSpecBlock): Promise<void> {

@@ -61,11 +61,6 @@ import {
   stopViteServerBlock,
 } from './lego_blocks/viteServerBlock';
 import {
-  startScheduleHttpServerBlock,
-  stopScheduleHttpServerBlock,
-  getScheduleServerInfoBlock,
-} from './lego_blocks/scheduleHttpServerBlock';
-import {
   listSchedulesBlock,
   readScheduleBlock,
   writeScheduleBlock,
@@ -73,13 +68,13 @@ import {
   type ScheduleSpecBlock,
 } from './lego_blocks/scheduleStorageBlock';
 import {
-  writePlistBlock,
-  bootstrapPlistBlock,
+  bootoutPlistBlock,
   removePlistBlock,
   kickstartPlistBlock,
   getLaunchctlStatusBlock,
   listExternalAgentsBlock,
 } from './lego_blocks/launchctlBlock';
+import { provisionSchedulerBlock } from './lego_blocks/schedulerProvisionBlock';
 import {
   armAllPmsetWakesBlock,
   armPmsetWakesForScheduleBlock,
@@ -362,13 +357,22 @@ if (hasSingleInstanceLock) {
           // Fall back to locked mode — don't block startup
         }
       }
-      // Start the schedule HTTP server (loopback only). Used by launchd-fired
-      // curl calls to trigger scheduled jobs while the app is running.
+      // Provision the standalone scheduler: copy runner.mjs to a stable
+      // location, write/refresh plists for every schedule + the heartbeat
+      // watcher. launchd invokes runner.mjs directly via Electron-as-Node, so
+      // schedules fire whether the app is running or not.
       try {
-        const info = await startScheduleHttpServerBlock();
-        console.log('[schedules] HTTP server ready on', info.baseUrl);
+        const result = await provisionSchedulerBlock();
+        console.log('[schedules] provisioned', {
+          runnerChanged: result.runnerChanged,
+          heartbeat: result.heartbeat,
+          schedules: result.scheduleResults.length,
+        });
+        for (const r of result.scheduleResults) {
+          if (r.error) console.warn(`[schedules] ${r.label}: ${r.error}`);
+        }
       } catch (err) {
-        console.error('[schedules] Failed to start HTTP server:', err);
+        console.error('[schedules] provisioning failed:', err);
       }
       // Top up pmset wake queue so the Mac wakes from sleep for calendar
       // schedules. launchd will not wake the system on its own.
@@ -409,9 +413,6 @@ if (hasSingleInstanceLock) {
 // Stop Vite dev server when quitting.
 app.on('will-quit', () => {
   stopViteServerBlock();
-  stopScheduleHttpServerBlock().catch((err) =>
-    console.warn('[schedules] HTTP server stop failed', err),
-  );
   stopHeartbeatBlock();
 });
 
@@ -469,13 +470,18 @@ ipcMain.handle('schedules:get', async (_event, key: string) => {
 ipcMain.handle('schedules:save', async (_event, spec: ScheduleSpecBlock) => {
   const saved = writeScheduleBlock(spec);
   if (saved.managedBy === 'thinking-space') {
-    const info = getScheduleServerInfoBlock();
-    if (!info) throw new Error('Schedule HTTP server not running');
-    await writePlistBlock(saved, { baseUrl: info.baseUrl, secret: info.secret });
-    if (saved.enabled) {
-      await bootstrapPlistBlock(saved);
-    } else {
-      await removePlistBlock(saved.label);
+    // Re-provision: writes/updates the plist for just-this-schedule via the
+    // same idempotent path used on app startup. Disabled schedules get booted
+    // out; enabled ones get bootstrapped if their plist content changed.
+    try {
+      const result = await provisionSchedulerBlock();
+      const my = result.scheduleResults.find((r) => r.label === saved.label);
+      if (my?.error) console.warn(`[schedules] save provision: ${my.error}`);
+    } catch (err) {
+      console.warn('[schedules] save provision failed', err);
+    }
+    if (!saved.enabled) {
+      await bootoutPlistBlock(saved.label).catch(() => undefined);
     }
     // Re-arm pmset wake events so the Mac wakes from sleep to actually run
     // calendar-based schedules. Cancels prior wakes for this label first.
@@ -498,7 +504,9 @@ ipcMain.handle('schedules:delete', async (_event, key: string) => {
 });
 
 ipcMain.handle('schedules:server-info', async () => {
-  return getScheduleServerInfoBlock();
+  // HTTP server removed in favor of direct launchd invocation of runner.mjs.
+  // Returning null lets the frontend's "show server status" panels hide.
+  return null;
 });
 
 ipcMain.handle('schedules:kickstart', async (_event, label: string) => {
