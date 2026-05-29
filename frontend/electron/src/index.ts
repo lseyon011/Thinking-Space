@@ -366,6 +366,7 @@ if (hasSingleInstanceLock) {
         console.log('[schedules] provisioned', {
           runnerChanged: result.runnerChanged,
           heartbeat: result.heartbeat,
+          catchup: result.catchup,
           schedules: result.scheduleResults.length,
         });
         for (const r of result.scheduleResults) {

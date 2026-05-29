@@ -4,6 +4,7 @@
 //
 // Commands:
 //   runner.mjs run <key>            — execute the schedule with the given key
+//   runner.mjs catchup-check        — fire any missed calendar slots since last run
 //   runner.mjs heartbeat-check      — alert if Electron heartbeat is stale
 //   runner.mjs notify <text>        — send a Telegram message
 //   runner.mjs status               — print state + recent log entries
@@ -11,7 +12,7 @@
 import { spawn } from 'node:child_process';
 import { createWriteStream, mkdirSync, openSync, futimesSync, closeSync,
          readFileSync, writeFileSync, renameSync, statSync, appendFileSync,
-         readdirSync, existsSync } from 'node:fs';
+         readdirSync, existsSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 
@@ -35,6 +36,14 @@ const MAX_TRANSCRIPT_BYTES = 5 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 const HEARTBEAT_STALE_MS = 36 * 60 * 60 * 1000;
 const DEFAULT_CLAUDE_BINARY = '/opt/homebrew/bin/claude';
+// Catch-up only fires a scheduled slot if it's at least this old. Gives
+// launchd time to do its normal on-time fire without us racing it.
+const CATCHUP_MIN_AGE_MS = 2 * 60 * 1000;
+// Lock files older than this are considered stale (process died). 2x the
+// schedule timeout: enough slack for slow exits, short enough that a real
+// hang doesn't block catch-up for hours.
+const LOCK_STALE_MS = 20 * 60 * 1000;
+const LOCKS_DIR = join(STATE_DIR, 'locks');
 
 // ---------- low-level helpers ----------
 
@@ -82,6 +91,73 @@ function updateScheduleState(key, patch) {
   state.schedules[key] = { ...(state.schedules[key] ?? {}), ...patch };
   state.lastUpdated = nowIso();
   writeJsonAtomic(STATE_PATH, state);
+}
+
+// ---------- per-key locks ----------
+
+function lockPathFor(key) {
+  return join(LOCKS_DIR, `${key}.lock`);
+}
+
+function tryAcquireLock(key, origin) {
+  ensureDir(LOCKS_DIR);
+  const path = lockPathFor(key);
+  const body = JSON.stringify({ pid: process.pid, origin, startedAt: nowIso() });
+  try {
+    // O_CREAT | O_EXCL: atomic, fails if file exists.
+    const fd = openSync(path, 'wx', 0o600);
+    writeFileSync(fd, body, { encoding: 'utf-8' });
+    closeSync(fd);
+    return path;
+  } catch (err) {
+    if (err.code !== 'EEXIST') throw err;
+    // Existing lock — if it's older than the stale threshold, the prior
+    // process almost certainly died without releasing. Take it over.
+    try {
+      const st = statSync(path);
+      if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
+        writeFileSync(path, body, { encoding: 'utf-8', mode: 0o600 });
+        logEvent({ kind: 'lock_stale_taken', key, origin });
+        return path;
+      }
+    } catch { /* race: file vanished, just retry once */ }
+    return null;
+  }
+}
+
+function releaseLock(path) {
+  if (!path) return;
+  try { unlinkSync(path); } catch { /* already gone */ }
+}
+
+// ---------- calendar math ----------
+
+// Most recent scheduled fire time at or before `now`. Mirrors the launchd
+// StartCalendarInterval semantics from the existing pmsetWakeBlock, but in
+// reverse: walk backward up to 7 days (to cover weekday-filtered entries).
+function computeMostRecentScheduledTime(spec, now = new Date()) {
+  if (spec.schedule?.kind !== 'calendar') return null;
+  for (let dayOffset = 0; dayOffset >= -7; dayOffset--) {
+    const dayStart = new Date(now);
+    dayStart.setHours(0, 0, 0, 0);
+    dayStart.setDate(dayStart.getDate() + dayOffset);
+    const candidates = [];
+    for (const entry of spec.schedule.entries) {
+      if (typeof entry.weekday === 'number') {
+        // launchd weekdays: 0/7 = Sunday, 1..6 = Mon..Sat. JS getDay(): 0=Sun.
+        const wd = entry.weekday === 7 ? 0 : entry.weekday;
+        if (dayStart.getDay() !== wd) continue;
+      }
+      const fire = new Date(dayStart);
+      fire.setHours(entry.hour, entry.minute, 0, 0);
+      if (fire.getTime() <= now.getTime()) candidates.push(fire);
+    }
+    if (candidates.length) {
+      candidates.sort((a, b) => b.getTime() - a.getTime());
+      return candidates[0];
+    }
+  }
+  return null;
 }
 
 // ---------- telegram ----------
@@ -161,7 +237,7 @@ function timestampSlug(date) {
          `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 
-async function runSchedule(key) {
+async function runSchedule(key, { origin = 'launchd' } = {}) {
   const spec = readSpec(key);
   if (!spec) {
     logEvent({ kind: 'run_skip', key, reason: 'spec_not_found' });
@@ -172,11 +248,30 @@ async function runSchedule(key) {
     return { ok: false, reason: 'disabled' };
   }
 
+  const lockPath = tryAcquireLock(key, origin);
+  if (!lockPath) {
+    logEvent({ kind: 'run_skip', key, reason: 'lock_held', origin });
+    return { ok: false, reason: 'lock_held' };
+  }
+
+  try {
+    return await runScheduleLocked(spec, origin);
+  } finally {
+    releaseLock(lockPath);
+  }
+}
+
+async function runScheduleLocked(spec, origin) {
+  const key = spec.key;
   const startedAt = new Date();
+  // The scheduled slot this fire corresponds to. Recorded in state so the
+  // catch-up watcher knows this slot has been claimed and won't re-fire it.
+  const scheduledSlot = computeMostRecentScheduledTime(spec, startedAt);
+
   let resolved;
   try { resolved = resolveSpawn(spec.execution); }
   catch (err) {
-    logEvent({ kind: 'run_error', key, phase: 'resolve', message: err.message });
+    logEvent({ kind: 'run_error', key, phase: 'resolve', message: err.message, origin });
     await sendTelegram(`❌ *${spec.title}*\nresolve error: ${err.message}`);
     return { ok: false, reason: err.message };
   }
@@ -192,6 +287,8 @@ async function runSchedule(key) {
     `# label: ${spec.label}\n` +
     `# kind: ${spec.execution.kind}\n` +
     `# started: ${startedAt.toISOString()}\n` +
+    `# origin: ${origin}\n` +
+    `# scheduledSlot: ${scheduledSlot ? scheduledSlot.toISOString() : 'n/a'}\n` +
     `# command: ${resolved.command} ${resolved.args.join(' ')}\n` +
     `# cwd: ${resolved.cwd ?? process.cwd()}\n` +
     `# runner: standalone-mjs\n` +
@@ -266,13 +363,20 @@ async function runSchedule(key) {
     lastDurationMs: durationMs,
     lastTranscript: transcriptFilename,
     lastError: spawnError ?? null,
+    lastOrigin: origin,
+    // Mark the scheduled slot as claimed so the catch-up watcher does not
+    // re-fire it. Stored even on failure: a failed run still consumed the
+    // slot, and the right response is to escalate (Telegram alert), not loop.
+    lastScheduledSlot: scheduledSlot ? scheduledSlot.toISOString() : null,
     consecutiveFailures: failed
       ? (readState().schedules[key]?.consecutiveFailures ?? 0) + 1
       : 0,
   });
 
   logEvent({
-    kind: 'run', key, exitCode: result.exitCode, signal: result.signal,
+    kind: 'run', key, origin,
+    scheduledSlot: scheduledSlot ? scheduledSlot.toISOString() : null,
+    exitCode: result.exitCode, signal: result.signal,
     durationMs, transcript: transcriptFilename, failed: !!failed,
     error: spawnError ?? null,
   });
@@ -338,6 +442,63 @@ async function heartbeatCheck() {
   return { electronAge, runnerAge, alerted };
 }
 
+// ---------- catch-up watcher ----------
+
+// Walks every calendar schedule, figures out the most recent scheduled time
+// in the past, and re-fires it if the state file says we haven't claimed
+// that slot yet. Skips schedules that just fired (within CATCHUP_MIN_AGE_MS)
+// so launchd's on-time fire wins the race.
+//
+// dryRun=true returns the list of slots that WOULD fire without invoking any
+// runs and without touching state. Useful for safe inspection.
+async function catchupCheck({ dryRun = false } = {}) {
+  touchFile(HEARTBEAT_RUNNER_PATH);
+  if (!existsSync(SCHEDULES_DIR)) {
+    logEvent({ kind: 'catchup_check', considered: 0, fired: 0, dryRun });
+    return { considered: 0, fired: 0, fires: [], dryRun };
+  }
+  const state = readState();
+  const files = readdirSync(SCHEDULES_DIR).filter((f) => f.endsWith('.json'));
+  const now = new Date();
+  let considered = 0;
+  let fired = 0;
+  const fires = [];
+
+  for (const file of files) {
+    const key = file.replace(/\.json$/, '');
+    const spec = readSpec(key);
+    if (!spec || !spec.enabled) continue;
+    if (spec.schedule?.kind !== 'calendar') continue; // interval handled by launchd
+    considered++;
+
+    const mostRecent = computeMostRecentScheduledTime(spec, now);
+    if (!mostRecent) continue;
+    const ageMs_ = now.getTime() - mostRecent.getTime();
+    if (ageMs_ < CATCHUP_MIN_AGE_MS) continue; // launchd should be handling it
+
+    const lastSlotIso = state.schedules?.[key]?.lastScheduledSlot ?? null;
+    const lastSlot = lastSlotIso ? Date.parse(lastSlotIso) : 0;
+    if (lastSlot >= mostRecent.getTime()) continue; // already claimed
+
+    fires.push({ key, scheduledSlot: mostRecent.toISOString(), ageMs: ageMs_ });
+  }
+
+  if (dryRun) {
+    logEvent({ kind: 'catchup_check', considered, fired: 0, dryRun: true, would: fires });
+    return { considered, fired: 0, fires, dryRun: true };
+  }
+
+  // Fire serially so we don't hammer the system if many slots were missed.
+  for (const f of fires) {
+    logEvent({ kind: 'catchup_fire', key: f.key, scheduledSlot: f.scheduledSlot, ageMs: f.ageMs });
+    const r = await runSchedule(f.key, { origin: 'catchup' });
+    if (r.reason !== 'lock_held') fired++;
+  }
+
+  logEvent({ kind: 'catchup_check', considered, fired });
+  return { considered, fired, fires };
+}
+
 // ---------- status ----------
 
 function status() {
@@ -375,6 +536,12 @@ async function main() {
       await heartbeatCheck();
       process.exit(0);
     }
+    case 'catchup-check': {
+      const dryRun = rest.includes('--dry-run');
+      const r = await catchupCheck({ dryRun });
+      console.log(JSON.stringify(r, null, 2));
+      process.exit(0);
+    }
     case 'notify': {
       const text = rest.join(' ');
       if (!text) { console.error('usage: runner.mjs notify <text>'); process.exit(2); }
@@ -387,7 +554,7 @@ async function main() {
       process.exit(0);
     }
     default:
-      console.error('usage: runner.mjs <run|heartbeat-check|notify|status> [args]');
+      console.error('usage: runner.mjs <run|catchup-check|heartbeat-check|notify|status> [args]');
       process.exit(2);
   }
 }
