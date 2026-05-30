@@ -211,6 +211,8 @@ function formatRuntimeLabelBlock(value: WebullRuntimeSurfaceOrch | null): string
   return 'Unknown'
 }
 
+const SYNTHETIC_NODE_TIMESTAMP_BLOCK = '1970-01-01T00:00:00.000Z'
+
 function asRecordArrayBlock(value: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(value)) {
     return value.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
@@ -880,9 +882,10 @@ export default function WebullWorkspaceBlock({
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
   const allWarnings = [...warnings, ...executionSyncWarnings]
-  const overallRows = asRecordArrayBlock(assetsPositions).length > 0
-    ? asRecordArrayBlock(assetsPositions)
-    : asRecordArrayBlock(accountPositionsLegacy)
+  const overallRows = useMemo(() => {
+    const fromAssets = asRecordArrayBlock(assetsPositions)
+    return fromAssets.length > 0 ? fromAssets : asRecordArrayBlock(accountPositionsLegacy)
+  }, [assetsPositions, accountPositionsLegacy])
   const overallCashValue = useMemo(
     () => resolveOverallCashValueBlock(accountBalanceLegacy ?? assetsAccount),
     [accountBalanceLegacy, assetsAccount],
@@ -956,7 +959,11 @@ export default function WebullWorkspaceBlock({
   }, [executionOverview?.companies, overallRows, selectedCompany, showCompanyView])
 
   const backlogTableModel = useMemo(() => {
-    const now = new Date().toISOString()
+    // Stable synthetic timestamp — recomputing `new Date()` here would mutate
+    // every program's updatedAt on each re-run, which makes BacklogListBlock's
+    // programFingerprint change and wipe its expanded/children state, causing
+    // the Overall Positions table to flicker.
+    const now = SYNTHETIC_NODE_TIMESTAMP_BLOCK
     const programs: NodeRecord[] = []
     const nodeByUuid = new Map<string, NodeRecord>()
     const positionNodesByProgramUuid = new Map<string, NodeRecord[]>()
