@@ -18,8 +18,8 @@ import { getDayActivity as scanDayActivity } from '@/services/lego_blocks/integr
 import { readFileActivityIgnoredPaths } from '@/services/orchestrators/fileActivityOrch'
 import type { DayDetail } from '@/services/lego_blocks/units/typesBlock'
 
-export const HOME_SNAPSHOT_PATH = '.thinkingspace/home-snapshot.json'
-export const HOME_SNAPSHOT_DIR = '.thinkingspace'
+export const HOME_SNAPSHOT_PATH = '.thinking-space/home-snapshot.json'
+export const HOME_SNAPSHOT_DIR = '.thinking-space'
 export const HOME_SNAPSHOT_VERSION = 1
 
 export interface HomeSnapshot {
