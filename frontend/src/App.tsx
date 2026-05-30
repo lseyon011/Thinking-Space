@@ -3256,7 +3256,11 @@ function App() {
               {!usesPersistentRouteSurface && (
                 <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>}>
                 <Routes>
-                  <Route path="/" element={<Home />} />
+                  {/* Electron uses the canvas home; iOS/iPad/web keep the
+                      classic dashboard home (touch-first surface). The
+                      /home-canvas route stays accessible on all platforms
+                      so the canvas can be tested from any client. */}
+                  <Route path="/" element={isElectron() ? <HomeCanvas /> : <Home />} />
                   <Route path="/home-canvas" element={<HomeCanvas />} />
                   <Route path="/ai" element={<Navigate to="/ai/chat" replace />} />
                   <Route path="/ai/schedules/*" element={<Schedules />} />
