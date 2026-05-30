@@ -2,7 +2,7 @@
 
 Use this checklist when operating with:
 - code repo: `Thinking-Space`
-- vault ops repo: `coding-projects/thinking-space`
+- vault ops repo: `lifeblood_systems/thinkingspace.ai`
 
 ## Cadence
 
@@ -48,4 +48,4 @@ Use this checklist when operating with:
 - `commit`
 - `artifacts`
 4. Use tool-native operations as source of truth for active work:
-- `coding-projects/thinking-space/thinking-organizer/*`
+- `lifeblood_systems/thinkingspace.ai/thinking-organizer/*`

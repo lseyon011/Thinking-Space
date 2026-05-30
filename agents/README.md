@@ -13,7 +13,7 @@ Purpose: enable parallel agents to execute without repeatedly re-reading the who
 - `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md`: required commit message structure
 
 Active operations source of truth:
-- `coding-projects/thinking-space/thinking-organizer/*`
+- `lifeblood_systems/thinkingspace.ai/thinking-organizer/*`
 
 ## Startup Sequence (Every New Agent)
 1. Read `AGENTS.md` (or `CLAUDE.md` for Claude — it's auto-loaded and covers the same ground)
@@ -40,7 +40,7 @@ Use the `./ltm` wrapper from the repo root (auto-loads `.env` for vault path, se
 `./ltm` defaults to readable text in interactive terminals; use `--json` when output must be machine-parseable.
 
 Required fields for node creation (easy to forget, causes bugs):
-- `--projectRoot coding-projects/thinking-space` — without it, nodes land at vault root
+- `--projectRoot lifeblood_systems/thinkingspace.ai` — without it, nodes land at vault root
 - `--description "..."` — mandatory for every created node
 - `--parentKey "..."` — places nodes in correct hierarchy
 - `--extra-record_kind <kind>` — `task`, `run`, `handoff`, `decision`, `principle`, `note`
@@ -55,14 +55,14 @@ Required fields for node creation (easy to forget, causes bugs):
 # Create node (all required fields shown)
 ./ltm organizer.node.create --type task --title "My task" \
   --parentKey "task-backlog" \
-  --projectRoot coding-projects/thinking-space \
+  --projectRoot lifeblood_systems/thinkingspace.ai \
   --description "Short description of the task" \
   --extra-record_kind task
 
 # Other operations
 ./ltm task.claim --uuid "abc-123" --owner claude-code
 ./ltm task.update_status --uuid "abc-123" --taskStatus done
-./ltm handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space \
+./ltm handoff.create --title "Handoff" --projectRoot lifeblood_systems/thinkingspace.ai \
   --summary "Notes" --fromAgent claude-code --toAgent human \
   --parentKey handoffs-agent-operations
 ./ltm comment.add --uuid "abc-123" --text "Done" --addedBy claude-code

@@ -7,7 +7,7 @@ Date: 2026-02-17
 
 Active agent operations run in a vault-native workspace under:
 
-`coding-projects/thinking-space/thinking-organizer/*`
+`lifeblood_systems/thinkingspace.ai/thinking-organizer/*`
 
 Constraints:
 - Keep existing `type` enum unchanged for compatibility:
@@ -80,7 +80,7 @@ All write capabilities must:
 ### 3.1) Tool Usage Pattern (Mandatory)
 
 Active operations must be run in:
-- `coding-projects/thinking-space/thinking-organizer/*`
+- `lifeblood_systems/thinkingspace.ai/thinking-organizer/*`
 
 Required behavior:
 1. Sync cache/vault before operational updates.

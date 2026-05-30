@@ -148,7 +148,7 @@ Important constraint:
 ## Agent Operations Pattern
 
 For active agent orchestration, the source of truth is the vault-native organizer workspace:
-- `coding-projects/thinking-space/thinking-organizer/*`
+- `lifeblood_systems/thinkingspace.ai/thinking-organizer/*`
 
 Required operating pattern:
 1. Sync vault/cache first (`Sync Vault Now`) before reading/updating operational state.
@@ -169,7 +169,7 @@ Quick invocation examples:
 ./thinkspc task.claim --uuid "abc-123" --owner claude-code
 ./thinkspc done --uuid "abc-123"
 ./thinkspc comment --uuid "abc-123" --text-file ./status-update.md
-./thinkspc run.log --title "Session" --projectRoot coding-projects/thinking-space --agentName claude-code --result success
+./thinkspc run.log --title "Session" --projectRoot lifeblood_systems/thinkingspace.ai --agentName claude-code --result success
 
 # curl via FastAPI proxy (requires backend running)
 curl -s http://127.0.0.1:8000/api/capabilities/invoke \
@@ -247,7 +247,7 @@ Completed: `sourceConfigBlock.ts` (reads/writes `userData/state/source-config.js
 ## Multi-Agent Collaboration
 
 Use the organizer workspace as source of truth for active operations:
-- `coding-projects/thinking-space/thinking-organizer/*`
+- `lifeblood_systems/thinkingspace.ai/thinking-organizer/*`
 
 Key docs:
 - `AGENTS.md` — top-level implementation contract

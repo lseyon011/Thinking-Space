@@ -140,7 +140,7 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 Active multi-agent operations must run in the vault-native organizer workspace.
 
 Workspace location:
-- `coding-projects/thinking-space/thinking-organizer/*`
+- `lifeblood_systems/thinkingspace.ai/thinking-organizer/*`
 
 Required session pattern:
 1. Check active tasks: `./thinkspc organizer.nodes.search --query "status active" --limit 10`
@@ -164,7 +164,7 @@ Capability runner invocation pattern (use `./thinkspc` wrapper from repo root):
 - Browser URLs (for example `http://localhost:5173/.../thinking-organizer?...`) are human navigation links, not agent task targets. For agents, translate them with `./thinkspc organizer.context --url "<link>"` and then run `./thinkspc` capability commands.
 
 Required fields for node creation (easy to forget, causes bugs):
-- `--projectRoot coding-projects/thinking-space` — without it, nodes land at vault root and won't appear in organizer UI
+- `--projectRoot lifeblood_systems/thinkingspace.ai` — without it, nodes land at vault root and won't appear in organizer UI
 - `--description "..."` — mandatory for every created node
 - `--parentKey "..."` — places nodes in correct hierarchy
 - `--extra-record_kind <kind>` — for typed records: `task`, `run`, `handoff`, `decision`, `principle`, `note`
@@ -181,7 +181,7 @@ Required fields for node creation (easy to forget, causes bugs):
 # Create node (all required fields shown)
 ./thinkspc organizer.node.create --type task --title "My task" \
   --parentKey "task-backlog" \
-  --projectRoot coding-projects/thinking-space \
+  --projectRoot lifeblood_systems/thinkingspace.ai \
   --description "Short description of the task" \
   --extra-record_kind task
 
@@ -189,7 +189,7 @@ Required fields for node creation (easy to forget, causes bugs):
 ./thinkspc task.claim --uuid "abc-123" --owner claude-code
 ./thinkspc task.update_status --uuid "abc-123" --taskStatus done
 ./thinkspc done --uuid "abc-123"
-./thinkspc handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space \
+./thinkspc handoff.create --title "Handoff" --projectRoot lifeblood_systems/thinkingspace.ai \
   --summary "Notes" --fromAgent claude-code --toAgent human \
   --parentKey handoffs-agent-operations
 ./thinkspc comment.add --uuid "abc-123" --text "Done" --addedBy claude-code

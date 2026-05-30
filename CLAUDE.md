@@ -14,7 +14,7 @@ If Claude learns something useful, Claude must manually update `CLAUDE.md` to pr
 
 Also mirror durable project knowledge to:
 - `AGENTS.md` (cross-tool contract)
-- organizer principles/decision records in `coding-projects/thinking-space/thinking-organizer/*`
+- organizer principles/decision records in `lifeblood_systems/thinkingspace.ai/thinking-organizer/*`
 
 ## Proactive Notification Channel (Telegram → Anurag)
 You can send messages directly to Anurag's phone via the Kai Telegram bot. Use this proactively when:
@@ -185,7 +185,7 @@ CLI parsing supports both `--flag value` and `--flag=value`.
 Long values can be loaded from files with `--<flag>-file` (for example `--text-file ./note.md`).
 
 ### Required fields for node creation (easy to forget, causes bugs):
-- `--projectRoot coding-projects/thinking-space` — without it, nodes land at vault root and won't appear in organizer UI
+- `--projectRoot lifeblood_systems/thinkingspace.ai` — without it, nodes land at vault root and won't appear in organizer UI
 - `--description "..."` — mandatory for every created node per multi-agent discipline
 - `--parentKey "..."` — required to place nodes in the correct hierarchy (e.g., `handoffs-agent-operations`, `task-backlog`)
 - `--extra-record_kind <kind>` — for typed records: `task`, `run`, `handoff`, `decision`, `principle`, `note`
@@ -203,7 +203,7 @@ Long values can be loaded from files with `--<flag>-file` (for example `--text-f
 # Create node (all required fields shown)
 ./thinkspc organizer.node.create --type task --title "Fix login" \
   --parentKey "task-backlog" \
-  --projectRoot coding-projects/thinking-space \
+  --projectRoot lifeblood_systems/thinkingspace.ai \
   --description "Login form crashes on submit due to missing validation" \
   --extra-record_kind task
 
@@ -212,8 +212,8 @@ Long values can be loaded from files with `--<flag>-file` (for example `--text-f
 ./thinkspc task.claim --uuid "abc-123" --owner claude-code
 ./thinkspc task.update_status --uuid "abc-123" --taskStatus done
 ./thinkspc done --uuid "abc-123"
-./thinkspc run.log --title "Session log" --projectRoot coding-projects/thinking-space --agentName claude-code --result success
-./thinkspc handoff.create --title "Handoff" --projectRoot coding-projects/thinking-space \
+./thinkspc run.log --title "Session log" --projectRoot lifeblood_systems/thinkingspace.ai --agentName claude-code --result success
+./thinkspc handoff.create --title "Handoff" --projectRoot lifeblood_systems/thinkingspace.ai \
   --summary "Notes" --fromAgent claude-code --toAgent human \
   --parentKey handoffs-agent-operations
 ./thinkspc comment.add --uuid "abc-123" --text "Done" --addedBy claude-code
