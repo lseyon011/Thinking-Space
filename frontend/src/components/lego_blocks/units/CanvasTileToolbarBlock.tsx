@@ -55,7 +55,8 @@ export default function CanvasTileToolbarBlock({
   const isPostIt = tile.type === 'post-it'
   const isNote = tile.type === 'note'
   const isWidget = tile.type === 'web-widget'
-  const activeFontSize = isPostIt ? tile.fontSize ?? 'm' : 'm'
+  const supportsFontSize = isPostIt || isNote
+  const activeFontSize = supportsFontSize ? tile.fontSize ?? 'm' : 'm'
   const textColor = isPostIt ? tile.textColor : undefined
 
   const buttonStyle: React.CSSProperties = {
@@ -284,6 +285,11 @@ export default function CanvasTileToolbarBlock({
             )}
           </div>
 
+        </>
+      )}
+
+      {supportsFontSize && (
+        <>
           <div style={dividerStyle} />
           {FONT_SIZES.map(({ key, px }) => {
             const active = activeFontSize === key

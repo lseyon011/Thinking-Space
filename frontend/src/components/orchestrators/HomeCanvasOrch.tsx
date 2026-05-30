@@ -282,6 +282,25 @@ export default function HomeCanvasOrch() {
           width: 0;
           height: 0;
         }
+        /* Markdown content inside note tiles uses a smaller font than the
+           default prose styles (which are sized for full-page docs).
+           Headings + code scale proportionally to the body size. */
+        [data-canvas-tile] .prose {
+          font-size: var(--canvas-md-font-size, 12px);
+          line-height: 1.5;
+        }
+        [data-canvas-tile] .prose h1 { font-size: 1.5em; margin: 0.6em 0 0.3em; }
+        [data-canvas-tile] .prose h2 { font-size: 1.3em; margin: 0.6em 0 0.3em; }
+        [data-canvas-tile] .prose h3 { font-size: 1.15em; margin: 0.5em 0 0.25em; }
+        [data-canvas-tile] .prose h4,
+        [data-canvas-tile] .prose h5,
+        [data-canvas-tile] .prose h6 { font-size: 1em; margin: 0.5em 0 0.2em; }
+        [data-canvas-tile] .prose p,
+        [data-canvas-tile] .prose li { margin: 0.4em 0; }
+        [data-canvas-tile] .prose pre,
+        [data-canvas-tile] .prose code { font-size: 0.9em; }
+        [data-canvas-tile] .prose ul,
+        [data-canvas-tile] .prose ol { padding-left: 1.2em; margin: 0.4em 0; }
       `}</style>
       <div style={{ position: 'absolute', inset: 0 }} aria-hidden>
         {theme.showNebula && (

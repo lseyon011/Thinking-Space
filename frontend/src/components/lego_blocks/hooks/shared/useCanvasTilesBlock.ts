@@ -29,6 +29,7 @@ export interface CanvasPostItTile extends CanvasTileBase {
 export interface CanvasNoteTile extends CanvasTileBase {
   type: 'note'
   filePath: string
+  fontSize?: PostItFontSize
 }
 
 /**
@@ -164,7 +165,11 @@ export function useCanvasTilesBlock(initial: CanvasTile[] = []): UseCanvasTilesR
 
   const updateTileFontSize = useCallback((id: string, fontSize: PostItFontSize) => {
     setTiles(prev =>
-      prev.map(t => (t.id === id && t.type === 'post-it' ? { ...t, fontSize } : t)),
+      prev.map(t => {
+        if (t.id !== id) return t
+        if (t.type === 'post-it' || t.type === 'note') return { ...t, fontSize }
+        return t
+      }),
     )
   }, [])
 

@@ -186,7 +186,7 @@ function CanvasTileBlockImpl({
           </div>
         )
       ) : tile.type === 'note' ? (
-        <NoteTileContent filePath={tile.filePath} />
+        <NoteTileContent filePath={tile.filePath} fontSize={tile.fontSize ?? 'm'} />
       ) : null}
 
       {/* Resize affordance — invisible hit-target at bottom-right corner. */}
@@ -211,9 +211,16 @@ function deriveNoteTitle(filePath: string): string {
   return name.replace(/\.md$/i, '')
 }
 
-function NoteTileContent({ filePath }: { filePath: string }) {
+function NoteTileContent({
+  filePath,
+  fontSize,
+}: {
+  filePath: string
+  fontSize: 's' | 'm' | 'l'
+}) {
   const theme = useCanvasThemeBlock()
   const title = deriveNoteTitle(filePath)
+  const fontPx = fontSize === 's' ? 11 : fontSize === 'l' ? 15 : 12
   return (
     <div
       className={theme.isDark ? 'dark' : ''}
@@ -223,6 +230,9 @@ function NoteTileContent({ filePath }: { filePath: string }) {
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
+        // Consumed by the `[data-canvas-tile] .prose` CSS override below to
+        // shrink markdown content to fit a tile-sized viewport.
+        ['--canvas-md-font-size' as string]: `${fontPx}px`,
       }}
     >
       <div
