@@ -250,21 +250,22 @@ function ToolboxNavIcon({ className = 'h-4 w-4' }: { className?: string }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.6"
+      strokeWidth="1.75"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
       aria-hidden="true"
     >
-      <rect x="3" y="12.5" width="18" height="8.5" rx="0.6" />
-      <path d="M2.5 12.5h19" />
-      <rect x="9" y="16" width="6" height="2.2" rx="0.4" />
-      <rect x="5.4" y="3.6" width="1.9" height="2.1" rx="0.3" />
-      <path d="M6.35 5.7v6.8" />
-      <path d="M9.6 5.6l3.9 -1.1 .85 2.6 -3.9 1.1z" />
-      <path d="M11.55 7.6v4.9" />
-      <path d="M16.4 12.5l2.3 -5.4" />
-      <path d="M17.6 6.7a1.55 1.55 0 1 1 2.1 2.05l-1 .85 -1.6 -1.55z" />
+      <path d="M8.25 11.25V9.8A2.05 2.05 0 0 1 10.3 7.75h3.4a2.05 2.05 0 0 1 2.05 2.05v1.45" />
+      <path d="M5.25 11.25h13.5a1.75 1.75 0 0 1 1.75 1.75v5.35a1.75 1.75 0 0 1-1.75 1.75H5.25a1.75 1.75 0 0 1-1.75-1.75V13a1.75 1.75 0 0 1 1.75-1.75Z" />
+      <path d="M3.5 14.45h17" />
+      <path d="M9.9 14.45v1.1a.95.95 0 0 0 .95.95h2.3a.95.95 0 0 0 .95-.95v-1.1" />
+      <path d="m7 5.2 2.15 2.15" />
+      <path d="m8.55 3.65-3.1 3.1" />
+      <path d="M12 7.75V3.9" />
+      <path d="M10.55 3.9h2.9" />
+      <path d="m16.1 7.75 2.45-2.45" />
+      <path d="M18.25 4.1a1.55 1.55 0 0 1 1.65 2.55l-.55.55-1.85-1.85.55-.55c.07-.07.13-.13.2-.18Z" />
     </svg>
   )
 }

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -181,6 +181,8 @@ interface ChartCardProps {
 function ChartCard({ spec, days, total, loading }: ChartCardProps) {
   const accent = ACCENTS[spec.accent]
   const Icon = spec.icon
+  const chartHostRef = useRef<HTMLDivElement | null>(null)
+  const [chartHostReady, setChartHostReady] = useState(false)
   const gradId = useMemo(() => `dash-grad-${spec.key}-${Math.random().toString(36).slice(2, 8)}`, [spec.key])
 
   const data = days.map((d) => ({
@@ -190,6 +192,20 @@ function ChartCard({ spec, days, total, loading }: ChartCardProps) {
 
   const maxValue = data.reduce((m, d) => (d.value > m ? d.value : m), 0)
   const yMax = Math.max(1, Math.ceil(maxValue * 1.15))
+
+  useEffect(() => {
+    const node = chartHostRef.current
+    if (!node) return
+
+    const updateChartHostReady = () => {
+      setChartHostReady(node.clientWidth > 0 && node.clientHeight > 0)
+    }
+
+    updateChartHostReady()
+    const observer = new ResizeObserver(() => updateChartHostReady())
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
 
   return (
     <div className="group relative overflow-hidden rounded-2xl border border-border/40 bg-card/40 p-4 shadow-sm backdrop-blur transition-colors hover:border-border/70">
@@ -213,11 +229,11 @@ function ChartCard({ spec, days, total, loading }: ChartCardProps) {
         </div>
       </div>
 
-      <div className="mt-3 h-32">
+      <div ref={chartHostRef} className="mt-3 h-32 min-w-0">
         {loading ? (
           <div className="h-full w-full animate-pulse rounded-lg bg-muted/20" />
-        ) : (
-          <ResponsiveContainer width="100%" height="100%">
+        ) : chartHostReady ? (
+          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
             <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -22 }}>
               <defs>
                 <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
@@ -277,7 +293,7 @@ function ChartCard({ spec, days, total, loading }: ChartCardProps) {
               />
             </AreaChart>
           </ResponsiveContainer>
-        )}
+        ) : null}
       </div>
     </div>
   )
