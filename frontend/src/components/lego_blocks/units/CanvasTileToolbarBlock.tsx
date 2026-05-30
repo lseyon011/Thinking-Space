@@ -1,4 +1,4 @@
-import { Move, Copy, Trash2, Droplet, ArrowUpRight, RefreshCw } from 'lucide-react'
+import { Move, Copy, Trash2, Droplet, ArrowUpRight, RefreshCw, Timer } from 'lucide-react'
 import { useState } from 'react'
 import type {
   CanvasTile,
@@ -25,6 +25,24 @@ interface Props {
   onRemove: (id: string) => void
   onOpenInPage?: (filePath: string) => void
   onRefreshWidget?: (id: string) => void
+  onSetWidgetRefreshSec?: (id: string, refreshSec: number | undefined) => void
+}
+
+const WIDGET_REFRESH_OPTIONS: { label: string; value: number | undefined }[] = [
+  { label: 'Off', value: undefined },
+  { label: '10s', value: 10 },
+  { label: '30s', value: 30 },
+  { label: '1m', value: 60 },
+  { label: '5m', value: 300 },
+  { label: '15m', value: 900 },
+  { label: '1h', value: 3600 },
+]
+
+function formatRefreshSec(sec: number | undefined): string {
+  if (!sec) return 'Off'
+  if (sec < 60) return `${sec}s`
+  if (sec < 3600) return `${Math.round(sec / 60)}m`
+  return `${Math.round(sec / 3600)}h`
 }
 
 const ICON_SIZE = 16
@@ -48,10 +66,12 @@ export default function CanvasTileToolbarBlock({
   onRemove,
   onOpenInPage,
   onRefreshWidget,
+  onSetWidgetRefreshSec,
 }: Props) {
   const theme = useCanvasThemeBlock()
   const [colorOpen, setColorOpen] = useState(false)
   const [moveActive, setMoveActive] = useState(false)
+  const [refreshIntervalOpen, setRefreshIntervalOpen] = useState(false)
   const isPostIt = tile.type === 'post-it'
   const isNote = tile.type === 'note'
   const isWidget = tile.type === 'web-widget'
@@ -329,10 +349,81 @@ export default function CanvasTileToolbarBlock({
         <button
           style={buttonStyle}
           onClick={() => onRefreshWidget(tile.id)}
-          title="Refresh widget"
+          title="Refresh widget now"
         >
           <RefreshCw size={ICON_SIZE} />
         </button>
+      )}
+      {isWidget && onSetWidgetRefreshSec && (
+        <div style={{ position: 'relative' }}>
+          <button
+            style={{
+              ...buttonStyle,
+              width: 'auto',
+              padding: '0 8px',
+              gap: 4,
+              color: tile.refreshSec ? theme.tileText : theme.toolbarText,
+              background: tile.refreshSec ? theme.toolbarHighlight : 'transparent',
+              fontSize: 11,
+              fontWeight: 500,
+            }}
+            onClick={() => setRefreshIntervalOpen(v => !v)}
+            title="Auto-refresh interval"
+            aria-pressed={refreshIntervalOpen}
+          >
+            <Timer size={ICON_SIZE} />
+            <span>{formatRefreshSec(tile.refreshSec)}</span>
+          </button>
+          {refreshIntervalOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '100%',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                marginTop: 8,
+                padding: 4,
+                background: theme.popoverBg,
+                border: `1px solid ${theme.popoverBorder}`,
+                borderRadius: 8,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+                minWidth: 80,
+                boxShadow: theme.isDark
+                  ? '0 8px 20px rgba(0,0,0,0.4)'
+                  : '0 8px 20px rgba(20,20,24,0.15)',
+                zIndex: 110,
+              }}
+            >
+              {WIDGET_REFRESH_OPTIONS.map(opt => {
+                const active = (tile.refreshSec ?? undefined) === opt.value
+                return (
+                  <button
+                    key={opt.label}
+                    onClick={() => {
+                      onSetWidgetRefreshSec(tile.id, opt.value)
+                      setRefreshIntervalOpen(false)
+                    }}
+                    style={{
+                      padding: '6px 10px',
+                      border: 'none',
+                      background: active ? theme.popoverHighlight : 'transparent',
+                      color: active ? theme.popoverText : theme.popoverTextMuted,
+                      cursor: 'pointer',
+                      borderRadius: 4,
+                      fontSize: 12,
+                      textAlign: 'left',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
       )}
       <button
         style={buttonStyle}

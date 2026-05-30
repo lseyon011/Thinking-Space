@@ -21,6 +21,15 @@ export default function CanvasWebWidgetBlock({ tile, suspended, reloadKey }: Pro
   const theme = useCanvasThemeBlock()
   const [site, setSite] = useState<WebSiteBlock | null>(null)
   const [siteLookupFailed, setSiteLookupFailed] = useState(false)
+  const [autoTick, setAutoTick] = useState(0)
+
+  // Auto-refresh interval. Skipped when the tile is offscreen (suspended)
+  // to avoid burning CPU/network reloading a webview no one can see.
+  useEffect(() => {
+    if (!tile.refreshSec || suspended) return
+    const id = setInterval(() => setAutoTick(t => t + 1), tile.refreshSec * 1000)
+    return () => clearInterval(id)
+  }, [tile.refreshSec, suspended])
 
   useEffect(() => {
     let cancelled = false
@@ -112,7 +121,7 @@ export default function CanvasWebWidgetBlock({ tile, suspended, reloadKey }: Pro
           }}
         >
           <UrlDocumentBlock
-            key={reloadKey}
+            key={`${reloadKey}-${autoTick}`}
             url={site.url}
             partition={site.partition}
             hideHeader

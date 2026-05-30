@@ -42,6 +42,8 @@ export interface CanvasWebWidgetTile extends CanvasTileBase {
   region: { x: number; y: number; w: number; h: number }
   /** Rendered page width used during region capture (lets us reproduce layout). */
   pageWidth: number
+  /** Auto-refresh interval in seconds. Undefined = off (live webview only). */
+  refreshSec?: number
 }
 
 export type CanvasTile = CanvasPostItTile | CanvasNoteTile | CanvasWebWidgetTile
@@ -71,6 +73,7 @@ export interface UseCanvasTilesResult {
   updateTileColor: (id: string, color: PostItColor) => void
   updateTileFontSize: (id: string, fontSize: PostItFontSize) => void
   setTileTextColor: (id: string, textColor: PostItColor | undefined) => void
+  setWidgetRefreshSec: (id: string, refreshSec: number | undefined) => void
   moveTile: (id: string, x: number, y: number) => void
   resizeTile: (id: string, w: number, h: number) => void
   toggleTileLock: (id: string) => void
@@ -184,6 +187,17 @@ export function useCanvasTilesBlock(initial: CanvasTile[] = []): UseCanvasTilesR
     [],
   )
 
+  const setWidgetRefreshSec = useCallback(
+    (id: string, refreshSec: number | undefined) => {
+      setTiles(prev =>
+        prev.map(t =>
+          t.id === id && t.type === 'web-widget' ? { ...t, refreshSec } : t,
+        ),
+      )
+    },
+    [],
+  )
+
   const moveTile = useCallback((id: string, x: number, y: number) => {
     setTiles(prev =>
       prev.map(t => (t.id === id ? { ...t, x: Math.round(x), y: Math.round(y) } : t)),
@@ -230,6 +244,7 @@ export function useCanvasTilesBlock(initial: CanvasTile[] = []): UseCanvasTilesR
     updateTileColor,
     updateTileFontSize,
     setTileTextColor,
+    setWidgetRefreshSec,
     moveTile,
     resizeTile,
     toggleTileLock,

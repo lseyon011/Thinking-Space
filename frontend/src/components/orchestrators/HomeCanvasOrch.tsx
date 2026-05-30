@@ -77,6 +77,7 @@ export default function HomeCanvasOrch() {
     updateTileText,
     updateTileFontSize,
     setTileTextColor,
+    setWidgetRefreshSec,
     updateTileColor,
     moveTile,
     resizeTile,
@@ -387,6 +388,7 @@ export default function HomeCanvasOrch() {
           onRemove={removeTile}
           onOpenInPage={handleOpenInPage}
           onRefreshWidget={refreshWidget}
+          onSetWidgetRefreshSec={setWidgetRefreshSec}
         />
       )}
 
