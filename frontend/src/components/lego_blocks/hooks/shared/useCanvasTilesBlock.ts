@@ -15,7 +15,12 @@ export interface CanvasTileBase {
   locked: boolean
 }
 
-export type PostItFontSize = 's' | 'm' | 'l'
+/**
+ * 's' / 'm' / 'l' are preset shortcuts (resolved at render time to 11/13/17px
+ * for post-its, 11/12/15px for note prose). A number overrides any preset
+ * with an exact pixel value for fine-grained control.
+ */
+export type PostItFontSize = 's' | 'm' | 'l' | number
 
 export interface CanvasPostItTile extends CanvasTileBase {
   type: 'post-it'

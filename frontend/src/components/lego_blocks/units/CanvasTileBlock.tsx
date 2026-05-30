@@ -84,12 +84,13 @@ function CanvasTileBlockImpl({
   const theme = useCanvasThemeBlock()
   const isPostIt = tile.type === 'post-it'
   const palette = isPostIt ? POST_IT_PALETTE[tile.color] : null
-  const postItFontSizePx =
-    isPostIt && tile.fontSize === 's'
-      ? 11
-      : isPostIt && tile.fontSize === 'l'
-        ? 17
-        : 13
+  const postItFontSizePx = (() => {
+    if (!isPostIt) return 13
+    if (typeof tile.fontSize === 'number') return tile.fontSize
+    if (tile.fontSize === 's') return 11
+    if (tile.fontSize === 'l') return 17
+    return 13
+  })()
 
   const baseStyle: React.CSSProperties = {
     position: 'absolute',
@@ -216,11 +217,16 @@ function NoteTileContent({
   fontSize,
 }: {
   filePath: string
-  fontSize: 's' | 'm' | 'l'
+  fontSize: 's' | 'm' | 'l' | number
 }) {
   const theme = useCanvasThemeBlock()
   const title = deriveNoteTitle(filePath)
-  const fontPx = fontSize === 's' ? 11 : fontSize === 'l' ? 15 : 12
+  const fontPx = (() => {
+    if (typeof fontSize === 'number') return fontSize
+    if (fontSize === 's') return 11
+    if (fontSize === 'l') return 15
+    return 12
+  })()
   return (
     <div
       className={theme.isDark ? 'dark' : ''}

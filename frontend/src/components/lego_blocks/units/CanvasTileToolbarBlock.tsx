@@ -1,5 +1,5 @@
 import { Move, Copy, Trash2, Droplet, ArrowUpRight, RefreshCw, Timer } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type {
   CanvasTile,
   PostItFontSize,
@@ -47,7 +47,7 @@ function formatRefreshSec(sec: number | undefined): string {
 
 const ICON_SIZE = 16
 
-const FONT_SIZES: { key: PostItFontSize; px: number }[] = [
+const FONT_SIZES: { key: Extract<PostItFontSize, 's' | 'm' | 'l'>; px: number }[] = [
   { key: 's', px: 11 },
   { key: 'm', px: 14 },
   { key: 'l', px: 18 },
@@ -72,12 +72,17 @@ export default function CanvasTileToolbarBlock({
   const [colorOpen, setColorOpen] = useState(false)
   const [moveActive, setMoveActive] = useState(false)
   const [refreshIntervalOpen, setRefreshIntervalOpen] = useState(false)
+  const [fontSizeInput, setFontSizeInput] = useState('')
   const isPostIt = tile.type === 'post-it'
   const isNote = tile.type === 'note'
   const isWidget = tile.type === 'web-widget'
   const supportsFontSize = isPostIt || isNote
   const activeFontSize = supportsFontSize ? tile.fontSize ?? 'm' : 'm'
   const textColor = isPostIt ? tile.textColor : undefined
+
+  useEffect(() => {
+    setFontSizeInput(typeof activeFontSize === 'number' ? String(activeFontSize) : '')
+  }, [activeFontSize])
 
   const buttonStyle: React.CSSProperties = {
     display: 'flex',
@@ -332,6 +337,56 @@ export default function CanvasTileToolbarBlock({
               </button>
             )
           })}
+          <input
+            type="number"
+            min={6}
+            max={96}
+            value={fontSizeInput}
+            placeholder="px"
+            onChange={(e) => {
+              const raw = e.target.value
+              setFontSizeInput(raw)
+              if (raw === '') return
+              const n = Number(raw)
+              if (Number.isFinite(n) && n >= 6 && n <= 96) {
+                onSetFontSize(tile.id, n)
+              }
+            }}
+            onBlur={() => {
+              if (fontSizeInput === '') return
+              const n = Number(fontSizeInput)
+              if (!Number.isFinite(n)) {
+                setFontSizeInput(typeof activeFontSize === 'number' ? String(activeFontSize) : '')
+                return
+              }
+              const clamped = Math.min(96, Math.max(6, Math.round(n)))
+              setFontSizeInput(String(clamped))
+              onSetFontSize(tile.id, clamped)
+            }}
+            title="Custom size in px (6–96)"
+            style={{
+              width: 44,
+              height: 26,
+              marginLeft: 2,
+              padding: '0 6px',
+              borderRadius: 6,
+              border: `1px solid ${theme.toolbarBorder}`,
+              background:
+                typeof activeFontSize === 'number'
+                  ? theme.toolbarHighlight
+                  : 'transparent',
+              color:
+                typeof activeFontSize === 'number'
+                  ? theme.tileText
+                  : theme.toolbarTextMuted,
+              fontSize: 11,
+              fontFamily: 'inherit',
+              outline: 'none',
+              textAlign: 'center',
+              // hide native spinner (cleaner look in a chip toolbar)
+              MozAppearance: 'textfield',
+            }}
+          />
         </>
       )}
 
