@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import DashboardChartsBlock from '@/components/lego_blocks/integrations/DashboardChartsBlock'
 import ActivityHotspotBlock from '@/components/lego_blocks/integrations/ActivityHotspotBlock'
 import TodayFileActivityOrch from '@/components/orchestrators/TodayFileActivityOrch'
@@ -65,7 +66,7 @@ function FloatingPanel({
   )
 }
 
-export default function HomeAnchorTileBlock({ centerX, centerY }: AnchorElementProps) {
+function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
   const theme = useCanvasThemeBlock()
   const { profile } = useUserProfileBlock()
   const activity = useDashboardActivityBlock('30d')
@@ -147,3 +148,9 @@ export default function HomeAnchorTileBlock({ centerX, centerY }: AnchorElementP
     </div>
   )
 }
+
+// Memo prevents this whole subtree (charts, hotspot, today activity) from
+// re-rendering on every wheel pan/zoom in HomeCanvasOrch — its props are
+// constants for the lifetime of the page.
+const HomeAnchorTileBlock = memo(HomeAnchorTileBlockImpl)
+export default HomeAnchorTileBlock

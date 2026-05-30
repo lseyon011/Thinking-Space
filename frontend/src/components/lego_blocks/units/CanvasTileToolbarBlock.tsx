@@ -418,8 +418,8 @@ export default function CanvasTileToolbarBlock({
               width: 'auto',
               padding: '0 8px',
               gap: 4,
-              color: tile.refreshSec ? theme.tileText : theme.toolbarText,
-              background: tile.refreshSec ? theme.toolbarHighlight : 'transparent',
+              color: refreshIntervalOpen ? theme.tileText : theme.toolbarText,
+              background: refreshIntervalOpen ? theme.toolbarHighlight : 'transparent',
               fontSize: 11,
               fontWeight: 500,
             }}

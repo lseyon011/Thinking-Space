@@ -5,7 +5,6 @@ type Star = {
   y: number
   r: number
   alpha: number
-  twinkle: number
 }
 
 type ShootingStar = {
@@ -21,6 +20,12 @@ interface StarfieldProps {
   starColor?: string
   shootingColor?: string
 }
+
+// Tuning: stars are static — no twinkle animation, no per-frame redraw while
+// idle. The RAF loop only spins while a shooting star is in flight (~1.5s).
+// Shooting stars are deliberately rare; they're a flourish, not the focus.
+const SHOOT_MIN_GAP_MS = 30_000
+const SHOOT_MAX_GAP_MS = 60_000
 
 export default function Starfield({
   starColor = '#1f2937',
@@ -42,6 +47,15 @@ export default function Starfield({
     let reduced = media.matches
     const onMediaChange = (e: MediaQueryListEvent) => {
       reduced = e.matches
+      // If the user just turned reduce-motion on, cancel any in-flight RAF
+      // and any pending shooting-star timer.
+      if (reduced) {
+        stopRaf()
+        clearShootTimer()
+        drawStarsOnly()
+      } else {
+        scheduleNextShoot()
+      }
     }
     media.addEventListener?.('change', onMediaChange)
 
@@ -51,8 +65,20 @@ export default function Starfield({
     let stars: Star[] = []
     let shooting: ShootingStar[] = []
     let raf = 0
-    let last = 0
-    let nextShootAt = 0
+    let shootTimer: ReturnType<typeof setTimeout> | null = null
+
+    const stopRaf = () => {
+      if (raf) {
+        cancelAnimationFrame(raf)
+        raf = 0
+      }
+    }
+    const clearShootTimer = () => {
+      if (shootTimer != null) {
+        clearTimeout(shootTimer)
+        shootTimer = null
+      }
+    }
 
     const resize = () => {
       dpr = Math.min(window.devicePixelRatio || 1, 2)
@@ -68,40 +94,29 @@ export default function Starfield({
         x: Math.random() * width,
         y: Math.random() * height,
         r: Math.random() * 1.2 + 0.4,
-        alpha: Math.random() * 0.6 + 0.2,
-        twinkle: Math.random() * 0.015 + 0.005,
+        // Pick a stable alpha per star — varied brightness without animating it.
+        alpha: Math.random() * 0.6 + 0.25,
       }))
+      drawStarsOnly()
     }
 
-    const scheduleNextShoot = (now: number) => {
-      nextShootAt = now + 2500 + Math.random() * 4500
-    }
-
-    const spawnShootingStar = () => {
-      const fromLeft = Math.random() < 0.5
-      const startX = fromLeft ? -50 : width + 50
-      const startY = Math.random() * height * 0.4
-      const vx = fromLeft ? 7 + Math.random() * 4 : -7 - Math.random() * 4
-      const vy = 3 + Math.random() * 2
-      const maxLife = 60 + Math.random() * 30
-      shooting.push({ x: startX, y: startY, vx, vy, life: 0, maxLife })
-    }
-
-    const draw = (now: number) => {
-      ctx.clearRect(0, 0, width, height)
-
+    const drawStars = () => {
+      ctx.fillStyle = starColorRef.current
       for (const s of stars) {
-        s.alpha += (Math.random() - 0.5) * s.twinkle
-        s.alpha = Math.min(1, Math.max(0.12, s.alpha))
         ctx.globalAlpha = s.alpha
-        ctx.fillStyle = starColorRef.current
         ctx.beginPath()
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2)
         ctx.fill()
       }
-
       ctx.globalAlpha = 1
+    }
 
+    const drawStarsOnly = () => {
+      ctx.clearRect(0, 0, width, height)
+      drawStars()
+    }
+
+    const drawShootingStars = () => {
       shooting = shooting.filter(star => {
         star.x += star.vx
         star.y += star.vy
@@ -126,34 +141,64 @@ export default function Starfield({
 
         return star.life < star.maxLife && star.y < height + 80
       })
+    }
 
-      if (!reduced && now > nextShootAt) {
-        spawnShootingStar()
-        scheduleNextShoot(now)
+    const animate = () => {
+      ctx.clearRect(0, 0, width, height)
+      drawStars()
+      drawShootingStars()
+      if (shooting.length > 0) {
+        raf = requestAnimationFrame(animate)
+      } else {
+        raf = 0
       }
     }
 
-    const loop = (now: number) => {
-      if (!last) last = now
-      draw(now)
-      raf = requestAnimationFrame(loop)
+    const spawnShootingStar = () => {
+      if (reduced || document.hidden) return
+      const fromLeft = Math.random() < 0.5
+      const startX = fromLeft ? -50 : width + 50
+      const startY = Math.random() * height * 0.4
+      const vx = fromLeft ? 7 + Math.random() * 4 : -7 - Math.random() * 4
+      const vy = 3 + Math.random() * 2
+      const maxLife = 60 + Math.random() * 30
+      shooting.push({ x: startX, y: startY, vx, vy, life: 0, maxLife })
+      if (!raf) raf = requestAnimationFrame(animate)
+    }
+
+    const scheduleNextShoot = () => {
+      clearShootTimer()
+      if (reduced) return
+      const gap = SHOOT_MIN_GAP_MS + Math.random() * (SHOOT_MAX_GAP_MS - SHOOT_MIN_GAP_MS)
+      shootTimer = setTimeout(() => {
+        spawnShootingStar()
+        scheduleNextShoot()
+      }, gap)
     }
 
     resize()
-    scheduleNextShoot(performance.now())
+    if (!reduced) scheduleNextShoot()
 
-    if (reduced) {
-      draw(performance.now())
-    } else {
-      raf = requestAnimationFrame(loop)
+    // Pause everything while the window is hidden — no animation, no shoot
+    // scheduling. Resume on visibility.
+    const onVisibility = () => {
+      if (document.hidden) {
+        stopRaf()
+        clearShootTimer()
+      } else if (!reduced) {
+        scheduleNextShoot()
+      }
     }
+    document.addEventListener('visibilitychange', onVisibility)
 
     const onResize = () => resize()
     window.addEventListener('resize', onResize)
 
     return () => {
-      if (raf) cancelAnimationFrame(raf)
+      stopRaf()
+      clearShootTimer()
       window.removeEventListener('resize', onResize)
+      document.removeEventListener('visibilitychange', onVisibility)
       media.removeEventListener?.('change', onMediaChange)
     }
   }, [])

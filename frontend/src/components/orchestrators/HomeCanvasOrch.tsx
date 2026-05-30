@@ -21,8 +21,8 @@ import {
   writeHomeCanvas,
 } from '@/services/lego_blocks/integrations/homeCanvasStorageBlock'
 
-const ANCHOR_CENTER_X = 3000 / 2
-const ANCHOR_CENTER_Y = 2000 / 2
+const ANCHOR_CENTER_X = 6000 / 2
+const ANCHOR_CENTER_Y = 4000 / 2
 
 const SEED_TILES: CanvasTile[] = [
   {
