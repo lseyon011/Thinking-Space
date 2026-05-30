@@ -13,9 +13,11 @@ export default function ZoomIndicatorBlock({ scale, onReset }: Props) {
       aria-label="Reset zoom"
       style={{
         position: 'absolute',
-        bottom: 16,
+        // Sits directly above the minimap. Minimap is 150×100 anchored at
+        // bottom:16 right:16, so this clears it by 8px.
+        bottom: 16 + 100 + 8,
         right: 16,
-        padding: '8px 12px',
+        padding: '6px 10px',
         background: theme.toolbarBg,
         border: `1px solid ${theme.toolbarBorder}`,
         borderRadius: 8,
@@ -28,10 +30,10 @@ export default function ZoomIndicatorBlock({ scale, onReset }: Props) {
         backdropFilter: 'blur(10px)',
       }}
     >
-      <div style={{ fontSize: 14, color: theme.toolbarText }}>
+      <div style={{ fontSize: 12, color: theme.toolbarText }}>
         {Math.round(scale * 100)}%
       </div>
-      <div style={{ opacity: 0.55 }}>reset zoom</div>
+      <div style={{ opacity: 0.55, fontSize: 10 }}>reset</div>
     </button>
   )
 }

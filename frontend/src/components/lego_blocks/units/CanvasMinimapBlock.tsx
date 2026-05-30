@@ -30,7 +30,7 @@ export default function CanvasMinimapBlock({
   scale,
   viewport,
   onJump,
-  width = 200,
+  width = 150,
 }: Props) {
   const theme = useCanvasThemeBlock()
   const ref = useRef<HTMLDivElement | null>(null)
@@ -80,7 +80,7 @@ export default function CanvasMinimapBlock({
       aria-label="Canvas minimap"
       style={{
         position: 'absolute',
-        bottom: 84,
+        bottom: 16,
         right: 16,
         width,
         height,
