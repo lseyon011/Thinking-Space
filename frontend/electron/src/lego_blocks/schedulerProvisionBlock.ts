@@ -51,6 +51,12 @@ function getInstalledRunnerPathBlock(): string {
   return path.join(getInstallDirBlock(), 'runner.mjs');
 }
 
+// Exported so other main-process code (e.g. Run Now IPC) can shell out to the
+// same runner binary launchd uses, instead of duplicating its spawn logic.
+export function getInstalledRunnerPath(): string {
+  return getInstalledRunnerPathBlock();
+}
+
 function getSourceRunnerPathBlock(): string {
   // Packaged: process.resourcesPath is .../Thinking Space.app/Contents/Resources/
   // Dev:      Resources path resolves to node_modules/electron/dist/.../Resources,

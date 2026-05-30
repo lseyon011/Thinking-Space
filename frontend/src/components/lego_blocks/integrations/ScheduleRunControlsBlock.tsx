@@ -20,9 +20,11 @@ import {
 } from '@/services/orchestrators/schedulesOrch'
 import {
   getLaunchctlStatusBlock,
+  getTelegramConvStatusBlock,
   type ScheduleRunChunkBlock,
   type ScheduleSpecBlock,
   type ScheduleStatusBlock,
+  type TelegramConvStatusBlock,
   type TranscriptEntryBlock,
 } from '@/services/lego_blocks/integrations/schedulesBlock'
 
@@ -54,10 +56,21 @@ function formatTimestamp(iso: string): string {
   }
 }
 
+const EMPTY_CONV_STATUS: TelegramConvStatusBlock = {
+  hasConversation: false, conv: null, isActive: false, lastInboundAt: null, inboundCount: 0,
+}
+
+// Poll cadence while a telegram conversation is active. Conv state changes
+// come from two slow sources — user replies via the bot (seconds to minutes)
+// and the wrap-up `close_conversation` capability call (only on session end).
+// 3s is fast enough to feel live without thrashing fs reads.
+const ACTIVE_POLL_INTERVAL_MS = 3000
+
 export default function ScheduleRunControlsBlock({ spec, onChanged }: Props) {
   const navigate = useNavigate()
   const [enabled, setEnabled] = useState(spec.enabled)
   const [status, setStatus] = useState<ScheduleStatusBlock>({ loaded: false, pid: null, lastExitCode: null })
+  const [convStatus, setConvStatus] = useState<TelegramConvStatusBlock>(EMPTY_CONV_STATUS)
   const [feedback, setFeedback] = useState<RunFeedback>({ state: 'idle' })
   const [liveLog, setLiveLog] = useState<ScheduleRunChunkBlock[]>([])
   const [transcripts, setTranscripts] = useState<TranscriptEntryBlock[]>([])
@@ -65,6 +78,9 @@ export default function ScheduleRunControlsBlock({ spec, onChanged }: Props) {
   const [openTranscriptBody, setOpenTranscriptBody] = useState<string>('')
   const [transcriptsLoading, setTranscriptsLoading] = useState(false)
   const liveLogRef = useRef<HTMLPreElement | null>(null)
+
+  const isTelegramConvSpec =
+    spec.execution.kind === 'claude-code' && spec.execution.telegramConversation === true
 
   useEffect(() => { setEnabled(spec.enabled) }, [spec.enabled])
 
@@ -92,7 +108,42 @@ export default function ScheduleRunControlsBlock({ spec, onChanged }: Props) {
     setOpenTranscriptBody('')
     setLiveLog([])
     setFeedback({ state: 'idle' })
+    setConvStatus(EMPTY_CONV_STATUS)
   }, [spec.key, refreshTranscripts])
+
+  // Poll the telegram conversation state for this schedule. Cheap (a single
+  // directory scan + JSON read) but only run for schedules that actually
+  // opt in to the conversation pattern, and only re-poll on the active
+  // cadence while the conv is open. Once closed we stop the timer until the
+  // next fire.
+  useEffect(() => {
+    if (!isTelegramConvSpec) {
+      setConvStatus(EMPTY_CONV_STATUS)
+      return
+    }
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const tick = async () => {
+      try {
+        const next = await getTelegramConvStatusBlock(spec.key)
+        if (cancelled) return
+        setConvStatus(next)
+        // Also refresh transcripts so resume turns written by the poller
+        // show up without a manual reload.
+        if (next.isActive) refreshTranscripts()
+        const delay = next.isActive ? ACTIVE_POLL_INTERVAL_MS : 15_000
+        timer = setTimeout(tick, delay)
+      } catch {
+        if (cancelled) return
+        timer = setTimeout(tick, 15_000)
+      }
+    }
+    tick()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [spec.key, isTelegramConvSpec, refreshTranscripts])
 
   // Auto-scroll live log to bottom on new chunks.
   useEffect(() => {
@@ -114,11 +165,19 @@ export default function ScheduleRunControlsBlock({ spec, onChanged }: Props) {
     try {
       const result = await fireScheduleNowOrch(spec, { onChunk: handleChunk })
       const ok = result.exitCode === 0
+      const successMessage = isTelegramConvSpec
+        ? `First turn sent in ${result.durationMs}ms · awaiting Telegram reply`
+        : `Exit 0 · ${result.durationMs}ms`
       setFeedback({
         state: ok ? 'success' : 'error',
-        message: ok ? `Exit 0 · ${result.durationMs}ms` : `Exit ${result.exitCode ?? 'null'} · see transcript`,
+        message: ok ? successMessage : `Exit ${result.exitCode ?? 'null'} · see transcript`,
       })
       refreshTranscripts()
+      // Kick conv status to refresh immediately so the pill flips to
+      // "Awaiting reply" without waiting for the next poll tick.
+      if (isTelegramConvSpec && ok) {
+        getTelegramConvStatusBlock(spec.key).then(setConvStatus).catch(() => undefined)
+      }
     } catch (err) {
       setFeedback({ state: 'error', message: err instanceof Error ? err.message : 'Fire failed' })
     } finally {
@@ -170,11 +229,25 @@ export default function ScheduleRunControlsBlock({ spec, onChanged }: Props) {
     }
   }, [spec.key, openTranscript])
 
+  // Telegram-conversation schedules have a second axis of "doneness" that
+  // overrides the launchd loaded/not-loaded pill: even when the launchd job
+  // is loaded and the runner has long since exited 0, the conversation may
+  // still be open and awaiting a user reply. Surface that explicitly so
+  // exit-0 doesn't read as "done."
   const pill = !enabled
     ? { text: 'Disabled', tone: 'muted' as const }
-    : status.loaded
-      ? { text: 'Loaded', tone: 'good' as const }
-      : { text: 'Not loaded', tone: 'warn' as const }
+    : convStatus.isActive
+      ? { text: 'Awaiting reply', tone: 'info' as const }
+      : isTelegramConvSpec && convStatus.hasConversation && convStatus.conv?.status === 'closed'
+        ? {
+            text: convStatus.conv?.closeReason
+              ? `Closed (${convStatus.conv.closeReason})`
+              : 'Closed',
+            tone: 'good' as const,
+          }
+        : status.loaded
+          ? { text: 'Loaded', tone: 'good' as const }
+          : { text: 'Not loaded', tone: 'warn' as const }
 
   const showLiveLog = feedback.state === 'running' || liveLog.length > 0
 
@@ -189,6 +262,7 @@ export default function ScheduleRunControlsBlock({ spec, onChanged }: Props) {
                 'rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider',
                 pill.tone === 'good' && 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
                 pill.tone === 'warn' && 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
+                pill.tone === 'info' && 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
                 pill.tone === 'muted' && 'bg-muted text-muted-foreground',
               )}
             >
@@ -223,6 +297,16 @@ export default function ScheduleRunControlsBlock({ spec, onChanged }: Props) {
           <div className={cn('mt-2 flex items-center gap-1 text-xs', feedback.state === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
             {feedback.state === 'error' && <AlertCircle className="h-3 w-3" />}
             {feedback.message}
+          </div>
+        )}
+        {isTelegramConvSpec && convStatus.hasConversation && (
+          <div className="mt-2 text-xs text-muted-foreground">
+            <span className="font-mono">{convStatus.conv?.convId}</span>
+            {' · '}
+            {convStatus.inboundCount} repl{convStatus.inboundCount === 1 ? 'y' : 'ies'}
+            {convStatus.lastInboundAt && (
+              <> · last {formatTimestamp(convStatus.lastInboundAt)}</>
+            )}
           </div>
         )}
       </section>

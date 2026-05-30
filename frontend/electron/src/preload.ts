@@ -332,6 +332,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   schedulesStatus: (label: string) => ipcRenderer.invoke('schedules:status', label),
   schedulesListLaunchdLabels: () => ipcRenderer.invoke('schedules:list-launchd-labels'),
+  schedulesTelegramConvStatus: (scheduleKey: string) =>
+    ipcRenderer.invoke('schedules:telegram-conv-status', scheduleKey),
 
   // Vault folder picker dialog
   selectVaultFolder: () => ipcRenderer.invoke('vault:selectFolder'),

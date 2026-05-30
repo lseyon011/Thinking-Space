@@ -75,6 +75,7 @@ import {
   listExternalAgentsBlock,
 } from './lego_blocks/launchctlBlock';
 import { provisionSchedulerBlock } from './lego_blocks/schedulerProvisionBlock';
+import { getLatestConvForScheduleKeyBlock } from './lego_blocks/telegramConversationStateBlock';
 import { getStopLabelBlock } from './lego_blocks/launchdPlistBlock';
 import { provisionCliBlock } from './lego_blocks/cliProvisionBlock';
 import {
@@ -610,6 +611,10 @@ ipcMain.handle('schedules:status', async (_event, label: string) => {
 
 ipcMain.handle('schedules:list-launchd-labels', async () => {
   return listExternalAgentsBlock();
+});
+
+ipcMain.handle('schedules:telegram-conv-status', async (_event, scheduleKey: string) => {
+  return getLatestConvForScheduleKeyBlock(scheduleKey);
 });
 
 // =====================================================================

@@ -28,6 +28,12 @@ export type ScheduleExecutionSpecBlock =
       skipPermissions?: boolean
       claudeBinary?: string | null
       env?: Record<string, string>
+      // Mirrors the electron-side flag: when true, a successful run with a
+      // captured sessionId auto-opens a Telegram conversation and the poller
+      // resumes the session on user replies. The UI needs to know this so it
+      // can render "Awaiting reply" instead of treating exit-0 as "done".
+      telegramConversation?: boolean
+      cleanupSession?: boolean
     }
 
 export type ScheduleTriggerSpecBlock =
@@ -92,6 +98,34 @@ export interface ScheduleStatusBlock {
   lastExitCode: number | null
 }
 
+export interface TelegramConvHistoryEntryBlock {
+  direction: 'in' | 'out'
+  text: string
+  at: string
+}
+
+export interface TelegramConvRecordBlock {
+  convId: string
+  chatId: number
+  scheduleKey: string
+  sessionId: string
+  cwd?: string
+  status: 'active' | 'closed' | string
+  startedAt: string
+  ttlAt?: string | null
+  closedAt?: string | null
+  closeReason?: string | null
+  history?: TelegramConvHistoryEntryBlock[]
+}
+
+export interface TelegramConvStatusBlock {
+  hasConversation: boolean
+  conv: TelegramConvRecordBlock | null
+  isActive: boolean
+  lastInboundAt: string | null
+  inboundCount: number
+}
+
 export interface ScheduleServerInfoBlock {
   port: number
   secret: string
@@ -117,6 +151,7 @@ interface ScheduleBridgeApi {
   schedulesFireNow?(key: string, options?: { streamChannel?: string }): Promise<ScheduleRunResultBlock>
   schedulesStatus?(label: string): Promise<ScheduleStatusBlock>
   schedulesListLaunchdLabels?(): Promise<string[]>
+  schedulesTelegramConvStatus?(scheduleKey: string): Promise<TelegramConvStatusBlock>
   schedulesListTranscripts?(key: string): Promise<TranscriptEntryBlock[]>
   schedulesReadTranscript?(payload: { key: string; filename: string }): Promise<string>
   onScheduleRunChunk?(streamChannel: string, handler: (chunk: ScheduleRunChunkBlock) => void): () => void
@@ -236,4 +271,12 @@ export async function getLaunchctlStatusBlock(label: string): Promise<ScheduleSt
 export async function listLaunchdLabelsBlock(): Promise<string[]> {
   const bridge = requireBridge()
   return (await bridge.schedulesListLaunchdLabels?.()) ?? []
+}
+
+export async function getTelegramConvStatusBlock(scheduleKey: string): Promise<TelegramConvStatusBlock> {
+  const bridge = requireBridge()
+  if (!bridge.schedulesTelegramConvStatus) {
+    return { hasConversation: false, conv: null, isActive: false, lastInboundAt: null, inboundCount: 0 }
+  }
+  return bridge.schedulesTelegramConvStatus(scheduleKey)
 }

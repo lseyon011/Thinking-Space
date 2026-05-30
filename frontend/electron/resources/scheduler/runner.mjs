@@ -180,6 +180,32 @@ function readSecrets() {
   return s.telegram;
 }
 
+// "Typing…" bubble in the user's chat. Auto-expires after ~5s on Telegram's
+// side, so callers that want sustained typing must call this on an interval.
+// Best-effort: failures are logged but never propagate (purely cosmetic).
+async function sendTelegramTyping() {
+  let tg;
+  try { tg = readSecrets(); } catch { return; }
+  try {
+    await fetch(`https://api.telegram.org/bot${tg.bot_token}/sendChatAction`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: tg.chat_id, action: 'typing' }),
+    });
+  } catch (err) {
+    logEvent({ kind: 'telegram_typing_error', message: err.message });
+  }
+}
+
+// Start refreshing the typing bubble every 4s (Telegram's ~5s TTL minus
+// jitter). Returns a stop function that clears the interval. Fires one
+// immediately so the bubble appears without waiting for the first tick.
+function startTelegramTyping() {
+  sendTelegramTyping();
+  const handle = setInterval(sendTelegramTyping, 4000);
+  return () => clearInterval(handle);
+}
+
 async function sendTelegram(text, { parseMode = 'Markdown' } = {}) {
   let tg;
   try { tg = readSecrets(); }
@@ -327,13 +353,29 @@ async function runScheduleLocked(spec, origin) {
 
   const isClaudeCode = spec.execution.kind === 'claude-code';
   let claudeSessionId = null;
+  // Captured from a `rate_limit_event` with status "rejected" in stream-json
+  // output. Surfaced in the failure Telegram so the user knows *why* the run
+  // exited 1 (out of session quota until resetsAt) vs a real bug.
+  let claudeRateLimit = null;
 
   const inspectClaudeLine = (line) => {
-    if (!isClaudeCode || claudeSessionId || !line.startsWith('{')) return;
+    if (!isClaudeCode || !line.startsWith('{')) return;
     try {
       const ev = JSON.parse(line);
-      if (ev && typeof ev.session_id === 'string' && ev.session_id) {
+      if (!ev) return;
+      if (!claudeSessionId && typeof ev.session_id === 'string' && ev.session_id) {
         claudeSessionId = ev.session_id;
+      }
+      if (
+        !claudeRateLimit
+        && ev.type === 'rate_limit_event'
+        && ev.rate_limit_info?.status === 'rejected'
+      ) {
+        claudeRateLimit = {
+          resetsAt: ev.rate_limit_info.resetsAt ?? null,
+          rateLimitType: ev.rate_limit_info.rateLimitType ?? null,
+          overageStatus: ev.rate_limit_info.overageStatus ?? null,
+        };
       }
     } catch { /* not JSON, ignore */ }
   };
@@ -463,13 +505,25 @@ async function runScheduleLocked(spec, origin) {
     year: 'numeric', month: 'short', day: '2-digit',
     hour: '2-digit', minute: '2-digit', hour12: false,
   });
-  const statusLabel = failed
-    ? (spawnError
-        ? `❌ Failed (${spawnError})`
-        : `❌ Failed (exit ${result.exitCode}${result.signal ? `, signal ${result.signal}` : ''})`)
-    : (stoppedByWindow
-        ? '✅ Stopped (window end)'
-        : '✅ Success');
+  let statusLabel;
+  if (!failed) {
+    statusLabel = stoppedByWindow ? '✅ Stopped (window end)' : '✅ Success';
+  } else if (claudeRateLimit) {
+    // resetsAt is a unix seconds epoch in stream-json output.
+    const resetsLabel = claudeRateLimit.resetsAt
+      ? new Date(claudeRateLimit.resetsAt * 1000).toLocaleString('en-US', {
+          timeZone: 'America/Chicago',
+          month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+        }) + ' CT'
+      : 'unknown';
+    const kindLabel = claudeRateLimit.rateLimitType === 'five_hour' ? '5-hour session' : (claudeRateLimit.rateLimitType ?? 'rate limit');
+    const overageLabel = claudeRateLimit.overageStatus === 'rejected' ? ' · overage disabled' : '';
+    statusLabel = `⛔ Rate limited (${kindLabel}${overageLabel}) · resets ${resetsLabel}`;
+  } else if (spawnError) {
+    statusLabel = `❌ Failed (${spawnError})`;
+  } else {
+    statusLabel = `❌ Failed (exit ${result.exitCode}${result.signal ? `, signal ${result.signal}` : ''})`;
+  }
   await sendTelegram(
     [
       `*Thinking Space scheduler*`,
@@ -686,7 +740,10 @@ async function telegramGetUpdates(offset) {
   }
 }
 
-const TELEGRAM_RESUME_MODEL = 'claude-haiku-4-5-20251001';
+// Used for every reply-turn after the first one in a telegram conversation.
+// Should match (or at least be no weaker than) the model in the schedule spec
+// so the conversation stays consistent across turns.
+const TELEGRAM_RESUME_MODEL = 'claude-sonnet-4-6';
 const THINKSPC_SHIM = join(HOME, '.local', 'bin', 'thinkspc');
 
 function spawnAndWait(command, args, options = {}) {
@@ -840,12 +897,22 @@ async function handleTelegramMessage(message) {
   });
   logEvent({ kind: 'telegram_inbound', convId: conv.convId, textPreview: text.slice(0, 80) });
 
-  const result = await spawnClaudeResume({
-    cwd: conv.cwd,
-    sessionId: conv.sessionId,
-    replyText: text,
-    scheduleKey: conv.scheduleKey,
-  });
+  // Show "typing…" in the user's chat until Claude responds. Claude's reply
+  // turn can take 10–60s; without this the chat looks dead while we cold-
+  // start the session resume. Stopped in finally so a crash doesn't leak
+  // the interval.
+  const stopTyping = startTelegramTyping();
+  let result;
+  try {
+    result = await spawnClaudeResume({
+      cwd: conv.cwd,
+      sessionId: conv.sessionId,
+      replyText: text,
+      scheduleKey: conv.scheduleKey,
+    });
+  } finally {
+    stopTyping();
+  }
   logEvent({
     kind: 'telegram_claude_resume',
     convId: conv.convId,
@@ -916,8 +983,10 @@ async function main() {
   switch (cmd) {
     case 'run': {
       const key = rest[0];
-      if (!key) { console.error('usage: runner.mjs run <key>'); process.exit(2); }
-      const r = await runSchedule(key);
+      if (!key) { console.error('usage: runner.mjs run <key> [--origin <name>]'); process.exit(2); }
+      const originIdx = rest.indexOf('--origin');
+      const origin = originIdx >= 0 && rest[originIdx + 1] ? rest[originIdx + 1] : 'launchd';
+      const r = await runSchedule(key, { origin });
       process.exit(r.ok ? 0 : 1);
     }
     case 'stop': {

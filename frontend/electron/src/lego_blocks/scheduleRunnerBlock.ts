@@ -2,46 +2,14 @@ import { app } from 'electron';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ScheduleExecutionBlock, ScheduleSpecBlock } from './scheduleStorageBlock';
+import type { ScheduleSpecBlock } from './scheduleStorageBlock';
+import { getInstalledRunnerPath } from './schedulerProvisionBlock';
 
-const DEFAULT_CLAUDE_BINARY = '/opt/homebrew/bin/claude';
-
-interface ResolvedSpawnBlock {
-  command: string;
-  args: string[];
-  cwd: string | undefined;
-  env: Record<string, string>;
-}
-
-function resolveSpawnBlock(execution: ScheduleExecutionBlock): ResolvedSpawnBlock {
-  if (execution.kind === 'shell') {
-    return {
-      command: execution.command,
-      args: execution.args,
-      cwd: execution.cwd ?? undefined,
-      env: { ...process.env, ...(execution.env ?? {}) } as Record<string, string>,
-    };
-  }
-  // claude-code
-  const args: string[] = [];
-  if (execution.skipPermissions) args.push('--dangerously-skip-permissions');
-  if (execution.model) args.push('--model', execution.model);
-  const sessionMode = execution.session?.mode ?? 'new';
-  if (sessionMode === 'continue') {
-    args.push('--continue');
-  } else if (sessionMode === 'resume') {
-    const id = execution.session?.id;
-    if (!id) throw new Error('claude-code resume mode requires session.id');
-    args.push('--resume', id);
-  }
-  args.push('-p', execution.prompt);
-  return {
-    command: execution.claudeBinary ?? DEFAULT_CLAUDE_BINARY,
-    args,
-    cwd: execution.cwd,
-    env: { ...process.env, ...(execution.env ?? {}) } as Record<string, string>,
-  };
-}
+// Run Now used to spawn `claude` directly with its own arg builder. That code
+// drifted behind the standalone runner.mjs (no stream-json/sessionId capture,
+// no telegram conv auto-open, no cleanupSession), so launchd-fired runs and
+// app-fired runs of the same schedule behaved differently. This file now
+// shells out to runner.mjs — single source of truth for execution.
 
 export interface ScheduleRunResultBlock {
   key: string;
@@ -62,131 +30,131 @@ export interface ScheduleRunChunkBlock {
 }
 
 export interface ScheduleRunOptionsBlock {
+  // Retained for API compatibility. Live streaming is currently a no-op for
+  // delegated runs — the runner writes the transcript file directly. The full
+  // transcript is available via the schedules:read-transcript IPC after exit.
   onChunk?: (chunk: ScheduleRunChunkBlock) => void;
 }
 
-const MAX_TRANSCRIPT_BYTES = 5 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
 function getTranscriptDirBlock(key: string): string {
   return path.join(app.getPath('userData'), 'transcripts', key);
 }
 
-function timestampSlug(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return (
-    `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
-    `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
-  );
+function findNewestTranscript(dir: string, sinceMs: number): { name: string; full: string } | null {
+  let entries: string[];
+  try { entries = fs.readdirSync(dir); } catch { return null; }
+  let best: { name: string; full: string; mtimeMs: number } | null = null;
+  for (const name of entries) {
+    if (!name.endsWith('.log')) continue;
+    const full = path.join(dir, name);
+    let stat: fs.Stats;
+    try { stat = fs.statSync(full); } catch { continue; }
+    if (stat.mtimeMs < sinceMs - 1000) continue;
+    if (!best || stat.mtimeMs > best.mtimeMs) best = { name, full, mtimeMs: stat.mtimeMs };
+  }
+  return best ? { name: best.name, full: best.full } : null;
+}
+
+function parseExitFromTranscript(file: string): { exitCode: number | null; signal: NodeJS.Signals | null } {
+  let text: string;
+  try { text = fs.readFileSync(file, 'utf-8'); } catch { return { exitCode: null, signal: null }; }
+  const tail = text.slice(-400);
+  const exitMatch = tail.match(/^# exit: (.+)$/m);
+  const signalMatch = tail.match(/^# signal: (.+)$/m);
+  const exitRaw = exitMatch?.[1]?.trim();
+  const signalRaw = signalMatch?.[1]?.trim();
+  const exitCode = exitRaw && exitRaw !== 'null' ? Number(exitRaw) : null;
+  const signal = signalRaw && signalRaw !== 'null' ? (signalRaw as NodeJS.Signals) : null;
+  return { exitCode: Number.isFinite(exitCode) ? exitCode : null, signal };
 }
 
 export async function runScheduleBlock(
   spec: ScheduleSpecBlock,
-  options: ScheduleRunOptionsBlock = {},
+  _options: ScheduleRunOptionsBlock = {},
 ): Promise<ScheduleRunResultBlock> {
   if (!spec.enabled) {
     throw new Error(`Schedule ${spec.key} is disabled`);
   }
 
-  const resolved = resolveSpawnBlock(spec.execution);
+  const runnerPath = getInstalledRunnerPath();
+  if (!fs.existsSync(runnerPath)) {
+    throw new Error(`Scheduler runner not provisioned at ${runnerPath}`);
+  }
 
   const startedAt = new Date();
-  const dir = getTranscriptDirBlock(spec.key);
-  fs.mkdirSync(dir, { recursive: true });
-  const transcriptFilename = `${timestampSlug(startedAt)}.log`;
-  const transcriptPath = path.join(dir, transcriptFilename);
-  const transcript = fs.createWriteStream(transcriptPath, { flags: 'w', encoding: 'utf-8' });
-
-  const header =
-    `# schedule: ${spec.key}\n` +
-    `# label: ${spec.label}\n` +
-    `# kind: ${spec.execution.kind}\n` +
-    `# started: ${startedAt.toISOString()}\n` +
-    `# command: ${resolved.command} ${resolved.args.join(' ')}\n` +
-    `# cwd: ${resolved.cwd ?? process.cwd()}\n` +
-    `---\n`;
-  transcript.write(header);
-
-  let bytesWritten = header.length;
-  let truncated = false;
-  const emit = options.onChunk;
-  const lineBuffers: Record<'stdout' | 'stderr', string> = { stdout: '', stderr: '' };
-
-  const flushLine = (channel: 'stdout' | 'stderr', line: string) => {
-    const ts = new Date();
-    const timestamp = ts.toISOString();
-    const hhmmss = `${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}:${String(ts.getSeconds()).padStart(2, '0')}`;
-    if (emit) emit({ channel, timestamp, line });
-    if (truncated) return;
-    const marker = channel === 'stderr' ? '!' : ' ';
-    const formatted = `${hhmmss} ${marker} ${line}\n`;
-    if (bytesWritten + formatted.length > MAX_TRANSCRIPT_BYTES) {
-      transcript.write(`\n[transcript truncated at ${MAX_TRANSCRIPT_BYTES} bytes]\n`);
-      truncated = true;
-      return;
-    }
-    transcript.write(formatted);
-    bytesWritten += formatted.length;
-  };
-
-  const ingest = (channel: 'stdout' | 'stderr', chunk: Buffer) => {
-    lineBuffers[channel] += chunk.toString('utf-8');
-    let newlineIdx: number;
-    while ((newlineIdx = lineBuffers[channel].indexOf('\n')) !== -1) {
-      const line = lineBuffers[channel].slice(0, newlineIdx).replace(/\r$/, '');
-      lineBuffers[channel] = lineBuffers[channel].slice(newlineIdx + 1);
-      flushLine(channel, line);
-    }
-  };
-
-  const child = spawn(resolved.command, resolved.args, {
-    cwd: resolved.cwd,
-    env: resolved.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-
-  child.stdout?.on('data', (chunk: Buffer) => ingest('stdout', chunk));
-  child.stderr?.on('data', (chunk: Buffer) => ingest('stderr', chunk));
-
-  const timeoutHandle = setTimeout(() => {
-    if (!child.killed) {
-      transcript.write(`\n[killed: timeout after ${DEFAULT_TIMEOUT_MS}ms]\n`);
-      child.kill('SIGTERM');
-    }
-  }, DEFAULT_TIMEOUT_MS);
+  const startedMs = startedAt.getTime();
+  const transcriptDir = getTranscriptDirBlock(spec.key);
+  fs.mkdirSync(transcriptDir, { recursive: true });
 
   let errorMessage: string | undefined;
-  child.on('error', (err) => {
-    errorMessage = err.message;
-    transcript.write(`\n[spawn error] ${err.message}\n`);
-  });
 
-  return new Promise<ScheduleRunResultBlock>((resolve) => {
+  const result = await new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+    const child = spawn(
+      process.execPath,
+      [runnerPath, 'run', spec.key, '--origin', 'fire-now'],
+      {
+        // THINKING_SPACE_USERDATA matches what the launchd plist injects —
+        // without it the runner falls back to a default that's wrong for any
+        // app whose name differs from productName (ours: "long-term-memory"
+        // vs "Thinking Space"), and readSpec returns spec_not_found.
+        env: {
+          ...process.env,
+          ELECTRON_RUN_AS_NODE: '1',
+          THINKING_SPACE_USERDATA: app.getPath('userData'),
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+
+    // Drain stdio so the pipe buffer never blocks the child. We don't forward
+    // these — the runner writes its own transcript and event log.
+    child.stdout?.on('data', () => {});
+    child.stderr?.on('data', () => {});
+
+    const timeout = setTimeout(() => {
+      if (!child.killed) {
+        errorMessage = `runner timeout after ${DEFAULT_TIMEOUT_MS}ms`;
+        child.kill('SIGTERM');
+      }
+    }, DEFAULT_TIMEOUT_MS);
+
+    child.on('error', (err) => {
+      errorMessage = err.message;
+    });
+
     child.on('close', (exitCode, signal) => {
-      clearTimeout(timeoutHandle);
-      // Flush any unterminated trailing data.
-      if (lineBuffers.stdout) { flushLine('stdout', lineBuffers.stdout); lineBuffers.stdout = ''; }
-      if (lineBuffers.stderr) { flushLine('stderr', lineBuffers.stderr); lineBuffers.stderr = ''; }
-      const endedAt = new Date();
-      const footer =
-        `---\n` +
-        `# ended: ${endedAt.toISOString()}\n` +
-        `# exit: ${exitCode}\n` +
-        `# signal: ${signal ?? 'null'}\n`;
-      transcript.write(footer);
-      transcript.end(() => {
-        resolve({
-          key: spec.key,
-          startedAt: startedAt.toISOString(),
-          endedAt: endedAt.toISOString(),
-          exitCode,
-          signal,
-          transcriptPath,
-          transcriptFilename,
-          durationMs: endedAt.getTime() - startedAt.getTime(),
-          errorMessage,
-        });
-      });
+      clearTimeout(timeout);
+      resolve({ exitCode, signal });
     });
   });
+
+  const endedAt = new Date();
+  const transcript = findNewestTranscript(transcriptDir, startedMs);
+  const transcriptPath = transcript?.full ?? '';
+  const transcriptFilename = transcript?.name ?? '';
+
+  // Prefer the transcript footer for exit status — the runner records the
+  // claude child's exit there, which is what users actually care about. Fall
+  // back to the runner process's own exit if no transcript was produced.
+  const fromTranscript = transcriptPath ? parseExitFromTranscript(transcriptPath) : { exitCode: null, signal: null };
+  const exitCode = fromTranscript.exitCode ?? result.exitCode;
+  const signal = fromTranscript.signal ?? result.signal;
+
+  if (!transcriptPath && !errorMessage) {
+    errorMessage = `runner produced no transcript (runner exit ${result.exitCode}, signal ${result.signal ?? 'null'})`;
+  }
+
+  return {
+    key: spec.key,
+    startedAt: startedAt.toISOString(),
+    endedAt: endedAt.toISOString(),
+    exitCode,
+    signal,
+    transcriptPath,
+    transcriptFilename,
+    durationMs: endedAt.getTime() - startedAt.getTime(),
+    errorMessage,
+  };
 }
