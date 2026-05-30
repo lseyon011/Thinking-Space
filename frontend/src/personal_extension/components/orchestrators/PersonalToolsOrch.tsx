@@ -75,7 +75,6 @@ function getParentFolderPathBlock(filePath: string): string {
 
 export default function PersonalToolsOrch() {
   const { openFile } = useMarkdownViewer()
-  const [activeToolId, setActiveToolId] = useState<PersonalToolId>('heading-assignments')
   const [fileOptions, setFileOptions] = useState<HeadingAssignmentFileOptionOrch[]>([])
   const [fileQuery, setFileQuery] = useState('')
   const [selectedFilePath, setSelectedFilePath] = useState('')
@@ -93,7 +92,7 @@ export default function PersonalToolsOrch() {
   const [feedback, setFeedback] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const activeTool = TOOL_ITEMS.find((tool) => tool.id === activeToolId) ?? TOOL_ITEMS[0]
+  const activeTool = TOOL_ITEMS[0]
   const dropdownValues = useMemo(
     () => parseHeadingAssignmentValuesBlock(dropdownValuesText),
     [dropdownValuesText],
@@ -310,32 +309,6 @@ export default function PersonalToolsOrch() {
           {activeTool.description}
         </p>
       </div>
-
-      <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
-      <aside className="space-y-3">
-        <div className="rounded-xl border bg-background p-3">
-          <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Personal Tools</p>
-          <div className="space-y-1">
-          {TOOL_ITEMS.map((tool) => {
-            const active = tool.id === activeToolId
-            return (
-              <button
-                key={tool.id}
-                type="button"
-                onClick={() => setActiveToolId(tool.id)}
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
-                  active
-                    ? 'bg-foreground text-background'
-                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                }`}
-              >
-                {tool.label}
-              </button>
-            )
-          })}
-          </div>
-        </div>
-      </aside>
 
       <div className="flex min-w-0 flex-col gap-4">
         <Card>
@@ -626,7 +599,6 @@ export default function PersonalToolsOrch() {
           </CardContent>
         </Card>
       </div>
-    </div>
     </div>
   )
 }

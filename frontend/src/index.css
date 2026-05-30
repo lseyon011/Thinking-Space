@@ -410,14 +410,19 @@
     -webkit-app-region: no-drag;
   }
 
-  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-shell-tabs,
-  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-strip-shell,
-  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-strip-rail,
-  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-scroll-track,
-  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-scroll-inner,
-  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-slot,
+  /* The tab strip used to be blanket no-drag at every nesting level, which
+   * left almost no draggable surface in the top chrome. We now restrict
+   * no-drag to:
+   *   - .ltm-tab-item: the actual tab buttons need clicks/closes.
+   *   - .ltm-tab-scroll-track: the scrollable element. In overflow mode it
+   *     receives wheel events for horizontal scrolling; -webkit-app-region:
+   *     drag can swallow those, so we keep this one no-drag.
+   * Everything else (shell, rail, scroll-inner, slot, separator, outer
+   * .ltm-shell-tabs container) inherits drag from the top chrome. The
+   * global button/a/input rule above keeps interactive children clickable
+   * regardless. */
   .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-item,
-  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-separator {
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-scroll-track {
     -webkit-app-region: no-drag;
   }
 

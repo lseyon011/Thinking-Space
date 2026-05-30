@@ -2,7 +2,6 @@ import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-r
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  Bot,
   Bug,
   ChevronDown,
   Compass,
@@ -17,12 +16,9 @@ import {
   PanelLeftClose,
   PlusSquare,
   RefreshCw,
-  KeyRound,
   Search,
   Settings as SettingsIcon,
   Sparkles,
-  Terminal,
-  Wrench,
   X,
 } from 'lucide-react'
 import treeOfLifeLogo from './assets/tree-of-life-logo.jpg'
@@ -51,6 +47,7 @@ const PasswordManager = lazy(() => import('./pages/PasswordManager'))
 const TerminalPage = lazy(() => import('./pages/TerminalPage'))
 const WebullPage = lazy(() => import('./personal_extension/pages/WebullPage'))
 const PersonalToolsPage = lazy(() => import('./personal_extension/pages/PersonalToolsPage'))
+import ToolsShellBlock, { isToolsShellRoute } from './components/lego_blocks/integrations/ToolsShellBlock'
 import { FrozenRouteBlock } from './components/lego_blocks/units/FrozenRouteBlock'
 import RouteActivityProviderBlock from './components/lego_blocks/units/RouteActivityProviderBlock'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
@@ -72,7 +69,6 @@ import {
 import {
   EXCALIDRAW_PLUS_ROOT_ROUTE,
   EXCALIDRAW_PLUS_TOOL_ROUTES,
-  isExcalidrawPlusRoute,
 } from './components/lego_blocks/units/ExcalidrawPlusRoutesBlock'
 import UniversalSearchBlock from './components/lego_blocks/integrations/UniversalSearchBlock'
 import { UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK } from './components/lego_blocks/integrations/universalSearchPresetBlock'
@@ -186,7 +182,7 @@ interface NavItem {
 interface CommandItem {
   to: string
   label: string
-  group: 'Core' | 'Workspace' | 'Excalidraw++' | 'Files'
+  group: 'Core' | 'Workspace' | 'Tools' | 'Files'
   activePaths?: string[]
   keywords?: string
   description?: string
@@ -247,12 +243,54 @@ function formatSyncTimestamp(value: number | null): string {
   return new Date(value).toLocaleString()
 }
 
+function ToolboxNavIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <rect x="3" y="12.5" width="18" height="8.5" rx="0.6" />
+      <path d="M2.5 12.5h19" />
+      <rect x="9" y="16" width="6" height="2.2" rx="0.4" />
+      <rect x="5.4" y="3.6" width="1.9" height="2.1" rx="0.3" />
+      <path d="M6.35 5.7v6.8" />
+      <path d="M9.6 5.6l3.9 -1.1 .85 2.6 -3.9 1.1z" />
+      <path d="M11.55 7.6v4.9" />
+      <path d="M16.4 12.5l2.3 -5.4" />
+      <path d="M17.6 6.7a1.55 1.55 0 1 1 2.1 2.05l-1 .85 -1.6 -1.55z" />
+    </svg>
+  )
+}
+
+const TOOLS_NAV_ACTIVE_PATHS: readonly string[] = [
+  '/excalidraw-plus',
+  '/excalidraw-plus/plugin',
+  '/excalidraw-plus/format',
+  '/excalidraw-plus/mindmap',
+  '/excalidraw-plus/pdf',
+  '/excalidraw-plus/transcript',
+  '/excalidraw-plugin',
+  '/format-excalidraw',
+  '/mindmap-builder',
+  '/pdf-to-markdown',
+  '/transcript-cleaner',
+  '/capabilities',
+  '/extension-builder',
+  '/terminal',
+  '/password-manager',
+  '/personal-extension',
+]
+
 const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/thinking-space', label: 'Thinking Space', icon: Compass },
   { to: '/new-thought', label: 'New Note', icon: PlusSquare },
-  { to: '/git-insights', label: 'Insights', icon: GitBranch },
   { to: '/ai/chat', label: 'AI', icon: AINavIcon },
-  { to: '/password-manager', label: 'Passwords', icon: KeyRound },
   { to: '/web', label: 'Web', icon: WebNavIcon },
   { to: '/webull', label: 'Webull', icon: WebullNavIcon },
   {
@@ -261,7 +299,15 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
     icon: FolderKanban,
     activePaths: ['/file-organizer'],
   },
+  { to: '/git-insights', label: 'Insights', icon: GitBranch },
 ]
+
+const TOOLS_NAV_ITEM: NavItem = {
+  to: '/personal-tools',
+  label: 'Tools',
+  icon: ToolboxNavIcon,
+  activePaths: TOOLS_NAV_ACTIVE_PATHS as string[],
+}
 
 function ExcalidrawPlusIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
@@ -826,32 +872,10 @@ function App() {
     ),
     [webullTabLabel, resolvedWebullIcon],
   )
-  const coreNavItems = useMemo(
-    () => primaryNavItems.filter(item => item.to !== '/password-manager'),
-    [primaryNavItems],
-  )
-  const passwordNavItem = useMemo(
-    () => primaryNavItems.find(item => item.to === '/password-manager') ?? { to: '/password-manager', label: 'Passwords', icon: KeyRound },
-    [primaryNavItems],
-  )
-  const personalToolsNavItem = useMemo<NavItem>(
-    () => ({ to: '/personal-tools', label: 'Personal Tools', icon: Wrench }),
+  const utilityNavItems = useMemo<NavItem[]>(
+    () => [{ to: '/settings', label: 'Settings', icon: SettingsIcon }],
     [],
   )
-
-  const utilityNavItems = useMemo(() => {
-    const items: NavItem[] = [
-      { to: '/settings', label: 'Settings', icon: SettingsIcon },
-      { to: '/capabilities', label: 'Capabilities', icon: Bot },
-    ]
-    if (terminalSupported) {
-      items.unshift({ to: '/terminal', label: 'Terminal', icon: Terminal })
-    }
-    if (extensionBuilderEnabled) {
-      items.splice(terminalSupported ? 1 : 0, 0, { to: '/extension-builder', label: 'Extension Builder', icon: Sparkles })
-    }
-    return items
-  }, [extensionBuilderEnabled, terminalSupported])
 
   const baseCommandItems = useMemo<CommandItem[]>(() => ([
     { to: '/', label: 'Home', group: 'Core', keywords: 'dashboard start' },
@@ -869,24 +893,29 @@ function App() {
       activePaths: item.activePaths,
     })),
     {
-      to: personalToolsNavItem.to,
-      label: personalToolsNavItem.label,
-      group: 'Workspace' as const,
-      activePaths: personalToolsNavItem.activePaths,
+      to: TOOLS_NAV_ITEM.to,
+      label: TOOLS_NAV_ITEM.label,
+      group: 'Tools' as const,
+      activePaths: TOOLS_NAV_ITEM.activePaths,
     },
     {
       to: EXCALIDRAW_NAV_ITEM.to,
       label: EXCALIDRAW_NAV_ITEM.label,
-      group: 'Excalidraw++' as const,
+      group: 'Tools' as const,
       activePaths: EXCALIDRAW_NAV_ITEM.activePaths,
     },
     ...EXCALIDRAW_PLUS_TOOL_ROUTES.map(tool => ({
       to: tool.route,
       label: tool.label,
-      group: 'Excalidraw++' as const,
+      group: 'Tools' as const,
       activePaths: [tool.legacyRoute],
     })),
-  ]), [personalToolsNavItem, primaryNavItems, utilityNavItems])
+    { to: '/capabilities', label: 'AI Capabilities', group: 'Tools' as const },
+    ...(terminalSupported ? [{ to: '/terminal', label: 'Terminal', group: 'Tools' as const }] : []),
+    { to: '/password-manager', label: 'Passwords', group: 'Tools' as const },
+    { to: '/personal-tools', label: 'Heading Assignments', group: 'Tools' as const },
+    ...(extensionBuilderEnabled ? [{ to: '/extension-builder', label: 'Extension Builder', group: 'Tools' as const }] : []),
+  ]), [extensionBuilderEnabled, primaryNavItems, terminalSupported, utilityNavItems])
 
   const allCommandItems = useMemo<CommandItem[]>(
     () => [...baseCommandItems, ...commandFileItems],
@@ -964,11 +993,10 @@ function App() {
       case '/ai/chat':
       case '/web':
       case '/webull':
-      case '/personal-tools':
-      case '/terminal':
       case '/settings':
         return location.pathname
       default:
+        if (isToolsShellRoute(location.pathname)) return '/personal-tools'
         return undefined
     }
   }, [location.pathname])
@@ -1072,10 +1100,6 @@ function App() {
     compactDrawerBaseOffset,
   )
   const compactDrawerTriggerLeft = Math.max(16, leftInset + 16)
-  const excalidrawGroupActive = useMemo(
-    () => isExcalidrawPlusRoute(location.pathname),
-    [location.pathname],
-  )
   const shellSafeAreaVars = useMemo<CSSProperties>(() => ({
     '--ltm-safe-top': `${topInset}px`,
     '--ltm-safe-right': `${rightInset}px`,
@@ -2725,7 +2749,7 @@ function App() {
           {!useNativeTopChrome && (
           <header className="ltm-shell-top-chrome ltm-shell-motion-chrome relative">
             <div
-              className={`absolute left-0 top-0 z-20 flex h-full items-center justify-start [-webkit-app-region:no-drag] ${
+              className={`absolute left-0 top-0 z-20 flex h-full items-center justify-start [-webkit-app-region:drag] ${
                 iPhoneMode ? 'pl-2' : 'pl-0.5'
               }`}
               style={{ width: `${phoneMode ? topChromeLeftWidth : topChromeBalancedWidth}px` }}
@@ -2945,7 +2969,7 @@ function App() {
             </div>
 
             <div
-              className="absolute top-0 z-20 flex h-full items-center justify-end gap-2 [-webkit-app-region:no-drag]"
+              className="absolute top-0 z-20 flex h-full items-center justify-end gap-2 [-webkit-app-region:drag]"
               style={{
                 right: `${topChromeRightAnchorInset}px`,
                 width: `${phoneMode ? topChromeRightWidth : topChromeBalancedWidth}px`,
@@ -3047,7 +3071,7 @@ function App() {
                         Core
                       </div>
                     )}
-                    {coreNavItems.map((item) => {
+                    {primaryNavItems.map((item) => {
                       const Icon = item.icon
                       const active = isNavItemActive(location.pathname, item)
                       return (
@@ -3069,43 +3093,13 @@ function App() {
                   </div>
 
                   <div className="ltm-sidebar-nav-group space-y-1">
-                    {!sidebarCollapsed && (
-                      <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                        Excalidraw++
-                      </div>
-                    )}
-                    {sidebarCollapsed ? (
-                      <Link
-                        to={EXCALIDRAW_NAV_ITEM.to}
-                        title="Excalidraw++"
-                        className={`ltm-motion-fast ltm-touch-row flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-colors ${
-                          excalidrawGroupActive
-                            ? 'bg-foreground text-background'
-                            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                        }`}
-                      >
-                        <ExcalidrawPlusIcon className="h-4 w-4" />
-                      </Link>
-                    ) : (
-                      <Link
-                        to={EXCALIDRAW_NAV_ITEM.to}
-                        className={`ltm-motion-fast ltm-touch-row flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                          excalidrawGroupActive
-                            ? 'bg-foreground text-background'
-                            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                        }`}
-                      >
-                        <ExcalidrawPlusIcon className="h-4 w-4" />
-                        <span className="flex-1 truncate text-left">Excalidraw++</span>
-                      </Link>
-                    )}
                     {(() => {
-                      const Icon = passwordNavItem.icon
-                      const active = isNavItemActive(location.pathname, passwordNavItem)
+                      const Icon = TOOLS_NAV_ITEM.icon
+                      const active = isNavItemActive(location.pathname, TOOLS_NAV_ITEM)
                       return (
                         <Link
-                          to={passwordNavItem.to}
-                          title={sidebarCollapsed ? passwordNavItem.label : undefined}
+                          to={TOOLS_NAV_ITEM.to}
+                          title={sidebarCollapsed ? TOOLS_NAV_ITEM.label : undefined}
                           className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
                             sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
                           } ${
@@ -3113,25 +3107,7 @@ function App() {
                           }`}
                         >
                           <Icon className="h-4 w-4" />
-                          {!sidebarCollapsed && <span className="truncate">{passwordNavItem.label}</span>}
-                        </Link>
-                      )
-                    })()}
-                    {(() => {
-                      const Icon = personalToolsNavItem.icon
-                      const active = isNavItemActive(location.pathname, personalToolsNavItem)
-                      return (
-                        <Link
-                          to={personalToolsNavItem.to}
-                          title={sidebarCollapsed ? personalToolsNavItem.label : undefined}
-                          className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
-                            sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                          } ${
-                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                          }`}
-                        >
-                          <Icon className="h-4 w-4" />
-                          {!sidebarCollapsed && <span className="truncate">{personalToolsNavItem.label}</span>}
+                          {!sidebarCollapsed && <span className="truncate">{TOOLS_NAV_ITEM.label}</span>}
                         </Link>
                       )
                     })()}
@@ -3161,47 +3137,6 @@ function App() {
                     })}
                   </div>
 
-                  <div className="ltm-sidebar-actions-group space-y-2">
-                    <button
-                      type="button"
-                      onClick={openCommandPalette}
-                      className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
-                        sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                      }`}
-                      aria-label="Open quick search"
-                    >
-                      <Search className="h-4 w-4" />
-                      {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">Search</span>}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSidebarCollapsed(prev => !prev)}
-                      className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
-                        sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                      }`}
-                      title={sidebarCollapsed ? 'Expand sidebar (Cmd/Ctrl+\\)' : 'Collapse sidebar (Cmd/Ctrl+\\)'}
-                      aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                    >
-                      {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-                      {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">{sidebarCollapsed ? 'Expand drawer' : 'Collapse drawer'}</span>}
-                    </button>
-
-                    <Link
-                      to="/"
-                      title={sidebarCollapsed ? 'Home' : undefined}
-                      aria-label="Home"
-                      className={`ltm-shell-logo ltm-motion-fast mt-2 inline-flex items-center rounded-lg ${
-                        sidebarCollapsed
-                          ? 'h-10 w-full justify-center'
-                          : 'gap-2 px-2.5 py-2 text-sm font-semibold tracking-tight'
-                      }`}
-                    >
-                      <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full">
-                        <AppBrandGlyph className="h-full w-full" />
-                      </span>
-                      {!sidebarCollapsed && <span>Home</span>}
-                    </Link>
-                  </div>
                 </div>
                 </div>
               </aside>
@@ -3325,13 +3260,24 @@ function App() {
                   <Route path="/ai/schedules/*" element={<Schedules />} />
                   <Route path="/chat" element={<Navigate to="/ai/chat" replace />} />
                   <Route path="/thinking-space" element={<ThinkingSpace />} />
-                  <Route path="/excalidraw-plus" element={<ExcalidrawPlus />}>
-                    <Route index element={<Navigate to="plugin" replace />} />
-                    <Route path="plugin" element={<ExcalidrawPlugin />} />
-                    <Route path="format" element={<FormatExcalidraw />} />
-                    <Route path="mindmap" element={<MindmapBuilder />} />
-                    <Route path="pdf" element={<PdfToMarkdown />} />
-                    <Route path="transcript" element={<TranscriptCleaner />} />
+                  <Route element={<ToolsShellBlock />}>
+                    <Route path="/excalidraw-plus" element={<ExcalidrawPlus />}>
+                      <Route index element={<Navigate to="plugin" replace />} />
+                      <Route path="plugin" element={<ExcalidrawPlugin />} />
+                      <Route path="format" element={<FormatExcalidraw />} />
+                      <Route path="mindmap" element={<MindmapBuilder />} />
+                      <Route path="pdf" element={<PdfToMarkdown />} />
+                      <Route path="transcript" element={<TranscriptCleaner />} />
+                    </Route>
+                    <Route path="/terminal" element={terminalSupported ? <TerminalPage /> : <Navigate to="/settings?tab=developer" replace />} />
+                    <Route path="/password-manager" element={<PasswordManager />} />
+                    <Route path="/personal-tools" element={<PersonalToolsPage />} />
+                    <Route path="/personal-extension" element={<Navigate to="/personal-tools" replace />} />
+                    <Route path="/capabilities" element={<CapabilityDiscovery />} />
+                    <Route
+                      path="/extension-builder"
+                      element={extensionBuilderEnabled ? <ExtensionBuilder /> : <Navigate to="/capabilities" replace />}
+                    />
                   </Route>
                   <Route path="/excalidraw-plugin" element={<Navigate to="/excalidraw-plus/plugin" replace />} />
                   <Route path="/format-excalidraw" element={<Navigate to="/excalidraw-plus/format" replace />} />
@@ -3339,11 +3285,7 @@ function App() {
                   <Route path="/pdf-to-markdown" element={<Navigate to="/excalidraw-plus/pdf" replace />} />
                   <Route path="/transcript-cleaner" element={<Navigate to="/excalidraw-plus/transcript" replace />} />
                   <Route path="/git-insights" element={<GitInsights />} />
-                  <Route path="/terminal" element={terminalSupported ? <TerminalPage /> : <Navigate to="/settings?tab=developer" replace />} />
-                  <Route path="/password-manager" element={<PasswordManager />} />
                   <Route path="/webull" element={<WebullPage pageLabel={webullTabLabel} />} />
-                  <Route path="/personal-tools" element={<PersonalToolsPage />} />
-                  <Route path="/personal-extension" element={<Navigate to="/personal-tools" replace />} />
                   <Route
                     path="/settings"
                     element={
@@ -3362,11 +3304,6 @@ function App() {
                     }
                   />
                   <Route path="/ai-settings" element={<Navigate to="/settings?tab=ai" replace />} />
-                  <Route
-                    path="/extension-builder"
-                    element={extensionBuilderEnabled ? <ExtensionBuilder /> : <Navigate to="/capabilities" replace />}
-                  />
-                  <Route path="/capabilities" element={<CapabilityDiscovery />} />
                 </Routes>
                 </Suspense>
               )}
@@ -3432,7 +3369,7 @@ function App() {
                   <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Core
                   </div>
-                  {coreNavItems.map((item) => {
+                  {primaryNavItems.map((item) => {
                     const Icon = item.icon
                     const active = isNavItemActive(location.pathname, item)
                     return (
@@ -3449,6 +3386,25 @@ function App() {
                       </Link>
                     )
                   })}
+                </div>
+
+                <div className="mt-5 space-y-1 border-t border-border/60 pt-3">
+                  {(() => {
+                    const Icon = TOOLS_NAV_ITEM.icon
+                    const active = isNavItemActive(location.pathname, TOOLS_NAV_ITEM)
+                    return (
+                      <Link
+                        to={TOOLS_NAV_ITEM.to}
+                        onClick={() => setDrawerOpen(false)}
+                        className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span className="truncate">{TOOLS_NAV_ITEM.label}</span>
+                      </Link>
+                    )
+                  })()}
                 </div>
 
                 <div className="mt-5 space-y-1">
@@ -3472,54 +3428,6 @@ function App() {
                       </Link>
                     )
                   })}
-                </div>
-
-                <div className="mt-5 space-y-1">
-                  <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Excalidraw++
-                  </div>
-                  <Link
-                    to={EXCALIDRAW_NAV_ITEM.to}
-                    onClick={() => setDrawerOpen(false)}
-                    className={`ltm-motion-fast ltm-touch-row flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                      excalidrawGroupActive ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                    }`}
-                  >
-                    <ExcalidrawPlusIcon className="h-4 w-4" />
-                    <span className="truncate">Excalidraw++</span>
-                  </Link>
-                  {(() => {
-                    const Icon = passwordNavItem.icon
-                    const active = isNavItemActive(location.pathname, passwordNavItem)
-                    return (
-                      <Link
-                        to={passwordNavItem.to}
-                        onClick={() => setDrawerOpen(false)}
-                        className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                        <span className="truncate">{passwordNavItem.label}</span>
-                      </Link>
-                    )
-                  })()}
-                  {(() => {
-                    const Icon = personalToolsNavItem.icon
-                    const active = isNavItemActive(location.pathname, personalToolsNavItem)
-                    return (
-                      <Link
-                        to={personalToolsNavItem.to}
-                        onClick={() => setDrawerOpen(false)}
-                        className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                        <span className="truncate">{personalToolsNavItem.label}</span>
-                      </Link>
-                    )
-                  })()}
                 </div>
               </div>
 
