@@ -35,6 +35,12 @@ const HEARTBEAT_INTERVAL_SECONDS = 6 * 60 * 60; // every 6 hours
 const CATCHUP_LABEL = 'com.thinkingspace.scheduler.catchup-check';
 const CATCHUP_INTERVAL_SECONDS = 5 * 60; // every 5 minutes
 
+const TELEGRAM_POLL_LABEL = 'com.thinkingspace.scheduler.telegram-poll';
+// Each invocation long-polls Bot API for ~25s, so the effective cadence is
+// poll → ~5s idle → next poll. Latency from user reply to Claude resume is
+// 0–30s.
+const TELEGRAM_POLL_INTERVAL_SECONDS = 30;
+
 const RUNNER_RELATIVE_PATH = path.join('scheduler', 'runner.mjs');
 
 function getInstallDirBlock(): string {
@@ -84,6 +90,7 @@ export interface ProvisionResultBlock {
   scheduleResults: Array<{ label: string; changed: boolean; bootstrapped: boolean; error?: string }>;
   heartbeat: { changed: boolean; bootstrapped: boolean; error?: string };
   catchup: { changed: boolean; bootstrapped: boolean; error?: string };
+  telegramPoll: { changed: boolean; bootstrapped: boolean; error?: string };
 }
 
 async function provisionScheduleBlock(
@@ -162,6 +169,9 @@ export async function provisionSchedulerBlock(): Promise<ProvisionResultBlock> {
   const catchup = await provisionBuiltinAgent(
     CATCHUP_LABEL, 'catchup-check', CATCHUP_INTERVAL_SECONDS, ctx,
   );
+  const telegramPoll = await provisionBuiltinAgent(
+    TELEGRAM_POLL_LABEL, 'telegram-poll', TELEGRAM_POLL_INTERVAL_SECONDS, ctx,
+  );
 
   const specs = listSchedulesBlock().filter((s) => s.managedBy === 'thinking-space');
   const scheduleResults: ProvisionResultBlock['scheduleResults'] = [];
@@ -183,5 +193,6 @@ export async function provisionSchedulerBlock(): Promise<ProvisionResultBlock> {
     scheduleResults,
     heartbeat,
     catchup,
+    telegramPoll,
   };
 }

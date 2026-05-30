@@ -61,6 +61,9 @@ export type CapabilityName =
   | 'tools.pdf.convert'
   | 'tools.transcript.preview'
   | 'tools.transcript.clean_save'
+  | 'telegram.send_message'
+  | 'telegram.open_conversation'
+  | 'telegram.close_conversation'
 
 export interface CapabilityInputMap {
   'read_note': {
@@ -282,6 +285,24 @@ export interface CapabilityInputMap {
     base_folder: string | null
     options: TranscriptOptions
   }
+  'telegram.send_message': {
+    text: string
+    parseMode?: 'Markdown' | 'MarkdownV2' | 'HTML'
+    chatId?: number | string
+  }
+  'telegram.open_conversation': {
+    scheduleKey: string
+    sessionId: string
+    convId?: string
+    chatId?: number | string
+    cwd?: string
+    ttlAt?: string
+  }
+  'telegram.close_conversation': {
+    convId: string
+    reason?: 'wrap_up' | 'ttl' | 'error' | 'manual'
+    deleteClaudeSession?: boolean
+  }
 }
 
 export interface CapabilityOutputMap {
@@ -439,6 +460,24 @@ export interface CapabilityOutputMap {
   }
   'tools.transcript.clean_save': {
     result: CleanResult
+  }
+  'telegram.send_message': {
+    messageId: number
+    chatId: number | string
+    sentAt: string
+  }
+  'telegram.open_conversation': {
+    convId: string
+    convPath: string
+    activePath: string
+    replacedConvId: string | null
+  }
+  'telegram.close_conversation': {
+    convId: string
+    status: 'closed'
+    claudeSessionDeleted: boolean
+    claudeSessionPaths: string[]
+    activeCleared: boolean
   }
 }
 
@@ -637,6 +676,21 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
   {
     name: 'tools.transcript.clean_save',
     description: 'Clean a transcript and save markdown output.',
+    readOnly: false,
+  },
+  {
+    name: 'telegram.send_message',
+    description: 'Send a Telegram message to the configured chat via the Kai bot.',
+    readOnly: false,
+  },
+  {
+    name: 'telegram.open_conversation',
+    description: 'Open a Telegram⇄Claude conversation: pin a sessionId to the active chat for poller-driven turn-taking.',
+    readOnly: false,
+  },
+  {
+    name: 'telegram.close_conversation',
+    description: 'Close a Telegram conversation, clear the active pointer, and delete the Claude Code session JSONL.',
     readOnly: false,
   },
 ]

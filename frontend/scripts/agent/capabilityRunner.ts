@@ -201,7 +201,7 @@ export class NodeVaultFS implements VaultFS {
 
 const NUMBER_FIELDS = new Set(['limit', 'lineNumber'])
 const ARRAY_FIELDS = new Set(['tags', 'items', 'artifacts', 'relatedNodes', 'emotions', 'comments', 'derived_from', 'changed_paths', 'concept_subpath', 'insights', 'files_touched', 'linked_notes'])
-const BOOLEAN_FIELDS = new Set(['dryRun', 'dry-run', 'date_header', 'text-stdin', 'overwrite'])
+const BOOLEAN_FIELDS = new Set(['dryRun', 'dry-run', 'date_header', 'text-stdin', 'overwrite', 'deleteClaudeSession'])
 const JSON_FIELDS = new Set(['frontmatter', 'set', 'append_unique'])
 const GREEDY_TEXT_FIELDS = new Set([
   'text',
@@ -821,6 +821,18 @@ const CAPABILITY_EXAMPLES: Record<string, string[]> = {
   'tools.transcript.clean_save': [
     'thinkspc tools.transcript.clean_save --input_text "Speaker 1: Hello..." --output_folder "transcripts" --output_name "meeting-notes"',
   ],
+  'telegram.send_message': [
+    'thinkspc telegram.send_message --text "Build is done"',
+    'thinkspc telegram.send_message --text-file ./message.md --parseMode Markdown',
+  ],
+  'telegram.open_conversation': [
+    'thinkspc telegram.open_conversation --scheduleKey daily-insight --sessionId "abc-123"',
+    'thinkspc telegram.open_conversation --scheduleKey daily-insight --sessionId "abc-123" --ttlAt "2026-05-29T23:59:00Z"',
+  ],
+  'telegram.close_conversation': [
+    'thinkspc telegram.close_conversation --convId "conv-20260529-..." --reason wrap_up',
+    'thinkspc telegram.close_conversation --convId "conv-20260529-..." --reason ttl --deleteClaudeSession false',
+  ],
 }
 
 function formatExamples(capability: string): string {
@@ -1021,6 +1033,24 @@ const CAPABILITY_INPUT_FIELDS: Record<string, Array<{ flag: string; required: bo
     { flag: 'output_name', required: true },
     { flag: 'headings_text', required: false },
     { flag: 'base_folder', required: false },
+  ],
+  'telegram.send_message': [
+    { flag: 'text', required: true, note: 'or use --text-file / --text-stdin for long messages' },
+    { flag: 'parseMode', required: false, note: 'Markdown | MarkdownV2 | HTML' },
+    { flag: 'chatId', required: false, note: 'defaults to chat_id from ~/.thinking-space/secrets.json' },
+  ],
+  'telegram.open_conversation': [
+    { flag: 'scheduleKey', required: true, note: 'scheduler key this conv belongs to' },
+    { flag: 'sessionId', required: true, note: 'Claude Code sessionId to resume on replies' },
+    { flag: 'convId', required: false, note: 'auto-generated if omitted' },
+    { flag: 'chatId', required: false, note: 'defaults to chat_id from secrets.json' },
+    { flag: 'cwd', required: false, note: 'defaults to process.cwd() at open time' },
+    { flag: 'ttlAt', required: false, note: 'ISO; defaults to 23:59 local today' },
+  ],
+  'telegram.close_conversation': [
+    { flag: 'convId', required: true },
+    { flag: 'reason', required: false, note: 'wrap_up | ttl | error | manual' },
+    { flag: 'deleteClaudeSession', required: false, note: 'default true; deletes ~/.claude/projects/*/<sessionId>.jsonl' },
   ],
 }
 

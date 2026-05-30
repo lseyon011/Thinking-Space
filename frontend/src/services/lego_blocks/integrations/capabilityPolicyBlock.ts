@@ -28,6 +28,9 @@ const WRITE_CAPABILITIES = new Set<CapabilityName>([
   'tools.excalidraw.format',
   'tools.pdf.convert',
   'tools.transcript.clean_save',
+  'telegram.send_message',
+  'telegram.open_conversation',
+  'telegram.close_conversation',
 ])
 
 const STORAGE_KEY = 'ltm-capability-policy'

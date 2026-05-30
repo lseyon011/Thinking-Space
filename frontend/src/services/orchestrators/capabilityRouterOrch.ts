@@ -57,6 +57,11 @@ import {
   updateAiSynthesisCompileStateOrch,
   writeNoteOrch,
 } from './aiSynthesisInfraOrch'
+import { readTelegramCredsBlock, sendTelegramMessageBlock } from '@/services/lego_blocks/integrations/telegramBotBlock'
+import {
+  closeConversationBlock,
+  openConversationBlock,
+} from '@/services/lego_blocks/integrations/telegramConversationBlock'
 
 export interface CapabilityInvokeRequest<Name extends CapabilityName = CapabilityName> {
   capability: Name
@@ -128,6 +133,9 @@ const WRITE_CAPABILITIES = new Set<CapabilityName>([
   'tools.excalidraw.format',
   'tools.pdf.convert',
   'tools.transcript.clean_save',
+  'telegram.send_message',
+  'telegram.open_conversation',
+  'telegram.close_conversation',
 ])
 
 export function listCapabilitiesOrch() {
@@ -800,6 +808,45 @@ async function executeCapability<Name extends CapabilityName>(
       assertNonEmptyString(payload.output_name, 'output_name')
       const result = await cleanAndSave({ ...payload, fs })
       return { result } as CapabilityOutputMap[Name]
+    }
+    case 'telegram.send_message': {
+      const payload = input as CapabilityInputMap['telegram.send_message']
+      assertNonEmptyString(payload.text, 'text')
+      const sent = await sendTelegramMessageBlock({
+        text: payload.text,
+        parseMode: payload.parseMode,
+        chatId: payload.chatId,
+      })
+      return {
+        messageId: sent.messageId,
+        chatId: sent.chatId,
+        sentAt: new Date(sent.date * 1000).toISOString(),
+      } as CapabilityOutputMap[Name]
+    }
+    case 'telegram.open_conversation': {
+      const payload = input as CapabilityInputMap['telegram.open_conversation']
+      assertNonEmptyString(payload.scheduleKey, 'scheduleKey')
+      assertNonEmptyString(payload.sessionId, 'sessionId')
+      const chatId = payload.chatId ?? readTelegramCredsBlock().chatId
+      const result = openConversationBlock({
+        convId: payload.convId,
+        chatId,
+        scheduleKey: payload.scheduleKey,
+        sessionId: payload.sessionId,
+        cwd: payload.cwd,
+        ttlAt: payload.ttlAt,
+      })
+      return result as CapabilityOutputMap[Name]
+    }
+    case 'telegram.close_conversation': {
+      const payload = input as CapabilityInputMap['telegram.close_conversation']
+      assertNonEmptyString(payload.convId, 'convId')
+      const result = closeConversationBlock({
+        convId: payload.convId,
+        reason: payload.reason,
+        deleteClaudeSession: payload.deleteClaudeSession,
+      })
+      return result as CapabilityOutputMap[Name]
     }
     default:
       throw new Error(`Capability not implemented: ${String(capability)}`)

@@ -369,6 +369,7 @@ if (hasSingleInstanceLock) {
           runnerChanged: result.runnerChanged,
           heartbeat: result.heartbeat,
           catchup: result.catchup,
+          telegramPoll: result.telegramPoll,
           schedules: result.scheduleResults.length,
         });
         for (const r of result.scheduleResults) {

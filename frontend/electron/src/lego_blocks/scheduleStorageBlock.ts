@@ -24,6 +24,11 @@ export type ScheduleExecutionBlock =
       skipPermissions?: boolean;
       claudeBinary?: string | null;
       env?: Record<string, string>;
+      // When true and the run completes successfully with a captured
+      // sessionId, the scheduler auto-opens a Telegram conversation pinned
+      // to that sessionId. The poller then resumes this session on user
+      // replies. See telegramConversationBlock.ts for state schema.
+      telegramConversation?: boolean;
     };
 
 export type ScheduleTriggerBlock =

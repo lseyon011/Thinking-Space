@@ -9,6 +9,8 @@
 //   runner.mjs heartbeat-check      — alert if Electron heartbeat is stale
 //   runner.mjs notify <text>        — send a Telegram message
 //   runner.mjs status               — print state + recent log entries
+//   runner.mjs telegram-poll        — long-poll Bot API once; resume the
+//                                     active conv's Claude session on reply
 
 import { spawn } from 'node:child_process';
 import { createWriteStream, mkdirSync, openSync, futimesSync, closeSync,
@@ -32,6 +34,12 @@ const STATE_PATH = join(STATE_DIR, 'state.json');
 const LOG_PATH = join(STATE_DIR, 'runner.log');
 const HEARTBEAT_ELECTRON_PATH = join(HOME, '.thinking-space-alive');
 const HEARTBEAT_RUNNER_PATH = join(HOME, '.thinking-space-runner-alive');
+const TELEGRAM_STATE_DIR = join(HOME, '.thinking-space', 'state', 'telegram');
+const TELEGRAM_POLL_STATE = join(TELEGRAM_STATE_DIR, 'poll-state.json');
+const TELEGRAM_ACTIVE = join(TELEGRAM_STATE_DIR, 'active.json');
+const TELEGRAM_CONVS_DIR = join(TELEGRAM_STATE_DIR, 'conversations');
+const TELEGRAM_LONG_POLL_TIMEOUT_S = 25;
+const TELEGRAM_REPLY_CLAUDE_TIMEOUT_MS = 5 * 60 * 1000;
 
 const MAX_TRANSCRIPT_BYTES = 5 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -221,6 +229,10 @@ function resolveSpawn(execution) {
       if (!execution.session?.id) throw new Error('claude-code resume requires session.id');
       args.push('--resume', execution.session.id);
     }
+    // stream-json + verbose lets us parse the session_id from the first
+    // system/init event so the telegram poller can `claude --resume` the
+    // same conversation when a reply arrives.
+    args.push('--output-format', 'stream-json', '--verbose');
     args.push('-p', execution.prompt);
     return {
       command: execution.claudeBinary ?? DEFAULT_CLAUDE_BINARY,
@@ -312,6 +324,19 @@ async function runScheduleLocked(spec, origin) {
     bytes += formatted.length;
   };
 
+  const isClaudeCode = spec.execution.kind === 'claude-code';
+  let claudeSessionId = null;
+
+  const inspectClaudeLine = (line) => {
+    if (!isClaudeCode || claudeSessionId || !line.startsWith('{')) return;
+    try {
+      const ev = JSON.parse(line);
+      if (ev && typeof ev.session_id === 'string' && ev.session_id) {
+        claudeSessionId = ev.session_id;
+      }
+    } catch { /* not JSON, ignore */ }
+  };
+
   const buffers = { stdout: '', stderr: '' };
   const ingest = (channel, chunk) => {
     buffers[channel] += chunk.toString('utf-8');
@@ -319,6 +344,7 @@ async function runScheduleLocked(spec, origin) {
     while ((idx = buffers[channel].indexOf('\n')) !== -1) {
       const line = buffers[channel].slice(0, idx).replace(/\r$/, '');
       buffers[channel] = buffers[channel].slice(idx + 1);
+      if (channel === 'stdout') inspectClaudeLine(line);
       writeLine(channel, line);
     }
   };
@@ -374,7 +400,7 @@ async function runScheduleLocked(spec, origin) {
   const failed = !stoppedByWindow && (result.exitCode !== 0 || spawnError);
   const durationMs = result.endedAt.getTime() - startedAt.getTime();
 
-  updateScheduleState(key, {
+  const statePatch = {
     lastFiredAt: startedAt.toISOString(),
     lastEndedAt: result.endedAt.toISOString(),
     lastExitCode: result.exitCode,
@@ -390,7 +416,9 @@ async function runScheduleLocked(spec, origin) {
     consecutiveFailures: failed
       ? (readState().schedules[key]?.consecutiveFailures ?? 0) + 1
       : 0,
-  });
+  };
+  if (isClaudeCode) statePatch.lastClaudeSessionId = claudeSessionId ?? null;
+  updateScheduleState(key, statePatch);
 
   logEvent({
     kind: 'run', key, origin,
@@ -402,6 +430,15 @@ async function runScheduleLocked(spec, origin) {
 
   // Touch runner heartbeat so the watcher knows the runner itself is alive.
   touchFile(HEARTBEAT_RUNNER_PATH);
+
+  // Auto-open Telegram conversation if this schedule opted in. The first
+  // outbound message (the "opening hook") is sent by the skill itself via
+  // thinkspc telegram.send_message; we only register the conv ↔ sessionId
+  // pairing here so the poller can resume on reply.
+  if (isClaudeCode && !failed && claudeSessionId && spec.execution.telegramConversation) {
+    try { await openTelegramConvForSpec(spec, claudeSessionId, resolved.cwd ?? process.cwd()); }
+    catch (err) { logEvent({ kind: 'telegram_conv_open_error', key, message: err.message }); }
+  }
 
   const durationLabel = durationMs < 1000
     ? `${durationMs} ms`
@@ -574,6 +611,229 @@ async function catchupCheck({ dryRun = false } = {}) {
 
 // ---------- status ----------
 
+// ---------- telegram poll ----------
+//
+// One-shot tick driven by launchd every ~30s. Each call long-polls the Bot
+// API for ~25s. If an inbound message matches the active conv, we resume
+// the paired Claude Code session with the reply text and let it respond
+// (Claude calls telegram.send_message itself to talk back).
+//
+// State files are written by the thinkspc telegram.* capabilities; this
+// poller is a pure consumer (plus updates poll-state.json's lastUpdateId).
+
+function readActiveConvPointer() {
+  return readJsonOr(TELEGRAM_ACTIVE, null);
+}
+
+function readConv(convId) {
+  return readJsonOr(join(TELEGRAM_CONVS_DIR, `${convId}.json`), null);
+}
+
+function writeConv(state) {
+  writeJsonAtomic(join(TELEGRAM_CONVS_DIR, `${state.convId}.json`), state);
+}
+
+function appendConvHistory(convId, entry) {
+  const conv = readConv(convId);
+  if (!conv) return null;
+  const next = { ...conv, history: [...(conv.history ?? []), entry] };
+  writeConv(next);
+  return next;
+}
+
+async function telegramGetUpdates(offset) {
+  let tg;
+  try { tg = readSecrets(); }
+  catch (err) { logEvent({ kind: 'telegram_poll_skip', reason: err.message }); return []; }
+
+  const url = `https://api.telegram.org/bot${tg.bot_token}/getUpdates`
+    + `?offset=${offset}&timeout=${TELEGRAM_LONG_POLL_TIMEOUT_S}`
+    + `&allowed_updates=${encodeURIComponent(JSON.stringify(['message']))}`;
+  // AbortController guards against a stuck connection: Bot API normally
+  // returns within `timeout` seconds, so anything past that is anomalous.
+  const ctrl = new AbortController();
+  const guard = setTimeout(() => ctrl.abort(), (TELEGRAM_LONG_POLL_TIMEOUT_S + 10) * 1000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) {
+      logEvent({ kind: 'telegram_poll_http_error', status: res.status });
+      return [];
+    }
+    const payload = await res.json();
+    if (!payload?.ok || !Array.isArray(payload.result)) {
+      logEvent({ kind: 'telegram_poll_bad_payload', payload: String(payload).slice(0, 200) });
+      return [];
+    }
+    return payload.result;
+  } catch (err) {
+    logEvent({ kind: 'telegram_poll_fetch_error', message: err.message });
+    return [];
+  } finally {
+    clearTimeout(guard);
+  }
+}
+
+const TELEGRAM_RESUME_MODEL = 'claude-haiku-4-5-20251001';
+const THINKSPC_SHIM = join(HOME, '.local', 'bin', 'thinkspc');
+
+function spawnAndWait(command, args, options = {}) {
+  return new Promise((resolve) => {
+    let stderr = '';
+    let stdout = '';
+    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], ...options });
+    child.stdout?.on('data', (c) => { stdout += c.toString('utf-8'); });
+    child.stderr?.on('data', (c) => { stderr += c.toString('utf-8'); });
+    child.on('error', (err) => resolve({ ok: false, exitCode: null, stdout, stderr, error: err.message }));
+    child.on('close', (exitCode, signal) => resolve({ ok: exitCode === 0, exitCode, signal, stdout, stderr }));
+  });
+}
+
+async function openTelegramConvForSpec(spec, sessionId, cwd) {
+  if (!existsSync(THINKSPC_SHIM)) {
+    logEvent({ kind: 'telegram_conv_open_skip', reason: 'shim_missing', key: spec.key });
+    return;
+  }
+  const args = [
+    '--json',
+    'telegram.open_conversation',
+    '--scheduleKey', spec.key,
+    '--sessionId', sessionId,
+    '--cwd', cwd,
+  ];
+  const r = await spawnAndWait(THINKSPC_SHIM, args);
+  if (!r.ok) {
+    logEvent({
+      kind: 'telegram_conv_open_failed',
+      key: spec.key,
+      exitCode: r.exitCode,
+      stderrTail: (r.stderr || '').slice(-500),
+    });
+    return;
+  }
+  try {
+    const parsed = JSON.parse(r.stdout.trim());
+    logEvent({
+      kind: 'telegram_conv_opened',
+      key: spec.key,
+      convId: parsed?.data?.convId ?? null,
+      replacedConvId: parsed?.data?.replacedConvId ?? null,
+    });
+  } catch {
+    logEvent({ kind: 'telegram_conv_opened', key: spec.key, stdoutTail: r.stdout.slice(-200) });
+  }
+}
+
+function spawnClaudeResume({ cwd, sessionId, replyText }) {
+  return new Promise((resolve) => {
+    const args = [
+      '--dangerously-skip-permissions',
+      '--model', TELEGRAM_RESUME_MODEL,
+      '--resume', sessionId,
+      '--output-format', 'stream-json', '--verbose',
+      '-p', replyText,
+    ];
+    let stderr = '';
+    const child = spawn(DEFAULT_CLAUDE_BINARY, args, {
+      cwd, env: process.env, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    child.stdout?.on('data', () => { /* discard; assistant uses telegram.send_message */ });
+    child.stderr?.on('data', (c) => { stderr += c.toString('utf-8'); });
+    const guard = setTimeout(() => {
+      if (!child.killed) child.kill('SIGTERM');
+    }, TELEGRAM_REPLY_CLAUDE_TIMEOUT_MS);
+    child.on('error', (err) => {
+      clearTimeout(guard);
+      resolve({ ok: false, exitCode: null, error: err.message, stderr });
+    });
+    child.on('close', (exitCode, signal) => {
+      clearTimeout(guard);
+      resolve({ ok: exitCode === 0, exitCode, signal, stderr: stderr.slice(-2000) });
+    });
+  });
+}
+
+async function handleTelegramMessage(message) {
+  const text = (message.text ?? '').toString();
+  const fromChatId = message.chat?.id;
+  const messageDate = message.date;
+
+  const active = readActiveConvPointer();
+  if (!active?.convId) {
+    logEvent({ kind: 'telegram_unhandled', reason: 'no_active_conv', fromChatId, textPreview: text.slice(0, 80) });
+    return;
+  }
+  if (String(active.chatId) !== String(fromChatId)) {
+    logEvent({ kind: 'telegram_unhandled', reason: 'chat_mismatch', fromChatId, expected: active.chatId });
+    return;
+  }
+  const conv = readConv(active.convId);
+  if (!conv) {
+    logEvent({ kind: 'telegram_unhandled', reason: 'conv_missing', convId: active.convId });
+    return;
+  }
+  if (conv.status !== 'active') {
+    logEvent({ kind: 'telegram_unhandled', reason: 'conv_not_active', convId: conv.convId, status: conv.status });
+    return;
+  }
+  if (!text.trim()) {
+    logEvent({ kind: 'telegram_unhandled', reason: 'empty_message', convId: conv.convId });
+    return;
+  }
+
+  appendConvHistory(conv.convId, {
+    direction: 'in',
+    text,
+    at: messageDate ? new Date(messageDate * 1000).toISOString() : nowIso(),
+  });
+  logEvent({ kind: 'telegram_inbound', convId: conv.convId, textPreview: text.slice(0, 80) });
+
+  const result = await spawnClaudeResume({
+    cwd: conv.cwd,
+    sessionId: conv.sessionId,
+    replyText: text,
+  });
+  logEvent({
+    kind: 'telegram_claude_resume',
+    convId: conv.convId,
+    sessionId: conv.sessionId,
+    ok: result.ok,
+    exitCode: result.exitCode,
+    signal: result.signal ?? null,
+    stderrTail: result.stderr || null,
+  });
+
+  if (!result.ok) {
+    await sendTelegram(
+      `⚠️ Couldn't process your last reply (claude exit ${result.exitCode ?? 'spawn-error'}). The conversation is paused; reply again or wait for tomorrow.`,
+    );
+  }
+}
+
+async function telegramPoll() {
+  touchFile(HEARTBEAT_RUNNER_PATH);
+  const pollState = readJsonOr(TELEGRAM_POLL_STATE, { lastUpdateId: 0 });
+  const offset = (pollState.lastUpdateId ?? 0) + 1;
+
+  const updates = await telegramGetUpdates(offset);
+  if (updates.length === 0) {
+    return { processed: 0 };
+  }
+
+  let highest = pollState.lastUpdateId ?? 0;
+  for (const update of updates) {
+    if (typeof update.update_id === 'number' && update.update_id > highest) {
+      highest = update.update_id;
+    }
+    if (update.message) {
+      try { await handleTelegramMessage(update.message); }
+      catch (err) { logEvent({ kind: 'telegram_handle_error', message: err.message, updateId: update.update_id }); }
+    }
+  }
+
+  writeJsonAtomic(TELEGRAM_POLL_STATE, { lastUpdateId: highest, lastPolledAt: nowIso() });
+  return { processed: updates.length, lastUpdateId: highest };
+}
+
 function status() {
   const state = readState();
   const schedules = existsSync(SCHEDULES_DIR) ? readdirSync(SCHEDULES_DIR).filter(f => f.endsWith('.json')) : [];
@@ -632,8 +892,13 @@ async function main() {
       status();
       process.exit(0);
     }
+    case 'telegram-poll': {
+      const r = await telegramPoll();
+      console.log(JSON.stringify(r));
+      process.exit(0);
+    }
     default:
-      console.error('usage: runner.mjs <run|stop|catchup-check|heartbeat-check|notify|status> [args]');
+      console.error('usage: runner.mjs <run|stop|catchup-check|heartbeat-check|notify|status|telegram-poll> [args]');
       process.exit(2);
   }
 }
