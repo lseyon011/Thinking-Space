@@ -17,8 +17,20 @@ type ShootingStar = {
   maxLife: number
 }
 
-export default function Starfield() {
+interface StarfieldProps {
+  starColor?: string
+  shootingColor?: string
+}
+
+export default function Starfield({
+  starColor = '#1f2937',
+  shootingColor,
+}: StarfieldProps = {}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const starColorRef = useRef(starColor)
+  starColorRef.current = starColor
+  const shootingColorRef = useRef(shootingColor ?? starColor)
+  shootingColorRef.current = shootingColor ?? starColor
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -82,7 +94,7 @@ export default function Starfield() {
         s.alpha += (Math.random() - 0.5) * s.twinkle
         s.alpha = Math.min(1, Math.max(0.12, s.alpha))
         ctx.globalAlpha = s.alpha
-        ctx.fillStyle = '#1f2937'
+        ctx.fillStyle = starColorRef.current
         ctx.beginPath()
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2)
         ctx.fill()

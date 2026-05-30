@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode, type Ref } from 'react'
+import { useEffect, useState, type ReactNode, type Ref } from 'react'
 import { Search } from 'lucide-react'
-import { rankFuzzyItemsBlock } from '@/services/lego_blocks/units/fuzzySearchBlock'
+import { useUniversalSearchBlock } from '@/components/lego_blocks/hooks/shared/useUniversalSearchBlock'
 import { cn } from '@/lib/utils'
 
 type ItemState = {
@@ -84,7 +84,6 @@ export default function UniversalSearchBlock<T>({
   renderItem,
 }: UniversalSearchBlockProps<T>) {
   const [internalOpen, setInternalOpen] = useState(false)
-  const [highlightIndex, setHighlightIndex] = useState(-1)
   const isOpen = typeof open === 'boolean' ? open : internalOpen
 
   const setOpen = (next: boolean) => {
@@ -92,20 +91,26 @@ export default function UniversalSearchBlock<T>({
     onOpenChange?.(next)
   }
 
-  const filteredItems = useMemo(() => {
-    const trimmed = query.trim()
-    if (!trimmed) return items.slice(0, limit)
-    const ranked = rankFuzzyItemsBlock({
-      items,
-      query: trimmed,
-      limit,
-      getCandidates: item => getItemSearchCandidates?.(item) ?? [
-        getItemLabel(item),
-        getItemDescription?.(item) ?? '',
-      ],
-    })
-    return ranked.map(entry => entry.item)
-  }, [getItemDescription, getItemLabel, getItemSearchCandidates, items, limit, query])
+  const search = useUniversalSearchBlock<T>({
+    items,
+    query,
+    limit,
+    onSelect: (item) => {
+      if (disabled) return
+      onSelect(item)
+      if (closeOnSelect) setOpen(false)
+    },
+    allowCustomValue,
+    onSelectCustomValue: (value) => {
+      onSelectCustomValue?.(value)
+      setOpen(false)
+    },
+    getCandidates: item => getItemSearchCandidates?.(item) ?? [
+      getItemLabel(item),
+      getItemDescription?.(item) ?? '',
+    ],
+  })
+  const { filteredItems, highlightIndex, setHighlightIndex, selectItem } = search
 
   useEffect(() => {
     if (disabled) {
@@ -115,21 +120,8 @@ export default function UniversalSearchBlock<T>({
   }, [disabled])
 
   useEffect(() => {
-    if (!isOpen || filteredItems.length === 0) {
-      setHighlightIndex(-1)
-      return
-    }
-    setHighlightIndex((prev) => {
-      if (prev >= 0 && prev < filteredItems.length) return prev
-      return 0
-    })
-  }, [filteredItems.length, isOpen, query])
-
-  const selectItem = (item: T) => {
-    if (disabled) return
-    onSelect(item)
-    if (closeOnSelect) setOpen(false)
-  }
+    if (!isOpen) setHighlightIndex(-1)
+  }, [isOpen, setHighlightIndex])
 
   return (
     <div className={cn('relative', className)}>
@@ -157,41 +149,8 @@ export default function UniversalSearchBlock<T>({
               onEscapeKeyDown?.()
               return
             }
-
             if (!isOpen) return
-
-            if (event.key === 'ArrowDown') {
-              event.preventDefault()
-              setHighlightIndex((prev) => {
-                if (filteredItems.length === 0) return -1
-                const next = prev + 1
-                return next >= filteredItems.length ? 0 : next
-              })
-              return
-            }
-
-            if (event.key === 'ArrowUp') {
-              event.preventDefault()
-              setHighlightIndex((prev) => {
-                if (filteredItems.length === 0) return -1
-                const next = prev - 1
-                return next < 0 ? filteredItems.length - 1 : next
-              })
-              return
-            }
-
-            if (event.key !== 'Enter') return
-            event.preventDefault()
-            if (highlightIndex >= 0 && highlightIndex < filteredItems.length) {
-              selectItem(filteredItems[highlightIndex])
-              return
-            }
-            if (allowCustomValue) {
-              const trimmed = query.trim()
-              if (!trimmed) return
-              onSelectCustomValue?.(trimmed)
-              setOpen(false)
-            }
+            search.handleKeyboardNav(event)
           }}
           placeholder={placeholder}
           className={cn(

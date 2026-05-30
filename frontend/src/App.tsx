@@ -25,6 +25,7 @@ import treeOfLifeLogo from './assets/tree-of-life-logo.jpg'
 import excalidrawLogo from './assets/excalidraw-logo.svg'
 // Core pages — eagerly loaded (used on every session)
 import Home from './pages/Home'
+import HomeCanvas from './pages/HomeCanvas'
 import NewThought from './pages/NewThought'
 import ThinkingSpace from './pages/ThinkingSpace'
 import ThinkingOrganizer from './pages/ThinkingOrganizer'
@@ -3256,6 +3257,7 @@ function App() {
                 <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>}>
                 <Routes>
                   <Route path="/" element={<Home />} />
+                  <Route path="/home-canvas" element={<HomeCanvas />} />
                   <Route path="/ai" element={<Navigate to="/ai/chat" replace />} />
                   <Route path="/ai/schedules/*" element={<Schedules />} />
                   <Route path="/chat" element={<Navigate to="/ai/chat" replace />} />
