@@ -34,6 +34,15 @@ export type ScheduleTriggerBlock =
   | {
       kind: 'interval';
       seconds: number;
+    }
+  | {
+      kind: 'window';
+      // Window jobs spawn at `start` and are SIGTERM'd at `stop`. Both times
+      // fire on the listed weekdays (launchd weekday numbers: 0/7 = Sunday,
+      // 1..6 = Mon..Sat). Empty/missing weekdays means every day.
+      start: { hour: number; minute: number };
+      stop: { hour: number; minute: number };
+      weekdays?: number[];
     };
 
 export type ScheduleManagedByBlock = 'thinking-space' | 'external';
@@ -107,6 +116,22 @@ function isValidSchedule(value: unknown): value is ScheduleTriggerBlock {
   }
   if (v.kind === 'interval') {
     return typeof v.seconds === 'number' && v.seconds > 0;
+  }
+  if (v.kind === 'window') {
+    const isTime = (x: unknown): x is { hour: number; minute: number } => {
+      if (!x || typeof x !== 'object') return false;
+      const t = x as Record<string, unknown>;
+      return (
+        typeof t.hour === 'number' && t.hour >= 0 && t.hour <= 23 &&
+        typeof t.minute === 'number' && t.minute >= 0 && t.minute <= 59
+      );
+    };
+    if (!isTime(v.start) || !isTime(v.stop)) return false;
+    if (v.weekdays !== undefined) {
+      if (!Array.isArray(v.weekdays)) return false;
+      if (!v.weekdays.every((d) => typeof d === 'number' && d >= 0 && d <= 7)) return false;
+    }
+    return true;
   }
   return false;
 }

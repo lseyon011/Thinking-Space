@@ -13,6 +13,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   buildBuiltinPlistBlock,
+  buildWindowStopPlistBlock,
+  getStopLabelBlock,
   type PlistBuildContextBlock,
 } from './launchdPlistBlock';
 import {
@@ -90,16 +92,32 @@ async function provisionScheduleBlock(
 ): Promise<{ label: string; changed: boolean; bootstrapped: boolean; error?: string }> {
   try {
     const { changed } = await writePlistBlock(spec, ctx);
+
+    // Window-kind schedules have a paired stop plist that fires SIGTERM at
+    // the end of the window. Write/bootstrap it alongside the start plist.
+    let stopChanged = false;
+    if (spec.schedule.kind === 'window') {
+      const stopLabel = getStopLabelBlock(spec);
+      const stopContent = buildWindowStopPlistBlock(spec, ctx);
+      const result = await writeRawPlistBlock(stopLabel, stopContent);
+      stopChanged = result.changed;
+      if (!spec.enabled) {
+        await bootoutPlistBlock(stopLabel);
+      } else if (stopChanged) {
+        await bootstrapByLabelBlock(stopLabel);
+      }
+    }
+
     if (!spec.enabled) {
       // Disabled: ensure it's not loaded.
       await bootoutPlistBlock(spec.label);
-      return { label: spec.label, changed, bootstrapped: false };
+      return { label: spec.label, changed: changed || stopChanged, bootstrapped: false };
     }
     if (changed) {
       await bootstrapPlistBlock(spec);
       return { label: spec.label, changed: true, bootstrapped: true };
     }
-    return { label: spec.label, changed: false, bootstrapped: false };
+    return { label: spec.label, changed: stopChanged, bootstrapped: stopChanged };
   } catch (err) {
     return {
       label: spec.label,
@@ -152,6 +170,9 @@ export async function provisionSchedulerBlock(): Promise<ProvisionResultBlock> {
     // bootstrap picks up the new ProgramArguments.
     if (runner.changed) {
       try { await bootoutPlistBlock(spec.label); } catch { /* not loaded */ }
+      if (spec.schedule.kind === 'window') {
+        try { await bootoutPlistBlock(getStopLabelBlock(spec)); } catch { /* not loaded */ }
+      }
     }
     scheduleResults.push(await provisionScheduleBlock(spec, ctx));
   }

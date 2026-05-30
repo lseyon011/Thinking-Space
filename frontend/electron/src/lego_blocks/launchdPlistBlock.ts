@@ -56,6 +56,29 @@ function renderIntervalSeconds(spec: ScheduleSpecBlock): string {
   return `  <key>StartInterval</key>\n  <integer>${spec.schedule.seconds}</integer>\n`;
 }
 
+function renderWindowEntries(spec: ScheduleSpecBlock, slot: 'start' | 'stop'): string {
+  if (spec.schedule.kind !== 'window') return '';
+  const time = slot === 'start' ? spec.schedule.start : spec.schedule.stop;
+  const weekdays = spec.schedule.weekdays && spec.schedule.weekdays.length > 0
+    ? spec.schedule.weekdays
+    : [null]; // null = no weekday filter (fires every day)
+  const entries = weekdays.map((wd) => {
+    const parts = [
+      `      <key>Hour</key><integer>${time.hour}</integer>`,
+      `      <key>Minute</key><integer>${time.minute}</integer>`,
+    ];
+    if (typeof wd === 'number') {
+      parts.push(`      <key>Weekday</key><integer>${wd}</integer>`);
+    }
+    return `    <dict>\n${parts.join('\n')}\n    </dict>`;
+  });
+  return `  <key>StartCalendarInterval</key>\n  <array>\n${entries.join('\n')}\n  </array>\n`;
+}
+
+export function getStopLabelBlock(spec: ScheduleSpecBlock): string {
+  return `${spec.label}.stop`;
+}
+
 function getLogPathsBlock(spec: ScheduleSpecBlock): { stdout: string; stderr: string } {
   const dir = path.join(app.getPath('userData'), 'launchd-logs');
   return {
@@ -73,6 +96,7 @@ export function buildPlistBlock(spec: ScheduleSpecBlock, ctx: PlistBuildContextB
   };
   const calendarBlock = renderCalendarEntries(spec);
   const intervalBlock = renderIntervalSeconds(spec);
+  const windowStartBlock = renderWindowEntries(spec, 'start');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -94,10 +118,58 @@ ${renderArray(args)}
     <string>${escapeXml(ctx.userDataPath)}</string>
   </dict>
 
-${calendarBlock}${intervalBlock}  <key>StandardOutPath</key>
+${calendarBlock}${intervalBlock}${windowStartBlock}  <key>StandardOutPath</key>
   <string>${escapeXml(logs.stdout)}</string>
   <key>StandardErrorPath</key>
   <string>${escapeXml(logs.stderr)}</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
+`;
+}
+
+/**
+ * Stop-side plist for a window-kind schedule. Fires at `stop` time on the
+ * same weekdays as the start plist and invokes `runner.mjs stop <key>`,
+ * which reads the running PID from state and signals SIGTERM.
+ */
+export function buildWindowStopPlistBlock(spec: ScheduleSpecBlock, ctx: PlistBuildContextBlock): string {
+  if (spec.schedule.kind !== 'window') {
+    throw new Error('buildWindowStopPlistBlock requires window-kind schedule');
+  }
+  const stopLabel = getStopLabelBlock(spec);
+  const args = [ctx.electronBinary, ctx.runnerPath, 'stop', spec.key];
+  const dir = path.join(app.getPath('userData'), 'launchd-logs');
+  const stdout = path.join(dir, `${stopLabel}.out.log`);
+  const stderr = path.join(dir, `${stopLabel}.err.log`);
+  const stopEntries = renderWindowEntries(spec, 'stop');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${escapeXml(stopLabel)}</string>
+
+  <key>ProgramArguments</key>
+  <array>
+${renderArray(args)}
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>ELECTRON_RUN_AS_NODE</key>
+    <string>1</string>
+    <key>THINKING_SPACE_USERDATA</key>
+    <string>${escapeXml(ctx.userDataPath)}</string>
+  </dict>
+
+${stopEntries}  <key>StandardOutPath</key>
+  <string>${escapeXml(stdout)}</string>
+  <key>StandardErrorPath</key>
+  <string>${escapeXml(stderr)}</string>
 
   <key>RunAtLoad</key>
   <false/>

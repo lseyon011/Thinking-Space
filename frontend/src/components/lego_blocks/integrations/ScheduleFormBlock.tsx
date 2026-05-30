@@ -30,6 +30,17 @@ interface ScheduleFormBlockProps {
 type ExecutionKind = ScheduleExecutionSpecBlock['kind']
 type TriggerKind = ScheduleTriggerSpecBlock['kind']
 
+// launchd weekday numbers: 1=Mon, 2=Tue, ..., 6=Sat, 7=Sun. Empty array = every day.
+const WEEKDAY_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 1, label: 'Mon' },
+  { value: 2, label: 'Tue' },
+  { value: 3, label: 'Wed' },
+  { value: 4, label: 'Thu' },
+  { value: 5, label: 'Fri' },
+  { value: 6, label: 'Sat' },
+  { value: 7, label: 'Sun' },
+]
+
 interface FormState {
   key: string
   title: string
@@ -37,7 +48,14 @@ interface FormState {
   enabled: boolean
   triggerKind: TriggerKind
   calendarEntries: Array<{ hour: number; minute: number }>
+  // Weekdays apply uniformly to every calendar entry. Empty = every day.
+  calendarWeekdays: number[]
   intervalSeconds: number
+  windowStartHour: number
+  windowStartMinute: number
+  windowStopHour: number
+  windowStopMinute: number
+  windowWeekdays: number[]
   executionKind: ExecutionKind
   shellCommand: string
   shellArgsText: string
@@ -59,7 +77,13 @@ function defaultState(): FormState {
     enabled: true,
     triggerKind: 'calendar',
     calendarEntries: [{ hour: 9, minute: 0 }],
+    calendarWeekdays: [],
     intervalSeconds: 3600,
+    windowStartHour: 9,
+    windowStartMinute: 0,
+    windowStopHour: 17,
+    windowStopMinute: 0,
+    windowWeekdays: [1, 2, 3, 4, 5],
     executionKind: 'claude-code',
     shellCommand: '',
     shellArgsText: '',
@@ -82,10 +106,30 @@ function stateFromSpec(spec: ScheduleSpecBlock): FormState {
   base.enabled = spec.enabled
   if (spec.schedule.kind === 'calendar') {
     base.triggerKind = 'calendar'
-    base.calendarEntries = spec.schedule.entries.map((e) => ({ hour: e.hour, minute: e.minute }))
-  } else {
+    // Collapse per-entry weekdays into a uniform global set if all entries
+    // agree; otherwise drop and warn (rare; happens only for hand-edited JSON
+    // with heterogeneous weekday configuration).
+    const uniqueTimes = new Map<string, { hour: number; minute: number; weekdays: Set<number> }>()
+    for (const e of spec.schedule.entries) {
+      const key = `${e.hour}:${e.minute}`
+      const slot = uniqueTimes.get(key) ?? { hour: e.hour, minute: e.minute, weekdays: new Set<number>() }
+      if (typeof e.weekday === 'number') slot.weekdays.add(e.weekday)
+      uniqueTimes.set(key, slot)
+    }
+    base.calendarEntries = Array.from(uniqueTimes.values()).map((s) => ({ hour: s.hour, minute: s.minute }))
+    const weekdaySets = Array.from(uniqueTimes.values()).map((s) => Array.from(s.weekdays).sort().join(','))
+    const allMatch = weekdaySets.every((s) => s === weekdaySets[0])
+    base.calendarWeekdays = allMatch && weekdaySets[0] ? weekdaySets[0].split(',').map(Number) : []
+  } else if (spec.schedule.kind === 'interval') {
     base.triggerKind = 'interval'
     base.intervalSeconds = spec.schedule.seconds
+  } else {
+    base.triggerKind = 'window'
+    base.windowStartHour = spec.schedule.start.hour
+    base.windowStartMinute = spec.schedule.start.minute
+    base.windowStopHour = spec.schedule.stop.hour
+    base.windowStopMinute = spec.schedule.stop.minute
+    base.windowWeekdays = spec.schedule.weekdays ?? []
   }
   if (spec.execution.kind === 'shell') {
     base.executionKind = 'shell'
@@ -115,8 +159,16 @@ function validate(s: FormState): string | null {
       if (!Number.isFinite(e.hour) || e.hour < 0 || e.hour > 23) return 'Hour must be 0–23'
       if (!Number.isFinite(e.minute) || e.minute < 0 || e.minute > 59) return 'Minute must be 0–59'
     }
-  } else {
+  } else if (s.triggerKind === 'interval') {
     if (!Number.isFinite(s.intervalSeconds) || s.intervalSeconds <= 0) return 'Interval seconds must be positive'
+  } else {
+    if (!Number.isFinite(s.windowStartHour) || s.windowStartHour < 0 || s.windowStartHour > 23) return 'Start hour must be 0–23'
+    if (!Number.isFinite(s.windowStartMinute) || s.windowStartMinute < 0 || s.windowStartMinute > 59) return 'Start minute must be 0–59'
+    if (!Number.isFinite(s.windowStopHour) || s.windowStopHour < 0 || s.windowStopHour > 23) return 'Stop hour must be 0–23'
+    if (!Number.isFinite(s.windowStopMinute) || s.windowStopMinute < 0 || s.windowStopMinute > 59) return 'Stop minute must be 0–59'
+    const startMin = s.windowStartHour * 60 + s.windowStartMinute
+    const stopMin = s.windowStopHour * 60 + s.windowStopMinute
+    if (stopMin <= startMin) return 'Stop time must be after start time (overnight windows not supported)'
   }
   if (s.executionKind === 'shell') {
     if (!s.shellCommand.trim()) return 'Shell command is required'
@@ -130,9 +182,25 @@ function validate(s: FormState): string | null {
 
 function buildSpec(s: FormState, originalCreatedAt?: string): ScheduleSpecBlock {
   const now = new Date().toISOString()
-  const schedule: ScheduleTriggerSpecBlock = s.triggerKind === 'calendar'
-    ? { kind: 'calendar', entries: s.calendarEntries.map((e) => ({ hour: e.hour, minute: e.minute })) }
-    : { kind: 'interval', seconds: s.intervalSeconds }
+  let schedule: ScheduleTriggerSpecBlock
+  if (s.triggerKind === 'calendar') {
+    const days = s.calendarWeekdays
+    const entries = s.calendarEntries.flatMap((e) =>
+      days.length === 0
+        ? [{ hour: e.hour, minute: e.minute }]
+        : days.map((wd) => ({ hour: e.hour, minute: e.minute, weekday: wd })),
+    )
+    schedule = { kind: 'calendar', entries }
+  } else if (s.triggerKind === 'interval') {
+    schedule = { kind: 'interval', seconds: s.intervalSeconds }
+  } else {
+    schedule = {
+      kind: 'window',
+      start: { hour: s.windowStartHour, minute: s.windowStartMinute },
+      stop: { hour: s.windowStopHour, minute: s.windowStopMinute },
+      ...(s.windowWeekdays.length > 0 ? { weekdays: s.windowWeekdays } : {}),
+    }
+  }
 
   const execution: ScheduleExecutionSpecBlock = s.executionKind === 'shell'
     ? {
@@ -167,6 +235,36 @@ function buildSpec(s: FormState, originalCreatedAt?: string): ScheduleSpecBlock 
 
 const FIELD_LABEL = 'text-xs font-medium text-muted-foreground mb-1'
 const INPUT_BASE = 'w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+
+function WeekdayPicker({ selected, onChange }: { selected: number[]; onChange: (next: number[]) => void }) {
+  const set = new Set(selected)
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {WEEKDAY_OPTIONS.map(({ value, label }) => {
+        const active = set.has(value)
+        return (
+          <button
+            key={value}
+            type="button"
+            onClick={() => {
+              const next = new Set(set)
+              if (active) next.delete(value); else next.add(value)
+              onChange(Array.from(next).sort((a, b) => a - b))
+            }}
+            className={cn(
+              'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+              active
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-input bg-background text-muted-foreground hover:bg-accent',
+            )}
+          >
+            {label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 export default function ScheduleFormBlock({ mode, editKey, onSaved, onLoaded }: ScheduleFormBlockProps) {
   const navigate = useNavigate()
@@ -287,7 +385,7 @@ export default function ScheduleFormBlock({ mode, editKey, onSaved, onLoaded }: 
       {/* ── Schedule trigger ── */}
       <section className="space-y-3 rounded-lg border border-border bg-card p-4">
         <h3 className="text-sm font-semibold">Schedule</h3>
-        <div className="flex gap-4 text-sm">
+        <div className="flex flex-wrap gap-4 text-sm">
           <label className="flex items-center gap-1.5">
             <input
               type="radio"
@@ -303,6 +401,14 @@ export default function ScheduleFormBlock({ mode, editKey, onSaved, onLoaded }: 
               onChange={() => setState((s) => ({ ...s, triggerKind: 'interval' }))}
             />
             Interval (every N seconds)
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input
+              type="radio"
+              checked={state.triggerKind === 'window'}
+              onChange={() => setState((s) => ({ ...s, triggerKind: 'window' }))}
+            />
+            Window (run from start to stop)
           </label>
         </div>
 
@@ -365,8 +471,15 @@ export default function ScheduleFormBlock({ mode, editKey, onSaved, onLoaded }: 
               <Plus className="mr-1 h-3.5 w-3.5" />
               Add time
             </Button>
+            <div className="pt-2">
+              <div className={FIELD_LABEL}>Days (leave all unchecked for every day)</div>
+              <WeekdayPicker
+                selected={state.calendarWeekdays}
+                onChange={(weekdays) => setState((s) => ({ ...s, calendarWeekdays: weekdays }))}
+              />
+            </div>
           </div>
-        ) : (
+        ) : state.triggerKind === 'interval' ? (
           <div>
             <div className={FIELD_LABEL}>Seconds between fires</div>
             <input
@@ -376,6 +489,58 @@ export default function ScheduleFormBlock({ mode, editKey, onSaved, onLoaded }: 
               value={state.intervalSeconds}
               onChange={(e) => setState((s) => ({ ...s, intervalSeconds: Number.parseInt(e.target.value, 10) }))}
             />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Window jobs spawn the command at start time and SIGTERM it at stop time.
+              Suitable for long-running processes that should only run during a daily window.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className={FIELD_LABEL}>Start (HH:MM)</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    className={cn(INPUT_BASE, 'w-20')}
+                    type="number" min={0} max={23}
+                    value={state.windowStartHour}
+                    onChange={(e) => setState((s) => ({ ...s, windowStartHour: Number.parseInt(e.target.value, 10) }))}
+                  />
+                  <span className="text-muted-foreground">:</span>
+                  <input
+                    className={cn(INPUT_BASE, 'w-20')}
+                    type="number" min={0} max={59}
+                    value={state.windowStartMinute}
+                    onChange={(e) => setState((s) => ({ ...s, windowStartMinute: Number.parseInt(e.target.value, 10) }))}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className={FIELD_LABEL}>Stop (HH:MM)</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    className={cn(INPUT_BASE, 'w-20')}
+                    type="number" min={0} max={23}
+                    value={state.windowStopHour}
+                    onChange={(e) => setState((s) => ({ ...s, windowStopHour: Number.parseInt(e.target.value, 10) }))}
+                  />
+                  <span className="text-muted-foreground">:</span>
+                  <input
+                    className={cn(INPUT_BASE, 'w-20')}
+                    type="number" min={0} max={59}
+                    value={state.windowStopMinute}
+                    onChange={(e) => setState((s) => ({ ...s, windowStopMinute: Number.parseInt(e.target.value, 10) }))}
+                  />
+                </div>
+              </div>
+            </div>
+            <div>
+              <div className={FIELD_LABEL}>Days (leave all unchecked for every day)</div>
+              <WeekdayPicker
+                selected={state.windowWeekdays}
+                onChange={(weekdays) => setState((s) => ({ ...s, windowWeekdays: weekdays }))}
+              />
+            </div>
           </div>
         )}
       </section>

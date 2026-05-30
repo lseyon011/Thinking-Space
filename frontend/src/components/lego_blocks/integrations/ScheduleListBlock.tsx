@@ -24,7 +24,13 @@ function summarizeSchedule(trigger: ScheduleTriggerSpecBlock): string {
     if (s >= 60 && s % 60 === 0) return `Every ${s / 60}m`
     return `Every ${s}s`
   }
-  return trigger.entries.map((e) => `${pad2(e.hour)}:${pad2(e.minute)}`).join(' · ')
+  if (trigger.kind === 'window') {
+    const { start, stop } = trigger
+    return `${pad2(start.hour)}:${pad2(start.minute)} – ${pad2(stop.hour)}:${pad2(stop.minute)}`
+  }
+  const times = trigger.entries.map((e) => `${pad2(e.hour)}:${pad2(e.minute)}`)
+  // De-dup so calendars expanded across weekdays don't show "09:00 · 09:00 · ..."
+  return Array.from(new Set(times)).join(' · ')
 }
 
 interface ScheduleListBlockProps {

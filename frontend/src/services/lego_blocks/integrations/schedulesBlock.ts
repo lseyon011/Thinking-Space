@@ -39,6 +39,12 @@ export type ScheduleTriggerSpecBlock =
       kind: 'interval'
       seconds: number
     }
+  | {
+      kind: 'window'
+      start: { hour: number; minute: number }
+      stop: { hour: number; minute: number }
+      weekdays?: number[]
+    }
 
 export type ScheduleManagedByBlock = 'thinking-space' | 'external'
 

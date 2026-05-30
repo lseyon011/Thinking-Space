@@ -75,6 +75,7 @@ import {
   listExternalAgentsBlock,
 } from './lego_blocks/launchctlBlock';
 import { provisionSchedulerBlock } from './lego_blocks/schedulerProvisionBlock';
+import { getStopLabelBlock } from './lego_blocks/launchdPlistBlock';
 import { provisionCliBlock } from './lego_blocks/cliProvisionBlock';
 import {
   armAllPmsetWakesBlock,
@@ -513,6 +514,9 @@ ipcMain.handle('schedules:delete', async (_event, key: string) => {
   const spec = readScheduleBlock(key);
   if (spec && spec.managedBy === 'thinking-space') {
     await removePlistBlock(spec.label);
+    if (spec.schedule.kind === 'window') {
+      await removePlistBlock(getStopLabelBlock(spec));
+    }
     await cancelPmsetWakesForLabelBlock(spec.label).catch((err) =>
       console.warn('[pmset] cancel after delete failed', err),
     );

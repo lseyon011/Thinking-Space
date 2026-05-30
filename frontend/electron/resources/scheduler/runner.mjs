@@ -4,6 +4,7 @@
 //
 // Commands:
 //   runner.mjs run <key>            — execute the schedule with the given key
+//   runner.mjs stop <key>           — SIGTERM the running child of a window schedule
 //   runner.mjs catchup-check        — fire any missed calendar slots since last run
 //   runner.mjs heartbeat-check      — alert if Electron heartbeat is stale
 //   runner.mjs notify <text>        — send a Telegram message
@@ -322,18 +323,28 @@ async function runScheduleLocked(spec, origin) {
     }
   };
 
+  const isWindow = spec.schedule?.kind === 'window';
+
   const child = spawn(resolved.command, resolved.args, {
     cwd: resolved.cwd, env: resolved.env, stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout?.on('data', (c) => ingest('stdout', c));
   child.stderr?.on('data', (c) => ingest('stderr', c));
 
-  const timeoutHandle = setTimeout(() => {
-    if (!child.killed) {
-      transcript.write(`\n[killed: timeout after ${DEFAULT_TIMEOUT_MS}ms]\n`);
-      child.kill('SIGTERM');
-    }
-  }, DEFAULT_TIMEOUT_MS);
+  // Window jobs are intentionally long-running and get SIGTERM'd by a paired
+  // stop plist. Skip the timeout cap and record the PID so `runner.mjs stop`
+  // can find it.
+  let timeoutHandle = null;
+  if (!isWindow) {
+    timeoutHandle = setTimeout(() => {
+      if (!child.killed) {
+        transcript.write(`\n[killed: timeout after ${DEFAULT_TIMEOUT_MS}ms]\n`);
+        child.kill('SIGTERM');
+      }
+    }, DEFAULT_TIMEOUT_MS);
+  } else {
+    updateScheduleState(key, { runningPid: child.pid, runningSince: nowIso() });
+  }
 
   let spawnError;
   child.on('error', (err) => {
@@ -343,7 +354,7 @@ async function runScheduleLocked(spec, origin) {
 
   const result = await new Promise((resolve) => {
     child.on('close', (exitCode, signal) => {
-      clearTimeout(timeoutHandle);
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       if (buffers.stdout) { writeLine('stdout', buffers.stdout); buffers.stdout = ''; }
       if (buffers.stderr) { writeLine('stderr', buffers.stderr); buffers.stderr = ''; }
       const endedAt = new Date();
@@ -352,7 +363,15 @@ async function runScheduleLocked(spec, origin) {
     });
   });
 
-  const failed = result.exitCode !== 0 || spawnError;
+  if (isWindow) {
+    updateScheduleState(key, { runningPid: null, runningSince: null });
+  }
+
+  // For window jobs, a SIGTERM is the expected stop signal — count it as
+  // success, not failure. Anything else (non-zero exit, spawn error, other
+  // signal) is still a failure.
+  const stoppedByWindow = isWindow && result.signal === 'SIGTERM';
+  const failed = !stoppedByWindow && (result.exitCode !== 0 || spawnError);
   const durationMs = result.endedAt.getTime() - startedAt.getTime();
 
   updateScheduleState(key, {
@@ -384,14 +403,68 @@ async function runScheduleLocked(spec, origin) {
   // Touch runner heartbeat so the watcher knows the runner itself is alive.
   touchFile(HEARTBEAT_RUNNER_PATH);
 
-  if (failed) {
-    const reason = spawnError ? `error: ${spawnError}` : `exit ${result.exitCode}${result.signal ? ` (signal ${result.signal})` : ''}`;
-    await sendTelegram(
-      `❌ *${spec.title}*\n${reason} · ${durationMs}ms\ntranscript: \`${transcriptFilename}\``,
-    );
-  }
+  const durationLabel = durationMs < 1000
+    ? `${durationMs} ms`
+    : durationMs < 60_000
+      ? `${(durationMs / 1000).toFixed(durationMs < 10_000 ? 2 : 1)} s`
+      : `${Math.floor(durationMs / 60_000)}m ${Math.floor((durationMs % 60_000) / 1000)}s`;
+  const finishedLabel = new Date().toLocaleString('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric', month: 'short', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  const statusLabel = failed
+    ? (spawnError
+        ? `❌ Failed (${spawnError})`
+        : `❌ Failed (exit ${result.exitCode}${result.signal ? `, signal ${result.signal}` : ''})`)
+    : (stoppedByWindow
+        ? '✅ Stopped (window end)'
+        : '✅ Success');
+  await sendTelegram(
+    [
+      `*Thinking Space scheduler*`,
+      `Job: ${spec.title}`,
+      `Status: ${statusLabel}`,
+      `Duration: ${durationLabel}`,
+      `Origin: ${origin}`,
+      `Finished: ${finishedLabel} CT`,
+      `Transcript: \`${transcriptFilename}\``,
+    ].join('\n'),
+  );
 
   return { ok: !failed, exitCode: result.exitCode, transcriptPath };
+}
+
+// ---------- window stop ----------
+
+// Read the running PID for a window schedule from state and send SIGTERM.
+// Idempotent: missing PID or already-dead process is logged and exits 0.
+async function stopSchedule(key) {
+  const state = readState();
+  const sch = state.schedules?.[key];
+  const pid = sch?.runningPid;
+  if (!pid) {
+    logEvent({ kind: 'stop_skip', key, reason: 'no_running_pid' });
+    console.log(JSON.stringify({ ok: true, reason: 'no_running_pid' }));
+    return { ok: true };
+  }
+  try {
+    process.kill(pid, 'SIGTERM');
+    logEvent({ kind: 'stop', key, pid });
+    console.log(JSON.stringify({ ok: true, pid }));
+    return { ok: true };
+  } catch (err) {
+    if (err.code === 'ESRCH') {
+      // process already gone — clear the stale PID
+      updateScheduleState(key, { runningPid: null, runningSince: null });
+      logEvent({ kind: 'stop_skip', key, reason: 'esrch', pid });
+      console.log(JSON.stringify({ ok: true, reason: 'esrch' }));
+      return { ok: true };
+    }
+    logEvent({ kind: 'stop_error', key, pid, message: err.message });
+    console.error(JSON.stringify({ ok: false, error: err.message }));
+    return { ok: false };
+  }
 }
 
 // ---------- heartbeat watcher ----------
@@ -532,6 +605,12 @@ async function main() {
       const r = await runSchedule(key);
       process.exit(r.ok ? 0 : 1);
     }
+    case 'stop': {
+      const key = rest[0];
+      if (!key) { console.error('usage: runner.mjs stop <key>'); process.exit(2); }
+      const r = await stopSchedule(key);
+      process.exit(r.ok ? 0 : 1);
+    }
     case 'heartbeat-check': {
       await heartbeatCheck();
       process.exit(0);
@@ -554,7 +633,7 @@ async function main() {
       process.exit(0);
     }
     default:
-      console.error('usage: runner.mjs <run|catchup-check|heartbeat-check|notify|status> [args]');
+      console.error('usage: runner.mjs <run|stop|catchup-check|heartbeat-check|notify|status> [args]');
       process.exit(2);
   }
 }
