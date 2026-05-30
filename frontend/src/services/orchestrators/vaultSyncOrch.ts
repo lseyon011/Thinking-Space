@@ -49,6 +49,11 @@ export interface SyncResult {
 
 export interface VaultSyncOptions {
   maxFileSizeBytes?: number
+  // If set, restricts the sync to entries whose vault-relative path begins
+  // with this prefix. Saves CLI write commands from re-parsing the entire
+  // vault when only one project is being touched. Caller is responsible for
+  // not relying on cross-project state in this run.
+  rootPath?: string
 }
 
 // ── File paths cache ──
@@ -84,6 +89,24 @@ function resolveMaxSyncFileSizeBytes(options?: VaultSyncOptions): number {
     : DEFAULT_MAX_SYNC_FILE_SIZE_BYTES
 }
 
+function normalizeRootPath(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  const trimmed = value.replace(/^\/+|\/+$/g, '').trim()
+  return trimmed || undefined
+}
+
+async function clearNodesAndLinksUnderPath(rootPath: string): Promise<void> {
+  const allPaths = await getAllFilePaths()
+  const scoped: string[] = []
+  for (const p of allPaths) {
+    if (p === rootPath || p.startsWith(`${rootPath}/`)) scoped.push(p)
+  }
+  if (scoped.length > 0) {
+    await bulkDeleteNodesByPaths(scoped)
+    await bulkDeleteLinksForFiles(scoped)
+  }
+}
+
 function normalizeEpochSeconds(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 0
   // Some adapters can return epoch in milliseconds. Normalize to seconds for sync comparisons.
@@ -107,11 +130,27 @@ export async function fullSync(fs?: VaultFS, options?: VaultSyncOptions): Promis
     detail: 'Full scan',
   })
   try {
-    await clearAll()
-    await clearAllLinks()
+    const rootPath = normalizeRootPath(options?.rootPath)
+    if (!rootPath) {
+      await clearAll()
+      await clearAllLinks()
+    } else {
+      // Scoped sync: only wipe nodes under the scope so unrelated projects
+      // already in the DB stay intact (useful when persistent cache is on).
+      await clearNodesAndLinksUnderPath(rootPath)
+    }
 
-    const entries = await vaultFs.walkVault(['.md'])
-    activity.update({ total: entries.length, completed: 0, detail: `Full scan — ${entries.length} files` })
+    const allEntries = await vaultFs.walkVault(['.md'])
+    const entries = rootPath
+      ? allEntries.filter(e => e.path === rootPath || e.path.startsWith(`${rootPath}/`))
+      : allEntries
+    activity.update({
+      total: entries.length,
+      completed: 0,
+      detail: rootPath
+        ? `Scoped to ${rootPath} — ${entries.length} of ${allEntries.length} files`
+        : `Full scan — ${entries.length} files`,
+    })
     const candidatePaths = entries.map(e => e.path)
     setCachedFilePaths(new Set(candidatePaths))
     const parentKeyToPath = autoHealEnabled

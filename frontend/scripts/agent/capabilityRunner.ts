@@ -15,7 +15,18 @@ import {
   listCapabilitiesOrch,
   type CapabilityInvokeRequest,
 } from '../../src/services/orchestrators/capabilityRouterOrch'
-import { fullSync } from '../../src/services/orchestrators/vaultSyncOrch'
+import { fullSync, incrementalSync } from '../../src/services/orchestrators/vaultSyncOrch'
+import {
+  bulkUpsertLinks,
+  bulkUpsertNodes,
+  clearAll,
+  clearAllLinks,
+  getAllLinks,
+  getAllNodes,
+  type LinkRecord,
+  type NodeRecord,
+} from '../../src/services/lego_blocks/integrations/dbBlock'
+import { homedir } from 'node:os'
 
 interface InvokePayload {
   vaultRoot: string
@@ -1497,10 +1508,111 @@ export async function runCapabilityRunnerCommand(
   }
 
   const fs = new NodeVaultFS(payload.vaultRoot)
-  if (capabilityRequiresVaultSync(payload.request.capability)) {
-    await fullSync(fs)
+  const isWrite = capabilityRequiresVaultSync(payload.request.capability)
+  if (isWrite) {
+    // Two-phase sync to keep CLI writes fast:
+    //   1. If a disk snapshot exists for this vault, hydrate the in-memory
+    //      DB from it and run an incremental mtime-based sync — typical
+    //      warm-run cost is < 1 s for an unchanged vault.
+    //   2. Otherwise (cold start, vault changed, or snapshot missing) do a
+    //      full sync. Scope it to the project root when the capability
+    //      input supplies one so we don't pay for unrelated files.
+    const projectRoot = extractProjectRootFromInput(payload.request.input)
+    const loaded = await tryLoadCliCache(payload.vaultRoot)
+    if (loaded) {
+      await incrementalSync(loaded.lastSyncTimestamp, fs)
+    } else {
+      await fullSync(fs, projectRoot ? { rootPath: projectRoot } : undefined)
+    }
   }
-  return invokeCapabilityOrch(payload.request, { fs })
+  const result = await invokeCapabilityOrch(payload.request, { fs })
+  if (isWrite) {
+    // Persist the post-write DB so the next CLI run starts warm. Done after
+    // a successful invoke so errors don't corrupt the cache. Snapshot save
+    // failures only get logged — they shouldn't break the user-visible result.
+    await saveCliCache(payload.vaultRoot).catch((err) => {
+      console.warn(`[cli-cache] save failed: ${err instanceof Error ? err.message : String(err)}`)
+    })
+  }
+  return result
+}
+
+function extractProjectRootFromInput(input: unknown): string | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const value = (input as Record<string, unknown>).projectRoot
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+// ── CLI DB snapshot (persistent across invocations) ──
+
+interface CliCacheSnapshot {
+  version: number
+  vaultRoot: string
+  savedAt: string
+  lastSyncTimestamp: number
+  nodes: NodeRecord[]
+  links: Omit<LinkRecord, 'id'>[]
+}
+
+const CLI_CACHE_VERSION = 1
+
+function getCliCachePath(): string {
+  return path.join(homedir(), '.thinking-space', 'cli-cache.json')
+}
+
+async function tryLoadCliCache(vaultRoot: string): Promise<CliCacheSnapshot | null> {
+  const cachePath = getCliCachePath()
+  let raw: string
+  try {
+    raw = await fsPromises.readFile(cachePath, 'utf-8')
+  } catch {
+    return null
+  }
+  let snapshot: CliCacheSnapshot
+  try {
+    snapshot = JSON.parse(raw)
+  } catch (err) {
+    console.warn(`[cli-cache] invalid JSON at ${cachePath}: ${err instanceof Error ? err.message : String(err)}`)
+    return null
+  }
+  if (snapshot.version !== CLI_CACHE_VERSION) return null
+  if (path.resolve(snapshot.vaultRoot) !== path.resolve(vaultRoot)) return null
+  if (!Array.isArray(snapshot.nodes) || !Array.isArray(snapshot.links)) return null
+
+  // Hydrate the in-memory DB. clearAll first to be safe — there should be
+  // nothing in the fresh fake-indexeddb yet, but defensive against future
+  // changes that might prime it.
+  await clearAll()
+  await clearAllLinks()
+  // Drop synthetic 'id' from cached nodes so Dexie reassigns them on insert.
+  const nodes = snapshot.nodes.map((n) => {
+    const { id: _id, ...rest } = n as NodeRecord & { id?: number }
+    return rest as Omit<NodeRecord, 'id'>
+  })
+  await bulkUpsertNodes(nodes)
+  await bulkUpsertLinks(snapshot.links)
+  return snapshot
+}
+
+async function saveCliCache(vaultRoot: string): Promise<void> {
+  const cachePath = getCliCachePath()
+  await fsPromises.mkdir(path.dirname(cachePath), { recursive: true })
+  const nodes = await getAllNodes()
+  const links = (await getAllLinks()).map((l) => {
+    const { id: _id, ...rest } = l
+    return rest
+  })
+  const snapshot: CliCacheSnapshot = {
+    version: CLI_CACHE_VERSION,
+    vaultRoot: path.resolve(vaultRoot),
+    savedAt: new Date().toISOString(),
+    lastSyncTimestamp: Math.floor(Date.now() / 1000),
+    nodes,
+    links,
+  }
+  const tmp = `${cachePath}.${process.pid}.tmp`
+  await fsPromises.writeFile(tmp, JSON.stringify(snapshot), { encoding: 'utf-8', mode: 0o600 })
+  await fsPromises.rename(tmp, cachePath)
 }
 
 function capabilityRequiresVaultSync(capability: CapabilityInvokeRequest['capability']): boolean {

@@ -495,6 +495,15 @@ export async function clearAllLinks(): Promise<void> {
 }
 
 /**
+ * Read every link record. Used by the CLI to snapshot the link index to disk
+ * so subsequent runs don't have to rebuild it from scratch.
+ */
+export async function getAllLinks(): Promise<LinkRecord[]> {
+  const db = getDb()
+  return db.links.toArray()
+}
+
+/**
  * Delete all links originating from a source file.
  */
 export async function deleteLinksForFile(sourceFilePath: string): Promise<void> {
