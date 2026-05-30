@@ -3136,8 +3136,45 @@ function App() {
                         </Link>
                       )
                     })}
+                    <button
+                      type="button"
+                      onClick={openCommandPalette}
+                      className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
+                        sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                      }`}
+                      aria-label="Open quick search"
+                    >
+                      <Search className="h-4 w-4" />
+                      {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">Search</span>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSidebarCollapsed(prev => !prev)}
+                      className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
+                        sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
+                      }`}
+                      title={sidebarCollapsed ? 'Expand sidebar (Cmd/Ctrl+\\)' : 'Collapse sidebar (Cmd/Ctrl+\\)'}
+                      aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                    >
+                      {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                      {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">{sidebarCollapsed ? 'Expand drawer' : 'Collapse drawer'}</span>}
+                    </button>
+                    <Link
+                      to="/"
+                      title={sidebarCollapsed ? 'Home' : undefined}
+                      aria-label="Home"
+                      className={`ltm-shell-logo ltm-motion-fast mt-2 inline-flex items-center rounded-lg ${
+                        sidebarCollapsed
+                          ? 'h-10 w-full justify-center'
+                          : 'gap-2 px-2.5 py-2 text-sm font-semibold tracking-tight'
+                      }`}
+                    >
+                      <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full">
+                        <AppBrandGlyph className="h-full w-full" />
+                      </span>
+                      {!sidebarCollapsed && <span>Home</span>}
+                    </Link>
                   </div>
-
                 </div>
                 </div>
               </aside>
