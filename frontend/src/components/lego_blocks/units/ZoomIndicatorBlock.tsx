@@ -3,9 +3,16 @@ import { useCanvasThemeBlock } from '@/components/lego_blocks/hooks/shared/useCa
 interface Props {
   scale: number
   onReset: () => void
+  edgeInset?: number
+  minimapHeight?: number
 }
 
-export default function ZoomIndicatorBlock({ scale, onReset }: Props) {
+export default function ZoomIndicatorBlock({
+  scale,
+  onReset,
+  edgeInset = 24,
+  minimapHeight = 100,
+}: Props) {
   const theme = useCanvasThemeBlock()
   return (
     <button
@@ -13,10 +20,8 @@ export default function ZoomIndicatorBlock({ scale, onReset }: Props) {
       aria-label="Reset zoom"
       style={{
         position: 'absolute',
-        // Sits directly above the minimap. Minimap is 150×100 anchored at
-        // bottom:16 right:16, so this clears it by 8px.
-        bottom: 16 + 100 + 8,
-        right: 16,
+        bottom: edgeInset + minimapHeight + 8,
+        right: edgeInset,
         padding: '6px 10px',
         background: theme.toolbarBg,
         border: `1px solid ${theme.toolbarBorder}`,

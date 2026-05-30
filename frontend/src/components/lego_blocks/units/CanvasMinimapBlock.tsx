@@ -19,6 +19,8 @@ interface Props {
   onJump: (worldX: number, worldY: number) => void
   /** mini-map width in screen pixels; height derived from world aspect ratio */
   width?: number
+  /** Inset from the visible canvas edge in screen pixels. */
+  edgeInset?: number
 }
 
 export default function CanvasMinimapBlock({
@@ -31,6 +33,7 @@ export default function CanvasMinimapBlock({
   viewport,
   onJump,
   width = 150,
+  edgeInset = 24,
 }: Props) {
   const theme = useCanvasThemeBlock()
   const ref = useRef<HTMLDivElement | null>(null)
@@ -80,8 +83,8 @@ export default function CanvasMinimapBlock({
       aria-label="Canvas minimap"
       style={{
         position: 'absolute',
-        bottom: 16,
-        right: 16,
+        bottom: edgeInset,
+        right: edgeInset,
         width,
         height,
         background: theme.minimapBg,

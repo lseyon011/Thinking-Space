@@ -260,6 +260,9 @@ export default function HomeCanvasOrch() {
     const screenY = focusedTile.y * transform.scale + transform.y - 48
     return { x: screenX, y: Math.max(8, screenY) }
   })()
+  const hudEdgeInset = 24
+  const minimapWidth = 150
+  const minimapHeight = Math.round((minimapWidth * worldHeight) / worldWidth)
 
   return (
     <div
@@ -267,7 +270,8 @@ export default function HomeCanvasOrch() {
       style={{
         position: 'relative',
         width: '100%',
-        height: '100vh',
+        height: '100%',
+        minHeight: 0,
         overflow: 'hidden',
         background: theme.outerBg,
       }}
@@ -442,9 +446,16 @@ export default function HomeCanvasOrch() {
           height: containerRef.current?.clientHeight ?? window.innerHeight,
         }}
         onJump={centerOnWorld}
+        width={minimapWidth}
+        edgeInset={hudEdgeInset}
       />
 
-      <ZoomIndicatorBlock scale={transform.scale} onReset={resetZoom} />
+      <ZoomIndicatorBlock
+        scale={transform.scale}
+        onReset={resetZoom}
+        edgeInset={hudEdgeInset}
+        minimapHeight={minimapHeight}
+      />
     </div>
   )
 }
