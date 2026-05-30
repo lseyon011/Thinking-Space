@@ -6,7 +6,11 @@ import {
   type YAMLFrontmatter,
 } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { todayIsoDate } from '@/services/lego_blocks/units/memorizedSessionsBlock'
-import { syncSingleFile } from './vaultSyncOrch'
+// Cross-layer import (integration depending on orchestrator) is intentional
+// here: syncSingleFile is the contract for "refresh the IndexedDB cache for
+// one path after a write." If multiple integrations end up needing it, lift
+// it down into an integration of its own.
+import { syncSingleFile } from '@/services/orchestrators/vaultSyncOrch'
 
 export const DAILY_INSIGHTS_FOLDER = 'lifeblood_systems/sfdl/insights'
 
@@ -15,6 +19,7 @@ export interface DailyInsightInput {
   files_touched?: string[]
   linked_notes?: string[]
   teachers_note?: string
+  conversation?: string
   date?: string
   mode?: 'append' | 'replace'
 }
@@ -43,6 +48,7 @@ function renderBody(fm: YAMLFrontmatter): string {
   const filesTouched = Array.isArray(fm.files_touched) ? (fm.files_touched as string[]) : []
   const linked = Array.isArray(fm.linked_notes) ? (fm.linked_notes as string[]) : []
   const teachers = typeof fm.teachers_note === 'string' ? (fm.teachers_note as string) : ''
+  const conversation = typeof fm.conversation === 'string' ? (fm.conversation as string) : ''
 
   lines.push(`# Insights — ${fm.date ?? ''}`.trim())
   lines.push('')
@@ -71,6 +77,12 @@ function renderBody(fm: YAMLFrontmatter): string {
     lines.push('')
   }
 
+  if (conversation.trim()) {
+    lines.push('## Conversation')
+    lines.push(conversation.trim())
+    lines.push('')
+  }
+
   return lines.join('\n').replace(/\n{3,}$/, '\n')
 }
 
@@ -90,6 +102,7 @@ export async function logDailyInsight(
     files_touched: dedupePreserveOrder(params.files_touched ?? []),
     linked_notes: dedupePreserveOrder(params.linked_notes ?? []),
     teachers_note: typeof params.teachers_note === 'string' ? params.teachers_note.trim() : '',
+    conversation: typeof params.conversation === 'string' ? params.conversation.trim() : '',
   }
 
   await fs.mkdir(folder)
@@ -105,11 +118,15 @@ export async function logDailyInsight(
       const existingFiles = Array.isArray(fm.files_touched) ? (fm.files_touched as string[]) : []
       const existingLinked = Array.isArray(fm.linked_notes) ? (fm.linked_notes as string[]) : []
       const existingTeachers = typeof fm.teachers_note === 'string' ? (fm.teachers_note as string) : ''
+      const existingConversation = typeof fm.conversation === 'string' ? (fm.conversation as string) : ''
 
       fm.insights = dedupePreserveOrder([...existingInsights, ...incoming.insights])
       fm.files_touched = dedupePreserveOrder([...existingFiles, ...incoming.files_touched])
       fm.linked_notes = dedupePreserveOrder([...existingLinked, ...incoming.linked_notes])
       fm.teachers_note = incoming.teachers_note || existingTeachers
+      // Conversation: new replaces existing if provided (it's a full transcript,
+      // not a per-turn append). Empty incoming keeps any prior value.
+      fm.conversation = incoming.conversation || existingConversation
       fm.updated_at = now
       fm.date = date
       fm.record_kind = 'insight'
@@ -130,6 +147,7 @@ export async function logDailyInsight(
     note.frontmatter.files_touched = incoming.files_touched
     note.frontmatter.linked_notes = incoming.linked_notes
     if (incoming.teachers_note) note.frontmatter.teachers_note = incoming.teachers_note
+    if (incoming.conversation) note.frontmatter.conversation = incoming.conversation
     note.frontmatter.created_at = now
     note.frontmatter.updated_at = now
     note.body = renderBody(note.frontmatter)

@@ -40,7 +40,7 @@ import { startActivity } from '@/services/lego_blocks/units/backgroundActivityBl
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { getUserCommentAuthorBlock } from '@/services/lego_blocks/units/userProfileBlock'
 import { createThought } from './thoughtsOrch'
-import { logDailyInsight } from './dailyInsightsOrch'
+import { logDailyInsight } from '@/services/lego_blocks/integrations/dailyInsightsBlock'
 import { createTodos, toggleTodo } from './todosOrch'
 import { listFiles, listFolders, listPdfFiles } from './fileSystemOrch'
 import { formatAndSave, previewFormat } from './formatExcalidrawOrch'

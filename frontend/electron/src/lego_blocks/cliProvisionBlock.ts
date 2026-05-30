@@ -64,6 +64,11 @@ function buildShimContent(electronBinary: string, runnerPath: string): string {
     '# Thinking Space CLI shim. Provisioned by the Electron app on launch.',
     '# Source: frontend/electron/src/lego_blocks/cliProvisionBlock.ts',
     'exec env ELECTRON_RUN_AS_NODE=1 \\',
+    // Mirror the repo wrapper so the shim behaves identically: agent
+    // capabilities must be enabled for any CLI write call, and the runner
+    // wants to know it was invoked via the CLI.
+    '  LTM_AGENT_CAPABILITIES_ENABLED=1 \\',
+    '  LTM_CAPABILITY_RUNNER_CLI=1 \\',
     `  "${electronBinary}" \\`,
     `  "${runnerPath}" "$@"`,
     '',

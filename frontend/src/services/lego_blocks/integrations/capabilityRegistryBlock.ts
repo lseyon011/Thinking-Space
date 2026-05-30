@@ -235,6 +235,7 @@ export interface CapabilityInputMap {
     files_touched?: string[]
     linked_notes?: string[]
     teachers_note?: string
+    conversation?: string
     date?: string
     mode?: 'append' | 'replace'
   }

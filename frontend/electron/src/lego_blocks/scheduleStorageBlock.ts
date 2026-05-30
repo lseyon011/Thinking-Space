@@ -29,6 +29,11 @@ export type ScheduleExecutionBlock =
       // to that sessionId. The poller then resumes this session on user
       // replies. See telegramConversationBlock.ts for state schema.
       telegramConversation?: boolean;
+      // When true and the run captured a sessionId, delete the Claude
+      // session JSONL after the run. Use for one-shot anchor jobs whose
+      // session doesn't need resuming. Mutually exclusive with
+      // telegramConversation (which keeps the session for the poller).
+      cleanupSession?: boolean;
     };
 
 export type ScheduleTriggerBlock =

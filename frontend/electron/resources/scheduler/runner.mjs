@@ -40,6 +40,7 @@ const TELEGRAM_ACTIVE = join(TELEGRAM_STATE_DIR, 'active.json');
 const TELEGRAM_CONVS_DIR = join(TELEGRAM_STATE_DIR, 'conversations');
 const TELEGRAM_LONG_POLL_TIMEOUT_S = 25;
 const TELEGRAM_REPLY_CLAUDE_TIMEOUT_MS = 5 * 60 * 1000;
+const CLAUDE_PROJECTS_DIR = join(HOME, '.claude', 'projects');
 
 const MAX_TRANSCRIPT_BYTES = 5 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -440,6 +441,18 @@ async function runScheduleLocked(spec, origin) {
     catch (err) { logEvent({ kind: 'telegram_conv_open_error', key, message: err.message }); }
   }
 
+  // Auto-delete the captured Claude session JSONL for one-shot anchor jobs.
+  // Skipped when telegramConversation is also set, since the poller needs
+  // the session alive for resume.
+  if (
+    isClaudeCode && claudeSessionId
+    && spec.execution.cleanupSession
+    && !spec.execution.telegramConversation
+  ) {
+    const removed = deleteClaudeSessionFiles(claudeSessionId);
+    logEvent({ kind: 'claude_session_cleanup', key, sessionId: claudeSessionId, removed });
+  }
+
   const durationLabel = durationMs < 1000
     ? `${durationMs} ms`
     : durationMs < 60_000
@@ -688,6 +701,21 @@ function spawnAndWait(command, args, options = {}) {
   });
 }
 
+function deleteClaudeSessionFiles(sessionId) {
+  if (!existsSync(CLAUDE_PROJECTS_DIR)) return [];
+  const removed = [];
+  let projects;
+  try { projects = readdirSync(CLAUDE_PROJECTS_DIR); } catch { return []; }
+  for (const project of projects) {
+    const candidate = join(CLAUDE_PROJECTS_DIR, project, `${sessionId}.jsonl`);
+    if (existsSync(candidate)) {
+      try { unlinkSync(candidate); removed.push(candidate); }
+      catch { /* best effort */ }
+    }
+  }
+  return removed;
+}
+
 async function openTelegramConvForSpec(spec, sessionId, cwd) {
   if (!existsSync(THINKSPC_SHIM)) {
     logEvent({ kind: 'telegram_conv_open_skip', reason: 'shim_missing', key: spec.key });
@@ -723,7 +751,7 @@ async function openTelegramConvForSpec(spec, sessionId, cwd) {
   }
 }
 
-function spawnClaudeResume({ cwd, sessionId, replyText }) {
+function spawnClaudeResume({ cwd, sessionId, replyText, scheduleKey }) {
   return new Promise((resolve) => {
     const args = [
       '--dangerously-skip-permissions',
@@ -732,23 +760,48 @@ function spawnClaudeResume({ cwd, sessionId, replyText }) {
       '--output-format', 'stream-json', '--verbose',
       '-p', replyText,
     ];
+
+    // Write a transcript so the Schedules UI can show this resume turn in
+    // the run history. Mirrors runScheduleLocked's transcript format.
+    const startedAt = new Date();
+    const transcriptDir = join(TRANSCRIPTS_DIR, scheduleKey);
+    ensureDir(transcriptDir);
+    const transcriptFilename = `${timestampSlug(startedAt)}-resume.log`;
+    const transcriptPath = join(transcriptDir, transcriptFilename);
+    const transcript = createWriteStream(transcriptPath, { flags: 'w', encoding: 'utf-8' });
+    transcript.write(
+      `# schedule: ${scheduleKey}\n` +
+      `# kind: claude-code (telegram-resume)\n` +
+      `# started: ${startedAt.toISOString()}\n` +
+      `# sessionId: ${sessionId}\n` +
+      `# reply: ${replyText.replace(/\n/g, ' ').slice(0, 200)}\n` +
+      `# command: ${DEFAULT_CLAUDE_BINARY} ${args.join(' ')}\n` +
+      `# cwd: ${cwd}\n` +
+      `---\n`,
+    );
+
     let stderr = '';
     const child = spawn(DEFAULT_CLAUDE_BINARY, args, {
       cwd, env: process.env, stdio: ['ignore', 'pipe', 'pipe'],
     });
-    child.stdout?.on('data', () => { /* discard; assistant uses telegram.send_message */ });
-    child.stderr?.on('data', (c) => { stderr += c.toString('utf-8'); });
+    child.stdout?.on('data', (c) => { transcript.write(c); });
+    child.stderr?.on('data', (c) => {
+      const s = c.toString('utf-8');
+      stderr += s;
+      transcript.write(`[stderr] ${s}`);
+    });
     const guard = setTimeout(() => {
       if (!child.killed) child.kill('SIGTERM');
     }, TELEGRAM_REPLY_CLAUDE_TIMEOUT_MS);
-    child.on('error', (err) => {
+    const finish = (result) => {
       clearTimeout(guard);
-      resolve({ ok: false, exitCode: null, error: err.message, stderr });
-    });
-    child.on('close', (exitCode, signal) => {
-      clearTimeout(guard);
-      resolve({ ok: exitCode === 0, exitCode, signal, stderr: stderr.slice(-2000) });
-    });
+      transcript.write(
+        `---\n# ended: ${new Date().toISOString()}\n# exit: ${result.exitCode}\n# signal: ${result.signal ?? 'null'}\n`,
+      );
+      transcript.end(() => resolve({ ...result, transcript: transcriptFilename }));
+    };
+    child.on('error', (err) => finish({ ok: false, exitCode: null, signal: null, error: err.message, stderr }));
+    child.on('close', (exitCode, signal) => finish({ ok: exitCode === 0, exitCode, signal, stderr: stderr.slice(-2000) }));
   });
 }
 
@@ -791,6 +844,7 @@ async function handleTelegramMessage(message) {
     cwd: conv.cwd,
     sessionId: conv.sessionId,
     replyText: text,
+    scheduleKey: conv.scheduleKey,
   });
   logEvent({
     kind: 'telegram_claude_resume',
@@ -799,6 +853,7 @@ async function handleTelegramMessage(message) {
     ok: result.ok,
     exitCode: result.exitCode,
     signal: result.signal ?? null,
+    transcript: result.transcript,
     stderrTail: result.stderr || null,
   });
 

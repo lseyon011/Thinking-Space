@@ -215,6 +215,7 @@ const GREEDY_TEXT_FIELDS = new Set([
   'input_text',
   'headings_text',
   'title',
+  'conversation',
 ])
 
 const COMMAND_SHORTCUTS: Record<string, string> = {
@@ -1004,6 +1005,7 @@ const CAPABILITY_INPUT_FIELDS: Record<string, Array<{ flag: string; required: bo
     { flag: 'files_touched', required: false, note: 'comma-separated or JSON array' },
     { flag: 'linked_notes', required: false, note: 'comma-separated or JSON array' },
     { flag: 'teachers_note', required: false, note: 'prefer --teachers_note-file for long text' },
+    { flag: 'conversation', required: false, note: 'verbatim transcript; prefer --conversation-file' },
     { flag: 'date', required: false, note: 'YYYY-MM-DD, defaults to today' },
     { flag: 'mode', required: false, note: 'append (default) or replace' },
   ],

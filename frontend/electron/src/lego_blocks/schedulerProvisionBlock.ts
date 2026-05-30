@@ -96,6 +96,7 @@ export interface ProvisionResultBlock {
 async function provisionScheduleBlock(
   spec: ScheduleSpecBlock,
   ctx: PlistBuildContextBlock,
+  forceBootstrap: boolean = false,
 ): Promise<{ label: string; changed: boolean; bootstrapped: boolean; error?: string }> {
   try {
     const { changed } = await writePlistBlock(spec, ctx);
@@ -110,7 +111,7 @@ async function provisionScheduleBlock(
       stopChanged = result.changed;
       if (!spec.enabled) {
         await bootoutPlistBlock(stopLabel);
-      } else if (stopChanged) {
+      } else if (stopChanged || forceBootstrap) {
         await bootstrapByLabelBlock(stopLabel);
       }
     }
@@ -120,9 +121,13 @@ async function provisionScheduleBlock(
       await bootoutPlistBlock(spec.label);
       return { label: spec.label, changed: changed || stopChanged, bootstrapped: false };
     }
-    if (changed) {
+    if (changed || forceBootstrap) {
+      // forceBootstrap covers the runner-rewrite case: the plist content is
+      // unchanged, but we just booted the schedule out so launchd would pick
+      // up the new runner path on re-bootstrap. Without this, the schedule
+      // stays booted out and shows "Not loaded" until manually re-enabled.
       await bootstrapPlistBlock(spec);
-      return { label: spec.label, changed: true, bootstrapped: true };
+      return { label: spec.label, changed: changed, bootstrapped: true };
     }
     return { label: spec.label, changed: stopChanged, bootstrapped: stopChanged };
   } catch (err) {
@@ -184,7 +189,7 @@ export async function provisionSchedulerBlock(): Promise<ProvisionResultBlock> {
         try { await bootoutPlistBlock(getStopLabelBlock(spec)); } catch { /* not loaded */ }
       }
     }
-    scheduleResults.push(await provisionScheduleBlock(spec, ctx));
+    scheduleResults.push(await provisionScheduleBlock(spec, ctx, runner.changed));
   }
 
   return {
