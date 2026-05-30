@@ -30,6 +30,7 @@ interface Props {
 
 const WIDGET_REFRESH_OPTIONS: { label: string; value: number | undefined }[] = [
   { label: 'Off', value: undefined },
+  { label: '5s', value: 5 },
   { label: '10s', value: 10 },
   { label: '30s', value: 30 },
   { label: '1m', value: 60 },
