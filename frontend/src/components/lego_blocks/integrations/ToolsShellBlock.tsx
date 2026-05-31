@@ -1,9 +1,14 @@
-import { useMemo, type ComponentType } from 'react'
+import { useEffect, useMemo, type ComponentType } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { Bot, KeyRound, Terminal as TerminalIcon, Wrench } from 'lucide-react'
 import excalidrawLogo from '@/assets/excalidraw-logo.svg'
 import { isExcalidrawPlusRoute } from '@/components/lego_blocks/units/ExcalidrawPlusRoutesBlock'
 import { isEmbeddedTerminalSupported } from '@/services/orchestrators/runtimeOrch'
+import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
+import {
+  dispatchToolsSidebarChromeStateBlock,
+  TOOLS_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
+} from '@/services/lego_blocks/units/toolsSidebarChromeBlock'
 
 interface ToolsSubtab {
   id: string
@@ -83,9 +88,24 @@ export default function ToolsShellBlock() {
     () => TOOL_SUBTABS.filter(tab => (tab.visible ? tab.visible() : true)),
     [],
   )
+  const [sidebarCollapsed, setSidebarCollapsed] = useSessionStateBlock('tools-sidebar-collapsed', false)
+
+  useEffect(() => {
+    dispatchToolsSidebarChromeStateBlock({ enabled: true, collapsed: sidebarCollapsed, label: 'Tools' })
+    return () => {
+      dispatchToolsSidebarChromeStateBlock({ enabled: false, collapsed: false, label: 'Tools' })
+    }
+  }, [sidebarCollapsed])
+
+  useEffect(() => {
+    const handler = () => setSidebarCollapsed(prev => !prev)
+    window.addEventListener(TOOLS_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
+    return () => window.removeEventListener(TOOLS_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
+  }, [setSidebarCollapsed])
 
   return (
     <div className="ltm-tools-shell flex h-full min-h-0 w-full">
+      {!sidebarCollapsed && (
       <aside className="ltm-tools-shell-nav w-[220px] shrink-0 border-r border-border/60 bg-background/40 px-3 py-4">
         <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           Tools
@@ -111,6 +131,7 @@ export default function ToolsShellBlock() {
           })}
         </nav>
       </aside>
+      )}
       <div className="ltm-tools-shell-content min-w-0 flex-1 overflow-auto">
         <Outlet />
       </div>

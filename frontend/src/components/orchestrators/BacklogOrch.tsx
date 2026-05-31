@@ -1835,6 +1835,37 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
     }
   }, [activeBacklogSubTab])
 
+  // Stable callbacks for BacklogListBlock. These were previously defined
+  // inline at the call site, which created fresh function references on
+  // every render of BacklogOrch — defeating React.memo on BacklogListBlock
+  // and forcing the full hierarchy list to re-render whenever any state in
+  // this orchestrator changed (which it does, often).
+  const handleLoadEpics = useCallback(async (program: NodeRecord) => {
+    const { nodes } = await invokeCapabilityOrThrow({
+      capability: 'organizer.nodes.list_children',
+      input: { parentKey: program.key },
+      actor: BACKLOG_ACTOR,
+    })
+    return nodes
+  }, [])
+  const handleLoadChildren = useCallback(async (node: NodeRecord) => {
+    const { nodes } = await invokeCapabilityOrThrow({
+      capability: 'organizer.nodes.list_children',
+      input: { parentKey: node.key },
+      actor: BACKLOG_ACTOR,
+    })
+    return nodes
+  }, [])
+  const handleSelectNode = useCallback((node: NodeRecord) => {
+    setSelectedNode(node)
+  }, [])
+  const handleAssignProgramToGroup = useCallback((program: NodeRecord, groupId: string | null) => {
+    assignProgramToActiveProjectGroup(program.uuid, groupId)
+  }, [assignProgramToActiveProjectGroup])
+  const handleRootInlineCreateCreated = useCallback(() => {
+    setShowRootProgramCreate(false)
+  }, [])
+
   return (
     <div className="space-y-4">
       {(message || error) && (
@@ -2055,46 +2086,30 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
           <ScrollableZoomSurfaceBlock controlsLabel="Table zoom">
               <BacklogListBlock
                 programs={visiblePrograms}
-                loadEpics={async program => {
-                  const { nodes } = await invokeCapabilityOrThrow({
-                    capability: 'organizer.nodes.list_children',
-                  input: { parentKey: program.key },
-                  actor: BACKLOG_ACTOR,
-                })
-                return nodes
-              }}
-              loadChildren={async node => {
-                const { nodes } = await invokeCapabilityOrThrow({
-                  capability: 'organizer.nodes.list_children',
-                  input: { parentKey: node.key },
-                  actor: BACKLOG_ACTOR,
-                })
-                return nodes
-              }}
-              treeRevision={treeRevision}
-              externallyUpdatedNode={lastExternallyUpdatedNode}
-              selectedNodeId={selectedNode?.uuid ?? null}
-              onSelectNode={(node) => setSelectedNode(node)}
-              onCreateChild={createChildNode}
-              onDropNodeToNode={dropNodeToNode}
-              onReorderSiblings={reorderSiblingRows}
-              projectPresetTagsByRoot={projectPresetTagsByRoot}
-              projectTagColorsByRoot={projectTagColorsByRoot}
-              programGroups={activeProjectProgramGroups}
-              programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
-              persistenceKey={activeProjectRoot || 'all-projects'}
-              onCreateProgramGroup={createActiveProjectProgramGroup}
-              onDeleteProgramGroup={deleteActiveProjectProgramGroup}
+                loadEpics={handleLoadEpics}
+                loadChildren={handleLoadChildren}
+                treeRevision={treeRevision}
+                externallyUpdatedNode={lastExternallyUpdatedNode}
+                selectedNodeId={selectedNode?.uuid ?? null}
+                onSelectNode={handleSelectNode}
+                onCreateChild={createChildNode}
+                onDropNodeToNode={dropNodeToNode}
+                onReorderSiblings={reorderSiblingRows}
+                projectPresetTagsByRoot={projectPresetTagsByRoot}
+                projectTagColorsByRoot={projectTagColorsByRoot}
+                programGroups={activeProjectProgramGroups}
+                programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
+                persistenceKey={activeProjectRoot || 'all-projects'}
+                onCreateProgramGroup={createActiveProjectProgramGroup}
+                onDeleteProgramGroup={deleteActiveProjectProgramGroup}
                 onToggleProgramGroupCollapsed={toggleActiveProjectProgramGroupCollapsed}
-                onAssignProgramToGroup={(program, groupId) => {
-                  assignProgramToActiveProjectGroup(program.uuid, groupId)
-                }}
+                onAssignProgramToGroup={handleAssignProgramToGroup}
                 showProgramLayoutToggle={false}
                 programLayoutEditMode={programLayoutEditMode}
                 onProgramLayoutEditModeChange={setProgramLayoutEditMode}
                 focusRootCreateRequestNonce={focusRootCreateRequestNonce}
                 showRootInlineCreate={showRootProgramCreate}
-                onRootInlineCreateCreated={() => setShowRootProgramCreate(false)}
+                onRootInlineCreateCreated={handleRootInlineCreateCreated}
                 onUpdateNodeStatus={updateNodeStatusFor}
                 onUpdateTaskStatus={updateTaskStatusFor}
                 onUpdateNodeNotes={updateNodeNotesFor}

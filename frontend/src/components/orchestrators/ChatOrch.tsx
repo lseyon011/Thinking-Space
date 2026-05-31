@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
-import { Loader2, Send, AlertCircle, PanelLeftClose } from 'lucide-react'
+import { Loader2, Send, AlertCircle } from 'lucide-react'
 import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useExpandedSetBlock'
 import SidebarGroupHeaderBlock from '@/components/lego_blocks/units/ui/SidebarGroupHeaderBlock'
 import ReactMarkdown from 'react-markdown'
@@ -270,8 +270,10 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
         )}
         aria-hidden={sidebarCollapsed}
       >
-        {/* Sidebar header */}
-        <div className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between gap-1 px-2">
+        <p className="mb-2 mt-4 px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          AI
+        </p>
+        <div className="flex shrink-0 items-center justify-between gap-1 px-2 pb-2">
           <SubNavTabsBlock
             ariaLabel="AI section"
             className="text-xs"
@@ -280,15 +282,6 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
               { to: '/ai/schedules', label: 'Schedules' },
             ]}
           />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0"
-            title="Collapse sidebar"
-            onClick={() => setSidebarCollapsed(true)}
-          >
-            <PanelLeftClose className="h-4 w-4" />
-          </Button>
         </div>
 
         {/* Tab list */}

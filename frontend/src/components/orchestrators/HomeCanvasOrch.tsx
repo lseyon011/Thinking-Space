@@ -21,8 +21,8 @@ import {
   writeHomeCanvas,
 } from '@/services/lego_blocks/integrations/homeCanvasStorageBlock'
 
-const ANCHOR_CENTER_X = 6000 / 2
-const ANCHOR_CENTER_Y = 4000 / 2
+const ANCHOR_CENTER_X = 4500 / 2
+const ANCHOR_CENTER_Y = 3000 / 2
 
 const SEED_TILES: CanvasTile[] = [
   {
@@ -65,8 +65,16 @@ const WRITE_DEBOUNCE_MS = 500
 export default function HomeCanvasOrch() {
   const navigate = useNavigate()
   const theme = useCanvasThemeBlock()
-  const { transform, containerRef, resetZoom, centerOnWorld, worldWidth, worldHeight } =
-    useInfiniteCanvasBlock()
+  const {
+    transform,
+    containerRef,
+    resetZoom,
+    centerOnWorld,
+    worldWidth,
+    worldHeight,
+    viewportWidth,
+    viewportHeight,
+  } = useInfiniteCanvasBlock()
   const {
     tiles,
     focusedId,
@@ -234,15 +242,13 @@ export default function HomeCanvasOrch() {
   // We compute the viewport rect from the current transform; pad by ~200px so
   // widgets just outside the edge stay warm and don't flash on re-entry.
   const viewportPad = 200
+  const viewW = viewportWidth || window.innerWidth
+  const viewH = viewportHeight || window.innerHeight
   const viewportRect = {
     x: -transform.x / transform.scale - viewportPad,
     y: -transform.y / transform.scale - viewportPad,
-    w:
-      (containerRef.current?.clientWidth ?? window.innerWidth) / transform.scale +
-      viewportPad * 2,
-    h:
-      (containerRef.current?.clientHeight ?? window.innerHeight) / transform.scale +
-      viewportPad * 2,
+    w: viewW / transform.scale + viewportPad * 2,
+    h: viewH / transform.scale + viewportPad * 2,
   }
   const isTileOffscreen = (tile: CanvasTile): boolean => {
     return (
@@ -441,10 +447,7 @@ export default function HomeCanvasOrch() {
         transformX={transform.x}
         transformY={transform.y}
         scale={transform.scale}
-        viewport={{
-          width: containerRef.current?.clientWidth ?? window.innerWidth,
-          height: containerRef.current?.clientHeight ?? window.innerHeight,
-        }}
+        viewport={{ width: viewW, height: viewH }}
         onJump={centerOnWorld}
         width={minimapWidth}
         edgeInset={hudEdgeInset}

@@ -778,19 +778,10 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
 
   const inlineExplorerContent = useMemo(() => (
     <>
-      <div className="ltm-shell-segment-header ltm-thinking-space-explorer-chrome flex h-11 shrink-0 items-center justify-between px-2">
+      <div className="ltm-shell-segment-header ltm-thinking-space-explorer-chrome flex h-11 shrink-0 items-center px-2">
         <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
           {inlineExplorerTitle}
         </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="ltm-touch-target h-8 w-8"
-          title="Collapse explorer"
-          onClick={() => setExplorerCollapsed(true)}
-        >
-          <PanelLeftClose className="h-4 w-4" />
-        </Button>
       </div>
       {useTopRssExplorerToggle ? (
         <div className="shrink-0 px-3 py-2">

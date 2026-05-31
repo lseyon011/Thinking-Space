@@ -1,19 +1,13 @@
-export interface WebullSidebarChromeStateBlock {
-  enabled: boolean
-  collapsed: boolean
-  label: string
-}
+import { createSidebarChromeBlock, type SidebarChromeStateBlock } from '@/services/lego_blocks/units/sidebarChromeBlock'
 
-export const Webull_SIDEBAR_CHROME_STATE_EVENT_BLOCK = 'ltm:webull:sidebar-chrome-state'
-export const Webull_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK = 'ltm:webull:sidebar-chrome-toggle'
+export interface WebullSidebarChromeStateBlock extends SidebarChromeStateBlock {}
 
-export function dispatchWebullSidebarChromeStateBlock(state: WebullSidebarChromeStateBlock): void {
-  window.dispatchEvent(new CustomEvent<WebullSidebarChromeStateBlock>(
-    Webull_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
-    { detail: state },
-  ))
-}
+const block = createSidebarChromeBlock<WebullSidebarChromeStateBlock>('webull')
 
-export function dispatchWebullSidebarChromeToggleBlock(): void {
-  window.dispatchEvent(new CustomEvent<void>(Webull_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK))
-}
+export const Webull_SIDEBAR_CHROME_STATE_EVENT_BLOCK = block.stateEvent
+export const Webull_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK = block.toggleEvent
+
+export const dispatchWebullSidebarChromeStateBlock = block.dispatchState
+export const dispatchWebullSidebarChromeToggleBlock = block.dispatchToggle
+
+export const webullSidebarChromeBlock = block

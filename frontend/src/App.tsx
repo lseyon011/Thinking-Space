@@ -1,5 +1,5 @@
 import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Bug,
@@ -10,8 +10,6 @@ import {
   GitBranch,
   Loader2,
   Menu,
-  Eye,
-  EyeOff,
   PanelLeft,
   PanelLeftClose,
   PlusSquare,
@@ -53,6 +51,12 @@ import { FrozenRouteBlock } from './components/lego_blocks/units/FrozenRouteBloc
 import RouteActivityProviderBlock from './components/lego_blocks/units/RouteActivityProviderBlock'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
 import AppTabsBlock, { type AppWorkspaceTabBlockModel } from './components/lego_blocks/units/AppTabsBlock'
+import {
+  logPerfTraceBootBanner,
+  measureFrameAndSettle,
+  perfReport,
+  perfTraceEnabled,
+} from './services/lego_blocks/units/perfTraceBlock'
 import { copyTextToClipboard } from './components/lego_blocks/units/BacklogListDomainBlock'
 import { Button } from './components/lego_blocks/units/ui/button'
 import RuntimeErrorBoundaryBlock from './components/lego_blocks/integrations/RuntimeErrorBoundaryBlock'
@@ -130,36 +134,32 @@ import {
   shouldStartEdgeSwipeOpenBlock,
 } from '@/services/lego_blocks/units/uiGestureBlock'
 import {
-  dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock,
-  dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock,
-  THINKING_SPACE_GOOGLE_WORKSPACE_CHROME_STATE_EVENT_BLOCK,
+  thinkingSpaceGoogleWorkspaceChromeBlock,
   type ThinkingSpaceGoogleWorkspaceChromeStateBlock,
 } from '@/services/lego_blocks/units/thinkingSpaceGoogleWorkspaceChromeBlock'
 import {
-  CHAT_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
-  dispatchChatSidebarChromeToggleBlock,
-  dispatchChatSidebarChromeToggleHeaderBlock,
+  chatSidebarChromeBlock,
   type ChatSidebarChromeStateBlock,
 } from '@/services/lego_blocks/units/chatSidebarChromeBlock'
 import {
-  WEB_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
-  NEW_THOUGHT_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
-  dispatchWebSidebarChromeToggleBlock,
-  dispatchWebSidebarChromeToggleHeaderBlock,
-  dispatchNewThoughtSidebarChromeToggleBlock,
+  newThoughtSidebarChromeBlock,
+  webSidebarChromeBlock,
   type WebSidebarChromeStateBlock,
 } from '@/services/lego_blocks/units/webSidebarChromeBlock'
 import {
-  ORGANIZER_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
-  dispatchOrganizerSidebarChromeToggleBlock,
-  dispatchOrganizerSidebarChromeToggleHeaderBlock,
+  organizerSidebarChromeBlock,
   type OrganizerSidebarChromeStateBlock,
 } from '@/services/lego_blocks/units/organizerSidebarChromeBlock'
 import {
-  Webull_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
-  dispatchWebullSidebarChromeToggleBlock,
+  webullSidebarChromeBlock,
   type WebullSidebarChromeStateBlock,
 } from '@/personal_extension/services/lego_blocks/units/webullSidebarChromeBlock'
+import {
+  toolsSidebarChromeBlock,
+  type ToolsSidebarChromeStateBlock,
+} from '@/services/lego_blocks/units/toolsSidebarChromeBlock'
+import type { SidebarChromeBlock } from '@/services/lego_blocks/units/sidebarChromeBlock'
+import SidebarChromeButtonBlock from '@/components/lego_blocks/units/SidebarChromeButtonBlock'
 import {
   captureUnhandledRejectionReportBlock,
   captureWindowErrorReportBlock,
@@ -285,6 +285,7 @@ const TOOLS_NAV_ACTIVE_PATHS: readonly string[] = [
   '/extension-builder',
   '/terminal',
   '/password-manager',
+  '/personal-tools',
   '/personal-extension',
 ]
 
@@ -673,6 +674,11 @@ function App() {
     collapsed: false,
     label: 'webull',
   })
+  const [toolsSidebarChromeState, setToolsSidebarChromeState] = useState<ToolsSidebarChromeStateBlock>({
+    enabled: false,
+    collapsed: false,
+    label: 'Tools',
+  })
   const [newThoughtSidebarChromeState, setNewThoughtSidebarChromeState] = useState({ enabled: false, collapsed: false })
   const [syncPanelOpen, setSyncPanelOpen] = useState(false)
   const [syncActionRunning, setSyncActionRunning] = useState<'sync' | 'rebuild' | null>(null)
@@ -714,6 +720,15 @@ function App() {
   const nativeChromeScrollTargetRef = useRef<EventTarget | null>(null)
   const nativeChromeLastScrollTopRef = useRef(0)
   const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
+  // [tab-switch-perf] one-shot ref populated by handleSelectWorkspaceTab; read
+  // and cleared by the layout-effect/rAF below. Remove with the related code
+  // block once we've diagnosed the tab-switch lag.
+  const tabSwitchPerfRef = useRef<{
+    tabId: string
+    label: string
+    route: string
+    clickAt: number
+  } | null>(null)
   const initialWindowContextRef = useRef<WindowContextBlock>(getWindowContextBlock())
   const [windowContext, setWindowContext] = useState<WindowContextBlock>(initialWindowContextRef.current)
   const activeWorkspaceTabIdRef = useRef(readScopedAppShellActiveTabIdBlock(initialWindowContextRef.current))
@@ -829,6 +844,7 @@ function App() {
     && organizerSidebarChromeState.enabled
   const showOrganizerHeaderToggle = showOrganizerSidebarChromeControl && organizerSidebarChromeState.showHeaderToggle
   const showWebullSidebarChromeControl = location.pathname === '/webull' && webullSidebarChromeState.enabled
+  const showToolsSidebarChromeControl = toolsSidebarChromeState.enabled && TOOLS_NAV_ACTIVE_PATHS.includes(location.pathname)
   const showNewThoughtSidebarChromeControl = location.pathname === '/new-thought' && newThoughtSidebarChromeState.enabled
   // On Capacitor, each of these tabs owns its own edge-swipe gesture.
   // Suppress the global nav-drawer swipe so they don't conflict.
@@ -837,6 +853,7 @@ function App() {
     || showWebSidebarChromeControl
     || showOrganizerSidebarChromeControl
     || showWebullSidebarChromeControl
+    || showToolsSidebarChromeControl
     || showNewThoughtSidebarChromeControl
   const isElectronDesktopSurface = layout.surface === 'electron' && layout.mode === 'desktop'
   const isMacDesktopSurface = isElectronDesktopSurface
@@ -1062,6 +1079,113 @@ function App() {
   const isCapacitorSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
   const showCapacitorTopChromeMenu = compactNav && !drawerOpen && isCapacitorSurface && !useNativeTopChrome
   const googleWorkspaceChromeLeftOffsetPx = isMacDesktopSurface ? 88 : 8
+
+  interface SidebarChromeButtonConfig {
+    id: string
+    show: boolean
+    block: SidebarChromeBlock<any>
+    collapsed: boolean
+    headerVisible?: boolean
+    showHeaderToggle?: boolean
+    toggleLabels: { show: string; hide: string }
+    headerToggleLabels?: { show: string; hide: string }
+    variant?: 'default' | 'soft'
+    /** Where the button is rendered in the top toolbar. */
+    position?: 'inline' | 'capacitor-menu' | 'left-aligned' | 'right-aligned'
+  }
+  const sidebarChromeButtons: SidebarChromeButtonConfig[] = ([
+    {
+      id: 'thinking-space-explorer-capacitor',
+      show: showCapacitorTopChromeMenu && showGoogleWorkspaceChromeControls,
+      block: thinkingSpaceGoogleWorkspaceChromeBlock,
+      collapsed: thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed,
+      headerVisible: thinkingSpaceGoogleWorkspaceChromeState.headerVisible,
+      showHeaderToggle: thinkingSpaceGoogleWorkspaceChromeState.showHeaderToggle,
+      toggleLabels: { show: 'Show explorer', hide: 'Hide explorer' },
+      headerToggleLabels: { show: 'Show URL bar', hide: 'Hide URL bar' },
+      variant: 'soft',
+      position: 'capacitor-menu',
+    },
+    {
+      id: 'thinking-space-explorer-left',
+      show: showLeftAlignedGoogleWorkspaceChromeControls,
+      block: thinkingSpaceGoogleWorkspaceChromeBlock,
+      collapsed: thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed,
+      headerVisible: thinkingSpaceGoogleWorkspaceChromeState.headerVisible,
+      showHeaderToggle: thinkingSpaceGoogleWorkspaceChromeState.showHeaderToggle,
+      toggleLabels: { show: 'Show explorer', hide: 'Hide explorer' },
+      headerToggleLabels: { show: 'Show document header', hide: 'Hide document header' },
+      variant: 'soft',
+      position: 'left-aligned',
+    },
+    {
+      id: 'thinking-space-explorer-right',
+      show: showRightAlignedGoogleWorkspaceChromeControls,
+      block: thinkingSpaceGoogleWorkspaceChromeBlock,
+      collapsed: thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed,
+      headerVisible: thinkingSpaceGoogleWorkspaceChromeState.headerVisible,
+      showHeaderToggle: thinkingSpaceGoogleWorkspaceChromeState.showHeaderToggle,
+      toggleLabels: { show: 'Show explorer', hide: 'Hide explorer' },
+      headerToggleLabels: { show: 'Show document header', hide: 'Hide document header' },
+      variant: 'soft',
+      position: 'right-aligned',
+    },
+    {
+      id: 'chat',
+      show: showChatSidebarChromeControl,
+      block: chatSidebarChromeBlock,
+      collapsed: chatSidebarChromeState.collapsed,
+      headerVisible: chatSidebarChromeState.headerVisible,
+      showHeaderToggle: chatSidebarChromeState.showHeaderToggle,
+      toggleLabels: { show: 'Show chat sidebar', hide: 'Hide chat sidebar' },
+      headerToggleLabels: { show: 'Show URL bar', hide: 'Hide URL bar' },
+    },
+    {
+      id: 'web',
+      show: showWebSidebarChromeControl,
+      block: webSidebarChromeBlock,
+      collapsed: webSidebarChromeState.collapsed,
+      headerVisible: webSidebarChromeState.headerVisible,
+      showHeaderToggle: webSidebarChromeState.showHeaderToggle,
+      toggleLabels: { show: 'Show web sidebar', hide: 'Hide web sidebar' },
+      headerToggleLabels: { show: 'Show URL bar', hide: 'Hide URL bar' },
+    },
+    {
+      id: 'organizer',
+      show: showOrganizerSidebarChromeControl,
+      block: organizerSidebarChromeBlock,
+      collapsed: organizerSidebarChromeState.collapsed,
+      headerVisible: organizerSidebarChromeState.headerVisible,
+      showHeaderToggle: organizerSidebarChromeState.showHeaderToggle,
+      toggleLabels: { show: 'Show organizer sidebar', hide: 'Hide organizer sidebar' },
+      headerToggleLabels: { show: 'Show document headers', hide: 'Hide document headers' },
+    },
+    {
+      id: 'webull',
+      show: showWebullSidebarChromeControl,
+      block: webullSidebarChromeBlock,
+      collapsed: webullSidebarChromeState.collapsed,
+      toggleLabels: { show: 'Show sidebar', hide: 'Hide sidebar' },
+    },
+    {
+      id: 'tools',
+      show: showToolsSidebarChromeControl,
+      block: toolsSidebarChromeBlock,
+      collapsed: toolsSidebarChromeState.collapsed,
+      toggleLabels: { show: 'Show sidebar', hide: 'Hide sidebar' },
+    },
+    {
+      id: 'new-thought',
+      show: showNewThoughtSidebarChromeControl,
+      block: newThoughtSidebarChromeBlock,
+      collapsed: newThoughtSidebarChromeState.collapsed,
+      toggleLabels: { show: 'Show left panel', hide: 'Hide left panel' },
+    },
+  ] as SidebarChromeButtonConfig[]).map(cfg => ({ position: 'inline', ...cfg }))
+  const inlineSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'inline')
+  const capacitorMenuSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'capacitor-menu')
+  const leftAlignedSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'left-aligned')
+  const rightAlignedSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'right-aligned')
   const leftGoogleWorkspaceChromeControlsWidthPx = showLeftAlignedGoogleWorkspaceChromeControls
     ? googleWorkspaceChromeLeftOffsetPx + 76
     : 0
@@ -1854,22 +1978,22 @@ function App() {
   const handleNativeSidebarToggle = useCallback(() => {
     switch (nativeSidebarControl.kind) {
       case 'thinking-space-sidebar':
-        dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock()
+        thinkingSpaceGoogleWorkspaceChromeBlock.dispatchToggle()
         return
       case 'chat-sidebar':
-        dispatchChatSidebarChromeToggleBlock()
+        chatSidebarChromeBlock.dispatchToggle()
         return
       case 'web-sidebar':
-        dispatchWebSidebarChromeToggleBlock()
+        webSidebarChromeBlock.dispatchToggle()
         return
       case 'organizer-sidebar':
-        dispatchOrganizerSidebarChromeToggleBlock()
+        organizerSidebarChromeBlock.dispatchToggle()
         return
       case 'webull-sidebar':
-        dispatchWebullSidebarChromeToggleBlock()
+        webullSidebarChromeBlock.dispatchToggle()
         return
       case 'new-thought-sidebar':
-        dispatchNewThoughtSidebarChromeToggleBlock()
+        newThoughtSidebarChromeBlock.dispatchToggle()
         return
       case 'drawer':
         setDrawerOpen(prev => !prev)
@@ -1882,16 +2006,16 @@ function App() {
   const handleNativeHeaderToggle = useCallback(() => {
     switch (nativeHeaderToolControl.kind) {
       case 'thinking-space-header':
-        dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock()
+        thinkingSpaceGoogleWorkspaceChromeBlock.dispatchToggleHeader()
         return
       case 'chat-header':
-        dispatchChatSidebarChromeToggleHeaderBlock()
+        chatSidebarChromeBlock.dispatchToggleHeader()
         return
       case 'web-header':
-        dispatchWebSidebarChromeToggleHeaderBlock()
+        webSidebarChromeBlock.dispatchToggleHeader()
         return
       case 'organizer-header':
-        dispatchOrganizerSidebarChromeToggleHeaderBlock()
+        organizerSidebarChromeBlock.dispatchToggleHeader()
         return
       default:
         return
@@ -1902,6 +2026,15 @@ function App() {
     if (tabId === activeWorkspaceTabId) return
     const target = workspaceTabs.find(tab => tab.id === tabId)
     if (!target) return
+    // Capture click time for the perf tracer. Cheap; gated on read side.
+    if (perfTraceEnabled()) {
+      tabSwitchPerfRef.current = {
+        tabId,
+        label: target.label,
+        route: target.route,
+        clickAt: performance.now(),
+      }
+    }
     if (target.route !== currentRoute) {
       pendingWorkspaceTabNavigationRef.current = {
         tabId,
@@ -1915,6 +2048,54 @@ function App() {
       navigate(target.route)
     }
   }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
+
+  // Tab-switch perf tracing. Fires on ANY pathname change (catches tab
+  // strip, sidebar nav, command palette). Logged via perfTraceBlock — gated
+  // by `localStorage.thinkspc.perfTrace = '1'` or `?perfTrace=1`, so this is
+  // safe to leave in production paths and zero-cost when disabled.
+  const lastPathRef = useRef<string>(location.pathname)
+  useLayoutEffect(() => {
+    if (location.pathname === lastPathRef.current) return
+    const prevPath = lastPathRef.current
+    lastPathRef.current = location.pathname
+    if (!perfTraceEnabled()) {
+      tabSwitchPerfRef.current = null
+      return
+    }
+    const click = tabSwitchPerfRef.current
+    tabSwitchPerfRef.current = null
+    const commitAt = performance.now()
+    const startAt = click?.clickAt ?? commitAt
+    const renderMs = commitAt - startAt
+    const sourceLabel = click ? 'click→commit' : 'detect→commit'
+    void measureFrameAndSettle(commitAt).then(({ paintMs, settleMs, settleCapped, mutationCount, topMutators, byAncestor }) => {
+      const mutatorsLine = topMutators.length
+        ? '\n  top mutators:\n' +
+          topMutators.map(m =>
+            `    ${String(m.count).padStart(4)}×  ${m.target}  [${m.kinds}]`,
+          ).join('\n')
+        : ''
+      const ancestorsLine = byAncestor.length
+        ? '\n  by surface ancestor:\n' +
+          byAncestor.map(a => `    ${String(a.count).padStart(4)}×  ${a.ancestor}`).join('\n')
+        : ''
+      perfReport(`tab-switch ${prevPath} → ${location.pathname}`, {
+        [sourceLabel]: renderMs,
+        'commit→paint': paintMs,
+        'commit→settle': settleCapped
+          ? `${settleMs.toFixed(1)}ms (CAPPED — ongoing mutations)`
+          : settleMs,
+        mutations: `${mutationCount} total${mutatorsLine}${ancestorsLine}`,
+        total: settleMs + renderMs,
+      })
+    })
+  }, [location.pathname])
+
+  // Boot banner — only logs if perf tracing is enabled. Makes it obvious that
+  // the instrumented bundle is live without polluting normal sessions.
+  useEffect(() => {
+    logPerfTraceBootBanner()
+  }, [])
 
   const handleCloseWorkspaceTab = useCallback((tabId: string) => {
     if (workspaceTabs.length <= 1) return
@@ -2522,9 +2703,9 @@ function App() {
       })
     }
 
-    window.addEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_CHROME_STATE_EVENT_BLOCK, handleChromeState as EventListener)
+    window.addEventListener(thinkingSpaceGoogleWorkspaceChromeBlock.stateEvent, handleChromeState as EventListener)
     return () => {
-      window.removeEventListener(THINKING_SPACE_GOOGLE_WORKSPACE_CHROME_STATE_EVENT_BLOCK, handleChromeState as EventListener)
+      window.removeEventListener(thinkingSpaceGoogleWorkspaceChromeBlock.stateEvent, handleChromeState as EventListener)
     }
   }, [])
 
@@ -2553,9 +2734,9 @@ function App() {
         return next
       })
     }
-    window.addEventListener(CHAT_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleChatChromeState as EventListener)
+    window.addEventListener(chatSidebarChromeBlock.stateEvent, handleChatChromeState as EventListener)
     return () => {
-      window.removeEventListener(CHAT_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleChatChromeState as EventListener)
+      window.removeEventListener(chatSidebarChromeBlock.stateEvent, handleChatChromeState as EventListener)
     }
   }, [])
 
@@ -2588,58 +2769,71 @@ function App() {
         return next
       })
     }
-    window.addEventListener(WEB_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleWebChromeState as EventListener)
+    window.addEventListener(webSidebarChromeBlock.stateEvent, handleWebChromeState as EventListener)
     return () => {
-      window.removeEventListener(WEB_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleWebChromeState as EventListener)
+      window.removeEventListener(webSidebarChromeBlock.stateEvent, handleWebChromeState as EventListener)
     }
   }, [])
 
   useEffect(() => {
-    const handleOrganizerChromeState = (event: Event) => {
-      const customEvent = event as CustomEvent<OrganizerSidebarChromeStateBlock>
-      const detail = customEvent.detail
-      if (!detail) return
-      setOrganizerSidebarChromeState({
-        enabled: Boolean(detail.enabled),
-        collapsed: Boolean(detail.collapsed),
-        label: typeof detail.label === 'string' ? detail.label : 'Organizer',
-        headerVisible: detail.headerVisible !== false,
-        showHeaderToggle: Boolean(detail.showHeaderToggle),
-      })
+    const subscribers: Array<{ event: string; handler: EventListener }> = [
+      {
+        event: organizerSidebarChromeBlock.stateEvent,
+        handler: (event) => {
+          const detail = (event as CustomEvent<OrganizerSidebarChromeStateBlock>).detail
+          if (!detail) return
+          setOrganizerSidebarChromeState({
+            enabled: Boolean(detail.enabled),
+            collapsed: Boolean(detail.collapsed),
+            label: typeof detail.label === 'string' ? detail.label : 'Organizer',
+            headerVisible: detail.headerVisible !== false,
+            showHeaderToggle: Boolean(detail.showHeaderToggle),
+          })
+        },
+      },
+      {
+        event: webullSidebarChromeBlock.stateEvent,
+        handler: (event) => {
+          const detail = (event as CustomEvent<WebullSidebarChromeStateBlock>).detail
+          if (!detail) return
+          setWebullSidebarChromeState({
+            enabled: Boolean(detail.enabled),
+            collapsed: Boolean(detail.collapsed),
+            label: typeof detail.label === 'string' ? detail.label : 'webull',
+          })
+        },
+      },
+      {
+        event: toolsSidebarChromeBlock.stateEvent,
+        handler: (event) => {
+          const detail = (event as CustomEvent<ToolsSidebarChromeStateBlock>).detail
+          if (!detail) return
+          setToolsSidebarChromeState({
+            enabled: Boolean(detail.enabled),
+            collapsed: Boolean(detail.collapsed),
+            label: typeof detail.label === 'string' ? detail.label : 'Tools',
+          })
+        },
+      },
+      {
+        event: newThoughtSidebarChromeBlock.stateEvent,
+        handler: (event) => {
+          const detail = (event as CustomEvent<{ enabled: boolean; collapsed: boolean }>).detail
+          if (!detail) return
+          setNewThoughtSidebarChromeState({
+            enabled: Boolean(detail.enabled),
+            collapsed: Boolean(detail.collapsed),
+          })
+        },
+      },
+    ]
+    for (const { event, handler } of subscribers) {
+      window.addEventListener(event, handler)
     }
-    window.addEventListener(ORGANIZER_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleOrganizerChromeState as EventListener)
     return () => {
-      window.removeEventListener(ORGANIZER_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleOrganizerChromeState as EventListener)
-    }
-  }, [])
-
-
-  useEffect(() => {
-    const handleWebullChromeState = (event: Event) => {
-      const customEvent = event as CustomEvent<WebullSidebarChromeStateBlock>
-      const detail = customEvent.detail
-      if (!detail) return
-      setWebullSidebarChromeState({
-        enabled: Boolean(detail.enabled),
-        collapsed: Boolean(detail.collapsed),
-        label: typeof detail.label === 'string' ? detail.label : 'webull',
-      })
-    }
-    window.addEventListener(Webull_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleWebullChromeState as EventListener)
-    return () => {
-      window.removeEventListener(Webull_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleWebullChromeState as EventListener)
-    }
-  }, [])
-
-  useEffect(() => {
-    const handleNewThoughtChromeState = (event: Event) => {
-      const detail = (event as CustomEvent<{ enabled: boolean; collapsed: boolean }>).detail
-      if (!detail) return
-      setNewThoughtSidebarChromeState({ enabled: Boolean(detail.enabled), collapsed: Boolean(detail.collapsed) })
-    }
-    window.addEventListener(NEW_THOUGHT_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleNewThoughtChromeState as EventListener)
-    return () => {
-      window.removeEventListener(NEW_THOUGHT_SIDEBAR_CHROME_STATE_EVENT_BLOCK, handleNewThoughtChromeState as EventListener)
+      for (const { event, handler } of subscribers) {
+        window.removeEventListener(event, handler)
+      }
     }
   }, [])
 
@@ -2769,187 +2963,59 @@ function App() {
                     {!phoneMode && <span>Menu</span>}
                   </button>
 
-                  {showGoogleWorkspaceChromeControls && (
-                    <button
-                      type="button"
-                      onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}
-                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/50 bg-background/75 text-muted-foreground transition-colors hover:bg-background/90 hover:text-foreground"
-                      aria-label={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
-                      title={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
-                    >
-                      {thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed
-                        ? <PanelLeft className="h-3.5 w-3.5" />
-                        : <PanelLeftClose className="h-3.5 w-3.5" />}
-                    </button>
-                  )}
-
-                  {showThinkingSpaceHeaderToggle && (
-                    <button
-                      type="button"
-                      onClick={dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock}
-                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar'}
-                      title={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar'}
-                    >
-                      {thinkingSpaceGoogleWorkspaceChromeState.headerVisible
-                        ? <EyeOff className="h-3.5 w-3.5" />
-                        : <Eye className="h-3.5 w-3.5" />}
-                    </button>
-                  )}
+                  {capacitorMenuSidebarChromeButtons.map(cfg => cfg.show && (
+                    <SidebarChromeButtonBlock
+                      key={cfg.id}
+                      block={cfg.block}
+                      collapsed={cfg.collapsed}
+                      headerVisible={cfg.headerVisible}
+                      showHeaderToggle={cfg.showHeaderToggle}
+                      toggleLabels={cfg.toggleLabels}
+                      headerToggleLabels={cfg.headerToggleLabels}
+                      variant={cfg.variant}
+                      wrap={false}
+                    />
+                  ))}
                 </div>
               )}
 
-              {showChatSidebarChromeControl && (
-                <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
-                  <button
-                    type="button"
-                    onClick={dispatchChatSidebarChromeToggleBlock}
-                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
-                    aria-label={chatSidebarChromeState.collapsed ? 'Show chat sidebar' : 'Hide chat sidebar'}
-                    title={chatSidebarChromeState.collapsed ? 'Show chat sidebar' : 'Hide chat sidebar'}
-                  >
-                    {chatSidebarChromeState.collapsed
-                      ? <PanelLeft className="h-3.5 w-3.5" />
-                      : <PanelLeftClose className="h-3.5 w-3.5" />}
-                  </button>
-
-                  {showChatHeaderToggle && (
-                    <button
-                      type="button"
-                      onClick={dispatchChatSidebarChromeToggleHeaderBlock}
-                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label={chatSidebarChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar'}
-                      title={chatSidebarChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar'}
-                    >
-                      {chatSidebarChromeState.headerVisible
-                        ? <EyeOff className="h-3.5 w-3.5" />
-                        : <Eye className="h-3.5 w-3.5" />}
-                    </button>
-                  )}
+              {inlineSidebarChromeButtons.map(cfg => cfg.show && (
+                <div
+                  key={cfg.id}
+                  className="inline-flex items-center gap-2"
+                  style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}
+                >
+                  <SidebarChromeButtonBlock
+                    block={cfg.block}
+                    collapsed={cfg.collapsed}
+                    headerVisible={cfg.headerVisible}
+                    showHeaderToggle={cfg.showHeaderToggle}
+                    toggleLabels={cfg.toggleLabels}
+                    headerToggleLabels={cfg.headerToggleLabels}
+                    variant={cfg.variant}
+                    wrap={false}
+                  />
                 </div>
-              )}
+              ))}
 
-              {showWebSidebarChromeControl && (
-                <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
-                  <button
-                    type="button"
-                    onClick={dispatchWebSidebarChromeToggleBlock}
-                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
-                    aria-label={webSidebarChromeState.collapsed ? 'Show web sidebar' : 'Hide web sidebar'}
-                    title={webSidebarChromeState.collapsed ? 'Show web sidebar' : 'Hide web sidebar'}
-                  >
-                    {webSidebarChromeState.collapsed
-                      ? <PanelLeft className="h-3.5 w-3.5" />
-                      : <PanelLeftClose className="h-3.5 w-3.5" />}
-                  </button>
-
-                  {showWebHeaderToggle && (
-                    <button
-                      type="button"
-                      onClick={dispatchWebSidebarChromeToggleHeaderBlock}
-                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label={webSidebarChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar'}
-                      title={webSidebarChromeState.headerVisible ? 'Hide URL bar' : 'Show URL bar'}
-                    >
-                      {webSidebarChromeState.headerVisible
-                        ? <EyeOff className="h-3.5 w-3.5" />
-                        : <Eye className="h-3.5 w-3.5" />}
-                    </button>
-                  )}
+              {leftAlignedSidebarChromeButtons.map(cfg => cfg.show && (
+                <div
+                  key={cfg.id}
+                  className="inline-flex items-center gap-2"
+                  style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}
+                >
+                  <SidebarChromeButtonBlock
+                    block={cfg.block}
+                    collapsed={cfg.collapsed}
+                    headerVisible={cfg.headerVisible}
+                    showHeaderToggle={cfg.showHeaderToggle}
+                    toggleLabels={cfg.toggleLabels}
+                    headerToggleLabels={cfg.headerToggleLabels}
+                    variant={cfg.variant}
+                    wrap={false}
+                  />
                 </div>
-              )}
-
-              {showOrganizerSidebarChromeControl && (
-                <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
-                  <button
-                    type="button"
-                    onClick={dispatchOrganizerSidebarChromeToggleBlock}
-                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
-                    aria-label={organizerSidebarChromeState.collapsed ? 'Show organizer sidebar' : 'Hide organizer sidebar'}
-                    title={organizerSidebarChromeState.collapsed ? 'Show organizer sidebar' : 'Hide organizer sidebar'}
-                  >
-                    {organizerSidebarChromeState.collapsed
-                      ? <PanelLeft className="h-3.5 w-3.5" />
-                      : <PanelLeftClose className="h-3.5 w-3.5" />}
-                  </button>
-
-                  {showOrganizerHeaderToggle && (
-                    <button
-                      type="button"
-                      onClick={dispatchOrganizerSidebarChromeToggleHeaderBlock}
-                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label={organizerSidebarChromeState.headerVisible ? 'Hide document headers' : 'Show document headers'}
-                      title={organizerSidebarChromeState.headerVisible ? 'Hide document headers' : 'Show document headers'}
-                    >
-                      {organizerSidebarChromeState.headerVisible
-                        ? <EyeOff className="h-3.5 w-3.5" />
-                        : <Eye className="h-3.5 w-3.5" />}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {showWebullSidebarChromeControl && (
-                <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
-                  <button
-                    type="button"
-                    onClick={dispatchWebullSidebarChromeToggleBlock}
-                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
-                    aria-label={webullSidebarChromeState.collapsed ? 'Show sidebar' : 'Hide sidebar'}
-                    title={webullSidebarChromeState.collapsed ? 'Show sidebar' : 'Hide sidebar'}
-                  >
-                    {webullSidebarChromeState.collapsed
-                      ? <PanelLeft className="h-3.5 w-3.5" />
-                      : <PanelLeftClose className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-              )}
-
-              {showNewThoughtSidebarChromeControl && (
-                <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
-                  <button
-                    type="button"
-                    onClick={dispatchNewThoughtSidebarChromeToggleBlock}
-                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
-                    aria-label={newThoughtSidebarChromeState.collapsed ? 'Show left panel' : 'Hide left panel'}
-                    title={newThoughtSidebarChromeState.collapsed ? 'Show left panel' : 'Hide left panel'}
-                  >
-                    {newThoughtSidebarChromeState.collapsed
-                      ? <PanelLeft className="h-3.5 w-3.5" />
-                      : <PanelLeftClose className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-              )}
-
-              {showLeftAlignedGoogleWorkspaceChromeControls && (
-                <div className="inline-flex items-center gap-2" style={{ marginLeft: `${googleWorkspaceChromeLeftOffsetPx}px` }}>
-                  <button
-                    type="button"
-                    onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}
-                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/50 bg-background/75 text-muted-foreground transition-colors hover:bg-background/90 hover:text-foreground"
-                    aria-label={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
-                    title={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
-                  >
-                    {thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed
-                      ? <PanelLeft className="h-3.5 w-3.5" />
-                      : <PanelLeftClose className="h-3.5 w-3.5" />}
-                  </button>
-
-                  {showThinkingSpaceHeaderToggle && (
-                    <button
-                      type="button"
-                      onClick={dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock}
-                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header'}
-                      title={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header'}
-                    >
-                      {thinkingSpaceGoogleWorkspaceChromeState.headerVisible
-                        ? <EyeOff className="h-3.5 w-3.5" />
-                        : <Eye className="h-3.5 w-3.5" />}
-                    </button>
-                  )}
-                </div>
-              )}
+              ))}
             </div>
 
             <div
@@ -2977,35 +3043,19 @@ function App() {
               }}
             >
               <div ref={syncToolsRef} className="inline-flex items-center gap-2">
-                {showRightAlignedGoogleWorkspaceChromeControls && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}
-                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/50 bg-background/75 text-muted-foreground transition-colors hover:bg-background/90 hover:text-foreground"
-                      aria-label={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
-                      title={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
-                    >
-                      {thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed
-                        ? <PanelLeft className="h-3.5 w-3.5" />
-                        : <PanelLeftClose className="h-3.5 w-3.5" />}
-                    </button>
-
-                    {showThinkingSpaceHeaderToggle && (
-                      <button
-                        type="button"
-                        onClick={dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock}
-                        className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
-                        aria-label={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header'}
-                        title={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header'}
-                      >
-                        {thinkingSpaceGoogleWorkspaceChromeState.headerVisible
-                          ? <EyeOff className="h-3.5 w-3.5" />
-                          : <Eye className="h-3.5 w-3.5" />}
-                      </button>
-                    )}
-                  </>
-                )}
+                {rightAlignedSidebarChromeButtons.map(cfg => cfg.show && (
+                  <SidebarChromeButtonBlock
+                    key={cfg.id}
+                    block={cfg.block}
+                    collapsed={cfg.collapsed}
+                    headerVisible={cfg.headerVisible}
+                    showHeaderToggle={cfg.showHeaderToggle}
+                    toggleLabels={cfg.toggleLabels}
+                    headerToggleLabels={cfg.headerToggleLabels}
+                    variant={cfg.variant}
+                    wrap={false}
+                  />
+                ))}
 
                 {/* Debug console toggle */}
                 <button
@@ -3213,9 +3263,8 @@ function App() {
                     key={`web-surface:${tabId}`}
                     className="absolute inset-0 overflow-hidden"
                     style={{
-                      opacity: webSurfaceActive ? 1 : 0,
+                      visibility: webSurfaceActive ? 'visible' : 'hidden',
                       pointerEvents: webSurfaceActive ? 'auto' : 'none',
-                      transform: webSurfaceActive ? 'translate3d(0, 0, 0)' : 'translate3d(-200vw, 0, 0)',
                     }}
                     aria-hidden={!webSurfaceActive}
                   >

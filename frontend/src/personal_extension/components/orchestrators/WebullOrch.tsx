@@ -125,7 +125,11 @@ function toSnapshotFromCacheBlock(
   }
 }
 
-export default function WebullOrch() {
+interface WebullOrchProps {
+  pageTitle?: string
+}
+
+export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
   const { openFile } = useMarkdownViewer()
   const [activeSubtabId, setActiveSubtabId] = useState<WebullSubtabId>('overall')
   const [snapshot, setSnapshot] = useState<WebullOverallSnapshotOrch | null>(null)
@@ -491,6 +495,7 @@ export default function WebullOrch() {
 
   return (
     <WebullWorkspaceBlock
+      pageTitle={pageTitle}
       subtabs={Webull_SUBTABS}
       activeSubtabId={activeSubtabId}
       onSelectSubtab={setActiveSubtabId}

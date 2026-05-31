@@ -29,7 +29,10 @@ export default function SchedulesOrch(_props: SchedulesOrchProps) {
     <div className="flex h-full min-h-0">
       {/* ── Left sidebar: tab switcher + schedules list ── */}
       <aside className="flex w-64 shrink-0 flex-col overflow-hidden border-r border-border/50">
-        <div className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between gap-1 px-2">
+        <p className="mb-2 mt-4 px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          AI
+        </p>
+        <div className="flex shrink-0 items-center justify-between gap-1 px-2 pb-2">
           <SubNavTabsBlock
             ariaLabel="AI section"
             className="text-xs"

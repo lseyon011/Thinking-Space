@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { BookOpen, Building2, Pin, Wallet, type LucideIcon } from 'lucide-react'
 import {
   dispatchWebullSidebarChromeStateBlock,
   Webull_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
@@ -49,6 +50,12 @@ interface WebullSubtabBlock {
   label: string
 }
 
+const WEBULL_SUBTAB_ICONS: Record<WebullSubtabIdBlock, LucideIcon> = {
+  overall: Wallet,
+  memory: Pin,
+  study: BookOpen,
+}
+
 interface WebullLinkOptionBlock {
   path: string
   label: string
@@ -61,6 +68,7 @@ interface WebullPdfOptionBlock {
 }
 
 interface WebullWorkspaceBlockProps {
+  pageTitle?: string
   subtabs: WebullSubtabBlock[]
   activeSubtabId: WebullSubtabIdBlock
   onSelectSubtab: (id: WebullSubtabIdBlock) => void
@@ -837,6 +845,7 @@ function computeCompanySummaryMetricsBlock(positions: WebullPositionSummaryBlock
 }
 
 export default function WebullWorkspaceBlock({
+  pageTitle,
   subtabs,
   activeSubtabId,
   onSelectSubtab,
@@ -917,6 +926,13 @@ export default function WebullWorkspaceBlock({
   }, [])
 
   const handleToggleSidebar = useCallback(() => setSideTabsCollapsed(prev => !prev), [])
+  // Stable callbacks for BacklogListBlock — without these, the inline arrows
+  // at the call sites broke React.memo on BacklogListBlock and forced the
+  // full hierarchy list to re-render on every parent render.
+  const handleBacklogOpenRelated = useCallback((path: string) => {
+    onOpenNodeFile(path)
+  }, [onOpenNodeFile])
+  const handleBacklogCanOpenDetails = useCallback((node: NodeRecord) => node.type === 'epic', [])
   useIosSidebarSwipeBlock({
     isIos,
     isOpen: !sideTabsCollapsed,
@@ -1825,69 +1841,78 @@ export default function WebullWorkspaceBlock({
         : 'Canonical overall positions from Webull sync.'))
 
   return (
-    <div className={cn('grid gap-4', sideTabsCollapsed ? 'grid-cols-1' : 'lg:grid-cols-[200px_minmax(0,1fr)]')}>
+    <div className="ltm-webull-shell flex h-full min-h-0 w-full">
       {!sideTabsCollapsed && (
-        <aside className="space-y-3">
-        <div className="space-y-2 rounded-xl border bg-background p-3">
-          {subtabs.map((subtab) => {
-            const active = activeSubtabId === subtab.id && !showCompanyView
-            return (
-              <button
-                key={subtab.id}
-                type="button"
-                onClick={() => {
-                  onSelectSubtab(subtab.id)
-                  setPreserveOverallContext(false)
-                  onSelectCompanyTicker(null)
-                }}
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
-                  active
-                    ? 'bg-foreground text-background'
-                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                }`}
-              >
-                {subtab.label}
-              </button>
-            )
-          })}
+        <aside className="ltm-webull-shell-nav w-[220px] shrink-0 border-r border-border/60 bg-background/40 px-3 py-4">
+          <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Webull
+          </p>
+          <nav className="space-y-1">
+            {subtabs.map((subtab) => {
+              const active = activeSubtabId === subtab.id && !showCompanyView
+              const Icon = WEBULL_SUBTAB_ICONS[subtab.id]
+              return (
+                <button
+                  key={subtab.id}
+                  type="button"
+                  onClick={() => {
+                    onSelectSubtab(subtab.id)
+                    setPreserveOverallContext(false)
+                    onSelectCompanyTicker(null)
+                  }}
+                  className={cn(
+                    'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+                    active
+                      ? 'bg-foreground text-background'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="truncate">{subtab.label}</span>
+                </button>
+              )
+            })}
+          </nav>
 
-          <div className="pt-2">
-            <p className="px-1 pb-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Companies</p>
-            <div className="space-y-1">
-              {(executionOverview?.companies ?? []).map((company, companyIndex) => {
-                const active = showCompanyView && activeCompanyTicker === company.companyTicker
-                return (
-                  <button
-                    key={company.companyTicker}
-                    type="button"
-                    onClick={() => {
-                      setPreserveOverallContext(false)
-                      onSelectCompanyTicker(company.companyTicker)
-                    }}
-                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                      active
-                        ? 'bg-foreground text-background'
-                        : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                    }`}
-                  >
-                    <sup className="mr-1 inline-flex pt-0.5 align-super text-[9px] font-medium opacity-65 tabular-nums">
-                      {companyIndex + 1}
-                    </sup>
-                    {company.companyTicker}
-                    <span className="ml-1.5 text-xs opacity-80">({company.positions.length})</span>
-                  </button>
-                )
-              })}
-              {(executionOverview?.companies.length ?? 0) === 0 && (
-                <p className="px-2 py-1 text-xs text-muted-foreground">No companies yet.</p>
-              )}
-            </div>
-          </div>
-        </div>
+          <p className="mb-2 mt-5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Companies
+          </p>
+          <nav className="space-y-1">
+            {(executionOverview?.companies ?? []).map((company, companyIndex) => {
+              const active = showCompanyView && activeCompanyTicker === company.companyTicker
+              return (
+                <button
+                  key={company.companyTicker}
+                  type="button"
+                  onClick={() => {
+                    setPreserveOverallContext(false)
+                    onSelectCompanyTicker(company.companyTicker)
+                  }}
+                  className={cn(
+                    'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+                    active
+                      ? 'bg-foreground text-background'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                  )}
+                >
+                  <Building2 className="h-4 w-4 shrink-0" />
+                  <sup className="-ml-1 inline-flex pt-0.5 align-super text-[9px] font-medium opacity-65 tabular-nums">
+                    {companyIndex + 1}
+                  </sup>
+                  <span className="truncate">{company.companyTicker}</span>
+                  <span className="ml-auto text-xs opacity-80">{company.positions.length}</span>
+                </button>
+              )
+            })}
+            {(executionOverview?.companies.length ?? 0) === 0 && (
+              <p className="px-2 py-1 text-xs text-muted-foreground/60">No companies yet.</p>
+            )}
+          </nav>
 
-        <div className="rounded-xl border bg-background p-3">
-          <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Add Company</p>
-          <div className="space-y-2">
+          <p className="mb-2 mt-5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Add Company
+          </p>
+          <div className="space-y-2 px-1">
             <input
               type="text"
               value={newCompanyTicker}
@@ -1899,6 +1924,7 @@ export default function WebullWorkspaceBlock({
               type="button"
               className="w-full"
               size="sm"
+              variant="outline"
               disabled={workspaceBusy || !newCompanyTicker.trim()}
               onClick={() => {
                 const ticker = newCompanyTicker.trim()
@@ -1909,11 +1935,18 @@ export default function WebullWorkspaceBlock({
               Add Company
             </Button>
           </div>
-        </div>
-
         </aside>
       )}
 
+      <div className="min-w-0 flex-1 overflow-auto px-6 py-5">
+      {pageTitle && (
+        <div className="mb-4">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{pageTitle}</h1>
+          <p className="text-sm text-muted-foreground">
+            Personal market workspace with Webull-backed views.
+          </p>
+        </div>
+      )}
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
           <div>
@@ -2169,12 +2202,12 @@ export default function WebullWorkspaceBlock({
                     onUpdateNodeStatus={onUpdateBacklogNodeStatus}
                     onUpdateNodeNotes={onUpdateBacklogNodeNotes}
                     relatedNodeOptions={linkOptions}
-                    onOpenRelatedNode={(path) => onOpenNodeFile(path)}
+                    onOpenRelatedNode={handleBacklogOpenRelated}
                     programLabelSingular="company"
                     programLabelPlural="companies"
                     programGroupLabelSingular="company group"
                     projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
-                    canOpenNodeDetails={(node) => node.type === 'epic'}
+                    canOpenNodeDetails={handleBacklogCanOpenDetails}
                     rowColumns={webullRowColumns}
                     showRowColumnsOnCompact
                     rowPresetTagLimit={5}
@@ -2369,12 +2402,12 @@ export default function WebullWorkspaceBlock({
                   onUpdateNodeStatus={onUpdateBacklogNodeStatus}
                   onUpdateNodeNotes={onUpdateBacklogNodeNotes}
                   relatedNodeOptions={linkOptions}
-                  onOpenRelatedNode={(path) => onOpenNodeFile(path)}
+                  onOpenRelatedNode={handleBacklogOpenRelated}
                   programLabelSingular="company"
                   programLabelPlural="companies"
                   programGroupLabelSingular="company group"
                   projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
-                  canOpenNodeDetails={(node) => node.type === 'epic'}
+                  canOpenNodeDetails={handleBacklogCanOpenDetails}
                   rowColumns={webullRowColumns}
                   showRowColumnsOnCompact
                   rowPresetTagLimit={5}
@@ -2525,6 +2558,7 @@ export default function WebullWorkspaceBlock({
           onOpenFile={() => onOpenNodeFile(detailPanelNode.filePath)}
         />
       )}
+      </div>
     </div>
   )
 }

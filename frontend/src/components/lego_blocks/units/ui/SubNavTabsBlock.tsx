@@ -38,7 +38,7 @@ export default function SubNavTabsBlock({ tabs, className, ariaLabel }: SubNavTa
             className={cn(
               'ltm-motion-fast inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-medium transition-colors',
               isActive
-                ? 'bg-background text-foreground shadow-sm'
+                ? 'bg-white text-foreground shadow-sm ring-1 ring-border/50 dark:bg-background'
                 : 'text-muted-foreground hover:text-foreground',
             )}
           >

@@ -1,26 +1,18 @@
-export interface OrganizerSidebarChromeStateBlock {
-  enabled: boolean
-  collapsed: boolean
-  label: string
+import { createSidebarChromeBlock, type SidebarChromeStateBlock } from './sidebarChromeBlock'
+
+export interface OrganizerSidebarChromeStateBlock extends SidebarChromeStateBlock {
   headerVisible: boolean
   showHeaderToggle: boolean
 }
 
-export const ORGANIZER_SIDEBAR_CHROME_STATE_EVENT_BLOCK = 'ltm:organizer:sidebar-chrome-state'
-export const ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK = 'ltm:organizer:sidebar-chrome-toggle'
-export const ORGANIZER_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK = 'ltm:organizer:sidebar-chrome-toggle-header'
+const block = createSidebarChromeBlock<OrganizerSidebarChromeStateBlock>('organizer')
 
-export function dispatchOrganizerSidebarChromeStateBlock(state: OrganizerSidebarChromeStateBlock): void {
-  window.dispatchEvent(new CustomEvent<OrganizerSidebarChromeStateBlock>(
-    ORGANIZER_SIDEBAR_CHROME_STATE_EVENT_BLOCK,
-    { detail: state },
-  ))
-}
+export const ORGANIZER_SIDEBAR_CHROME_STATE_EVENT_BLOCK = block.stateEvent
+export const ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK = block.toggleEvent
+export const ORGANIZER_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK = block.toggleHeaderEvent
 
-export function dispatchOrganizerSidebarChromeToggleBlock(): void {
-  window.dispatchEvent(new CustomEvent<void>(ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK))
-}
+export const dispatchOrganizerSidebarChromeStateBlock = block.dispatchState
+export const dispatchOrganizerSidebarChromeToggleBlock = block.dispatchToggle
+export const dispatchOrganizerSidebarChromeToggleHeaderBlock = block.dispatchToggleHeader
 
-export function dispatchOrganizerSidebarChromeToggleHeaderBlock(): void {
-  window.dispatchEvent(new CustomEvent<void>(ORGANIZER_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK))
-}
+export const organizerSidebarChromeBlock = block

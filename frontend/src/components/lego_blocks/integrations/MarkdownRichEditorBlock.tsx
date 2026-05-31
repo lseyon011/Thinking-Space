@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import { redo, undo } from '@codemirror/commands'
@@ -452,7 +452,7 @@ class InlineDiffWidgetBlock extends WidgetType {
   }
 }
 
-const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, MarkdownRichEditorBlockProps>(function MarkdownRichEditorBlock({
+const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, MarkdownRichEditorBlockProps>(function MarkdownRichEditorBlock({
   value,
   onChange,
   currentPath = '',
@@ -1606,4 +1606,9 @@ const MarkdownRichEditorBlock = forwardRef<MarkdownRichEditorBlockHandle, Markdo
   )
 })
 
+// Memo so tab-switch re-renders of the host page don't re-run the editor
+// when its props haven't actually changed. Combined with stable callback
+// props at the call site, this avoids CodeMirror's measure→paint→remeasure
+// cycle (~600ms) from firing on every parent render.
+const MarkdownRichEditorBlock = memo(MarkdownRichEditorBlockInner)
 export default MarkdownRichEditorBlock

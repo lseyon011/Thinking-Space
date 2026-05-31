@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Bookmark, Globe, PanelLeftClose } from 'lucide-react'
+import { Bookmark, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   buildWebSiteGroupTreeBlock,
@@ -15,7 +15,7 @@ interface WebSitePanelBlockProps {
   groups: WebSiteGroupBlock[]
   selectedSiteId: string | null
   onSelectSite: (site: WebSiteBlock) => void
-  onClose: () => void
+  onClose?: () => void
 }
 
 export default function WebSitePanelBlock({
@@ -23,7 +23,6 @@ export default function WebSitePanelBlock({
   groups,
   selectedSiteId,
   onSelectSite,
-  onClose,
 }: WebSitePanelBlockProps) {
   const { isExpanded: isGroupExpanded, toggle: toggleGroup } = useExpandedSetBlock('ltm-web-expanded-groups')
 
@@ -36,22 +35,9 @@ export default function WebSitePanelBlock({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Header */}
-      <div className="ltm-shell-segment-header flex h-11 shrink-0 items-center justify-between px-2">
-        <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Web
-        </span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-          title="Collapse sidebar"
-        >
-          <PanelLeftClose className="h-4 w-4" />
-        </button>
-      </div>
-
-      {/* Site list */}
+      <p className="mb-2 mt-4 px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        Web
+      </p>
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {bookmarks.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 px-4 py-8 text-center">

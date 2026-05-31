@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import { BacklogNodeRowBlock } from '@/components/lego_blocks/units/BacklogNodeRowBlock'
 import { BacklogProgramRowBlock } from '@/components/lego_blocks/units/BacklogProgramRowBlock'
@@ -182,7 +182,7 @@ export interface BacklogListBlockProps {
 }
 
 
-export default function BacklogListBlock({
+function BacklogListBlockImpl({
   programs,
   loadEpics,
   loadChildren,
@@ -1226,3 +1226,9 @@ export default function BacklogListBlock({
     </div>
   )
 }
+
+// Memoize so unrelated re-renders of the parent orchestrator don't recompute
+// the full hierarchy. Combined with stable callback props at the call site,
+// this should kill the ~40-row re-render storm we were seeing on tab switch.
+const BacklogListBlock = memo(BacklogListBlockImpl)
+export default BacklogListBlock

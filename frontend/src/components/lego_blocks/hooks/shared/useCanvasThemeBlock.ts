@@ -52,9 +52,9 @@ const DAY_NEBULA = [
 ].join(', ')
 
 const GOLDEN_NEBULA = [
-  'radial-gradient(1200px 600px at 20% -10%, rgba(251,191,36,0.22), transparent 60%)',
-  'radial-gradient(900px 500px at 80% 0%, rgba(244,114,182,0.15), transparent 55%)',
-  'radial-gradient(800px 500px at 50% 100%, rgba(217,119,87,0.13), transparent 55%)',
+  'radial-gradient(1200px 600px at 20% -10%, rgba(251,191,36,0.12), transparent 60%)',
+  'radial-gradient(900px 500px at 80% 0%, rgba(244,114,182,0.10), transparent 55%)',
+  'radial-gradient(800px 500px at 50% 100%, rgba(217,119,87,0.08), transparent 55%)',
 ].join(', ')
 
 const NIGHT_NEBULA = [
@@ -170,7 +170,7 @@ const DAY: CanvasThemeTokens = {
 
 const GOLDEN: CanvasThemeTokens = {
   ...LIGHT_GLASS,
-  outerBg: '#f3e7d0',
+  outerBg: '#f5eede',
   starColor: '#a89478',
   nebulaGradient: GOLDEN_NEBULA,
   vignetteGradient: GOLDEN_VIGNETTE,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowRight, Check, Loader2, FolderTree, Handshake, Layers, Lightbulb, ListChecks, Pencil, Play, Plus, X } from 'lucide-react'
+import { ArrowRight, BadgeCheck, Check, Eye, FolderTree, Handshake, Layers, Lightbulb, Link2, ListChecks, Loader2, Pencil, Play, Plus, X, type LucideIcon } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
@@ -41,12 +41,12 @@ import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/u
 
 type TabMode = 'backlog' | 'view' | 'link' | 'steward' | 'integrity'
 const PROJECT_ROOT_QUERY_PARAM = 'projectRoot'
-const THINKING_ORGANIZER_TABS: Array<{ id: TabMode; label: string }> = [
-  { id: 'backlog', label: 'Create' },
-  { id: 'view', label: 'View' },
-  { id: 'link', label: 'Link' },
-  { id: 'steward', label: 'Steward' },
-  { id: 'integrity', label: 'Integrity' },
+const THINKING_ORGANIZER_TABS: Array<{ id: TabMode; label: string; icon: LucideIcon }> = [
+  { id: 'backlog', label: 'Create', icon: Plus },
+  { id: 'view', label: 'View', icon: Eye },
+  { id: 'link', label: 'Link', icon: Link2 },
+  { id: 'steward', label: 'Steward', icon: Handshake },
+  { id: 'integrity', label: 'Integrity', icon: BadgeCheck },
 ]
 
 function nodeIcon(type: NodeType) {
@@ -465,15 +465,13 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
     onToggle: handleToggleSidebar,
   })
 
-  return (
-    <div className="ltm-page-shell ltm-shell-ultra">
-      <div className="mb-4">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">
-          {projectName ? `${activeTabLabel} · ${projectName}` : activeTabLabel}
-        </h1>
+  const headerBlock = (
+    <div className="mb-4">
+      <h1 className="text-xl font-semibold tracking-tight md:text-2xl">
+        {projectName ? `${activeTabLabel} · ${projectName}` : activeTabLabel}
+      </h1>
 
-        {/* Mission statement — only when a project is selected */}
-        {projectRoot && (
+      {projectRoot && (
           <div className="mt-1.5">
             {editingMission ? (
               <div className="flex flex-col gap-1.5">
@@ -533,66 +531,80 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
           </div>
         )}
       </div>
+  )
 
-      <div className={cn('grid gap-4', sidebarCollapsed ? 'grid-cols-1' : 'grid-cols-[200px_minmax(0,1fr)]')}>
+  return (
+    <div className="ltm-organizer-shell h-full min-h-0 w-full">
+      <div className={cn('grid h-full min-h-0', sidebarCollapsed ? 'grid-cols-1' : 'grid-cols-[220px_minmax(0,1fr)]')}>
         {!sidebarCollapsed && (
-          <aside className="space-y-3">
-            <div className="rounded-xl border bg-background p-3">
-              <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Thinking Organizer</p>
-              <div className="space-y-1">
-                {THINKING_ORGANIZER_TABS.map((item) => (
+          <aside className="ltm-organizer-shell-nav border-r border-border/60 bg-background/40 px-3 py-4 overflow-y-auto">
+            <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Thinking Organizer
+            </p>
+            <nav className="space-y-1">
+              {THINKING_ORGANIZER_TABS.map((item) => {
+                const Icon = item.icon
+                const active = tab === item.id
+                return (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => setTab(item.id)}
                     className={cn(
-                      'w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors',
-                      tab === item.id
+                      'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+                      active
                         ? 'bg-foreground text-background'
                         : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                     )}
                   >
-                    {item.label}
+                    <Icon className="h-4 w-4" />
+                    <span className="truncate">{item.label}</span>
                   </button>
-                ))}
-              </div>
+                )
+              })}
+            </nav>
 
-              <div className="mt-3 pt-3 border-t border-border/40">
-                <p className="mb-1.5 px-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Projects</p>
-                <div className="space-y-1">
-                  {projectEntries.map((entry) => (
-                    <button
-                      key={entry.root}
-                      type="button"
-                      onClick={() => selectProject(entry.root)}
-                      className={cn(
-                        'w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors',
-                        projectRoot === entry.root
-                          ? 'bg-foreground text-background'
-                          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                      )}
-                    >
-                      {entry.name}
-                    </button>
-                  ))}
-                  {projectEntries.length === 0 && (
-                    <p className="px-2 py-1 text-xs text-muted-foreground/60">No projects yet.</p>
-                  )}
-                </div>
-                <Button
-                  size="sm"
-                  className="mt-2 w-full"
-                  onClick={() => window.dispatchEvent(new CustomEvent(ORGANIZER_OPEN_CREATE_PROJECT_EVENT))}
-                >
-                  <Plus className="mr-1.5 h-4 w-4" />
-                  Create Project
-                </Button>
-              </div>
-            </div>
+            <p className="mb-2 mt-5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Projects
+            </p>
+            <nav className="space-y-1">
+              {projectEntries.map((entry) => {
+                const active = projectRoot === entry.root
+                return (
+                  <button
+                    key={entry.root}
+                    type="button"
+                    onClick={() => selectProject(entry.root)}
+                    className={cn(
+                      'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+                      active
+                        ? 'bg-foreground text-background'
+                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                    )}
+                  >
+                    <FolderTree className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{entry.name}</span>
+                  </button>
+                )
+              })}
+              {projectEntries.length === 0 && (
+                <p className="px-2 py-1 text-xs text-muted-foreground/60">No projects yet.</p>
+              )}
+            </nav>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3 w-full"
+              onClick={() => window.dispatchEvent(new CustomEvent(ORGANIZER_OPEN_CREATE_PROJECT_EVENT))}
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              Create Project
+            </Button>
           </aside>
         )}
 
-        <div className="min-w-0">
+        <div className="min-w-0 overflow-y-auto px-6 py-5">
+          {headerBlock}
           <section hidden={tab !== 'backlog'} aria-hidden={tab !== 'backlog'}>
             {mountedTabs.backlog ? (
               <BacklogOrch

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, CheckCircle2, LayoutList, Eye, CheckSquare, X, Plus } from 'lucide-react'
+import { Loader2, CheckCircle2, LayoutList, Eye, CheckSquare, X, Plus, FolderTree, Heart, Settings2 } from 'lucide-react'
 import {
   dispatchNewThoughtSidebarChromeStateBlock,
   NEW_THOUGHT_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
@@ -253,6 +253,7 @@ function CreateTab() {
   const [message, setMessage] = useState<string | null>(null)
   const [savedPath, setSavedPath] = useState<string | null>(null)
   const [showMetaPanel, setShowMetaPanel] = useState(false)
+  const [revealedPanel, setRevealedPanel] = useState<'destination' | 'emotions' | 'note-settings' | null>(null)
   const [showAiAssist, setShowAiAssist] = useState(false)
   const [saveFeedbackVisible, setSaveFeedbackVisible] = useState(false)
   const [loadedTargetPath, setLoadedTargetPath] = useState<string | null>(null)
@@ -395,6 +396,14 @@ function CreateTab() {
     if (filenameTouched) return
     setFilename(filenameFromTitle(title))
   }, [filenameTouched, title, useCustomTitle])
+
+  // Stable so MarkdownRichEditorBlock's memo isn't broken by an inline arrow.
+  // Without this, the editor re-renders on every NewThought render, which
+  // triggers CodeMirror's measure→paint→remeasure cascade (~600ms).
+  const handleRelatedThoughtOpenPath = useCallback((relatedPath: string) => {
+    openFileInNewTabOrch(relatedPath)
+    setMessage(`Opened ${relatedPath} in a new tab.`)
+  }, [])
 
   const handleFolderChange = (change: CascadingFolderPickerChange) => {
     setFolderBaseSegments(change.baseSegments)
@@ -779,43 +788,9 @@ function CreateTab() {
     : Boolean(destinationPath.trim() && filename.trim() && content.trim() && !saving && !loadingTargetContent)
   const mostUsedDestinations = useMemo(() => topUsedDestinations(usageCounts, 5), [usageCounts])
 
-  return (
-    <div className="space-y-4">
-      <div className={leftPanelHidden ? 'space-y-6' : 'grid gap-6 lg:grid-cols-[clamp(240px,27vw,340px)_minmax(0,1fr)]'}>
-      {!leftPanelHidden && (
-        <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+  const destinationPanel = (
         <Card>
-          <CardContent className="p-2">
-            <nav className="space-y-0.5">
-              {([
-                { id: 'create', label: 'Create', icon: LayoutList },
-                { id: 'view', label: 'View Notes', icon: Eye },
-                { id: 'view_todos', label: 'View To Dos', icon: CheckSquare },
-              ] as const).map(item => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors',
-                    tab === item.id
-                      ? 'bg-foreground font-medium text-background'
-                      : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
-                  )}
-                  onClick={() => setTab(item.id)}
-                >
-                  <item.icon className="h-3.5 w-3.5 shrink-0" />
-                  {item.label}
-                </button>
-              ))}
-            </nav>
-          </CardContent>
-        </Card>
-        {tab === 'create' && (<>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Destination</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="pt-4">
             <div className="space-y-2 pb-1">
               <label className="text-xs text-muted-foreground">Base folder path</label>
               <p className="text-[11px] text-muted-foreground/70 break-all">
@@ -923,70 +898,98 @@ function CreateTab() {
             </div>
           </CardContent>
         </Card>
+  )
 
-        {!makeThisTodo && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Emotions</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <EmotionTagger selected={emotions} onChange={setEmotions} />
-            </CardContent>
-          </Card>
-        )}
+  const emotionsPanel = (
+    <Card>
+      <CardContent className="pt-4">
+        <EmotionTagger selected={emotions} onChange={setEmotions} />
+      </CardContent>
+    </Card>
+  )
 
-        {!makeThisTodo && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Note Settings</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-0">
-              <div className="flex items-center gap-3">
-                <Switch
-                  checked={dateHeader}
-                  onCheckedChange={setDateHeader}
-                  id="date-header"
-                />
-                <label htmlFor="date-header" className="text-sm text-muted-foreground cursor-pointer">
-                  Add date header
-                </label>
-              </div>
-              <div className="flex items-center gap-3">
-                <Switch
-                  checked={useCustomTitle}
-                  onCheckedChange={handleCustomTitleToggle}
-                  id="custom-title"
-                />
-                <label htmlFor="custom-title" className="text-sm text-muted-foreground cursor-pointer">
-                  Use custom title
-                </label>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+  const noteSettingsPanel = (
+    <Card>
+      <CardContent className="space-y-3 pt-4">
+        <div className="flex items-center gap-3">
+          <Switch checked={dateHeader} onCheckedChange={setDateHeader} id="date-header" />
+          <label htmlFor="date-header" className="text-sm text-muted-foreground cursor-pointer">
+            Add date header
+          </label>
+        </div>
+        <div className="flex items-center gap-3">
+          <Switch checked={useCustomTitle} onCheckedChange={handleCustomTitleToggle} id="custom-title" />
+          <label htmlFor="custom-title" className="text-sm text-muted-foreground cursor-pointer">
+            Use custom title
+          </label>
+        </div>
+      </CardContent>
+    </Card>
+  )
 
-        {(message || error) && (
-          <div className="space-y-2">
-            {message && (
-              <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
-                {message}
-              </div>
-            )}
-            {error && (
-              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </div>
-            )}
-          </div>
-        )}
-        </>)}
-      </div>
+  const revealButtons: Array<{ id: 'destination' | 'emotions' | 'note-settings'; label: string; icon: typeof FolderTree; disabled?: boolean }> = [
+    { id: 'destination', label: 'Destination', icon: FolderTree },
+    { id: 'emotions', label: 'Emotions', icon: Heart, disabled: makeThisTodo },
+    { id: 'note-settings', label: 'Note Settings', icon: Settings2, disabled: makeThisTodo },
+  ]
+
+  return (
+    <div className="ltm-newthought-shell flex h-full min-h-0 w-full">
+      {!leftPanelHidden && (
+        <aside className="w-[220px] shrink-0 border-r border-border/60 bg-background/40 px-3 py-4">
+          <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            New Note
+          </p>
+          <nav className="space-y-1">
+            {([
+              { id: 'create', label: 'Create', icon: LayoutList },
+              { id: 'view', label: 'View Notes', icon: Eye },
+              { id: 'view_todos', label: 'View To Dos', icon: CheckSquare },
+            ] as const).map(item => {
+              const Icon = item.icon
+              const active = tab === item.id
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setTab(item.id)}
+                  className={cn(
+                    'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+                    active
+                      ? 'bg-foreground text-background'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="truncate">{item.label}</span>
+                </button>
+              )
+            })}
+          </nav>
+        </aside>
       )}
 
-      {tab === 'view' && <ThoughtsCalendarOrch />}
-      {tab === 'view_todos' && <TodoCalendarOrch />}
-      {tab === 'create' && <div className="space-y-4">
-        <Card className="overflow-hidden">
+      <div className="min-w-0 flex-1 overflow-auto px-6 py-5">
+        {tab === 'view' && <ThoughtsCalendarOrch />}
+        {tab === 'view_todos' && <TodoCalendarOrch />}
+        {tab === 'create' && (
+          <div className="space-y-4">
+            {(message || error) && (
+              <div className="space-y-2">
+                {message && (
+                  <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
+                    {message}
+                  </div>
+                )}
+                {error && (
+                  <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {error}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <Card className="overflow-hidden">
             <CardContent className="p-0">
               <MarkdownRichEditorBlock
                 value={content}
@@ -1000,10 +1003,7 @@ function CreateTab() {
                 aiAssistUseCase="new_thought.assist"
                 aiAssistDisabled={saving || loadingTargetContent}
                 aiAssistHelperText="Suggestions apply inline. Configure provider/model in AI Settings."
-                onRelatedThoughtOpenPath={(relatedPath) => {
-                  openFileInNewTabOrch(relatedPath)
-                  setMessage(`Opened ${relatedPath} in a new tab.`)
-                }}
+                onRelatedThoughtOpenPath={handleRelatedThoughtOpenPath}
                 toolbarClassName="rounded-tl-lg rounded-tr-lg"
                 className="min-h-[520px] rounded-none border-0 border-b border-border/40 md:min-h-[620px]"
               />
@@ -1234,7 +1234,35 @@ function CreateTab() {
             </CardContent>
           </Card>
 
-      </div>}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {revealButtons.map(({ id, label, icon: Icon, disabled }) => {
+                const active = revealedPanel === id
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setRevealedPanel(active ? null : id)}
+                    className={cn(
+                      'ltm-motion-fast inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                      active
+                        ? 'border-foreground bg-foreground text-background'
+                        : 'border-border/60 bg-background text-muted-foreground hover:bg-accent hover:text-foreground',
+                      disabled && 'opacity-40 cursor-not-allowed hover:bg-background hover:text-muted-foreground',
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+
+            {revealedPanel === 'destination' && destinationPanel}
+            {revealedPanel === 'emotions' && !makeThisTodo && emotionsPanel}
+            {revealedPanel === 'note-settings' && !makeThisTodo && noteSettingsPanel}
+          </div>
+        )}
       </div>
 
       {quickDestinationModalOpen && (
@@ -1310,7 +1338,7 @@ function CreateTab() {
 
 export default function NewThought() {
   return (
-    <div className="ltm-page-shell ltm-shell-wide">
+    <div className="ltm-page h-full">
       <CreateTab />
     </div>
   )
