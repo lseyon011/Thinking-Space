@@ -70,7 +70,13 @@ export default function CodexUsageMetricChartBlock({ metrics }: CodexUsageMetric
   return (
     <div ref={containerRef} style={{ height: chartHeight }} className="min-w-0 w-full">
       {hasPositiveSize && (
-        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+        <ResponsiveContainer
+          width="100%"
+          height="100%"
+          minWidth={1}
+          minHeight={1}
+          initialDimension={{ width: 1, height: 1 }}
+        >
           <BarChart
             data={metrics}
             layout="vertical"
