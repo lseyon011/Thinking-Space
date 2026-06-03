@@ -46,9 +46,9 @@ export interface CanvasThemeTokens {
 // One nebula set per phase, shared by both light and dark modes.
 // Opacities tuned to read on both cream and cosmic-black backdrops.
 const DAY_NEBULA = [
-  'radial-gradient(1200px 600px at 20% -10%, rgba(59,130,246,0.20), transparent 60%)',
-  'radial-gradient(900px 500px at 80% 0%, rgba(168,85,247,0.15), transparent 55%)',
-  'radial-gradient(800px 500px at 50% 100%, rgba(16,185,129,0.11), transparent 55%)',
+  'radial-gradient(1200px 600px at 20% -10%, rgba(59,130,246,0.20), transparent 40%)',
+  'radial-gradient(900px 500px at 80% 0%, rgba(168,85,247,0.13), transparent 55%)',
+  'radial-gradient(800px 500px at 50% 100%, rgba(245,158,11,0.10), transparent 55%)',
 ].join(', ')
 
 const GOLDEN_NEBULA = [
@@ -76,7 +76,7 @@ const NIGHT_VIGNETTE =
   'linear-gradient(to bottom, rgba(11,18,40,0.05) 0%, rgba(11,18,40,0) 30%, rgba(11,18,40,0) 70%, rgba(11,18,40,0.55) 100%)'
 
 const DAY_VIGNETTE =
-  'linear-gradient(to bottom, rgba(245,244,239,0.1) 0%, rgba(245,244,239,0) 30%, rgba(245,244,239,0) 70%, rgba(245,244,239,0.55) 100%)'
+  'linear-gradient(to bottom, rgba(246,239,224,0.1) 0%, rgba(246,239,224,0) 30%, rgba(246,239,224,0) 70%, rgba(246,239,224,0.55) 100%)'
 
 const GOLDEN_VIGNETTE =
   'linear-gradient(to bottom, rgba(245,232,205,0.1) 0%, rgba(245,232,205,0) 30%, rgba(245,232,205,0) 70%, rgba(245,232,205,0.6) 100%)'
@@ -162,8 +162,8 @@ const LIGHT_GLASS: Omit<
 
 const DAY: CanvasThemeTokens = {
   ...LIGHT_GLASS,
-  outerBg: '#f5f4ef',
-  starColor: '#94a3b8',
+  outerBg: '#f6efe0',
+  starColor: '#a89478',
   nebulaGradient: DAY_NEBULA,
   vignetteGradient: DAY_VIGNETTE,
 }

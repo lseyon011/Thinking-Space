@@ -1,4 +1,4 @@
-export type UIThemeId = 'classic'
+export type UIThemeId = 'classic' | 'kraft' | 'ink'
 export type UIColorModeId = 'light' | 'dark'
 
 export interface UIThemeOptionBlock {
@@ -19,8 +19,18 @@ export const DEFAULT_UI_COLOR_MODE_ID_BLOCK: UIColorModeId = 'light'
 export const UI_THEME_OPTIONS_BLOCK: readonly UIThemeOptionBlock[] = Object.freeze([
   {
     id: 'classic',
-    label: 'Thinking Space Default Theme',
-    description: 'The current supported Thinking Space visual language.',
+    label: 'Classic',
+    description: 'The default Thinking Space chrome — neutral grey shell.',
+  },
+  {
+    id: 'kraft',
+    label: 'Kraft',
+    description: 'Warm taupe chrome that picks up the canvas amber — cohesive, paper-like.',
+  },
+  {
+    id: 'ink',
+    label: 'Ink',
+    description: 'Deep navy chrome that frames the canvas like paper on a desk.',
   },
 ])
 

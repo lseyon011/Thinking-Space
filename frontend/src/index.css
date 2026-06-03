@@ -251,6 +251,41 @@
     --ltm-shell-motion-tab-duration: var(--ltm-anim-fast);
   }
 
+  [data-ltm-theme='kraft'] .ltm-app-shell {
+    --ltm-shell-surface-bg: #ece4d2;
+    --ltm-shell-surface-muted-bg: #e3dac4;
+    --ltm-shell-surface-border: rgba(120, 102, 70, 0.22);
+    --ltm-shell-stage-bg: #f3ecdb;
+    --ltm-shell-divider-strong: rgba(120, 102, 70, 0.28);
+    --ltm-shell-divider-soft: rgba(120, 102, 70, 0.16);
+    --ltm-shell-divider-group: rgba(120, 102, 70, 0.4);
+  }
+
+  [data-ltm-theme='ink'] .ltm-app-shell {
+    --ltm-shell-surface-bg: #1c2230;
+    --ltm-shell-surface-muted-bg: #232a3a;
+    --ltm-shell-surface-border: rgba(255, 255, 255, 0.08);
+    --ltm-shell-stage-bg: #1c2230;
+    --ltm-shell-divider-strong: rgba(255, 255, 255, 0.1);
+    --ltm-shell-divider-soft: rgba(255, 255, 255, 0.06);
+    --ltm-shell-divider-group: rgba(255, 255, 255, 0.16);
+  }
+
+  [data-ltm-theme='ink'] .ltm-shell-nav-surface,
+  [data-ltm-theme='ink'] .ltm-shell-drawer-surface,
+  [data-ltm-theme='ink'] .ltm-shell-command-surface,
+  [data-ltm-theme='ink'] .ltm-shell-bottom-surface,
+  [data-ltm-theme='ink'] .ltm-shell-fab-surface,
+  [data-ltm-theme='ink'] .ltm-shell-body-stage {
+    --foreground: 0 0% 96%;
+    --muted-foreground: 220 18% 70%;
+    --accent: 222 24% 24%;
+    --accent-foreground: 0 0% 100%;
+    --background: 222 28% 18%;
+    --border: 222 16% 30%;
+    color: hsl(var(--foreground));
+  }
+
   .ltm-app-shell * {
     scrollbar-color: transparent transparent;
   }

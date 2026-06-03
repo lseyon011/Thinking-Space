@@ -34,6 +34,25 @@ export function setStoredUIColorModeOrch(colorModeId: UIColorModeId): void {
   setStorageItem(STORAGE_KEYS.appColorMode, colorModeId)
 }
 
+const DARK_THEMES: ReadonlySet<UIThemeId> = new Set<UIThemeId>(['ink'])
+
+function isDarkScheme(theme: UIThemeId, colorMode: UIColorModeId): boolean {
+  return colorMode === 'dark' || DARK_THEMES.has(theme)
+}
+
+function applySchemeClasses(documentRef: Document, isDark: boolean): void {
+  const root = documentRef.documentElement
+  root.classList.toggle('dark', isDark)
+  root.classList.toggle('theme-dark', isDark)
+  root.classList.toggle('theme-light', !isDark)
+  root.style.colorScheme = isDark ? 'dark' : 'light'
+  if (documentRef.body) {
+    documentRef.body.classList.toggle('dark', isDark)
+    documentRef.body.classList.toggle('theme-dark', isDark)
+    documentRef.body.classList.toggle('theme-light', !isDark)
+  }
+}
+
 export function applyUIThemeOrch(themeId: UIThemeId, options: ApplyUIThemeOptions = {}): void {
   const documentRef = resolveDocument(options.documentRef)
   if (!documentRef) return
@@ -43,6 +62,11 @@ export function applyUIThemeOrch(themeId: UIThemeId, options: ApplyUIThemeOption
   if (documentRef.body) {
     documentRef.body.setAttribute('data-ltm-theme', normalizedTheme)
   }
+
+  const currentColorMode = normalizeUIColorModeIdBlock(
+    documentRef.documentElement.getAttribute('data-ltm-color-mode'),
+  )
+  applySchemeClasses(documentRef, isDarkScheme(normalizedTheme, currentColorMode))
 }
 
 export function applyUIColorModeOrch(colorModeId: UIColorModeId, options: ApplyUIThemeOptions = {}): void {
@@ -50,21 +74,15 @@ export function applyUIColorModeOrch(colorModeId: UIColorModeId, options: ApplyU
   if (!documentRef) return
 
   const normalizedColorMode = normalizeUIColorModeIdBlock(colorModeId)
-  const isDarkMode = normalizedColorMode === 'dark'
   const root = documentRef.documentElement
 
   root.setAttribute('data-ltm-color-mode', normalizedColorMode)
-  root.classList.toggle('dark', isDarkMode)
-  root.classList.toggle('theme-dark', isDarkMode)
-  root.classList.toggle('theme-light', !isDarkMode)
-  root.style.colorScheme = normalizedColorMode
-
   if (documentRef.body) {
     documentRef.body.setAttribute('data-ltm-color-mode', normalizedColorMode)
-    documentRef.body.classList.toggle('dark', isDarkMode)
-    documentRef.body.classList.toggle('theme-dark', isDarkMode)
-    documentRef.body.classList.toggle('theme-light', !isDarkMode)
   }
+
+  const currentTheme = normalizeUIThemeIdBlock(root.getAttribute('data-ltm-theme'))
+  applySchemeClasses(documentRef, isDarkScheme(currentTheme, normalizedColorMode))
 }
 
 export function initializeUIThemeOrch(options: ApplyUIThemeOptions = {}): UIThemeId {
