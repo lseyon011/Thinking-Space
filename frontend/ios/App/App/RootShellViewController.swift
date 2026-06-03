@@ -573,44 +573,65 @@ final class RootShellViewController: UIViewController {
         closeDrawer(animated: true)
     }
 
-    // Edge-pan thresholds for the back-pop path. Lighter than the rail-open
+    // Edge-pan commit thresholds for the back-pop path. Lighter than rail-open
     // thresholds because back-swipe convention on iOS is a quick flick;
-    // velocity matters as much as distance. Vertical drift tolerance for
-    // pop is also looser (the user's thumb arcs more on a back gesture).
+    // velocity matters as much as distance.
     private let popSwipeTranslationThreshold: CGFloat = 50
     private let popSwipeVelocityThreshold: CGFloat = 400
     private let popSwipeVerticalDriftTolerance: CGFloat = 100
+
+    /// True while we're driving an interactive pop. Decided at .began based
+    /// on whether the coordinator can pop; we don't re-decide mid-gesture
+    /// so we don't strand the snapshot.
+    private var edgePanDrivingPop: Bool = false
 
     @objc private func handleLeftEdgePan(_ recognizer: UIScreenEdgePanGestureRecognizer) {
         let translation = recognizer.translation(in: view)
         let velocity = recognizer.velocity(in: view)
 
-        // Conditional dispatch (per ANIMATION_VALUES.md). If the nav stack
-        // has more than one entry, left-edge pan drives the back-swipe pop;
-        // otherwise it falls through to opening the rail (root tab pages).
-        // Matches Settings/Mail/Messages.
-        if let coordinator = pushCoordinator, coordinator.canPop {
-            // Evaluate on .ended (user lifted finger): commit if translation
-            // or velocity crossed threshold and the gesture didn't drift
-            // too far vertically. .ended is more forgiving than firing
-            // mid-pan because the user can flick quickly without holding
-            // a precise drag.
-            if recognizer.state == .ended {
-                if abs(translation.y) <= popSwipeVerticalDriftTolerance
-                    && (translation.x >= popSwipeTranslationThreshold || velocity.x >= popSwipeVelocityThreshold) {
-                    _ = coordinator.pop()
-                }
+        // Branch by gesture state. Decide what this gesture means at .began
+        // (drive interactive pop vs. open rail), then commit to it.
+        switch recognizer.state {
+        case .began:
+            edgePanDrivingPop = (pushCoordinator?.canPop == true)
+            if edgePanDrivingPop {
+                _ = pushCoordinator?.beginInteractivePop()
             }
-            return
-        }
 
-        // Rail-open path: existing fire-on-threshold during .changed.
-        guard !isDrawerOpen else { return }
-        guard abs(translation.y) <= drawerVerticalDriftTolerance else { return }
-        if translation.x >= drawerOpenThreshold {
-            openDrawer(animated: true)
-            recognizer.isEnabled = false
-            recognizer.isEnabled = true
+        case .changed:
+            if edgePanDrivingPop {
+                pushCoordinator?.updateInteractivePop(translation: translation.x)
+                return
+            }
+            // Rail-open path: existing fire-on-threshold-during-changed.
+            guard !isDrawerOpen else { return }
+            guard abs(translation.y) <= drawerVerticalDriftTolerance else { return }
+            if translation.x >= drawerOpenThreshold {
+                openDrawer(animated: true)
+                recognizer.isEnabled = false
+                recognizer.isEnabled = true
+            }
+
+        case .ended:
+            if edgePanDrivingPop {
+                let commit = abs(translation.y) <= popSwipeVerticalDriftTolerance
+                    && (translation.x >= popSwipeTranslationThreshold || velocity.x >= popSwipeVelocityThreshold)
+                if commit {
+                    pushCoordinator?.completeInteractivePop()
+                } else {
+                    pushCoordinator?.cancelInteractivePop()
+                }
+                edgePanDrivingPop = false
+            }
+
+        case .cancelled, .failed:
+            if edgePanDrivingPop {
+                pushCoordinator?.cancelInteractivePop()
+                edgePanDrivingPop = false
+            }
+
+        default:
+            break
         }
     }
 

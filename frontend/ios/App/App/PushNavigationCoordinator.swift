@@ -58,9 +58,12 @@ final class PushNavigationCoordinator {
     private(set) var stack: [String] = []
 
     /// True while a transition is in flight; subsequent push/pop calls are
-    /// ignored until it completes. (Real interactive pop will replace this
-    /// with a state machine in task #7.)
+    /// ignored until it completes.
     private var isAnimating: Bool = false
+
+    /// Active interactive-pop snapshot, if any. Non-nil during an
+    /// edge-swipe-back gesture between .began and the gesture's settle.
+    private var interactiveSnapshot: UIView?
 
     /// Fires after every stack mutation (push/pop completion, replaceStack,
     /// setRoot). RootShellViewController hooks this to mirror canPop into
@@ -257,6 +260,150 @@ final class PushNavigationCoordinator {
         }
 
         return true
+    }
+
+    // MARK: - Interactive pop (edge-swipe-back)
+
+    /// True while an interactive pop gesture is in progress.
+    var isInteractivePopActive: Bool { interactiveSnapshot != nil }
+
+    /// Begin an interactive pop. Returns the snapshot view so the caller can
+    /// translate it directly from the gesture's translation. Returns nil if
+    /// there's nothing to pop or another transition is already in flight.
+    ///
+    /// During the interactive phase only the snapshot moves with the finger
+    /// — React state and the underlying mainShell stay untouched. On commit,
+    /// the real pop animation runs and fires the back-handler cascade. On
+    /// cancel, the snapshot springs back to identity and nothing changed.
+    @discardableResult
+    func beginInteractivePop() -> UIView? {
+        guard !isAnimating else { return nil }
+        guard interactiveSnapshot == nil else { return nil }
+        guard stack.count > 1 else { return nil }
+        guard let mainShell = mainShellView, let container = containerView else { return nil }
+
+        guard let snapshot = mainShell.snapshotView(afterScreenUpdates: true) else { return nil }
+        snapshot.frame = mainShell.frame
+        snapshot.translatesAutoresizingMaskIntoConstraints = true
+        snapshot.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+
+        container.addSubview(snapshot)
+        if let topSibling = topSiblingView {
+            container.bringSubviewToFront(topSibling)
+        }
+
+        interactiveSnapshot = snapshot
+        return snapshot
+    }
+
+    /// Drive the interactive transform. `translation` is the gesture's
+    /// translation.x in the container's coordinate space (≥ 0 — leftward
+    /// swipes are clamped out).
+    func updateInteractivePop(translation: CGFloat) {
+        guard let snapshot = interactiveSnapshot else { return }
+        let clamped = max(0, translation)
+        snapshot.transform = CGAffineTransform(translationX: clamped, y: 0)
+    }
+
+    /// Commit the interactive pop. Animates the snapshot off to the right and
+    /// triggers the full pop sequence (snapshot of new state, React cascade,
+    /// stack update, didFinish notification). Same end state as a regular
+    /// pop, just with the in-flight snapshot continuing rather than being
+    /// re-captured.
+    func completeInteractivePop() {
+        guard let snapshot = interactiveSnapshot, let mainShell = mainShellView, let bridge = bridge else {
+            cancelInteractivePop()
+            return
+        }
+        guard stack.count > 1 else {
+            cancelInteractivePop()
+            return
+        }
+
+        interactiveSnapshot = nil
+        isAnimating = true
+        let targetPath = stack[stack.count - 2]
+        let width = mainShell.bounds.width
+
+        // Continue sliding the snapshot off to the right from wherever the
+        // finger left it. The remaining-distance duration tracks how far
+        // it still has to travel so the spring feels consistent.
+        let currentX = snapshot.transform.tx
+        let remaining = max(0, width - currentX)
+        let frac = remaining / max(width, 1)
+        let snapshotDuration = max(self.duration * 0.4, self.duration * frac)
+
+        UIView.animate(
+            withDuration: snapshotDuration,
+            delay: 0,
+            usingSpringWithDamping: damping,
+            initialSpringVelocity: 0,
+            options: [.curveEaseOut, .beginFromCurrentState],
+            animations: {
+                snapshot.transform = CGAffineTransform(translationX: width, y: 0)
+            },
+            completion: { _ in
+                snapshot.removeFromSuperview()
+            }
+        )
+
+        // While the snapshot finishes sliding, do the React-render dance
+        // underneath: ask the bridge for the previous page, then animate
+        // mainShell from the parallax position to identity to settle in.
+        // The snapshot's removal hides any small misalignment between the
+        // two animations.
+        mainShell.transform = CGAffineTransform(translationX: -width * parallaxFraction, y: 0)
+        let dim = makeDimView(over: mainShell.bounds)
+        dim.alpha = dimAlpha
+        mainShell.addSubview(dim)
+
+        bridge.requestRender(path: targetPath, direction: .back) { [weak self, weak mainShell, weak dim] in
+            guard let self else { return }
+            guard let mainShell, let dim else {
+                self.isAnimating = false
+                return
+            }
+
+            UIView.animate(
+                withDuration: self.duration,
+                delay: 0,
+                usingSpringWithDamping: self.damping,
+                initialSpringVelocity: 0,
+                options: [.curveEaseOut, .beginFromCurrentState],
+                animations: {
+                    mainShell.transform = .identity
+                    dim.alpha = 0
+                },
+                completion: { _ in
+                    dim.removeFromSuperview()
+                    self.stack.removeLast()
+                    self.isAnimating = false
+                    self.onStackChanged?()
+                    bridge.notifyDidFinish(path: targetPath)
+                }
+            )
+        }
+    }
+
+    /// Cancel the interactive pop and spring the snapshot back to identity.
+    /// No React state is touched (none was during the interactive phase).
+    func cancelInteractivePop() {
+        guard let snapshot = interactiveSnapshot else { return }
+        interactiveSnapshot = nil
+
+        UIView.animate(
+            withDuration: duration * 0.7,
+            delay: 0,
+            usingSpringWithDamping: damping,
+            initialSpringVelocity: 0,
+            options: [.curveEaseOut, .beginFromCurrentState],
+            animations: {
+                snapshot.transform = .identity
+            },
+            completion: { _ in
+                snapshot.removeFromSuperview()
+            }
+        )
     }
 
     // MARK: - Helpers
