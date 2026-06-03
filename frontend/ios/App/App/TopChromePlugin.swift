@@ -11,9 +11,25 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "hide", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "addListener", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "pushNavigation", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "popNavigation", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "didCommitNavigation", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setNavigationStack", returnType: CAPPluginReturnPromise),
     ]
 
     var chromeState: TopChromeState?
+
+    // MARK: - Native push navigation bridge
+
+    /// Forwarded to RootShellViewController to drive PushNavigationCoordinator.
+    var onPushRequest: ((String) -> Void)?
+    var onPopRequest: (() -> Void)?
+    var onSetNavigationStack: (([String]) -> Void)?
+
+    /// Pending completion stored between `requestRender` (Swift→React event)
+    /// and `didCommitNavigation` (React→Swift call). Cleared on commit.
+    /// Tuple: (expected path, completion to fire).
+    private var pendingNavCommit: (path: String, completion: () -> Void)?
 
     @objc func setState(_ call: CAPPluginCall) {
         let title = call.getString("title")
@@ -184,6 +200,73 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
         notifyListeners("topChromeNavItemTap", data: ["navItemId": navItemId])
     }
 
+    // MARK: - Navigation: Swift → React events (emitted by bridge conformance)
+
+    private func emitNavRequestRender(path: String) {
+        notifyListeners("topChromeNavRequestRender", data: ["path": path])
+    }
+
+    private func emitNavDidFinish(path: String) {
+        notifyListeners("topChromeNavDidFinish", data: ["path": path])
+    }
+
+    // MARK: - Navigation: React → Swift entry points
+
+    @objc func pushNavigation(_ call: CAPPluginCall) {
+        guard let path = call.getString("path"),
+              !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            call.reject("path is required")
+            return
+        }
+        DispatchQueue.main.async {
+            self.onPushRequest?(path)
+            call.resolve()
+        }
+    }
+
+    @objc func popNavigation(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            self.onPopRequest?()
+            call.resolve()
+        }
+    }
+
+    @objc func didCommitNavigation(_ call: CAPPluginCall) {
+        let path = call.getString("path")
+        DispatchQueue.main.async {
+            guard let pending = self.pendingNavCommit else {
+                NSLog("[TopChromePlugin] didCommitNavigation but no pending commit (path=%@)", path ?? "<nil>")
+                call.resolve()
+                return
+            }
+            if let path, path != pending.path {
+                NSLog("[TopChromePlugin] didCommitNavigation path mismatch: got %@, expected %@", path, pending.path)
+                // Fire anyway — the coordinator's isAnimating flag prevents
+                // races, so mismatch here means a stale event we should drop.
+                call.resolve()
+                return
+            }
+            self.pendingNavCommit = nil
+            pending.completion()
+            call.resolve()
+        }
+    }
+
+    @objc func setNavigationStack(_ call: CAPPluginCall) {
+        guard let stack = call.getArray("stack") as? [String] else {
+            call.reject("stack is required (array of paths)")
+            return
+        }
+        DispatchQueue.main.async {
+            self.onSetNavigationStack?(stack)
+            call.resolve()
+        }
+    }
+
+    // Note: `decodeTabs` follows. The PushNavigationBridge conformance lives
+    // in an extension at the bottom of this file so the class body stays
+    // focused on Capacitor surface area.
+
     private func decodeTabs(from payload: String) -> [TopChromeTabItem] {
         guard let data = payload.data(using: .utf8) else {
             return []
@@ -194,6 +277,26 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
         } catch {
             NSLog("[TopChromePlugin] Failed to decode tabs payload: %@", error.localizedDescription)
             return []
+        }
+    }
+}
+
+// MARK: - PushNavigationBridge conformance
+
+extension TopChromePlugin: PushNavigationBridge {
+    func requestRender(path: String, completion: @escaping () -> Void) {
+        DispatchQueue.main.async {
+            if self.pendingNavCommit != nil {
+                NSLog("[TopChromePlugin] requestRender %@ while another commit pending — replacing", path)
+            }
+            self.pendingNavCommit = (path: path, completion: completion)
+            self.emitNavRequestRender(path: path)
+        }
+    }
+
+    func notifyDidFinish(path: String) {
+        DispatchQueue.main.async {
+            self.emitNavDidFinish(path: path)
         }
     }
 }

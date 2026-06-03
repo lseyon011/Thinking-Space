@@ -11,7 +11,72 @@ final class RootShellViewController: UIViewController {
     private var chromeVisibilityCancellable: AnyCancellable?
     private var bottomBarVisibilityCancellable: AnyCancellable?
     private var bottomBarLayoutCancellable: AnyCancellable?
+    private var activeNavItemCancellable: AnyCancellable?
     private var bottomChromeHeightConstraint: NSLayoutConstraint?
+
+    // MARK: - Rail / drawer state
+
+    private let railState = RailState()
+    private let railHeaderState = DrawerHeaderState(sectionLabel: "Menu", title: "Thinking Space")
+
+    private lazy var railHostingVC = UIHostingController(
+        rootView: RailView(
+            headerState: railHeaderState,
+            railState: railState,
+            onSelect: { [weak self] tab in
+                self?.handleRailSelect(tab)
+            },
+            onClose: { [weak self] in
+                self?.closeDrawer(animated: true)
+            }
+        )
+    )
+
+    private var isDrawerOpen: Bool = false
+    private var leftDrawerWidthConstraint: NSLayoutConstraint?
+
+    private var pushCoordinator: PushNavigationCoordinator?
+    private lazy var stubNavBridge: StubPushNavigationBridge = StubPushNavigationBridge()
+
+    // Tuned values — see docs/ios-animation-reference/ANIMATION_VALUES.md
+    private let drawerOpenThreshold: CGFloat = 72
+    private let drawerCloseThreshold: CGFloat = -56
+    private let drawerVerticalDriftTolerance: CGFloat = 44
+
+    // MARK: - Containers
+
+    /// Wraps the React phone shell. We apply transforms to this to slide it.
+    private let mainShellContainerView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = .clear
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOffset = .zero
+        view.layer.shadowRadius = 28
+        view.layer.shadowOpacity = 0
+        return view
+    }()
+
+    /// Warm beige matching the drawer header gradient — #f5f3ee
+    private static let drawerBackgroundColor = UIColor(
+        red: 245.0 / 255.0, green: 243.0 / 255.0, blue: 238.0 / 255.0, alpha: 1.0
+    )
+
+    private let leftDrawerContainerView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = drawerBackgroundColor
+        view.clipsToBounds = true
+        return view
+    }()
+
+    private let drawerTapShieldView: UIControl = {
+        let view = UIControl(frame: .zero)
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.001)
+        view.alpha = 0
+        view.isHidden = true
+        return view
+    }()
 
     private lazy var phoneShellHostingVC = UIHostingController(
         rootView: PhoneShellView(
@@ -56,9 +121,23 @@ final class RootShellViewController: UIViewController {
         return view
     }()
 
+    // MARK: - Gestures
+
+    private lazy var leftEdgeGestureRecognizer: UIScreenEdgePanGestureRecognizer = {
+        let r = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleLeftEdgePan(_:)))
+        r.edges = .left
+        return r
+    }()
+
+    private lazy var drawerClosePanGesture: UIPanGestureRecognizer = {
+        UIPanGestureRecognizer(target: self, action: #selector(handleDrawerClosePan(_:)))
+    }()
+
     private var shouldUseNativeTopChrome: Bool {
         UIDevice.current.userInterfaceIdiom == .phone
     }
+
+    // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -72,19 +151,52 @@ final class RootShellViewController: UIViewController {
         if shouldUseNativeTopChrome {
             configurePhoneShell()
             observeBottomChromeState()
+            observeRailSelection()
         } else {
             embedBridgeFullscreen()
         }
     }
 
+    /// Mirror `chromeState.activeNavItemId` (set by React via TopChrome.setState)
+    /// into the rail's selection so the highlight stays in sync as the user
+    /// navigates via any means (rail tap, bottom bar, deep link, etc.).
+    private func observeRailSelection() {
+        activeNavItemCancellable = chromeState.$activeNavItemId
+            .receive(on: RunLoop.main)
+            .sink { [weak self] activeId in
+                guard let self else { return }
+                let path = activeId?.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let path, !path.isEmpty else { return }
+                self.railState.selectTab(forPath: path)
+                if let match = self.railState.tabs.first(where: { $0.id == self.railState.selectedId }) {
+                    self.railHeaderState.title = match.title
+                }
+            }
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         applyBottomBarVisibility(animated: false)
+        updateDrawerWidthConstraints()
+        layoutDrawerTapShield()
     }
 
     func wireTopChromePlugin(_ plugin: TopChromePlugin) {
         chromePlugin = plugin
         plugin.chromeState = chromeState
+
+        // Swap the stub nav bridge for the real plugin-backed bridge.
+        pushCoordinator?.setBridge(plugin)
+
+        plugin.onPushRequest = { [weak self] path in
+            self?.pushCoordinator?.push(toPath: path)
+        }
+        plugin.onPopRequest = { [weak self] in
+            _ = self?.pushCoordinator?.pop()
+        }
+        plugin.onSetNavigationStack = { [weak self] stack in
+            self?.pushCoordinator?.replaceStack(stack)
+        }
     }
 
     func dismissInlineWebView() {
@@ -99,26 +211,105 @@ final class RootShellViewController: UIViewController {
         bridgeVC.resumeInlineWebView()
     }
 
+    // MARK: - Phone shell configuration
+
     private func configurePhoneShell() {
         phoneShellHostingVC.view.backgroundColor = .clear
         bottomChromeContainerView.backgroundColor = .clear
         bottomChromeHostingVC.view.backgroundColor = .clear
 
+        // Z-order (back to front):
+        //   1. leftDrawerContainerView (rail)
+        //   2. mainShellContainerView (wraps phoneShellHostingVC)
+        //   3. drawerTapShieldView (above main shell only when drawer open)
+        //   4. bottomChromeContainerView (always on top)
+
+        // --- Left drawer (rail) ---
+        view.addSubview(leftDrawerContainerView)
+        addChild(railHostingVC)
+        railHostingVC.view.translatesAutoresizingMaskIntoConstraints = false
+        railHostingVC.view.backgroundColor = .clear
+        leftDrawerContainerView.addSubview(railHostingVC.view)
+
+        let initialWidth = resolvedDrawerWidth()
+        let widthConstraint = leftDrawerContainerView.widthAnchor.constraint(equalToConstant: initialWidth)
+        leftDrawerWidthConstraint = widthConstraint
+
+        NSLayoutConstraint.activate([
+            leftDrawerContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            leftDrawerContainerView.topAnchor.constraint(equalTo: view.topAnchor),
+            leftDrawerContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            widthConstraint,
+
+            railHostingVC.view.leadingAnchor.constraint(equalTo: leftDrawerContainerView.leadingAnchor),
+            railHostingVC.view.trailingAnchor.constraint(equalTo: leftDrawerContainerView.trailingAnchor),
+            railHostingVC.view.topAnchor.constraint(equalTo: leftDrawerContainerView.safeAreaLayoutGuide.topAnchor),
+            railHostingVC.view.bottomAnchor.constraint(equalTo: leftDrawerContainerView.bottomAnchor),
+        ])
+
+        railHostingVC.didMove(toParent: self)
+        leftDrawerContainerView.isUserInteractionEnabled = false  // closed by default
+
+        // --- Main shell container wrapping the React phone shell ---
+        view.addSubview(mainShellContainerView)
         addChild(phoneShellHostingVC)
-        view.addSubview(phoneShellHostingVC.view)
+        mainShellContainerView.addSubview(phoneShellHostingVC.view)
         phoneShellHostingVC.view.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
-            phoneShellHostingVC.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            phoneShellHostingVC.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            phoneShellHostingVC.view.topAnchor.constraint(equalTo: view.topAnchor),
-            phoneShellHostingVC.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            mainShellContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            mainShellContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            mainShellContainerView.topAnchor.constraint(equalTo: view.topAnchor),
+            mainShellContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            phoneShellHostingVC.view.leadingAnchor.constraint(equalTo: mainShellContainerView.leadingAnchor),
+            phoneShellHostingVC.view.trailingAnchor.constraint(equalTo: mainShellContainerView.trailingAnchor),
+            phoneShellHostingVC.view.topAnchor.constraint(equalTo: mainShellContainerView.topAnchor),
+            phoneShellHostingVC.view.bottomAnchor.constraint(equalTo: mainShellContainerView.bottomAnchor),
         ])
 
         phoneShellHostingVC.didMove(toParent: self)
 
+        // --- Tap shield (sits above main shell only when drawer is open) ---
+        view.addSubview(drawerTapShieldView)
+        drawerTapShieldView.addTarget(self, action: #selector(handleDrawerTapShield), for: .touchUpInside)
+
+        // --- Bottom chrome overlay (always on top) ---
         embedBottomChromeOverlay()
         view.bringSubviewToFront(bottomChromeContainerView)
+
+        // --- Gestures ---
+        // Edge-pan on left edge opens drawer. NOTE: in task #7 this will be
+        // routed conditionally: if nav stack has >1 page, edge-pan goes to
+        // the swipe-back interaction; otherwise it opens the rail.
+        view.addGestureRecognizer(leftEdgeGestureRecognizer)
+        // Pan inside the main shell closes the drawer when it's open.
+        mainShellContainerView.addGestureRecognizer(drawerClosePanGesture)
+
+        // --- Push navigation coordinator ---
+        // Uses a stub bridge for now; task #5 swaps in the real plugin-backed
+        // bridge that talks to React via `nav.requestRender` / `nav.didFinish`.
+        pushCoordinator = PushNavigationCoordinator(
+            mainShellView: mainShellContainerView,
+            containerView: view,
+            topSiblingView: bottomChromeContainerView,
+            bridge: stubNavBridge
+        )
+    }
+
+    // MARK: - Navigation entry points (called by bridge in task #5)
+
+    func pushNavigation(toPath path: String) {
+        pushCoordinator?.push(toPath: path)
+    }
+
+    @discardableResult
+    func popNavigation() -> Bool {
+        pushCoordinator?.pop() ?? false
+    }
+
+    var navigationStack: [String] {
+        pushCoordinator?.stack ?? []
     }
 
     private func embedBottomChromeOverlay() {
@@ -195,12 +386,31 @@ final class RootShellViewController: UIViewController {
             }
     }
 
+    // MARK: - Layout helpers
+
     private func resolvedBottomChromeHeight() -> CGFloat {
         chromeState.isBottomBarCollapsed ? 42 : 64
     }
 
     private func updateBottomChromeSizeConstraint() {
         bottomChromeHeightConstraint?.constant = resolvedBottomChromeHeight()
+    }
+
+    private func resolvedDrawerWidth() -> CGFloat {
+        let screenWidth = max(view.bounds.width, UIScreen.main.bounds.width)
+        return min(max(screenWidth * 0.84, 292), 340)
+    }
+
+    private func resolvedDrawerSlideOffset() -> CGFloat {
+        min(resolvedDrawerWidth(), max(view.bounds.width - 52, 0))
+    }
+
+    private func updateDrawerWidthConstraints() {
+        leftDrawerWidthConstraint?.constant = resolvedDrawerWidth()
+    }
+
+    private func layoutDrawerTapShield() {
+        drawerTapShieldView.frame = mainShellContainerView.frame
     }
 
     private func applyBottomBarVisibility(animated: Bool) {
@@ -242,9 +452,151 @@ final class RootShellViewController: UIViewController {
         }
     }
 
+    // MARK: - Drawer open / close
+
     private func toggleDrawer() {
-        withAnimation(.spring(response: 0.26, dampingFraction: 0.92)) {
-            chromeState.drawerProgress = chromeState.drawerProgress > 0.01 ? 0 : 1
+        if isDrawerOpen {
+            closeDrawer(animated: true)
+        } else {
+            openDrawer(animated: true)
         }
+    }
+
+    private func openDrawer(animated: Bool) {
+        guard shouldUseNativeTopChrome else { return }
+        guard !isDrawerOpen else { return }
+        isDrawerOpen = true
+
+        leftDrawerContainerView.isUserInteractionEnabled = true
+        drawerTapShieldView.isHidden = false
+        view.bringSubviewToFront(drawerTapShieldView)
+        view.bringSubviewToFront(bottomChromeContainerView)
+
+        let apply = { self.applyDrawerVisualState() }
+        let completion: (Bool) -> Void = { _ in
+            self.mainShellContainerView.isUserInteractionEnabled = false
+            self.layoutDrawerTapShield()
+        }
+
+        if animated {
+            UIView.animate(
+                withDuration: 0.34,
+                delay: 0,
+                usingSpringWithDamping: 0.9,
+                initialSpringVelocity: 0.18,
+                options: [.curveEaseInOut, .beginFromCurrentState],
+                animations: apply,
+                completion: completion
+            )
+        } else {
+            apply()
+            completion(true)
+        }
+    }
+
+    private func closeDrawer(animated: Bool) {
+        guard shouldUseNativeTopChrome else { return }
+        guard isDrawerOpen else { return }
+        isDrawerOpen = false
+
+        let apply = { self.applyDrawerVisualState() }
+        let completion: (Bool) -> Void = { _ in
+            self.mainShellContainerView.isUserInteractionEnabled = true
+            self.leftDrawerContainerView.isUserInteractionEnabled = false
+            self.drawerTapShieldView.isHidden = true
+            self.layoutDrawerTapShield()
+        }
+
+        if animated {
+            UIView.animate(
+                withDuration: 0.34,
+                delay: 0,
+                usingSpringWithDamping: 0.9,
+                initialSpringVelocity: 0.18,
+                options: [.curveEaseInOut, .beginFromCurrentState],
+                animations: apply,
+                completion: completion
+            )
+        } else {
+            apply()
+            completion(true)
+        }
+    }
+
+    private func applyDrawerVisualState() {
+        // We never set isHidden on the drawer container — WKWebView (if rail
+        // ever hosts one) would suspend JS. Rail is pure SwiftUI today, so
+        // this is belt-and-suspenders for the architecture, not a current
+        // requirement. Z-order + interaction toggle is the pattern.
+        let offset = resolvedDrawerSlideOffset()
+        if isDrawerOpen {
+            mainShellContainerView.transform = CGAffineTransform(translationX: offset, y: 0)
+            mainShellContainerView.layer.shadowOffset = CGSize(width: -10, height: 0)
+            mainShellContainerView.layer.shadowOpacity = 0.16
+            drawerTapShieldView.alpha = 1
+        } else {
+            mainShellContainerView.transform = .identity
+            mainShellContainerView.layer.shadowOpacity = 0
+            drawerTapShieldView.alpha = 0
+        }
+    }
+
+    // MARK: - Rail actions
+
+    private func handleRailSelect(_ tab: RailTab) {
+        // Optimistic local update — React will confirm via activeNavItemId
+        // round-trip, but we update immediately so the highlight and header
+        // don't lag the tap.
+        railState.selectedId = tab.id
+        railHeaderState.title = tab.title
+        closeDrawer(animated: true)
+        // tab.id is the route path (e.g. "/ai/chat") — exactly the navItemId
+        // shape that handleNativeTopDrawerNavItemTap expects in App.tsx.
+        chromePlugin?.emitNavItemTap(navItemId: tab.id)
+    }
+
+    // MARK: - Gesture handlers
+
+    @objc private func handleDrawerTapShield() {
+        closeDrawer(animated: true)
+    }
+
+    @objc private func handleLeftEdgePan(_ recognizer: UIScreenEdgePanGestureRecognizer) {
+        guard !isDrawerOpen else { return }
+        let translation = recognizer.translation(in: view)
+        guard abs(translation.y) <= drawerVerticalDriftTolerance else { return }
+
+        if translation.x >= drawerOpenThreshold {
+            openDrawer(animated: true)
+            recognizer.isEnabled = false
+            recognizer.isEnabled = true
+        }
+    }
+
+    @objc private func handleDrawerClosePan(_ recognizer: UIPanGestureRecognizer) {
+        guard isDrawerOpen else { return }
+        let translation = recognizer.translation(in: view)
+        guard abs(translation.y) <= drawerVerticalDriftTolerance else { return }
+
+        if translation.x <= drawerCloseThreshold {
+            closeDrawer(animated: true)
+            recognizer.isEnabled = false
+            recognizer.isEnabled = true
+        }
+    }
+}
+
+/// Stand-in bridge used until task #5 wires the Capacitor plugin.
+/// `requestRender` fires `completion` on the next runloop so the snapshot
+/// dance can be felt without React actually navigating — useful for tuning
+/// the spring curve on-device against an unchanging React state.
+final class StubPushNavigationBridge: PushNavigationBridge {
+    func requestRender(path: String, completion: @escaping () -> Void) {
+        NSLog("[PushNav] (stub) requestRender → %@", path)
+        DispatchQueue.main.async(execute: completion)
+    }
+
+    func notifyDidFinish(path: String) {
+        NSLog("[PushNav] (stub) didFinish ← %@", path)
     }
 }
