@@ -15,7 +15,7 @@ import {
   markdownMathRemarkPluginsBlock,
 } from '@/services/lego_blocks/integrations/markdownMathPluginsBlock'
 import TikzDiagramBlock from '@/components/lego_blocks/units/TikzDiagramBlock'
-import { X, ChevronLeft, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow } from 'lucide-react'
+import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -1334,10 +1334,9 @@ function MarkdownTextDocumentRuntimeBlock({
                       'transition-colors hover:bg-muted',
                       isIosPhone ? 'rounded-md p-1.5' : 'rounded-lg p-1.5',
                     )}
-                    title={isIosPhone ? 'Back' : 'Close'}
-                    aria-label={isIosPhone ? 'Back' : 'Close'}
+                    title="Close"
                   >
-                    {isIosPhone ? <ChevronLeft className="h-5 w-5" /> : <X className="h-4 w-4" />}
+                    <X className="h-4 w-4" />
                   </button>
                 )}
               </div>
@@ -1750,10 +1749,9 @@ function PdfDocumentRuntimeBlock({
               <button
                 onClick={onClose}
                 className="rounded-lg p-1.5 transition-colors hover:bg-muted"
-                title={isIosPhone ? 'Back' : 'Close'}
-                aria-label={isIosPhone ? 'Back' : 'Close'}
+                title="Close"
               >
-                {isIosPhone ? <ChevronLeft className="h-5 w-5" /> : <X className="h-4 w-4" />}
+                <X className="h-4 w-4" />
               </button>
             )}
           </div>
@@ -1832,10 +1830,9 @@ function ImageDocumentRuntimeBlock({
               <button
                 onClick={onClose}
                 className="rounded-lg p-1.5 transition-colors hover:bg-muted"
-                title={isIosPhone ? 'Back' : 'Close'}
-                aria-label={isIosPhone ? 'Back' : 'Close'}
+                title="Close"
               >
-                {isIosPhone ? <ChevronLeft className="h-5 w-5" /> : <X className="h-4 w-4" />}
+                <X className="h-4 w-4" />
               </button>
             )}
           </div>
@@ -1903,10 +1900,9 @@ function UnsupportedFileDocumentRuntimeBlock({
               <button
                 onClick={onClose}
                 className="rounded-lg p-1.5 transition-colors hover:bg-muted"
-                title={isIosPhone ? 'Back' : 'Close'}
-                aria-label={isIosPhone ? 'Back' : 'Close'}
+                title="Close"
               >
-                {isIosPhone ? <ChevronLeft className="h-5 w-5" /> : <X className="h-4 w-4" />}
+                <X className="h-4 w-4" />
               </button>
             )}
           </div>

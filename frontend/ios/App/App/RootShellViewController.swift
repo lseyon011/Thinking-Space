@@ -101,6 +101,7 @@ final class RootShellViewController: UIViewController {
                 }
             },
             onDrawerToggleTap: { [weak self] in self?.toggleDrawer() },
+            onBackTap: { [weak self] in _ = self?.popNavigation() },
             onSearchTap: { [weak self] in self?.chromePlugin?.emitSearchTap() },
             onCreateTap: { [weak self] in self?.chromePlugin?.emitCreateTap() },
             onExpandTap: { [weak self] in self?.chromePlugin?.emitExpandBottomTap() },
@@ -300,14 +301,20 @@ final class RootShellViewController: UIViewController {
         mainShellContainerView.addGestureRecognizer(drawerClosePanGesture)
 
         // --- Push navigation coordinator ---
-        // Uses a stub bridge for now; task #5 swaps in the real plugin-backed
-        // bridge that talks to React via `nav.requestRender` / `nav.didFinish`.
+        // Uses a stub bridge for now; the real plugin-backed bridge gets
+        // swapped in when wireTopChromePlugin runs.
         pushCoordinator = PushNavigationCoordinator(
             mainShellView: mainShellContainerView,
             containerView: view,
             topSiblingView: bottomChromeContainerView,
             bridge: stubNavBridge
         )
+        // Mirror canPop into chromeState so the BottomChromeView's
+        // drawer-toggle can morph into a back button.
+        pushCoordinator?.onStackChanged = { [weak self] in
+            guard let self else { return }
+            self.chromeState.canGoBack = self.pushCoordinator?.canPop ?? false
+        }
     }
 
     // MARK: - Navigation entry points (called by bridge in task #5)
@@ -574,31 +581,40 @@ final class RootShellViewController: UIViewController {
         closeDrawer(animated: true)
     }
 
-    // Threshold for triggering an edge-swipe pop. Smaller than the rail-open
-    // threshold (72) because iOS users expect back-swipe to fire on a lighter
-    // gesture, and velocity counts too.
-    private let popSwipeTranslationThreshold: CGFloat = 60
-    private let popSwipeVelocityThreshold: CGFloat = 800
+    // Edge-pan thresholds for the back-pop path. Lighter than the rail-open
+    // thresholds because back-swipe convention on iOS is a quick flick;
+    // velocity matters as much as distance. Vertical drift tolerance for
+    // pop is also looser (the user's thumb arcs more on a back gesture).
+    private let popSwipeTranslationThreshold: CGFloat = 50
+    private let popSwipeVelocityThreshold: CGFloat = 400
+    private let popSwipeVerticalDriftTolerance: CGFloat = 100
 
     @objc private func handleLeftEdgePan(_ recognizer: UIScreenEdgePanGestureRecognizer) {
         let translation = recognizer.translation(in: view)
         let velocity = recognizer.velocity(in: view)
-        guard abs(translation.y) <= drawerVerticalDriftTolerance else { return }
 
-        // Conditional dispatch (per ANIMATION_VALUES.md). If the nav stack has
-        // more than one entry, left-edge pan drives the back-swipe pop;
-        // otherwise it falls through to opening the rail (the existing
-        // behavior at root tab pages). Matches Settings/Mail/Messages.
+        // Conditional dispatch (per ANIMATION_VALUES.md). If the nav stack
+        // has more than one entry, left-edge pan drives the back-swipe pop;
+        // otherwise it falls through to opening the rail (root tab pages).
+        // Matches Settings/Mail/Messages.
         if let coordinator = pushCoordinator, coordinator.canPop {
-            if translation.x >= popSwipeTranslationThreshold || velocity.x >= popSwipeVelocityThreshold {
-                _ = coordinator.pop()
-                recognizer.isEnabled = false
-                recognizer.isEnabled = true
+            // Evaluate on .ended (user lifted finger): commit if translation
+            // or velocity crossed threshold and the gesture didn't drift
+            // too far vertically. .ended is more forgiving than firing
+            // mid-pan because the user can flick quickly without holding
+            // a precise drag.
+            if recognizer.state == .ended {
+                if abs(translation.y) <= popSwipeVerticalDriftTolerance
+                    && (translation.x >= popSwipeTranslationThreshold || velocity.x >= popSwipeVelocityThreshold) {
+                    _ = coordinator.pop()
+                }
             }
             return
         }
 
+        // Rail-open path: existing fire-on-threshold during .changed.
         guard !isDrawerOpen else { return }
+        guard abs(translation.y) <= drawerVerticalDriftTolerance else { return }
         if translation.x >= drawerOpenThreshold {
             openDrawer(animated: true)
             recognizer.isEnabled = false

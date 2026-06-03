@@ -320,6 +320,7 @@ struct BottomChromeView: View {
 
     let onSidebarToggleTap: () -> Void
     let onDrawerToggleTap: () -> Void
+    let onBackTap: () -> Void
     let onSearchTap: () -> Void
     let onCreateTap: () -> Void
     let onExpandTap: () -> Void
@@ -460,18 +461,46 @@ struct BottomChromeView: View {
     }
 
     private var drawerToggleButton: some View {
-        Button(action: onDrawerToggleTap) {
-            Image(systemName: "line.3.horizontal")
+        // Morphs between hamburger (≡) and back chevron (←) based on
+        // canGoBack — the iOS-app pattern where the same chrome slot does
+        // "open menu" at root and "go back" once you've drilled in.
+        Button(action: {
+            if state.canGoBack {
+                onBackTap()
+            } else {
+                onDrawerToggleTap()
+            }
+        }) {
+            morphingDrawerOrBackIcon
                 .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(state.drawerProgress > 0.01 ? Color.accentColor : .primary)
                 .frame(width: NativeChromeMetrics.iconButtonSize, height: NativeChromeMetrics.iconButtonSize)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(state.drawerProgress > 0.01 ? "Close navigation" : "Open navigation")
+        .accessibilityLabel(
+            state.canGoBack
+                ? "Back"
+                : (state.drawerProgress > 0.01 ? "Close navigation" : "Open navigation")
+        )
         .padding(6)
         .background {
             floatingChromeCapsule()
+        }
+        .animation(.easeInOut(duration: 0.22), value: state.canGoBack)
+    }
+
+    @ViewBuilder
+    private var morphingDrawerOrBackIcon: some View {
+        let symbolName = state.canGoBack ? "chevron.backward" : "line.3.horizontal"
+        let img = Image(systemName: symbolName)
+        if #available(iOS 17.0, *) {
+            // SF Symbol replace transition for the slick morph on modern iOS.
+            img.contentTransition(.symbolEffect(.replace))
+        } else {
+            // Plain fade transition on older OS — the .animation modifier on
+            // the parent button picks this up.
+            img
         }
     }
 

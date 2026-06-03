@@ -35,4 +35,10 @@ final class TopChromeState: ObservableObject {
     /// React side (see App.tsx webullTabLabel state, persisted in preferences).
     /// Defaults to "Webull"; React pushes the user's actual value on mount.
     @Published var webullTabLabel: String = "Webull"
+
+    /// True when the native push-navigation stack has more than one entry
+    /// — i.e., the user has drilled into content and a back action is
+    /// meaningful. Drives the morph from hamburger → chevron-back on the
+    /// bottom chrome's drawer toggle button.
+    @Published var canGoBack: Bool = false
 }

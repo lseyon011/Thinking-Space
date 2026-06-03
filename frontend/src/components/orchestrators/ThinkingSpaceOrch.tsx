@@ -329,16 +329,23 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
   const handleExplorerOpenFile = useCallback((path: string) => {
     if (isCapacitorNative()) {
       const url = `/thinking-space?file=${encodeURIComponent(path)}`
-      // Fire both messages without awaiting so push hits Swift immediately.
-      // Capacitor preserves call order on the bridge, so setStack lands
-      // before push in Swift's main-queue dispatcher; no race here.
-      void setNativeNavigationStackBlock(['/thinking-space']).catch(() => {
-        // Non-fatal — stack reset is best-effort. Push will still run.
-      })
-      void pushNativeNavigationBlock(url).catch((err) => {
-        console.warn('[ThinkingSpace] pushNativeNavigation failed, falling back to inline', err)
-        setInlinePathAndSyncUrl(path)
-      })
+      // Await setStack before push so Swift's stack is guaranteed to be
+      // [base, file] (count > 1) after push completes — that's what
+      // canPop checks for back-swipe gesture + chevron morph. Without the
+      // await, Capacitor's bridge can land setStack AFTER push, leaving
+      // stack at count == 1. The earlier flash issue was fixed by the
+      // snapshot-layer-order + afterScreenUpdates:true changes in the
+      // coordinator, not by removing this await; the ~10-30ms latency
+      // here is invisible because the snapshot already covers the screen.
+      void (async () => {
+        try {
+          await setNativeNavigationStackBlock(['/thinking-space'])
+          await pushNativeNavigationBlock(url)
+        } catch (err) {
+          console.warn('[ThinkingSpace] pushNativeNavigation failed, falling back to inline', err)
+          setInlinePathAndSyncUrl(path)
+        }
+      })()
       return
     }
     setInlinePathAndSyncUrl(path)

@@ -56,6 +56,11 @@ final class PushNavigationCoordinator {
     /// with a state machine in task #7.)
     private var isAnimating: Bool = false
 
+    /// Fires after every stack mutation (push/pop completion, replaceStack,
+    /// setRoot). RootShellViewController hooks this to mirror canPop into
+    /// chromeState.canGoBack so the bottom-chrome button can morph.
+    var onStackChanged: (() -> Void)?
+
     var canPop: Bool { stack.count > 1 && !isAnimating }
     var topPath: String? { stack.last }
 
@@ -81,11 +86,13 @@ final class PushNavigationCoordinator {
     /// when it learns the initial route from React.
     func setRoot(_ path: String) {
         stack = [path]
+        onStackChanged?()
     }
 
     /// Replace the entire stack (e.g. on tab switch). No animation.
     func replaceStack(_ paths: [String]) {
         stack = paths
+        onStackChanged?()
     }
 
     /// Replace the root path (for tab switches via the rail). No animation.
@@ -162,6 +169,7 @@ final class PushNavigationCoordinator {
                     snapshot.removeFromSuperview()
                     self.stack.append(path)
                     self.isAnimating = false
+                    self.onStackChanged?()
                     bridge.notifyDidFinish(path: path)
                 }
             )
@@ -233,6 +241,7 @@ final class PushNavigationCoordinator {
                     dim.removeFromSuperview()
                     self.stack.removeLast()
                     self.isAnimating = false
+                    self.onStackChanged?()
                     bridge.notifyDidFinish(path: targetPath)
                 }
             )
