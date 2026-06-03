@@ -44,6 +44,7 @@ export const STORAGE_KEYS = {
   aiWebsites: 'ltm-ai-websites',
   webSites: 'ltm-web-sites',
   fileActivityIgnoredPaths: 'ltm-file-activity-ignored-paths',
+  vaultSyncExcludedPrefixes: 'ltm-vault-sync-excluded-prefixes',
 } as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]

@@ -5,6 +5,10 @@
 
 import { Capacitor } from '@capacitor/core'
 import { EXCLUDED_DIRS } from '@/services/lego_blocks/units/vaultConstantsBlock'
+import {
+  getSyncExcludedPathPrefixes,
+  isPathSyncExcluded,
+} from '@/services/lego_blocks/units/vaultSyncExclusionsBlock'
 import { getStoredVaultRoot, setStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { notifyFileChanged } from '@/services/lego_blocks/units/crossWindowSyncBlock'
 import { logDebug, logWarn } from '@/services/lego_blocks/units/debugLogBlock'
@@ -767,6 +771,7 @@ class CapacitorVaultFS implements VaultFS {
   async walkVault(extensions: string[] = ['.md']): Promise<VaultEntry[]> {
     const extSet = new Set(extensions)
     const entries: VaultEntry[] = []
+    const excludedPrefixes = getSyncExcludedPathPrefixes()
 
     // walkByUri: use native-provided URIs from readdir results to avoid
     // encoding issues with special characters (?, #, %) in filenames.
@@ -787,6 +792,7 @@ class CapacitorVaultFS implements VaultFS {
       for (const item of result.files) {
         if (item.name.startsWith('.') || EXCLUDED_DIRS.has(item.name)) continue
         const relPath = relPrefix ? `${relPrefix}/${item.name}` : item.name
+        if (excludedPrefixes.length > 0 && isPathSyncExcluded(relPath, excludedPrefixes)) continue
         // readdir returns a `uri` for each item that's already properly encoded
         const itemUri: string | undefined = (item as any).uri
 
@@ -1020,12 +1026,15 @@ export class BrowserVaultFS implements VaultFS {
   async walkVault(extensions: string[] = ['.md']): Promise<VaultEntry[]> {
     const extSet = new Set(extensions)
     const entries: VaultEntry[] = []
+    const excludedPrefixes = getSyncExcludedPathPrefixes()
 
     const walk = async (dir: FileSystemDirectoryHandle, prefix: string) => {
       // Collect all entries first (async iterator must be consumed sequentially)
       const items: Array<[string, FileSystemHandle]> = []
       for await (const [name, handle] of (dir as any).entries()) {
         if (name.startsWith('.') || EXCLUDED_DIRS.has(name)) continue
+        const relPath = prefix ? `${prefix}/${name}` : name
+        if (excludedPrefixes.length > 0 && isPathSyncExcluded(relPath, excludedPrefixes)) continue
         items.push([name, handle])
       }
 

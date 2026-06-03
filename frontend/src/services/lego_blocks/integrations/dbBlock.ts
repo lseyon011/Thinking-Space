@@ -415,6 +415,39 @@ export async function getAllFilePaths(): Promise<Set<string>> {
 }
 
 /**
+ * Batch fetch nodes by file path. Returns a Map keyed by filePath. Missing
+ * paths simply aren't in the result. Single indexed query — much cheaper than
+ * N individual getNodeByPath calls during sync reconciliation.
+ */
+export async function getNodesByPaths(
+  filePaths: string[],
+): Promise<Map<string, NodeRecord>> {
+  if (filePaths.length === 0) return new Map()
+  const db = getDb()
+  const rows = await db.nodes.where('filePath').anyOf(filePaths).toArray()
+  const out = new Map<string, NodeRecord>()
+  for (const row of rows) out.set(row.filePath, row)
+  return out
+}
+
+/**
+ * Update only the filePath of an existing node. Used by hybrid sync when a
+ * file has moved (same uuid, different path) so the node keeps its identity
+ * — links, comments, history — instead of being deleted and recreated.
+ */
+export async function updateNodeFilePath(
+  uuid: string,
+  newFilePath: string,
+): Promise<boolean> {
+  const db = getDb()
+  const existing = await db.nodes.where('uuid').equals(uuid).first()
+  if (!existing?.id) return false
+  if (existing.filePath === newFilePath) return false
+  await db.nodes.update(existing.id, { filePath: newFilePath })
+  return true
+}
+
+/**
  * Close the database connection. Useful for testing cleanup.
  */
 export async function closeDb(): Promise<void> {
@@ -696,7 +729,9 @@ function collectMetadataValues(value: unknown, out: string[]): void {
 }
 
 function formatNodeKeyConflictMessage(conflict: NodeKeyConflictBlock): string {
-  return `Duplicate node key "${conflict.key}" in "${conflict.filePath}" conflicts with "${conflictingFilePath(conflict)}". Node keys must be unique.`
+  const a = conflict.filePath || `[uuid:${conflict.uuid}]`
+  const b = conflictingFilePath(conflict)
+  return `Duplicate YAML key "${conflict.key}" — both "${a}" and "${b}" claim it. Rename the YAML \`key:\` field in one of the files (or delete the stale duplicate) so each node has a unique key.`
 }
 
 function conflictingFilePath(conflict: NodeKeyConflictBlock): string {

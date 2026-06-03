@@ -2030,7 +2030,7 @@ function App() {
     if (perfTraceEnabled()) {
       tabSwitchPerfRef.current = {
         tabId,
-        label: target.label,
+        label: target.label ?? tabId,
         route: target.route,
         clickAt: performance.now(),
       }

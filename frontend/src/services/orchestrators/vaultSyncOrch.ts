@@ -20,6 +20,10 @@ import {
   getAllFilePaths,
   getNodeByKey,
   getNodeByPath,
+  getNodesByPaths,
+  updateNodeFilePath,
+  updateLinkTargets,
+  updateLinkSourcePaths,
   clearAll,
   clearAllLinks,
   getNodeCount,
@@ -31,6 +35,11 @@ import {
 } from '@/services/lego_blocks/integrations/dbBlock'
 import { extractLinksFromContentBlock } from '@/services/lego_blocks/units/linkIndexBlock'
 import { startActivity } from '@/services/lego_blocks/units/backgroundActivityBlock'
+import {
+  getSyncExcludedPathPrefixes,
+  isPathSyncExcluded,
+} from '@/services/lego_blocks/units/vaultSyncExclusionsBlock'
+import { logError } from '@/services/lego_blocks/units/debugLogBlock'
 import {
   mergeWikiLinksIntoFrontmatterBlock,
   resolveGeneratedWikiLinksForFrontmatterBlock,
@@ -140,7 +149,11 @@ export async function fullSync(fs?: VaultFS, options?: VaultSyncOptions): Promis
       await clearNodesAndLinksUnderPath(rootPath)
     }
 
-    const allEntries = await vaultFs.walkVault(['.md'])
+    const walked = await vaultFs.walkVault(['.md'])
+    const excludedPrefixes = getSyncExcludedPathPrefixes()
+    const allEntries = excludedPrefixes.length === 0
+      ? walked
+      : walked.filter(e => !isPathSyncExcluded(e.path, excludedPrefixes))
     const entries = rootPath
       ? allEntries.filter(e => e.path === rootPath || e.path.startsWith(`${rootPath}/`))
       : allEntries
@@ -192,26 +205,69 @@ export async function incrementalSync(
     detail: 'Checking for changes',
   })
   try {
-  const allEntries = await vaultFs.walkVault(['.md'])
+  const walked = await vaultFs.walkVault(['.md'])
+  const excludedPrefixes = getSyncExcludedPathPrefixes()
+  const allEntries = excludedPrefixes.length === 0
+    ? walked
+    : walked.filter(e => !isPathSyncExcluded(e.path, excludedPrefixes))
 
   // Find files modified since last sync
   const sinceSeconds = normalizeEpochSeconds(sinceTimestamp)
   const updatedEntries = allEntries.filter(e => normalizeEpochSeconds(e.mtime) > sinceSeconds)
 
-  // Detect deleted files — batch delete instead of N individual queries
+  // Detect deleted files — batch delete instead of N individual queries.
+  // Excluded paths are ignored on both sides: if a cached entry sits under an
+  // excluded prefix (e.g. an older webull node from before exclusion was set)
+  // we leave it alone here and rely on the registration-time purge to clear
+  // it. Skipping it from "deleted" detection just prevents churn.
   const currentPaths = new Set(allEntries.map(e => e.path))
   const cachedPaths = await getAllFilePaths()
-  const deletedPaths: string[] = []
+  const suspectedDeletes: string[] = []
   for (const cachedPath of cachedPaths) {
-    if (!currentPaths.has(cachedPath)) {
-      deletedPaths.push(cachedPath)
-    }
+    if (currentPaths.has(cachedPath)) continue
+    if (isPathSyncExcluded(cachedPath, excludedPrefixes)) continue
+    suspectedDeletes.push(cachedPath)
   }
+
+  // Hybrid reconciliation (uuid-keyed for YAML files, path-keyed otherwise).
+  // For each suspected delete, check if its uuid showed up at a new path —
+  // if so it's a rename/move, not a delete. Renames don't bump mtime, so the
+  // moved file's new path is usually filtered out of `updatedEntries` and
+  // would have been silently dropped from the cache by the old path-based
+  // logic. The hybrid path treats those as moves and preserves identity.
+  const hybridEnabled = getCapabilityFeatureFlags().hybrid_sync_reconciliation_enabled
+  const movedPathsToReparse = new Set<string>()
+  const deletedPaths: string[] = []
+  if (hybridEnabled && suspectedDeletes.length > 0) {
+    const reconciled = await reconcileMovesByUuid({
+      fs: vaultFs,
+      allEntries,
+      cachedPaths,
+      suspectedDeletes,
+      maxFileSizeBytes: resolveMaxSyncFileSizeBytes(options),
+    })
+    for (const p of reconciled.movedNewPaths) movedPathsToReparse.add(p)
+    for (const p of reconciled.trueDeletes) deletedPaths.push(p)
+  } else {
+    deletedPaths.push(...suspectedDeletes)
+  }
+
   if (deletedPaths.length > 0) {
     await bulkDeleteNodesByPaths(deletedPaths)
     await bulkDeleteLinksForFiles(deletedPaths)
   }
   const deletedCount = deletedPaths.length
+
+  // Force-include moved paths even when mtime didn't change — their content
+  // is the same but the cache entry's filePath has been updated and the link
+  // index needs to be rebuilt from the new path.
+  const updatedEntriesIncludingMoves = movedPathsToReparse.size === 0
+    ? updatedEntries
+    : (() => {
+        const seen = new Set(updatedEntries.map(e => e.path))
+        const extra = allEntries.filter(e => movedPathsToReparse.has(e.path) && !seen.has(e.path))
+        return extra.length === 0 ? updatedEntries : [...updatedEntries, ...extra]
+      })()
 
   const candidatePaths = allEntries.map(e => e.path)
   setCachedFilePaths(new Set(candidatePaths))
@@ -221,25 +277,33 @@ export async function incrementalSync(
   // iCloud-backed vaults). Per-path lookups parallelize cheaply via Dexie.
   const cachedUpdatedAtByPath = new Map<string, string>()
   await Promise.all(
-    updatedEntries.map(async (entry) => {
+    updatedEntriesIncludingMoves.map(async (entry) => {
+      // Don't suppress reparse for moved files even if cached updatedAt matches —
+      // the link index keys off filePath and must be rebuilt at the new path.
+      if (movedPathsToReparse.has(entry.path)) return
       const node = await getNodeByPath(entry.path)
       if (node?.updatedAt) cachedUpdatedAtByPath.set(entry.path, node.updatedAt)
     }),
   )
 
+  const movedCount = movedPathsToReparse.size
   activity.update({
-    total: updatedEntries.length,
+    total: updatedEntriesIncludingMoves.length,
     completed: 0,
-    detail: updatedEntries.length === 0
+    detail: updatedEntriesIncludingMoves.length === 0
       ? 'Up to date'
-      : `${updatedEntries.length} changed${deletedCount ? `, ${deletedCount} removed` : ''}`,
+      : [
+          `${updatedEntriesIncludingMoves.length} changed`,
+          movedCount ? `${movedCount} moved` : null,
+          deletedCount ? `${deletedCount} removed` : null,
+        ].filter(Boolean).join(', '),
   })
   // Incremental sync: skip the full-vault prepass and rely on getNodeByKey lookups
   // against IndexedDB for parent path resolution. Scanning every file here would
   // defeat the purpose of incremental sync.
   const result = await syncEntries(
     vaultFs,
-    updatedEntries,
+    updatedEntriesIncludingMoves,
     options,
     candidatePaths,
     undefined,
@@ -411,10 +475,13 @@ async function syncEntries(
     const batch = pendingNodes.splice(0)
     const { conflicts } = await bulkUpsertNodes(batch)
     if (conflicts.length > 0) {
-      result.errors.push(...conflicts.map(conflict => ({
-        path: conflict.filePath,
-        error: formatNodeKeyConflictError(conflict),
-      })))
+      for (const conflict of conflicts) {
+        result.errors.push({
+          path: conflict.filePath,
+          error: formatNodeKeyConflictError(conflict),
+        })
+        reportNodeKeyConflictToDebugConsole(conflict)
+      }
     }
   }
 
@@ -436,22 +503,52 @@ async function syncEntries(
     }
   }
 
+  // Process entries in small batches: parallelize the per-file fs.read
+  // (each one is a bridge call on iOS / IPC on Electron and benefits from
+  // overlap), then yield the event loop between batches so the renderer
+  // can paint. Without this, a large incremental sync visibly freezes the
+  // iOS UI for seconds at a time.
+  const READ_BATCH_SIZE = getPlatformName() === 'ios' ? 8 : 16
+
   let progressCount = 0
   let nextProgressReport = 0
-  for (const entry of entries) {
-    progressCount++
-    if (onProgress && progressCount >= nextProgressReport) {
-      onProgress(progressCount)
-      // Report every ~2% of work, min every 5 files, to avoid bus churn.
-      nextProgressReport = progressCount + Math.max(5, Math.floor(entries.length / 50))
-    }
-    try {
-      if (entry.size > maxFileSizeBytes) {
+  for (let batchStart = 0; batchStart < entries.length; batchStart += READ_BATCH_SIZE) {
+    const batch = entries.slice(batchStart, batchStart + READ_BATCH_SIZE)
+
+    // Parallel reads. Each slot is either {content}, {error}, or null
+    // (skipped because file is too large).
+    type ReadSlot = { content: string } | { error: unknown } | null
+    const reads: ReadSlot[] = await Promise.all(batch.map(async (entry) => {
+      if (entry.size > maxFileSizeBytes) return null
+      try {
+        return { content: await fs.read(entry.path) }
+      } catch (err) {
+        return { error: err }
+      }
+    }))
+
+    for (let i = 0; i < batch.length; i++) {
+      const entry = batch[i]
+      const slot = reads[i]
+      progressCount++
+      if (onProgress && progressCount >= nextProgressReport) {
+        onProgress(progressCount)
+        // Report every ~2% of work, min every 5 files, to avoid bus churn.
+        nextProgressReport = progressCount + Math.max(5, Math.floor(entries.length / 50))
+      }
+      if (slot === null) {
         result.skippedFiles++
         continue
       }
-
-      let content = await fs.read(entry.path)
+      if ('error' in slot) {
+        result.errors.push({
+          path: entry.path,
+          error: slot.error instanceof Error ? slot.error.message : String(slot.error),
+        })
+        continue
+      }
+      try {
+      let content = slot.content
       if (!hasFrontmatter(content)) {
         result.skippedFiles++
         continue
@@ -505,11 +602,19 @@ async function syncEntries(
       if (pendingLinks.length >= LINK_BATCH_SIZE) {
         await flushLinks()
       }
-    } catch (err) {
-      result.errors.push({
-        path: entry.path,
-        error: err instanceof Error ? err.message : String(err),
-      })
+      } catch (err) {
+        result.errors.push({
+          path: entry.path,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
+    // Yield to the event loop between batches so the UI can paint and
+    // input events get serviced. On iOS this is the difference between
+    // a responsive app and a frozen keyboard.
+    if (batchStart + READ_BATCH_SIZE < entries.length) {
+      await new Promise<void>(resolve => setTimeout(resolve, 0))
     }
   }
 
@@ -533,6 +638,98 @@ function peekFrontmatterUpdatedAt(content: string): string | null {
   if (!hasFrontmatter(content)) return null
   const match = FRONTMATTER_UPDATED_AT_RE.exec(content)
   return match?.[1]?.trim() ?? null
+}
+
+// Fast `uuid` peek used by hybrid reconciliation to detect moved files —
+// matches a file's stable identity to a cached node even when its path has
+// changed. Returns null for files without our YAML frontmatter (loose
+// markdown), which correctly falls back to path-based handling.
+const FRONTMATTER_UUID_RE = /^uuid:\s*["']?([^"'\n]+?)["']?\s*$/m
+
+function peekFrontmatterUuid(content: string): string | null {
+  if (!hasFrontmatter(content)) return null
+  const match = FRONTMATTER_UUID_RE.exec(content)
+  return match?.[1]?.trim() ?? null
+}
+
+interface HybridReconcileResultBlock {
+  movedNewPaths: Set<string>
+  trueDeletes: string[]
+}
+
+async function reconcileMovesByUuid(params: {
+  fs: VaultFS
+  allEntries: VaultEntry[]
+  cachedPaths: Set<string>
+  suspectedDeletes: string[]
+  maxFileSizeBytes: number
+}): Promise<HybridReconcileResultBlock> {
+  const { fs, allEntries, cachedPaths, suspectedDeletes, maxFileSizeBytes } = params
+  const trueDeletes: string[] = []
+  const movedNewPaths = new Set<string>()
+
+  // Candidate destinations = paths in the current walk that the cache has
+  // never seen at this location. A move's new path always lands here.
+  const newToCache = allEntries.filter(
+    e => !cachedPaths.has(e.path) && e.size <= maxFileSizeBytes,
+  )
+  if (newToCache.length === 0) {
+    return { movedNewPaths, trueDeletes: suspectedDeletes }
+  }
+
+  // Peek uuid for each new-to-cache path. Files without frontmatter return
+  // null and simply don't participate in move detection.
+  const newPathByUuid = new Map<string, string>()
+  await Promise.all(newToCache.map(async (entry) => {
+    try {
+      const content = await fs.read(entry.path)
+      const uuid = peekFrontmatterUuid(content)
+      if (uuid) newPathByUuid.set(uuid, entry.path)
+    } catch {
+      // Unreadable file; treat as not-a-move-candidate.
+    }
+  }))
+
+  if (newPathByUuid.size === 0) {
+    return { movedNewPaths, trueDeletes: suspectedDeletes }
+  }
+
+  // Batch-fetch cached node records for the suspected-delete paths so we
+  // can read their uuids in one indexed query.
+  const cachedByPath = await getNodesByPaths(suspectedDeletes)
+
+  for (const oldPath of suspectedDeletes) {
+    const cachedNode = cachedByPath.get(oldPath)
+    const cachedUuid = cachedNode?.uuid
+    if (!cachedUuid) {
+      // Loose-file row (no uuid) — fall back to path-based deletion. Documented
+      // limitation: moves of files without YAML can't be tracked.
+      trueDeletes.push(oldPath)
+      continue
+    }
+    const newPath = newPathByUuid.get(cachedUuid)
+    if (!newPath) {
+      trueDeletes.push(oldPath)
+      continue
+    }
+    // It's a move. Update the cache entry's filePath in place, rewrite the
+    // link index so both outgoing (sourceFilePath) and incoming
+    // (targetFilePath) link rows reflect the new path, and mark the new
+    // path for reparse so the moved file's own outgoing links get
+    // re-extracted at the new location.
+    //
+    // Source files containing markdown-style links like [text](oldPath) are
+    // NOT rewritten here — the IndexedDB index is correct (backlinks
+    // queries work), but if the user clicks such a link in another note
+    // they'll hit a missing file until that linker note is re-saved. See
+    // ADR notes / followup: source-file markdown rewrite on move.
+    await updateNodeFilePath(cachedUuid, newPath)
+    await updateLinkSourcePaths(oldPath, newPath)
+    await updateLinkTargets(oldPath, newPath)
+    movedNewPaths.add(newPath)
+  }
+
+  return { movedNewPaths, trueDeletes }
 }
 
 async function buildParentKeyToPathIndex(
@@ -592,7 +789,41 @@ async function healWikiLinksForNote(
 }
 
 function formatNodeKeyConflictError(conflict: NodeKeyConflictBlock): string {
-  return `Duplicate YAML key "${conflict.key}" conflicts with "${conflict.conflictingFilePath}". Node keys must be unique.`
+  const other = conflict.conflictingFilePath || `[uuid:${conflict.conflictingUuid}]`
+  return `Duplicate YAML key "${conflict.key}" — also claimed by "${other}". Rename the YAML \`key:\` field in one file so each node has a unique key.`
+}
+
+// De-dupe key for a conflict pair so we only emit one debug-console entry per
+// (key, both-paths) per session. The same conflict surfaces on every sync tick
+// until the user resolves it; the panel doesn't need 50 copies of it.
+const reportedKeyConflictsBlock = new Set<string>()
+
+function reportNodeKeyConflictToDebugConsole(conflict: NodeKeyConflictBlock): void {
+  const pair = [conflict.filePath, conflict.conflictingFilePath].sort().join('|')
+  const dedupeKey = `${conflict.key}::${pair}`
+  if (reportedKeyConflictsBlock.has(dedupeKey)) return
+  reportedKeyConflictsBlock.add(dedupeKey)
+
+  const details = [
+    `key: ${conflict.key}`,
+    `file A: ${conflict.filePath || '[unknown]'} (uuid: ${conflict.uuid})`,
+    `file B: ${conflict.conflictingFilePath || '[unknown]'} (uuid: ${conflict.conflictingUuid})`,
+    '',
+    'Fix: open one of the files and change the `key:` field in its YAML',
+    'frontmatter to something unique, then re-sync. If one is a stale',
+    'duplicate (e.g. left over from an iCloud move), delete that file.',
+  ].join('\n')
+
+  logError(
+    `Duplicate YAML key "${conflict.key}" — two files claim it`,
+    details,
+    'vaultSync',
+  )
+}
+
+/** Clears the in-session dedupe cache. Call after resolving conflicts. */
+export function resetReportedKeyConflictsBlock(): void {
+  reportedKeyConflictsBlock.clear()
 }
 
 function frontmatterToRecord(

@@ -179,6 +179,31 @@ function extractErrorExtraFieldsBlock(error: Error): Record<string, unknown> | n
   return Object.keys(out).length > 0 ? out : null
 }
 
+// Console payloads we never want surfaced in the debug panel. The iOS
+// Filesystem plugin logs natively to console.error before our JS catch
+// runs, so even handled errors (iCloud-stale dirs that we skip during
+// walkVault) would otherwise spam the panel. Match by Capacitor error code
+// since the message text is unstable across plugin versions.
+const SUPPRESSED_CONSOLE_ERROR_CODES = new Set<string>([
+  'OS-PLUG-FILE-0008', // file/dir does not exist — iCloud-stale child of a directory we're walking
+])
+
+function shouldSuppressConsolePayloadBlock(args: unknown[]): boolean {
+  for (const arg of args) {
+    if (typeof arg !== 'object' || arg === null) continue
+    const code = (arg as { code?: unknown }).code
+    if (typeof code === 'string' && SUPPRESSED_CONSOLE_ERROR_CODES.has(code)) return true
+  }
+  // Also catch the case where the plugin pre-formats into the message string.
+  for (const arg of args) {
+    if (typeof arg !== 'string') continue
+    for (const code of SUPPRESSED_CONSOLE_ERROR_CODES) {
+      if (arg.includes(code)) return true
+    }
+  }
+  return false
+}
+
 // Call once at startup to forward console.error / console.warn to the debug log.
 let consoleIntercepted = false
 
@@ -192,6 +217,7 @@ export function installConsoleInterceptBlock(): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   console.error = (...args: any[]) => {
     originalError(...args)
+    if (shouldSuppressConsolePayloadBlock(args)) return
     const { message, details, stack } = formatConsolePayloadBlock(args)
     dispatchDebugLogBlock({ level: 'error', message, details, stack, source: 'console' })
   }
@@ -199,6 +225,7 @@ export function installConsoleInterceptBlock(): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   console.warn = (...args: any[]) => {
     originalWarn(...args)
+    if (shouldSuppressConsolePayloadBlock(args)) return
     const { message, details } = formatConsolePayloadBlock(args)
     dispatchDebugLogBlock({ level: 'warn', message, details, source: 'console' })
   }

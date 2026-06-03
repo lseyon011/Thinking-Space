@@ -2,6 +2,8 @@
 // When any window writes a file, other windows re-sync that file into IndexedDB.
 // Works across Electron windows, browser tabs, and any same-origin context.
 
+import { recordSelfWriteBlock } from './selfWriteTrackerBlock'
+
 const CHANNEL_NAME = 'ltm-vault-sync'
 
 export interface VaultChangeMessage {
@@ -18,6 +20,7 @@ function getChannel(): BroadcastChannel {
 }
 
 export function notifyFileChanged(filePath: string): void {
+  recordSelfWriteBlock(filePath)
   getChannel().postMessage({
     type: 'file-changed',
     filePath,
@@ -26,6 +29,7 @@ export function notifyFileChanged(filePath: string): void {
 }
 
 export function notifyFileDeleted(filePath: string): void {
+  recordSelfWriteBlock(filePath)
   getChannel().postMessage({
     type: 'file-deleted',
     filePath,

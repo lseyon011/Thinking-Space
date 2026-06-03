@@ -6,6 +6,7 @@ export interface CapabilityFeatureFlags {
   extension_host_enabled: boolean
   extension_builder_enabled: boolean
   yaml_fields_auto_heal_enabled: boolean
+  hybrid_sync_reconciliation_enabled: boolean
 }
 
 const DEFAULT_FLAGS: CapabilityFeatureFlags = {
@@ -14,6 +15,7 @@ const DEFAULT_FLAGS: CapabilityFeatureFlags = {
   extension_host_enabled: false,
   extension_builder_enabled: false,
   yaml_fields_auto_heal_enabled: false,
+  hybrid_sync_reconciliation_enabled: false,
 }
 
 export function getCapabilityFeatureFlags(): CapabilityFeatureFlags {
@@ -29,6 +31,10 @@ export function getCapabilityFeatureFlags(): CapabilityFeatureFlags {
       stored.yaml_fields_auto_heal_enabled
       ?? stored.wiki_links_auto_heal_enabled
       ?? DEFAULT_FLAGS.yaml_fields_auto_heal_enabled
+    ),
+    hybrid_sync_reconciliation_enabled: Boolean(
+      stored.hybrid_sync_reconciliation_enabled
+      ?? DEFAULT_FLAGS.hybrid_sync_reconciliation_enabled
     ),
   }
 }

@@ -13,6 +13,7 @@
 
 import { smartSync } from './vaultSyncOrch'
 import { isElectron } from '@/services/lego_blocks/integrations/fsBlock'
+import { wasRecentSelfWriteBlock } from '@/services/lego_blocks/units/selfWriteTrackerBlock'
 
 type Trigger = 'focus' | 'visibility' | 'fs'
 
@@ -71,7 +72,12 @@ export function startVaultLiveRefresh(
       window.electronAPI.vaultWatchStart(root).catch((err) =>
         console.warn('[vaultLiveRefresh] failed to start fs watch', err),
       )
-      unsubscribeFsWatch = window.electronAPI.onVaultWatchEvent(() => {
+      unsubscribeFsWatch = window.electronAPI.onVaultWatchEvent((event) => {
+        // Suppress events caused by this app's own writes — every internal
+        // save (markdown editor, capability runner, auto-heal rewrites, etc.)
+        // already routes the new content through the in-process cache. The
+        // chokidar echo would otherwise re-walk the vault for nothing.
+        if (event?.path && wasRecentSelfWriteBlock(event.path)) return
         if (fsTimer !== null) window.clearTimeout(fsTimer)
         fsTimer = window.setTimeout(() => {
           fsTimer = null

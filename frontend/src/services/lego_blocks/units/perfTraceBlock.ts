@@ -18,7 +18,6 @@
 
 const STORAGE_KEY = 'thinkspc.perfTrace'
 const URL_PARAM = 'perfTrace'
-const WINDOW_FLAG = '__thinkspc_perfTrace'
 
 declare global {
   interface Window {
