@@ -23,6 +23,12 @@ import {
   revealVaultPathOrch,
 } from '@/services/orchestrators/fileSystemOrch'
 import { STORAGE_KEYS, getStorageItem, setStorageItem } from '@/services/orchestrators/storageOrch'
+import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
+import {
+  popNativeNavigationBlock,
+  pushNativeNavigationBlock,
+  setNativeNavigationStackBlock,
+} from '@/services/lego_blocks/units/topChromeNativeBridgeBlock'
 import {
   shouldCloseDrawerFromSwipeBlock,
   shouldIgnoreEdgeSwipeFromTargetBlock,
@@ -172,6 +178,14 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
   const iosInlineMode = isIosSurface && !forceCompactForIosKeyboard
   const showCollapsedInlineExplorer = (showInlineSidebar || iosInlineMode) && !explorerCollapsed
 
+  // iPhone push-nav UX: the orchestrator is either showing the explorer (list
+  // mode) or showing a single document/page (detail mode) — never split. The
+  // push transition slides between these full-screen states. This collapses
+  // the desktop split layout into two mutually-exclusive iPhone screens.
+  const hasInlineContentForPhone = !!(inlinePath || ruledNotebookFilePath || notebookFolderPath || rssActiveArticle || browserUrl)
+  const phoneListMode = isIPhoneIosSurface && !hasInlineContentForPhone
+  const phoneDetailMode = isIPhoneIosSurface && hasInlineContentForPhone
+
   const isGoogleWorkspaceInlinePath = isGoogleWorkspacePathBlock(inlinePath)
   const useInstantExplorerToggle = showInlineSidebar && isGoogleWorkspaceInlinePath
   const [rssUrlBarVisible, setRssUrlBarVisible] = useState(!isIosSurface)
@@ -281,13 +295,53 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
   }, [rememberMountedInlinePath, setSearchParams])
 
   const handleInlineDocumentClose = useCallback(() => {
+    // iPhone: pop the native stack so the file viewer slides off to the right
+    // with the UIKit animation. React state cleanup happens automatically when
+    // Swift fires topChromeNavRequestRender and the URL changes back to the
+    // base /thinking-space (clearing the ?file= param).
+    if (isCapacitorNative() && isIPhoneIosSurface) {
+      void popNativeNavigationBlock().catch((err) => {
+        console.warn('[ThinkingSpace] popNativeNavigation failed, falling back to instant close', err)
+        setInlinePathAndSyncUrl(null)
+        setMountedInlinePaths([])
+        setInlineInitialModeByPath({})
+      })
+      return
+    }
     setInlinePathAndSyncUrl(null)
     setMountedInlinePaths([])
     setInlineInitialModeByPath({})
-  }, [setInlinePathAndSyncUrl])
+  }, [isIPhoneIosSurface, setInlinePathAndSyncUrl])
 
   const handleInlineOpenPath = useCallback((nextPath: string) => {
     setInlinePathAndSyncUrl(nextPath)
+  }, [setInlinePathAndSyncUrl])
+
+  // iPhone: route file taps through the native push transition so the file
+  // viewer slides in with a UIKit animation instead of appearing in place.
+  // On non-Capacitor runtimes (web, Electron) we keep the existing direct
+  // behavior — onOpenFile receives the path and opens inline immediately.
+  //
+  // Pre-seeds the base ('/thinking-space') on the Swift stack before pushing
+  // so the back button (handleInlineDocumentClose → pop) has somewhere to
+  // pop to. Without this, the first push leaves a single-entry stack and
+  // pop() silently no-ops.
+  const handleExplorerOpenFile = useCallback((path: string) => {
+    if (isCapacitorNative()) {
+      const url = `/thinking-space?file=${encodeURIComponent(path)}`
+      // Fire both messages without awaiting so push hits Swift immediately.
+      // Capacitor preserves call order on the bridge, so setStack lands
+      // before push in Swift's main-queue dispatcher; no race here.
+      void setNativeNavigationStackBlock(['/thinking-space']).catch(() => {
+        // Non-fatal — stack reset is best-effort. Push will still run.
+      })
+      void pushNativeNavigationBlock(url).catch((err) => {
+        console.warn('[ThinkingSpace] pushNativeNavigation failed, falling back to inline', err)
+        setInlinePathAndSyncUrl(path)
+      })
+      return
+    }
+    setInlinePathAndSyncUrl(path)
   }, [setInlinePathAndSyncUrl])
 
   const handleInlineOpenPathForEdit = useCallback((nextPath: string) => {
@@ -801,7 +855,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
             loadEntries={listFolderEntries}
             selectedPath={ruledNotebookFilePath ?? inlinePath}
             listenToGlobalSyncRefresh
-            onOpenFile={setInlinePathAndSyncUrl}
+            onOpenFile={handleExplorerOpenFile}
             onOpenFileAsRuledNotebook={openRuledNotebookView}
             onCreateFolder={handleExplorerCreateFolder}
             onCreateFile={handleExplorerCreateFile}
@@ -875,27 +929,35 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
         {(showInlineSidebar || iosInlineMode) && (
           <aside
             className={cn(
-              'ltm-thinking-space-explorer-surface flex min-h-0 shrink-0 flex-col overflow-hidden',
-              (isExplorerResizing || useInstantExplorerToggle)
+              'ltm-thinking-space-explorer-surface flex min-h-0 flex-col overflow-hidden',
+              phoneListMode ? 'flex-1' : 'shrink-0',
+              (isExplorerResizing || useInstantExplorerToggle || isIPhoneIosSurface)
                 ? 'transition-none'
                 : 'transition-[width,opacity] duration-200 ease-out',
-              showCollapsedInlineExplorer
+              phoneListMode
                 ? 'opacity-100'
-                : 'opacity-0',
+                : (phoneDetailMode ? 'opacity-0' : (showCollapsedInlineExplorer ? 'opacity-100' : 'opacity-0')),
             )}
-            style={{ width: showCollapsedInlineExplorer ? `${explorerWidthPx}px` : '0px' }}
+            style={
+              phoneListMode
+                ? undefined  // flex-1 handles width
+                : { width: phoneDetailMode ? '0px' : (showCollapsedInlineExplorer ? `${explorerWidthPx}px` : '0px') }
+            }
             data-ltm-nav-region="explorer"
           >
             <div
-              className={cn('flex h-full min-h-0 flex-col', !showCollapsedInlineExplorer && 'pointer-events-none')}
-              aria-hidden={!showCollapsedInlineExplorer}
+              className={cn(
+                'flex h-full min-h-0 flex-col',
+                (phoneDetailMode || (!phoneListMode && !showCollapsedInlineExplorer)) && 'pointer-events-none',
+              )}
+              aria-hidden={phoneDetailMode || (!phoneListMode && !showCollapsedInlineExplorer)}
             >
               {inlineExplorerContent}
             </div>
           </aside>
         )}
 
-        {(showInlineSidebar || iosInlineMode) && showCollapsedInlineExplorer && (
+        {(showInlineSidebar || iosInlineMode) && showCollapsedInlineExplorer && !isIPhoneIosSurface && (
           <div
             role="separator"
             aria-label="Resize explorer"
@@ -910,15 +972,15 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
           </div>
         )}
 
-        <section className="ltm-thinking-space-document-stage relative min-h-0 flex-1">
-          {isIPhoneIosSurface && showCollapsedInlineExplorer && (
-            <button
-              type="button"
-              aria-label="Close explorer"
-              className="absolute inset-0 z-10 cursor-default bg-black/[0.001]"
-              onClick={() => setExplorerCollapsed(true)}
-            />
+        <section
+          className={cn(
+            'ltm-thinking-space-document-stage relative min-h-0 flex-1',
+            phoneListMode && 'hidden',
           )}
+        >
+          {/* Tap-outside-to-close overlay was for the old iPhone explorer-as-overlay UX.
+              In the new push-nav UX iPhone is always single-screen, never overlapped,
+              so this overlay isn't needed and would intercept clicks on the file viewer. */}
           {rssActiveArticle ? (
             <div className="h-full min-h-0">
               <RssArticleViewBlock

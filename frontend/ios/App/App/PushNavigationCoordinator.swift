@@ -105,7 +105,7 @@ final class PushNavigationCoordinator {
         isAnimating = true
 
         // 1. Snapshot the outgoing page.
-        guard let snapshot = mainShell.snapshotView(afterScreenUpdates: false) else {
+        guard let snapshot = mainShell.snapshotView(afterScreenUpdates: true) else {
             isAnimating = false
             return
         }
@@ -120,16 +120,25 @@ final class PushNavigationCoordinator {
         dim.alpha = 0
         snapshot.addSubview(dim)
 
-        container.addSubview(snapshot)
+        // 3. Layer order: snapshot (OLD) goes UNDER mainShell (NEW) so that
+        //    when mainShell slides in from the right, it visibly covers the
+        //    old content — matching the iOS system push animation. If we put
+        //    the snapshot on top, the new content stays hidden behind the old
+        //    until the snapshot has nearly cleared, which feels like the
+        //    transition stalls at the start.
+        container.insertSubview(snapshot, belowSubview: mainShell)
         if let topSibling = topSiblingView {
             container.bringSubviewToFront(topSibling)
         }
 
-        // 3. Move main shell off-screen right. Invisible because snapshot covers.
+        // 4. Move main shell off-screen right. Since mainShell is on top of
+        //    the snapshot but pushed off-screen, the user still sees the
+        //    snapshot. Once React renders new content underneath mainShell,
+        //    the slide-in reveals the new content.
         let width = mainShell.bounds.width
         mainShell.transform = CGAffineTransform(translationX: width, y: 0)
 
-        // 4. Ask React to render the new path.
+        // 5. Ask React to render the new path.
         bridge.requestRender(path: path) { [weak self, weak snapshot, weak mainShell] in
             guard let self else { return }
             guard let snapshot, let mainShell else {
@@ -172,7 +181,7 @@ final class PushNavigationCoordinator {
         let targetPath = stack[stack.count - 2]
 
         // 1. Snapshot the current (outgoing) page.
-        guard let snapshot = mainShell.snapshotView(afterScreenUpdates: false) else {
+        guard let snapshot = mainShell.snapshotView(afterScreenUpdates: true) else {
             isAnimating = false
             return false
         }
@@ -180,6 +189,10 @@ final class PushNavigationCoordinator {
         snapshot.translatesAutoresizingMaskIntoConstraints = true
         snapshot.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 
+        // Layer order: snapshot (current/outgoing page) goes ON TOP of
+        //  mainShell so that as it slides off to the right, mainShell (now
+        //  rendering the previous page underneath) is revealed. This is the
+        //  opposite of push, where the new content slides in on top.
         container.addSubview(snapshot)
         if let topSibling = topSiblingView {
             container.bringSubviewToFront(topSibling)

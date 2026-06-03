@@ -79,6 +79,7 @@ import UniversalSearchBlock from './components/lego_blocks/integrations/Universa
 import { UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK } from './components/lego_blocks/integrations/universalSearchPresetBlock'
 import { useUILayoutBlock } from './components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useNativeTopChromeBlock } from './components/lego_blocks/hooks/shared/useNativeTopChromeBlock'
+import { useNativePushNavigationBlock } from './components/lego_blocks/hooks/shared/useNativePushNavigationBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import { isElectron, isEmbeddedTerminalSupported, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { fullSync, getLastSyncTimestamp, setLastSyncTimestamp, smartSync, type SyncResult } from './services/orchestrators/vaultSyncOrch'
@@ -2399,6 +2400,18 @@ function App() {
     onExpandBottomTap: () => setNativeBottomBarCollapsed(false),
     onSelectTab: handleSelectWorkspaceTab,
     onCloseTab: handleCloseWorkspaceTab,
+  })
+
+  // Native push transition bridge (iPhone shell). On non-Capacitor runtimes
+  // this is a no-op subscription; the bridge calls just reject and never fire.
+  // onRequestRender is what Swift asks for when it starts a push animation —
+  // we delegate to react-router so the URL changes, ThinkingSpaceOrch (or any
+  // other route consumer) updates, and the hook auto-commits to unblock Swift.
+  useNativePushNavigationBlock({
+    enabled: useNativeTopChrome,
+    onRequestRender: (path) => {
+      navigate(path)
+    },
   })
 
   useEffect(() => {
