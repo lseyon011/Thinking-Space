@@ -16,6 +16,12 @@ import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentB
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
+import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
+import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
+import {
+  pushNativeWithForwardBlock,
+  setNativeNavigationStackBlock,
+} from '@/services/lego_blocks/units/topChromeNativeBridgeBlock'
 import {
   type AiProvider,
   type AiProviderStatus,
@@ -70,6 +76,38 @@ interface ChatOrchProps {
 export default function ChatOrch({ active = true }: ChatOrchProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
+  const isIPhoneIosSurface = isIos && layout.mode === 'phone'
+
+  // iPhone list/detail: sidebar (providers, sites, dashboard) is the list;
+  // tapping any item pushes into its content view. Back returns to list.
+  const [phonePickedItem, setPhonePickedItem] = useState(false)
+  const phoneListMode = isIPhoneIosSurface && !phonePickedItem
+  const phoneDetailMode = isIPhoneIosSurface && phonePickedItem
+
+  useNativeBackHandlerBlock({
+    active: phoneDetailMode,
+    onBack: () => setPhonePickedItem(false),
+  })
+
+  const pushDetailIfPhone = useCallback((mutation: () => void) => {
+    if (!(isCapacitorNative() && isIPhoneIosSurface)) {
+      mutation()
+      return
+    }
+    void (async () => {
+      try {
+        await setNativeNavigationStackBlock(['/ai/chat'])
+        await pushNativeWithForwardBlock('/ai/chat', () => {
+          mutation()
+          setPhonePickedItem(true)
+        })
+      } catch (err) {
+        console.warn('[Chat] phone push failed, falling back', err)
+        mutation()
+        setPhonePickedItem(true)
+      }
+    })()
+  }, [isIPhoneIosSurface])
   const [providers, setProviders] = useState<AiProviderStatus[]>([])
   const [selectedProvider, setSelectedProvider] = useState<AiProvider | null>(null)
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
@@ -265,10 +303,17 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
       {/* ── Vertical sidebar ── */}
       <aside
         className={cn(
-          'flex shrink-0 flex-col border-r border-border/50 overflow-hidden transition-[width,opacity] duration-200 ease-out',
-          sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-48 opacity-100',
+          'flex flex-col overflow-hidden',
+          phoneDetailMode
+            ? 'hidden'
+            : (phoneListMode
+              ? 'flex-1 opacity-100'
+              : cn(
+                'shrink-0 border-r border-border/50 transition-[width,opacity] duration-200 ease-out',
+                sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-48 opacity-100',
+              )),
         )}
-        aria-hidden={sidebarCollapsed}
+        aria-hidden={sidebarCollapsed && !phoneListMode}
       >
         <p className="mb-2 mt-4 px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           AI
@@ -304,10 +349,10 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
                 {isSectionExpanded('tools') && (
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={() => pushDetailIfPhone(() => {
                       setSelectedWebsiteId(USAGE_DASHBOARD_SITE_ID_BLOCK)
                       setSelectedProvider(null)
-                    }}
+                    })}
                     className={cn(
                       'flex w-full items-center border-b border-border/40 px-3 py-2.5 text-left text-xs transition-colors',
                       dashboardSelected
@@ -334,14 +379,14 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
                     <button
                       key={p.provider}
                       disabled={!p.available}
-                      onClick={() => {
+                      onClick={() => pushDetailIfPhone(() => {
                         setSelectedWebsiteId(null)
                         setSelectedProvider(p.provider)
                         setAiSelectedProviderOrch(p.provider)
                         if (p.provider === 'opensource-ai') {
                           setThinkEnabled(resolveAiThinkingForScopeProviderOrch('chat', 'opensource-ai'))
                         }
-                      }}
+                      })}
                       className={cn(
                         'flex w-full items-center border-b border-border/40 px-3 py-2.5 text-left text-xs transition-colors',
                         selectedWebsiteId === null && selectedProvider === p.provider
@@ -371,10 +416,10 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
                   {isSectionExpanded('web') && aiWebsites.map((site) => (
                     <button
                       key={site.id}
-                      onClick={() => {
+                      onClick={() => pushDetailIfPhone(() => {
                         setSelectedWebsiteId(site.id)
                         setSelectedProvider(null)
-                      }}
+                      })}
                       className={cn(
                         'flex w-full items-center border-b border-border/40 px-3 py-2.5 text-left text-xs transition-colors',
                         selectedWebsiteId === site.id
@@ -401,7 +446,10 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
       </aside>
 
       {/* ── Content area ── */}
-      <section className="relative min-h-0 flex-1 overflow-hidden">
+      <section className={cn(
+        'relative min-h-0 overflow-hidden',
+        phoneListMode ? 'hidden' : 'flex-1',
+      )}>
         {/* Web AI site — key forces fresh webview mount per site (Electron ignores
              partition changes on an already-mounted webview element). */}
         {dashboardSelected && (
