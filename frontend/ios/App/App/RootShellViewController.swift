@@ -574,11 +574,31 @@ final class RootShellViewController: UIViewController {
         closeDrawer(animated: true)
     }
 
+    // Threshold for triggering an edge-swipe pop. Smaller than the rail-open
+    // threshold (72) because iOS users expect back-swipe to fire on a lighter
+    // gesture, and velocity counts too.
+    private let popSwipeTranslationThreshold: CGFloat = 60
+    private let popSwipeVelocityThreshold: CGFloat = 800
+
     @objc private func handleLeftEdgePan(_ recognizer: UIScreenEdgePanGestureRecognizer) {
-        guard !isDrawerOpen else { return }
         let translation = recognizer.translation(in: view)
+        let velocity = recognizer.velocity(in: view)
         guard abs(translation.y) <= drawerVerticalDriftTolerance else { return }
 
+        // Conditional dispatch (per ANIMATION_VALUES.md). If the nav stack has
+        // more than one entry, left-edge pan drives the back-swipe pop;
+        // otherwise it falls through to opening the rail (the existing
+        // behavior at root tab pages). Matches Settings/Mail/Messages.
+        if let coordinator = pushCoordinator, coordinator.canPop {
+            if translation.x >= popSwipeTranslationThreshold || velocity.x >= popSwipeVelocityThreshold {
+                _ = coordinator.pop()
+                recognizer.isEnabled = false
+                recognizer.isEnabled = true
+            }
+            return
+        }
+
+        guard !isDrawerOpen else { return }
         if translation.x >= drawerOpenThreshold {
             openDrawer(animated: true)
             recognizer.isEnabled = false
