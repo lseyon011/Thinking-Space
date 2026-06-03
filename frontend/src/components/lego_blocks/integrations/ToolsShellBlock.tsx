@@ -1,10 +1,17 @@
-import { useEffect, useMemo, type ComponentType } from 'react'
-import { Link, Outlet, useLocation } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Bot, KeyRound, Terminal as TerminalIcon, Wrench } from 'lucide-react'
 import excalidrawLogo from '@/assets/excalidraw-logo.svg'
 import { isExcalidrawPlusRoute } from '@/components/lego_blocks/units/ExcalidrawPlusRoutesBlock'
 import { isEmbeddedTerminalSupported } from '@/services/orchestrators/runtimeOrch'
 import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
+import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
+import {
+  pushNativeWithForwardBlock,
+  setNativeNavigationStackBlock,
+} from '@/services/lego_blocks/units/topChromeNativeBridgeBlock'
 import {
   dispatchToolsSidebarChromeStateBlock,
   TOOLS_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
@@ -84,11 +91,64 @@ export function isToolsShellRoute(pathname: string): boolean {
 
 export default function ToolsShellBlock() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { layout } = useUILayoutBlock()
+  const isIPhoneIosSurface = layout.surface === 'capacitor-ios' && layout.mode === 'phone'
+
   const visibleSubtabs = useMemo(
     () => TOOL_SUBTABS.filter(tab => (tab.visible ? tab.visible() : true)),
     [],
   )
   const [sidebarCollapsed, setSidebarCollapsed] = useSessionStateBlock('tools-sidebar-collapsed', false)
+
+  // iPhone list/detail mode. On entering the Tools rail tab, the user lands
+  // on the list page (sidebar full-screen); tapping a tool pushes them to
+  // its detail page (content full-screen, no sidebar). Reset to list when
+  // we detect "external" navigation (rail tap, deep link), distinguished
+  // from our own intentional push via lastPushedPathRef.
+  const [phonePickedTool, setPhonePickedTool] = useState(false)
+  const lastPushedPathRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!isIPhoneIosSurface) return
+    if (location.pathname === lastPushedPathRef.current) {
+      lastPushedPathRef.current = null  // consume the marker
+      return
+    }
+    // External navigation (rail tap re-entered Tools, etc.) — reset to list.
+    setPhonePickedTool(false)
+  }, [location.pathname, isIPhoneIosSurface])
+
+  const phoneListMode = isIPhoneIosSurface && !phonePickedTool
+  const phoneDetailMode = isIPhoneIosSurface && phonePickedTool
+
+  // Cascade back handler — when user presses native back chevron / edge-swipe,
+  // return to the tools list (full-screen sidebar). React renders the same
+  // Outlet underneath but it's hidden by the list layout.
+  useNativeBackHandlerBlock({
+    active: phoneDetailMode,
+    onBack: () => {
+      setPhonePickedTool(false)
+    },
+  })
+
+  const handlePhoneToolTap = useCallback((to: string) => (e: React.MouseEvent) => {
+    if (!(isCapacitorNative() && isIPhoneIosSurface)) return
+    e.preventDefault()
+    lastPushedPathRef.current = to
+    void (async () => {
+      try {
+        await setNativeNavigationStackBlock(['/personal-tools'])
+        await pushNativeWithForwardBlock('/personal-tools', () => {
+          setPhonePickedTool(true)
+          navigate(to)
+        })
+      } catch (err) {
+        console.warn('[ToolsShell] phone push failed, falling back to navigate', err)
+        setPhonePickedTool(true)
+        navigate(to)
+      }
+    })()
+  }, [isIPhoneIosSurface, navigate])
 
   useEffect(() => {
     dispatchToolsSidebarChromeStateBlock({ enabled: true, collapsed: sidebarCollapsed, label: 'Tools' })
@@ -105,8 +165,8 @@ export default function ToolsShellBlock() {
 
   return (
     <div className="ltm-tools-shell flex h-full min-h-0 w-full">
-      {!sidebarCollapsed && (
-      <aside className="ltm-tools-shell-nav w-[220px] shrink-0 border-r border-border/60 bg-background/40 px-3 py-4">
+      {!sidebarCollapsed && !phoneDetailMode && (
+      <aside className={`ltm-tools-shell-nav border-border/60 bg-background/40 px-3 py-4 ${phoneListMode ? 'flex-1' : 'w-[220px] shrink-0 border-r'}`}>
         <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           Tools
         </p>
@@ -118,8 +178,9 @@ export default function ToolsShellBlock() {
               <Link
                 key={tab.id}
                 to={tab.to}
+                onClick={handlePhoneToolTap(tab.to)}
                 className={`ltm-motion-fast flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                  active
+                  active && !phoneListMode
                     ? 'bg-foreground text-background'
                     : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                 }`}
@@ -132,7 +193,7 @@ export default function ToolsShellBlock() {
         </nav>
       </aside>
       )}
-      <div className="ltm-tools-shell-content min-w-0 flex-1 overflow-auto">
+      <div className={`ltm-tools-shell-content min-w-0 overflow-auto ${phoneListMode ? 'hidden' : 'flex-1'}`}>
         <Outlet />
       </div>
     </div>
