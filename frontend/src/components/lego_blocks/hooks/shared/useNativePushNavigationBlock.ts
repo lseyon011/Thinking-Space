@@ -3,6 +3,7 @@ import type { PluginListenerHandle } from '@capacitor/core'
 import {
   addTopChromeListenerBlock,
   commitNativeNavigationBlock,
+  consumePendingForwardBlock,
   popNativeNavigationBlock,
   pushNativeNavigationBlock,
   setNativeNavigationStackBlock,
@@ -64,16 +65,30 @@ export function useNativePushNavigationBlock(
           const direction = payload.direction === 'back' ? 'back' : 'forward'
           void (async () => {
             try {
-              // Generic "go back": when the user pops (chevron tap or edge
-              // swipe), invoke whatever close action the active tab has
-              // registered via useNativeBackHandlerBlock. This is what makes
-              // back work for content types that don't live in the URL
-              // (RSS articles, browser overlays, notebook views, etc.) —
-              // not just URL-routed file open. Forward pushes skip this.
+              // Generic "go back": invoke whatever close action the active
+              // tab has registered via useNativeBackHandlerBlock. This is
+              // what makes back work for content types that don't live in
+              // the URL (RSS articles, notebook views, etc.) — not just
+              // URL-routed file open. The navigate(path) still runs after
+              // so URL-state content (file) gets its URL restored too.
+              //
+              // Generic "go forward": if the push was via
+              // pushNativeWithForwardBlock, run the caller's onForward
+              // closure AND skip navigate — the closure's setSearchParams
+              // is the authority on URL state. Otherwise (plain
+              // pushNativeNavigationBlock with a real URL), navigate(path)
+              // does the work.
               if (direction === 'back') {
                 invokeNativeBackHandlerBlock()
+                await onRequestRenderRef.current(path)
+              } else {
+                const fwd = consumePendingForwardBlock()
+                if (fwd) {
+                  fwd()
+                } else {
+                  await onRequestRenderRef.current(path)
+                }
               }
-              await onRequestRenderRef.current(path)
             } catch (err) {
               console.error('[useNativePushNavigation] onRequestRender threw', err)
             }

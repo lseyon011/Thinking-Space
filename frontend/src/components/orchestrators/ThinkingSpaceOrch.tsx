@@ -28,6 +28,7 @@ import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   popNativeNavigationBlock,
   pushNativeNavigationBlock,
+  pushNativeWithForwardBlock,
   setNativeNavigationStackBlock,
 } from '@/services/lego_blocks/units/topChromeNativeBridgeBlock'
 import {
@@ -360,6 +361,25 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
   // so the back button (handleInlineDocumentClose → pop) has somewhere to
   // pop to. Without this, the first push leaves a single-entry stack and
   // pop() silently no-ops.
+  // Phone-only helper: open a state-mutation detail screen with the native
+  // push animation. The cascade handler registered above will close it on
+  // pop. On non-iPhone surfaces, runs the mutation synchronously.
+  const phonePushDetail = useCallback((mutateForward: () => void) => {
+    if (!(isCapacitorNative() && isIPhoneIosSurface)) {
+      mutateForward()
+      return
+    }
+    void (async () => {
+      try {
+        await setNativeNavigationStackBlock(['/thinking-space'])
+        await pushNativeWithForwardBlock('/thinking-space', mutateForward)
+      } catch (err) {
+        console.warn('[ThinkingSpace] phonePushDetail failed, falling back', err)
+        mutateForward()
+      }
+    })()
+  }, [isIPhoneIosSurface])
+
   const handleExplorerOpenFile = useCallback((path: string) => {
     if (isCapacitorNative()) {
       const url = `/thinking-space?file=${encodeURIComponent(path)}`
@@ -389,7 +409,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     setInlinePathAndSyncUrl(nextPath, 'edit')
   }, [setInlinePathAndSyncUrl])
 
-  const openNotebookView = useCallback((folderPath: string | null) => {
+  const applyNotebookView = useCallback((folderPath: string | null) => {
     setInlinePath(null)
     setMountedInlinePaths([])
     setInlineInitialModeByPath({})
@@ -410,7 +430,18 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     }, { replace: true })
   }, [setSearchParams])
 
-  const openRuledNotebookView = useCallback((filePath: string | null) => {
+  const openNotebookView = useCallback((folderPath: string | null) => {
+    // Opening goes through the native push animation on iPhone; clearing
+    // (folderPath === null) skips it since the cascade-handler / inline
+    // close path handles those teardowns.
+    if (folderPath) {
+      phonePushDetail(() => applyNotebookView(folderPath))
+      return
+    }
+    applyNotebookView(null)
+  }, [applyNotebookView, phonePushDetail])
+
+  const applyRuledNotebookView = useCallback((filePath: string | null) => {
     setInlinePath(null)
     setMountedInlinePaths([])
     setInlineInitialModeByPath({})
@@ -430,6 +461,14 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
       return next
     }, { replace: true })
   }, [setSearchParams])
+
+  const openRuledNotebookView = useCallback((filePath: string | null) => {
+    if (filePath) {
+      phonePushDetail(() => applyRuledNotebookView(filePath))
+      return
+    }
+    applyRuledNotebookView(null)
+  }, [applyRuledNotebookView, phonePushDetail])
 
   const handleNotebookOpenFile = useCallback((path: string) => {
     openNotebookView(null)
@@ -500,11 +539,14 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     presetTags: string[],
     tagColors: Record<string, string>,
   ) => {
-    setRssActiveArticle({ item, onItemUpdate, onItemRemove, presetTags, tagColors })
-    setRssUrlBarVisible(!isIosSurface)
-    setBrowserUrl(null)
-    setMobileExplorerOpen(false)
-  }, [])
+    const article = { item, onItemUpdate, onItemRemove, presetTags, tagColors }
+    phonePushDetail(() => {
+      setRssActiveArticle(article)
+      setRssUrlBarVisible(!isIosSurface)
+      setBrowserUrl(null)
+      setMobileExplorerOpen(false)
+    })
+  }, [isIosSurface, phonePushDetail])
 
   const handleExplorerCopyRelativePath = useCallback(async (path: string): Promise<boolean> => {
     return copyToClipboard(getRelativePathForClipboardOrch(path))

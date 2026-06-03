@@ -113,7 +113,10 @@ final class PushNavigationCoordinator {
         guard !isAnimating else { return }
         guard let mainShell = mainShellView, let container = containerView else { return }
         guard let bridge = bridge else { return }
-        guard path != stack.last else { return }
+        // Note: same-path pushes ARE allowed. Non-URL content types
+        // (RSS, notebook, etc.) push using a shared base path with a
+        // forward-callback for the state mutation; the stack entries are
+        // meaningful even though their `path` values collide.
 
         isAnimating = true
 
