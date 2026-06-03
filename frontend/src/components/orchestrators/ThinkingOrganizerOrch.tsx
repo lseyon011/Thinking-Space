@@ -38,6 +38,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
+import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
+import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
+import {
+  pushNativeWithForwardBlock,
+  setNativeNavigationStackBlock,
+} from '@/services/lego_blocks/units/topChromeNativeBridgeBlock'
 
 type TabMode = 'backlog' | 'view' | 'link' | 'steward' | 'integrity'
 const PROJECT_ROOT_QUERY_PARAM = 'projectRoot'
@@ -327,8 +333,42 @@ interface ThinkingOrganizerOrchProps {
 export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganizerOrchProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
+  const isIPhoneIosSurface = isIos && layout.mode === 'phone'
   const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = usePersistentTab()
+
+  // iPhone list/detail mode. On entering Organizer from the rail, the user
+  // lands on the sidebar (tabs + projects) full-screen; tapping a tab pushes
+  // into the tab's content. Back chevron / edge-swipe / projects-on-sidebar-
+  // tap returns to the list. Project taps are context-only (no push).
+  const [phonePickedTab, setPhonePickedTab] = useState(false)
+  const phoneListMode = isIPhoneIosSurface && !phonePickedTab
+  const phoneDetailMode = isIPhoneIosSurface && phonePickedTab
+
+  useNativeBackHandlerBlock({
+    active: phoneDetailMode,
+    onBack: () => setPhonePickedTab(false),
+  })
+
+  const pushPhoneTab = useCallback((nextTab: TabMode) => {
+    if (!(isCapacitorNative() && isIPhoneIosSurface)) {
+      setTab(nextTab)
+      return
+    }
+    void (async () => {
+      try {
+        await setNativeNavigationStackBlock(['/thinking-organizer'])
+        await pushNativeWithForwardBlock('/thinking-organizer', () => {
+          setTab(nextTab)
+          setPhonePickedTab(true)
+        })
+      } catch (err) {
+        console.warn('[Organizer] phone tab push failed, falling back', err)
+        setTab(nextTab)
+        setPhonePickedTab(true)
+      }
+    })()
+  }, [isIPhoneIosSurface, setTab])
   const [mountedTabs, setMountedTabs] = useState<Record<TabMode, boolean>>(() => ({
     backlog: tab === 'backlog',
     view: tab === 'view',
@@ -535,9 +575,17 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
 
   return (
     <div className="ltm-organizer-shell h-full min-h-0 w-full">
-      <div className={cn('grid h-full min-h-0', sidebarCollapsed ? 'grid-cols-1' : 'grid-cols-[220px_minmax(0,1fr)]')}>
-        {!sidebarCollapsed && (
-          <aside className="ltm-organizer-shell-nav border-r border-border/60 bg-background/40 px-3 py-4 overflow-y-auto">
+      <div className={cn(
+        'h-full min-h-0',
+        phoneListMode || phoneDetailMode
+          ? 'flex'
+          : (sidebarCollapsed ? 'grid grid-cols-1' : 'grid grid-cols-[220px_minmax(0,1fr)]'),
+      )}>
+        {!sidebarCollapsed && !phoneDetailMode && (
+          <aside className={cn(
+            'ltm-organizer-shell-nav bg-background/40 px-3 py-4 overflow-y-auto',
+            phoneListMode ? 'flex-1' : 'border-r border-border/60',
+          )}>
             <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Thinking Organizer
             </p>
@@ -549,10 +597,10 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => setTab(item.id)}
+                    onClick={() => pushPhoneTab(item.id)}
                     className={cn(
                       'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-                      active
+                      active && !phoneListMode
                         ? 'bg-foreground text-background'
                         : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                     )}
@@ -603,7 +651,10 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
           </aside>
         )}
 
-        <div className="min-w-0 overflow-y-auto px-6 py-5">
+        <div className={cn(
+          'min-w-0 overflow-y-auto px-6 py-5',
+          phoneListMode ? 'hidden' : 'flex-1',
+        )}>
           {headerBlock}
           <section hidden={tab !== 'backlog'} aria-hidden={tab !== 'backlog'}>
             {mountedTabs.backlog ? (
