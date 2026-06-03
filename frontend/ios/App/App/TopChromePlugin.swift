@@ -207,8 +207,8 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
 
     // MARK: - Navigation: Swift → React events (emitted by bridge conformance)
 
-    private func emitNavRequestRender(path: String) {
-        notifyListeners("topChromeNavRequestRender", data: ["path": path])
+    private func emitNavRequestRender(path: String, direction: String) {
+        notifyListeners("topChromeNavRequestRender", data: ["path": path, "direction": direction])
     }
 
     private func emitNavDidFinish(path: String) {
@@ -289,13 +289,13 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
 // MARK: - PushNavigationBridge conformance
 
 extension TopChromePlugin: PushNavigationBridge {
-    func requestRender(path: String, completion: @escaping () -> Void) {
+    func requestRender(path: String, direction: PushNavigationDirection, completion: @escaping () -> Void) {
         DispatchQueue.main.async {
             if self.pendingNavCommit != nil {
                 NSLog("[TopChromePlugin] requestRender %@ while another commit pending — replacing", path)
             }
             self.pendingNavCommit = (path: path, completion: completion)
-            self.emitNavRequestRender(path: path)
+            self.emitNavRequestRender(path: path, direction: direction.rawValue)
         }
     }
 

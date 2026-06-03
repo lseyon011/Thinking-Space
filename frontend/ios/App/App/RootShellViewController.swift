@@ -640,8 +640,8 @@ final class RootShellViewController: UIViewController {
 /// dance can be felt without React actually navigating — useful for tuning
 /// the spring curve on-device against an unchanging React state.
 final class StubPushNavigationBridge: PushNavigationBridge {
-    func requestRender(path: String, completion: @escaping () -> Void) {
-        NSLog("[PushNav] (stub) requestRender → %@", path)
+    func requestRender(path: String, direction: PushNavigationDirection, completion: @escaping () -> Void) {
+        NSLog("[PushNav] (stub) requestRender [%@] → %@", direction.rawValue, path)
         DispatchQueue.main.async(execute: completion)
     }
 

@@ -7,6 +7,7 @@ import {
   pushNativeNavigationBlock,
   setNativeNavigationStackBlock,
 } from '../../../../services/lego_blocks/units/topChromeNativeBridgeBlock'
+import { invokeNativeBackHandlerBlock } from './useNativeBackHandlerBlock'
 
 interface UseNativePushNavigationOptions {
   /** Called when Swift asks React to render a path (typically react-router navigate). */
@@ -60,8 +61,18 @@ export function useNativePushNavigationBlock(
         (payload) => {
           const path = payload.path
           if (typeof path !== 'string' || path.length === 0) return
+          const direction = payload.direction === 'back' ? 'back' : 'forward'
           void (async () => {
             try {
+              // Generic "go back": when the user pops (chevron tap or edge
+              // swipe), invoke whatever close action the active tab has
+              // registered via useNativeBackHandlerBlock. This is what makes
+              // back work for content types that don't live in the URL
+              // (RSS articles, browser overlays, notebook views, etc.) —
+              // not just URL-routed file open. Forward pushes skip this.
+              if (direction === 'back') {
+                invokeNativeBackHandlerBlock()
+              }
               await onRequestRenderRef.current(path)
             } catch (err) {
               console.error('[useNativePushNavigation] onRequestRender threw', err)

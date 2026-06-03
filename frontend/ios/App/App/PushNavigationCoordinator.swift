@@ -3,14 +3,20 @@ import UIKit
 /// Bridge to the React side. The coordinator never talks to Capacitor
 /// directly so it can be tested with a stub.
 protocol PushNavigationBridge: AnyObject {
-    /// Ask React to render the given path. Call `completion` once React has
-    /// committed the render (one runloop after navigate is the cheapest
-    /// reasonable choice; the proper signal is React's own didCommit).
-    func requestRender(path: String, completion: @escaping () -> Void)
+    /// Ask React to render the given path. `direction` tells React whether
+    /// this is a forward push (open new content) or a back pop (close current
+    /// content). React invokes its registered back-handler cascade only when
+    /// direction == .back. Call `completion` once React has committed.
+    func requestRender(path: String, direction: PushNavigationDirection, completion: @escaping () -> Void)
 
     /// Notify React that a transition has finished, so it can resume any
     /// paused animations or restore caret state.
     func notifyDidFinish(path: String)
+}
+
+enum PushNavigationDirection: String {
+    case forward
+    case back
 }
 
 /// Drives UINavigationController-style push transitions between React-rendered
@@ -146,7 +152,7 @@ final class PushNavigationCoordinator {
         mainShell.transform = CGAffineTransform(translationX: width, y: 0)
 
         // 5. Ask React to render the new path.
-        bridge.requestRender(path: path) { [weak self, weak snapshot, weak mainShell] in
+        bridge.requestRender(path: path, direction: .forward) { [weak self, weak snapshot, weak mainShell] in
             guard let self else { return }
             guard let snapshot, let mainShell else {
                 self.isAnimating = false
@@ -217,7 +223,7 @@ final class PushNavigationCoordinator {
         mainShell.addSubview(dim)
 
         // 4. Ask React to render the previous path.
-        bridge.requestRender(path: targetPath) { [weak self, weak snapshot, weak mainShell, weak dim] in
+        bridge.requestRender(path: targetPath, direction: .back) { [weak self, weak snapshot, weak mainShell, weak dim] in
             guard let self else { return }
             guard let snapshot, let mainShell, let dim else {
                 self.isAnimating = false

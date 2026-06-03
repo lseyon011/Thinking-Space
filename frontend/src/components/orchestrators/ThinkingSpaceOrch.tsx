@@ -5,6 +5,7 @@ import VaultExplorerBlock from '@/components/lego_blocks/integrations/VaultExplo
 import MarkdownDocumentBlock, { type MarkdownViewerMode } from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
+import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { cn } from '@/lib/utils'
 import {
@@ -185,6 +186,39 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
   const hasInlineContentForPhone = !!(inlinePath || ruledNotebookFilePath || notebookFolderPath || rssActiveArticle || browserUrl)
   const phoneListMode = isIPhoneIosSurface && !hasInlineContentForPhone
   const phoneDetailMode = isIPhoneIosSurface && hasInlineContentForPhone
+
+  // Generic "go back" for the iPhone push-nav system. Closes whatever
+  // content is currently showing in the document stage, in display-priority
+  // order (matches the conditional render below). The native back chevron +
+  // edge-swipe invoke this via the back-handler registry; each tab
+  // orchestrator registers its own cascade so back works for every content
+  // type, not just URL-routed ones.
+  useNativeBackHandlerBlock({
+    active: phoneDetailMode,
+    onBack: () => {
+      if (rssActiveArticle) {
+        setRssActiveArticle(null)
+        return
+      }
+      if (browserUrl) {
+        setBrowserUrl(null)
+        return
+      }
+      if (ruledNotebookFilePath) {
+        setRuledNotebookFilePath(null)
+        return
+      }
+      if (notebookFolderPath) {
+        setNotebookFolderPath(null)
+        return
+      }
+      if (inlinePath) {
+        setInlinePath(null)
+        setMountedInlinePaths([])
+        setInlineInitialModeByPath({})
+      }
+    },
+  })
 
   const isGoogleWorkspaceInlinePath = isGoogleWorkspacePathBlock(inlinePath)
   const useInstantExplorerToggle = showInlineSidebar && isGoogleWorkspaceInlinePath

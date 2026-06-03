@@ -36,6 +36,8 @@ export type TopChromeEventPayload = {
   tabId?: string
   navItemId?: string
   path?: string
+  /** Used by topChromeNavRequestRender to indicate forward push vs back pop. */
+  direction?: 'forward' | 'back'
 }
 
 export type TopChromeEventName =
