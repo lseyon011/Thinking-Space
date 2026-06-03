@@ -581,7 +581,9 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
           ? 'flex'
           : (sidebarCollapsed ? 'grid grid-cols-1' : 'grid grid-cols-[220px_minmax(0,1fr)]'),
       )}>
-        {!sidebarCollapsed && !phoneDetailMode && (
+        {/* On iPhone, the desktop collapse state is ignored — list/detail mode
+            is the sole authority. Sidebar always shows in list mode. */}
+        {((phoneListMode || !sidebarCollapsed) && !phoneDetailMode) && (
           <aside className={cn(
             'ltm-organizer-shell-nav bg-background/40 px-3 py-4 overflow-y-auto',
             phoneListMode ? 'flex-1' : 'border-r border-border/60',

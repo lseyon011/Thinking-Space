@@ -1880,7 +1880,9 @@ export default function WebullWorkspaceBlock({
 
   return (
     <div className="ltm-webull-shell flex h-full min-h-0 w-full">
-      {!sideTabsCollapsed && !phoneDetailMode && (
+      {/* On iPhone, the desktop collapse state is ignored — list/detail mode
+          is the sole authority. Sidebar always shows in list mode. */}
+      {((phoneListMode || !sideTabsCollapsed) && !phoneDetailMode) && (
         <aside className={cn(
           'ltm-webull-shell-nav bg-background/40 px-3 py-4 overflow-y-auto',
           phoneListMode ? 'flex-1' : 'w-[220px] shrink-0 border-r border-border/60',

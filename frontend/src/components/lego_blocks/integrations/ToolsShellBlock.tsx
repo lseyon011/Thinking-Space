@@ -165,7 +165,9 @@ export default function ToolsShellBlock() {
 
   return (
     <div className="ltm-tools-shell flex h-full min-h-0 w-full">
-      {!sidebarCollapsed && !phoneDetailMode && (
+      {/* On iPhone, the desktop collapse state is ignored — list/detail mode
+          is the sole authority. Sidebar always shows in list mode. */}
+      {((phoneListMode || !sidebarCollapsed) && !phoneDetailMode) && (
       <aside className={`ltm-tools-shell-nav border-border/60 bg-background/40 px-3 py-4 ${phoneListMode ? 'flex-1' : 'w-[220px] shrink-0 border-r'}`}>
         <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           Tools
