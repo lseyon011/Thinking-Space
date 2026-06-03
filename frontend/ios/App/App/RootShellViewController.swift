@@ -5,6 +5,14 @@ import Combine
 final class RootShellViewController: UIViewController {
     private let shellBackgroundColor = UIColor.systemBackground
 
+    /// App theme is a consistently light warm-beige across all routes, so the
+    /// status bar always wants dark glyphs. Explicit override (over the system
+    /// default) so the intent doesn't drift if Apple changes the default.
+    /// Animating between styles during push/pop is a no-op here because every
+    /// content type lands on the same light background — wrap setNeedsStatus
+    /// BarAppearanceUpdate() in a UIView.animate block if that ever changes.
+    override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
+
     private let bridgeVC = LTMBridgeViewController()
     let chromeState = TopChromeState()
     private var chromePlugin: TopChromePlugin?
