@@ -108,6 +108,8 @@ private struct RailRow: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 10)
                     .fill(isSelected ? Color.white.opacity(0.7) : (pressed ? Color.black.opacity(0.04) : .clear))
