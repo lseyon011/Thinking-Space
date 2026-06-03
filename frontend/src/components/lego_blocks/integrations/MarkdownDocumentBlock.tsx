@@ -15,7 +15,7 @@ import {
   markdownMathRemarkPluginsBlock,
 } from '@/services/lego_blocks/integrations/markdownMathPluginsBlock'
 import TikzDiagramBlock from '@/components/lego_blocks/units/TikzDiagramBlock'
-import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow } from 'lucide-react'
+import { X, ChevronLeft, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -1334,9 +1334,10 @@ function MarkdownTextDocumentRuntimeBlock({
                       'transition-colors hover:bg-muted',
                       isIosPhone ? 'rounded-md p-1.5' : 'rounded-lg p-1.5',
                     )}
-                    title="Close"
+                    title={isIosPhone ? 'Back' : 'Close'}
+                    aria-label={isIosPhone ? 'Back' : 'Close'}
                   >
-                    <X className="h-4 w-4" />
+                    {isIosPhone ? <ChevronLeft className="h-5 w-5" /> : <X className="h-4 w-4" />}
                   </button>
                 )}
               </div>
@@ -1696,6 +1697,8 @@ function PdfDocumentRuntimeBlock({
   showCloseButton = false,
   className,
 }: MarkdownDocumentBlockProps) {
+  const { layout } = useUILayoutBlock()
+  const isIosPhone = layout.surface === 'capacitor-ios' && layout.mode === 'phone'
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const openInSystemLabel = getOpenInSystemLabelOrch()
@@ -1747,9 +1750,10 @@ function PdfDocumentRuntimeBlock({
               <button
                 onClick={onClose}
                 className="rounded-lg p-1.5 transition-colors hover:bg-muted"
-                title="Close"
+                title={isIosPhone ? 'Back' : 'Close'}
+                aria-label={isIosPhone ? 'Back' : 'Close'}
               >
-                <X className="h-4 w-4" />
+                {isIosPhone ? <ChevronLeft className="h-5 w-5" /> : <X className="h-4 w-4" />}
               </button>
             )}
           </div>
@@ -1775,6 +1779,8 @@ function ImageDocumentRuntimeBlock({
   showCloseButton = false,
   className,
 }: MarkdownDocumentBlockProps) {
+  const { layout } = useUILayoutBlock()
+  const isIosPhone = layout.surface === 'capacitor-ios' && layout.mode === 'phone'
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const openInSystemLabel = getOpenInSystemLabelOrch()
@@ -1826,9 +1832,10 @@ function ImageDocumentRuntimeBlock({
               <button
                 onClick={onClose}
                 className="rounded-lg p-1.5 transition-colors hover:bg-muted"
-                title="Close"
+                title={isIosPhone ? 'Back' : 'Close'}
+                aria-label={isIosPhone ? 'Back' : 'Close'}
               >
-                <X className="h-4 w-4" />
+                {isIosPhone ? <ChevronLeft className="h-5 w-5" /> : <X className="h-4 w-4" />}
               </button>
             )}
           </div>
@@ -1854,6 +1861,8 @@ function UnsupportedFileDocumentRuntimeBlock({
   showCloseButton = false,
   className,
 }: MarkdownDocumentBlockProps) {
+  const { layout } = useUILayoutBlock()
+  const isIosPhone = layout.surface === 'capacitor-ios' && layout.mode === 'phone'
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const openInSystemLabel = getOpenInSystemLabelOrch()
@@ -1894,9 +1903,10 @@ function UnsupportedFileDocumentRuntimeBlock({
               <button
                 onClick={onClose}
                 className="rounded-lg p-1.5 transition-colors hover:bg-muted"
-                title="Close"
+                title={isIosPhone ? 'Back' : 'Close'}
+                aria-label={isIosPhone ? 'Back' : 'Close'}
               >
-                <X className="h-4 w-4" />
+                {isIosPhone ? <ChevronLeft className="h-5 w-5" /> : <X className="h-4 w-4" />}
               </button>
             )}
           </div>
