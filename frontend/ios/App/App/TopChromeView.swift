@@ -318,7 +318,6 @@ struct TopDrawerMenuView: View {
 struct BottomChromeView: View {
     @ObservedObject var state: TopChromeState
 
-    let onSidebarToggleTap: () -> Void
     let onDrawerToggleTap: () -> Void
     let onBackTap: () -> Void
     let onSearchTap: () -> Void
@@ -338,8 +337,12 @@ struct BottomChromeView: View {
     @State private var toolsMenuPresented = false
 
     var body: some View {
+        // Layout: hamburger/back morph button on the LEFT, tabs pill in the
+        // middle, chevron-up "more options" menu on the RIGHT. The dedicated
+        // sidebar-toggle button was removed — sidebar visibility is now
+        // driven entirely by the list/detail mode on iPhone.
         HStack(spacing: 8) {
-            leadingControlPill
+            drawerToggleButton
             if state.isBottomBarCollapsed {
                 collapsedBottomPill
                 Spacer(minLength: 0)
@@ -347,44 +350,16 @@ struct BottomChromeView: View {
                 expandedBottomPill
                     .frame(maxWidth: .infinity)
             }
-            drawerToggleButton
+            toolsMenuButton
+                .padding(6)
+                .background {
+                    floatingChromeCapsule()
+                }
         }
         .padding(.horizontal, NativeChromeMetrics.outerHorizontalPadding)
         .padding(.top, 4)
         .padding(.bottom, NativeChromeMetrics.bottomChromeBottomPadding)
         .animation(.easeInOut(duration: 0.28), value: state.isBottomBarCollapsed)
-    }
-
-    // MARK: - Sidebar toggle (left drawer)
-
-    private var leadingControlPill: some View {
-        HStack(spacing: 0) {
-            sidebarToggleButton
-
-            Rectangle()
-                .fill(Color.primary.opacity(0.1))
-                .frame(width: 1, height: 26)
-
-            toolsMenuButton
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background {
-            floatingChromeCapsule()
-        }
-    }
-
-    private var sidebarToggleButton: some View {
-        Button(action: onSidebarToggleTap) {
-            Image(systemName: "sidebar.left")
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(state.canToggleSidebar ? .primary : .secondary)
-                .frame(width: NativeChromeMetrics.iconButtonSize, height: NativeChromeMetrics.iconButtonSize)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!state.canToggleSidebar)
-        .accessibilityLabel(state.sidebarToggleLabel)
     }
 
     // MARK: - More menu (search + tools combined)

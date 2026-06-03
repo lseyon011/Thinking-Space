@@ -92,14 +92,6 @@ final class RootShellViewController: UIViewController {
     private lazy var bottomChromeHostingVC = UIHostingController(
         rootView: BottomChromeView(
             state: chromeState,
-            onSidebarToggleTap: { [weak self] in
-                guard let self else { return }
-                if self.chromeState.canToggleSidebar {
-                    self.chromePlugin?.emitSidebarToggleTap()
-                } else {
-                    self.toggleDrawer()
-                }
-            },
             onDrawerToggleTap: { [weak self] in self?.toggleDrawer() },
             onBackTap: { [weak self] in _ = self?.popNavigation() },
             onSearchTap: { [weak self] in self?.chromePlugin?.emitSearchTap() },
