@@ -19,6 +19,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
+import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
+import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
+import {
+  pushNativeWithForwardBlock,
+  setNativeNavigationStackBlock,
+} from '@/services/lego_blocks/units/topChromeNativeBridgeBlock'
 import { getAllNodes, type NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services/orchestrators/storageOrch'
 import { readOrganizerUiStateOrch, writeOrganizerUiStateOrch } from '@/services/orchestrators/organizerUiStateOrch'
@@ -890,6 +896,38 @@ export default function WebullWorkspaceBlock({
 }: WebullWorkspaceBlockProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
+  const isIPhoneIosSurface = isIos && layout.mode === 'phone'
+
+  // iPhone list/detail: Webull sidebar (subtabs + companies + add) is the
+  // list page; tapping a subtab or company pushes into its content view.
+  // Back returns to list. Add-company input stays in the list.
+  const [phonePickedItem, setPhonePickedItem] = useState(false)
+  const phoneListMode = isIPhoneIosSurface && !phonePickedItem
+  const phoneDetailMode = isIPhoneIosSurface && phonePickedItem
+  useNativeBackHandlerBlock({
+    active: phoneDetailMode,
+    onBack: () => setPhonePickedItem(false),
+  })
+  const pushDetailIfPhone = useCallback((mutation: () => void) => {
+    if (!(isCapacitorNative() && isIPhoneIosSurface)) {
+      mutation()
+      return
+    }
+    void (async () => {
+      try {
+        await setNativeNavigationStackBlock(['/webull'])
+        await pushNativeWithForwardBlock('/webull', () => {
+          mutation()
+          setPhonePickedItem(true)
+        })
+      } catch (err) {
+        console.warn('[Webull] phone push failed, falling back', err)
+        mutation()
+        setPhonePickedItem(true)
+      }
+    })()
+  }, [isIPhoneIosSurface])
+
   const allWarnings = [...warnings, ...executionSyncWarnings]
   const overallRows = useMemo(() => {
     const fromAssets = asRecordArrayBlock(assetsPositions)
@@ -1842,8 +1880,11 @@ export default function WebullWorkspaceBlock({
 
   return (
     <div className="ltm-webull-shell flex h-full min-h-0 w-full">
-      {!sideTabsCollapsed && (
-        <aside className="ltm-webull-shell-nav w-[220px] shrink-0 border-r border-border/60 bg-background/40 px-3 py-4">
+      {!sideTabsCollapsed && !phoneDetailMode && (
+        <aside className={cn(
+          'ltm-webull-shell-nav bg-background/40 px-3 py-4 overflow-y-auto',
+          phoneListMode ? 'flex-1' : 'w-[220px] shrink-0 border-r border-border/60',
+        )}>
           <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Webull
           </p>
@@ -1855,14 +1896,14 @@ export default function WebullWorkspaceBlock({
                 <button
                   key={subtab.id}
                   type="button"
-                  onClick={() => {
+                  onClick={() => pushDetailIfPhone(() => {
                     onSelectSubtab(subtab.id)
                     setPreserveOverallContext(false)
                     onSelectCompanyTicker(null)
-                  }}
+                  })}
                   className={cn(
                     'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-                    active
+                    active && !phoneListMode
                       ? 'bg-foreground text-background'
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                   )}
@@ -1884,13 +1925,13 @@ export default function WebullWorkspaceBlock({
                 <button
                   key={company.companyTicker}
                   type="button"
-                  onClick={() => {
+                  onClick={() => pushDetailIfPhone(() => {
                     setPreserveOverallContext(false)
                     onSelectCompanyTicker(company.companyTicker)
-                  }}
+                  })}
                   className={cn(
                     'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-                    active
+                    active && !phoneListMode
                       ? 'bg-foreground text-background'
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                   )}
@@ -1938,7 +1979,10 @@ export default function WebullWorkspaceBlock({
         </aside>
       )}
 
-      <div className="min-w-0 flex-1 overflow-auto px-6 py-5">
+      <div className={cn(
+        'min-w-0 overflow-auto px-6 py-5',
+        phoneListMode ? 'hidden' : 'flex-1',
+      )}>
       {pageTitle && (
         <div className="mb-4">
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{pageTitle}</h1>
