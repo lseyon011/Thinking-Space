@@ -52,6 +52,7 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let canRebuild = call.getBool("canRebuild")
         let canGitCommit = call.getBool("canGitCommit")
         let canGitPush = call.getBool("canGitPush")
+        let webullTabLabel = call.getString("webullTabLabel")
 
         DispatchQueue.main.async {
             guard let state = self.chromeState else {
@@ -120,6 +121,10 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
             }
             if let canGitPush {
                 state.canGitPush = canGitPush
+            }
+            if let webullTabLabel,
+               !webullTabLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                state.webullTabLabel = webullTabLabel
             }
 
             call.resolve()

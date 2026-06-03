@@ -30,4 +30,9 @@ final class TopChromeState: ObservableObject {
     @Published var canGitCommit: Bool = false
     @Published var canGitPush: Bool = false
     @Published var drawerProgress: CGFloat = 0
+
+    /// User-configured label for the Webull workspace tab. Sourced from the
+    /// React side (see App.tsx webullTabLabel state, persisted in preferences).
+    /// Defaults to "Webull"; React pushes the user's actual value on mount.
+    @Published var webullTabLabel: String = "Webull"
 }

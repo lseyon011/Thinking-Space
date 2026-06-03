@@ -100,6 +100,7 @@ export function useNativeTopChromeBlock({
   canRebuild,
   canGitCommit,
   canGitPush,
+  webullTabLabel,
 }: UseNativeTopChromeOptions): void {
   const callbackRegistryRef = useRef<NativeTopChromeCallbackRegistry>({
     onMenuTap,
@@ -187,6 +188,7 @@ export function useNativeTopChromeBlock({
       canRebuild,
       canGitCommit,
       canGitPush,
+      webullTabLabel,
     }).catch((error: unknown) => {
       console.warn('[useNativeTopChromeBlock] Failed to push native chrome state:', error)
     })
@@ -197,6 +199,7 @@ export function useNativeTopChromeBlock({
     canToggleSidebar, sidebarToggleActive, sidebarToggleLabel,
     canToggleHeader, headerToggleLabel, tabsJson,
     bottomBarHidden, canRefresh, canSync, canRebuild, canGitCommit, canGitPush,
+    webullTabLabel,
   ])
 
   useEffect(() => {

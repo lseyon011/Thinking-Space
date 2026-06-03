@@ -1965,6 +1965,7 @@ function App() {
       case '/thinking-organizer':
       case '/terminal':
       case '/settings':
+      case '/personal-tools':
         navigate(resolveWorkspaceNavigationRoute(navItemId))
         return
       case 'search':
@@ -2382,6 +2383,7 @@ function App() {
     canRebuild: !syncActionRunning && !gitActionRunning && !needsVaultSetup,
     canGitCommit: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
     canGitPush: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
+    webullTabLabel,
     onMenuTap: () => setDrawerOpen(true),
     onNavItemTap: handleNativeTopDrawerNavItemTap,
     onSearchTap: openCommandPalette,

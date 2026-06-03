@@ -12,6 +12,7 @@ final class RootShellViewController: UIViewController {
     private var bottomBarVisibilityCancellable: AnyCancellable?
     private var bottomBarLayoutCancellable: AnyCancellable?
     private var activeNavItemCancellable: AnyCancellable?
+    private var webullLabelCancellable: AnyCancellable?
     private var bottomChromeHeightConstraint: NSLayoutConstraint?
 
     // MARK: - Rail / drawer state
@@ -152,9 +153,21 @@ final class RootShellViewController: UIViewController {
             configurePhoneShell()
             observeBottomChromeState()
             observeRailSelection()
+            observeRailTabOverrides()
         } else {
             embedBridgeFullscreen()
         }
+    }
+
+    /// Mirror user-configured tab labels from chromeState into RailState.
+    /// Today this only covers the Webull/F9 tab label; if more user-renameable
+    /// tabs land in the future, extend this subscription.
+    private func observeRailTabOverrides() {
+        webullLabelCancellable = chromeState.$webullTabLabel
+            .receive(on: RunLoop.main)
+            .sink { [weak self] label in
+                self?.railState.setLabel(forPath: "/webull", label)
+            }
     }
 
     /// Mirror `chromeState.activeNavItemId` (set by React via TopChrome.setState)

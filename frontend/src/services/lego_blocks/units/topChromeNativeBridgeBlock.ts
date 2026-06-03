@@ -28,6 +28,8 @@ export interface TopChromeStateBlock {
   canRebuild?: boolean
   canGitCommit?: boolean
   canGitPush?: boolean
+  /** User-configured label for the Webull tab in the native iPhone rail. */
+  webullTabLabel?: string
 }
 
 export type TopChromeEventPayload = {
