@@ -6,12 +6,18 @@ export interface CanvasTransform {
   scale: number
 }
 
+export type CanvasEdge = 'top' | 'right' | 'bottom' | 'left'
+
 export interface UseInfiniteCanvasOptions {
   worldWidth?: number
   worldHeight?: number
   minScale?: number
   maxScale?: number
   initialScale?: number
+  /** Fires when a pan attempt is clamped at the board boundary. Only fires
+   * for wheel/trackpad pan; not for programmatic resetZoom / centerOnWorld /
+   * zoom-driven clamping. */
+  onEdgeHit?: (edge: CanvasEdge) => void
 }
 
 export interface UseInfiniteCanvasResult {
@@ -48,6 +54,9 @@ export function useInfiniteCanvasBlock(
 
   const transformRef = useRef(transform)
   transformRef.current = transform
+
+  const onEdgeHitRef = useRef(opts.onEdgeHit)
+  onEdgeHitRef.current = opts.onEdgeHit
 
   // Cached container rect + viewport size. Reading getBoundingClientRect /
   // clientWidth on every wheel event forces a synchronous layout flush, which
@@ -116,11 +125,24 @@ export function useInfiniteCanvasBlock(
           y: cy - (cy - prev.y) * realFactor,
         }))
       } else {
-        setTransform(clampTransform({
+        const desired = {
           ...prev,
           x: prev.x - e.deltaX,
           y: prev.y - e.deltaY,
-        }))
+        }
+        const clamped = clampTransform(desired)
+        setTransform(clamped)
+        const cb = onEdgeHitRef.current
+        if (cb) {
+          // Detect which edge the clamp truncated against. clamped.x > desired.x
+          // means the clamp lifted x back up — desired had pushed below the lower
+          // bound (-boardW), i.e. the user tried to pan further right than the
+          // board's right edge. Symmetric for the other three.
+          if (clamped.x > desired.x) cb('right')
+          else if (clamped.x < desired.x) cb('left')
+          if (clamped.y > desired.y) cb('bottom')
+          else if (clamped.y < desired.y) cb('top')
+        }
       }
     },
     [maxScale, minScale, clampTransform],

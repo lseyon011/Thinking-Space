@@ -63,7 +63,10 @@ import {
   type MarkdownEditorSettingsBlock,
 } from '@/services/orchestrators/markdownEditorSettingsOrch'
 import { STORAGE_KEYS, getStorageItem } from '@/services/orchestrators/storageOrch'
-import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
+import {
+  addGlobalSyncRefreshListenerBlock,
+  dispatchGlobalSyncRefreshBlock,
+} from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import { type StewardMetadataSuggestion } from '@/services/orchestrators/stewardMetadataOrch'
 import {
   DEFERRED_RENDER_CHARS,
@@ -335,6 +338,62 @@ function MarkdownTextDocumentRuntimeBlock({
     void loadDocument(initialMode === 'edit')
   }, [initialMode, loadDocument, path])
 
+  const externalReloadStateRef = useRef({
+    isEditing: false,
+    hasChanges: false,
+    baseMtime: null as number | null,
+    baseHash: null as string | null,
+    draft: '',
+    content: null as string | null,
+    loading: false,
+    saving: false,
+    autoSaving: false,
+    hasConflict: false,
+    isExcalidrawDoc: false,
+  })
+
+  useEffect(() => {
+    return addGlobalSyncRefreshListenerBlock(() => {
+      const snap = externalReloadStateRef.current
+      if (snap.loading || snap.saving || snap.autoSaving || snap.hasConflict) return
+
+      if (!snap.isEditing) {
+        void loadDocument(false)
+        return
+      }
+
+      if (!snap.hasChanges) {
+        void loadDocument(true)
+        return
+      }
+
+      if (snap.isExcalidrawDoc) return
+      const baseMtime = snap.baseMtime
+      const baseHash = snap.baseHash
+      if (baseMtime === null) return
+
+      void (async () => {
+        try {
+          const current = await readMarkdownDocument(path)
+          const mtimeChanged = current.mtime !== baseMtime
+          const hashChanged = baseHash !== null && current.hash !== baseHash
+          if (!mtimeChanged && !hashChanged) return
+          setConflict(new MarkdownDocumentConflictError(
+            'This file changed on disk while you were editing.',
+            {
+              currentMtime: current.mtime,
+              currentHash: current.hash,
+              currentContent: current.content,
+            },
+          ))
+          setSaveError('This file changed on disk while you were editing.')
+        } catch {
+          // ignore — surface on next save attempt
+        }
+      })()
+    })
+  }, [loadDocument, path])
+
   useEffect(() => {
     if (!excalidrawImmersive) return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -407,6 +466,20 @@ function MarkdownTextDocumentRuntimeBlock({
   const hideTopBarInView = !isEditing && effectiveTopBarHidden
   const hasTextChanges = isEditing && content !== null && draft !== content
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
+
+  externalReloadStateRef.current = {
+    isEditing,
+    hasChanges,
+    baseMtime,
+    baseHash,
+    draft,
+    content,
+    loading,
+    saving,
+    autoSaving,
+    hasConflict: conflict !== null,
+    isExcalidrawDoc,
+  }
   const saveButtonLabel = saving ? 'Saving...' : manualSaveFeedbackVisible ? 'Saved' : 'Save'
   const saveButtonClassName = cn(
     'inline-flex items-center gap-1 border border-border/70 font-medium text-foreground transition-colors duration-200 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50',

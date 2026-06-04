@@ -15,6 +15,10 @@ export interface CanvasThemeTokens {
   boardBorder: string
   boardGlow: string
   bloomDot: string
+  /** CSS mix-blend-mode for the aurora edge flash. 'screen' on dark backdrops
+   * (adds light, classic northern-lights vibe); 'multiply' on light backdrops
+   * (translucent aurora staining the cream — screen would be invisible). */
+  edgeBlend: 'screen' | 'multiply' | 'normal'
   tileBg: string
   tileBorder: string
   tileBorderFocused: string
@@ -93,6 +97,7 @@ const DARK: CanvasThemeTokens = {
   boardBorder: 'rgba(255,255,255,0.14)',
   boardGlow: 'inset 0 0 0 1px rgba(255,255,255,0.03), 0 0 80px rgba(255,255,255,0.03)',
   bloomDot: 'rgba(255,255,255,0.28)',
+  edgeBlend: 'screen',
   tileBg: 'rgba(20, 20, 24, 0.72)',
   tileBorder: 'rgba(255,255,255,0.06)',
   tileBorderFocused: 'rgba(255,255,255,0.18)',
@@ -132,6 +137,7 @@ const LIGHT_GLASS: Omit<
   boardBorder: 'rgba(20,20,24,0.16)',
   boardGlow: 'inset 0 0 0 1px rgba(255,255,255,0.7), 0 8px 60px rgba(20,20,24,0.06)',
   bloomDot: 'rgba(20,20,24,0.35)',
+  edgeBlend: 'multiply',
   tileBg: 'rgba(255, 255, 255, 0.85)',
   tileBorder: 'rgba(20,20,24,0.08)',
   tileBorderFocused: 'rgba(20,20,24,0.28)',
@@ -175,6 +181,7 @@ const GOLDEN: CanvasThemeTokens = {
   nebulaGradient: GOLDEN_NEBULA,
   vignetteGradient: GOLDEN_VIGNETTE,
   boardGlow: 'inset 0 0 0 1px rgba(255,255,255,0.55), 0 8px 60px rgba(217,119,87,0.08)',
+  edgeBlend: 'multiply',
 }
 
 // Night phase inside *light* mode — subtle midnight blue.
@@ -188,6 +195,7 @@ const NIGHT: CanvasThemeTokens = {
   vignetteGradient: NIGHT_VIGNETTE,
   boardBorder: 'rgba(255,255,255,0.12)',
   boardGlow: 'inset 0 0 0 1px rgba(255,255,255,0.04), 0 0 90px rgba(99,102,241,0.06)',
+  edgeBlend: 'screen',
 }
 
 export function useCanvasThemeBlock(): CanvasThemeTokens {

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useInfiniteCanvasBlock } from '@/components/lego_blocks/hooks/shared/useInfiniteCanvasBlock'
+import {
+  useInfiniteCanvasBlock,
+  type CanvasEdge,
+} from '@/components/lego_blocks/hooks/shared/useInfiniteCanvasBlock'
 import { useCanvasThemeBlock } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
 import {
   useCanvasTilesBlock,
@@ -65,6 +68,38 @@ const WRITE_DEBOUNCE_MS = 500
 export default function HomeCanvasOrch() {
   const navigate = useNavigate()
   const theme = useCanvasThemeBlock()
+
+  const edgeTopRef = useRef<HTMLDivElement | null>(null)
+  const edgeRightRef = useRef<HTMLDivElement | null>(null)
+  const edgeBottomRef = useRef<HTMLDivElement | null>(null)
+  const edgeLeftRef = useRef<HTMLDivElement | null>(null)
+  const edgeTimersRef = useRef<Record<CanvasEdge, ReturnType<typeof setTimeout> | null>>({
+    top: null, right: null, bottom: null, left: null,
+  })
+
+  const flashEdge = useCallback((edge: CanvasEdge) => {
+    const el = (
+      edge === 'top' ? edgeTopRef.current :
+      edge === 'right' ? edgeRightRef.current :
+      edge === 'bottom' ? edgeBottomRef.current :
+      edgeLeftRef.current
+    )
+    if (!el) return
+    el.dataset.active = 'true'
+    const existing = edgeTimersRef.current[edge]
+    if (existing) clearTimeout(existing)
+    edgeTimersRef.current[edge] = setTimeout(() => {
+      el.dataset.active = 'false'
+      edgeTimersRef.current[edge] = null
+    }, 160)
+  }, [])
+
+  useEffect(() => () => {
+    for (const t of Object.values(edgeTimersRef.current)) {
+      if (t) clearTimeout(t)
+    }
+  }, [])
+
   const {
     transform,
     containerRef,
@@ -74,7 +109,7 @@ export default function HomeCanvasOrch() {
     worldHeight,
     viewportWidth,
     viewportHeight,
-  } = useInfiniteCanvasBlock()
+  } = useInfiniteCanvasBlock({ onEdgeHit: flashEdge })
   const {
     tiles,
     focusedId,
@@ -280,6 +315,7 @@ export default function HomeCanvasOrch() {
         minHeight: 0,
         overflow: 'hidden',
         background: theme.outerBg,
+        ['--canvas-edge-blend' as string]: theme.edgeBlend,
       }}
     >
       <style>{`
@@ -312,6 +348,76 @@ export default function HomeCanvasOrch() {
         [data-canvas-tile] .prose code { font-size: 0.9em; }
         [data-canvas-tile] .prose ul,
         [data-canvas-tile] .prose ol { padding-left: 1.2em; margin: 0.4em 0; }
+
+        /* Aurora edge-hit flash — soft blue/teal/mint pastels that drift
+           horizontally (top/bottom) or vertically (left/right) while a pan is
+           clamped at the boundary. Mask fades the color toward the interior. */
+        [data-canvas-edge] {
+          position: absolute;
+          pointer-events: none;
+          opacity: 0;
+          transition: opacity 420ms ease-out;
+          z-index: 5;
+          mix-blend-mode: var(--canvas-edge-blend, screen);
+          filter: blur(4px);
+        }
+        [data-canvas-edge][data-active="true"] {
+          opacity: 1;
+          transition: opacity 90ms ease-out;
+        }
+
+        [data-canvas-edge="top"], [data-canvas-edge="bottom"] {
+          left: 0; right: 0; height: 70px;
+          background: linear-gradient(90deg,
+            rgba(125,211,252,0.65) 0%,
+            rgba(94,234,212,0.7)   25%,
+            rgba(134,239,172,0.7)  50%,
+            rgba(94,234,212,0.7)   75%,
+            rgba(125,211,252,0.65) 100%);
+          background-size: 220% 100%;
+          animation: canvas-aurora-h 9s linear infinite;
+        }
+        [data-canvas-edge="top"] {
+          top: 0;
+          -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
+          mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
+        }
+        [data-canvas-edge="bottom"] {
+          bottom: 0;
+          -webkit-mask-image: linear-gradient(to top, black 0%, transparent 100%);
+          mask-image: linear-gradient(to top, black 0%, transparent 100%);
+        }
+
+        [data-canvas-edge="left"], [data-canvas-edge="right"] {
+          top: 0; bottom: 0; width: 70px;
+          background: linear-gradient(180deg,
+            rgba(125,211,252,0.65) 0%,
+            rgba(94,234,212,0.7)   25%,
+            rgba(134,239,172,0.7)  50%,
+            rgba(94,234,212,0.7)   75%,
+            rgba(125,211,252,0.65) 100%);
+          background-size: 100% 220%;
+          animation: canvas-aurora-v 9s linear infinite;
+        }
+        [data-canvas-edge="left"] {
+          left: 0;
+          -webkit-mask-image: linear-gradient(to right, black 0%, transparent 100%);
+          mask-image: linear-gradient(to right, black 0%, transparent 100%);
+        }
+        [data-canvas-edge="right"] {
+          right: 0;
+          -webkit-mask-image: linear-gradient(to left, black 0%, transparent 100%);
+          mask-image: linear-gradient(to left, black 0%, transparent 100%);
+        }
+
+        @keyframes canvas-aurora-h {
+          from { background-position:   0% 0%; }
+          to   { background-position: 220% 0%; }
+        }
+        @keyframes canvas-aurora-v {
+          from { background-position: 0%   0%; }
+          to   { background-position: 0% 220%; }
+        }
       `}</style>
       <div style={{ position: 'absolute', inset: 0 }} aria-hidden>
         {theme.showNebula && (
@@ -459,6 +565,11 @@ export default function HomeCanvasOrch() {
         edgeInset={hudEdgeInset}
         minimapHeight={minimapHeight}
       />
+
+      <div ref={edgeTopRef} data-canvas-edge="top" data-active="false" aria-hidden />
+      <div ref={edgeRightRef} data-canvas-edge="right" data-active="false" aria-hidden />
+      <div ref={edgeBottomRef} data-canvas-edge="bottom" data-active="false" aria-hidden />
+      <div ref={edgeLeftRef} data-canvas-edge="left" data-active="false" aria-hidden />
     </div>
   )
 }

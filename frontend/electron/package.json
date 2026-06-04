@@ -36,9 +36,9 @@
     "node-pty": "^1.1.0"
   },
   "devDependencies": {
-    "electron": "^41.0.1",
-    "electron-builder": "^25.0.0",
-    "electron-rebuild": "^3.2.9",
+    "electron": "^42.3.3",
+    "electron-builder": "^26.0.0",
+    "@electron/rebuild": "^4.0.4",
     "typescript": "^5.0.4"
   },
   "keywords": [
