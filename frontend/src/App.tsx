@@ -159,6 +159,10 @@ import {
   toolsSidebarChromeBlock,
   type ToolsSidebarChromeStateBlock,
 } from '@/services/lego_blocks/units/toolsSidebarChromeBlock'
+import {
+  settingsSidebarChromeBlock,
+  type SettingsSidebarChromeStateBlock,
+} from '@/services/lego_blocks/units/settingsSidebarChromeBlock'
 import type { SidebarChromeBlock } from '@/services/lego_blocks/units/sidebarChromeBlock'
 import SidebarChromeButtonBlock from '@/components/lego_blocks/units/SidebarChromeButtonBlock'
 import {
@@ -681,6 +685,11 @@ function App() {
     label: 'Tools',
   })
   const [newThoughtSidebarChromeState, setNewThoughtSidebarChromeState] = useState({ enabled: false, collapsed: false })
+  const [settingsSidebarChromeState, setSettingsSidebarChromeState] = useState<SettingsSidebarChromeStateBlock>({
+    enabled: false,
+    collapsed: false,
+    label: 'Settings',
+  })
   const [syncPanelOpen, setSyncPanelOpen] = useState(false)
   const [syncActionRunning, setSyncActionRunning] = useState<'sync' | 'rebuild' | null>(null)
   const [gitActionRunning, setGitActionRunning] = useState<'commit' | 'push' | null>(null)
@@ -847,6 +856,7 @@ function App() {
   const showWebullSidebarChromeControl = location.pathname === '/webull' && webullSidebarChromeState.enabled
   const showToolsSidebarChromeControl = toolsSidebarChromeState.enabled && TOOLS_NAV_ACTIVE_PATHS.includes(location.pathname)
   const showNewThoughtSidebarChromeControl = location.pathname === '/new-thought' && newThoughtSidebarChromeState.enabled
+  const showSettingsSidebarChromeControl = location.pathname === '/settings' && settingsSidebarChromeState.enabled
   // On Capacitor, each of these tabs owns its own edge-swipe gesture.
   // Suppress the global nav-drawer swipe so they don't conflict.
   const tabOwnsSidebarSwipe = showGoogleWorkspaceChromeControls
@@ -856,6 +866,7 @@ function App() {
     || showWebullSidebarChromeControl
     || showToolsSidebarChromeControl
     || showNewThoughtSidebarChromeControl
+    || showSettingsSidebarChromeControl
   const isElectronDesktopSurface = layout.surface === 'electron' && layout.mode === 'desktop'
   const isMacDesktopSurface = isElectronDesktopSurface
     && typeof navigator !== 'undefined'
@@ -1182,6 +1193,13 @@ function App() {
       collapsed: newThoughtSidebarChromeState.collapsed,
       toggleLabels: { show: 'Show left panel', hide: 'Hide left panel' },
     },
+    {
+      id: 'settings',
+      show: showSettingsSidebarChromeControl,
+      block: settingsSidebarChromeBlock,
+      collapsed: settingsSidebarChromeState.collapsed,
+      toggleLabels: { show: 'Show settings sidebar', hide: 'Hide settings sidebar' },
+    },
   ] as SidebarChromeButtonConfig[]).map(cfg => ({ position: 'inline', ...cfg }))
   const inlineSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'inline')
   const capacitorMenuSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'capacitor-menu')
@@ -1285,6 +1303,14 @@ function App() {
         label: newThoughtSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
       }
     }
+    if (showSettingsSidebarChromeControl) {
+      return {
+        kind: 'settings-sidebar',
+        enabled: true,
+        active: !settingsSidebarChromeState.collapsed,
+        label: settingsSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
+      }
+    }
     if (compactNav) {
       return {
         kind: 'drawer',
@@ -1312,8 +1338,10 @@ function App() {
     showGoogleWorkspaceChromeControls,
     showNewThoughtSidebarChromeControl,
     showOrganizerSidebarChromeControl,
+    showSettingsSidebarChromeControl,
     showWebSidebarChromeControl,
     showWebullSidebarChromeControl,
+    settingsSidebarChromeState.collapsed,
     thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed,
     webSidebarChromeState.collapsed,
     webullSidebarChromeState.collapsed,
@@ -1996,6 +2024,9 @@ function App() {
         return
       case 'new-thought-sidebar':
         newThoughtSidebarChromeBlock.dispatchToggle()
+        return
+      case 'settings-sidebar':
+        settingsSidebarChromeBlock.dispatchToggle()
         return
       case 'drawer':
         setDrawerOpen(prev => !prev)
@@ -2841,6 +2872,18 @@ function App() {
           })
         },
       },
+      {
+        event: settingsSidebarChromeBlock.stateEvent,
+        handler: (event) => {
+          const detail = (event as CustomEvent<SettingsSidebarChromeStateBlock>).detail
+          if (!detail) return
+          setSettingsSidebarChromeState({
+            enabled: Boolean(detail.enabled),
+            collapsed: Boolean(detail.collapsed),
+            label: typeof detail.label === 'string' ? detail.label : 'Settings',
+          })
+        },
+      },
     ]
     for (const { event, handler } of subscribers) {
       window.addEventListener(event, handler)
@@ -3357,11 +3400,11 @@ function App() {
               {!usesPersistentRouteSurface && (
                 <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>}>
                 <Routes>
-                  {/* Electron uses the canvas home; iOS/iPad/web keep the
-                      classic dashboard home (touch-first surface). The
-                      /home-canvas route stays accessible on all platforms
+                  {/* Electron and iPad use the canvas home; iPhone/web keep
+                      the classic dashboard home (touch-first phone surface).
+                      The /home-canvas route stays accessible on all platforms
                       so the canvas can be tested from any client. */}
-                  <Route path="/" element={isElectron() ? <HomeCanvas /> : <Home />} />
+                  <Route path="/" element={(isElectron() || (layout.surface === 'capacitor-ios' && layout.mode === 'tablet')) ? <HomeCanvas /> : <Home />} />
                   <Route path="/home-canvas" element={<HomeCanvas />} />
                   <Route path="/ai" element={<Navigate to="/ai/chat" replace />} />
                   <Route path="/ai/schedules/*" element={<Schedules />} />

@@ -1,5 +1,4 @@
 import { useSearchParams } from 'react-router-dom'
-import { SlidersHorizontal } from 'lucide-react'
 import SettingsOrch, { type SettingsTabWithProfileId } from '@/components/orchestrators/SettingsOrch'
 import type {
   ExplorerFolderColorPreferenceBlock,
@@ -57,34 +56,19 @@ export default function Settings({
 
   return (
     <div className="ltm-page">
-      <div className="ltm-page-shell ltm-shell-wide space-y-4">
-        <header className="shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-primary/10 p-2">
-              <SlidersHorizontal className="h-5 w-5 text-primary sm:h-6 sm:w-6" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Settings</h1>
-              <p className="text-sm text-muted-foreground">
-                Manage profile, theme, scheduler jobs, markdown editor behavior, AI configuration, Webull execution storage, cache reset, and Thinking Space switching.
-              </p>
-            </div>
-          </div>
-        </header>
-        <SettingsOrch
-          explorerIconStyle={explorerIconStyle}
-          onExplorerIconStyleChange={onExplorerIconStyleChange}
-          explorerFolderColorRules={explorerFolderColorRules}
-          onExplorerFolderColorRulesChange={onExplorerFolderColorRulesChange}
-          schedulerSettings={schedulerSettings}
-          onSchedulerSettingsChange={onSchedulerSettingsChange}
-          onRequestVaultSwitch={onRequestVaultSwitch}
-          initialTab={initialTab}
-          webullTabLabel={webullTabLabel}
-          webullTabIconText={webullTabIconText}
-          onWebullTabPreferencesChange={onWebullTabPreferencesChange}
-        />
-      </div>
+      <SettingsOrch
+        explorerIconStyle={explorerIconStyle}
+        onExplorerIconStyleChange={onExplorerIconStyleChange}
+        explorerFolderColorRules={explorerFolderColorRules}
+        onExplorerFolderColorRulesChange={onExplorerFolderColorRulesChange}
+        schedulerSettings={schedulerSettings}
+        onSchedulerSettingsChange={onSchedulerSettingsChange}
+        onRequestVaultSwitch={onRequestVaultSwitch}
+        initialTab={initialTab}
+        webullTabLabel={webullTabLabel}
+        webullTabIconText={webullTabIconText}
+        onWebullTabPreferencesChange={onWebullTabPreferencesChange}
+      />
     </div>
   )
 }

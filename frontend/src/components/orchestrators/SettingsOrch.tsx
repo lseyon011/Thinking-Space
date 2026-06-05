@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
+import SidebarGroupHeaderBlock from '@/components/lego_blocks/units/ui/SidebarGroupHeaderBlock'
+import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useExpandedSetBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
+import {
+  dispatchSettingsSidebarChromeStateBlock,
+  SETTINGS_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
+} from '@/services/lego_blocks/units/settingsSidebarChromeBlock'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import AiSettingsOrch from '@/components/orchestrators/AiSettingsOrch'
@@ -115,22 +121,57 @@ function createExplorerRuleKey(rule: Pick<ExplorerFolderColorPreferenceBlock, 'f
   return `${normalizeExplorerFolderPathInput(rule.folderPath)}::${rule.includeDescendants ? 'all' : 'single'}`
 }
 
-const TAB_OPTIONS: Array<{ id: SettingsTabWithProfileId; label: string }> = [
-  { id: 'theme', label: 'Theme' },
-  { id: 'explorer', label: 'Explorer' },
-  { id: 'activity', label: 'Activity Tracker' },
-  { id: 'scheduler', label: 'Scheduler' },
-  { id: 'profile', label: 'Profile' },
-  { id: 'ai', label: 'AI' },
-  { id: 'ai_websites', label: 'AI Websites' },
-  { id: 'web_bookmarks', label: 'Web' },
-  { id: 'google_docs_sheets', label: 'Google Docs and Sheets' },
-  { id: 'webull', label: 'Webull' },
-  { id: 'rss', label: 'RSS Feeds' },
-  { id: 'cache', label: 'Clear Cache' },
-  { id: 'vault', label: 'Select Thinking Space' },
-  { id: 'about', label: 'About' },
-  { id: 'developer', label: 'Developer' },
+const TAB_GROUPS: Array<{ heading: string; items: Array<{ id: SettingsTabWithProfileId; label: string }> }> = [
+  {
+    heading: 'Workspace',
+    items: [
+      { id: 'profile', label: 'Profile' },
+      { id: 'vault', label: 'Select Thinking Space' },
+    ],
+  },
+  {
+    heading: 'Appearance',
+    items: [
+      { id: 'theme', label: 'Theme' },
+      { id: 'explorer', label: 'Explorer' },
+    ],
+  },
+  {
+    heading: 'Productivity',
+    items: [
+      { id: 'activity', label: 'Activity Tracker' },
+      { id: 'scheduler', label: 'Scheduler' },
+    ],
+  },
+  {
+    heading: 'AI',
+    items: [
+      { id: 'ai', label: 'AI' },
+      { id: 'ai_websites', label: 'AI Websites' },
+    ],
+  },
+  {
+    heading: 'Content',
+    items: [
+      { id: 'web_bookmarks', label: 'Web' },
+      { id: 'google_docs_sheets', label: 'Google Docs and Sheets' },
+      { id: 'rss', label: 'RSS Feeds' },
+    ],
+  },
+  {
+    heading: 'Integrations',
+    items: [
+      { id: 'webull', label: 'Webull' },
+    ],
+  },
+  {
+    heading: 'System',
+    items: [
+      { id: 'cache', label: 'Clear Cache' },
+      { id: 'about', label: 'About' },
+      { id: 'developer', label: 'Developer' },
+    ],
+  },
 ]
 
 function sanitizeTimeInputBlock(value: string): string | null {
@@ -193,6 +234,43 @@ export default function SettingsOrch({
   const [yamlFieldsAutoHealEnabled, setYamlFieldsAutoHealEnabled] = useState(
     () => getCapabilityFeatureFlags().yaml_fields_auto_heal_enabled,
   )
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem('settings_sidebar_collapsed') === '1'
+  })
+  const {
+    isExpanded: isGroupExpanded,
+    toggle: toggleGroup,
+  } = useExpandedSetBlock(
+    'ltm-settings-expanded-sections',
+    TAB_GROUPS.map(g => g.heading),
+  )
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('settings_sidebar_collapsed', sidebarCollapsed ? '1' : '0')
+  }, [sidebarCollapsed])
+
+  useEffect(() => {
+    dispatchSettingsSidebarChromeStateBlock({
+      enabled: true,
+      collapsed: sidebarCollapsed,
+      label: 'Settings',
+    })
+    return () => {
+      dispatchSettingsSidebarChromeStateBlock({
+        enabled: false,
+        collapsed: false,
+        label: 'Settings',
+      })
+    }
+  }, [sidebarCollapsed])
+
+  useEffect(() => {
+    const handler = () => setSidebarCollapsed(prev => !prev)
+    window.addEventListener(SETTINGS_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
+    return () => window.removeEventListener(SETTINGS_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
+  }, [])
 
   const handleActivityAddPath = useCallback(() => {
     const trimmed = activityNewPathInput.trim()
@@ -674,30 +752,59 @@ export default function SettingsOrch({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-6">
-      <aside className="self-start">
-        <div className="rounded-2xl border border-border/60 bg-muted/20 p-2">
-          <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            Sections
+    <div className={cn(
+      'h-full min-h-0 w-full',
+      sidebarCollapsed ? 'grid grid-cols-1' : 'grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]',
+    )}>
+      {!sidebarCollapsed && (
+        <aside className="flex flex-col self-stretch bg-background/40 lg:border-r lg:border-border/60 overflow-y-auto">
+          <p className="mb-2 mt-4 px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Settings
           </p>
-          <div className="space-y-1">
-            {TAB_OPTIONS.map(tab => (
-              <Button
-                key={tab.id}
-                type="button"
-                variant={activeTab === tab.id ? 'default' : 'ghost'}
-                size="sm"
-                className="w-full justify-start"
-                onClick={() => setActiveTab(tab.id)}
-              >
-                {tab.label}
-              </Button>
-            ))}
+          <div className="min-h-0 flex-1 py-1">
+            {TAB_GROUPS.map(group => {
+              const containsActive = group.items.some(item => item.id === activeTab)
+              const expanded = isGroupExpanded(group.heading) || containsActive
+              return (
+                <div key={group.heading}>
+                  <SidebarGroupHeaderBlock
+                    name={group.heading}
+                    expanded={expanded}
+                    onToggle={() => toggleGroup(group.heading)}
+                    badge={group.items.length}
+                  />
+                  {expanded && group.items.map(tab => {
+                    const active = activeTab === tab.id
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveTab(tab.id)}
+                        className={cn(
+                          'flex w-full items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm transition-colors',
+                          active
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-foreground hover:bg-accent',
+                        )}
+                      >
+                        <span className="truncate">{tab.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            })}
           </div>
-        </div>
-      </aside>
+        </aside>
+      )}
 
-      <div className="space-y-4 min-w-0">
+      <div className="space-y-4 min-w-0 px-4 py-4 lg:px-6 overflow-y-auto">
+        <header className="mb-2">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Settings</h1>
+          <p className="text-sm text-muted-foreground">
+            Manage profile, theme, scheduler jobs, markdown editor behavior, AI configuration, Webull execution storage, cache reset, and Thinking Space switching.
+          </p>
+        </header>
       {activeTab === 'theme' && (
         <Card>
           <CardHeader>
