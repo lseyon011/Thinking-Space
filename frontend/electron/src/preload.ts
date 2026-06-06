@@ -289,6 +289,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       threads: number | null
     }>
   }> => ipcRenderer.invoke('debug:performance:get'),
+  clearGpuCache: (): Promise<void> => ipcRenderer.invoke('app:clear-gpu-cache'),
   // Webview swipe navigation (macOS 2-finger swipe via BrowserWindow 'swipe' event)
   onWebviewSwipe: (handler: (direction: 'left' | 'right') => void) => {
     const channel = 'webview:swipe'

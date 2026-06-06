@@ -38,3 +38,6 @@ test-fixtures/vault/.*/
 
 # OS
 .DS_Store
+
+# Bundled Node runtime for thinkspc CLI (rebuilt locally, do not commit)
+frontend/electron/src/cli/bin/

@@ -1,100 +1,127 @@
 ---
 name: log-daily-insight
-description: Use this skill when the user wants to log today's insights, when an ephemeral Claude session is triggered to capture daily insights, or when the user says things like "let's do today's insights", "log my insights", or you are launched by Thinking Space's scheduler for the daily insights prompt. Walks the user through a short teacher/partner conversation about what they learned and memorized today, then writes the daily insights note to the vault via bash.
+description: Use this skill any time the user wants to log an insight, learning, or realization. Triggers on phrases like "insight:", "I just had an insight", "I just realized", "log this insight", "log my insights", "let's do today's insights", "quick insight", "yesterday I realized", or when launched by Thinking Space's scheduler / the `thinkspc insight` command. Handles two modes — quick-capture (one-line confirm and exit) and reflective end-of-day (teacher/partner conversation). Reads the project list from `kai-workspace/projects.md` in the vault, then appends to the right project's daily insight file.
 ---
 
 # Log daily insight
 
-You are running a short, focused conversation to capture today's insights and write them into the user's vault. You are not a passive logger — you are the user's teacher and thinking partner. Be warm, contextual, and specific. Reference recent work. Don't be generic.
+You capture insights into Anurag's vault, across multiple projects. You operate in two modes — pick the right one based on what the user said and how they invoked you.
 
-## Output location
+## Two modes
 
-Daily insights notes live at:
+### Quick-capture (default when the user dumps an insight)
+
+Trigger signals:
+- The user opened with the insight itself ("insight: ...", "I just realized...", "log this:..."), or
+- You were launched by `thinkspc insight ...` (working dir under `/tmp/insight.*`), or
+- The user wants you fast and out of the way.
+
+Behavior:
+- **No teacher/partner conversation.** Don't probe, don't congratulate, don't write a teacher's note.
+- Parse the insight text, the project, and the date from natural language.
+- Append to the right file (see "Where insights go" below).
+- Confirm in one line. Exit.
+- If genuinely ambiguous about project, ask exactly one short clarifying question, then continue. Date defaults to today; if the user says "yesterday", "Monday", "last Tuesday", parse it.
+
+### Reflective end-of-day (longer flow)
+
+Trigger signals:
+- The user said "let's do today's insights" or similar reflective phrasing.
+- You were launched by a scheduler agent for end-of-day reflection.
+- The user is clearly inviting a conversation, not dumping a line.
+
+Behavior:
+- Be the teacher and thinking partner. Reference recent work, ask sharp questions, draw out what shifted in their model.
+- Walk through 2–4 turns at most.
+- Produce a fuller note with a teacher's note section.
+
+The rest of this skill mostly describes the quick-capture path — it's the common case. Reflective mode reuses the same file format but with `teachers_note` populated.
+
+## Where insights go
+
+Universal convention, all projects:
 
 ```
-$VAULT/lifeblood_systems/sfdl/insights/YYYY-MM-DD-insights.md
+$VAULT/<project_vault_path>/thoughts/insight-YYYY-MM-DD.md
 ```
 
-`$VAULT` resolves from the `THINKSPC_VAULT_ROOT` (or legacy `LTM_VAULT_ROOT`) env var. If neither is set, read it from `.env` at the repo root. Always use absolute paths in your bash commands.
+`$VAULT` resolves from `THINKSPC_VAULT_ROOT` (or legacy `LTM_VAULT_ROOT`). If neither is set, fall back to `/Users/patila06/Library/Mobile Documents/iCloud~md~obsidian/Documents/Long-Term-Memory-iCloud`.
 
-The user keeps the vault in iCloud: `/Users/patila06/Library/Mobile Documents/iCloud~md~obsidian/Documents/Long-Term-Memory-iCloud`. Use the env var when available; fall back to that path.
+One file per (project, day). Multiple insights on the same day append into the same file. The `thoughts/` folder is created if it doesn't exist.
 
-## Workflow
+## Resolving the project
 
-### 1. Gather context (silent — before talking to the user)
+Read `$VAULT/kai-workspace/projects.md` first. That file is the source of truth for active projects and their vault paths.
 
-Before you say anything to the user, build a picture of their day. Run these in parallel:
+Project resolution order:
+1. **Explicit mention** in the user's text — "for sfdl", "this is about thinkingspace.ai", etc. Match against `name` and `aliases / topical hints` columns in `projects.md`.
+2. **Topical inference** — if the insight is clearly about a domain (e.g. earnings-call workflow → F9), use that.
+3. **Recent git activity** (only if you have shell access and the repo is reachable) — `git log --since="12 hours ago"` in the user's main repo.
+4. **Ask one short question** if still ambiguous: "Which project — sfdl, thinkingspace.ai, or F9?"
 
-- `git log --since="6 hours ago" --pretty=format:"%h %s" -n 20` in the repo
-- `git diff --stat HEAD~5..HEAD` (or against a base if you know one)
-- `ls -t $VAULT/lifeblood_systems/sfdl/insights/ | head -7` — what days have been logged recently
-- Read the most recent 1–2 prior daily insights notes so you know what threads are still open
-- Read `MEMORY.md` if memory exists for this project — it carries user preferences and the teacher/partner mode
+If the user mentions a project that isn't in `projects.md`:
+- Add a new row to the "Add new projects below" section of `projects.md` with a sensible `vault_path` (usually `lifeblood_systems/<name>/`).
+- Then proceed with the insight write.
 
-Don't dump this context at the user. Use it to ask sharper questions and write a better teacher's note.
+## Resolving the date
 
-### 2. Open the conversation
+Default: today (local time).
 
-Greet briefly. State what you noticed (one sentence). Then ask one focused question — not a generic "what did you learn?" Something like:
+Parse natural-language dates from the user's text:
+- "yesterday" → today minus 1 day
+- "Monday", "last Tuesday" → most recent occurrence of that weekday (going backward)
+- Explicit "2026-06-04" or "June 4" → that date
+- "last week" / "few days ago" — ask exactly which day rather than guessing
 
-> "I saw you finished the memorization toggle today and started the daily insights writer. What was the moment that actually clicked — and was there anything you tried that didn't?"
+## Writing the file
 
-Keep it to one question per turn. Don't make it feel like a form.
-
-### 3. Listen and probe
-
-Across 2–4 turns, draw out:
-
-- **Insights** — what they learned, what shifted in their model. Sentence-length, specific.
-- **Files touched** — pull from git if they don't volunteer; ask if anything important wasn't in git.
-- **Linked notes** — any existing vault notes that connect (`lifeblood_systems/...`, `coding-projects/...`). Optional.
-- **What they memorized** — distinct from insights. Memorization is durable retention work, not just understanding.
-
-If they're brief, that's fine. Don't pad. Better a short honest note than a verbose hollow one.
-
-### 4. Write the file
-
-Before writing, check if today's file already exists:
+### 1. Check if today's (or the resolved-date's) file exists
 
 ```bash
-DATE=$(date +%Y-%m-%d)
-INSIGHTS_DIR="$VAULT/lifeblood_systems/sfdl/insights"
-FILE="$INSIGHTS_DIR/$DATE-insights.md"
-mkdir -p "$INSIGHTS_DIR"
+DATE=<resolved YYYY-MM-DD>
+THOUGHTS_DIR="$VAULT/<project_vault_path>/thoughts"
+FILE="$THOUGHTS_DIR/insight-$DATE.md"
+mkdir -p "$THOUGHTS_DIR"
 [ -f "$FILE" ] && echo "exists" || echo "new"
 ```
 
-**If new**: write the full file using the template below.
+### 2. If new — write the full file using the template below.
 
-**If exists**: read it with the Read tool, merge new insights/files/linked_notes (dedupe by exact string match), update `updated_at`, replace or append `teachers_note` based on what makes sense (usually the latest teacher's note replaces the prior one — these aren't cumulative).
+### 3. If exists — read with the Read tool, then:
+- Append the new insight to the `insights:` YAML array.
+- Append the same bullet to the `## Insights` body section.
+- Update `updated_at` to now (ISO timestamp).
+- If quick-capture mode: do NOT touch `teachers_note`.
+- If reflective mode: replace `teachers_note` with the latest one (these aren't cumulative).
+- Merge `files_touched` and `linked_notes` if the user mentioned any (dedupe by exact string match).
 
-Use the Write tool to write the file. Don't use heredoc through bash — quoting will burn you.
+Always use the Write tool to write the file. Don't heredoc through bash — quoting will burn you.
 
-### 5. File template
+## File template
 
 ```markdown
 ---
-uuid: <generate a uuid v4 — use `uuidgen | tr A-Z a-z` if you need one>
-key: insights-YYYY-MM-DD
-title: Insights — YYYY-MM-DD
+uuid: <generate with `uuidgen | tr A-Z a-z`>
+key: insight-<project_name_lowercase>-YYYY-MM-DD
+title: Insight — <project name> — YYYY-MM-DD
 type: thought
 level: 5
 status: active
 created_at: "<ISO timestamp at first creation>"
 updated_at: "<ISO timestamp now>"
 record_kind: insight
+project: <project_name>
 date: "YYYY-MM-DD"
 insights:
   - <one insight per line, sentence-length>
-  - <another>
 files_touched:
   - path/to/file.ts
 linked_notes:
   - lifeblood_systems/sfdl/thoughts/some-thought.md
-teachers_note: <see section 6>
+teachers_note: <only present in reflective mode>
 ---
 
-# Insights — YYYY-MM-DD
+# Insight — <project name> — YYYY-MM-DD
 
 ## Insights
 - <insight 1>
@@ -107,19 +134,32 @@ teachers_note: <see section 6>
 - [[lifeblood_systems/sfdl/thoughts/some-thought.md]]
 
 ## Teacher's note
-<teachers_note body>
+<teachers_note body — only in reflective mode>
 ```
 
-Both the YAML frontmatter and the body sections must stay in sync — if the YAML lists 4 insights, the body's "## Insights" lists the same 4. The body is what makes the file pleasant to open in Obsidian; the YAML is what the dashboard reads.
+Body and YAML must stay in sync — if the YAML lists 4 insights, the body's `## Insights` section lists the same 4. Omit any section (and its YAML field) if there's nothing for it. Don't leave empty arrays in YAML.
 
-Omit any section (and its YAML field) if there's nothing for it. Don't leave empty arrays in YAML.
+## Quick-capture confirmation format
 
-### 6. Writing the teacher's note
+After writing, print exactly one line:
 
-This is the part that matters most. The user explicitly wants Claude to act as a teacher and thinking partner in Thinking Space, not a passive logger.
+```
+✓ appended to <project>/thoughts/insight-YYYY-MM-DD.md
+```
+
+Or if creating a new file:
+
+```
+✓ wrote <project>/thoughts/insight-YYYY-MM-DD.md
+```
+
+Then exit. No further chatter.
+
+## Reflective-mode teacher's note
+
+Only in reflective mode. The note matters more than the bullets.
 
 A good teacher's note:
-
 - **References specific prior work.** Not "great progress!" but "you've been circling this auth pattern for a week, nice to see it land today."
 - **Names a tradeoff or judgment call they made well**, if one is visible in the conversation or git history.
 - **Closes with a focus suggestion for tomorrow** — concrete, derived from what's still open. Not a generic platitude.
@@ -127,7 +167,6 @@ A good teacher's note:
 - **Uses warm second-person.** "You" not "the user."
 
 A bad teacher's note:
-
 - "Great work today!"
 - "Keep going!"
 - Lists what they did (the YAML already lists it).
@@ -135,14 +174,9 @@ A bad teacher's note:
 
 If you genuinely have nothing pointed to say, write less — even one well-placed sentence beats four generic ones. Don't manufacture insight.
 
-### 7. Confirm with the user
-
-After writing, briefly tell them what you wrote (one sentence) and the file path. Don't dump the full content back at them. They can open the file.
-
-If you're an autonomous/scheduled session and the user isn't present, skip the confirmation.
-
 ## Notes
 
-- The user uses iPad heavily, including for memorization. The vault is iCloud-synced so any writes propagate.
-- There is also a `daily.log_insight` capability available via `./thinkspc daily.log_insight ...` — it does the same thing programmatically. Prefer the direct bash + Write tool approach (this skill) for interactive sessions; the capability is for fully automated callers.
-- The dashboard (not yet built) will read these files plus `memorized_sessions` from notes across the vault. Keep the YAML field names stable: `insights`, `files_touched`, `linked_notes`, `teachers_note`, `date`, `record_kind: insight`.
+- The user uses iPad heavily. The vault is iCloud-synced so any writes propagate.
+- Legacy: `sfdl` has an older `insights/` folder (`$VAULT/lifeblood_systems/sfdl/insights/YYYY-MM-DD-insights.md`) from before the universal convention. Don't write there anymore — use `sfdl/thoughts/insight-YYYY-MM-DD.md`. The old files stay as-is.
+- There is also a `daily.log_insight` capability (`./thinkspc daily.log_insight ...`) — that's the older programmatic path. This skill is the interactive path and is the one `thinkspc insight` invokes.
+- When invoked via `thinkspc insight`, your working dir is `/tmp/insight.*` — that's intentional incognito mode. No project files visible locally. Read/write everything through absolute paths to `$VAULT`.

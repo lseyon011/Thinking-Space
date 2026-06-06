@@ -192,6 +192,7 @@ interface ElectronAPI {
   vaultWatchStop?(vaultRoot: string): Promise<{ ok: boolean }>
   onVaultWatchEvent?(handler: (event: { kind: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir'; path: string }) => void): () => void
   newWindow?(route?: string): Promise<void>
+  clearGpuCache?(): Promise<void>
   markdownEditorOnPasteAsTable?(handler: () => void): () => void
   sourceConfigGet?(): Promise<{ mode: string; sourcePath: string | null; vitePort: number; viteRunning: boolean }>
   sourceConfigSet?(config: { mode?: string; sourcePath?: string | null; vitePort?: number }): Promise<{ mode: string; sourcePath: string | null; vitePort: number; requiresRestart: boolean }>

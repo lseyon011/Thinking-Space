@@ -325,6 +325,19 @@ if (hasSingleInstanceLock) {
     try {
       // Wait for electron app to be ready.
       await app.whenReady();
+      // If a previous session requested a GPU-cache clear, delete the GPU cache
+      // dir before any window opens (the GPU process holds the dir open while
+      // the app is running, so it has to happen at the next cold start).
+      try {
+        const gpuFlagPath = path.join(app.getPath('userData'), 'state', 'clear-gpu-cache.flag');
+        if (fs.existsSync(gpuFlagPath)) {
+          const gpuCacheDir = path.join(app.getPath('userData'), 'GPUCache');
+          await fsPromises.rm(gpuCacheDir, { recursive: true, force: true });
+          await fsPromises.unlink(gpuFlagPath);
+        }
+      } catch (err) {
+        console.warn('[gpu-cache] cleanup failed:', err);
+      }
       // Security - Set Content-Security-Policy based on whether or not we are in dev mode.
       setupContentSecurityPolicy(myCapacitorApp.getCustomURLScheme());
       setupWebviewSessionPermissions();
@@ -477,6 +490,17 @@ ipcMain.handle('window:context:get', (event) => {
 
 ipcMain.handle('debug:performance:get', async () => {
   return readDebugPerformanceSnapshotBlock();
+});
+
+// Clearing GPU cache requires deleting userData/GPUCache while it's not in use
+// by the GPU process, so we set a flag and relaunch — the next startup deletes
+// the directory before any windows open.
+ipcMain.handle('app:clear-gpu-cache', async () => {
+  const flagPath = path.join(app.getPath('userData'), 'state', 'clear-gpu-cache.flag');
+  await fsPromises.mkdir(path.dirname(flagPath), { recursive: true });
+  await fsPromises.writeFile(flagPath, new Date().toISOString(), 'utf-8');
+  app.relaunch();
+  app.quit();
 });
 
 ipcMain.handle('schedules:list', async () => {

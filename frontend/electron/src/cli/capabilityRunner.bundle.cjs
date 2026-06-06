@@ -5,6 +5,9 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
@@ -29,6 +32,157 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// electron/src/config/vaultExcludedDirs.json
+var vaultExcludedDirs_default;
+var init_vaultExcludedDirs = __esm({
+  "electron/src/config/vaultExcludedDirs.json"() {
+    vaultExcludedDirs_default = [
+      ".obsidian",
+      "node_modules",
+      "__pycache__",
+      ".venv",
+      "think-space",
+      ".git",
+      ".trash"
+    ];
+  }
+});
+
+// src/services/lego_blocks/units/vaultConstantsBlock.ts
+var EXCLUDED_DIRS;
+var init_vaultConstantsBlock = __esm({
+  "src/services/lego_blocks/units/vaultConstantsBlock.ts"() {
+    "use strict";
+    init_vaultExcludedDirs();
+    EXCLUDED_DIRS = new Set(vaultExcludedDirs_default);
+  }
+});
+
+// src/services/lego_blocks/units/storageKeyBlock.ts
+function getLocalStorageItemBlock(key) {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function setLocalStorageItemBlock(key, value) {
+  try {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(key, value);
+  } catch {
+  }
+}
+function isElectronVaultRootBridgeAvailableBlock() {
+  return typeof window !== "undefined" && !!window.electronAPI?.isElectron && typeof window.electronAPI.vaultRootGetPersisted === "function";
+}
+function normalizeVaultRootValueBlock(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+function readElectronPersistedVaultRootBlock() {
+  if (!isElectronVaultRootBridgeAvailableBlock()) return null;
+  const persisted = normalizeVaultRootValueBlock(window.electronAPI?.vaultRootGetPersisted?.());
+  if (persisted) return persisted;
+  const legacy = normalizeVaultRootValueBlock(getLocalStorageItemBlock(STORAGE_KEYS.vaultRoot));
+  if (!legacy) return null;
+  void window.electronAPI?.vaultRootSetPersisted?.(legacy);
+  try {
+    localStorage.removeItem(STORAGE_KEYS.vaultRoot);
+  } catch {
+  }
+  return legacy;
+}
+function writeElectronPersistedVaultRootBlock(value) {
+  const normalized = normalizeVaultRootValueBlock(value);
+  void window.electronAPI?.vaultRootSetPersisted?.(normalized);
+}
+function getStorageItem(key) {
+  if (key === STORAGE_KEYS.vaultRoot) {
+    const electronPersisted = readElectronPersistedVaultRootBlock();
+    if (electronPersisted) return electronPersisted;
+  }
+  return getLocalStorageItemBlock(key);
+}
+function setStorageItem(key, value) {
+  if (key === STORAGE_KEYS.vaultRoot && isElectronVaultRootBridgeAvailableBlock()) {
+    writeElectronPersistedVaultRootBlock(value);
+    return;
+  }
+  setLocalStorageItemBlock(key, value);
+}
+function getJsonStorageItem(key, fallback) {
+  const raw = getStorageItem(key);
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+function getStoredVaultRoot() {
+  return getStorageItem(STORAGE_KEYS.vaultRoot);
+}
+function setStoredVaultRoot(path5) {
+  setStorageItem(STORAGE_KEYS.vaultRoot, path5);
+}
+var STORAGE_KEYS;
+var init_storageKeyBlock = __esm({
+  "src/services/lego_blocks/units/storageKeyBlock.ts"() {
+    "use strict";
+    STORAGE_KEYS = {
+      vaultRoot: "ltm-vault-root",
+      thinkingOrganizerTab: "ltm-thinking-organizer-tab",
+      thinkingOrganizerTemplates: "ltm-thinking-organizer-level-templates",
+      thinkingOrganizerRecentTemplates: "ltm-thinking-organizer-recent-templates",
+      thinkingOrganizerNodeKinds: "ltm-thinking-organizer-node-kinds",
+      thinkingOrganizerFolderRoots: "ltm-thinking-organizer-folder-roots",
+      thinkingOrganizerProjectRoots: "ltm-thinking-organizer-project-roots",
+      thinkingOrganizerSelectedProjectRoot: "ltm-thinking-organizer-selected-project-root",
+      thinkingOrganizerProjects: "ltm-thinking-organizer-projects",
+      thinkingOrganizerProjectPresetTags: "ltm-thinking-organizer-project-preset-tags",
+      thinkingOrganizerProjectTagColors: "ltm-thinking-organizer-project-tag-colors",
+      thinkingOrganizerProjectProgramGroups: "ltm-thinking-organizer-project-program-groups",
+      thinkingOrganizerProjectPinBoardGroups: "ltm-thinking-organizer-project-pin-board-groups",
+      thinkingOrganizerProjectCreateDestination: "ltm-thinking-organizer-project-create-destination",
+      appShellSidebarCollapsed: "ltm-app-shell-sidebar-collapsed",
+      appShellExcalidrawExpanded: "ltm-app-shell-excalidraw-expanded",
+      appShellTabs: "ltm-app-shell-tabs",
+      appShellActiveTabId: "ltm-app-shell-active-tab-id",
+      appTheme: "ltm-app-theme",
+      appColorMode: "ltm-app-color-mode",
+      thinkingSpaceExplorerCollapsed: "ltm-thinking-space-explorer-collapsed",
+      thinkingSpaceExplorerWidthPx: "ltm-thinking-space-explorer-width-px",
+      capabilityFeatureFlags: "ltm-capability-feature-flags",
+      stewardProposalQueue: "ltm-steward-proposal-queue",
+      aiTelemetryEvents: "ltm-ai-telemetry-events",
+      aiSettings: "ltm-ai-settings",
+      markdownEditorSettings: "ltm-markdown-editor-settings",
+      schedulerSettings: "ltm-scheduler-settings",
+      schedulerTaskLastAttemptById: "ltm-scheduler-task-last-attempt-by-id",
+      markdownDocumentTopBarHidden: "ltm-markdown-document-top-bar-hidden",
+      userProfileCache: "ltm-user-profile-cache",
+      gitSyncActionsByVault: "ltm-git-sync-actions-by-vault",
+      webullExecutionSettings: "ltm-webull-execution-settings",
+      webullProjectPresetTags: "ltm-webull-project-preset-tags",
+      webullOverallRememberByProjectRoot: "ltm-webull-overall-remember-by-project-root",
+      aiManualCredentials: "ltm-ai-manual-credentials",
+      aiOauthCredentials: "ltm-ai-oauth-credentials",
+      googleDriveAuth: "ltm-google-drive-auth",
+      googleDriveOauthClientId: "ltm-google-drive-oauth-client-id",
+      rssFeedConfigs: "ltm-rss-feed-configs",
+      rssReadItemIds: "ltm-rss-read-item-ids",
+      rssFeedRetentionDays: "ltm-rss-feed-retention-days",
+      aiWebsites: "ltm-ai-websites",
+      webSites: "ltm-web-sites",
+      fileActivityIgnoredPaths: "ltm-file-activity-ignored-paths",
+      vaultSyncExcludedPrefixes: "ltm-vault-sync-excluded-prefixes"
+    };
+  }
+});
 
 // node_modules/@capacitor/core/dist/index.cjs.js
 var require_index_cjs = __commonJS({
@@ -325,9 +479,9 @@ var require_index_cjs = __commonJS({
           const encodedKey = encode(options.key);
           const encodedValue = encode(options.value);
           const expires = options.expires ? `; expires=${options.expires.replace("expires=", "")}` : "";
-          const path3 = (options.path || "/").replace("path=", "");
+          const path5 = (options.path || "/").replace("path=", "");
           const domain = options.url != null && options.url.length > 0 ? `domain=${options.url}` : "";
-          document.cookie = `${encodedKey}=${encodedValue || ""}${expires}; path=${path3}; ${domain};`;
+          document.cookie = `${encodedKey}=${encodedValue || ""}${expires}; path=${path5}; ${domain};`;
         } catch (error) {
           return Promise.reject(error);
         }
@@ -553,6 +707,172 @@ var require_index_cjs = __commonJS({
   }
 });
 
+// src/services/lego_blocks/units/vaultSyncExclusionsBlock.ts
+function normalizePrefix(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "").trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+function readRaw() {
+  const raw = getJsonStorageItem(STORAGE_KEYS.vaultSyncExcludedPrefixes, []);
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const entry of raw) {
+    const normalized = normalizePrefix(typeof entry === "string" ? entry : "");
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+function getSyncExcludedPathPrefixes() {
+  return readRaw();
+}
+function isPathSyncExcluded(path5, prefixes) {
+  const list = prefixes ?? readRaw();
+  if (list.length === 0) return false;
+  const normalized = normalizePrefix(path5);
+  if (!normalized) return false;
+  for (const prefix of list) {
+    if (normalized === prefix || normalized.startsWith(`${prefix}/`)) return true;
+  }
+  return false;
+}
+var init_vaultSyncExclusionsBlock = __esm({
+  "src/services/lego_blocks/units/vaultSyncExclusionsBlock.ts"() {
+    "use strict";
+    init_storageKeyBlock();
+  }
+});
+
+// src/services/lego_blocks/units/selfWriteTrackerBlock.ts
+function normalizePath2(value) {
+  return value.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+}
+function prune(now) {
+  if (recentWrites.size <= MAX_ENTRIES) {
+    for (const [path5, ts] of recentWrites) {
+      if (now - ts > WINDOW_MS) recentWrites.delete(path5);
+    }
+    return;
+  }
+  const entries = [...recentWrites.entries()].sort((a, b) => a[1] - b[1]);
+  for (const [path5, ts] of entries) {
+    if (recentWrites.size <= MAX_ENTRIES && now - ts <= WINDOW_MS) break;
+    recentWrites.delete(path5);
+  }
+}
+function recordSelfWriteBlock(filePath) {
+  const normalized = normalizePath2(filePath);
+  if (!normalized) return;
+  const now = Date.now();
+  recentWrites.set(normalized, now);
+  prune(now);
+}
+var WINDOW_MS, MAX_ENTRIES, recentWrites;
+var init_selfWriteTrackerBlock = __esm({
+  "src/services/lego_blocks/units/selfWriteTrackerBlock.ts"() {
+    "use strict";
+    WINDOW_MS = 3e3;
+    MAX_ENTRIES = 256;
+    recentWrites = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/services/lego_blocks/units/crossWindowSyncBlock.ts
+function getChannel() {
+  if (!_channel) _channel = new BroadcastChannel(CHANNEL_NAME);
+  return _channel;
+}
+function notifyFileChanged(filePath) {
+  recordSelfWriteBlock(filePath);
+  getChannel().postMessage({
+    type: "file-changed",
+    filePath,
+    timestamp: Date.now()
+  });
+}
+var CHANNEL_NAME, _channel;
+var init_crossWindowSyncBlock = __esm({
+  "src/services/lego_blocks/units/crossWindowSyncBlock.ts"() {
+    "use strict";
+    init_selfWriteTrackerBlock();
+    CHANNEL_NAME = "ltm-vault-sync";
+    _channel = null;
+  }
+});
+
+// src/services/lego_blocks/units/debugLogBlock.ts
+function makeId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+function dispatchDebugLogBlock(entry) {
+  const full = { id: makeId(), timestamp: Date.now(), ...entry };
+  window.dispatchEvent(new CustomEvent(DEBUG_LOG_EVENT, { detail: full }));
+}
+function logError(message, details, source) {
+  dispatchDebugLogBlock({ level: "error", message, details, source });
+}
+function logWarn(message, details, source) {
+  dispatchDebugLogBlock({ level: "warn", message, details, source });
+}
+function logDebug(message, details, source) {
+  dispatchDebugLogBlock({ level: "debug", message, details, source });
+}
+var DEBUG_LOG_EVENT;
+var init_debugLogBlock = __esm({
+  "src/services/lego_blocks/units/debugLogBlock.ts"() {
+    "use strict";
+    DEBUG_LOG_EVENT = "ltm:debug:log-entry";
+  }
+});
+
+// src/services/lego_blocks/units/byteEncodingBlock.ts
+function utf8ToBytesBlock(input) {
+  return new TextEncoder().encode(input);
+}
+function bytesToUtf8Block(bytes) {
+  return new TextDecoder().decode(bytes);
+}
+function bytesToBase64Block(bytes) {
+  if (typeof btoa === "function") {
+    let binary2 = "";
+    const chunkSize = 32768;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary2 += String.fromCharCode(...chunk);
+    }
+    return btoa(binary2);
+  }
+  const maybeBuffer = globalThis.Buffer;
+  if (maybeBuffer) return maybeBuffer.from(bytes).toString("base64");
+  throw new Error("Base64 encoding is unavailable in this runtime");
+}
+function base64ToBytesBlock(base64) {
+  if (typeof atob === "function") {
+    const binary2 = atob(base64);
+    const bytes = new Uint8Array(binary2.length);
+    for (let i = 0; i < binary2.length; i++) {
+      bytes[i] = binary2.charCodeAt(i);
+    }
+    return bytes;
+  }
+  const maybeBuffer = globalThis.Buffer;
+  if (maybeBuffer) {
+    const buf = maybeBuffer.from(base64, "base64");
+    const out = new Uint8Array(buf.length);
+    for (let i = 0; i < buf.length; i++) out[i] = buf[i];
+    return out;
+  }
+  throw new Error("Base64 decoding is unavailable in this runtime");
+}
+var init_byteEncodingBlock = __esm({
+  "src/services/lego_blocks/units/byteEncodingBlock.ts"() {
+    "use strict";
+  }
+});
+
 // node_modules/@capacitor/synapse/dist/synapse.cjs
 var require_synapse = __commonJS({
   "node_modules/@capacitor/synapse/dist/synapse.cjs"(exports2) {
@@ -627,8 +947,8 @@ var require_plugin_cjs = __commonJS({
       }).then((m) => new m.FilesystemWeb())
     });
     synapse.exposeSynapse();
-    function resolve2(path3) {
-      const posix = path3.split("/").filter((item) => item !== ".");
+    function resolve2(path5) {
+      const posix = path5.split("/").filter((item) => item !== ".");
       const newPosix = [];
       posix.forEach((item) => {
         if (item === ".." && newPosix.length > 0 && newPosix[newPosix.length - 1] !== "..") {
@@ -783,8 +1103,8 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the read file data result
        */
       async readFile(options) {
-        const path3 = this.getPath(options.directory, options.path);
-        const entry = await this.dbRequest("get", [path3]);
+        const path5 = this.getPath(options.directory, options.path);
+        const entry = await this.dbRequest("get", [path5]);
         if (entry === void 0)
           throw Error("File does not exist.");
         return { data: entry.content ? entry.content : "" };
@@ -795,14 +1115,14 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the file write result
        */
       async writeFile(options) {
-        const path3 = this.getPath(options.directory, options.path);
+        const path5 = this.getPath(options.directory, options.path);
         let data = options.data;
         const encoding = options.encoding;
         const doRecursive = options.recursive;
-        const occupiedEntry = await this.dbRequest("get", [path3]);
+        const occupiedEntry = await this.dbRequest("get", [path5]);
         if (occupiedEntry && occupiedEntry.type === "directory")
           throw Error("The supplied path is a directory.");
-        const parentPath = path3.substr(0, path3.lastIndexOf("/"));
+        const parentPath = path5.substr(0, path5.lastIndexOf("/"));
         const parentEntry = await this.dbRequest("get", [parentPath]);
         if (parentEntry === void 0) {
           const subDirIndex = parentPath.indexOf("/", 1);
@@ -822,7 +1142,7 @@ var require_plugin_cjs = __commonJS({
         }
         const now = Date.now();
         const pathObj = {
-          path: path3,
+          path: path5,
           folder: parentPath,
           type: "file",
           size: data instanceof Blob ? data.size : data.length,
@@ -841,13 +1161,13 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the file write result
        */
       async appendFile(options) {
-        const path3 = this.getPath(options.directory, options.path);
+        const path5 = this.getPath(options.directory, options.path);
         let data = options.data;
         const encoding = options.encoding;
-        const parentPath = path3.substr(0, path3.lastIndexOf("/"));
+        const parentPath = path5.substr(0, path5.lastIndexOf("/"));
         const now = Date.now();
         let ctime = now;
-        const occupiedEntry = await this.dbRequest("get", [path3]);
+        const occupiedEntry = await this.dbRequest("get", [path5]);
         if (occupiedEntry && occupiedEntry.type === "directory")
           throw Error("The supplied path is a directory.");
         const parentEntry = await this.dbRequest("get", [parentPath]);
@@ -876,7 +1196,7 @@ var require_plugin_cjs = __commonJS({
           ctime = occupiedEntry.ctime;
         }
         const pathObj = {
-          path: path3,
+          path: path5,
           folder: parentPath,
           type: "file",
           size: data.length,
@@ -892,14 +1212,14 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the deleted file data result
        */
       async deleteFile(options) {
-        const path3 = this.getPath(options.directory, options.path);
-        const entry = await this.dbRequest("get", [path3]);
+        const path5 = this.getPath(options.directory, options.path);
+        const entry = await this.dbRequest("get", [path5]);
         if (entry === void 0)
           throw Error("File does not exist.");
-        const entries = await this.dbIndexRequest("by_folder", "getAllKeys", [IDBKeyRange.only(path3)]);
+        const entries = await this.dbIndexRequest("by_folder", "getAllKeys", [IDBKeyRange.only(path5)]);
         if (entries.length !== 0)
           throw Error("Folder is not empty.");
-        await this.dbRequest("delete", [path3]);
+        await this.dbRequest("delete", [path5]);
       }
       /**
        * Create a directory.
@@ -907,12 +1227,12 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the mkdir result
        */
       async mkdir(options) {
-        const path3 = this.getPath(options.directory, options.path);
+        const path5 = this.getPath(options.directory, options.path);
         const doRecursive = options.recursive;
-        const parentPath = path3.substr(0, path3.lastIndexOf("/"));
-        const depth = (path3.match(/\//g) || []).length;
+        const parentPath = path5.substr(0, path5.lastIndexOf("/"));
+        const depth = (path5.match(/\//g) || []).length;
         const parentEntry = await this.dbRequest("get", [parentPath]);
-        const occupiedEntry = await this.dbRequest("get", [path3]);
+        const occupiedEntry = await this.dbRequest("get", [path5]);
         if (depth === 1)
           throw Error("Cannot create Root directory");
         if (occupiedEntry !== void 0)
@@ -929,7 +1249,7 @@ var require_plugin_cjs = __commonJS({
         }
         const now = Date.now();
         const pathObj = {
-          path: path3,
+          path: path5,
           folder: parentPath,
           type: "directory",
           size: 0,
@@ -943,18 +1263,18 @@ var require_plugin_cjs = __commonJS({
        * @param options the options for the directory remove
        */
       async rmdir(options) {
-        const { path: path3, directory, recursive } = options;
-        const fullPath = this.getPath(directory, path3);
+        const { path: path5, directory, recursive } = options;
+        const fullPath = this.getPath(directory, path5);
         const entry = await this.dbRequest("get", [fullPath]);
         if (entry === void 0)
           throw Error("Folder does not exist.");
         if (entry.type !== "directory")
           throw Error("Requested path is not a directory");
-        const readDirResult = await this.readdir({ path: path3, directory });
+        const readDirResult = await this.readdir({ path: path5, directory });
         if (readDirResult.files.length !== 0 && !recursive)
           throw Error("Folder is not empty");
         for (const entry2 of readDirResult.files) {
-          const entryPath = `${path3}/${entry2.name}`;
+          const entryPath = `${path5}/${entry2.name}`;
           const entryObj = await this.stat({ path: entryPath, directory });
           if (entryObj.type === "file") {
             await this.deleteFile({ path: entryPath, directory });
@@ -970,18 +1290,18 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the readdir directory listing result
        */
       async readdir(options) {
-        const path3 = this.getPath(options.directory, options.path);
-        const entry = await this.dbRequest("get", [path3]);
+        const path5 = this.getPath(options.directory, options.path);
+        const entry = await this.dbRequest("get", [path5]);
         if (options.path !== "" && entry === void 0)
           throw Error("Folder does not exist.");
-        const entries = await this.dbIndexRequest("by_folder", "getAllKeys", [IDBKeyRange.only(path3)]);
+        const entries = await this.dbIndexRequest("by_folder", "getAllKeys", [IDBKeyRange.only(path5)]);
         const files = await Promise.all(entries.map(async (e) => {
           let subEntry = await this.dbRequest("get", [e]);
           if (subEntry === void 0) {
             subEntry = await this.dbRequest("get", [e + "/"]);
           }
           return {
-            name: e.substring(path3.length + 1),
+            name: e.substring(path5.length + 1),
             type: subEntry.type,
             size: subEntry.size,
             ctime: subEntry.ctime,
@@ -997,13 +1317,13 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the file stat result
        */
       async getUri(options) {
-        const path3 = this.getPath(options.directory, options.path);
-        let entry = await this.dbRequest("get", [path3]);
+        const path5 = this.getPath(options.directory, options.path);
+        let entry = await this.dbRequest("get", [path5]);
         if (entry === void 0) {
-          entry = await this.dbRequest("get", [path3 + "/"]);
+          entry = await this.dbRequest("get", [path5 + "/"]);
         }
         return {
-          uri: (entry === null || entry === void 0 ? void 0 : entry.path) || path3
+          uri: (entry === null || entry === void 0 ? void 0 : entry.path) || path5
         };
       }
       /**
@@ -1012,15 +1332,15 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the file stat result
        */
       async stat(options) {
-        const path3 = this.getPath(options.directory, options.path);
-        let entry = await this.dbRequest("get", [path3]);
+        const path5 = this.getPath(options.directory, options.path);
+        let entry = await this.dbRequest("get", [path5]);
         if (entry === void 0) {
-          entry = await this.dbRequest("get", [path3 + "/"]);
+          entry = await this.dbRequest("get", [path5 + "/"]);
         }
         if (entry === void 0)
           throw Error("Entry does not exist.");
         return {
-          name: entry.path.substring(path3.length + 1),
+          name: entry.path.substring(path5.length + 1),
           type: entry.type,
           size: entry.size,
           ctime: entry.ctime,
@@ -1103,8 +1423,8 @@ var require_plugin_cjs = __commonJS({
           path: from,
           directory: fromDirectory
         });
-        const updateTime = async (path3, ctime2, mtime) => {
-          const fullPath = this.getPath(toDirectory, path3);
+        const updateTime = async (path5, ctime2, mtime) => {
+          const fullPath = this.getPath(toDirectory, path5);
           const entry = await this.dbRequest("get", [fullPath]);
           entry.ctime = ctime2;
           entry.mtime = mtime;
@@ -1194,6 +1514,515 @@ var require_plugin_cjs = __commonJS({
     exports2.Filesystem = Filesystem;
     exports2.FilesystemDirectory = FilesystemDirectory;
     exports2.FilesystemEncoding = FilesystemEncoding;
+  }
+});
+
+// src/services/lego_blocks/integrations/fsBlock.ts
+function normalizeVaultPathForValidationBlock(path5) {
+  return String(path5 || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").trim();
+}
+function invalidVaultPathReasonBlock(path5, options) {
+  const normalized = normalizeVaultPathForValidationBlock(path5);
+  if (!normalized) return options?.allowEmpty ? null : "empty path";
+  if (normalized === ".md") return `invalid normalized path "${normalized}"`;
+  const segments = normalized.split("/").filter(Boolean);
+  if (segments.some((segment) => segment.trim() === "" || segment.trim() === ".")) return "contains invalid empty path segment";
+  return null;
+}
+function warnRejectedVaultPathBlock(op, path5, reason) {
+  const key = `${op}::${path5}::${reason}`;
+  if (warnedInvalidVaultPathKeysBlock.has(key)) return;
+  warnedInvalidVaultPathKeysBlock.add(key);
+  logWarn(
+    `Rejected invalid vault path before filesystem call`,
+    `op=${op} path=${path5} reason=${reason}`,
+    "fsBlock"
+  );
+}
+function assertValidVaultPathBlock(op, path5, options) {
+  const reason = invalidVaultPathReasonBlock(path5, options);
+  if (!reason) return path5;
+  warnRejectedVaultPathBlock(op, path5, reason);
+  throw new Error(`Rejected invalid vault path for ${op}: ${path5} (${reason})`);
+}
+function isValidVaultPathBlock(path5, options) {
+  const reason = invalidVaultPathReasonBlock(path5, options);
+  if (!reason) return true;
+  warnRejectedVaultPathBlock("exists", path5, reason);
+  return false;
+}
+function vaultPathOrNullBlock(op, path5, options) {
+  const reason = invalidVaultPathReasonBlock(path5, options);
+  if (reason) {
+    warnRejectedVaultPathBlock(op, path5, reason);
+    return null;
+  }
+  return path5;
+}
+function encodeFileUriSegmentBlock(segment) {
+  return encodeURIComponent(segment);
+}
+function isAlreadyExistsFilesystemErrorBlock(error) {
+  const maybeRecord = typeof error === "object" && error !== null ? error : null;
+  const code = typeof maybeRecord?.code === "string" ? maybeRecord.code : "";
+  const message = error instanceof Error ? error.message : typeof maybeRecord?.message === "string" ? maybeRecord.message : String(error);
+  const normalized = message.toLowerCase();
+  return code === "OS-PLUG-FILE-0010" || normalized.includes("already exists") || normalized.includes("cannot be overwritten") || normalized.includes("eexist");
+}
+function getVaultFS() {
+  if (_instance) return _instance;
+  _instance = createVaultFS();
+  return _instance;
+}
+function createVaultFS() {
+  if (isElectron()) {
+    const vaultRoot = getStoredVaultRoot() ?? "";
+    return new ElectronVaultFS(vaultRoot);
+  }
+  if (isCapacitorNative()) {
+    const { vaultRoot, normalizedStoredRoot } = normalizeCapacitorStoredVaultRoot(getStoredVaultRoot());
+    if (normalizedStoredRoot) {
+      setStoredVaultRoot(normalizedStoredRoot);
+    }
+    return new CapacitorVaultFS(vaultRoot);
+  }
+  return new WebVaultFS();
+}
+function isElectron() {
+  if (typeof window === "undefined") return false;
+  return !!window.electronAPI?.isElectron;
+}
+function isCapacitorNative() {
+  try {
+    return import_core.Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+}
+function getPlatformName() {
+  if (isElectron()) return "electron";
+  if (isCapacitorNative()) {
+    try {
+      const platform = import_core.Capacitor.getPlatform();
+      if (platform === "ios") return "ios";
+      if (platform === "android") return "android";
+    } catch {
+    }
+  }
+  return "web";
+}
+function normalizeCapacitorStoredVaultRoot(storedRoot) {
+  const stored = storedRoot ?? "";
+  if (stored.startsWith("cap-picker:")) {
+    return {
+      vaultRoot: stored.slice("cap-picker:".length),
+      normalizedStoredRoot: null
+    };
+  }
+  if (stored.startsWith("/")) {
+    return {
+      vaultRoot: DEFAULT_CAPACITOR_VAULT_ROOT,
+      normalizedStoredRoot: DEFAULT_CAPACITOR_VAULT_ROOT
+    };
+  }
+  const resolved = stored || DEFAULT_CAPACITOR_VAULT_ROOT;
+  return {
+    vaultRoot: resolved,
+    normalizedStoredRoot: null
+  };
+}
+var import_core, warnedInvalidVaultPathKeysBlock, WebVaultFS, ElectronVaultFS, CapacitorVaultFS, _instance, DEFAULT_CAPACITOR_VAULT_ROOT;
+var init_fsBlock = __esm({
+  "src/services/lego_blocks/integrations/fsBlock.ts"() {
+    "use strict";
+    import_core = __toESM(require_index_cjs(), 1);
+    init_vaultConstantsBlock();
+    init_vaultSyncExclusionsBlock();
+    init_storageKeyBlock();
+    init_crossWindowSyncBlock();
+    init_debugLogBlock();
+    init_byteEncodingBlock();
+    warnedInvalidVaultPathKeysBlock = /* @__PURE__ */ new Set();
+    WebVaultFS = class {
+      async read(path5) {
+        const safePath = assertValidVaultPathBlock("read", path5);
+        const res = await fetch(`/api/tools/file-content?path=${encodeURIComponent(safePath)}`);
+        if (!res.ok) {
+          let detail = "";
+          try {
+            const payload = await res.json();
+            if (payload?.detail) detail = String(payload.detail);
+          } catch {
+          }
+          const suffix = detail || res.statusText || `HTTP ${res.status}`;
+          throw new Error(`Failed to read file: ${path5} (${suffix})`);
+        }
+        const data = await res.json();
+        return data.content;
+      }
+      async write(path5, data) {
+        assertValidVaultPathBlock("write", path5);
+        const res = await fetch("/api/tools/vault/write", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: path5, content: data })
+        });
+        if (!res.ok) throw new Error(`Failed to write file: ${path5}`);
+        notifyFileChanged(path5);
+      }
+      async readBytes(path5) {
+        assertValidVaultPathBlock("readBytes", path5);
+        const res = await fetch(`/api/tools/vault/read-bytes?path=${encodeURIComponent(path5)}`);
+        if (!res.ok) {
+          let detail = "";
+          try {
+            const payload2 = await res.json();
+            if (payload2?.detail) detail = String(payload2.detail);
+          } catch {
+          }
+          const suffix = detail || res.statusText || `HTTP ${res.status}`;
+          throw new Error(`Failed to read bytes: ${path5} (${suffix})`);
+        }
+        const payload = await res.json();
+        return base64ToBytesBlock(payload.data_base64 || "");
+      }
+      async writeBytes(path5, data) {
+        assertValidVaultPathBlock("writeBytes", path5);
+        const res = await fetch("/api/tools/vault/write-bytes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: path5,
+            data_base64: bytesToBase64Block(data)
+          })
+        });
+        if (!res.ok) throw new Error(`Failed to write bytes: ${path5}`);
+        notifyFileChanged(path5);
+      }
+      async create(path5, data) {
+        if (await this.exists(path5)) throw new Error(`File already exists: ${path5}`);
+        await this.write(path5, data);
+      }
+      async list(path5) {
+        assertValidVaultPathBlock("list", path5, { allowEmpty: true });
+        const res = await fetch(`/api/tools/vault/readdir?path=${encodeURIComponent(path5)}`);
+        if (!res.ok) throw new Error(`Failed to list directory: ${path5}`);
+        const json2 = await res.json();
+        const files = [];
+        const folders = [];
+        for (const e of json2.entries) {
+          if (e.isDirectory) folders.push(e.name);
+          else files.push(e.name);
+        }
+        return { files, folders };
+      }
+      async walkVault(extensions = [".md"]) {
+        const ext = extensions.join(",");
+        const res = await fetch(`/api/tools/vault/walk?extensions=${encodeURIComponent(ext)}`);
+        if (!res.ok) throw new Error("Failed to walk vault");
+        const data = await res.json();
+        return data.files.map((f) => ({
+          path: f.path,
+          size: f.size,
+          mtime: f.mtime,
+          ctime: f.birthtime ?? f.ctime ?? f.mtime
+        }));
+      }
+      async stat(path5) {
+        assertValidVaultPathBlock("stat", path5);
+        const res = await fetch(`/api/tools/vault/stat?path=${encodeURIComponent(path5)}`);
+        if (!res.ok) throw new Error(`Failed to stat: ${path5}`);
+        const s = await res.json();
+        return {
+          size: s.size,
+          mtime: s.mtime,
+          ctime: s.birthtime ?? s.ctime,
+          isDirectory: Boolean(s.isDirectory)
+        };
+      }
+      async exists(path5) {
+        if (!isValidVaultPathBlock(path5)) return false;
+        try {
+          await this.stat(path5);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      async mkdir(path5) {
+        assertValidVaultPathBlock("mkdir", path5, { allowEmpty: true });
+        const res = await fetch("/api/tools/vault/mkdir", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: path5 })
+        });
+        if (!res.ok) throw new Error(`Failed to mkdir: ${path5}`);
+      }
+      async delete(path5) {
+        assertValidVaultPathBlock("delete", path5);
+        const res = await fetch("/api/tools/vault/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: path5, recursive: false })
+        });
+        if (!res.ok) throw new Error(`Failed to delete: ${path5}`);
+      }
+      async process(path5, fn) {
+        const content = await this.read(path5);
+        await this.write(path5, fn(content));
+      }
+    };
+    ElectronVaultFS = class {
+      vaultRoot;
+      constructor(vaultRoot) {
+        this.vaultRoot = vaultRoot;
+      }
+      get api() {
+        return window.electronAPI;
+      }
+      async read(path5) {
+        const safePath = assertValidVaultPathBlock("read", path5);
+        return this.api.read(this.vaultRoot, safePath);
+      }
+      async write(path5, data) {
+        const safePath = assertValidVaultPathBlock("write", path5);
+        await this.api.write(this.vaultRoot, safePath, data);
+        notifyFileChanged(safePath);
+      }
+      async readBytes(path5) {
+        const safePath = assertValidVaultPathBlock("readBytes", path5);
+        if (this.api.readBytesBase64) {
+          const base64 = await this.api.readBytesBase64(this.vaultRoot, safePath);
+          return base64ToBytesBlock(base64);
+        }
+        const text = await this.read(safePath);
+        return utf8ToBytesBlock(text);
+      }
+      async writeBytes(path5, data) {
+        const safePath = assertValidVaultPathBlock("writeBytes", path5);
+        if (this.api.writeBytesBase64) {
+          await this.api.writeBytesBase64(this.vaultRoot, safePath, bytesToBase64Block(data));
+          notifyFileChanged(safePath);
+          return;
+        }
+        await this.write(safePath, bytesToUtf8Block(data));
+      }
+      async create(path5, data) {
+        if (await this.exists(path5)) throw new Error(`File already exists: ${path5}`);
+        await this.write(path5, data);
+      }
+      async list(path5) {
+        const safePath = assertValidVaultPathBlock("list", path5, { allowEmpty: true });
+        return this.api.list(this.vaultRoot, safePath || ".");
+      }
+      async walkVault(extensions = [".md"]) {
+        return this.api.walkVault(this.vaultRoot, extensions);
+      }
+      async stat(path5) {
+        const safePath = assertValidVaultPathBlock("stat", path5);
+        return this.api.stat(this.vaultRoot, safePath);
+      }
+      async exists(path5) {
+        const safePath = vaultPathOrNullBlock("exists", path5);
+        if (safePath === null) return false;
+        return this.api.exists(this.vaultRoot, safePath);
+      }
+      async mkdir(path5) {
+        const safePath = assertValidVaultPathBlock("mkdir", path5, { allowEmpty: true });
+        return this.api.mkdir(this.vaultRoot, safePath);
+      }
+      async delete(path5) {
+        const safePath = assertValidVaultPathBlock("delete", path5);
+        if (this.api.deletePath) {
+          await this.api.deletePath(this.vaultRoot, safePath, false);
+        }
+      }
+      async process(path5, fn) {
+        const content = await this.read(path5);
+        await this.write(path5, fn(content));
+      }
+    };
+    CapacitorVaultFS = class {
+      vaultRoot;
+      isAbsolute;
+      constructor(vaultRoot) {
+        this.isAbsolute = vaultRoot.startsWith("/");
+        this.vaultRoot = vaultRoot;
+      }
+      resolve(path5) {
+        const base = path5 ? `${this.vaultRoot}/${path5}` : this.vaultRoot;
+        if (this.isAbsolute) {
+          const encoded = base.split("/").map(encodeFileUriSegmentBlock).join("/");
+          return `file://${encoded}`;
+        }
+        return base;
+      }
+      async fsOpts(path5) {
+        if (this.isAbsolute) {
+          return { path: this.resolve(path5) };
+        }
+        const { Directory } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
+        return { path: this.resolve(path5), directory: Directory.Documents };
+      }
+      async read(path5) {
+        const safePath = assertValidVaultPathBlock("read", path5);
+        const { Filesystem, Encoding } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
+        const opts = await this.fsOpts(safePath);
+        const result = await Filesystem.readFile({ ...opts, encoding: Encoding.UTF8 });
+        return result.data;
+      }
+      async write(path5, data) {
+        const safePath = assertValidVaultPathBlock("write", path5);
+        const { Filesystem, Encoding } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
+        const opts = await this.fsOpts(safePath);
+        await Filesystem.writeFile({ ...opts, data, encoding: Encoding.UTF8, recursive: true });
+        notifyFileChanged(safePath);
+      }
+      async readBytes(path5) {
+        const safePath = assertValidVaultPathBlock("readBytes", path5);
+        const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
+        const opts = await this.fsOpts(safePath);
+        const result = await Filesystem.readFile(opts);
+        if (typeof result.data === "string") {
+          return base64ToBytesBlock(result.data);
+        }
+        const arrayBuffer = await result.data.arrayBuffer();
+        return new Uint8Array(arrayBuffer);
+      }
+      async writeBytes(path5, data) {
+        const safePath = assertValidVaultPathBlock("writeBytes", path5);
+        const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
+        const opts = await this.fsOpts(safePath);
+        await Filesystem.writeFile({
+          ...opts,
+          data: bytesToBase64Block(data),
+          recursive: true
+        });
+        notifyFileChanged(safePath);
+      }
+      async create(path5, data) {
+        if (await this.exists(path5)) throw new Error(`File already exists: ${path5}`);
+        await this.write(path5, data);
+      }
+      async list(path5) {
+        const safePath = assertValidVaultPathBlock("list", path5, { allowEmpty: true });
+        const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
+        const exists = await this.exists(safePath).catch(() => false);
+        if (!exists) return { files: [], folders: [] };
+        const opts = await this.fsOpts(safePath);
+        const result = await Filesystem.readdir(opts);
+        const files = [];
+        const folders = [];
+        for (const f of result.files) {
+          if (f.name.startsWith(".")) continue;
+          if (f.type === "directory") folders.push(f.name);
+          else files.push(f.name);
+        }
+        return { files, folders };
+      }
+      async walkVault(extensions = [".md"]) {
+        const extSet = new Set(extensions);
+        const entries = [];
+        const excludedPrefixes = getSyncExcludedPathPrefixes();
+        const walk = async (dirPath, dirUri, relPrefix) => {
+          const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
+          const opts = dirUri ? { path: dirUri } : this.isAbsolute ? { path: `file://${dirPath}` } : { path: dirPath, directory: (await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1))).Directory.Documents };
+          const result = await Filesystem.readdir(opts);
+          const subdirPromises = [];
+          const fileStatPromises = [];
+          for (const item of result.files) {
+            if (item.name.startsWith(".") || EXCLUDED_DIRS.has(item.name)) continue;
+            const relPath = relPrefix ? `${relPrefix}/${item.name}` : item.name;
+            if (excludedPrefixes.length > 0 && isPathSyncExcluded(relPath, excludedPrefixes)) continue;
+            const itemUri = item.uri;
+            if (item.type === "directory") {
+              const childDir = `${dirPath}/${item.name}`;
+              subdirPromises.push(
+                walk(childDir, itemUri ?? null, relPath).catch((err) => {
+                  const message = err instanceof Error ? err.message : String(err);
+                  logDebug(`Skipped iCloud-stale subdirectory during walk: ${relPath}`, message, "fsBlock");
+                })
+              );
+            } else {
+              const ext = "." + item.name.split(".").pop()?.toLowerCase();
+              if (!extSet.has(ext || "")) continue;
+              const stOpts = itemUri ? { path: itemUri } : this.isAbsolute ? { path: `file://${dirPath}/${item.name}` } : { path: `${dirPath}/${item.name}`, directory: (await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1))).Directory.Documents };
+              fileStatPromises.push(
+                Filesystem.stat(stOpts).then((st) => {
+                  entries.push({
+                    path: relPath,
+                    size: st.size,
+                    mtime: (st.mtime || 0) / 1e3,
+                    ctime: (st.ctime || st.mtime || 0) / 1e3
+                  });
+                }).catch((err) => {
+                  const message = err instanceof Error ? err.message : String(err);
+                  logDebug(`Skipped iCloud-stale file during walk stat: ${relPath}`, message, "fsBlock");
+                })
+              );
+            }
+          }
+          await Promise.all([...subdirPromises, ...fileStatPromises]);
+        };
+        await walk(this.vaultRoot, null, "");
+        return entries;
+      }
+      async stat(path5) {
+        const safePath = assertValidVaultPathBlock("stat", path5);
+        const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
+        const opts = await this.fsOpts(safePath);
+        const st = await Filesystem.stat(opts);
+        return {
+          size: st.size,
+          mtime: (st.mtime || 0) / 1e3,
+          ctime: (st.ctime || st.mtime || 0) / 1e3
+        };
+      }
+      async exists(path5) {
+        const safePath = vaultPathOrNullBlock("exists", path5, { allowEmpty: true });
+        if (safePath === null) return false;
+        if (!safePath) return true;
+        const normalized = safePath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+        if (!normalized) return true;
+        const slashIndex = normalized.lastIndexOf("/");
+        const parent = slashIndex >= 0 ? normalized.slice(0, slashIndex) : "";
+        const name = slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized;
+        if (!name) return true;
+        const { Filesystem, Directory } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
+        try {
+          const parentOpts = this.isAbsolute ? { path: parent ? this.resolve(parent) : this.resolve("") } : { path: parent ? this.resolve(parent) : this.vaultRoot, directory: Directory.Documents };
+          const listed = await Filesystem.readdir(parentOpts);
+          return listed.files.some((entry) => entry.name === name);
+        } catch {
+          return false;
+        }
+      }
+      async mkdir(path5) {
+        const safePath = assertValidVaultPathBlock("mkdir", path5, { allowEmpty: true });
+        const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
+        const opts = await this.fsOpts(safePath);
+        const exists = await this.exists(safePath).catch(() => false);
+        if (exists) return;
+        try {
+          await Filesystem.mkdir({ ...opts, recursive: true });
+        } catch (error) {
+          if (isAlreadyExistsFilesystemErrorBlock(error)) return;
+          throw error;
+        }
+      }
+      async delete(path5) {
+        const safePath = assertValidVaultPathBlock("delete", path5);
+        const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
+        const opts = await this.fsOpts(safePath);
+        await Filesystem.deleteFile(opts);
+      }
+      async process(path5, fn) {
+        const content = await this.read(path5);
+        await this.write(path5, fn(content));
+      }
+    };
+    _instance = null;
+    DEFAULT_CAPACITOR_VAULT_ROOT = "LTM-Vault";
   }
 });
 
@@ -5256,9 +6085,9 @@ var require_dexie = __commonJS({
         });
         return target;
       }
-      function obsSetsOverlap(os1, os2) {
-        return os1.all || os2.all || Object.keys(os1).some(function(key) {
-          return os2[key] && rangesOverlap2(os2[key], os1[key]);
+      function obsSetsOverlap(os1, os22) {
+        return os1.all || os22.all || Object.keys(os1).some(function(key) {
+          return os22[key] && rangesOverlap2(os22[key], os1[key]);
         });
       }
       var cache = {};
@@ -7221,6 +8050,406 @@ var require_dexie = __commonJS({
       __assign(Dexie$1, namedExports, { default: Dexie$1 });
       return Dexie$1;
     }));
+  }
+});
+
+// node_modules/dexie/import-wrapper.mjs
+var import_dexie, DexieSymbol, Dexie, liveQuery, mergeRanges, rangesOverlap, RangeSet, cmp2, Entity, PropModification, replacePrefix, add, remove, DexieYProvider, import_wrapper_default;
+var init_import_wrapper = __esm({
+  "node_modules/dexie/import-wrapper.mjs"() {
+    "use strict";
+    import_dexie = __toESM(require_dexie(), 1);
+    DexieSymbol = Symbol.for("Dexie");
+    Dexie = globalThis[DexieSymbol] || (globalThis[DexieSymbol] = import_dexie.default);
+    if (import_dexie.default.semVer !== Dexie.semVer) {
+      throw new Error(`Two different versions of Dexie loaded in the same app: ${import_dexie.default.semVer} and ${Dexie.semVer}`);
+    }
+    ({
+      liveQuery,
+      mergeRanges,
+      rangesOverlap,
+      RangeSet,
+      cmp: cmp2,
+      Entity,
+      PropModification,
+      replacePrefix,
+      add,
+      remove,
+      DexieYProvider
+    } = Dexie);
+    import_wrapper_default = Dexie;
+  }
+});
+
+// src/services/lego_blocks/integrations/dbBlock.ts
+function getDb() {
+  if (!_db) _db = new ThinkingSpaceDB();
+  return _db;
+}
+async function upsertNode(record) {
+  const db = getDb();
+  const normalized = normalizeRecordForStorage(record);
+  const existing = await db.nodes.where("uuid").equals(record.uuid).first();
+  const conflictingByKey = await db.nodes.where("key").equals(normalized.key).first();
+  if (conflictingByKey && conflictingByKey.uuid !== normalized.uuid) {
+    throw new Error(formatNodeKeyConflictMessage({
+      key: normalized.key,
+      uuid: normalized.uuid,
+      filePath: normalized.filePath,
+      conflictingUuid: conflictingByKey.uuid,
+      conflictingFilePath: conflictingByKey.filePath
+    }));
+  }
+  if (existing) {
+    await db.nodes.update(existing.id, normalized);
+  } else {
+    await db.nodes.add(normalized);
+  }
+}
+async function bulkUpsertNodes(records) {
+  if (records.length === 0) return { writtenCount: 0, conflicts: [] };
+  const db = getDb();
+  const dedupedByUuid = /* @__PURE__ */ new Map();
+  for (const record of records.map(normalizeRecordForStorage)) {
+    dedupedByUuid.set(record.uuid, record);
+  }
+  const normalized = [...dedupedByUuid.values()];
+  const uuids = normalized.map((r) => r.uuid);
+  const existingNodes = await db.nodes.where("uuid").anyOf(uuids).toArray();
+  const existingByUuid = new Map(existingNodes.map((n) => [n.uuid, n]));
+  const keys = [...new Set(normalized.map((r) => r.key).filter(Boolean))];
+  const existingKeyNodes = keys.length > 0 ? await db.nodes.where("key").anyOf(keys).toArray() : [];
+  const existingByKey = new Map(existingKeyNodes.map((n) => [n.key, n]));
+  const incomingByKey = /* @__PURE__ */ new Map();
+  const toUpdate = [];
+  const toAdd = [];
+  const conflicts = [];
+  for (const record of normalized) {
+    const incomingConflict = incomingByKey.get(record.key);
+    if (incomingConflict && incomingConflict.uuid !== record.uuid) {
+      conflicts.push({
+        key: record.key,
+        uuid: record.uuid,
+        filePath: record.filePath,
+        conflictingUuid: incomingConflict.uuid,
+        conflictingFilePath: incomingConflict.filePath
+      });
+      continue;
+    }
+    const existingKeyNode = existingByKey.get(record.key);
+    if (existingKeyNode && existingKeyNode.uuid !== record.uuid) {
+      conflicts.push({
+        key: record.key,
+        uuid: record.uuid,
+        filePath: record.filePath,
+        conflictingUuid: existingKeyNode.uuid,
+        conflictingFilePath: existingKeyNode.filePath
+      });
+      continue;
+    }
+    incomingByKey.set(record.key, record);
+    const existingNode = existingByUuid.get(record.uuid);
+    if (existingNode?.id !== void 0) {
+      toUpdate.push({ ...record, id: existingNode.id });
+    } else {
+      toAdd.push(record);
+    }
+  }
+  await db.transaction("rw", db.nodes, async () => {
+    if (toUpdate.length > 0) await db.nodes.bulkPut(toUpdate);
+    if (toAdd.length > 0) await db.nodes.bulkAdd(toAdd);
+  });
+  return {
+    writtenCount: toUpdate.length + toAdd.length,
+    conflicts
+  };
+}
+async function bulkDeleteNodesByPaths(filePaths) {
+  if (filePaths.length === 0) return;
+  const db = getDb();
+  await db.transaction("rw", db.nodes, async () => {
+    for (const path5 of filePaths) {
+      await db.nodes.where("filePath").equals(path5).delete();
+    }
+  });
+}
+async function bulkDeleteLinksForFiles(filePaths) {
+  if (filePaths.length === 0) return;
+  const db = getDb();
+  await db.transaction("rw", db.links, async () => {
+    for (const path5 of filePaths) {
+      await db.links.where("sourceFilePath").equals(path5).delete();
+    }
+  });
+}
+async function getChildren(parentKey) {
+  const db = getDb();
+  const children = await db.nodes.where("parent").equals(parentKey).toArray();
+  return children.sort(compareNodeDisplayOrder);
+}
+async function getNodeByKey(key) {
+  const db = getDb();
+  return db.nodes.where("key").equals(key).first();
+}
+async function getNodeByUuid(uuid) {
+  const db = getDb();
+  return db.nodes.where("uuid").equals(uuid).first();
+}
+async function getNodeByPath(filePath) {
+  const db = getDb();
+  return db.nodes.where("filePath").equals(filePath).first();
+}
+async function getRootNodes() {
+  const db = getDb();
+  const roots = await db.nodes.where("parent").equals("").toArray();
+  return roots.sort(compareNodeDisplayOrder);
+}
+async function getAllNodes() {
+  const db = getDb();
+  return db.nodes.orderBy("type").toArray();
+}
+async function searchNodes(query, limit = 20) {
+  const db = getDb();
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return [];
+  const scored = [];
+  let earlyExitCount = 0;
+  const maxScan = limit * 50;
+  await db.nodes.each((node) => {
+    if (earlyExitCount >= maxScan) return;
+    earlyExitCount++;
+    const searchable = node.searchText || "";
+    let score = 0;
+    for (const term of terms) {
+      if (searchable.includes(term)) score++;
+    }
+    if (score > 0) {
+      scored.push({ node, score });
+    }
+  });
+  return scored.sort((a, b) => b.score - a.score).slice(0, limit).map((s) => s.node);
+}
+async function deleteNode(uuid) {
+  const db = getDb();
+  await db.nodes.where("uuid").equals(uuid).delete();
+}
+async function clearAll() {
+  const db = getDb();
+  await db.nodes.clear();
+}
+async function getAllFilePaths() {
+  const db = getDb();
+  const paths = await db.nodes.orderBy("filePath").uniqueKeys();
+  return new Set(paths);
+}
+async function getNodesByPaths(filePaths) {
+  if (filePaths.length === 0) return /* @__PURE__ */ new Map();
+  const db = getDb();
+  const rows = await db.nodes.where("filePath").anyOf(filePaths).toArray();
+  const out = /* @__PURE__ */ new Map();
+  for (const row of rows) out.set(row.filePath, row);
+  return out;
+}
+async function updateNodeFilePath(uuid, newFilePath) {
+  const db = getDb();
+  const existing = await db.nodes.where("uuid").equals(uuid).first();
+  if (!existing?.id) return false;
+  if (existing.filePath === newFilePath) return false;
+  await db.nodes.update(existing.id, { filePath: newFilePath });
+  return true;
+}
+async function replaceLinksForFile(sourceFilePath, links) {
+  const db = getDb();
+  await db.transaction("rw", db.links, async () => {
+    await db.links.where("sourceFilePath").equals(sourceFilePath).delete();
+    if (links.length > 0) await db.links.bulkAdd(links);
+  });
+}
+async function bulkUpsertLinks(links) {
+  const db = getDb();
+  if (links.length === 0) return;
+  await db.links.bulkAdd(links);
+}
+async function clearAllLinks() {
+  const db = getDb();
+  await db.links.clear();
+}
+async function getAllLinks() {
+  const db = getDb();
+  return db.links.toArray();
+}
+async function updateLinkTargets(oldPrefix, newPrefix) {
+  const db = getDb();
+  let updated = 0;
+  await db.transaction("rw", db.links, async () => {
+    const exact = await db.links.where("targetFilePath").equals(oldPrefix).toArray();
+    if (exact.length > 0) {
+      await db.links.bulkPut(exact.map((link) => ({ ...link, targetFilePath: newPrefix })));
+      updated += exact.length;
+    }
+    const children = await db.links.where("targetFilePath").startsWith(`${oldPrefix}/`).toArray();
+    if (children.length > 0) {
+      await db.links.bulkPut(children.map((link) => ({
+        ...link,
+        targetFilePath: `${newPrefix}${link.targetFilePath.slice(oldPrefix.length)}`
+      })));
+      updated += children.length;
+    }
+  });
+  return updated;
+}
+async function updateLinkSourcePaths(oldPrefix, newPrefix) {
+  const db = getDb();
+  let updated = 0;
+  await db.transaction("rw", db.links, async () => {
+    const exact = await db.links.where("sourceFilePath").equals(oldPrefix).toArray();
+    if (exact.length > 0) {
+      await db.links.bulkPut(exact.map((link) => ({ ...link, sourceFilePath: newPrefix })));
+      updated += exact.length;
+    }
+    const children = await db.links.where("sourceFilePath").startsWith(`${oldPrefix}/`).toArray();
+    if (children.length > 0) {
+      await db.links.bulkPut(children.map((link) => ({
+        ...link,
+        sourceFilePath: `${newPrefix}${link.sourceFilePath.slice(oldPrefix.length)}`
+      })));
+      updated += children.length;
+    }
+  });
+  return updated;
+}
+function normalizeRecordForStorage(record) {
+  const metadata = record.metadata ? structuredClone(record.metadata) : void 0;
+  const parent = record.parent || "";
+  const tags = (record.tags ?? []).filter(Boolean);
+  const projectPresetTags = record.projectPresetTags?.filter(Boolean);
+  const metadataText = record.metadataText ?? buildMetadataSearchText(metadata);
+  const searchText = buildSearchText(record, tags, projectPresetTags, metadataText);
+  return {
+    ...record,
+    parent,
+    dependsOn: record.dependsOn?.filter(Boolean),
+    blockedBy: record.blockedBy?.filter(Boolean),
+    acceptanceCriteria: record.acceptanceCriteria?.filter(Boolean),
+    artifacts: record.artifacts?.filter(Boolean),
+    relatedNodes: record.relatedNodes?.filter(Boolean),
+    metadata,
+    metadataKeys: (record.metadataKeys ?? extractMetadataKeys(metadata)).filter(Boolean),
+    metadataText,
+    tags,
+    projectPresetTags,
+    searchText
+  };
+}
+function buildSearchText(record, tags, projectPresetTags, metadataText) {
+  const parts = [
+    record.title,
+    record.key
+  ];
+  if (tags.length > 0) parts.push(tags.join(" "));
+  if (projectPresetTags && projectPresetTags.length > 0) parts.push(projectPresetTags.join(" "));
+  if (record.bodyExcerpt) parts.push(record.bodyExcerpt);
+  if (record.aiSummary) parts.push(record.aiSummary);
+  if (record.taskId) parts.push(record.taskId);
+  if (record.taskStatus) parts.push(record.taskStatus);
+  if (record.owner) parts.push(record.owner);
+  if (record.agentName) parts.push(record.agentName);
+  if (record.recordKind) parts.push(record.recordKind);
+  if (record.description) parts.push(record.description);
+  if (metadataText) parts.push(metadataText);
+  return parts.join(" ").toLowerCase();
+}
+function compareNodeDisplayOrder(a, b) {
+  const aOrder = typeof a.sortOrder === "number" && Number.isFinite(a.sortOrder) ? a.sortOrder : Number.POSITIVE_INFINITY;
+  const bOrder = typeof b.sortOrder === "number" && Number.isFinite(b.sortOrder) ? b.sortOrder : Number.POSITIVE_INFINITY;
+  if (aOrder !== bOrder) return aOrder - bOrder;
+  const byTitle = a.title.localeCompare(b.title);
+  if (byTitle !== 0) return byTitle;
+  return a.key.localeCompare(b.key);
+}
+function extractMetadataKeys(metadata) {
+  if (!metadata) return [];
+  const keys = /* @__PURE__ */ new Set();
+  collectMetadataKeys("", metadata, keys);
+  return [...keys];
+}
+function collectMetadataKeys(prefix, value, out) {
+  if (value === null || value === void 0) return;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectMetadataKeys(prefix, item, out);
+    }
+    return;
+  }
+  if (typeof value !== "object") return;
+  const record = value;
+  for (const [key, inner] of Object.entries(record)) {
+    const path5 = prefix ? `${prefix}.${key}` : key;
+    out.add(path5);
+    collectMetadataKeys(path5, inner, out);
+  }
+}
+function buildMetadataSearchText(metadata) {
+  if (!metadata) return "";
+  const values = [];
+  collectMetadataValues(metadata, values);
+  return values.join(" ").toLowerCase();
+}
+function collectMetadataValues(value, out) {
+  if (value === null || value === void 0) return;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectMetadataValues(item, out);
+    }
+    return;
+  }
+  if (typeof value === "object") {
+    const record = value;
+    for (const [key, inner] of Object.entries(record)) {
+      out.push(key);
+      collectMetadataValues(inner, out);
+    }
+    return;
+  }
+  out.push(String(value));
+}
+function formatNodeKeyConflictMessage(conflict) {
+  const a = conflict.filePath || `[uuid:${conflict.uuid}]`;
+  const b = conflictingFilePath(conflict);
+  return `Duplicate YAML key "${conflict.key}" \u2014 both "${a}" and "${b}" claim it. Rename the YAML \`key:\` field in one of the files (or delete the stale duplicate) so each node has a unique key.`;
+}
+function conflictingFilePath(conflict) {
+  return conflict.conflictingFilePath || `[uuid:${conflict.conflictingUuid}]`;
+}
+var ThinkingSpaceDB, _db;
+var init_dbBlock = __esm({
+  "src/services/lego_blocks/integrations/dbBlock.ts"() {
+    "use strict";
+    init_import_wrapper();
+    ThinkingSpaceDB = class extends import_wrapper_default {
+      nodes;
+      links;
+      constructor() {
+        super("ThinkingSpaceDB");
+        this.version(1).stores({
+          nodes: "++id, &uuid, &key, type, parent, parentUuid, filePath, updatedAt, status, *tags"
+        });
+        this.version(2).stores({
+          nodes: "++id, &uuid, &key, type, parent, parentUuid, filePath, updatedAt, status, taskStatus, owner, runId, sessionId, recordKind, *tags, *dependsOn, *blockedBy, *relatedNodes, *metadataKeys"
+        }).upgrade(async (tx) => {
+          const table = tx.table("nodes");
+          await table.toCollection().modify((raw) => {
+            const normalized = normalizeRecordForStorage(raw);
+            Object.assign(raw, normalized);
+          });
+        });
+        this.version(3).stores({
+          nodes: "++id, &uuid, &key, type, parent, parentUuid, filePath, updatedAt, status, taskStatus, owner, runId, sessionId, recordKind, *tags, *dependsOn, *blockedBy, *relatedNodes, *metadataKeys",
+          links: "++id, sourceFilePath, targetFilePath, linkType"
+        });
+      }
+    };
+    _db = null;
   }
 });
 
@@ -10526,143 +11755,16 @@ Object.defineProperties(globalVar, {
 });
 
 // scripts/agent/capabilityRunner.ts
+var import_node_child_process = require("node:child_process");
+var fs3 = __toESM(require("node:fs"), 1);
 var fsPromises = __toESM(require("node:fs/promises"), 1);
-var path2 = __toESM(require("node:path"), 1);
+var os3 = __toESM(require("node:os"), 1);
+var path4 = __toESM(require("node:path"), 1);
 var import_node_process = __toESM(require("node:process"), 1);
 var import_node_url = require("node:url");
 var import_node_util = require("node:util");
-
-// electron/src/config/vaultExcludedDirs.json
-var vaultExcludedDirs_default = [
-  ".obsidian",
-  "node_modules",
-  "__pycache__",
-  ".venv",
-  "think-space",
-  ".git",
-  ".trash"
-];
-
-// src/services/lego_blocks/units/vaultConstantsBlock.ts
-var EXCLUDED_DIRS = new Set(vaultExcludedDirs_default);
-
-// src/services/lego_blocks/units/storageKeyBlock.ts
-var STORAGE_KEYS = {
-  vaultRoot: "ltm-vault-root",
-  thinkingOrganizerTab: "ltm-thinking-organizer-tab",
-  thinkingOrganizerTemplates: "ltm-thinking-organizer-level-templates",
-  thinkingOrganizerRecentTemplates: "ltm-thinking-organizer-recent-templates",
-  thinkingOrganizerNodeKinds: "ltm-thinking-organizer-node-kinds",
-  thinkingOrganizerFolderRoots: "ltm-thinking-organizer-folder-roots",
-  thinkingOrganizerProjectRoots: "ltm-thinking-organizer-project-roots",
-  thinkingOrganizerSelectedProjectRoot: "ltm-thinking-organizer-selected-project-root",
-  thinkingOrganizerProjects: "ltm-thinking-organizer-projects",
-  thinkingOrganizerProjectPresetTags: "ltm-thinking-organizer-project-preset-tags",
-  thinkingOrganizerProjectTagColors: "ltm-thinking-organizer-project-tag-colors",
-  thinkingOrganizerProjectProgramGroups: "ltm-thinking-organizer-project-program-groups",
-  thinkingOrganizerProjectPinBoardGroups: "ltm-thinking-organizer-project-pin-board-groups",
-  thinkingOrganizerProjectCreateDestination: "ltm-thinking-organizer-project-create-destination",
-  appShellSidebarCollapsed: "ltm-app-shell-sidebar-collapsed",
-  appShellExcalidrawExpanded: "ltm-app-shell-excalidraw-expanded",
-  appShellTabs: "ltm-app-shell-tabs",
-  appShellActiveTabId: "ltm-app-shell-active-tab-id",
-  appTheme: "ltm-app-theme",
-  appColorMode: "ltm-app-color-mode",
-  thinkingSpaceExplorerCollapsed: "ltm-thinking-space-explorer-collapsed",
-  thinkingSpaceExplorerWidthPx: "ltm-thinking-space-explorer-width-px",
-  capabilityFeatureFlags: "ltm-capability-feature-flags",
-  stewardProposalQueue: "ltm-steward-proposal-queue",
-  aiTelemetryEvents: "ltm-ai-telemetry-events",
-  aiSettings: "ltm-ai-settings",
-  markdownEditorSettings: "ltm-markdown-editor-settings",
-  schedulerSettings: "ltm-scheduler-settings",
-  schedulerTaskLastAttemptById: "ltm-scheduler-task-last-attempt-by-id",
-  markdownDocumentTopBarHidden: "ltm-markdown-document-top-bar-hidden",
-  userProfileCache: "ltm-user-profile-cache",
-  gitSyncActionsByVault: "ltm-git-sync-actions-by-vault",
-  webullExecutionSettings: "ltm-webull-execution-settings",
-  webullProjectPresetTags: "ltm-webull-project-preset-tags",
-  webullOverallRememberByProjectRoot: "ltm-webull-overall-remember-by-project-root",
-  aiManualCredentials: "ltm-ai-manual-credentials",
-  aiOauthCredentials: "ltm-ai-oauth-credentials",
-  googleDriveAuth: "ltm-google-drive-auth",
-  googleDriveOauthClientId: "ltm-google-drive-oauth-client-id",
-  rssFeedConfigs: "ltm-rss-feed-configs",
-  rssReadItemIds: "ltm-rss-read-item-ids",
-  rssFeedRetentionDays: "ltm-rss-feed-retention-days",
-  aiWebsites: "ltm-ai-websites",
-  webSites: "ltm-web-sites",
-  fileActivityIgnoredPaths: "ltm-file-activity-ignored-paths"
-};
-function getLocalStorageItemBlock(key) {
-  try {
-    if (typeof localStorage === "undefined") return null;
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-function setLocalStorageItemBlock(key, value) {
-  try {
-    if (typeof localStorage === "undefined") return;
-    localStorage.setItem(key, value);
-  } catch {
-  }
-}
-function isElectronVaultRootBridgeAvailableBlock() {
-  return typeof window !== "undefined" && !!window.electronAPI?.isElectron && typeof window.electronAPI.vaultRootGetPersisted === "function";
-}
-function normalizeVaultRootValueBlock(value) {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : null;
-}
-function readElectronPersistedVaultRootBlock() {
-  if (!isElectronVaultRootBridgeAvailableBlock()) return null;
-  const persisted = normalizeVaultRootValueBlock(window.electronAPI?.vaultRootGetPersisted?.());
-  if (persisted) return persisted;
-  const legacy = normalizeVaultRootValueBlock(getLocalStorageItemBlock(STORAGE_KEYS.vaultRoot));
-  if (!legacy) return null;
-  void window.electronAPI?.vaultRootSetPersisted?.(legacy);
-  try {
-    localStorage.removeItem(STORAGE_KEYS.vaultRoot);
-  } catch {
-  }
-  return legacy;
-}
-function writeElectronPersistedVaultRootBlock(value) {
-  const normalized = normalizeVaultRootValueBlock(value);
-  void window.electronAPI?.vaultRootSetPersisted?.(normalized);
-}
-function getStorageItem(key) {
-  if (key === STORAGE_KEYS.vaultRoot) {
-    const electronPersisted = readElectronPersistedVaultRootBlock();
-    if (electronPersisted) return electronPersisted;
-  }
-  return getLocalStorageItemBlock(key);
-}
-function setStorageItem(key, value) {
-  if (key === STORAGE_KEYS.vaultRoot && isElectronVaultRootBridgeAvailableBlock()) {
-    writeElectronPersistedVaultRootBlock(value);
-    return;
-  }
-  setLocalStorageItemBlock(key, value);
-}
-function getJsonStorageItem(key, fallback) {
-  const raw = getStorageItem(key);
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return fallback;
-  }
-}
-function getStoredVaultRoot() {
-  return getStorageItem(STORAGE_KEYS.vaultRoot);
-}
-function setStoredVaultRoot(path3) {
-  setStorageItem(STORAGE_KEYS.vaultRoot, path3);
-}
+init_vaultConstantsBlock();
+init_storageKeyBlock();
 
 // src/services/lego_blocks/integrations/capabilityRegistryBlock.ts
 var CAPABILITY_REGISTRY = [
@@ -10797,6 +11899,11 @@ var CAPABILITY_REGISTRY = [
     readOnly: false
   },
   {
+    name: "daily.log_insight",
+    description: "Upsert today\u2019s daily insights note (record_kind: insight) with insights, files touched, linked notes, and a teacher\u2019s note.",
+    readOnly: false
+  },
+  {
     name: "todos.create",
     description: "Create or append todos into a daily todo markdown note.",
     readOnly: false
@@ -10849,6 +11956,21 @@ var CAPABILITY_REGISTRY = [
   {
     name: "tools.transcript.clean_save",
     description: "Clean a transcript and save markdown output.",
+    readOnly: false
+  },
+  {
+    name: "telegram.send_message",
+    description: "Send a Telegram message to the configured chat via the Kai bot.",
+    readOnly: false
+  },
+  {
+    name: "telegram.open_conversation",
+    description: "Open a Telegram\u21C4Claude conversation: pin a sessionId to the active chat for poller-driven turn-taking.",
+    readOnly: false
+  },
+  {
+    name: "telegram.close_conversation",
+    description: "Close a Telegram conversation, clear the active pointer, and delete the Claude Code session JSONL.",
     readOnly: false
   }
 ];
@@ -13574,7 +14696,8 @@ var ALLOWED_RECORD_KINDS = [
   "handoff",
   "decision",
   "principle",
-  "note"
+  "note",
+  "insight"
 ];
 var FM_OPEN = "---";
 var FM_CLOSE_RE = /^---\s*$/m;
@@ -13867,18 +14990,18 @@ var LEGACY_THINK_SPACE_DIR = ".think-space";
 var AUDIT_DIR = `${THINKING_SPACE_DIR}/audit`;
 var AUDIT_FILE = `${AUDIT_DIR}/capability-audit.log`;
 var LEGACY_AUDIT_FILE = `${LEGACY_THINK_SPACE_DIR}/audit/capability-audit.log`;
-async function writeCapabilityAuditEntry(entry, fs) {
-  if (!fs) return;
-  await ensureAuditDir(fs);
-  await migrateLegacyAuditLogIfNeeded(fs);
+async function writeCapabilityAuditEntry(entry, fs4) {
+  if (!fs4) return;
+  await ensureAuditDir(fs4);
+  await migrateLegacyAuditLogIfNeeded(fs4);
   const line = JSON.stringify(entry);
-  const exists = await fs.exists(AUDIT_FILE);
+  const exists = await fs4.exists(AUDIT_FILE);
   if (!exists) {
-    await fs.create(AUDIT_FILE, `${line}
+    await fs4.create(AUDIT_FILE, `${line}
 `);
     return;
   }
-  await fs.process(AUDIT_FILE, (current) => {
+  await fs4.process(AUDIT_FILE, (current) => {
     const needsBreak = current.length > 0 && !current.endsWith("\n");
     return `${current}${needsBreak ? "\n" : ""}${line}
 `;
@@ -13905,23 +15028,23 @@ function hashString(value) {
   }
   return `h${(hash >>> 0).toString(16)}`;
 }
-async function ensureAuditDir(fs) {
+async function ensureAuditDir(fs4) {
   try {
-    await fs.mkdir(THINKING_SPACE_DIR);
+    await fs4.mkdir(THINKING_SPACE_DIR);
   } catch {
   }
   try {
-    await fs.mkdir(AUDIT_DIR);
+    await fs4.mkdir(AUDIT_DIR);
   } catch {
   }
 }
-async function migrateLegacyAuditLogIfNeeded(fs) {
-  const hasCurrent = await fs.exists(AUDIT_FILE).catch(() => false);
+async function migrateLegacyAuditLogIfNeeded(fs4) {
+  const hasCurrent = await fs4.exists(AUDIT_FILE).catch(() => false);
   if (hasCurrent) return;
-  const hasLegacy = await fs.exists(LEGACY_AUDIT_FILE).catch(() => false);
+  const hasLegacy = await fs4.exists(LEGACY_AUDIT_FILE).catch(() => false);
   if (!hasLegacy) return;
-  const legacyContent = await fs.read(LEGACY_AUDIT_FILE).catch(() => "");
-  await fs.create(AUDIT_FILE, legacyContent);
+  const legacyContent = await fs4.read(LEGACY_AUDIT_FILE).catch(() => "");
+  await fs4.create(AUDIT_FILE, legacyContent);
 }
 
 // src/services/lego_blocks/integrations/capabilityPolicyBlock.ts
@@ -13949,7 +15072,10 @@ var WRITE_CAPABILITIES = /* @__PURE__ */ new Set([
   "todos.toggle",
   "tools.excalidraw.format",
   "tools.pdf.convert",
-  "tools.transcript.clean_save"
+  "tools.transcript.clean_save",
+  "telegram.send_message",
+  "telegram.open_conversation",
+  "telegram.close_conversation"
 ]);
 var STORAGE_KEY = "ltm-capability-policy";
 function validateCapabilityPolicy(params) {
@@ -14050,573 +15176,8 @@ function extractRecordKind(input) {
   return null;
 }
 
-// src/services/lego_blocks/integrations/fsBlock.ts
-var import_core = __toESM(require_index_cjs(), 1);
-
-// src/services/lego_blocks/units/crossWindowSyncBlock.ts
-var CHANNEL_NAME = "ltm-vault-sync";
-var _channel = null;
-function getChannel() {
-  if (!_channel) _channel = new BroadcastChannel(CHANNEL_NAME);
-  return _channel;
-}
-function notifyFileChanged(filePath) {
-  getChannel().postMessage({
-    type: "file-changed",
-    filePath,
-    timestamp: Date.now()
-  });
-}
-
-// src/services/lego_blocks/units/debugLogBlock.ts
-var DEBUG_LOG_EVENT = "ltm:debug:log-entry";
-function makeId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-function dispatchDebugLogBlock(entry) {
-  const full = { id: makeId(), timestamp: Date.now(), ...entry };
-  window.dispatchEvent(new CustomEvent(DEBUG_LOG_EVENT, { detail: full }));
-}
-function logWarn(message, details, source) {
-  dispatchDebugLogBlock({ level: "warn", message, details, source });
-}
-function logDebug(message, details, source) {
-  dispatchDebugLogBlock({ level: "debug", message, details, source });
-}
-
-// src/services/lego_blocks/units/byteEncodingBlock.ts
-function utf8ToBytesBlock(input) {
-  return new TextEncoder().encode(input);
-}
-function bytesToUtf8Block(bytes) {
-  return new TextDecoder().decode(bytes);
-}
-function bytesToBase64Block(bytes) {
-  if (typeof btoa === "function") {
-    let binary2 = "";
-    const chunkSize = 32768;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.subarray(i, i + chunkSize);
-      binary2 += String.fromCharCode(...chunk);
-    }
-    return btoa(binary2);
-  }
-  const maybeBuffer = globalThis.Buffer;
-  if (maybeBuffer) return maybeBuffer.from(bytes).toString("base64");
-  throw new Error("Base64 encoding is unavailable in this runtime");
-}
-function base64ToBytesBlock(base64) {
-  if (typeof atob === "function") {
-    const binary2 = atob(base64);
-    const bytes = new Uint8Array(binary2.length);
-    for (let i = 0; i < binary2.length; i++) {
-      bytes[i] = binary2.charCodeAt(i);
-    }
-    return bytes;
-  }
-  const maybeBuffer = globalThis.Buffer;
-  if (maybeBuffer) {
-    const buf = maybeBuffer.from(base64, "base64");
-    const out = new Uint8Array(buf.length);
-    for (let i = 0; i < buf.length; i++) out[i] = buf[i];
-    return out;
-  }
-  throw new Error("Base64 decoding is unavailable in this runtime");
-}
-
-// src/services/lego_blocks/integrations/fsBlock.ts
-function normalizeVaultPathForValidationBlock(path3) {
-  return String(path3 || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").trim();
-}
-var warnedInvalidVaultPathKeysBlock = /* @__PURE__ */ new Set();
-function invalidVaultPathReasonBlock(path3, options) {
-  const normalized = normalizeVaultPathForValidationBlock(path3);
-  if (!normalized) return options?.allowEmpty ? null : "empty path";
-  if (normalized === ".md") return `invalid normalized path "${normalized}"`;
-  const segments = normalized.split("/").filter(Boolean);
-  if (segments.some((segment) => segment.trim() === "" || segment.trim() === ".")) return "contains invalid empty path segment";
-  return null;
-}
-function warnRejectedVaultPathBlock(op, path3, reason) {
-  const key = `${op}::${path3}::${reason}`;
-  if (warnedInvalidVaultPathKeysBlock.has(key)) return;
-  warnedInvalidVaultPathKeysBlock.add(key);
-  logWarn(
-    `Rejected invalid vault path before filesystem call`,
-    `op=${op} path=${path3} reason=${reason}`,
-    "fsBlock"
-  );
-}
-function assertValidVaultPathBlock(op, path3, options) {
-  const reason = invalidVaultPathReasonBlock(path3, options);
-  if (!reason) return path3;
-  warnRejectedVaultPathBlock(op, path3, reason);
-  throw new Error(`Rejected invalid vault path for ${op}: ${path3} (${reason})`);
-}
-function isValidVaultPathBlock(path3, options) {
-  const reason = invalidVaultPathReasonBlock(path3, options);
-  if (!reason) return true;
-  warnRejectedVaultPathBlock("exists", path3, reason);
-  return false;
-}
-function vaultPathOrNullBlock(op, path3, options) {
-  const reason = invalidVaultPathReasonBlock(path3, options);
-  if (reason) {
-    warnRejectedVaultPathBlock(op, path3, reason);
-    return null;
-  }
-  return path3;
-}
-function encodeFileUriSegmentBlock(segment) {
-  return encodeURIComponent(segment);
-}
-function isAlreadyExistsFilesystemErrorBlock(error) {
-  const maybeRecord = typeof error === "object" && error !== null ? error : null;
-  const code = typeof maybeRecord?.code === "string" ? maybeRecord.code : "";
-  const message = error instanceof Error ? error.message : typeof maybeRecord?.message === "string" ? maybeRecord.message : String(error);
-  const normalized = message.toLowerCase();
-  return code === "OS-PLUG-FILE-0010" || normalized.includes("already exists") || normalized.includes("cannot be overwritten") || normalized.includes("eexist");
-}
-var WebVaultFS = class {
-  async read(path3) {
-    const safePath = assertValidVaultPathBlock("read", path3);
-    const res = await fetch(`/api/tools/file-content?path=${encodeURIComponent(safePath)}`);
-    if (!res.ok) {
-      let detail = "";
-      try {
-        const payload = await res.json();
-        if (payload?.detail) detail = String(payload.detail);
-      } catch {
-      }
-      const suffix = detail || res.statusText || `HTTP ${res.status}`;
-      throw new Error(`Failed to read file: ${path3} (${suffix})`);
-    }
-    const data = await res.json();
-    return data.content;
-  }
-  async write(path3, data) {
-    assertValidVaultPathBlock("write", path3);
-    const res = await fetch("/api/tools/vault/write", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: path3, content: data })
-    });
-    if (!res.ok) throw new Error(`Failed to write file: ${path3}`);
-    notifyFileChanged(path3);
-  }
-  async readBytes(path3) {
-    assertValidVaultPathBlock("readBytes", path3);
-    const res = await fetch(`/api/tools/vault/read-bytes?path=${encodeURIComponent(path3)}`);
-    if (!res.ok) {
-      let detail = "";
-      try {
-        const payload2 = await res.json();
-        if (payload2?.detail) detail = String(payload2.detail);
-      } catch {
-      }
-      const suffix = detail || res.statusText || `HTTP ${res.status}`;
-      throw new Error(`Failed to read bytes: ${path3} (${suffix})`);
-    }
-    const payload = await res.json();
-    return base64ToBytesBlock(payload.data_base64 || "");
-  }
-  async writeBytes(path3, data) {
-    assertValidVaultPathBlock("writeBytes", path3);
-    const res = await fetch("/api/tools/vault/write-bytes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        path: path3,
-        data_base64: bytesToBase64Block(data)
-      })
-    });
-    if (!res.ok) throw new Error(`Failed to write bytes: ${path3}`);
-    notifyFileChanged(path3);
-  }
-  async create(path3, data) {
-    if (await this.exists(path3)) throw new Error(`File already exists: ${path3}`);
-    await this.write(path3, data);
-  }
-  async list(path3) {
-    assertValidVaultPathBlock("list", path3, { allowEmpty: true });
-    const res = await fetch(`/api/tools/vault/readdir?path=${encodeURIComponent(path3)}`);
-    if (!res.ok) throw new Error(`Failed to list directory: ${path3}`);
-    const json2 = await res.json();
-    const files = [];
-    const folders = [];
-    for (const e of json2.entries) {
-      if (e.isDirectory) folders.push(e.name);
-      else files.push(e.name);
-    }
-    return { files, folders };
-  }
-  async walkVault(extensions = [".md"]) {
-    const ext = extensions.join(",");
-    const res = await fetch(`/api/tools/vault/walk?extensions=${encodeURIComponent(ext)}`);
-    if (!res.ok) throw new Error("Failed to walk vault");
-    const data = await res.json();
-    return data.files.map((f) => ({
-      path: f.path,
-      size: f.size,
-      mtime: f.mtime,
-      ctime: f.birthtime ?? f.ctime ?? f.mtime
-    }));
-  }
-  async stat(path3) {
-    assertValidVaultPathBlock("stat", path3);
-    const res = await fetch(`/api/tools/vault/stat?path=${encodeURIComponent(path3)}`);
-    if (!res.ok) throw new Error(`Failed to stat: ${path3}`);
-    const s = await res.json();
-    return {
-      size: s.size,
-      mtime: s.mtime,
-      ctime: s.birthtime ?? s.ctime,
-      isDirectory: Boolean(s.isDirectory)
-    };
-  }
-  async exists(path3) {
-    if (!isValidVaultPathBlock(path3)) return false;
-    try {
-      await this.stat(path3);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  async mkdir(path3) {
-    assertValidVaultPathBlock("mkdir", path3, { allowEmpty: true });
-    const res = await fetch("/api/tools/vault/mkdir", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: path3 })
-    });
-    if (!res.ok) throw new Error(`Failed to mkdir: ${path3}`);
-  }
-  async delete(path3) {
-    assertValidVaultPathBlock("delete", path3);
-    const res = await fetch("/api/tools/vault/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: path3, recursive: false })
-    });
-    if (!res.ok) throw new Error(`Failed to delete: ${path3}`);
-  }
-  async process(path3, fn) {
-    const content = await this.read(path3);
-    await this.write(path3, fn(content));
-  }
-};
-var ElectronVaultFS = class {
-  vaultRoot;
-  constructor(vaultRoot) {
-    this.vaultRoot = vaultRoot;
-  }
-  get api() {
-    return window.electronAPI;
-  }
-  async read(path3) {
-    const safePath = assertValidVaultPathBlock("read", path3);
-    return this.api.read(this.vaultRoot, safePath);
-  }
-  async write(path3, data) {
-    const safePath = assertValidVaultPathBlock("write", path3);
-    await this.api.write(this.vaultRoot, safePath, data);
-    notifyFileChanged(safePath);
-  }
-  async readBytes(path3) {
-    const safePath = assertValidVaultPathBlock("readBytes", path3);
-    if (this.api.readBytesBase64) {
-      const base64 = await this.api.readBytesBase64(this.vaultRoot, safePath);
-      return base64ToBytesBlock(base64);
-    }
-    const text = await this.read(safePath);
-    return utf8ToBytesBlock(text);
-  }
-  async writeBytes(path3, data) {
-    const safePath = assertValidVaultPathBlock("writeBytes", path3);
-    if (this.api.writeBytesBase64) {
-      await this.api.writeBytesBase64(this.vaultRoot, safePath, bytesToBase64Block(data));
-      notifyFileChanged(safePath);
-      return;
-    }
-    await this.write(safePath, bytesToUtf8Block(data));
-  }
-  async create(path3, data) {
-    if (await this.exists(path3)) throw new Error(`File already exists: ${path3}`);
-    await this.write(path3, data);
-  }
-  async list(path3) {
-    const safePath = assertValidVaultPathBlock("list", path3, { allowEmpty: true });
-    return this.api.list(this.vaultRoot, safePath || ".");
-  }
-  async walkVault(extensions = [".md"]) {
-    return this.api.walkVault(this.vaultRoot, extensions);
-  }
-  async stat(path3) {
-    const safePath = assertValidVaultPathBlock("stat", path3);
-    return this.api.stat(this.vaultRoot, safePath);
-  }
-  async exists(path3) {
-    const safePath = vaultPathOrNullBlock("exists", path3);
-    if (safePath === null) return false;
-    return this.api.exists(this.vaultRoot, safePath);
-  }
-  async mkdir(path3) {
-    const safePath = assertValidVaultPathBlock("mkdir", path3, { allowEmpty: true });
-    return this.api.mkdir(this.vaultRoot, safePath);
-  }
-  async delete(path3) {
-    const safePath = assertValidVaultPathBlock("delete", path3);
-    if (this.api.deletePath) {
-      await this.api.deletePath(this.vaultRoot, safePath, false);
-    }
-  }
-  async process(path3, fn) {
-    const content = await this.read(path3);
-    await this.write(path3, fn(content));
-  }
-};
-var CapacitorVaultFS = class {
-  vaultRoot;
-  isAbsolute;
-  constructor(vaultRoot) {
-    this.isAbsolute = vaultRoot.startsWith("/");
-    this.vaultRoot = vaultRoot;
-  }
-  resolve(path3) {
-    const base = path3 ? `${this.vaultRoot}/${path3}` : this.vaultRoot;
-    if (this.isAbsolute) {
-      const encoded = base.split("/").map(encodeFileUriSegmentBlock).join("/");
-      return `file://${encoded}`;
-    }
-    return base;
-  }
-  async fsOpts(path3) {
-    if (this.isAbsolute) {
-      return { path: this.resolve(path3) };
-    }
-    const { Directory } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    return { path: this.resolve(path3), directory: Directory.Documents };
-  }
-  async read(path3) {
-    const safePath = assertValidVaultPathBlock("read", path3);
-    const { Filesystem, Encoding } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const opts = await this.fsOpts(safePath);
-    const result = await Filesystem.readFile({ ...opts, encoding: Encoding.UTF8 });
-    return result.data;
-  }
-  async write(path3, data) {
-    const safePath = assertValidVaultPathBlock("write", path3);
-    const { Filesystem, Encoding } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const opts = await this.fsOpts(safePath);
-    await Filesystem.writeFile({ ...opts, data, encoding: Encoding.UTF8, recursive: true });
-    notifyFileChanged(safePath);
-  }
-  async readBytes(path3) {
-    const safePath = assertValidVaultPathBlock("readBytes", path3);
-    const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const opts = await this.fsOpts(safePath);
-    const result = await Filesystem.readFile(opts);
-    if (typeof result.data === "string") {
-      return base64ToBytesBlock(result.data);
-    }
-    const arrayBuffer = await result.data.arrayBuffer();
-    return new Uint8Array(arrayBuffer);
-  }
-  async writeBytes(path3, data) {
-    const safePath = assertValidVaultPathBlock("writeBytes", path3);
-    const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const opts = await this.fsOpts(safePath);
-    await Filesystem.writeFile({
-      ...opts,
-      data: bytesToBase64Block(data),
-      recursive: true
-    });
-    notifyFileChanged(safePath);
-  }
-  async create(path3, data) {
-    if (await this.exists(path3)) throw new Error(`File already exists: ${path3}`);
-    await this.write(path3, data);
-  }
-  async list(path3) {
-    const safePath = assertValidVaultPathBlock("list", path3, { allowEmpty: true });
-    const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const exists = await this.exists(safePath).catch(() => false);
-    if (!exists) return { files: [], folders: [] };
-    const opts = await this.fsOpts(safePath);
-    const result = await Filesystem.readdir(opts);
-    const files = [];
-    const folders = [];
-    for (const f of result.files) {
-      if (f.name.startsWith(".")) continue;
-      if (f.type === "directory") folders.push(f.name);
-      else files.push(f.name);
-    }
-    return { files, folders };
-  }
-  async walkVault(extensions = [".md"]) {
-    const extSet = new Set(extensions);
-    const entries = [];
-    const walk = async (dirPath, dirUri, relPrefix) => {
-      const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-      const opts = dirUri ? { path: dirUri } : this.isAbsolute ? { path: `file://${dirPath}` } : { path: dirPath, directory: (await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1))).Directory.Documents };
-      const result = await Filesystem.readdir(opts);
-      const subdirPromises = [];
-      const fileStatPromises = [];
-      for (const item of result.files) {
-        if (item.name.startsWith(".") || EXCLUDED_DIRS.has(item.name)) continue;
-        const relPath = relPrefix ? `${relPrefix}/${item.name}` : item.name;
-        const itemUri = item.uri;
-        if (item.type === "directory") {
-          const childDir = `${dirPath}/${item.name}`;
-          subdirPromises.push(
-            walk(childDir, itemUri ?? null, relPath).catch((err) => {
-              const message = err instanceof Error ? err.message : String(err);
-              logDebug(`Skipped iCloud-stale subdirectory during walk: ${relPath}`, message, "fsBlock");
-            })
-          );
-        } else {
-          const ext = "." + item.name.split(".").pop()?.toLowerCase();
-          if (!extSet.has(ext || "")) continue;
-          const stOpts = itemUri ? { path: itemUri } : this.isAbsolute ? { path: `file://${dirPath}/${item.name}` } : { path: `${dirPath}/${item.name}`, directory: (await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1))).Directory.Documents };
-          fileStatPromises.push(
-            Filesystem.stat(stOpts).then((st) => {
-              entries.push({
-                path: relPath,
-                size: st.size,
-                mtime: (st.mtime || 0) / 1e3,
-                ctime: (st.ctime || st.mtime || 0) / 1e3
-              });
-            }).catch((err) => {
-              const message = err instanceof Error ? err.message : String(err);
-              logDebug(`Skipped iCloud-stale file during walk stat: ${relPath}`, message, "fsBlock");
-            })
-          );
-        }
-      }
-      await Promise.all([...subdirPromises, ...fileStatPromises]);
-    };
-    await walk(this.vaultRoot, null, "");
-    return entries;
-  }
-  async stat(path3) {
-    const safePath = assertValidVaultPathBlock("stat", path3);
-    const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const opts = await this.fsOpts(safePath);
-    const st = await Filesystem.stat(opts);
-    return {
-      size: st.size,
-      mtime: (st.mtime || 0) / 1e3,
-      ctime: (st.ctime || st.mtime || 0) / 1e3
-    };
-  }
-  async exists(path3) {
-    const safePath = vaultPathOrNullBlock("exists", path3, { allowEmpty: true });
-    if (safePath === null) return false;
-    if (!safePath) return true;
-    const normalized = safePath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-    if (!normalized) return true;
-    const slashIndex = normalized.lastIndexOf("/");
-    const parent = slashIndex >= 0 ? normalized.slice(0, slashIndex) : "";
-    const name = slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized;
-    if (!name) return true;
-    const { Filesystem, Directory } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    try {
-      const parentOpts = this.isAbsolute ? { path: parent ? this.resolve(parent) : this.resolve("") } : { path: parent ? this.resolve(parent) : this.vaultRoot, directory: Directory.Documents };
-      const listed = await Filesystem.readdir(parentOpts);
-      return listed.files.some((entry) => entry.name === name);
-    } catch {
-      return false;
-    }
-  }
-  async mkdir(path3) {
-    const safePath = assertValidVaultPathBlock("mkdir", path3, { allowEmpty: true });
-    const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const opts = await this.fsOpts(safePath);
-    const exists = await this.exists(safePath).catch(() => false);
-    if (exists) return;
-    try {
-      await Filesystem.mkdir({ ...opts, recursive: true });
-    } catch (error) {
-      if (isAlreadyExistsFilesystemErrorBlock(error)) return;
-      throw error;
-    }
-  }
-  async delete(path3) {
-    const safePath = assertValidVaultPathBlock("delete", path3);
-    const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-    const opts = await this.fsOpts(safePath);
-    await Filesystem.deleteFile(opts);
-  }
-  async process(path3, fn) {
-    const content = await this.read(path3);
-    await this.write(path3, fn(content));
-  }
-};
-var _instance = null;
-var DEFAULT_CAPACITOR_VAULT_ROOT = "LTM-Vault";
-function getVaultFS() {
-  if (_instance) return _instance;
-  _instance = createVaultFS();
-  return _instance;
-}
-function createVaultFS() {
-  if (isElectron()) {
-    const vaultRoot = getStoredVaultRoot() ?? "";
-    return new ElectronVaultFS(vaultRoot);
-  }
-  if (isCapacitorNative()) {
-    const { vaultRoot, normalizedStoredRoot } = normalizeCapacitorStoredVaultRoot(getStoredVaultRoot());
-    if (normalizedStoredRoot) {
-      setStoredVaultRoot(normalizedStoredRoot);
-    }
-    return new CapacitorVaultFS(vaultRoot);
-  }
-  return new WebVaultFS();
-}
-function isElectron() {
-  if (typeof window === "undefined") return false;
-  return !!window.electronAPI?.isElectron;
-}
-function isCapacitorNative() {
-  try {
-    return import_core.Capacitor.isNativePlatform();
-  } catch {
-    return false;
-  }
-}
-function getPlatformName() {
-  if (isElectron()) return "electron";
-  if (isCapacitorNative()) {
-    try {
-      const platform = import_core.Capacitor.getPlatform();
-      if (platform === "ios") return "ios";
-      if (platform === "android") return "android";
-    } catch {
-    }
-  }
-  return "web";
-}
-function normalizeCapacitorStoredVaultRoot(storedRoot) {
-  const stored = storedRoot ?? "";
-  if (stored.startsWith("cap-picker:")) {
-    return {
-      vaultRoot: stored.slice("cap-picker:".length),
-      normalizedStoredRoot: null
-    };
-  }
-  if (stored.startsWith("/")) {
-    return {
-      vaultRoot: DEFAULT_CAPACITOR_VAULT_ROOT,
-      normalizedStoredRoot: DEFAULT_CAPACITOR_VAULT_ROOT
-    };
-  }
-  const resolved = stored || DEFAULT_CAPACITOR_VAULT_ROOT;
-  return {
-    vaultRoot: resolved,
-    normalizedStoredRoot: null
-  };
-}
+// src/services/lego_blocks/integrations/yamlHierarchyBlock.ts
+init_fsBlock();
 
 // src/services/lego_blocks/units/wikiLinksBlock.ts
 var WIKI_LINKS_FIELD_BLOCK = "wiki_links";
@@ -14674,13 +15235,13 @@ function resolveGeneratedWikiLinksForFrontmatterBlock(frontmatter, options) {
   const parentLink = options?.parentFilePath ? toWikiLinkFromVaultPathBlock(options.parentFilePath) : void 0;
   if (parentLink) generated.push(parentLink);
   const derivedFrom = normalizeStringArrayBlock(frontmatter.derived_from);
-  for (const path3 of derivedFrom) {
-    const link = normalizeWikiLinkOrPathBlock(path3);
+  for (const path5 of derivedFrom) {
+    const link = normalizeWikiLinkOrPathBlock(path5);
     if (link) generated.push(link);
   }
   const sourceFiles = normalizeStringArrayBlock(frontmatter.source_files);
-  for (const path3 of sourceFiles) {
-    const link = normalizeWikiLinkOrPathBlock(path3);
+  for (const path5 of sourceFiles) {
+    const link = normalizeWikiLinkOrPathBlock(path5);
     if (link) generated.push(link);
   }
   return uniqueStringsBlock(generated);
@@ -14855,308 +15416,8 @@ function normalizeBody(value) {
   return value.replace(/\r\n/g, "\n");
 }
 
-// node_modules/dexie/import-wrapper.mjs
-var import_dexie = __toESM(require_dexie(), 1);
-var DexieSymbol = Symbol.for("Dexie");
-var Dexie = globalThis[DexieSymbol] || (globalThis[DexieSymbol] = import_dexie.default);
-if (import_dexie.default.semVer !== Dexie.semVer) {
-  throw new Error(`Two different versions of Dexie loaded in the same app: ${import_dexie.default.semVer} and ${Dexie.semVer}`);
-}
-var {
-  liveQuery,
-  mergeRanges,
-  rangesOverlap,
-  RangeSet,
-  cmp: cmp2,
-  Entity,
-  PropModification,
-  replacePrefix,
-  add,
-  remove,
-  DexieYProvider
-} = Dexie;
-var import_wrapper_default = Dexie;
-
-// src/services/lego_blocks/integrations/dbBlock.ts
-var ThinkingSpaceDB = class extends import_wrapper_default {
-  nodes;
-  links;
-  constructor() {
-    super("ThinkingSpaceDB");
-    this.version(1).stores({
-      nodes: "++id, &uuid, &key, type, parent, parentUuid, filePath, updatedAt, status, *tags"
-    });
-    this.version(2).stores({
-      nodes: "++id, &uuid, &key, type, parent, parentUuid, filePath, updatedAt, status, taskStatus, owner, runId, sessionId, recordKind, *tags, *dependsOn, *blockedBy, *relatedNodes, *metadataKeys"
-    }).upgrade(async (tx) => {
-      const table = tx.table("nodes");
-      await table.toCollection().modify((raw) => {
-        const normalized = normalizeRecordForStorage(raw);
-        Object.assign(raw, normalized);
-      });
-    });
-    this.version(3).stores({
-      nodes: "++id, &uuid, &key, type, parent, parentUuid, filePath, updatedAt, status, taskStatus, owner, runId, sessionId, recordKind, *tags, *dependsOn, *blockedBy, *relatedNodes, *metadataKeys",
-      links: "++id, sourceFilePath, targetFilePath, linkType"
-    });
-  }
-};
-var _db = null;
-function getDb() {
-  if (!_db) _db = new ThinkingSpaceDB();
-  return _db;
-}
-async function upsertNode(record) {
-  const db = getDb();
-  const normalized = normalizeRecordForStorage(record);
-  const existing = await db.nodes.where("uuid").equals(record.uuid).first();
-  const conflictingByKey = await db.nodes.where("key").equals(normalized.key).first();
-  if (conflictingByKey && conflictingByKey.uuid !== normalized.uuid) {
-    throw new Error(formatNodeKeyConflictMessage({
-      key: normalized.key,
-      uuid: normalized.uuid,
-      filePath: normalized.filePath,
-      conflictingUuid: conflictingByKey.uuid,
-      conflictingFilePath: conflictingByKey.filePath
-    }));
-  }
-  if (existing) {
-    await db.nodes.update(existing.id, normalized);
-  } else {
-    await db.nodes.add(normalized);
-  }
-}
-async function bulkUpsertNodes(records) {
-  if (records.length === 0) return { writtenCount: 0, conflicts: [] };
-  const db = getDb();
-  const dedupedByUuid = /* @__PURE__ */ new Map();
-  for (const record of records.map(normalizeRecordForStorage)) {
-    dedupedByUuid.set(record.uuid, record);
-  }
-  const normalized = [...dedupedByUuid.values()];
-  const uuids = normalized.map((r) => r.uuid);
-  const existingNodes = await db.nodes.where("uuid").anyOf(uuids).toArray();
-  const existingByUuid = new Map(existingNodes.map((n) => [n.uuid, n]));
-  const keys = [...new Set(normalized.map((r) => r.key).filter(Boolean))];
-  const existingKeyNodes = keys.length > 0 ? await db.nodes.where("key").anyOf(keys).toArray() : [];
-  const existingByKey = new Map(existingKeyNodes.map((n) => [n.key, n]));
-  const incomingByKey = /* @__PURE__ */ new Map();
-  const toUpdate = [];
-  const toAdd = [];
-  const conflicts = [];
-  for (const record of normalized) {
-    const incomingConflict = incomingByKey.get(record.key);
-    if (incomingConflict && incomingConflict.uuid !== record.uuid) {
-      conflicts.push({
-        key: record.key,
-        uuid: record.uuid,
-        filePath: record.filePath,
-        conflictingUuid: incomingConflict.uuid,
-        conflictingFilePath: incomingConflict.filePath
-      });
-      continue;
-    }
-    const existingKeyNode = existingByKey.get(record.key);
-    if (existingKeyNode && existingKeyNode.uuid !== record.uuid) {
-      conflicts.push({
-        key: record.key,
-        uuid: record.uuid,
-        filePath: record.filePath,
-        conflictingUuid: existingKeyNode.uuid,
-        conflictingFilePath: existingKeyNode.filePath
-      });
-      continue;
-    }
-    incomingByKey.set(record.key, record);
-    const existingNode = existingByUuid.get(record.uuid);
-    if (existingNode?.id !== void 0) {
-      toUpdate.push({ ...record, id: existingNode.id });
-    } else {
-      toAdd.push(record);
-    }
-  }
-  await db.transaction("rw", db.nodes, async () => {
-    if (toUpdate.length > 0) await db.nodes.bulkPut(toUpdate);
-    if (toAdd.length > 0) await db.nodes.bulkAdd(toAdd);
-  });
-  return {
-    writtenCount: toUpdate.length + toAdd.length,
-    conflicts
-  };
-}
-async function getChildren(parentKey) {
-  const db = getDb();
-  const children = await db.nodes.where("parent").equals(parentKey).toArray();
-  return children.sort(compareNodeDisplayOrder);
-}
-async function getNodeByKey(key) {
-  const db = getDb();
-  return db.nodes.where("key").equals(key).first();
-}
-async function getNodeByUuid(uuid) {
-  const db = getDb();
-  return db.nodes.where("uuid").equals(uuid).first();
-}
-async function getRootNodes() {
-  const db = getDb();
-  const roots = await db.nodes.where("parent").equals("").toArray();
-  return roots.sort(compareNodeDisplayOrder);
-}
-async function getAllNodes() {
-  const db = getDb();
-  return db.nodes.orderBy("type").toArray();
-}
-async function searchNodes(query, limit = 20) {
-  const db = getDb();
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  if (terms.length === 0) return [];
-  const scored = [];
-  let earlyExitCount = 0;
-  const maxScan = limit * 50;
-  await db.nodes.each((node) => {
-    if (earlyExitCount >= maxScan) return;
-    earlyExitCount++;
-    const searchable = node.searchText || "";
-    let score = 0;
-    for (const term of terms) {
-      if (searchable.includes(term)) score++;
-    }
-    if (score > 0) {
-      scored.push({ node, score });
-    }
-  });
-  return scored.sort((a, b) => b.score - a.score).slice(0, limit).map((s) => s.node);
-}
-async function deleteNode(uuid) {
-  const db = getDb();
-  await db.nodes.where("uuid").equals(uuid).delete();
-}
-async function clearAll() {
-  const db = getDb();
-  await db.nodes.clear();
-}
-async function getAllFilePaths() {
-  const db = getDb();
-  const paths = await db.nodes.orderBy("filePath").uniqueKeys();
-  return new Set(paths);
-}
-async function replaceLinksForFile(sourceFilePath, links) {
-  const db = getDb();
-  await db.transaction("rw", db.links, async () => {
-    await db.links.where("sourceFilePath").equals(sourceFilePath).delete();
-    if (links.length > 0) await db.links.bulkAdd(links);
-  });
-}
-async function bulkUpsertLinks(links) {
-  const db = getDb();
-  if (links.length === 0) return;
-  await db.links.bulkAdd(links);
-}
-async function clearAllLinks() {
-  const db = getDb();
-  await db.links.clear();
-}
-function normalizeRecordForStorage(record) {
-  const metadata = record.metadata ? structuredClone(record.metadata) : void 0;
-  const parent = record.parent || "";
-  const tags = (record.tags ?? []).filter(Boolean);
-  const projectPresetTags = record.projectPresetTags?.filter(Boolean);
-  const metadataText = record.metadataText ?? buildMetadataSearchText(metadata);
-  const searchText = buildSearchText(record, tags, projectPresetTags, metadataText);
-  return {
-    ...record,
-    parent,
-    dependsOn: record.dependsOn?.filter(Boolean),
-    blockedBy: record.blockedBy?.filter(Boolean),
-    acceptanceCriteria: record.acceptanceCriteria?.filter(Boolean),
-    artifacts: record.artifacts?.filter(Boolean),
-    relatedNodes: record.relatedNodes?.filter(Boolean),
-    metadata,
-    metadataKeys: (record.metadataKeys ?? extractMetadataKeys(metadata)).filter(Boolean),
-    metadataText,
-    tags,
-    projectPresetTags,
-    searchText
-  };
-}
-function buildSearchText(record, tags, projectPresetTags, metadataText) {
-  const parts = [
-    record.title,
-    record.key
-  ];
-  if (tags.length > 0) parts.push(tags.join(" "));
-  if (projectPresetTags && projectPresetTags.length > 0) parts.push(projectPresetTags.join(" "));
-  if (record.bodyExcerpt) parts.push(record.bodyExcerpt);
-  if (record.aiSummary) parts.push(record.aiSummary);
-  if (record.taskId) parts.push(record.taskId);
-  if (record.taskStatus) parts.push(record.taskStatus);
-  if (record.owner) parts.push(record.owner);
-  if (record.agentName) parts.push(record.agentName);
-  if (record.recordKind) parts.push(record.recordKind);
-  if (record.description) parts.push(record.description);
-  if (metadataText) parts.push(metadataText);
-  return parts.join(" ").toLowerCase();
-}
-function compareNodeDisplayOrder(a, b) {
-  const aOrder = typeof a.sortOrder === "number" && Number.isFinite(a.sortOrder) ? a.sortOrder : Number.POSITIVE_INFINITY;
-  const bOrder = typeof b.sortOrder === "number" && Number.isFinite(b.sortOrder) ? b.sortOrder : Number.POSITIVE_INFINITY;
-  if (aOrder !== bOrder) return aOrder - bOrder;
-  const byTitle = a.title.localeCompare(b.title);
-  if (byTitle !== 0) return byTitle;
-  return a.key.localeCompare(b.key);
-}
-function extractMetadataKeys(metadata) {
-  if (!metadata) return [];
-  const keys = /* @__PURE__ */ new Set();
-  collectMetadataKeys("", metadata, keys);
-  return [...keys];
-}
-function collectMetadataKeys(prefix, value, out) {
-  if (value === null || value === void 0) return;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      collectMetadataKeys(prefix, item, out);
-    }
-    return;
-  }
-  if (typeof value !== "object") return;
-  const record = value;
-  for (const [key, inner] of Object.entries(record)) {
-    const path3 = prefix ? `${prefix}.${key}` : key;
-    out.add(path3);
-    collectMetadataKeys(path3, inner, out);
-  }
-}
-function buildMetadataSearchText(metadata) {
-  if (!metadata) return "";
-  const values = [];
-  collectMetadataValues(metadata, values);
-  return values.join(" ").toLowerCase();
-}
-function collectMetadataValues(value, out) {
-  if (value === null || value === void 0) return;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      collectMetadataValues(item, out);
-    }
-    return;
-  }
-  if (typeof value === "object") {
-    const record = value;
-    for (const [key, inner] of Object.entries(record)) {
-      out.push(key);
-      collectMetadataValues(inner, out);
-    }
-    return;
-  }
-  out.push(String(value));
-}
-function formatNodeKeyConflictMessage(conflict) {
-  return `Duplicate node key "${conflict.key}" in "${conflict.filePath}" conflicts with "${conflictingFilePath(conflict)}". Node keys must be unique.`;
-}
-function conflictingFilePath(conflict) {
-  return conflict.conflictingFilePath || `[uuid:${conflict.conflictingUuid}]`;
-}
+// src/services/lego_blocks/integrations/yamlHierarchyBlock.ts
+init_dbBlock();
 
 // src/services/lego_blocks/integrations/projectStorageBlock.ts
 var THINKING_ORGANIZER_DIR = "thinking-organizer";
@@ -15176,13 +15437,18 @@ function getProjectStoragePath(projectRoot, nodeType) {
   return `${root}/${THINKING_ORGANIZER_DIR}/${TYPE_FOLDERS[nodeType]}`;
 }
 
+// src/services/orchestrators/vaultSyncOrch.ts
+init_fsBlock();
+
 // src/services/lego_blocks/integrations/capabilityFeatureFlagsBlock.ts
+init_storageKeyBlock();
 var DEFAULT_FLAGS = {
   agent_capabilities_enabled: false,
   fastapi_capability_adapter_enabled: false,
   extension_host_enabled: false,
   extension_builder_enabled: false,
-  yaml_fields_auto_heal_enabled: false
+  yaml_fields_auto_heal_enabled: false,
+  hybrid_sync_reconciliation_enabled: false
 };
 function getCapabilityFeatureFlags() {
   const stored = getJsonStorageItem(
@@ -15194,14 +15460,20 @@ function getCapabilityFeatureFlags() {
     ...stored,
     yaml_fields_auto_heal_enabled: Boolean(
       stored.yaml_fields_auto_heal_enabled ?? stored.wiki_links_auto_heal_enabled ?? DEFAULT_FLAGS.yaml_fields_auto_heal_enabled
+    ),
+    hybrid_sync_reconciliation_enabled: Boolean(
+      stored.hybrid_sync_reconciliation_enabled ?? DEFAULT_FLAGS.hybrid_sync_reconciliation_enabled
     )
   };
 }
 
+// src/services/orchestrators/vaultSyncOrch.ts
+init_dbBlock();
+
 // src/services/lego_blocks/integrations/obsidianWikilinkBlock.ts
 var WIKILINK_TOKEN_PATTERN = /(!)?\[\[([^[\]]+?)\]\]/g;
-function normalizeVaultPath(path3) {
-  const sanitized = path3.replace(/\\/g, "/").trim();
+function normalizeVaultPath(path5) {
+  const sanitized = path5.replace(/\\/g, "/").trim();
   if (!sanitized) return "";
   const parts = sanitized.split("/").filter(Boolean);
   const stack = [];
@@ -15215,14 +15487,14 @@ function normalizeVaultPath(path3) {
   }
   return stack.join("/");
 }
-function dirnameOf(path3) {
-  const normalized = normalizeVaultPath(path3);
+function dirnameOf(path5) {
+  const normalized = normalizeVaultPath(path5);
   const idx = normalized.lastIndexOf("/");
   if (idx < 0) return "";
   return normalized.slice(0, idx);
 }
-function leafOf(path3) {
-  const normalized = normalizeVaultPath(path3);
+function leafOf(path5) {
+  const normalized = normalizeVaultPath(path5);
   const idx = normalized.lastIndexOf("/");
   if (idx < 0) return normalized;
   return normalized.slice(idx + 1);
@@ -15234,17 +15506,17 @@ function joinVaultPath(parent, child) {
   if (!relRaw) return base;
   return normalizeVaultPath(`${base}/${relRaw}`);
 }
-function hasExplicitExtension(path3) {
-  const leaf = leafOf(path3);
+function hasExplicitExtension(path5) {
+  const leaf = leafOf(path5);
   const idx = leaf.lastIndexOf(".");
   return idx > 0;
 }
-function stripMarkdownExtension(path3) {
-  if (path3.toLowerCase().endsWith(".md")) return path3.slice(0, -3);
-  return path3;
+function stripMarkdownExtension(path5) {
+  if (path5.toLowerCase().endsWith(".md")) return path5.slice(0, -3);
+  return path5;
 }
-function extensionVariants(path3) {
-  const normalized = normalizeVaultPath(path3);
+function extensionVariants(path5) {
+  const normalized = normalizeVaultPath(path5);
   if (!normalized) return [];
   if (hasExplicitExtension(normalized)) return [normalized];
   return [
@@ -15254,27 +15526,27 @@ function extensionVariants(path3) {
     `${normalized}.excalidraw`
   ];
 }
-function addLookupKey(map2, key, path3) {
+function addLookupKey(map2, key, path5) {
   const normalizedKey = normalizeVaultPath(key).toLowerCase();
   if (!normalizedKey) return;
   const existing = map2.get(normalizedKey);
   if (existing) {
-    existing.add(path3);
+    existing.add(path5);
     return;
   }
-  map2.set(normalizedKey, /* @__PURE__ */ new Set([path3]));
+  map2.set(normalizedKey, /* @__PURE__ */ new Set([path5]));
 }
 function buildCandidateLookup(candidatePaths) {
   const map2 = /* @__PURE__ */ new Map();
   for (const rawPath of candidatePaths) {
-    const path3 = normalizeVaultPath(rawPath);
-    if (!path3) continue;
-    addLookupKey(map2, path3, path3);
-    const withoutMd = stripMarkdownExtension(path3);
-    addLookupKey(map2, withoutMd, path3);
-    const fileName = leafOf(path3);
-    addLookupKey(map2, fileName, path3);
-    addLookupKey(map2, stripMarkdownExtension(fileName), path3);
+    const path5 = normalizeVaultPath(rawPath);
+    if (!path5) continue;
+    addLookupKey(map2, path5, path5);
+    const withoutMd = stripMarkdownExtension(path5);
+    addLookupKey(map2, withoutMd, path5);
+    const fileName = leafOf(path5);
+    addLookupKey(map2, fileName, path5);
+    addLookupKey(map2, stripMarkdownExtension(fileName), path5);
   }
   return map2;
 }
@@ -15313,8 +15585,8 @@ function splitTargetAndAlias(rawInner) {
   const alias = rawInner.slice(pipeIdx + 1).trim();
   return { target, alias: alias || null };
 }
-function normalizeWikilinkPath(path3) {
-  return path3.replace(/\\/g, "/").replace(/^\/+/g, "").replace(/\/+/g, "/").trim();
+function normalizeWikilinkPath(path5) {
+  return path5.replace(/\\/g, "/").replace(/^\/+/g, "").replace(/\/+/g, "/").trim();
 }
 function parseWikilinkTargetBlock(rawTarget) {
   const raw = rawTarget.trim();
@@ -15515,8 +15787,8 @@ function findYamlCommentStartIndexBlock(value) {
 function hasUriScheme(value) {
   return /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value);
 }
-function normalizeLinkPath(path3) {
-  const sanitized = path3.replace(/\\/g, "/").trim();
+function normalizeLinkPath(path5) {
+  const sanitized = path5.replace(/\\/g, "/").trim();
   if (!sanitized) return "";
   const parts = sanitized.split("/").filter(Boolean);
   const stack = [];
@@ -15530,8 +15802,8 @@ function normalizeLinkPath(path3) {
   }
   return stack.join("/");
 }
-function dirnameLinkPath(path3) {
-  const normalized = normalizeLinkPath(path3);
+function dirnameLinkPath(path5) {
+  const normalized = normalizeLinkPath(path5);
   const idx = normalized.lastIndexOf("/");
   if (idx < 0) return "";
   return normalized.slice(0, idx);
@@ -15705,6 +15977,8 @@ function startActivity(input) {
 }
 
 // src/services/orchestrators/vaultSyncOrch.ts
+init_vaultSyncExclusionsBlock();
+init_debugLogBlock();
 var _cachedFilePaths = null;
 var _cachedFilePathsAge = 0;
 var FILE_PATHS_CACHE_TTL_MS = 3e4;
@@ -15721,14 +15995,35 @@ function setCachedFilePaths(paths) {
 }
 var IOS_MAX_SYNC_FILE_SIZE_BYTES = 2 * 1024 * 1024;
 var DEFAULT_MAX_SYNC_FILE_SIZE_BYTES = 12 * 1024 * 1024;
+var MAX_REASONABLE_EPOCH_SECONDS = 1e10;
 function resolveMaxSyncFileSizeBytes(options) {
   if (typeof options?.maxFileSizeBytes === "number" && Number.isFinite(options.maxFileSizeBytes)) {
     return Math.max(1, Math.floor(options.maxFileSizeBytes));
   }
   return getPlatformName() === "ios" ? IOS_MAX_SYNC_FILE_SIZE_BYTES : DEFAULT_MAX_SYNC_FILE_SIZE_BYTES;
 }
-async function fullSync(fs, options) {
-  const vaultFs = fs ?? getVaultFS();
+function normalizeRootPath(value) {
+  if (!value) return void 0;
+  const trimmed = value.replace(/^\/+|\/+$/g, "").trim();
+  return trimmed || void 0;
+}
+async function clearNodesAndLinksUnderPath(rootPath) {
+  const allPaths = await getAllFilePaths();
+  const scoped = [];
+  for (const p of allPaths) {
+    if (p === rootPath || p.startsWith(`${rootPath}/`)) scoped.push(p);
+  }
+  if (scoped.length > 0) {
+    await bulkDeleteNodesByPaths(scoped);
+    await bulkDeleteLinksForFiles(scoped);
+  }
+}
+function normalizeEpochSeconds(value) {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return value > MAX_REASONABLE_EPOCH_SECONDS ? value / 1e3 : value;
+}
+async function fullSync(fs4, options) {
+  const vaultFs = fs4 ?? getVaultFS();
   const start = Date.now();
   const autoHealEnabled = getCapabilityFeatureFlags().yaml_fields_auto_heal_enabled;
   const activity = startActivity({
@@ -15737,10 +16032,22 @@ async function fullSync(fs, options) {
     detail: "Full scan"
   });
   try {
-    await clearAll();
-    await clearAllLinks();
-    const entries = await vaultFs.walkVault([".md"]);
-    activity.update({ total: entries.length, completed: 0, detail: `Full scan \u2014 ${entries.length} files` });
+    const rootPath = normalizeRootPath(options?.rootPath);
+    if (!rootPath) {
+      await clearAll();
+      await clearAllLinks();
+    } else {
+      await clearNodesAndLinksUnderPath(rootPath);
+    }
+    const walked = await vaultFs.walkVault([".md"]);
+    const excludedPrefixes = getSyncExcludedPathPrefixes();
+    const allEntries = excludedPrefixes.length === 0 ? walked : walked.filter((e) => !isPathSyncExcluded(e.path, excludedPrefixes));
+    const entries = rootPath ? allEntries.filter((e) => e.path === rootPath || e.path.startsWith(`${rootPath}/`)) : allEntries;
+    activity.update({
+      total: entries.length,
+      completed: 0,
+      detail: rootPath ? `Scoped to ${rootPath} \u2014 ${entries.length} of ${allEntries.length} files` : `Full scan \u2014 ${entries.length} files`
+    });
     const candidatePaths = entries.map((e) => e.path);
     setCachedFilePaths(new Set(candidatePaths));
     const parentKeyToPath = autoHealEnabled ? await buildParentKeyToPathIndex(vaultFs, entries, resolveMaxSyncFileSizeBytes(options)) : void 0;
@@ -15759,8 +16066,95 @@ async function fullSync(fs, options) {
     activity.end();
   }
 }
-async function syncSingleFile(filePath, fs, options) {
-  const vaultFs = fs ?? getVaultFS();
+async function incrementalSync(sinceTimestamp, fs4, options) {
+  const vaultFs = fs4 ?? getVaultFS();
+  const start = Date.now();
+  const autoHealEnabled = getCapabilityFeatureFlags().yaml_fields_auto_heal_enabled;
+  const activity = startActivity({
+    kind: "sync",
+    label: "Syncing vault\u2026",
+    detail: "Checking for changes"
+  });
+  try {
+    const walked = await vaultFs.walkVault([".md"]);
+    const excludedPrefixes = getSyncExcludedPathPrefixes();
+    const allEntries = excludedPrefixes.length === 0 ? walked : walked.filter((e) => !isPathSyncExcluded(e.path, excludedPrefixes));
+    const sinceSeconds = normalizeEpochSeconds(sinceTimestamp);
+    const updatedEntries = allEntries.filter((e) => normalizeEpochSeconds(e.mtime) > sinceSeconds);
+    const currentPaths = new Set(allEntries.map((e) => e.path));
+    const cachedPaths = await getAllFilePaths();
+    const suspectedDeletes = [];
+    for (const cachedPath of cachedPaths) {
+      if (currentPaths.has(cachedPath)) continue;
+      if (isPathSyncExcluded(cachedPath, excludedPrefixes)) continue;
+      suspectedDeletes.push(cachedPath);
+    }
+    const hybridEnabled = getCapabilityFeatureFlags().hybrid_sync_reconciliation_enabled;
+    const movedPathsToReparse = /* @__PURE__ */ new Set();
+    const deletedPaths = [];
+    if (hybridEnabled && suspectedDeletes.length > 0) {
+      const reconciled = await reconcileMovesByUuid({
+        fs: vaultFs,
+        allEntries,
+        cachedPaths,
+        suspectedDeletes,
+        maxFileSizeBytes: resolveMaxSyncFileSizeBytes(options)
+      });
+      for (const p of reconciled.movedNewPaths) movedPathsToReparse.add(p);
+      for (const p of reconciled.trueDeletes) deletedPaths.push(p);
+    } else {
+      deletedPaths.push(...suspectedDeletes);
+    }
+    if (deletedPaths.length > 0) {
+      await bulkDeleteNodesByPaths(deletedPaths);
+      await bulkDeleteLinksForFiles(deletedPaths);
+    }
+    const deletedCount = deletedPaths.length;
+    const updatedEntriesIncludingMoves = movedPathsToReparse.size === 0 ? updatedEntries : (() => {
+      const seen = new Set(updatedEntries.map((e) => e.path));
+      const extra = allEntries.filter((e) => movedPathsToReparse.has(e.path) && !seen.has(e.path));
+      return extra.length === 0 ? updatedEntries : [...updatedEntries, ...extra];
+    })();
+    const candidatePaths = allEntries.map((e) => e.path);
+    setCachedFilePaths(new Set(candidatePaths));
+    const cachedUpdatedAtByPath = /* @__PURE__ */ new Map();
+    await Promise.all(
+      updatedEntriesIncludingMoves.map(async (entry) => {
+        if (movedPathsToReparse.has(entry.path)) return;
+        const node = await getNodeByPath(entry.path);
+        if (node?.updatedAt) cachedUpdatedAtByPath.set(entry.path, node.updatedAt);
+      })
+    );
+    const movedCount = movedPathsToReparse.size;
+    activity.update({
+      total: updatedEntriesIncludingMoves.length,
+      completed: 0,
+      detail: updatedEntriesIncludingMoves.length === 0 ? "Up to date" : [
+        `${updatedEntriesIncludingMoves.length} changed`,
+        movedCount ? `${movedCount} moved` : null,
+        deletedCount ? `${deletedCount} removed` : null
+      ].filter(Boolean).join(", ")
+    });
+    const result = await syncEntries(
+      vaultFs,
+      updatedEntriesIncludingMoves,
+      options,
+      candidatePaths,
+      void 0,
+      autoHealEnabled,
+      (completed) => activity.update({ completed }),
+      cachedUpdatedAtByPath
+    );
+    result.deletedNodes = deletedCount;
+    result.totalFiles = allEntries.length;
+    result.durationMs = Date.now() - start;
+    return result;
+  } finally {
+    activity.end();
+  }
+}
+async function syncSingleFile(filePath, fs4, options) {
+  const vaultFs = fs4 ?? getVaultFS();
   const maxFileSizeBytes = resolveMaxSyncFileSizeBytes(options);
   try {
     const stat2 = await vaultFs.stat(filePath);
@@ -15790,7 +16184,7 @@ async function syncSingleFile(filePath, fs, options) {
   }
 }
 var LINK_BATCH_SIZE = 500;
-async function syncEntries(fs, entries, options, candidatePaths, parentKeyToPath, autoHealEnabled, onProgress) {
+async function syncEntries(fs4, entries, options, candidatePaths, parentKeyToPath, autoHealEnabled, onProgress, skipIfUpdatedAtMatches) {
   const maxFileSizeBytes = resolveMaxSyncFileSizeBytes(options);
   const result = {
     totalFiles: entries.length,
@@ -15810,10 +16204,13 @@ async function syncEntries(fs, entries, options, candidatePaths, parentKeyToPath
     const batch = pendingNodes.splice(0);
     const { conflicts } = await bulkUpsertNodes(batch);
     if (conflicts.length > 0) {
-      result.errors.push(...conflicts.map((conflict) => ({
-        path: conflict.filePath,
-        error: formatNodeKeyConflictError(conflict)
-      })));
+      for (const conflict of conflicts) {
+        result.errors.push({
+          path: conflict.filePath,
+          error: formatNodeKeyConflictError(conflict)
+        });
+        reportNodeKeyConflictToDebugConsole(conflict);
+      }
     }
   }
   async function flushLinks() {
@@ -15832,56 +16229,90 @@ async function syncEntries(fs, entries, options, candidatePaths, parentKeyToPath
       }
     }
   }
+  const READ_BATCH_SIZE = getPlatformName() === "ios" ? 8 : 16;
   let progressCount = 0;
   let nextProgressReport = 0;
-  for (const entry of entries) {
-    progressCount++;
-    if (onProgress && progressCount >= nextProgressReport) {
-      onProgress(progressCount);
-      nextProgressReport = progressCount + Math.max(5, Math.floor(entries.length / 50));
-    }
-    try {
-      if (entry.size > maxFileSizeBytes) {
+  for (let batchStart = 0; batchStart < entries.length; batchStart += READ_BATCH_SIZE) {
+    const batch = entries.slice(batchStart, batchStart + READ_BATCH_SIZE);
+    const reads = await Promise.all(batch.map(async (entry) => {
+      if (entry.size > maxFileSizeBytes) return null;
+      try {
+        return { content: await fs4.read(entry.path) };
+      } catch (err) {
+        return { error: err };
+      }
+    }));
+    for (let i = 0; i < batch.length; i++) {
+      const entry = batch[i];
+      const slot = reads[i];
+      progressCount++;
+      if (onProgress && progressCount >= nextProgressReport) {
+        onProgress(progressCount);
+        nextProgressReport = progressCount + Math.max(5, Math.floor(entries.length / 50));
+      }
+      if (slot === null) {
         result.skippedFiles++;
         continue;
       }
-      let content = await fs.read(entry.path);
-      if (!hasFrontmatter(content)) {
-        result.skippedFiles++;
+      if ("error" in slot) {
+        result.errors.push({
+          path: entry.path,
+          error: slot.error instanceof Error ? slot.error.message : String(slot.error)
+        });
         continue;
       }
-      const note = parseNote(content);
-      if (!note) {
-        result.skippedFiles++;
-        continue;
-      }
-      if (autoHealEnabled) {
-        const healed = await healWikiLinksForNote(fs, entry.path, note, parentKeyToPath);
-        if (healed) content = healed;
-      }
-      const record = frontmatterToRecord(note.frontmatter, entry.path, note.body);
-      pendingNodes.push(record);
-      result.parsedNodes++;
-      const extracted = extractLinksFromContentBlock(content, entry.path, allCandidatePaths);
-      for (const link of extracted) {
-        pendingLinks.push({
-          sourceFilePath: entry.path,
-          targetFilePath: link.targetFilePath,
-          linkType: link.linkType,
-          rawText: link.rawText
+      try {
+        let content = slot.content;
+        if (!hasFrontmatter(content)) {
+          result.skippedFiles++;
+          continue;
+        }
+        if (skipIfUpdatedAtMatches && skipIfUpdatedAtMatches.size > 0) {
+          const cachedUpdatedAt = skipIfUpdatedAtMatches.get(entry.path);
+          if (cachedUpdatedAt) {
+            const fileUpdatedAt = peekFrontmatterUpdatedAt(content);
+            if (fileUpdatedAt && fileUpdatedAt === cachedUpdatedAt) {
+              result.skippedFiles++;
+              continue;
+            }
+          }
+        }
+        const note = parseNote(content);
+        if (!note) {
+          result.skippedFiles++;
+          continue;
+        }
+        if (autoHealEnabled) {
+          const healed = await healWikiLinksForNote(fs4, entry.path, note, parentKeyToPath);
+          if (healed) content = healed;
+        }
+        const record = frontmatterToRecord(note.frontmatter, entry.path, note.body);
+        pendingNodes.push(record);
+        result.parsedNodes++;
+        const extracted = extractLinksFromContentBlock(content, entry.path, allCandidatePaths);
+        for (const link of extracted) {
+          pendingLinks.push({
+            sourceFilePath: entry.path,
+            targetFilePath: link.targetFilePath,
+            linkType: link.linkType,
+            rawText: link.rawText
+          });
+        }
+        if (pendingNodes.length >= NODE_BATCH_SIZE) {
+          await flushNodes();
+        }
+        if (pendingLinks.length >= LINK_BATCH_SIZE) {
+          await flushLinks();
+        }
+      } catch (err) {
+        result.errors.push({
+          path: entry.path,
+          error: err instanceof Error ? err.message : String(err)
         });
       }
-      if (pendingNodes.length >= NODE_BATCH_SIZE) {
-        await flushNodes();
-      }
-      if (pendingLinks.length >= LINK_BATCH_SIZE) {
-        await flushLinks();
-      }
-    } catch (err) {
-      result.errors.push({
-        path: entry.path,
-        error: err instanceof Error ? err.message : String(err)
-      });
+    }
+    if (batchStart + READ_BATCH_SIZE < entries.length) {
+      await new Promise((resolve2) => setTimeout(resolve2, 0));
     }
   }
   await flushNodes();
@@ -15889,12 +16320,66 @@ async function syncEntries(fs, entries, options, candidatePaths, parentKeyToPath
   return result;
 }
 var FRONTMATTER_KEY_RE = /^key:\s*["']?([^"'\n]+?)["']?\s*$/m;
-async function buildParentKeyToPathIndex(fs, entries, maxFileSizeBytes) {
+var FRONTMATTER_UPDATED_AT_RE = /^updated_at:\s*["']?([^"'\n]+?)["']?\s*$/m;
+function peekFrontmatterUpdatedAt(content) {
+  if (!hasFrontmatter(content)) return null;
+  const match = FRONTMATTER_UPDATED_AT_RE.exec(content);
+  return match?.[1]?.trim() ?? null;
+}
+var FRONTMATTER_UUID_RE = /^uuid:\s*["']?([^"'\n]+?)["']?\s*$/m;
+function peekFrontmatterUuid(content) {
+  if (!hasFrontmatter(content)) return null;
+  const match = FRONTMATTER_UUID_RE.exec(content);
+  return match?.[1]?.trim() ?? null;
+}
+async function reconcileMovesByUuid(params) {
+  const { fs: fs4, allEntries, cachedPaths, suspectedDeletes, maxFileSizeBytes } = params;
+  const trueDeletes = [];
+  const movedNewPaths = /* @__PURE__ */ new Set();
+  const newToCache = allEntries.filter(
+    (e) => !cachedPaths.has(e.path) && e.size <= maxFileSizeBytes
+  );
+  if (newToCache.length === 0) {
+    return { movedNewPaths, trueDeletes: suspectedDeletes };
+  }
+  const newPathByUuid = /* @__PURE__ */ new Map();
+  await Promise.all(newToCache.map(async (entry) => {
+    try {
+      const content = await fs4.read(entry.path);
+      const uuid = peekFrontmatterUuid(content);
+      if (uuid) newPathByUuid.set(uuid, entry.path);
+    } catch {
+    }
+  }));
+  if (newPathByUuid.size === 0) {
+    return { movedNewPaths, trueDeletes: suspectedDeletes };
+  }
+  const cachedByPath = await getNodesByPaths(suspectedDeletes);
+  for (const oldPath of suspectedDeletes) {
+    const cachedNode = cachedByPath.get(oldPath);
+    const cachedUuid = cachedNode?.uuid;
+    if (!cachedUuid) {
+      trueDeletes.push(oldPath);
+      continue;
+    }
+    const newPath = newPathByUuid.get(cachedUuid);
+    if (!newPath) {
+      trueDeletes.push(oldPath);
+      continue;
+    }
+    await updateNodeFilePath(cachedUuid, newPath);
+    await updateLinkSourcePaths(oldPath, newPath);
+    await updateLinkTargets(oldPath, newPath);
+    movedNewPaths.add(newPath);
+  }
+  return { movedNewPaths, trueDeletes };
+}
+async function buildParentKeyToPathIndex(fs4, entries, maxFileSizeBytes) {
   const keyToPath = /* @__PURE__ */ new Map();
   for (const entry of entries) {
     if (entry.size > maxFileSizeBytes) continue;
     try {
-      const content = await fs.read(entry.path);
+      const content = await fs4.read(entry.path);
       if (!hasFrontmatter(content)) continue;
       const match = FRONTMATTER_KEY_RE.exec(content);
       const key = match?.[1]?.trim();
@@ -15905,7 +16390,7 @@ async function buildParentKeyToPathIndex(fs, entries, maxFileSizeBytes) {
   }
   return keyToPath;
 }
-async function healWikiLinksForNote(fs, filePath, note, parentKeyToPath) {
+async function healWikiLinksForNote(fs4, filePath, note, parentKeyToPath) {
   const parentKey = typeof note.frontmatter.parent === "string" ? note.frontmatter.parent.trim() : "";
   const parentFilePath = parentKey ? parentKeyToPath?.get(parentKey) ?? (await getNodeByKey(parentKey))?.filePath : void 0;
   const { frontmatter: nextFrontmatter, changed } = mergeWikiLinksIntoFrontmatterBlock(
@@ -15920,11 +16405,33 @@ async function healWikiLinksForNote(fs, filePath, note, parentKeyToPath) {
   if (!changed) return void 0;
   note.frontmatter = nextFrontmatter;
   const rewritten = stringifyNote(note);
-  await fs.write(filePath, rewritten);
+  await fs4.write(filePath, rewritten);
   return rewritten;
 }
 function formatNodeKeyConflictError(conflict) {
-  return `Duplicate YAML key "${conflict.key}" conflicts with "${conflict.conflictingFilePath}". Node keys must be unique.`;
+  const other = conflict.conflictingFilePath || `[uuid:${conflict.conflictingUuid}]`;
+  return `Duplicate YAML key "${conflict.key}" \u2014 also claimed by "${other}". Rename the YAML \`key:\` field in one file so each node has a unique key.`;
+}
+var reportedKeyConflictsBlock = /* @__PURE__ */ new Set();
+function reportNodeKeyConflictToDebugConsole(conflict) {
+  const pair = [conflict.filePath, conflict.conflictingFilePath].sort().join("|");
+  const dedupeKey = `${conflict.key}::${pair}`;
+  if (reportedKeyConflictsBlock.has(dedupeKey)) return;
+  reportedKeyConflictsBlock.add(dedupeKey);
+  const details = [
+    `key: ${conflict.key}`,
+    `file A: ${conflict.filePath || "[unknown]"} (uuid: ${conflict.uuid})`,
+    `file B: ${conflict.conflictingFilePath || "[unknown]"} (uuid: ${conflict.conflictingUuid})`,
+    "",
+    "Fix: open one of the files and change the `key:` field in its YAML",
+    "frontmatter to something unique, then re-sync. If one is a stale",
+    "duplicate (e.g. left over from an iCloud move), delete that file."
+  ].join("\n");
+  logError(
+    `Duplicate YAML key "${conflict.key}" \u2014 two files claim it`,
+    details,
+    "vaultSync"
+  );
 }
 function frontmatterToRecord(fm, filePath, body) {
   const { metadata, metadataKeys, metadataText } = extractGenericMetadata(fm);
@@ -16054,13 +16561,13 @@ function extractGenericMetadata(frontmatter) {
 }
 function collectMetadataKeys2(metadata) {
   const out = /* @__PURE__ */ new Set();
-  walkMetadata("", metadata, (path3) => out.add(path3));
+  walkMetadata("", metadata, (path5) => out.add(path5));
   return [...out];
 }
 function buildMetadataText(metadata) {
   const out = [];
-  walkMetadata("", metadata, (path3, value) => {
-    out.push(path3);
+  walkMetadata("", metadata, (path5, value) => {
+    out.push(path5);
     if (value !== null && value !== void 0 && typeof value !== "object") {
       out.push(String(value));
     }
@@ -16070,18 +16577,18 @@ function buildMetadataText(metadata) {
 function walkMetadata(prefix, value, visitor) {
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i += 1) {
-      const path3 = prefix ? `${prefix}[${i}]` : `[${i}]`;
-      visitor(path3, value[i]);
-      walkMetadata(path3, value[i], visitor);
+      const path5 = prefix ? `${prefix}[${i}]` : `[${i}]`;
+      visitor(path5, value[i]);
+      walkMetadata(path5, value[i], visitor);
     }
     return;
   }
   if (value && typeof value === "object") {
     const record = value;
     for (const [key, inner] of Object.entries(record)) {
-      const path3 = prefix ? `${prefix}.${key}` : key;
-      visitor(path3, inner);
-      walkMetadata(path3, inner, visitor);
+      const path5 = prefix ? `${prefix}.${key}` : key;
+      visitor(path5, inner);
+      walkMetadata(path5, inner, visitor);
     }
   }
 }
@@ -16110,11 +16617,11 @@ var TYPE_TICKET_CODES = {
   handoff: "H"
 };
 async function createYamlNode(params) {
-  const fs = params.fs ?? getVaultFS();
+  const fs4 = params.fs ?? getVaultFS();
   const projectRoot = await resolveProjectRoot({
     explicitProjectRoot: params.projectRoot,
     parentKey: params.parentKey,
-    fs
+    fs: fs4
   });
   const programCode = await resolveProgramCode({
     type: params.type,
@@ -16174,18 +16681,18 @@ async function createYamlNode(params) {
   }
   const filePath = `${folder}/${filename}`;
   try {
-    await fs.mkdir(folder);
+    await fs4.mkdir(folder);
   } catch {
   }
   const content = stringifyNote(note);
-  await fs.write(filePath, content);
-  await syncSingleFile(filePath, fs);
+  await fs4.write(filePath, content);
+  await syncSingleFile(filePath, fs4);
   const record = await getNodeByKey(note.frontmatter.key);
   if (!record) throw new Error(`Failed to sync created node: ${note.frontmatter.key}`);
   return record;
 }
-async function renameYamlNode(uuid, newTitle, fs) {
-  const vaultFs = fs ?? getVaultFS();
+async function renameYamlNode(uuid, newTitle, fs4) {
+  const vaultFs = fs4 ?? getVaultFS();
   const record = await getNodeByUuid(uuid);
   if (!record) throw new Error(`Node not found: ${uuid}`);
   const content = await vaultFs.read(record.filePath);
@@ -16199,8 +16706,8 @@ async function renameYamlNode(uuid, newTitle, fs) {
   if (!updated) throw new Error(`Failed to sync renamed node: ${uuid}`);
   return updated;
 }
-async function updateYamlNode(uuid, updates, fs) {
-  const vaultFs = fs ?? getVaultFS();
+async function updateYamlNode(uuid, updates, fs4) {
+  const vaultFs = fs4 ?? getVaultFS();
   const record = await getNodeByUuid(uuid);
   if (!record) throw new Error(`Node not found: ${uuid}`);
   const content = await vaultFs.read(record.filePath);
@@ -16246,8 +16753,8 @@ async function updateYamlNode(uuid, updates, fs) {
   if (!updated) throw new Error(`Failed to sync updated node: ${uuid}`);
   return updated;
 }
-async function moveYamlNode(uuid, newParentKey, fs) {
-  const vaultFs = fs ?? getVaultFS();
+async function moveYamlNode(uuid, newParentKey, fs4) {
+  const vaultFs = fs4 ?? getVaultFS();
   const record = await getNodeByUuid(uuid);
   if (!record) throw new Error(`Node not found: ${uuid}`);
   const content = await vaultFs.read(record.filePath);
@@ -16291,8 +16798,8 @@ async function moveYamlNode(uuid, newParentKey, fs) {
   if (!updated) throw new Error(`Failed to sync moved node: ${uuid}`);
   return updated;
 }
-async function deleteYamlNode(uuid, fs) {
-  void fs;
+async function deleteYamlNode(uuid, fs4) {
+  void fs4;
   const record = await getNodeByUuid(uuid);
   if (!record) return;
   try {
@@ -16314,8 +16821,8 @@ async function getYamlNode(uuid) {
 async function getYamlNodeByKey(key) {
   return getNodeByKey(key);
 }
-async function readYamlFrontmatterByPath(filePath, fs) {
-  const vaultFs = fs ?? getVaultFS();
+async function readYamlFrontmatterByPath(filePath, fs4) {
+  const vaultFs = fs4 ?? getVaultFS();
   const content = await vaultFs.read(filePath);
   const note = parseNote(content);
   if (!note) return null;
@@ -16413,9 +16920,9 @@ function prependTicketToTitle(ticket, title) {
   if (trimmedTitle.startsWith(`${ticket} - `)) return trimmedTitle;
   return `${ticket} - ${trimmedTitle}`;
 }
-async function readProjectRootFromFile(filePath, fs) {
+async function readProjectRootFromFile(filePath, fs4) {
   try {
-    const content = await fs.read(filePath);
+    const content = await fs4.read(filePath);
     const note = parseNote(content);
     if (!note) return void 0;
     const raw = note.frontmatter.project_root;
@@ -16494,7 +17001,12 @@ function applyExtraFrontmatterFields(frontmatter, extraFields) {
   }
 }
 
+// src/services/orchestrators/capabilityRouterOrch.ts
+init_fsBlock();
+init_storageKeyBlock();
+
 // src/services/lego_blocks/units/userProfileBlock.ts
+init_storageKeyBlock();
 var USER_PROFILE_DIR_PATH_BLOCK = ".thinking-space";
 var USER_PROFILE_FILE_PATH_BLOCK = `${USER_PROFILE_DIR_PATH_BLOCK}/profile.json`;
 var DEFAULT_USER_NAME_BLOCK = "You";
@@ -16578,8 +17090,21 @@ function getUserCommentAuthorBlock() {
 }
 
 // src/services/orchestrators/thoughtsOrch.ts
+init_fsBlock();
+init_dbBlock();
+
+// src/services/lego_blocks/integrations/thoughtsScannerBlock.ts
+init_vaultConstantsBlock();
+
+// src/services/orchestrators/markdownDocumentsOrch.ts
+init_fsBlock();
+
+// src/services/lego_blocks/integrations/revisionRetentionBlock.ts
+init_fsBlock();
+
+// src/services/orchestrators/thoughtsOrch.ts
 async function createThought(params) {
-  const fs = getVaultFS();
+  const fs4 = getVaultFS();
   const outputPath = `${params.folder_path}/${params.filename}`;
   const bodyParts = [];
   const customTitle = params.title?.trim() || "";
@@ -16607,9 +17132,9 @@ async function createThought(params) {
   if (emotions.length > 0) {
     note.frontmatter.emotions = emotions;
   }
-  await fs.mkdir(params.folder_path);
-  await fs.create(outputPath, stringifyNote(note));
-  await syncSingleFile(outputPath, fs);
+  await fs4.mkdir(params.folder_path);
+  await fs4.create(outputPath, stringifyNote(note));
+  await syncSingleFile(outputPath, fs4);
   return { output_path: outputPath };
 }
 function deriveTitleFromFilename(filename) {
@@ -16635,12 +17160,142 @@ async function ensureUniqueKeyForPath(filePath, suggested) {
   throw new Error(`Could not generate a unique key for ${filePath}`);
 }
 
+// src/services/lego_blocks/integrations/dailyInsightsBlock.ts
+init_fsBlock();
+
+// src/services/lego_blocks/units/memorizedSessionsBlock.ts
+function todayIsoDate(now = /* @__PURE__ */ new Date()) {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+// src/services/lego_blocks/integrations/dailyInsightsBlock.ts
+var DAILY_INSIGHTS_FOLDER = "lifeblood_systems/sfdl/insights";
+function dedupePreserveOrder(items) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const item of items) {
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+function renderBody(fm) {
+  const lines = [];
+  const insights = Array.isArray(fm.insights) ? fm.insights : [];
+  const filesTouched = Array.isArray(fm.files_touched) ? fm.files_touched : [];
+  const linked = Array.isArray(fm.linked_notes) ? fm.linked_notes : [];
+  const teachers = typeof fm.teachers_note === "string" ? fm.teachers_note : "";
+  const conversation = typeof fm.conversation === "string" ? fm.conversation : "";
+  lines.push(`# Insights \u2014 ${fm.date ?? ""}`.trim());
+  lines.push("");
+  if (insights.length > 0) {
+    lines.push("## Insights");
+    for (const insight of insights) lines.push(`- ${insight}`);
+    lines.push("");
+  }
+  if (filesTouched.length > 0) {
+    lines.push("## Files touched");
+    for (const f of filesTouched) lines.push(`- \`${f}\``);
+    lines.push("");
+  }
+  if (linked.length > 0) {
+    lines.push("## Linked notes");
+    for (const l of linked) lines.push(`- ${l}`);
+    lines.push("");
+  }
+  if (teachers.trim()) {
+    lines.push("## Teacher\u2019s note");
+    lines.push(teachers.trim());
+    lines.push("");
+  }
+  if (conversation.trim()) {
+    lines.push("## Conversation");
+    lines.push(conversation.trim());
+    lines.push("");
+  }
+  return lines.join("\n").replace(/\n{3,}$/, "\n");
+}
+async function logDailyInsight(params, fs4 = getVaultFS()) {
+  const date = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : todayIsoDate();
+  const mode = params.mode ?? "append";
+  const folder = DAILY_INSIGHTS_FOLDER;
+  const filename = `${date}-insights.md`;
+  const outputPath = `${folder}/${filename}`;
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const incoming = {
+    insights: dedupePreserveOrder(params.insights ?? []),
+    files_touched: dedupePreserveOrder(params.files_touched ?? []),
+    linked_notes: dedupePreserveOrder(params.linked_notes ?? []),
+    teachers_note: typeof params.teachers_note === "string" ? params.teachers_note.trim() : "",
+    conversation: typeof params.conversation === "string" ? params.conversation.trim() : ""
+  };
+  await fs4.mkdir(folder);
+  const existed = await fs4.exists(outputPath);
+  let note;
+  if (existed && mode === "append") {
+    const raw = await fs4.read(outputPath);
+    const parsed = parseNote(raw);
+    if (parsed) {
+      const fm = parsed.frontmatter;
+      const existingInsights = Array.isArray(fm.insights) ? fm.insights : [];
+      const existingFiles = Array.isArray(fm.files_touched) ? fm.files_touched : [];
+      const existingLinked = Array.isArray(fm.linked_notes) ? fm.linked_notes : [];
+      const existingTeachers = typeof fm.teachers_note === "string" ? fm.teachers_note : "";
+      const existingConversation = typeof fm.conversation === "string" ? fm.conversation : "";
+      fm.insights = dedupePreserveOrder([...existingInsights, ...incoming.insights]);
+      fm.files_touched = dedupePreserveOrder([...existingFiles, ...incoming.files_touched]);
+      fm.linked_notes = dedupePreserveOrder([...existingLinked, ...incoming.linked_notes]);
+      fm.teachers_note = incoming.teachers_note || existingTeachers;
+      fm.conversation = incoming.conversation || existingConversation;
+      fm.updated_at = now;
+      fm.date = date;
+      fm.record_kind = "insight";
+      parsed.body = renderBody(fm);
+      note = parsed;
+    }
+  }
+  if (!note) {
+    note = createNote({
+      type: "thought",
+      title: `Insights \u2014 ${date}`,
+      body: ""
+    });
+    note.frontmatter.record_kind = "insight";
+    note.frontmatter.date = date;
+    note.frontmatter.insights = incoming.insights;
+    note.frontmatter.files_touched = incoming.files_touched;
+    note.frontmatter.linked_notes = incoming.linked_notes;
+    if (incoming.teachers_note) note.frontmatter.teachers_note = incoming.teachers_note;
+    if (incoming.conversation) note.frontmatter.conversation = incoming.conversation;
+    note.frontmatter.created_at = now;
+    note.frontmatter.updated_at = now;
+    note.body = renderBody(note.frontmatter);
+  }
+  await fs4.write(outputPath, stringifyNote(note));
+  await syncSingleFile(outputPath, fs4);
+  const insightsCount = Array.isArray(note.frontmatter.insights) ? note.frontmatter.insights.length : 0;
+  return {
+    output_path: outputPath,
+    was_created: !existed,
+    insights_count: insightsCount
+  };
+}
+
+// src/services/orchestrators/todosOrch.ts
+init_fsBlock();
+
 // src/services/lego_blocks/integrations/todoScannerBlock.ts
+init_vaultConstantsBlock();
 var CHECKBOX_RE = /^- \[([ xX])\] (.+)$/;
-async function toggleTodo(fs, filePath, lineNumber) {
+async function toggleTodo(fs4, filePath, lineNumber) {
   let resultText = "";
   let resultChecked = false;
-  await fs.process(filePath, (content) => {
+  await fs4.process(filePath, (content) => {
     const lines = content.split("\n");
     if (lineNumber < 1 || lineNumber > lines.length) {
       throw new Error(`Line ${lineNumber} out of range (file has ${lines.length} lines)`);
@@ -16662,8 +17317,8 @@ async function toggleTodo(fs, filePath, lineNumber) {
     file: filePath
   };
 }
-async function createTodo(fs, folderPath, dateStr, items) {
-  await fs.mkdir(folderPath);
+async function createTodo(fs4, folderPath, dateStr, items) {
+  await fs4.mkdir(folderPath);
   const filename = `${dateStr}.md`;
   const filePath = `${folderPath}/${filename}`;
   const newLines = items.filter((item) => item.trim()).map((item) => `- [ ] ${item.trim()}`);
@@ -16672,9 +17327,9 @@ async function createTodo(fs, folderPath, dateStr, items) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const defaultTitle = `Todos ${dateStr}`;
   const todoKeyBase = generateKey(`${folderPath}-${dateStr}-todos`) || generateKey(`${dateStr}-todos`) || "todos";
-  const fileExists = await fs.exists(filePath);
+  const fileExists = await fs4.exists(filePath);
   if (fileExists) {
-    const existing = await fs.read(filePath);
+    const existing = await fs4.read(filePath);
     const parsed = parseNote(existing);
     if (parsed) {
       const note = parsed;
@@ -16722,7 +17377,7 @@ async function createTodo(fs, folderPath, dateStr, items) {
     note.frontmatter.todo_date = dateStr;
     content = stringifyNote(note);
   }
-  await fs.write(filePath, content);
+  await fs4.write(filePath, content);
   return {
     output_path: filePath,
     items_added: newLines.length,
@@ -16735,29 +17390,39 @@ function nonEmpty(value) {
 
 // src/services/orchestrators/todosOrch.ts
 async function toggleTodo2(filePath, lineNumber) {
-  const fs = getVaultFS();
-  await toggleTodo(fs, filePath, lineNumber);
-  await syncSingleFile(filePath, fs);
+  const fs4 = getVaultFS();
+  await toggleTodo(fs4, filePath, lineNumber);
+  await syncSingleFile(filePath, fs4);
 }
 async function createTodos(folderPath, date, items) {
-  const fs = getVaultFS();
-  const result = await createTodo(fs, folderPath, date, items);
-  await syncSingleFile(result.output_path, fs);
+  const fs4 = getVaultFS();
+  const result = await createTodo(fs4, folderPath, date, items);
+  await syncSingleFile(result.output_path, fs4);
   return result;
 }
 
 // src/services/orchestrators/fileSystemOrch.ts
+init_fsBlock();
+init_dbBlock();
+
+// src/services/orchestrators/storageOrch.ts
+init_storageKeyBlock();
+
+// src/services/orchestrators/runtimeOrch.ts
+init_fsBlock();
+
+// src/services/orchestrators/fileSystemOrch.ts
 async function listFiles(limit) {
-  const fs = getVaultFS();
-  const files = (await fs.walkVault([".md"])).map((e) => e.path).filter((p) => !p.includes(".excalidraw")).sort();
+  const fs4 = getVaultFS();
+  const files = (await fs4.walkVault([".md"])).map((e) => e.path).filter((p) => !p.includes(".excalidraw")).sort();
   if (typeof limit === "number" && Number.isFinite(limit) && limit >= 0) {
     return files.slice(0, limit);
   }
   return files;
 }
 async function listFolders(limit = 1e3) {
-  const fs = getVaultFS();
-  const entries = await fs.walkVault([".md"]);
+  const fs4 = getVaultFS();
+  const entries = await fs4.walkVault([".md"]);
   const folderSet = /* @__PURE__ */ new Set();
   for (const entry of entries) {
     const parts = entry.path.split("/");
@@ -16768,8 +17433,8 @@ async function listFolders(limit = 1e3) {
   return [...folderSet].sort().slice(0, limit);
 }
 async function listPdfFiles(limit = 500) {
-  const fs = getVaultFS();
-  const entries = await fs.walkVault([".pdf"]);
+  const fs4 = getVaultFS();
+  const entries = await fs4.walkVault([".pdf"]);
   return entries.map((e) => e.path).sort().slice(0, limit);
 }
 
@@ -17319,9 +17984,10 @@ function formatMarkdown(text, options) {
 }
 
 // src/services/orchestrators/formatExcalidrawOrch.ts
+init_fsBlock();
 async function previewFormat(inputPath, options) {
-  const fs = getVaultFS();
-  const content = await fs.read(inputPath);
+  const fs4 = getVaultFS();
+  const content = await fs4.read(inputPath);
   const formatted = formatMarkdown(content, options);
   return {
     original: content,
@@ -17331,15 +17997,15 @@ async function previewFormat(inputPath, options) {
   };
 }
 async function formatAndSave(inputPath, options) {
-  const fs = getVaultFS();
-  const content = await fs.read(inputPath);
+  const fs4 = getVaultFS();
+  const content = await fs4.read(inputPath);
   const formatted = formatMarkdown(content, options);
   const lastSlash = inputPath.lastIndexOf("/");
   const dir = lastSlash >= 0 ? inputPath.slice(0, lastSlash) : "";
   const filename = lastSlash >= 0 ? inputPath.slice(lastSlash + 1) : inputPath;
   const stem = filename.replace(/\.md$/, "");
   const outputPath = dir ? `${dir}/${stem} (formatted for excalidraw).md` : `${stem} (formatted for excalidraw).md`;
-  await fs.write(outputPath, formatted);
+  await fs4.write(outputPath, formatted);
   return {
     success: true,
     output_path: outputPath,
@@ -17348,10 +18014,10 @@ async function formatAndSave(inputPath, options) {
 }
 
 // src/services/orchestrators/pdfToMarkdownOrch.ts
-function toolsApiUrl(path3) {
+function toolsApiUrl(path5) {
   const base = globalThis.__LTM_API_BASE__;
-  if (base) return `${base}${path3}`;
-  return path3;
+  if (base) return `${base}${path5}`;
+  return path5;
 }
 async function previewPdf(inputPath, options) {
   const res = await fetch(toolsApiUrl("/api/tools/pdf-to-markdown/preview"), {
@@ -17567,6 +18233,7 @@ function cleanTranscript(transcriptText, headingsText, options) {
 }
 
 // src/services/orchestrators/transcriptCleanerOrch.ts
+init_fsBlock();
 function previewTranscript(inputText, headingsText, options) {
   try {
     const preview = cleanTranscript(inputText, headingsText, options);
@@ -17582,11 +18249,11 @@ function previewTranscript(inputText, headingsText, options) {
 }
 async function cleanAndSave(params) {
   const cleaned = cleanTranscript(params.input_text, params.headings_text, params.options);
-  const fs = params.fs ?? getVaultFS();
+  const fs4 = params.fs ?? getVaultFS();
   const basePath = params.base_folder ? `${params.base_folder}/${params.output_folder}` : params.output_folder;
-  await fs.mkdir(basePath);
+  await fs4.mkdir(basePath);
   const outputPath = `${basePath}/${params.output_name}.md`;
-  await fs.write(outputPath, cleaned);
+  await fs4.write(outputPath, cleaned);
   return {
     success: true,
     output_path: outputPath,
@@ -17772,9 +18439,9 @@ var TEMPLATE_HEADINGS = {
   map: ["Map", "Important Nodes", "Important Connections"],
   answer: ["Answer", "Supporting Notes", "Follow-Up Questions"]
 };
-async function readNoteBlock(fs, notePath) {
+async function readNoteBlock(fs4, notePath) {
   const normalizedPath = normalizeVaultPathBlock(notePath);
-  if (!await fs.exists(normalizedPath)) {
+  if (!await fs4.exists(normalizedPath)) {
     return {
       path: normalizedPath,
       exists: false,
@@ -17783,7 +18450,7 @@ async function readNoteBlock(fs, notePath) {
       raw: ""
     };
   }
-  const raw = await fs.read(normalizedPath);
+  const raw = await fs4.read(normalizedPath);
   const parsed = parseMarkdownFrontmatterBlock(raw);
   return {
     path: normalizedPath,
@@ -17793,16 +18460,16 @@ async function readNoteBlock(fs, notePath) {
     raw
   };
 }
-async function writeNoteBlock(fs, input) {
+async function writeNoteBlock(fs4, input) {
   const normalizedPath = normalizeVaultPathBlock(input.path);
-  const exists = await fs.exists(normalizedPath);
+  const exists = await fs4.exists(normalizedPath);
   if (exists && !input.overwrite) {
     throw new Error(`File already exists: ${normalizedPath}. Pass overwrite=true to replace it.`);
   }
   const body = (input.body ?? "").replace(/\r\n/g, "\n");
   const frontmatter = normalizeAiSynthesisFrontmatterBlock({ ...input.frontmatter ?? {} });
   const raw = stringifyMarkdownFrontmatterBlock({ frontmatter, body });
-  await fs.write(normalizedPath, raw);
+  await fs4.write(normalizedPath, raw);
   return {
     path: normalizedPath,
     written: true,
@@ -17811,8 +18478,8 @@ async function writeNoteBlock(fs, input) {
     body
   };
 }
-async function patchNoteFrontmatterBlock(fs, input) {
-  const existing = await readNoteBlock(fs, input.path);
+async function patchNoteFrontmatterBlock(fs4, input) {
+  const existing = await readNoteBlock(fs4, input.path);
   if (!existing.exists) throw new Error(`Note not found: ${existing.path}`);
   const nextFrontmatter = patchFrontmatterValuesBlock(existing.frontmatter, {
     set: input.set,
@@ -17823,7 +18490,7 @@ async function patchNoteFrontmatterBlock(fs, input) {
     frontmatter: normalizedFrontmatter,
     body: existing.body
   });
-  await fs.write(existing.path, raw);
+  await fs4.write(existing.path, raw);
   return {
     path: existing.path,
     patched: true,
@@ -17841,11 +18508,11 @@ async function resolveAiSynthesisPathBlock(_fs, input) {
     domain: domainSlugFromRootBlock(domainRoot)
   };
 }
-async function createAiSynthesisNoteBlock(fs, input) {
+async function createAiSynthesisNoteBlock(fs4, input) {
   const title = (input.title ?? "").trim() || buildDefaultTitleBlock(input.synthesis_type, input.slug);
   const slug = normalizeSlugBlock(input.slug || title);
   if (!slug) throw new Error("title or slug is required");
-  const resolved = await resolveAiSynthesisPathBlock(fs, {
+  const resolved = await resolveAiSynthesisPathBlock(fs4, {
     domain_root: input.domain_root,
     layer: input.layer,
     synthesis_type: input.synthesis_type,
@@ -17855,7 +18522,7 @@ async function createAiSynthesisNoteBlock(fs, input) {
     slug
   });
   const ifExists = input.if_exists ?? "return_existing";
-  const existing = await readNoteBlock(fs, resolved.path);
+  const existing = await readNoteBlock(fs4, resolved.path);
   if (existing.exists && ifExists === "return_existing") {
     return {
       created: false,
@@ -17887,7 +18554,7 @@ async function createAiSynthesisNoteBlock(fs, input) {
   };
   const normalizedFrontmatter = normalizeAiSynthesisFrontmatterBlock(frontmatter);
   const body = renderTemplateBodyBlock(title, input.synthesis_type);
-  await writeNoteBlock(fs, {
+  await writeNoteBlock(fs4, {
     path: resolved.path,
     frontmatter: normalizedFrontmatter,
     body,
@@ -17900,17 +18567,17 @@ async function createAiSynthesisNoteBlock(fs, input) {
     body
   };
 }
-async function getImpactedAiSynthesisNotesBlock(fs, input) {
+async function getImpactedAiSynthesisNotesBlock(fs4, input) {
   const changedPaths = uniqueStringsBlock(input.changed_paths.map(normalizeVaultPathBlock));
   if (changedPaths.length === 0) throw new Error("changed_paths is required");
-  const resolvedRoots = await Promise.all(changedPaths.map((changedPath) => resolveDomainRootForPathBlock(fs, changedPath)));
+  const resolvedRoots = await Promise.all(changedPaths.map((changedPath) => resolveDomainRootForPathBlock(fs4, changedPath)));
   const domainRoots = uniqueStringsBlock(resolvedRoots.filter((value) => Boolean(value)));
   if (domainRoots.length !== 1) {
     throw new Error(`changed_paths must resolve to a single domain root. Got: ${domainRoots.join(", ") || "(none)"}`);
   }
   const domainRoot = domainRoots[0];
   const aiRoot = joinVaultPathBlock(domainRoot, AI_SYNTHESIS_ROOT);
-  const notes = await listMarkdownNotesUnderBlock(fs, aiRoot);
+  const notes = await listMarkdownNotesUnderBlock(fs4, aiRoot);
   const impacted = /* @__PURE__ */ new Set();
   for (const note of notes) {
     const derivedFrom = normalizeStringArrayBlock(note.frontmatter.derived_from);
@@ -17924,15 +18591,15 @@ async function getImpactedAiSynthesisNotesBlock(fs, input) {
     }
   }
   for (const changedPath of changedPaths) {
-    const layer = await inferLayerForPathBlock(fs, changedPath);
+    const layer = await inferLayerForPathBlock(fs4, changedPath);
     const canonicalForLayer = layer ? canonicalPagesForLayerBlock(domainRoot, layer) : [];
     for (const candidate of canonicalForLayer) {
-      if (!await fs.exists(candidate)) impacted.add(candidate);
+      if (!await fs4.exists(candidate)) impacted.add(candidate);
     }
   }
   const missingCandidates = [];
   for (const canonical of canonicalPathsForDomainBlock(domainRoot)) {
-    if (await fs.exists(canonical)) continue;
+    if (await fs4.exists(canonical)) continue;
     missingCandidates.push(canonical);
   }
   return {
@@ -17941,8 +18608,8 @@ async function getImpactedAiSynthesisNotesBlock(fs, input) {
     missing_candidates: uniqueStringsBlock(missingCandidates).sort()
   };
 }
-async function updateAiSynthesisCompileStateBlock(fs, input) {
-  return patchNoteFrontmatterBlock(fs, {
+async function updateAiSynthesisCompileStateBlock(fs4, input) {
+  return patchNoteFrontmatterBlock(fs4, {
     path: input.path,
     set: {
       last_compiled_at: input.last_compiled_at ?? (/* @__PURE__ */ new Date()).toISOString(),
@@ -17954,13 +18621,13 @@ async function updateAiSynthesisCompileStateBlock(fs, input) {
     frontmatter: result.frontmatter
   }));
 }
-async function listDomainAiSynthesisHealthBlock(fs, input) {
+async function listDomainAiSynthesisHealthBlock(fs4, input) {
   const domainRoot = normalizeVaultPathBlock(input.domain_root);
   const aiRoot = joinVaultPathBlock(domainRoot, AI_SYNTHESIS_ROOT);
-  const notes = await listMarkdownNotesUnderBlock(fs, aiRoot);
+  const notes = await listMarkdownNotesUnderBlock(fs4, aiRoot);
   const missingCanonicalPages = [];
   for (const candidate of canonicalPathsForDomainBlock(domainRoot)) {
-    if (!await fs.exists(candidate)) missingCanonicalPages.push(candidate);
+    if (!await fs4.exists(candidate)) missingCanonicalPages.push(candidate);
   }
   const stalePages = [];
   const missingRequiredMetadata = [];
@@ -18014,14 +18681,14 @@ function normalizeAiSynthesisFrontmatterBlock(frontmatter) {
   });
   return normalizedFrontmatter;
 }
-async function listMarkdownNotesUnderBlock(fs, rootPath) {
+async function listMarkdownNotesUnderBlock(fs4, rootPath) {
   const normalizedRoot = normalizeVaultPathBlock(rootPath);
-  const entries = await fs.walkVault([".md"]);
+  const entries = await fs4.walkVault([".md"]);
   const notes = [];
   for (const entry of entries) {
     const normalizedPath = normalizeVaultPathBlock(entry.path);
     if (!(normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`))) continue;
-    const raw = await fs.read(normalizedPath);
+    const raw = await fs4.read(normalizedPath);
     const parsed = parseMarkdownFrontmatterBlock(raw);
     notes.push({
       path: normalizedPath,
@@ -18031,15 +18698,15 @@ async function listMarkdownNotesUnderBlock(fs, rootPath) {
   }
   return notes;
 }
-async function inferLayerForPathBlock(fs, notePath) {
+async function inferLayerForPathBlock(fs4, notePath) {
   const normalizedPath = normalizeVaultPathBlock(notePath);
   if (normalizedPath.includes("/AI Synthesis/Reference/")) return "reference";
   if (normalizedPath.includes("/AI Synthesis/Experiential/")) return "experiential";
   if (normalizedPath.includes("/AI Synthesis/Operational/")) return "operational";
   if (normalizedPath.includes("/AI Synthesis/Integrated/")) return "integrated";
-  if (await fs.exists(normalizedPath)) {
+  if (await fs4.exists(normalizedPath)) {
     try {
-      const raw = await fs.read(normalizedPath);
+      const raw = await fs4.read(normalizedPath);
       const parsed = parseMarkdownFrontmatterBlock(raw);
       const layer = asTrimmedStringBlock(parsed.frontmatter.layer);
       if (layer && ["reference", "experiential", "operational", "integrated"].includes(layer)) {
@@ -18057,7 +18724,7 @@ async function inferLayerForPathBlock(fs, notePath) {
   if (lowered.includes("/thinking-organizer/") || lowered.includes("/todos/")) return "operational";
   return "reference";
 }
-async function resolveDomainRootForPathBlock(fs, notePath) {
+async function resolveDomainRootForPathBlock(fs4, notePath) {
   const normalizedPath = normalizeVaultPathBlock(notePath);
   const segments = normalizedPath.split("/").filter(Boolean);
   const aiIndex = segments.indexOf(AI_SYNTHESIS_ROOT);
@@ -18065,7 +18732,7 @@ async function resolveDomainRootForPathBlock(fs, notePath) {
   let cursor = normalizedPath.includes(".") ? import_node_path.default.posix.dirname(normalizedPath) : normalizedPath;
   while (cursor && cursor !== ".") {
     const candidate = joinVaultPathBlock(cursor, AI_SYNTHESIS_ROOT);
-    if (await fs.exists(candidate)) return cursor;
+    if (await fs4.exists(candidate)) return cursor;
     cursor = import_node_path.default.posix.dirname(cursor);
     if (cursor === "." || cursor === "/") break;
   }
@@ -18191,29 +18858,240 @@ function asTrimmedStringBlock(value) {
 }
 
 // src/services/orchestrators/aiSynthesisInfraOrch.ts
-async function readNoteOrch(fs, path3) {
-  return readNoteBlock(fs, path3);
+async function readNoteOrch(fs4, path5) {
+  return readNoteBlock(fs4, path5);
 }
-async function writeNoteOrch(fs, input) {
-  return writeNoteBlock(fs, input);
+async function writeNoteOrch(fs4, input) {
+  return writeNoteBlock(fs4, input);
 }
-async function patchNoteFrontmatterOrch(fs, input) {
-  return patchNoteFrontmatterBlock(fs, input);
+async function patchNoteFrontmatterOrch(fs4, input) {
+  return patchNoteFrontmatterBlock(fs4, input);
 }
-async function resolveAiSynthesisPathOrch(fs, input) {
-  return resolveAiSynthesisPathBlock(fs, input);
+async function resolveAiSynthesisPathOrch(fs4, input) {
+  return resolveAiSynthesisPathBlock(fs4, input);
 }
-async function createAiSynthesisNoteOrch(fs, input) {
-  return createAiSynthesisNoteBlock(fs, input);
+async function createAiSynthesisNoteOrch(fs4, input) {
+  return createAiSynthesisNoteBlock(fs4, input);
 }
-async function getImpactedAiSynthesisNotesOrch(fs, input) {
-  return getImpactedAiSynthesisNotesBlock(fs, input);
+async function getImpactedAiSynthesisNotesOrch(fs4, input) {
+  return getImpactedAiSynthesisNotesBlock(fs4, input);
 }
-async function updateAiSynthesisCompileStateOrch(fs, input) {
-  return updateAiSynthesisCompileStateBlock(fs, input);
+async function updateAiSynthesisCompileStateOrch(fs4, input) {
+  return updateAiSynthesisCompileStateBlock(fs4, input);
 }
-async function listDomainAiSynthesisHealthOrch(fs, input) {
-  return listDomainAiSynthesisHealthBlock(fs, input);
+async function listDomainAiSynthesisHealthOrch(fs4, input) {
+  return listDomainAiSynthesisHealthBlock(fs4, input);
+}
+
+// src/services/lego_blocks/integrations/telegramBotBlock.ts
+var fs = __toESM(require("node:fs"), 1);
+var os = __toESM(require("node:os"), 1);
+var path2 = __toESM(require("node:path"), 1);
+function getSecretsPath() {
+  return path2.join(os.homedir(), ".thinking-space", "secrets.json");
+}
+function readTelegramCredsBlock() {
+  const secretsPath = getSecretsPath();
+  let raw;
+  try {
+    raw = fs.readFileSync(secretsPath, "utf-8");
+  } catch (err) {
+    throw new Error(`Telegram secrets unreadable at ${secretsPath}: ${err.message}`);
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Telegram secrets file is not valid JSON: ${err.message}`);
+  }
+  const tg = parsed?.telegram;
+  if (!tg?.bot_token || tg.chat_id === void 0 || tg.chat_id === null) {
+    throw new Error(`Telegram secrets missing bot_token or chat_id at ${secretsPath}`);
+  }
+  return { botToken: tg.bot_token, chatId: tg.chat_id };
+}
+async function sendTelegramMessageBlock(options) {
+  if (!options.text || !options.text.trim()) {
+    throw new Error("Telegram send: text is required");
+  }
+  const creds = readTelegramCredsBlock();
+  const chatId = options.chatId ?? creds.chatId;
+  const url = `https://api.telegram.org/bot${creds.botToken}/sendMessage`;
+  const body = { chat_id: chatId, text: options.text };
+  if (options.parseMode) body.parse_mode = options.parseMode;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const payload = await res.json().catch(() => null);
+  if (!res.ok || !payload || !("ok" in payload) || !payload.ok) {
+    const desc = payload && "description" in payload && payload.description || res.statusText;
+    const code = payload && "error_code" in payload && payload.error_code || res.status;
+    throw new Error(`Telegram sendMessage failed (${code}): ${desc}`);
+  }
+  return {
+    messageId: payload.result.message_id,
+    chatId: payload.result.chat.id,
+    date: payload.result.date
+  };
+}
+
+// src/services/lego_blocks/integrations/telegramConversationBlock.ts
+var fs2 = __toESM(require("node:fs"), 1);
+var os2 = __toESM(require("node:os"), 1);
+var path3 = __toESM(require("node:path"), 1);
+function stateRoot() {
+  return path3.join(os2.homedir(), ".thinking-space", "state", "telegram");
+}
+function convsDir() {
+  return path3.join(stateRoot(), "conversations");
+}
+function activePathFor() {
+  return path3.join(stateRoot(), "active.json");
+}
+function claudeProjectsRoot() {
+  return path3.join(os2.homedir(), ".claude", "projects");
+}
+function ensureDirs() {
+  fs2.mkdirSync(convsDir(), { recursive: true });
+}
+function convPathFor(convId) {
+  return path3.join(convsDir(), `${convId}.json`);
+}
+function writeJsonAtomic(filePath, value) {
+  const tmp = `${filePath}.tmp`;
+  fs2.writeFileSync(tmp, JSON.stringify(value, null, 2), "utf-8");
+  fs2.renameSync(tmp, filePath);
+}
+function generateConvIdBlock() {
+  const ts = /* @__PURE__ */ new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const slug = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `conv-${slug}-${rand}`;
+}
+function readActivePointerBlock() {
+  const p = activePathFor();
+  if (!fs2.existsSync(p)) return null;
+  try {
+    const raw = fs2.readFileSync(p, "utf-8");
+    const parsed = JSON.parse(raw);
+    return parsed && parsed.convId ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+function writeActivePointerBlock(value) {
+  ensureDirs();
+  const p = activePathFor();
+  if (value === null) {
+    if (fs2.existsSync(p)) fs2.rmSync(p);
+    return;
+  }
+  writeJsonAtomic(p, value);
+}
+function readConversationBlock(convId) {
+  const filePath = convPathFor(convId);
+  if (!fs2.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs2.readFileSync(filePath, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function writeConversationBlock(state) {
+  ensureDirs();
+  writeJsonAtomic(convPathFor(state.convId), state);
+}
+function defaultTtlAtBlock() {
+  const d = /* @__PURE__ */ new Date();
+  d.setHours(23, 59, 59, 999);
+  return d.toISOString();
+}
+function openConversationBlock(input) {
+  const convId = input.convId?.trim() || generateConvIdBlock();
+  const state = {
+    convId,
+    chatId: input.chatId,
+    scheduleKey: input.scheduleKey,
+    sessionId: input.sessionId,
+    cwd: input.cwd?.trim() || process.cwd(),
+    status: "active",
+    startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    ttlAt: input.ttlAt?.trim() || defaultTtlAtBlock(),
+    history: []
+  };
+  const prior = readActivePointerBlock();
+  const replacedConvId = prior && prior.convId !== convId ? prior.convId : null;
+  if (replacedConvId) {
+    try {
+      closeConversationBlock({ convId: replacedConvId, reason: "ttl", deleteClaudeSession: true });
+    } catch {
+    }
+  }
+  writeConversationBlock(state);
+  writeActivePointerBlock({ convId, chatId: input.chatId, scheduleKey: input.scheduleKey });
+  return {
+    convId,
+    convPath: convPathFor(convId),
+    activePath: activePathFor(),
+    replacedConvId
+  };
+}
+function findClaudeSessionFilesBlock(sessionId) {
+  const root = claudeProjectsRoot();
+  if (!fs2.existsSync(root)) return [];
+  const matches = [];
+  let projects;
+  try {
+    projects = fs2.readdirSync(root);
+  } catch {
+    return [];
+  }
+  for (const project of projects) {
+    const candidate = path3.join(root, project, `${sessionId}.jsonl`);
+    if (fs2.existsSync(candidate)) matches.push(candidate);
+  }
+  return matches;
+}
+function closeConversationBlock(input) {
+  const existing = readConversationBlock(input.convId);
+  if (!existing) {
+    throw new Error(`Conversation not found: ${input.convId}`);
+  }
+  const closed = {
+    ...existing,
+    status: "closed",
+    closedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    closeReason: input.reason ?? "manual"
+  };
+  writeConversationBlock(closed);
+  const active = readActivePointerBlock();
+  let activeCleared = false;
+  if (active && active.convId === input.convId) {
+    writeActivePointerBlock(null);
+    activeCleared = true;
+  }
+  let claudeSessionDeleted = false;
+  let claudeSessionPaths = [];
+  if (input.deleteClaudeSession !== false && existing.sessionId) {
+    claudeSessionPaths = findClaudeSessionFilesBlock(existing.sessionId);
+    for (const p of claudeSessionPaths) {
+      try {
+        fs2.rmSync(p);
+      } catch {
+      }
+    }
+    claudeSessionDeleted = claudeSessionPaths.length > 0;
+  }
+  return {
+    convId: input.convId,
+    status: "closed",
+    claudeSessionDeleted,
+    claudeSessionPaths,
+    activeCleared
+  };
 }
 
 // src/services/orchestrators/capabilityRouterOrch.ts
@@ -18237,11 +19115,15 @@ var WRITE_CAPABILITIES2 = /* @__PURE__ */ new Set([
   "handoff.create",
   "comment.add",
   "thoughts.create",
+  "daily.log_insight",
   "todos.create",
   "todos.toggle",
   "tools.excalidraw.format",
   "tools.pdf.convert",
-  "tools.transcript.clean_save"
+  "tools.transcript.clean_save",
+  "telegram.send_message",
+  "telegram.open_conversation",
+  "telegram.close_conversation"
 ]);
 function listCapabilitiesOrch() {
   return CAPABILITY_REGISTRY;
@@ -18252,7 +19134,7 @@ async function invokeCapabilityOrch(request, options) {
   const actor = request.actor ?? DEFAULT_ACTOR;
   const dryRun = !!request.dryRun;
   const warnings = [];
-  const fs = options?.fs;
+  const fs4 = options?.fs;
   const activity = startActivity({
     kind: "capability",
     label: formatCapabilityLabel(request.capability),
@@ -18284,7 +19166,7 @@ async function invokeCapabilityOrch(request, options) {
         ok: false,
         errorCode: response.error.code,
         errorMessage: response.error.message,
-        fs
+        fs: fs4
       });
       return response;
     }
@@ -18320,7 +19202,7 @@ async function invokeCapabilityOrch(request, options) {
             warnings,
             ok: true,
             touchedPaths: extractTouchedPaths(request.capability, success2.data),
-            fs
+            fs: fs4
           });
           return success2;
         }
@@ -18347,11 +19229,11 @@ async function invokeCapabilityOrch(request, options) {
           ok: false,
           errorCode: unsupported.error.code,
           errorMessage: unsupported.error.message,
-          fs
+          fs: fs4
         });
         return unsupported;
       }
-      const data = await executeCapability(request.capability, request.input, fs);
+      const data = await executeCapability(request.capability, request.input, fs4);
       const success = {
         ok: true,
         capability: request.capability,
@@ -18371,7 +19253,7 @@ async function invokeCapabilityOrch(request, options) {
         warnings,
         ok: true,
         touchedPaths: extractTouchedPaths(request.capability, data),
-        fs
+        fs: fs4
       });
       return success;
     } catch (error) {
@@ -18398,7 +19280,7 @@ async function invokeCapabilityOrch(request, options) {
         ok: false,
         errorCode: failure.error.code,
         errorMessage: failure.error.message,
-        fs
+        fs: fs4
       });
       return failure;
     }
@@ -18406,24 +19288,24 @@ async function invokeCapabilityOrch(request, options) {
     activity.end();
   }
 }
-async function executeCapability(capability, input, fs) {
+async function executeCapability(capability, input, fs4) {
   switch (capability) {
     case "read_note": {
       const payload = input;
       assertNonEmptyString(payload.path, "path");
-      const note = await readNoteOrch(fs ?? getVaultFS(), payload.path);
+      const note = await readNoteOrch(fs4 ?? getVaultFS(), payload.path);
       return note;
     }
     case "write_note": {
       const payload = input;
       assertNonEmptyString(payload.path, "path");
-      const result = await writeNoteOrch(fs ?? getVaultFS(), payload);
+      const result = await writeNoteOrch(fs4 ?? getVaultFS(), payload);
       return result;
     }
     case "patch_note_frontmatter": {
       const payload = input;
       assertNonEmptyString(payload.path, "path");
-      const result = await patchNoteFrontmatterOrch(fs ?? getVaultFS(), payload);
+      const result = await patchNoteFrontmatterOrch(fs4 ?? getVaultFS(), payload);
       return result;
     }
     case "resolve_ai_synthesis_path": {
@@ -18431,7 +19313,7 @@ async function executeCapability(capability, input, fs) {
       assertNonEmptyString(payload.domain_root, "domain_root");
       assertNonEmptyString(payload.synthesis_type, "synthesis_type");
       assertNonEmptyString(payload.slug, "slug");
-      const result = await resolveAiSynthesisPathOrch(fs ?? getVaultFS(), payload);
+      const result = await resolveAiSynthesisPathOrch(fs4 ?? getVaultFS(), payload);
       return result;
     }
     case "create_ai_synthesis_note": {
@@ -18442,7 +19324,7 @@ async function executeCapability(capability, input, fs) {
       if (!Array.isArray(payload.derived_from) || payload.derived_from.length === 0) {
         throw new Error("derived_from must contain at least one path");
       }
-      const result = await createAiSynthesisNoteOrch(fs ?? getVaultFS(), payload);
+      const result = await createAiSynthesisNoteOrch(fs4 ?? getVaultFS(), payload);
       return result;
     }
     case "get_impacted_ai_synthesis_notes": {
@@ -18450,20 +19332,20 @@ async function executeCapability(capability, input, fs) {
       if (!Array.isArray(payload.changed_paths) || payload.changed_paths.length === 0) {
         throw new Error("changed_paths must contain at least one path");
       }
-      const result = await getImpactedAiSynthesisNotesOrch(fs ?? getVaultFS(), payload);
+      const result = await getImpactedAiSynthesisNotesOrch(fs4 ?? getVaultFS(), payload);
       return result;
     }
     case "update_ai_synthesis_compile_state": {
       const payload = input;
       assertNonEmptyString(payload.path, "path");
       assertNonEmptyString(payload.compile_status, "compile_status");
-      const result = await updateAiSynthesisCompileStateOrch(fs ?? getVaultFS(), payload);
+      const result = await updateAiSynthesisCompileStateOrch(fs4 ?? getVaultFS(), payload);
       return result;
     }
     case "list_domain_ai_synthesis_health": {
       const payload = input;
       assertNonEmptyString(payload.domain_root, "domain_root");
-      const result = await listDomainAiSynthesisHealthOrch(fs ?? getVaultFS(), payload);
+      const result = await listDomainAiSynthesisHealthOrch(fs4 ?? getVaultFS(), payload);
       return result;
     }
     case "organizer.nodes.list_roots": {
@@ -18502,7 +19384,7 @@ async function executeCapability(capability, input, fs) {
     case "organizer.node.read_frontmatter": {
       const payload = input;
       assertNonEmptyString(payload.filePath, "filePath");
-      const frontmatter = await readYamlFrontmatterByPath(payload.filePath, fs);
+      const frontmatter = await readYamlFrontmatterByPath(payload.filePath, fs4);
       return { frontmatter };
     }
     case "organizer.node.create": {
@@ -18512,11 +19394,11 @@ async function executeCapability(capability, input, fs) {
       assertValidRecordKind(payload.extraFields?.record_kind);
       assertWritableProjectRootAllowed(payload.projectRoot, "organizer.node.create");
       const normalizedCreatePayload = normalizeCreatePayloadForStatusPolicy(payload);
-      const node = await createYamlNode({ ...normalizedCreatePayload, fs });
+      const node = await createYamlNode({ ...normalizedCreatePayload, fs: fs4 });
       await applyEpicStatusPolicyForAffectedNodes({
         changedNodes: [node],
         changedParentKeys: [payload.parentKey],
-        fs
+        fs: fs4
       });
       return { node };
     }
@@ -18524,7 +19406,7 @@ async function executeCapability(capability, input, fs) {
       const payload = input;
       assertNonEmptyString(payload.uuid, "uuid");
       assertNonEmptyString(payload.newTitle, "newTitle");
-      const node = await renameYamlNode(payload.uuid, payload.newTitle, fs);
+      const node = await renameYamlNode(payload.uuid, payload.newTitle, fs4);
       return { node };
     }
     case "organizer.node.update": {
@@ -18536,12 +19418,12 @@ async function executeCapability(capability, input, fs) {
       if (!existing) throw new Error(`Node not found: ${payload.uuid}`);
       const normalizedUpdates = normalizeNodeUpdatesForStatusPolicy(existing, payload.updates);
       const manualEpicStatusOverrideKey = existing.type === "epic" && normalizedUpdates.status !== void 0 ? existing.key : void 0;
-      const node = await updateYamlNode(payload.uuid, normalizedUpdates, fs);
+      const node = await updateYamlNode(payload.uuid, normalizedUpdates, fs4);
       await applyEpicStatusPolicyForAffectedNodes({
         changedNodes: [node],
         changedParentKeys: [existing.parent, node.parent],
         skipEpicKeys: manualEpicStatusOverrideKey ? [manualEpicStatusOverrideKey] : void 0,
-        fs
+        fs: fs4
       });
       return { node };
     }
@@ -18549,11 +19431,11 @@ async function executeCapability(capability, input, fs) {
       const payload = input;
       assertNonEmptyString(payload.uuid, "uuid");
       const existing = await getYamlNode(payload.uuid);
-      const node = await moveYamlNode(payload.uuid, payload.newParentKey, fs);
+      const node = await moveYamlNode(payload.uuid, payload.newParentKey, fs4);
       await applyEpicStatusPolicyForAffectedNodes({
         changedNodes: [node],
         changedParentKeys: [existing?.parent, node.parent, payload.newParentKey],
-        fs
+        fs: fs4
       });
       return { node };
     }
@@ -18562,11 +19444,11 @@ async function executeCapability(capability, input, fs) {
       assertNonEmptyString(payload.uuid, "uuid");
       const existing = await getYamlNode(payload.uuid);
       const childCount = existing ? (await listYamlChildren(existing.key)).length : 0;
-      await deleteYamlNode(payload.uuid, fs);
+      await deleteYamlNode(payload.uuid, fs4);
       await applyEpicStatusPolicyForAffectedNodes({
         changedNodes: [],
         changedParentKeys: [existing?.parent],
-        fs
+        fs: fs4
       });
       return {
         deleted: true,
@@ -18603,11 +19485,11 @@ async function executeCapability(capability, input, fs) {
           state_history: history,
           schema_version: "2"
         }
-      }, fs);
+      }, fs4);
       await applyEpicStatusPolicyForAffectedNodes({
         changedNodes: [node],
         changedParentKeys: [source.parent, node.parent],
-        fs
+        fs: fs4
       });
       return { node };
     }
@@ -18633,11 +19515,11 @@ async function executeCapability(capability, input, fs) {
           state_history: history,
           schema_version: "2"
         }
-      }, fs);
+      }, fs4);
       await applyEpicStatusPolicyForAffectedNodes({
         changedNodes: [node],
         changedParentKeys: [source.parent, node.parent],
-        fs
+        fs: fs4
       });
       return { node };
     }
@@ -18671,7 +19553,7 @@ async function executeCapability(capability, input, fs) {
           artifacts: payload.artifacts,
           related_nodes: payload.relatedNodes
         },
-        fs
+        fs: fs4
       });
       return { node };
     }
@@ -18713,7 +19595,7 @@ async function executeCapability(capability, input, fs) {
             }
           ]
         },
-        fs
+        fs: fs4
       });
       return { node };
     }
@@ -18732,7 +19614,7 @@ async function executeCapability(capability, input, fs) {
           added_by: payload.addedBy?.trim() || getUserCommentAuthorBlock()
         }
       ];
-      const node = await updateYamlNode(payload.uuid, { comments }, fs);
+      const node = await updateYamlNode(payload.uuid, { comments }, fs4);
       return { node };
     }
     case "thoughts.create": {
@@ -18741,6 +19623,14 @@ async function executeCapability(capability, input, fs) {
       assertNonEmptyString(payload.filename, "filename");
       assertNonEmptyString(payload.content, "content");
       const output = await createThought(payload);
+      return output;
+    }
+    case "daily.log_insight": {
+      const payload = input;
+      if (!Array.isArray(payload.insights)) {
+        throw new Error("insights must be an array of strings");
+      }
+      const output = await logDailyInsight(payload, fs4 ?? getVaultFS());
       return output;
     }
     case "todos.create": {
@@ -18812,8 +19702,47 @@ async function executeCapability(capability, input, fs) {
       assertNonEmptyString(payload.input_text, "input_text");
       assertNonEmptyString(payload.output_folder, "output_folder");
       assertNonEmptyString(payload.output_name, "output_name");
-      const result = await cleanAndSave({ ...payload, fs });
+      const result = await cleanAndSave({ ...payload, fs: fs4 });
       return { result };
+    }
+    case "telegram.send_message": {
+      const payload = input;
+      assertNonEmptyString(payload.text, "text");
+      const sent = await sendTelegramMessageBlock({
+        text: payload.text,
+        parseMode: payload.parseMode,
+        chatId: payload.chatId
+      });
+      return {
+        messageId: sent.messageId,
+        chatId: sent.chatId,
+        sentAt: new Date(sent.date * 1e3).toISOString()
+      };
+    }
+    case "telegram.open_conversation": {
+      const payload = input;
+      assertNonEmptyString(payload.scheduleKey, "scheduleKey");
+      assertNonEmptyString(payload.sessionId, "sessionId");
+      const chatId = payload.chatId ?? readTelegramCredsBlock().chatId;
+      const result = openConversationBlock({
+        convId: payload.convId,
+        chatId,
+        scheduleKey: payload.scheduleKey,
+        sessionId: payload.sessionId,
+        cwd: payload.cwd,
+        ttlAt: payload.ttlAt
+      });
+      return result;
+    }
+    case "telegram.close_conversation": {
+      const payload = input;
+      assertNonEmptyString(payload.convId, "convId");
+      const result = closeConversationBlock({
+        convId: payload.convId,
+        reason: payload.reason,
+        deleteClaudeSession: payload.deleteClaudeSession
+      });
+      return result;
     }
     default:
       throw new Error(`Capability not implemented: ${String(capability)}`);
@@ -18941,6 +19870,10 @@ function extractTouchedPaths(capability, data) {
       return preview?.touchedPaths ?? [];
     }
     case "thoughts.create": {
+      const output = data;
+      return output.output_path ? [output.output_path] : [];
+    }
+    case "daily.log_insight": {
       const output = data;
       return output.output_path ? [output.output_path] : [];
     }
@@ -19096,6 +20029,7 @@ var CAPABILITY_LABELS = {
   "comment.add": "Adding comment\u2026",
   "run.log": "Logging run\u2026",
   "thoughts.create": "Saving thought\u2026",
+  "daily.log_insight": "Saving daily insights\u2026",
   "todos.create": "Saving todo\u2026",
   "todos.toggle": "Updating todo\u2026"
 };
@@ -19159,13 +20093,13 @@ function assertWritableProjectRootAllowed(projectRoot, capability) {
   const policy = getCapabilityPolicy();
   const allowlist = policy.allowedWritableProjectRoots;
   if (!allowlist || allowlist.length === 0) return;
-  const normalized = normalizePath2(projectRoot);
-  const allowed = allowlist.some((root) => normalizePath2(root) === normalized);
+  const normalized = normalizePath3(projectRoot);
+  const allowed = allowlist.some((root) => normalizePath3(root) === normalized);
   if (!allowed) {
     throw new Error(`Writable project root "${projectRoot}" is blocked for ${capability}.`);
   }
 }
-function normalizePath2(value) {
+function normalizePath3(value) {
   return value.replace(/\\/g, "/").replace(/\/+$/g, "");
 }
 function appendStateHistory(source, transition, by) {
@@ -19196,7 +20130,7 @@ function buildHandoffBody(params) {
 }
 async function auditCapability(params) {
   try {
-    const fs = params.fs ?? getVaultFS();
+    const fs4 = params.fs ?? getVaultFS();
     await writeCapabilityAuditEntry({
       auditId: params.auditId,
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
@@ -19214,12 +20148,14 @@ async function auditCapability(params) {
       warnings: params.warnings,
       errorCode: params.errorCode,
       errorMessage: params.errorMessage
-    }, fs);
+    }, fs4);
   } catch {
   }
 }
 
 // scripts/agent/capabilityRunner.ts
+init_dbBlock();
+var import_node_os = require("node:os");
 var import_meta = {};
 var InMemoryLocalStorage = class {
   store = /* @__PURE__ */ new Map();
@@ -19251,7 +20187,7 @@ function isUsableLocalStorage(value) {
 var NodeVaultFS = class {
   vaultRoot;
   constructor(vaultRoot) {
-    this.vaultRoot = path2.resolve(vaultRoot);
+    this.vaultRoot = path4.resolve(vaultRoot);
   }
   async read(relPath) {
     const full = this.assertInsideVault(relPath);
@@ -19259,7 +20195,7 @@ var NodeVaultFS = class {
   }
   async write(relPath, data) {
     const full = this.assertInsideVault(relPath);
-    await fsPromises.mkdir(path2.dirname(full), { recursive: true });
+    await fsPromises.mkdir(path4.dirname(full), { recursive: true });
     await fsPromises.writeFile(full, data, "utf-8");
   }
   async create(relPath, data) {
@@ -19292,13 +20228,13 @@ var NodeVaultFS = class {
       }
       for (const entry of entries) {
         if (entry.name.startsWith(".") || EXCLUDED_DIRS.has(entry.name)) continue;
-        const full = path2.join(dir, entry.name);
+        const full = path4.join(dir, entry.name);
         if (entry.isDirectory()) {
           await walk(full);
           continue;
         }
         if (entry.isFile()) {
-          const ext = path2.extname(entry.name).toLowerCase();
+          const ext = path4.extname(entry.name).toLowerCase();
           if (!extSet.has(ext)) continue;
           try {
             const stat2 = await fsPromises.stat(full);
@@ -19344,20 +20280,20 @@ var NodeVaultFS = class {
     await this.write(relPath, fn(content));
   }
   assertInsideVault(relPath) {
-    const candidate = path2.resolve(this.vaultRoot, relPath || ".");
-    const relative2 = path2.relative(this.vaultRoot, candidate);
-    if (relative2.startsWith("..") || path2.isAbsolute(relative2)) {
+    const candidate = path4.resolve(this.vaultRoot, relPath || ".");
+    const relative2 = path4.relative(this.vaultRoot, candidate);
+    if (relative2.startsWith("..") || path4.isAbsolute(relative2)) {
       throw new Error(`Path traversal detected: ${relPath}`);
     }
     return candidate;
   }
   toVaultRelativePath(fullPath) {
-    return path2.relative(this.vaultRoot, fullPath).split(path2.sep).join("/");
+    return path4.relative(this.vaultRoot, fullPath).split(path4.sep).join("/");
   }
 };
 var NUMBER_FIELDS = /* @__PURE__ */ new Set(["limit", "lineNumber"]);
-var ARRAY_FIELDS = /* @__PURE__ */ new Set(["tags", "items", "artifacts", "relatedNodes", "emotions", "comments", "derived_from", "changed_paths", "concept_subpath"]);
-var BOOLEAN_FIELDS = /* @__PURE__ */ new Set(["dryRun", "dry-run", "date_header", "text-stdin", "overwrite"]);
+var ARRAY_FIELDS = /* @__PURE__ */ new Set(["tags", "items", "artifacts", "relatedNodes", "emotions", "comments", "derived_from", "changed_paths", "concept_subpath", "insights", "files_touched", "linked_notes"]);
+var BOOLEAN_FIELDS = /* @__PURE__ */ new Set(["dryRun", "dry-run", "date_header", "text-stdin", "overwrite", "deleteClaudeSession"]);
 var JSON_FIELDS = /* @__PURE__ */ new Set(["frontmatter", "set", "append_unique"]);
 var GREEDY_TEXT_FIELDS = /* @__PURE__ */ new Set([
   "text",
@@ -19370,7 +20306,8 @@ var GREEDY_TEXT_FIELDS = /* @__PURE__ */ new Set([
   "headingsText",
   "input_text",
   "headings_text",
-  "title"
+  "title",
+  "conversation"
 ]);
 var COMMAND_SHORTCUTS = {
   context: "organizer.context",
@@ -19680,11 +20617,26 @@ function writeCLIWarnings(warnings) {
 `);
   }
 }
+function readVaultRootFromConfig() {
+  try {
+    const home = import_node_process.default.env.HOME || import_node_process.default.env.USERPROFILE;
+    if (!home) return null;
+    const configPath = path4.join(home, ".thinking-space", "config.json");
+    const raw = fs3.readFileSync(configPath, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.vaultRoot === "string" && parsed.vaultRoot.trim().length > 0) {
+      return parsed.vaultRoot.trim();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 function buildCLIInvokePayload(capability, cliArgs) {
-  const vaultRoot = import_node_process.default.env.THINKSPC_VAULT_ROOT || import_node_process.default.env.LTM_VAULT_ROOT;
+  const vaultRoot = import_node_process.default.env.THINKSPC_VAULT_ROOT || import_node_process.default.env.LTM_VAULT_ROOT || readVaultRootFromConfig();
   if (!vaultRoot) {
     throw new Error(
-      "THINKSPC_VAULT_ROOT/LTM_VAULT_ROOT is not set. Use thinkspc (or the ltm compatibility alias), or set it in .env."
+      "THINKSPC_VAULT_ROOT/LTM_VAULT_ROOT is not set and no vaultRoot in ~/.thinking-space/config.json. Launch the Thinking Space app once (it provisions the config) or set the env var, or use the repo ./thinkspc wrapper which loads .env."
     );
   }
   const parsed = parseCLIArgs(capability, cliArgs);
@@ -19816,6 +20768,10 @@ var CAPABILITY_EXAMPLES = {
   "thoughts.create": [
     'thinkspc thoughts.create --folder_path "journal" --filename "reflection" --content "Today I learned..." --title "Daily reflection" --date_header --emotions "curious,focused"'
   ],
+  "daily.log_insight": [
+    "thinkspc daily.log_insight --insights-file ./today-insights.txt --teachers_note-file ./teacher.md",
+    `thinkspc daily.log_insight --insights '["First insight","Second insight"]' --files_touched "src/foo.ts,src/bar.ts"`
+  ],
   "todos.create": [
     'thinkspc todos.create --folderPath "todos" --date "2025-01-15" --items "Buy groceries,Fix bug,Review PR"'
   ],
@@ -19850,6 +20806,18 @@ var CAPABILITY_EXAMPLES = {
   ],
   "tools.transcript.clean_save": [
     'thinkspc tools.transcript.clean_save --input_text "Speaker 1: Hello..." --output_folder "transcripts" --output_name "meeting-notes"'
+  ],
+  "telegram.send_message": [
+    'thinkspc telegram.send_message --text "Build is done"',
+    "thinkspc telegram.send_message --text-file ./message.md --parseMode Markdown"
+  ],
+  "telegram.open_conversation": [
+    'thinkspc telegram.open_conversation --scheduleKey daily-insight --sessionId "abc-123"',
+    'thinkspc telegram.open_conversation --scheduleKey daily-insight --sessionId "abc-123" --ttlAt "2026-05-29T23:59:00Z"'
+  ],
+  "telegram.close_conversation": [
+    'thinkspc telegram.close_conversation --convId "conv-20260529-..." --reason wrap_up',
+    'thinkspc telegram.close_conversation --convId "conv-20260529-..." --reason ttl --deleteClaudeSession false'
   ]
 };
 function formatExamples(capability) {
@@ -20014,6 +20982,15 @@ var CAPABILITY_INPUT_FIELDS = {
     { flag: "date_header", required: false, note: "boolean flag" },
     { flag: "emotions", required: false, note: "comma-separated" }
   ],
+  "daily.log_insight": [
+    { flag: "insights", required: true, note: "newline-separated via --insights-file, or JSON array" },
+    { flag: "files_touched", required: false, note: "comma-separated or JSON array" },
+    { flag: "linked_notes", required: false, note: "comma-separated or JSON array" },
+    { flag: "teachers_note", required: false, note: "prefer --teachers_note-file for long text" },
+    { flag: "conversation", required: false, note: "verbatim transcript; prefer --conversation-file" },
+    { flag: "date", required: false, note: "YYYY-MM-DD, defaults to today" },
+    { flag: "mode", required: false, note: "append (default) or replace" }
+  ],
   "todos.create": [
     { flag: "folderPath", required: true },
     { flag: "date", required: true, note: "YYYY-MM-DD" },
@@ -20040,6 +21017,24 @@ var CAPABILITY_INPUT_FIELDS = {
     { flag: "output_name", required: true },
     { flag: "headings_text", required: false },
     { flag: "base_folder", required: false }
+  ],
+  "telegram.send_message": [
+    { flag: "text", required: true, note: "or use --text-file / --text-stdin for long messages" },
+    { flag: "parseMode", required: false, note: "Markdown | MarkdownV2 | HTML" },
+    { flag: "chatId", required: false, note: "defaults to chat_id from ~/.thinking-space/secrets.json" }
+  ],
+  "telegram.open_conversation": [
+    { flag: "scheduleKey", required: true, note: "scheduler key this conv belongs to" },
+    { flag: "sessionId", required: true, note: "Claude Code sessionId to resume on replies" },
+    { flag: "convId", required: false, note: "auto-generated if omitted" },
+    { flag: "chatId", required: false, note: "defaults to chat_id from secrets.json" },
+    { flag: "cwd", required: false, note: "defaults to process.cwd() at open time" },
+    { flag: "ttlAt", required: false, note: "ISO; defaults to 23:59 local today" }
+  ],
+  "telegram.close_conversation": [
+    { flag: "convId", required: true },
+    { flag: "reason", required: false, note: "wrap_up | ttl | error | manual" },
+    { flag: "deleteClaudeSession", required: false, note: "default true; deletes ~/.claude/projects/*/<sessionId>.jsonl" }
   ]
 };
 function formatInputFields(capability) {
@@ -20124,7 +21119,7 @@ function resolveOutputFormat(args, options) {
   return { format, verbosity, args: passthrough };
 }
 async function materializeFileBackedInputs(input) {
-  const baseDir = import_node_process.default.env.THINKSPC_CALLER_CWD ? path2.resolve(import_node_process.default.env.THINKSPC_CALLER_CWD) : import_node_process.default.cwd();
+  const baseDir = import_node_process.default.env.THINKSPC_CALLER_CWD ? path4.resolve(import_node_process.default.env.THINKSPC_CALLER_CWD) : import_node_process.default.cwd();
   const entries = Object.entries(input);
   for (const [key, rawValue] of entries) {
     if (!key.endsWith("-file")) continue;
@@ -20136,7 +21131,7 @@ async function materializeFileBackedInputs(input) {
     if (input[targetKey] !== void 0) {
       throw new Error(`Cannot combine --${targetKey} with --${key}.`);
     }
-    const resolvedFilePath = path2.resolve(baseDir, filePath);
+    const resolvedFilePath = path4.resolve(baseDir, filePath);
     const fileText = await fsPromises.readFile(resolvedFilePath, "utf-8");
     const normalizedText = fileText.trimEnd();
     if (!normalizedText) {
@@ -20356,12 +21351,51 @@ function writeOutput(payload, format, context, verbosity) {
   }
   writeText(verbosity === "brief" ? renderInvokeOutputBrief(payload) : renderInvokeOutput(payload));
 }
+async function runInsightCommand(rawArgs) {
+  const tempDir = await fsPromises.mkdtemp(path4.join(os3.tmpdir(), "insight."));
+  const encodedProject = "-" + tempDir.replaceAll("/", "-");
+  const claudeProjectDir = path4.join(os3.homedir(), ".claude", "projects", encodedProject);
+  const cleanup = async () => {
+    try {
+      await fsPromises.rm(tempDir, { recursive: true, force: true });
+    } catch {
+    }
+    try {
+      await fsPromises.rm(claudeProjectDir, { recursive: true, force: true });
+    } catch {
+    }
+  };
+  const inlineText = rawArgs.join(" ").trim();
+  const claudeArgs = inlineText ? ["-p", `insight: ${inlineText}`] : [];
+  const claudeBin = import_node_process.default.env.CLAUDE_BIN ?? "claude";
+  let exitCode = 0;
+  try {
+    exitCode = await new Promise((resolve2, reject) => {
+      const child = (0, import_node_child_process.spawn)(claudeBin, claudeArgs, {
+        cwd: tempDir,
+        stdio: "inherit",
+        env: import_node_process.default.env
+      });
+      child.on("error", (err) => {
+        reject(new Error(`Failed to launch \`${claudeBin}\`: ${err instanceof Error ? err.message : String(err)}. Is Claude Code installed and on PATH? Override with the CLAUDE_BIN env var.`));
+      });
+      child.on("exit", (code) => resolve2(code ?? 0));
+    });
+  } finally {
+    await cleanup();
+  }
+  return exitCode;
+}
 async function main() {
   const { format: outputFormat, verbosity: outputVerbosity, args } = resolveOutputFormat(import_node_process.default.argv.slice(2));
   const command = args[0];
   if (!command || command === "help" || command === "--help" || command === "-h") {
     writeText(renderRunnerHelp());
     return;
+  }
+  if (command === "insight") {
+    const code = await runInsightCommand(args.slice(1));
+    import_node_process.default.exit(code);
   }
   if (command === "list") {
     writeOutput(await runCapabilityRunnerCommand("list"), outputFormat, "list", outputVerbosity);
@@ -20448,11 +21482,81 @@ async function runCapabilityRunnerCommand(command, payload) {
     ;
     globalThis.__LTM_API_BASE__ = payload.apiBaseUrl;
   }
-  const fs = new NodeVaultFS(payload.vaultRoot);
-  if (capabilityRequiresVaultSync(payload.request.capability)) {
-    await fullSync(fs);
+  const fs4 = new NodeVaultFS(payload.vaultRoot);
+  const isWrite = capabilityRequiresVaultSync(payload.request.capability);
+  if (isWrite) {
+    const projectRoot = extractProjectRootFromInput(payload.request.input);
+    const loaded = await tryLoadCliCache(payload.vaultRoot);
+    if (loaded) {
+      await incrementalSync(loaded.lastSyncTimestamp, fs4);
+    } else {
+      await fullSync(fs4, projectRoot ? { rootPath: projectRoot } : void 0);
+    }
   }
-  return invokeCapabilityOrch(payload.request, { fs });
+  const result = await invokeCapabilityOrch(payload.request, { fs: fs4 });
+  if (isWrite) {
+    await saveCliCache(payload.vaultRoot).catch((err) => {
+      console.warn(`[cli-cache] save failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
+  return result;
+}
+function extractProjectRootFromInput(input) {
+  if (!input || typeof input !== "object") return void 0;
+  const value = input.projectRoot;
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+var CLI_CACHE_VERSION = 1;
+function getCliCachePath() {
+  return path4.join((0, import_node_os.homedir)(), ".thinking-space", "cli-cache.json");
+}
+async function tryLoadCliCache(vaultRoot) {
+  const cachePath = getCliCachePath();
+  let raw;
+  try {
+    raw = await fsPromises.readFile(cachePath, "utf-8");
+  } catch {
+    return null;
+  }
+  let snapshot2;
+  try {
+    snapshot2 = JSON.parse(raw);
+  } catch (err) {
+    console.warn(`[cli-cache] invalid JSON at ${cachePath}: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+  if (snapshot2.version !== CLI_CACHE_VERSION) return null;
+  if (path4.resolve(snapshot2.vaultRoot) !== path4.resolve(vaultRoot)) return null;
+  if (!Array.isArray(snapshot2.nodes) || !Array.isArray(snapshot2.links)) return null;
+  await clearAll();
+  await clearAllLinks();
+  const nodes = snapshot2.nodes.map((n) => {
+    const { id: _id, ...rest } = n;
+    return rest;
+  });
+  await bulkUpsertNodes(nodes);
+  await bulkUpsertLinks(snapshot2.links);
+  return snapshot2;
+}
+async function saveCliCache(vaultRoot) {
+  const cachePath = getCliCachePath();
+  await fsPromises.mkdir(path4.dirname(cachePath), { recursive: true });
+  const nodes = await getAllNodes();
+  const links = (await getAllLinks()).map((l) => {
+    const { id: _id, ...rest } = l;
+    return rest;
+  });
+  const snapshot2 = {
+    version: CLI_CACHE_VERSION,
+    vaultRoot: path4.resolve(vaultRoot),
+    savedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    lastSyncTimestamp: Math.floor(Date.now() / 1e3),
+    nodes,
+    links
+  };
+  const tmp = `${cachePath}.${import_node_process.default.pid}.tmp`;
+  await fsPromises.writeFile(tmp, JSON.stringify(snapshot2), { encoding: "utf-8", mode: 384 });
+  await fsPromises.rename(tmp, cachePath);
 }
 function capabilityRequiresVaultSync(capability) {
   return capability === "organizer.node.create" || capability === "organizer.node.rename" || capability === "organizer.node.update" || capability === "organizer.node.move" || capability === "organizer.node.delete" || capability === "task.claim" || capability === "task.update_status" || capability === "run.log" || capability === "handoff.create" || capability === "comment.add";
@@ -20542,7 +21646,7 @@ var isDirectRun = (() => {
   if (import_node_process.default.env.LTM_CAPABILITY_RUNNER_CLI === "1") return true;
   try {
     const current = (0, import_node_url.fileURLToPath)(import_meta.url);
-    const currentName = path2.basename(current);
+    const currentName = path4.basename(current);
     return import_node_process.default.argv.some((arg) => arg.includes(currentName));
   } catch {
     return false;

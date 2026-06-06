@@ -1,6 +1,7 @@
 {
   "appId": "com.anurag.ltm",
   "productName": "Thinking Space",
+  "npmRebuild": false,
   "directories": {
     "buildResources": "resources"
   },

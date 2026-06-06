@@ -217,6 +217,7 @@ export default function SettingsOrch({
   const [googleDriveConnected, setGoogleDriveConnected] = useState(() => Boolean(readGoogleDriveAuthOrch()?.accessToken))
   const [googleDriveAuthBusy, setGoogleDriveAuthBusy] = useState(false)
   const [busyAction, setBusyAction] = useState<SettingsTabId | null>(null)
+  const [busyGpuCache, setBusyGpuCache] = useState(false)
   const [explorerFolderColorRulesDraft, setExplorerFolderColorRulesDraft] = useState<ExplorerFolderColorPreferenceBlock[]>(
     () => explorerFolderColorRules,
   )
@@ -428,6 +429,27 @@ export default function SettingsOrch({
       setError(err instanceof Error ? err.message : 'Failed to clear cache')
     } finally {
       setBusyAction(null)
+    }
+  }
+
+  const onClearGpuCache = async () => {
+    const confirmed = window.confirm(
+      'Clear GPU cache and restart the app? Useful for fixing render glitches and stale shader artifacts.',
+    )
+    if (!confirmed) return
+    setBusyGpuCache(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const api = window.electronAPI
+      if (!api?.clearGpuCache) {
+        throw new Error('GPU cache clearing is only available in the desktop app.')
+      }
+      await api.clearGpuCache()
+      // App is relaunching — no further state updates needed.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear GPU cache')
+      setBusyGpuCache(false)
     }
   }
 
@@ -1522,6 +1544,21 @@ export default function SettingsOrch({
             <Button type="button" onClick={onClearCache} disabled={busyAction === 'cache'}>
               {busyAction === 'cache' ? 'Clearing cache...' : 'Clear Cache'}
             </Button>
+            <div className="pt-4 border-t">
+              <p className="text-sm font-medium mb-1">Clear GPU Cache</p>
+              <p className="text-sm text-muted-foreground mb-3">
+                Deletes the GPU shader cache and restarts the app. Useful for fixing render
+                glitches, blank surfaces, or stale shader artifacts after a driver update.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClearGpuCache}
+                disabled={busyGpuCache}
+              >
+                {busyGpuCache ? 'Clearing GPU cache...' : 'Clear GPU Cache & Restart'}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

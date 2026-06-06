@@ -432,8 +432,8 @@ export class ElectronCapacitorApp {
         frame: false,
         titleBarStyle: 'hidden' as const,
         roundedCorners: true,
-        transparent: true,
-        backgroundColor: '#00000000',
+        transparent: false,
+        backgroundColor: '#0a0a0f',
         trafficLightPosition: MAC_TRAFFIC_LIGHT_POSITION,
       };
     }
