@@ -53,7 +53,6 @@ function FloatingPanel({
         padding: isPanel ? 20 : 0,
         borderRadius: isPanel ? 14 : 0,
         background: isPanel ? theme.anchorPanelBg : 'transparent',
-        backdropFilter: isPanel ? 'blur(14px)' : 'none',
         border: isPanel ? `1px solid ${theme.anchorPanelBorder}` : 'none',
         boxShadow: isPanel ? theme.anchorPanelShadow : 'none',
         overflow: 'hidden',

@@ -121,7 +121,6 @@ export default function CanvasTileToolbarBlock({
         border: `1px solid ${theme.toolbarBorder}`,
         borderRadius: 10,
         boxShadow: theme.isDark ? '0 10px 30px rgba(0,0,0,0.5)' : '0 10px 30px rgba(20,20,24,0.18)',
-        backdropFilter: 'blur(14px)',
         zIndex: 100,
         pointerEvents: 'auto',
       }}

@@ -104,7 +104,6 @@ export default function CanvasWebWidgetBlock({ tile, suspended, reloadKey }: Pro
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           flexShrink: 0,
-          backdropFilter: 'blur(8px)',
           cursor: 'pointer',
         }}
       >

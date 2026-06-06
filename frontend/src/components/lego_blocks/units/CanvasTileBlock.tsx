@@ -108,7 +108,6 @@ function CanvasTileBlockImpl({
   const skinStyle: React.CSSProperties = {
     borderRadius: 12,
     background: theme.tileBg,
-    backdropFilter: 'blur(12px)',
     border: `1px solid ${focused ? theme.tileBorderFocused : theme.tileBorder}`,
     boxShadow: focused ? theme.tileShadowFocused : theme.tileShadow,
     ...(isPostIt ? { paddingTop: 22 } : {}),
@@ -255,7 +254,6 @@ function NoteTileContent({
           wordBreak: 'break-word',
           lineHeight: 1.35,
           flexShrink: 0,
-          backdropFilter: 'blur(8px)',
         }}
       >
         {title}

@@ -255,21 +255,16 @@ function ToolboxNavIcon({ className = 'h-4 w-4' }: { className?: string }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.6"
+      strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
       aria-hidden="true"
     >
-      <rect x="3" y="12.5" width="18" height="8.5" rx="0.6" />
-      <path d="M2.5 12.5h19" />
-      <rect x="9" y="16" width="6" height="2.2" rx="0.4" />
-      <rect x="5.4" y="3.6" width="1.9" height="2.1" rx="0.3" />
-      <path d="M6.35 5.7v6.8" />
-      <path d="M9.6 5.6l3.9 -1.1 .85 2.6 -3.9 1.1z" />
-      <path d="M11.55 7.6v4.9" />
-      <path d="M16.4 12.5l2.3 -5.4" />
-      <path d="M17.6 6.7a1.55 1.55 0 1 1 2.1 2.05l-1 .85 -1.6 -1.55z" />
+      <polygon points="6,2.9 9.5,9.1 2.5,9.1" />
+      <rect x="13.5" y="2.4" width="7.3" height="7.3" rx="1.5" />
+      <circle cx="6" cy="18" r="3.6" />
+      <polygon points="17.5,13.9 21.2,16.6 19.8,20.8 15.2,20.8 13.8,16.6" />
     </svg>
   )
 }

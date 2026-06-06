@@ -32,7 +32,6 @@ export default function ZoomIndicatorBlock({
         textAlign: 'left',
         cursor: 'pointer',
         userSelect: 'none',
-        backdropFilter: 'blur(10px)',
       }}
     >
       <div style={{ fontSize: 12, color: theme.toolbarText }}>

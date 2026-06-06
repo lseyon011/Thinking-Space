@@ -91,7 +91,6 @@ export default function CanvasMinimapBlock({
         border: `1px solid ${theme.minimapBorder}`,
         borderRadius: 6,
         boxShadow: theme.isDark ? '0 10px 30px rgba(0,0,0,0.55)' : '0 10px 30px rgba(20,20,24,0.12)',
-        backdropFilter: 'blur(10px)',
         overflow: 'hidden',
         cursor: 'crosshair',
         zIndex: 90,

@@ -107,7 +107,6 @@ export default function CanvasWebWidgetPickerBlock({ onPick, onClose }: Props) {
         position: 'absolute',
         inset: 0,
         background: 'rgba(0,0,0,0.55)',
-        backdropFilter: 'blur(4px)',
         zIndex: 250,
         display: 'flex',
         alignItems: 'center',

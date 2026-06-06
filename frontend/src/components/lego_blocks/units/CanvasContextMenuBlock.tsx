@@ -49,7 +49,6 @@ export default function CanvasContextMenuBlock({
         borderRadius: 8,
         boxShadow: theme.isDark ? '0 12px 32px rgba(0,0,0,0.5)' : '0 12px 32px rgba(20,20,24,0.18)',
         zIndex: 150,
-        backdropFilter: 'blur(10px)',
       }}
     >
       <button

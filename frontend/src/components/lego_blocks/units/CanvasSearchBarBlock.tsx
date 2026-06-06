@@ -102,7 +102,6 @@ export default function CanvasSearchBarBlock({
         border: `1px solid ${theme.popoverBorder}`,
         borderRadius: 10,
         boxShadow: theme.isDark ? '0 16px 40px rgba(0,0,0,0.55)' : '0 16px 40px rgba(20,20,24,0.18)',
-        backdropFilter: 'blur(12px)',
         zIndex: 200,
         overflow: 'hidden',
       }}
