@@ -97,11 +97,14 @@ const PALETTE: ReadonlyArray<{ match: (name: string) => boolean; entry: ProjectC
   },
 ]
 
+// Warm clay/terracotta — distinct from the grey empty-cell background so an
+// unknown-project day actually shows up on the heatmap (previously it blended
+// in with empty cells because both were grey).
 const UNKNOWN_ENTRY: ProjectColorEntry = {
-  stroke: 'rgb(113,113,122)',
-  fill: 'rgba(113,113,122,0.35)',
-  chipBg: 'rgba(113,113,122,0.12)',
-  dot: 'rgba(113,113,122,0.5)',
+  stroke: 'rgb(217,119,87)',
+  fill: 'rgba(217,119,87,0.45)',
+  chipBg: 'rgba(217,119,87,0.15)',
+  dot: 'rgba(217,119,87,0.6)',
 }
 
 const NOISE_ENTRY: ProjectColorEntry = {

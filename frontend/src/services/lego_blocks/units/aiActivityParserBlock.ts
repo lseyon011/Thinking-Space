@@ -41,8 +41,13 @@ export interface SessionTokens {
   output: number
   /** Tokens served from cache (cheaper). 0 when not reported. */
   cacheRead: number
-  /** Tokens written into cache (more expensive than normal input). 0 when not reported. */
+  /** Total tokens written into cache (sum of 5m + 1h TTL buckets). Display
+   *  formatters use this; cost math splits it via `cacheCreation1h`. */
   cacheCreation: number
+  /** Portion of `cacheCreation` that is 1-hour TTL (~2.0x input rate). The
+   *  remainder is 5-minute TTL (~1.25x). Optional — older cache rows and Codex
+   *  transcripts default to 0 (treated as all-5m). */
+  cacheCreation1h?: number
 }
 
 export interface ActivityChain {

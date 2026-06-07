@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Archive, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { openVaultPathWithDefaultAppOrch } from '@/services/orchestrators/fileSystemOrch'
 import {
   useAiActivityBlock,
   AI_ACTIVITY_PRESETS,
   type AiActivityPreset,
+  type AiSourceFilter,
 } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import AiActivityHeatmapBlock from '@/components/lego_blocks/units/AiActivityHeatmapBlock'
 import AiActivityProjectChipsBlock from '@/components/lego_blocks/units/AiActivityProjectChipsBlock'
@@ -86,6 +88,41 @@ export default function AiActivityPanelBlock() {
     setSelectedRange(null)
   }
 
+  // The canvas hides scrollbars globally on tile content, so a long drill table
+  // looks cut off rather than scrollable. Track whether the inner scroll
+  // container has overflow + is not at the end, and surface a bottom fade as
+  // the visual "more below" affordance. Cleared when the user scrolls to the
+  // bottom so the fade doesn't sit there on short days.
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const [showBottomFade, setShowBottomFade] = useState(false)
+  const [showTopFade, setShowTopFade] = useState(false)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const update = () => {
+      const overflow = el.scrollHeight - el.clientHeight
+      if (overflow <= 1) {
+        setShowBottomFade(false)
+        setShowTopFade(false)
+        return
+      }
+      setShowTopFade(el.scrollTop > 4)
+      setShowBottomFade(el.scrollTop + el.clientHeight < el.scrollHeight - 4)
+    }
+    update()
+    el.addEventListener('scroll', update, { passive: true })
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    // Children resizing (drill table appearing) also changes scrollHeight.
+    const mo = new MutationObserver(update)
+    mo.observe(el, { childList: true, subtree: true })
+    return () => {
+      el.removeEventListener('scroll', update)
+      ro.disconnect()
+      mo.disconnect()
+    }
+  }, [])
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Sticky header — title, range pills, totals stay visible while content
@@ -98,6 +135,14 @@ export default function AiActivityPanelBlock() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <SourcePills
+            value={activity.sourceFilter}
+            onChange={next => {
+              activity.setSourceFilter(next)
+              clearDrill()
+            }}
+            counts={activity.sourceCounts}
+          />
           <RangePills
             preset={activity.preset}
             onChange={p => {
@@ -128,13 +173,29 @@ export default function AiActivityPanelBlock() {
         <span>
           <strong className="tabular-nums text-foreground/85">{totals.sessions.toLocaleString()}</strong> sessions
         </span>
+        <LegacyArchivesLink />
         <span className="ml-auto text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70">
           {activity.preset}
         </span>
       </div>
 
-      {/* Everything below the header scrolls together. */}
-      <div className="mt-3 flex-1 min-h-0 overflow-y-auto pr-1">
+      {/* Everything below the header scrolls together. The canvas hides
+          scrollbars globally, so the fade gradients above/below act as the
+          "there's more content" affordance. */}
+      <div className="relative mt-3 flex-1 min-h-0">
+        {showTopFade && (
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-background to-transparent"
+            aria-hidden
+          />
+        )}
+        {showBottomFade && (
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-background to-transparent"
+            aria-hidden
+          />
+        )}
+        <div ref={scrollRef} className="h-full overflow-y-auto pr-1">
       <div>
         <AiActivityProjectChipsBlock
           projects={activity.projects}
@@ -181,6 +242,8 @@ export default function AiActivityPanelBlock() {
             days={activity.days}
             projects={activity.projects}
             filterProject={activeProject}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
           />
         )}
       </div>
@@ -203,8 +266,63 @@ export default function AiActivityPanelBlock() {
           />
         </div>
       )}
+        </div>
       </div>
     </div>
+  )
+}
+
+function LegacyArchivesLink() {
+  // ChatGPT and Grok exports live in the vault but aren't part of the active
+  // dev rollup (no cwd → can't bucket by project). Surfaced as a small "open
+  // in Finder" link so the panel feels complete without polluting the
+  // project-grounded view.
+  const [open, setOpen] = useState(false)
+  const targets: Array<{ label: string; path: string }> = [
+    { label: 'ChatGPT', path: 'ai_raw/raw/chatgpt' },
+    { label: 'Grok', path: 'ai_raw/raw/grok' },
+  ]
+  const handleOpen = (path: string) => {
+    setOpen(false)
+    openVaultPathWithDefaultAppOrch(path).catch(err => {
+      // Swallow but log — most likely cause is non-Electron platform.
+      console.warn('[ai-activity] failed to open legacy archive:', err)
+    })
+  }
+  return (
+    <span className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="inline-flex items-center gap-1 rounded-full border border-border/30 bg-card/40 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground/80 transition-colors hover:border-border/60 hover:text-foreground"
+        title="Open legacy ChatGPT / Grok archives in Finder"
+      >
+        <Archive className="h-3 w-3" />
+        legacy
+      </button>
+      {open && (
+        <>
+          {/* Click-away catcher */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setOpen(false)}
+            aria-hidden
+          />
+          <div className="absolute left-0 top-full z-50 mt-1 min-w-[140px] rounded-lg border border-border/50 bg-popover/95 p-1 text-xs shadow-lg backdrop-blur">
+            {targets.map(t => (
+              <button
+                key={t.path}
+                type="button"
+                onClick={() => handleOpen(t.path)}
+                className="block w-full rounded-md px-2 py-1 text-left text-foreground/85 hover:bg-muted/50"
+              >
+                Open {t.label} archive
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </span>
   )
 }
 
@@ -236,6 +354,56 @@ function RangePills({
                 ? 'bg-foreground text-background shadow-sm'
                 : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
             )}
+          >
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function SourcePills({
+  value,
+  onChange,
+  counts,
+}: {
+  value: AiSourceFilter
+  onChange: (next: AiSourceFilter) => void
+  counts: { claudeCode: number; codex: number }
+}) {
+  const opts: Array<{ id: AiSourceFilter; label: string; count: number | null }> = [
+    { id: 'all', label: 'All', count: counts.claudeCode + counts.codex },
+    { id: 'claude-code', label: 'Claude', count: counts.claudeCode },
+    { id: 'codex', label: 'Codex', count: counts.codex },
+  ]
+  return (
+    <div
+      role="tablist"
+      aria-label="AI source"
+      className="flex shrink-0 items-center gap-1 rounded-full border border-border/40 bg-muted/30 p-1"
+    >
+      {opts.map(opt => {
+        const active = opt.id === value
+        // Disable empty single-source pills so a click can't navigate into an
+        // empty view (but 'All' is always clickable even when there's no data).
+        const disabled = opt.id !== 'all' && opt.count === 0
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            disabled={disabled}
+            onClick={() => onChange(opt.id)}
+            className={cn(
+              'rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-all',
+              active
+                ? 'bg-foreground text-background shadow-sm'
+                : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+              disabled && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground',
+            )}
+            title={opt.count != null ? `${opt.count} sessions in range` : undefined}
           >
             {opt.label}
           </button>

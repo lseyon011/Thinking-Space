@@ -4,12 +4,13 @@
 // billing to set expectations.
 //
 // Sources (point-in-time, update as needed):
-//   - Anthropic Opus 4.x:  $15 input / $75 output / cache-read ~10% of input
-//   - Anthropic Sonnet 4.x: $3 input / $15 output / cache-read ~10% of input
-//   - Anthropic Haiku 4.x:  $1 input / $5 output / cache-read ~10% of input
+//   - Anthropic Opus 4.x:  $15 input / $75 output / cache-read 10% of input
+//   - Anthropic Sonnet 4.x: $3 input / $15 output / cache-read 10% of input
+//   - Anthropic Haiku 4.x:  $1 input / $5 output / cache-read 10% of input
 //   - OpenAI GPT-5: ~$1.25 input / $10 output
-//   - Cache *creation* tokens cost slightly more than fresh input (5m ~125%, 1h ~200%)
-//     — averaged here.
+//   - Anthropic cache *creation* has two TTLs priced differently:
+//       5m TTL ≈ 1.25x input, 1h TTL ≈ 2.0x input. We split on the parsed
+//       `cacheCreation1h` portion; the remainder is treated as 5m.
 
 import type { SessionTokens } from '@/services/lego_blocks/units/aiActivityParserBlock'
 
@@ -18,44 +19,48 @@ interface PricePerMillion {
   input: number
   /** Output tokens. */
   output: number
-  /** Cache-read input tokens (usually ~10% of fresh). */
+  /** Cache-read input tokens (10% of fresh on Anthropic). */
   cacheRead: number
-  /** Cache-creation tokens (usually ~125% of fresh; averaging short+long TTL). */
-  cacheCreation: number
+  /** Cache-creation 5-minute TTL (1.25x input on Anthropic). */
+  cacheCreation5m: number
+  /** Cache-creation 1-hour TTL (2.0x input on Anthropic). Same as 5m when the
+   *  provider doesn't differentiate (OpenAI). */
+  cacheCreation1h: number
 }
 
 const FALLBACK_PRICE: PricePerMillion = {
   input: 3,
   output: 15,
   cacheRead: 0.3,
-  cacheCreation: 3.75,
+  cacheCreation5m: 3.75,
+  cacheCreation1h: 6,
 }
 
 const PRICES: ReadonlyArray<{ match: RegExp; price: PricePerMillion }> = [
-  // Anthropic Opus family
+  // Anthropic Opus family — 15 input, 75 output, 1.5 cache-read, 18.75 / 30 cache-create.
   {
     match: /opus/i,
-    price: { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 },
+    price: { input: 15, output: 75, cacheRead: 1.5, cacheCreation5m: 18.75, cacheCreation1h: 30 },
   },
-  // Anthropic Sonnet family
+  // Anthropic Sonnet family.
   {
     match: /sonnet/i,
-    price: { input: 3, output: 15, cacheRead: 0.3, cacheCreation: 3.75 },
+    price: { input: 3, output: 15, cacheRead: 0.3, cacheCreation5m: 3.75, cacheCreation1h: 6 },
   },
-  // Anthropic Haiku family
+  // Anthropic Haiku family.
   {
     match: /haiku/i,
-    price: { input: 1, output: 5, cacheRead: 0.1, cacheCreation: 1.25 },
+    price: { input: 1, output: 5, cacheRead: 0.1, cacheCreation5m: 1.25, cacheCreation1h: 2 },
   },
-  // OpenAI GPT-5
+  // OpenAI GPT-5 — no TTL split, both buckets priced as cache-write equivalent.
   {
     match: /^gpt-5/i,
-    price: { input: 1.25, output: 10, cacheRead: 0.125, cacheCreation: 1.25 },
+    price: { input: 1.25, output: 10, cacheRead: 0.125, cacheCreation5m: 1.25, cacheCreation1h: 1.25 },
   },
-  // OpenAI o-series (rough mid-tier estimate)
+  // OpenAI o-series (rough mid-tier estimate).
   {
     match: /^o3|^o4/i,
-    price: { input: 2, output: 8, cacheRead: 0.5, cacheCreation: 2 },
+    price: { input: 2, output: 8, cacheRead: 0.5, cacheCreation5m: 2, cacheCreation1h: 2 },
   },
 ]
 
@@ -73,11 +78,14 @@ export function priceForModel(model: string | undefined): PricePerMillion {
  */
 export function estimateCostUsd(tokens: SessionTokens, model: string | undefined): number {
   const p = priceForModel(model)
+  const cache1h = Math.min(tokens.cacheCreation1h ?? 0, tokens.cacheCreation)
+  const cache5m = Math.max(0, tokens.cacheCreation - cache1h)
   const usd =
     (tokens.input * p.input +
       tokens.output * p.output +
       tokens.cacheRead * p.cacheRead +
-      tokens.cacheCreation * p.cacheCreation) /
+      cache5m * p.cacheCreation5m +
+      cache1h * p.cacheCreation1h) /
     1_000_000
   return usd
 }
@@ -85,13 +93,20 @@ export function estimateCostUsd(tokens: SessionTokens, model: string | undefined
 /** Sum a list of token bundles. Caller is responsible for grouping by model
  *  if they want per-model cost; we just add the counts. */
 export function sumTokens(list: ReadonlyArray<SessionTokens | undefined>): SessionTokens {
-  const out: SessionTokens = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
+  const out: SessionTokens = {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheCreation: 0,
+    cacheCreation1h: 0,
+  }
   for (const t of list) {
     if (!t) continue
     out.input += t.input
     out.output += t.output
     out.cacheRead += t.cacheRead
     out.cacheCreation += t.cacheCreation
+    out.cacheCreation1h = (out.cacheCreation1h ?? 0) + (t.cacheCreation1h ?? 0)
   }
   return out
 }

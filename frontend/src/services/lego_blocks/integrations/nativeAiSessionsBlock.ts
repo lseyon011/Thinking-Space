@@ -54,12 +54,14 @@ export async function readNativeAiSession(
 }
 
 /**
- * Convenience: read + parse a single native session. Returns null for
- * unparseable files so the caller can keep going through the batch.
+ * Convenience: read + parse a single native session. Returns one entry per
+ * activity window — a long idle gap inside one transcript splits into multiple
+ * ParsedSession rows (`path`, `path#w1`, ...). Returns [] for unparseable files
+ * so the caller can keep going through the batch.
  */
 export async function loadAndParseNativeAiSession(
   entry: NativeListEntry,
-): Promise<ParsedSession | null> {
+): Promise<ParsedSession[]> {
   try {
     const text = await readNativeAiSession(entry.source, entry.relPath)
     return parseNativeAiSession({
@@ -69,6 +71,6 @@ export async function loadAndParseNativeAiSession(
       text,
     })
   } catch {
-    return null
+    return []
   }
 }

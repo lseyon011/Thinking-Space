@@ -118,15 +118,23 @@ export default function AiActivityHeatmapBlock({
     return w
   }, [dayMap, startIso, endIso, filterProject])
 
+  // Month labels are wider than one 12px column, so a naive per-column slot
+  // makes adjacent months collide ("JanFeb"). Build an absolutely-positioned
+  // header row instead: each label parks at the first-week-of-its-month column,
+  // and we skip any label that would sit closer than ~24px to the previous one.
   const monthHeaders = useMemo(() => {
     const headers: Array<{ col: number; label: string }> = []
     let lastMonth = -1
+    let lastCol = -Infinity
     weeks.forEach((week, idx) => {
       const first = week[0]
       if (!first) return
       const m = new Date(first.date + 'T00:00:00').getMonth()
       if (m !== lastMonth) {
-        headers.push({ col: idx, label: MONTH_LABELS[m] })
+        if (idx - lastCol >= 2) {
+          headers.push({ col: idx, label: MONTH_LABELS[m] })
+          lastCol = idx
+        }
         lastMonth = m
       }
     })
@@ -183,15 +191,19 @@ export default function AiActivityHeatmapBlock({
       ) : (
         <div className="overflow-x-auto">
           <div className="inline-block min-w-full">
-            <div className="ml-7 mb-1 flex" style={{ gap: 3 }}>
-              {weeks.map((_, idx) => {
-                const header = monthHeaders.find(h => h.col === idx)
-                return (
-                  <div key={idx} className="w-[12px] text-[10px] text-muted-foreground">
-                    {header?.label ?? ''}
-                  </div>
-                )
-              })}
+            <div
+              className="relative ml-7 mb-1"
+              style={{ height: 14, width: weeks.length * 15 - 3 }}
+            >
+              {monthHeaders.map(h => (
+                <div
+                  key={`${h.col}-${h.label}`}
+                  className="absolute top-0 whitespace-nowrap text-[10px] text-muted-foreground"
+                  style={{ left: h.col * 15 }}
+                >
+                  {h.label}
+                </div>
+              ))}
             </div>
             <div className="flex">
               <div className="mr-1 flex flex-col" style={{ gap: 3 }}>

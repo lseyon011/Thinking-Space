@@ -202,7 +202,6 @@ export default function AiActivityDayTimelineBlock({
             const isHover = hoverId === key
             const isHighlighted = highlightProject != null && chain.project === highlightProject
             const isDimmed = highlightProject != null && !isHighlighted
-            const showLabel = widthPx > 60
             return (
               <button
                 key={key}
@@ -210,8 +209,8 @@ export default function AiActivityDayTimelineBlock({
                 onMouseEnter={() => setHoverId(key)}
                 onMouseLeave={() => setHoverId(h => (h === key ? null : h))}
                 className={cn(
-                  'absolute overflow-hidden rounded-md border text-[10px] text-foreground/90 transition-all',
-                  isHover && 'shadow-md ring-1 ring-foreground/30',
+                  'absolute overflow-hidden rounded-md border transition-all',
+                  isHover && 'shadow-md ring-1 ring-foreground/30 z-10',
                   isHighlighted && 'ring-1 ring-foreground/50 shadow-sm',
                   isDimmed && 'opacity-30',
                 )}
@@ -224,16 +223,8 @@ export default function AiActivityDayTimelineBlock({
                   borderColor: color.dot,
                 }}
                 title={`${fmtTime(chain.startedIso)}–${fmtTime(chain.endedIso)} · ${chain.project} · ${chain.msgCount} msgs — ${chain.topic}`}
-              >
-                {showLabel && (
-                  <span
-                    className="block truncate px-1.5 leading-[16px]"
-                    style={{ color: color.stroke }}
-                  >
-                    {chain.project} · {chain.msgCount}
-                  </span>
-                )}
-              </button>
+                aria-label={`${chain.project} · ${chain.msgCount} msgs at ${fmtTime(chain.startedIso)}`}
+              />
             )
           })}
         </div>

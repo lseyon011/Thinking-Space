@@ -89,23 +89,26 @@ export default function AiActivityDayTableBlock({
   // right price tier (opus/sonnet/gpt-5 differ a lot).
   const dayTotals = useMemo(() => {
     let totalCostUsd = 0
-    let totalTokensWithData = 0
+    // Split tokens into "real" usage (fresh input + output) vs cached (cache
+    // reads + writes). Cached tokens are the bulk of the volume but the cheap
+    // part of the bill — surfacing them as one blob hid the actual work being
+    // done. Footer now shows fresh / cached separately.
+    let totalFreshTokens = 0
+    let totalCachedTokens = 0
     let chainsWithTokens = 0
-    const allTokenBundles: ReturnType<typeof sumTokens>[] = []
     for (const c of sorted) {
       const chainTokens = sumTokens(c.sessions.map(s => s.tokens))
       const hasTokens =
         chainTokens.input + chainTokens.output + chainTokens.cacheRead + chainTokens.cacheCreation > 0
       if (hasTokens) {
         chainsWithTokens += 1
-        allTokenBundles.push(chainTokens)
         const chainModel = c.sessions.find(s => s.model)?.model
         totalCostUsd += estimateCostUsd(chainTokens, chainModel)
-        totalTokensWithData +=
-          chainTokens.input + chainTokens.output + chainTokens.cacheRead + chainTokens.cacheCreation
+        totalFreshTokens += chainTokens.input + chainTokens.output
+        totalCachedTokens += chainTokens.cacheRead + chainTokens.cacheCreation
       }
     }
-    return { totalCostUsd, totalTokensWithData, chainsWithTokens }
+    return { totalCostUsd, totalFreshTokens, totalCachedTokens, chainsWithTokens }
   }, [sorted])
 
   return (
@@ -252,11 +255,17 @@ export default function AiActivityDayTableBlock({
       )}
       {dayTotals.chainsWithTokens > 0 && (
         <div className="flex items-baseline justify-end gap-3 px-1 text-[11px] text-muted-foreground">
-          <span>
+          <span title="Fresh input + output tokens — the real work, billed at full rate.">
             <strong className="tabular-nums text-foreground/80">
-              {formatTokens(dayTotals.totalTokensWithData)}
+              {formatTokens(dayTotals.totalFreshTokens)}
             </strong>{' '}
-            tokens
+            fresh
+          </span>
+          <span
+            className="text-muted-foreground/70"
+            title="Cache reads + cache writes — high volume, low cost."
+          >
+            +{formatTokens(dayTotals.totalCachedTokens)} cached
           </span>
           <span>
             ~<strong className="tabular-nums text-foreground/80">{formatUsd(dayTotals.totalCostUsd)}</strong>{' '}

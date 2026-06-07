@@ -25,11 +25,11 @@ import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserB
 const CACHE_PATH = 'kai-workspace/.cache/claude-activity.json'
 const CACHE_DIR = 'kai-workspace/.cache'
 const SOURCE_PREFIXES = ['ai_raw/raw/claude-code/', 'ai_raw/raw/codex/']
-// v8: ParsedSession now stores `sessionId` (full UUID) extracted from both
-// vault headers and native JSONL events. Enables exact dedup instead of the
-// fragile 8-char prefix scan, so a vault session and its native JSONL twin
-// reliably collapse into one entry (native preferred for tokens + real duration).
-const CACHE_VERSION = 8
+// v11: Anthropic cache-creation now splits by TTL (`cacheCreation1h`) so the
+// cost math charges the 2.0x rate on 1-hour cache writes instead of treating
+// everything as 1.25x 5-minute TTL. Existing v10 rows lack the field and
+// would underbill 1h-heavy sessions — bump to reparse Claude transcripts.
+const CACHE_VERSION = 11
 
 /** How long to trust the in-memory snapshot before re-walking on the next load call. */
 const MEM_TTL_MS = 5 * 60 * 1000
@@ -161,27 +161,48 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
     reparsed += 1
   }
 
-  // ── 3. Native sessions — cached by `native/<source>/<relPath>` synthetic key. ──
+  // ── 3. Native sessions — cached by `native/<source>/<relPath>` synthetic key.
+  // One file can produce multiple window entries (`key`, `key#w1`, `key#w2`, …)
+  // when there are long idle gaps. All windows from the same file share an
+  // mtime, so on a cache hit we restore every sibling row for that key. ──
   const nativeToParse: typeof nativeEntries = []
+  const cachedByFileKey = new Map<string, ParsedSession[]>()
+  for (const [path, sess] of Object.entries(cache.sessions)) {
+    if (!path.startsWith('native/')) continue
+    const fileKey = path.split('#', 1)[0]
+    const arr = cachedByFileKey.get(fileKey) ?? []
+    arr.push(sess)
+    cachedByFileKey.set(fileKey, arr)
+  }
   for (const entry of nativeEntries) {
     const key = `native/${entry.source}/${entry.relPath}`
-    present.add(key)
-    const cached = cache.sessions[key]
-    if (cached && cached.mtime === entry.mtime) {
-      next[key] = cached
+    const cachedWindows = cachedByFileKey.get(key) ?? []
+    const fresh = cachedWindows.length > 0 && cachedWindows.every(s => s.mtime === entry.mtime)
+    if (fresh) {
+      for (const s of cachedWindows) {
+        present.add(s.path)
+        next[s.path] = s
+      }
     } else {
+      // Mark the base key present so a later prune step (if any) doesn't drop
+      // the file just because its window suffixes haven't been written yet.
+      present.add(key)
       nativeToParse.push(entry)
     }
   }
   const nativeParsed = await runParallel(nativeToParse, READ_CONCURRENCY, async entry => {
     const parsed = await loadAndParseNativeAiSession(entry)
-    if (parsed) return parsed
-    return cache.sessions[`native/${entry.source}/${entry.relPath}`] ?? null
+    if (parsed.length > 0) return parsed
+    // Parse failure: fall back to whatever windows we have cached for this file.
+    const key = `native/${entry.source}/${entry.relPath}`
+    return cachedByFileKey.get(key) ?? []
   })
-  for (const s of nativeParsed) {
-    if (!s) continue
-    next[s.path] = s
-    reparsed += 1
+  for (const windows of nativeParsed) {
+    for (const s of windows) {
+      present.add(s.path)
+      next[s.path] = s
+    }
+    if (windows.length > 0) reparsed += 1
   }
 
   // ── 4. Persist the merged cache (raw, pre-dedup). ───────────────────────────

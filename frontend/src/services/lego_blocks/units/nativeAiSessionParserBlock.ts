@@ -57,9 +57,11 @@ function numericField(obj: Record<string, unknown>, key: string): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0
 }
 
-/** Pull the displayable string content out of a Claude user message, which can
- *  be either a plain string or an array of typed content blocks. */
-function flattenClaudeContent(content: unknown): string {
+/** Pull the displayable string content out of a Claude or Codex message body,
+ *  which can be a plain string or an array of typed content blocks. Codex uses
+ *  `input_text` / `output_text` block types; Claude uses `text`. Tool results,
+ *  images, etc. are skipped. */
+function flattenContent(content: unknown): string {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return ''
   const parts: string[] = []
@@ -68,8 +70,12 @@ function flattenClaudeContent(content: unknown): string {
       parts.push(block)
     } else if (block && typeof block === 'object') {
       const b = block as Record<string, unknown>
-      if (b.type === 'text' && typeof b.text === 'string') parts.push(b.text)
-      // skip tool_result, image, etc.
+      const bt = typeof b.type === 'string' ? b.type : ''
+      if ((bt === 'text' || bt === 'input_text' || bt === 'output_text') &&
+          typeof b.text === 'string') {
+        parts.push(b.text)
+      }
+      // skip tool_result, image, function_call, reasoning, etc.
     }
   }
   return parts.join('\n')
@@ -135,26 +141,49 @@ interface ParseEnvelope {
   text: string
 }
 
+/** Within a single session file, split into separate "active windows" wherever
+ *  consecutive conversation events are this many hours apart. A 1h+ silence is
+ *  almost always "stopped working, came back later" — counting it as one sitting
+ *  inflates duration in the day table. Tuned by feel; bump if it splits too
+ *  eagerly. */
+const WINDOW_GAP_HOURS = 1
+const WINDOW_GAP_MS = WINDOW_GAP_HOURS * 3_600_000
+
+interface ConvEvent {
+  ts: number          // unix ms
+  isUser: boolean
+  body: string        // user message body (empty for assistant events)
+}
+
 /**
- * Parse a JSONL session file into a ParsedSession. Returns null when the file
- * has no recognisable events. The output uses the SAME ParsedSession shape the
- * vault markdown parser produces so downstream aggregation is identical.
+ * Parse a JSONL session file into one ParsedSession per active window. A file
+ * with a long idle gap (>WINDOW_GAP_HOURS between consecutive conversation
+ * events) becomes multiple entries: `path` (window 0), `path#w1`, `path#w2`...
+ * Returns [] when the file has no recognisable events.
  */
-export function parseNativeAiSession(env: ParseEnvelope): ParsedSession | null {
+export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   const lines = env.text.split('\n')
-  const scan = emptyScan()
 
   let cwd = ''
   let sessionId = ''
-  let firstTimestamp = ''
-  let lastTimestamp = ''
-  let hadClear = false
-  let hadTelegram = false
-  let hadAutoCommit = false
   let model: string | undefined
   // Claude usage is per-turn — we sum. Codex emits running totals — we take last.
-  const claudeTotals: SessionTokens = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
+  const claudeTotals: SessionTokens = {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheCreation: 0,
+    cacheCreation1h: 0,
+  }
   let codexTotals: SessionTokens | null = null
+
+  const convEvents: ConvEvent[] = []
+  const recordConv = (tsStr: string, isUser: boolean, body: string): void => {
+    if (!tsStr) return
+    const ms = Date.parse(tsStr)
+    if (!Number.isFinite(ms)) return
+    convEvents.push({ ts: ms, isUser, body })
+  }
 
   for (const raw of lines) {
     if (!raw) continue
@@ -171,24 +200,12 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession | null {
     if (env.source === 'claude') {
       if (!cwd && typeof evt.cwd === 'string') cwd = evt.cwd
       if (!sessionId && typeof evt.sessionId === 'string') sessionId = evt.sessionId
-      // Session bounds only from actual conversation events. Background events
-      // like `last-prompt`, `permission-mode`, `ai-title`, `attachment`,
-      // `queue-operation`, `system` etc. fire independently of user activity
-      // (e.g. when you re-open the session next morning to glance at it) and
-      // would push lastTimestamp hours past when you actually stopped working.
-      if (ts && (type === 'user' || type === 'assistant')) {
-        if (!firstTimestamp) firstTimestamp = ts
-        lastTimestamp = ts
-      }
 
       if (type === 'user') {
         const message = evt.message as Record<string, unknown> | undefined
         const content = message ? message.content : undefined
-        const body = flattenClaudeContent(content)
-        if (/<command-name>\/clear<\/command-name>/.test(body)) hadClear = true
-        if (isAutoCommit(body)) hadAutoCommit = true
-        if (isTelegram(body)) hadTelegram = true
-        ingestUserBody(scan, body)
+        const body = flattenContent(content)
+        recordConv(ts, true, body)
       }
       if (type === 'assistant') {
         const message = evt.message as Record<string, unknown> | undefined
@@ -199,7 +216,18 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession | null {
           claudeTotals.output += numericField(usage, 'output_tokens')
           claudeTotals.cacheRead += numericField(usage, 'cache_read_input_tokens')
           claudeTotals.cacheCreation += numericField(usage, 'cache_creation_input_tokens')
+          // Anthropic reports the TTL breakdown of cache creation in a nested
+          // object: `cache_creation.ephemeral_1h_input_tokens` (2.0x input price)
+          // vs `ephemeral_5m_input_tokens` (1.25x). Without this, sessions that
+          // hit the 1h cache were underbilled by ~40%.
+          const cacheCreationDetail = usage.cache_creation as Record<string, unknown> | undefined
+          if (cacheCreationDetail) {
+            claudeTotals.cacheCreation1h =
+              (claudeTotals.cacheCreation1h ?? 0) +
+              numericField(cacheCreationDetail, 'ephemeral_1h_input_tokens')
+          }
         }
+        recordConv(ts, false, '')
       }
     }
 
@@ -209,11 +237,6 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession | null {
       if (type === 'session_meta') {
         if (typeof payload.cwd === 'string') cwd = payload.cwd
         if (typeof payload.id === 'string') sessionId = payload.id
-        const pts = typeof payload.timestamp === 'string' ? payload.timestamp : ''
-        if (pts) {
-          firstTimestamp = pts
-          lastTimestamp = pts
-        }
         continue
       }
       if (type === 'turn_context' && typeof payload.model === 'string') {
@@ -225,43 +248,66 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession | null {
           const info = ep.info as Record<string, unknown> | undefined
           const total = info?.total_token_usage as Record<string, unknown> | undefined
           if (total) {
+            // Codex semantics differ from Claude:
+            //   - `input_tokens` is the TOTAL input including cache hits
+            //     (Claude's `input_tokens` is fresh-only with cache as a sibling).
+            //   - `cached_input_tokens` is a SUBSET of `input_tokens`.
+            //   - `reasoning_output_tokens` is billed at the output rate but
+            //     reported separately from `output_tokens`.
+            // We normalize to Claude's disjoint-bucket convention so the shared
+            // cost math (estimateCostUsd) doesn't double-count cache reads.
+            const totalInput = numericField(total, 'input_tokens')
+            const cached = numericField(total, 'cached_input_tokens')
+            const freshInput = Math.max(0, totalInput - cached)
+            const output = numericField(total, 'output_tokens')
+            const reasoning = numericField(total, 'reasoning_output_tokens')
             // Running totals — overwrite each time so we end with the last seen.
             codexTotals = {
-              input: numericField(total, 'input_tokens'),
-              output: numericField(total, 'output_tokens'),
-              cacheRead: numericField(total, 'cached_input_tokens'),
+              input: freshInput,
+              output: output + reasoning,
+              cacheRead: cached,
               cacheCreation: 0, // Codex doesn't split out cache creation
             }
           }
         }
       }
-      // Session bounds: only count actual conversation events (response_item
-      // for user/agent messages, or event_msg of those subtypes). Background
-      // emissions like `token_count`, `turn_context`, `task_started/complete`
-      // can fire at idle moments and would push lastTimestamp incorrectly.
-      const isConversationEvent =
-        type === 'response_item' ||
-        (type === 'event_msg' &&
-          ((payload as Record<string, unknown>).type === 'user_message' ||
-            (payload as Record<string, unknown>).type === 'agent_message'))
-      if (ts && isConversationEvent) {
-        if (!firstTimestamp) firstTimestamp = ts
-        lastTimestamp = ts
-      }
-      // Detect user-authored events: response_item with role:user OR event_msg
-      // payloads tagged as user input. Codex format evolves; be lenient.
-      const role = typeof payload.role === 'string' ? payload.role : ''
-      const looksUserContent =
-        role === 'user' ||
-        type === 'user_input' ||
-        (type === 'response_item' && role === 'user')
-      if (looksUserContent) {
-        // Try common content fields.
-        const content =
-          (typeof payload.content === 'string' && payload.content) ||
-          (typeof payload.text === 'string' && payload.text) ||
-          (Array.isArray(payload.content) ? flattenClaudeContent(payload.content) : '')
-        ingestUserBody(scan, String(content))
+      // Only actual conversation events count toward windowing. Background
+      // emissions (`token_count`, `turn_context`, `task_started/complete`) fire
+      // at idle moments and would mask a real user-side gap.
+      //
+      // Codex emits the *same* user/assistant turn twice — once as a
+      // `response_item` with role and structured content, and again as an
+      // `event_msg` with a flat `payload.message` string. We use the event_msg
+      // form as the canonical body source (cleaner text, free of wrappers like
+      // <environment_context>) and treat response_item as windowing-only so
+      // `userMsgCount` doesn't double.
+      const payloadType = String((payload as Record<string, unknown>).type ?? '')
+      const isUserEventMsg = type === 'event_msg' && payloadType === 'user_message'
+      const isAgentEventMsg = type === 'event_msg' && payloadType === 'agent_message'
+      const isUserResponseItem =
+        type === 'response_item' &&
+        payloadType === 'message' &&
+        typeof payload.role === 'string' &&
+        payload.role === 'user'
+      const isAgentResponseItem =
+        type === 'response_item' &&
+        payloadType === 'message' &&
+        typeof payload.role === 'string' &&
+        payload.role === 'assistant'
+      const isUser = isUserEventMsg || isUserResponseItem
+      const isAgent = isAgentEventMsg || isAgentResponseItem
+      if (ts && (isUser || isAgent)) {
+        let body = ''
+        // Only ingest body from event_msg.user_message — it's the canonical
+        // user-input form. response_item user messages carry env-context
+        // wrappers we'd otherwise dedupe out, and they'd double the count.
+        if (isUserEventMsg) {
+          if (typeof payload.message === 'string') body = payload.message
+          else if (typeof payload.text === 'string') body = payload.text
+          else if (Array.isArray(payload.content)) body = flattenContent(payload.content)
+          else if (typeof payload.content === 'string') body = payload.content
+        }
+        recordConv(ts, isUserEventMsg, body)
       }
     }
   }
@@ -272,49 +318,88 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession | null {
     const m = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(base)
     if (m) sessionId = m[1]
   }
-  if (!sessionId) return null
+  if (!sessionId) return []
+  if (convEvents.length === 0) return []
 
-  // Project: prefer cwd; fall back to noise buckets when relevant.
-  let project: string
-  if (hadAutoCommit) project = '[auto-commit]'
-  else if (hadTelegram) project = '[telegram]'
-  else project = classifyCwd(cwd)
+  // Events arrive in file order, which is chronological for both formats. Belt
+  // and braces: sort defensively before windowing.
+  convEvents.sort((a, b) => a.ts - b.ts)
 
-  // Timestamp: prefer first event ts; fall back to file mtime so we never
-  // stamp a session as "now" on parse failure (same rule as vault parser).
-  const startedIso = firstTimestamp
-    ? new Date(firstTimestamp).toISOString()
-    : new Date(env.mtime * 1000).toISOString()
-  // End: last event timestamp gives the real "session length" for the timeline.
-  const endedIso = lastTimestamp
-    ? new Date(lastTimestamp).toISOString()
-    : startedIso
+  // ── Window split: break wherever the gap to the previous event exceeds the
+  // idle threshold. Each window is a contiguous run of conversation events.
+  const windows: ConvEvent[][] = []
+  let cur: ConvEvent[] = []
+  for (const e of convEvents) {
+    if (cur.length === 0) {
+      cur.push(e)
+      continue
+    }
+    if (e.ts - cur[cur.length - 1].ts > WINDOW_GAP_MS) {
+      windows.push(cur)
+      cur = [e]
+    } else {
+      cur.push(e)
+    }
+  }
+  if (cur.length > 0) windows.push(cur)
 
-  const topic = scan.substantiveTopic || scan.fallbackTopic || '(no user message)'
   const sourceTag: ActivitySource = env.source === 'codex' ? 'codex' : 'claude-code'
+  const basePath = `native/${env.source}/${env.relPath}`
+  const baseId = sessionId.toLowerCase()
 
-  // Pick the right token bundle: Claude sums per-turn; Codex provides totals.
-  const tokens =
+  // Tokens land on the first window only — we can't reliably attribute usage
+  // per-window (claude usage tags assistant turns, codex emits running totals)
+  // without re-running the math against assistant timestamps. Keeping total on
+  // window 0 is faithful to "session-level cost" while letting later windows
+  // render with zero token noise.
+  const tokensForFirstWindow =
     env.source === 'claude'
       ? (claudeTotals.input || claudeTotals.output ? claudeTotals : undefined)
       : codexTotals ?? undefined
 
-  return {
-    path: `native/${env.source}/${env.relPath}`,
-    source: sourceTag,
-    startedIso,
-    endedIso,
-    project,
-    userMsgCount: scan.count,
-    topic,
-    hadClear,
-    mtime: env.mtime,
-    tokens,
-    model,
-    sessionId: sessionId.toLowerCase(),
-    // Stash sessionId on the path tail so the cache layer can dedupe by it.
-    // We don't add a new field to ParsedSession to keep the cache schema stable.
-  } as ParsedSession & { sessionId?: string } as ParsedSession
+  const out: ParsedSession[] = []
+  windows.forEach((win, idx) => {
+    const scan = emptyScan()
+    let winHadClear = false
+    let winHadTelegram = false
+    let winHadAutoCommit = false
+    for (const e of win) {
+      if (!e.isUser) continue
+      if (/<command-name>\/clear<\/command-name>/.test(e.body)) winHadClear = true
+      if (isAutoCommit(e.body)) winHadAutoCommit = true
+      if (isTelegram(e.body)) winHadTelegram = true
+      ingestUserBody(scan, e.body)
+    }
+
+    let project: string
+    if (winHadAutoCommit) project = '[auto-commit]'
+    else if (winHadTelegram) project = '[telegram]'
+    else project = classifyCwd(cwd)
+
+    const startedIso = new Date(win[0].ts).toISOString()
+    const endedIso = new Date(win[win.length - 1].ts).toISOString()
+    const topic = scan.substantiveTopic || scan.fallbackTopic || '(no user message)'
+    const isFirst = idx === 0
+    const path = isFirst ? basePath : `${basePath}#w${idx}`
+    const winSessionId = isFirst ? baseId : `${baseId}::w${idx}`
+
+    out.push({
+      path,
+      source: sourceTag,
+      startedIso,
+      endedIso,
+      project,
+      userMsgCount: scan.count,
+      topic,
+      hadClear: winHadClear,
+      mtime: env.mtime,
+      tokens: isFirst ? tokensForFirstWindow : undefined,
+      model,
+      sessionId: winSessionId,
+    } as ParsedSession & { sessionId?: string } as ParsedSession)
+  })
+
+  return out
 }
 
 /** Extract the session id from a ParsedSession. Prefers the explicit

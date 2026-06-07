@@ -51,6 +51,8 @@ export interface ActivityProject {
   isUnknown: boolean
 }
 
+export type AiSourceFilter = 'all' | 'claude-code' | 'codex'
+
 export interface UseAiActivityResult {
   /** All chains within the visible range, newest first. */
   chains: ActivityChain[]
@@ -66,6 +68,13 @@ export interface UseAiActivityResult {
   error: string | null
   preset: AiActivityPreset
   setPreset: (preset: AiActivityPreset) => void
+  /** Which AI tool's sessions to include. Project buckets stay folder-rooted; this
+   *  just narrows which sessions feed every downstream aggregation. */
+  sourceFilter: AiSourceFilter
+  setSourceFilter: (filter: AiSourceFilter) => void
+  /** How many sessions exist per source across the visible range — used to label
+   *  the source pills and disable empty ones. */
+  sourceCounts: { claudeCode: number; codex: number }
   startIso: string
   endIso: string
   refresh: () => void
@@ -112,7 +121,35 @@ function isNoiseProject(name: string): boolean {
 }
 
 const PRESET_STORAGE_KEY = 'thinkspc.aiActivity.preset.v1'
+const SOURCE_FILTER_STORAGE_KEY = 'thinkspc.aiActivity.sourceFilter.v1'
 const VALID_PRESET_IDS = new Set(AI_ACTIVITY_PRESETS.map(p => p.id))
+const VALID_SOURCE_FILTERS: ReadonlySet<AiSourceFilter> = new Set([
+  'all',
+  'claude-code',
+  'codex',
+])
+
+function readStoredSourceFilter(): AiSourceFilter | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(SOURCE_FILTER_STORAGE_KEY)
+    if (raw && VALID_SOURCE_FILTERS.has(raw as AiSourceFilter)) {
+      return raw as AiSourceFilter
+    }
+  } catch {
+    /* localStorage unavailable */
+  }
+  return null
+}
+
+function writeStoredSourceFilter(value: AiSourceFilter): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(SOURCE_FILTER_STORAGE_KEY, value)
+  } catch {
+    /* localStorage unavailable */
+  }
+}
 
 function readStoredPreset(): AiActivityPreset | null {
   if (typeof window === 'undefined') return null
@@ -147,6 +184,13 @@ export function useAiActivityBlock(
   const setPreset = useCallback((next: AiActivityPreset) => {
     writeStoredPreset(next)
     setPresetState(next)
+  }, [])
+  const [sourceFilter, setSourceFilterState] = useState<AiSourceFilter>(
+    () => readStoredSourceFilter() ?? 'all',
+  )
+  const setSourceFilter = useCallback((next: AiSourceFilter) => {
+    writeStoredSourceFilter(next)
+    setSourceFilterState(next)
   }, [])
   // Seed from the module-level snapshot so a remount (or a second consumer
   // mounting after the first) gets instant paint instead of a loading flash.
@@ -208,6 +252,14 @@ export function useAiActivityBlock(
     [allSessions],
   )
 
+  // Apply the AI-source filter before the range overlap step so 'codex'/'claude
+  // only' views drive every downstream aggregation (heatmap, area chart,
+  // project chips, day timeline, today's chains) consistently.
+  const sourceFilteredSessions = useMemo(() => {
+    if (sourceFilter === 'all') return enrichedSessions
+    return enrichedSessions.filter(s => s.source === sourceFilter)
+  }, [enrichedSessions, sourceFilter])
+
   // Sessions whose activity window OVERLAPS the visible range. A long-running
   // session (e.g. an 8-day Claude chat started a week ago but still active
   // yesterday) should appear in 7d view because there's recent activity, not
@@ -215,12 +267,29 @@ export function useAiActivityBlock(
   const sessions = useMemo(() => {
     const startMs = Date.parse(startIso + 'T00:00:00')
     const endMs = Date.parse(endIso + 'T23:59:59')
-    return enrichedSessions.filter(s => {
+    return sourceFilteredSessions.filter(s => {
       const sStart = Date.parse(s.startedIso)
       const sEnd = Date.parse(s.endedIso ?? s.startedIso)
       // Overlap: [sStart, sEnd] intersects [startMs, endMs]
       return sEnd >= startMs && sStart <= endMs
     })
+  }, [sourceFilteredSessions, startIso, endIso])
+
+  // Counts for the pill labels — computed on the range-filtered superset (ignoring
+  // the source filter) so each pill shows how many sessions it would surface.
+  const sourceCounts = useMemo(() => {
+    const startMs = Date.parse(startIso + 'T00:00:00')
+    const endMs = Date.parse(endIso + 'T23:59:59')
+    let claudeCode = 0
+    let codex = 0
+    for (const s of enrichedSessions) {
+      const sStart = Date.parse(s.startedIso)
+      const sEnd = Date.parse(s.endedIso ?? s.startedIso)
+      if (sEnd < startMs || sStart > endMs) continue
+      if (s.source === 'codex') codex += 1
+      else if (s.source === 'claude-code') claudeCode += 1
+    }
+    return { claudeCode, codex }
   }, [enrichedSessions, startIso, endIso])
 
   const chains = useMemo(() => buildChains(sessions), [sessions])
@@ -229,11 +298,13 @@ export function useAiActivityBlock(
   const todayChains = useMemo(() => {
     // Today's chains are most useful when computed across ALL sessions (not just
     // the visible range), so a 7d-preset doesn't trim mid-chain sessions away.
-    const todaySessions = enrichedSessions.filter(
+    // Source filter still applies — a "Codex only" view's auto-post-it should
+    // reflect Codex activity, not the merged today list.
+    const todaySessions = sourceFilteredSessions.filter(
       s => s.startedIso.slice(0, 10) === todayIso,
     )
     return buildChains(todaySessions)
-  }, [enrichedSessions, todayIso])
+  }, [sourceFilteredSessions, todayIso])
 
   const days = useMemo<ActivityDay[]>(() => {
     const dayList = isoDaysBetween(startIso, endIso)
@@ -306,6 +377,9 @@ export function useAiActivityBlock(
     error,
     preset,
     setPreset,
+    sourceFilter,
+    setSourceFilter,
+    sourceCounts,
     startIso,
     endIso,
     refresh,

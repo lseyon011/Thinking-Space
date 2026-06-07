@@ -3,6 +3,7 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -21,6 +22,10 @@ interface AiActivityStackedAreaBlockProps {
   filterProject?: string | null
   /** Hide noise buckets ([auto-commit], [telegram]). */
   hideNoise?: boolean
+  /** Currently selected day — for visual selection state if we want it later. */
+  selectedDate?: string | null
+  /** Click on a data point selects/unselects that day. Mirrors the heatmap. */
+  onSelectDate?: (date: string | null) => void
 }
 
 function formatTickDate(iso: string): string {
@@ -38,6 +43,8 @@ export default function AiActivityStackedAreaBlock({
   projects,
   filterProject = null,
   hideNoise = true,
+  selectedDate = null,
+  onSelectDate,
 }: AiActivityStackedAreaBlockProps) {
   const visibleProjects = useMemo(() => {
     let list = projects
@@ -45,6 +52,15 @@ export default function AiActivityStackedAreaBlock({
     if (filterProject) list = list.filter(p => p.name === filterProject)
     return list
   }, [projects, hideNoise, filterProject])
+
+  // Chain count per day — surfaced in the tooltip so a hover shows how many
+  // distinct sessions ran that day on top of the per-project msg breakdown.
+  // Key by date, not stuffed into the row, so recharts doesn't try to plot it.
+  const chainsByDate = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const d of days) m.set(d.date, d.totalChains)
+    return m
+  }, [days])
 
   const data = useMemo(() => {
     return days.map(d => {
@@ -82,7 +98,20 @@ export default function AiActivityStackedAreaBlock({
     <div ref={hostRef} className="h-44 min-w-0">
       {ready && (
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-          <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -22 }}>
+          <AreaChart
+            data={data}
+            margin={{ top: 4, right: 4, bottom: 0, left: -22 }}
+            onClick={evt => {
+              if (!onSelectDate) return
+              // Recharts passes the active payload's row in `activeLabel`. Toggle:
+              // clicking the already-selected day clears it (matches heatmap UX).
+              const payload = evt as { activeLabel?: string } | null
+              const clicked = payload?.activeLabel
+              if (!clicked) return
+              onSelectDate(selectedDate === clicked ? null : clicked)
+            }}
+            style={{ cursor: onSelectDate ? 'pointer' : 'default' }}
+          >
             <defs>
               {visibleProjects.map(p => {
                 const color = getProjectColor(p.name)
@@ -120,34 +149,52 @@ export default function AiActivityStackedAreaBlock({
                 const rows = payload
                   .filter(p => typeof p.value === 'number' && (p.value as number) > 0)
                   .reverse()
-                if (rows.length === 0) return null
+                const dateIso = String(label)
+                const sessions = chainsByDate.get(dateIso) ?? 0
+                if (rows.length === 0 && sessions === 0) return null
                 return (
                   <div className="rounded-lg border border-border/60 bg-background/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
-                    <div className="text-foreground/70">{formatTooltipDate(label as string)}</div>
-                    <div className="mt-1 space-y-0.5">
-                      {rows.map(row => {
-                        const color = getProjectColor(String(row.dataKey))
-                        return (
-                          <div key={String(row.dataKey)} className="flex items-baseline gap-2">
-                            <span
-                              className="h-2 w-2 rounded-full"
-                              style={{ background: color.stroke }}
-                            />
-                            <span className="text-foreground/80">{String(row.dataKey)}</span>
-                            <span
-                              className="ml-auto tabular-nums"
-                              style={{ color: color.stroke }}
-                            >
-                              {row.value as number}
-                            </span>
-                          </div>
-                        )
-                      })}
+                    <div className="flex items-baseline gap-2 text-foreground/70">
+                      <span>{formatTooltipDate(dateIso)}</span>
+                      <span className="ml-auto tabular-nums text-foreground/60">
+                        {sessions} session{sessions === 1 ? '' : 's'}
+                      </span>
                     </div>
+                    {rows.length > 0 && (
+                      <div className="mt-1 space-y-0.5">
+                        {rows.map(row => {
+                          const color = getProjectColor(String(row.dataKey))
+                          return (
+                            <div key={String(row.dataKey)} className="flex items-baseline gap-2">
+                              <span
+                                className="h-2 w-2 rounded-full"
+                                style={{ background: color.stroke }}
+                              />
+                              <span className="text-foreground/80">{String(row.dataKey)}</span>
+                              <span
+                                className="ml-auto tabular-nums"
+                                style={{ color: color.stroke }}
+                              >
+                                {row.value as number}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )
               }}
             />
+            {selectedDate && (
+              <ReferenceLine
+                x={selectedDate}
+                stroke="rgba(148,163,184,0.9)"
+                strokeWidth={1.5}
+                strokeDasharray="3 3"
+                ifOverflow="extendDomain"
+              />
+            )}
             {visibleProjects.map(p => {
               const color = getProjectColor(p.name)
               const id = `claude-act-grad-${p.name.replace(/[^a-z0-9]/gi, '-')}`
