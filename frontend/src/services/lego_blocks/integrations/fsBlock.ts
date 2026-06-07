@@ -180,6 +180,14 @@ interface ElectronAPI {
   selectVaultFolder(): Promise<string | null>
   openExternal?(url: string): Promise<void>
   fetchText?(url: string): Promise<{ status: number; body: string }>
+  /** Read-only native AI session metadata (locked to ~/.claude/projects + ~/.codex/sessions). */
+  nativeAiSessionsList?(): Promise<Array<{
+    source: 'claude' | 'codex'
+    relPath: string
+    mtime: number
+    size: number
+  }>>
+  nativeAiSessionRead?(source: 'claude' | 'codex', relPath: string): Promise<string>
   googleOauthRequest?(payload: {
     method: 'GET' | 'POST' | 'PUT'
     url: string

@@ -1,0 +1,446 @@
+// Parse Claude Code / Codex session transcripts into typed sessions and group
+// them into work-chains.
+//
+// Ported from `kai-workspace/scripts/claude-activity.py` so the UI and the CLI
+// produce the same shape of data. Keep both in sync when changing chain rules.
+
+export type ActivitySource = 'claude-code' | 'codex'
+
+export interface ParsedSession {
+  /** Vault-relative path of the source markdown file. */
+  path: string
+  source: ActivitySource
+  /** ISO timestamp of session start (best-effort: filename + _Last saved_ line). */
+  startedIso: string
+  /** ISO timestamp of session end. Native JSONL sources track this from the
+   *  last event in the file; vault markdown can't (no per-message timestamps),
+   *  so it equals `startedIso` there. Used for accurate timeline pill widths. */
+  endedIso?: string
+  /** Resolved project bucket (e.g. "Thinking-Space", "LTM/F9", "[auto-commit]"). */
+  project: string
+  /** Count of real user-message blocks (slash commands count, tool_results don't). */
+  userMsgCount: number
+  /** First substantive user prompt (preferred for topic labels); falls back to slash-command label. */
+  topic: string
+  /** Whether the session contains a /clear command (forces a chain break). */
+  hadClear: boolean
+  /** File mtime in unix seconds — used for incremental cache invalidation. */
+  mtime: number
+  /** Token usage if the source surfaces it (native JSONL only). */
+  tokens?: SessionTokens
+  /** Model id last seen in the session (e.g. "claude-opus-4-7", "gpt-5"). */
+  model?: string
+  /** Full session UUID when we can extract one (Claude Code session id). Used
+   *  for exact dedup against the native ~/.claude/projects/<uuid>.jsonl source.
+   *  Falls back to the 8-char short id if only that's available. */
+  sessionId?: string
+}
+
+export interface SessionTokens {
+  input: number
+  output: number
+  /** Tokens served from cache (cheaper). 0 when not reported. */
+  cacheRead: number
+  /** Tokens written into cache (more expensive than normal input). 0 when not reported. */
+  cacheCreation: number
+}
+
+export interface ActivityChain {
+  /** Stable per-chain key derived from project + earliest session id. */
+  key: string
+  project: string
+  source: ActivitySource
+  startedIso: string
+  endedIso: string
+  msgCount: number
+  /** First substantive topic across the chain's sessions. */
+  topic: string
+  sessions: ParsedSession[]
+}
+
+// Strict id form used by Claude Code transcripts (date + 8-char hex).
+const FILENAME_RE = /^(\d{4}-\d{2}-\d{2})_([0-9a-f]{8})\.md$/
+// Permissive: any filename that *starts* with YYYY-MM-DD. Covers Codex
+// transcripts and any other tool that prefixes a date but uses a different id.
+const FILENAME_DATE_RE = /^(\d{4}-\d{2}-\d{2})/
+const SAVED_RE = /_Last saved:\s*([0-9T:\-]+)_/
+const CLEAR_RE = /<command-name>\/clear<\/command-name>/i
+const COMMAND_NAME_RE = /<command-name>([^<]+)<\/command-name>/
+// Vault session files (Claude Code save-skill output) begin with a line like
+//   `# Claude Code Session — ad551ea8-9dd1-4a76-a0e4-2813b308384c`
+// We grab the full UUID so dedup against the native ~/.claude/projects/<uuid>.jsonl
+// is an exact match, not a fragile 8-char prefix scan.
+const FULL_UUID_RE = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
+
+// Detect the project a session was working in by scanning path mentions in the
+// transcript. Two source families:
+//   1. Code repos under PersonalGit (e.g. /PersonalGit/Thinking-Space/...).
+//   2. Vault subtrees, derived dynamically from path mentions:
+//        - acceleration_core/<name>  →  LTM/<name>
+//        - lifeblood_systems/<name>  →  LTM/<name>
+//        - operations/<name>          →  LTM/<name>
+//        - other top-level vault dirs (kai-workspace, ai_raw, etc.) → LTM/<name>
+// Whichever project gets the most mentions wins; ties prefer specific over LTM
+// generic fallback. Reads no project list anywhere — so new projects show up
+// automatically as soon as you do any work in them.
+
+const PERSONAL_GIT_RE = /\/PersonalGit\/([A-Za-z0-9_.-]+)/g
+const VAULT_NESTED_RES: ReadonlyArray<{ root: string; pattern: RegExp }> = [
+  { root: 'acceleration_core', pattern: /acceleration_core\/([A-Za-z0-9_.-]+)/g },
+  { root: 'lifeblood_systems', pattern: /lifeblood_systems\/([A-Za-z0-9_.-]+)/g },
+  { root: 'operations', pattern: /operations\/([A-Za-z0-9_.-]+)/g },
+]
+const VAULT_TOPLEVEL_RE = /Long-Term-Memory-iCloud\/([A-Za-z0-9_.-]+)/g
+const VAULT_ROOT_RE = /Long-Term-Memory-iCloud/g
+
+// Subpaths that are "infrastructure" and shouldn't masquerade as the project.
+const VAULT_INFRA_NAMES = new Set([
+  '.cache',
+  '.git',
+  '.obsidian',
+  '.thinking-space',
+  '.trash',
+  'AGENTS.md',
+  'CLAUDE.md',
+  'README.md',
+])
+// First segments under top-level that are themselves nested-root markers (already
+// covered by VAULT_NESTED_RES) or generic shared workspaces — don't double-count.
+const VAULT_TOPLEVEL_SKIP = new Set([
+  'acceleration_core',
+  'lifeblood_systems',
+  'operations',
+])
+
+function countMatches(text: string, re: RegExp): Map<string, number> {
+  const out = new Map<string, number>()
+  // Reset stateful regex between calls (the `g` flag carries lastIndex).
+  re.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    const name = m[1]
+    if (!name) continue
+    out.set(name, (out.get(name) ?? 0) + 1)
+  }
+  return out
+}
+
+// Claude Code writes a "Primary working directory:" line at the top of every
+// transcript. When present, this is a high-confidence signal — way more
+// reliable than counting random path mentions — so we short-circuit on it.
+const CWD_RE = /(?:Primary working directory|Working directory|cwd)\s*[:=]\s*([^\n`<]+)/i
+
+function classifyPath(path: string): string | null {
+  const trimmed = path.trim()
+  let m = /\/PersonalGit\/([A-Za-z0-9_.-]+)/.exec(trimmed)
+  if (m) return m[1]
+  for (const { pattern } of VAULT_NESTED_RES) {
+    const p = new RegExp(pattern.source) // single-shot copy without the /g state
+    const r = p.exec(trimmed)
+    if (r) return `LTM/${r[1]}`
+  }
+  m = /Long-Term-Memory-iCloud\/([A-Za-z0-9_.-]+)/.exec(trimmed)
+  if (m && !VAULT_TOPLEVEL_SKIP.has(m[1]) && !VAULT_INFRA_NAMES.has(m[1])) {
+    return `LTM/${m[1]}`
+  }
+  if (/Long-Term-Memory-iCloud/.test(trimmed)) return 'LTM'
+  return null
+}
+
+function detectProjectFromCwd(text: string): string | null {
+  const m = CWD_RE.exec(text)
+  if (!m) return null
+  return classifyPath(m[1])
+}
+
+function detectProject(text: string): string {
+  // 1. Strongest signal: the session header's explicit cwd. If we can read it,
+  //    trust it absolutely — random path mentions in tool output can be misleading.
+  const fromCwd = detectProjectFromCwd(text)
+  if (fromCwd) return fromCwd
+
+  const scores = new Map<string, number>()
+  const bump = (name: string, by: number) => {
+    if (by <= 0) return
+    scores.set(name, (scores.get(name) ?? 0) + by)
+  }
+
+  // 1. Code repos under PersonalGit — top-level names like "Thinking-Space".
+  for (const [name, count] of countMatches(text, PERSONAL_GIT_RE)) {
+    bump(name, count)
+  }
+
+  // 2. Vault nested roots — projects live one level deep.
+  for (const { pattern } of VAULT_NESTED_RES) {
+    for (const [name, count] of countMatches(text, pattern)) {
+      bump(`LTM/${name}`, count)
+    }
+  }
+
+  // 3. Other top-level vault dirs (kai-workspace, ai_raw, etc.) — skip the
+  //    nested roots (already counted) and infra files/dirs.
+  for (const [name, count] of countMatches(text, VAULT_TOPLEVEL_RE)) {
+    if (VAULT_TOPLEVEL_SKIP.has(name)) continue
+    if (VAULT_INFRA_NAMES.has(name)) continue
+    bump(`LTM/${name}`, count)
+  }
+
+  if (scores.size > 0) {
+    let best: { name: string; count: number } | null = null
+    for (const [name, count] of scores) {
+      if (!best || count > best.count) best = { name, count }
+    }
+    if (best) return best.name
+  }
+
+  return VAULT_ROOT_RE.test(text) ? 'LTM' : '<unknown>'
+}
+
+function parseStarted(filename: string, text: string, mtimeUnix: number): string {
+  // Prefer the explicit "_Last saved:" timestamp in the body (most accurate).
+  const saved = SAVED_RE.exec(text)
+  if (saved) {
+    const raw = saved[1]
+    // Format in file: 2026-06-06T13-58-13 (hyphens in time slot)
+    const norm = raw.replace(/T(\d{2})-(\d{2})-(\d{2})/, 'T$1:$2:$3')
+    const d = new Date(norm)
+    if (!Number.isNaN(d.getTime())) return d.toISOString()
+  }
+  // Next best: the date prefix on the filename. Use both the strict id form
+  // and the permissive YYYY-MM-DD-anywhere-at-start so Codex / other tools'
+  // filenames still classify into the right day.
+  const dateMatch = FILENAME_RE.exec(filename) ?? FILENAME_DATE_RE.exec(filename)
+  if (dateMatch) return new Date(dateMatch[1] + 'T00:00:00').toISOString()
+  // Last resort: file mtime. Never default to `new Date()` — that would stamp
+  // every unreadable session as "now" and explode short-range totals.
+  return new Date(mtimeUnix * 1000).toISOString()
+}
+
+/**
+ * Count user message blocks and extract a topic. Mirrors the Python `parse_session`
+ * logic: skip pure tool_result blobs, treat slash commands and auto-commit prompts
+ * as real "user actions" but only use their labels as a topic fallback.
+ */
+function countUserMessages(text: string): { count: number; topic: string } {
+  const blocks = text.split(/^## User\s*$/m).slice(1)
+  let real = 0
+  let substantive = ''
+  let fallback = ''
+
+  for (const rawBlock of blocks) {
+    // body up to next "## " header or end
+    const body = rawBlock.split(/^## /m)[0].trim()
+    const cleaned = body
+      .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
+      .trim()
+      .replace(/^-+/, '')
+      .trim()
+    if (!cleaned || cleaned.startsWith('[tool_result]')) continue
+
+    if (/^<(local-command-caveat|command-name|command-message)/.test(cleaned)) {
+      const cmd = COMMAND_NAME_RE.exec(cleaned)
+      if (cmd && !fallback) fallback = `[${cmd[1].trim()}]`
+      real += 1
+      continue
+    }
+    if (cleaned.startsWith('You are writing a git commit message')) {
+      if (!fallback) fallback = '[auto commit message]'
+      real += 1
+      continue
+    }
+    real += 1
+    if (!substantive) substantive = cleaned.split('\n')[0].slice(0, 140)
+  }
+
+  return { count: real, topic: substantive || fallback || '(no user message)' }
+}
+
+export interface ParseInput {
+  /** Vault-relative path. Used to derive filename pattern + source. */
+  path: string
+  /** File contents. */
+  text: string
+  /** Unix-seconds mtime — propagated into the parsed session for cache keying. */
+  mtime: number
+}
+
+/** Parse a single session file. Returns null if the filename doesn't match the expected pattern. */
+export function parseSession(input: ParseInput): ParsedSession | null {
+  const filename = input.path.split('/').pop() ?? ''
+  // Codex filenames historically share the same YYYY-MM-DD_<id>.md shape; if not,
+  // tolerate any filename starting with a date.
+  const looksLikeSession = FILENAME_RE.test(filename) || /^\d{4}-\d{2}-\d{2}_/.test(filename)
+  if (!looksLikeSession) return null
+
+  const source: ActivitySource = input.path.includes('/codex/') ? 'codex' : 'claude-code'
+  const startedIso = parseStarted(filename, input.text, input.mtime)
+  let project = detectProject(input.text)
+
+  // Noise buckets: automated wrapper sessions get their own buckets so they
+  // don't inflate real project counts. Same first-2KB heuristic as Python.
+  const head = input.text.slice(0, 2000)
+  if (head.includes('You are writing a git commit message')) project = '[auto-commit]'
+  else if (head.includes('TELEGRAM MODE')) project = '[telegram]'
+
+  const { count, topic } = countUserMessages(input.text)
+
+  // Pull the full session UUID from the header so dedup against the native
+  // store is exact (vault filenames only carry the 8-char short id).
+  const uuidMatch = FULL_UUID_RE.exec(input.text.slice(0, 500))
+  const sessionId = uuidMatch ? uuidMatch[1].toLowerCase() : undefined
+
+  return {
+    path: input.path,
+    source,
+    startedIso,
+    // Vault markdown has no per-message timestamps; the file-level _Last saved_
+    // we used for startedIso is also the end. Keeps the field consistent across
+    // sources without inventing data we don't have.
+    endedIso: startedIso,
+    project,
+    userMsgCount: count,
+    topic,
+    hadClear: CLEAR_RE.test(input.text),
+    mtime: input.mtime,
+    sessionId,
+  }
+}
+
+const GAP_HOURS = 4
+// How close (in time) an unknown session has to be to a classified one to
+// inherit its project. Pure-chat sessions don't include any path signals in
+// the saved transcript, so they fall to <unknown> on the structural detector.
+// In practice they're almost always quick follow-ups to a real work session
+// in the same project, so temporal proximity is a strong tiebreaker.
+const INHERIT_WINDOW_HOURS = 4
+
+function isInheritable(project: string): boolean {
+  return project !== '<unknown>' && !(project.startsWith('[') && project.endsWith(']'))
+}
+
+/**
+ * Reassign `<unknown>` sessions to the project of the nearest classified session
+ * within INHERIT_WINDOW_HOURS. Noise buckets ([auto-commit], [telegram]) and
+ * already-classified sessions are left alone. Returns a new array; inputs are
+ * not mutated. Run BEFORE buildChains so the resulting chains group correctly.
+ */
+export function inheritUnknownSessions(sessions: ParsedSession[]): ParsedSession[] {
+  if (sessions.length === 0) return sessions
+  const sorted = [...sessions].sort(
+    (a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso),
+  )
+  // Pre-extract classified anchors with their start ms. Linear scan is fine —
+  // session counts are in the low thousands at most.
+  const anchors: Array<{ t: number; project: string }> = []
+  for (const s of sorted) {
+    if (isInheritable(s.project)) {
+      anchors.push({ t: Date.parse(s.startedIso), project: s.project })
+    }
+  }
+  if (anchors.length === 0) return sorted
+
+  const windowMs = INHERIT_WINDOW_HOURS * 3_600_000
+  return sorted.map(s => {
+    if (s.project !== '<unknown>') return s
+    const t = Date.parse(s.startedIso)
+    let bestProject: string | null = null
+    let bestDist = Infinity
+    for (const a of anchors) {
+      const d = Math.abs(a.t - t)
+      if (d < bestDist) {
+        bestDist = d
+        bestProject = a.project
+        if (d === 0) break
+      }
+    }
+    if (bestProject && bestDist <= windowMs) {
+      return { ...s, project: bestProject }
+    }
+    return s
+  })
+}
+
+
+/**
+ * Group sessions into chains: same project + within GAP_HOURS of previous session
+ * in that project (and no /clear in the previous session) belong together.
+ */
+export function buildChains(sessions: ParsedSession[]): ActivityChain[] {
+  if (sessions.length === 0) return []
+
+  // Sort ascending so adjacency math works
+  const sorted = [...sessions].sort(
+    (a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso),
+  )
+
+  // Group by project, then chain within each project's time-ordered list.
+  const byProject = new Map<string, ParsedSession[]>()
+  for (const s of sorted) {
+    const arr = byProject.get(s.project) ?? []
+    arr.push(s)
+    byProject.set(s.project, arr)
+  }
+
+  const chains: ActivityChain[] = []
+  for (const [project, list] of byProject.entries()) {
+    let current: ParsedSession[] = []
+    let lastBreaker = false
+    for (const s of list) {
+      if (current.length === 0) {
+        current = [s]
+        lastBreaker = s.hadClear
+        continue
+      }
+      const prev = current[current.length - 1]
+      const hoursSince = (Date.parse(s.startedIso) - Date.parse(prev.startedIso)) / 3_600_000
+      if (lastBreaker || hoursSince > GAP_HOURS) {
+        chains.push(makeChain(project, current))
+        current = [s]
+      } else {
+        current.push(s)
+      }
+      lastBreaker = s.hadClear
+    }
+    if (current.length > 0) chains.push(makeChain(project, current))
+  }
+
+  // Lift the chain's topic to the first substantive (non-label, non-empty) prompt
+  // across its sessions — first session might be /clear-only or auto-prompt.
+  const isLabel = (t: string) => t.startsWith('[') && t.endsWith(']')
+  for (const c of chains) {
+    if (isLabel(c.topic) || c.topic === '(no user message)') {
+      for (const s of c.sessions.slice(1)) {
+        if (!isLabel(s.topic) && s.topic !== '(no user message)') {
+          c.topic = s.topic
+          break
+        }
+      }
+    }
+  }
+
+  chains.sort((a, b) => Date.parse(b.startedIso) - Date.parse(a.startedIso))
+  return chains
+}
+
+function makeChain(project: string, sessions: ParsedSession[]): ActivityChain {
+  const first = sessions[0]
+  const last = sessions[sessions.length - 1]
+  const msgCount = sessions.reduce((n, s) => n + s.userMsgCount, 0)
+  // Stable id: project + first session path is unique because session files are
+  // identified by filename in the vault.
+  const key = `${project}::${first.path}`
+  // Chain end is the real end of the last session when we have one — for
+  // native JSONL sources this is the last-event timestamp; for vault sources
+  // we fall back to the start (no per-message data to work with).
+  const lastEnded = last.endedIso ?? last.startedIso
+  return {
+    key,
+    project,
+    source: first.source,
+    startedIso: first.startedIso,
+    endedIso: lastEnded,
+    msgCount,
+    topic: first.topic,
+    sessions,
+  }
+}

@@ -1,4 +1,7 @@
 import './services/lego_blocks/units/promiseWithResolversPolyfillBlock'
+import { installConsoleNoiseFilterBlock } from './services/lego_blocks/units/consoleNoiseFilterBlock'
+
+installConsoleNoiseFilterBlock()
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { HashRouter, BrowserRouter } from 'react-router-dom'

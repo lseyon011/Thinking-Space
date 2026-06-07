@@ -383,6 +383,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openPath: (vaultRoot: string, relPath: string) =>
     ipcRenderer.invoke('vault:openPath', vaultRoot, relPath),
 
+  // Native AI session stores — read-only, hard-locked to
+  // ~/.claude/projects/ and ~/.codex/sessions/ in the main process.
+  nativeAiSessionsList: (): Promise<Array<{
+    source: 'claude' | 'codex'
+    relPath: string
+    mtime: number
+    size: number
+  }>> => ipcRenderer.invoke('nativeAiSessions:list'),
+  nativeAiSessionRead: (source: 'claude' | 'codex', relPath: string): Promise<string> =>
+    ipcRenderer.invoke('nativeAiSessions:read', source, relPath),
+
   // Git (desktop-only)
   git: (vaultRoot: string, args: string[]) =>
     ipcRenderer.invoke('vault:git', vaultRoot, args),

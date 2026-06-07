@@ -91,6 +91,10 @@ import {
   getCapabilityFeatureFlags,
   setCapabilityFeatureFlag,
 } from '@/services/lego_blocks/integrations/capabilityFeatureFlagsBlock'
+import {
+  isConsoleWarningsVisible,
+  setConsoleWarningsVisible,
+} from '@/services/lego_blocks/units/consoleNoiseFilterBlock'
 
 export type SettingsTabId = 'theme' | 'explorer' | 'activity' | 'scheduler' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
@@ -234,6 +238,9 @@ export default function SettingsOrch({
   const [activityDirty, setActivityDirty] = useState(false)
   const [yamlFieldsAutoHealEnabled, setYamlFieldsAutoHealEnabled] = useState(
     () => getCapabilityFeatureFlags().yaml_fields_auto_heal_enabled,
+  )
+  const [consoleWarningsVisible, setConsoleWarningsVisibleState] = useState(
+    () => isConsoleWarningsVisible(),
   )
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false
@@ -1611,6 +1618,24 @@ export default function SettingsOrch({
                     setYamlFieldsAutoHealEnabled(checked)
                   }}
                   aria-label="Auto-heal YAML fields during sync"
+                />
+              </label>
+            </div>
+            <div className="rounded-md border border-border/60 px-3 py-2.5">
+              <label className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <div className="text-sm text-foreground">Show console warnings</div>
+                  <div className="text-xs text-muted-foreground">
+                    When off, low-priority `console.log`/`info`/`warn`/`debug` messages are suppressed in DevTools. Errors are always shown.
+                  </div>
+                </div>
+                <Switch
+                  checked={consoleWarningsVisible}
+                  onCheckedChange={(checked) => {
+                    setConsoleWarningsVisible(checked)
+                    setConsoleWarningsVisibleState(checked)
+                  }}
+                  aria-label="Show console warnings"
                 />
               </label>
             </div>

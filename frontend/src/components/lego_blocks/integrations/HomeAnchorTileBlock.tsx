@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import DashboardChartsBlock from '@/components/lego_blocks/integrations/DashboardChartsBlock'
 import ActivityHotspotBlock from '@/components/lego_blocks/integrations/ActivityHotspotBlock'
+import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivityPanelBlock'
 import TodayFileActivityOrch from '@/components/orchestrators/TodayFileActivityOrch'
 import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
 import { useDashboardActivityBlock } from '@/components/lego_blocks/hooks/shared/useDashboardActivityBlock'
@@ -19,6 +20,8 @@ const ANCHOR_ELEMENTS = {
   charts: { w: 880, h: 360, offsetY: -380 },
   hotspot: { w: 880, h: 280, offsetY: 20 },
   today: { w: 880, h: 440, offsetY: 340 },
+  // Tall enough to hold the chart + drill-down table without scrolling.
+  aiActivity: { w: 880, h: 760, offsetY: 820 },
 } as const
 
 function FloatingPanel({
@@ -79,6 +82,7 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
   const charts = place('charts')
   const hotspot = place('hotspot')
   const today = place('today')
+  const aiActivity = place('aiActivity')
 
   return (
     <div className={theme.isDark ? 'dark' : ''}>
@@ -143,6 +147,10 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
           highlights={activity.series?.highlights ?? null}
           highlightsLoading={activity.loading}
         />
+      </FloatingPanel>
+
+      <FloatingPanel {...aiActivity} theme={theme}>
+        <AiActivityPanelBlock />
       </FloatingPanel>
     </div>
   )

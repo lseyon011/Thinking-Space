@@ -85,6 +85,11 @@ import {
 } from './lego_blocks/pmsetWakeBlock';
 import { runScheduleBlock, type ScheduleRunChunkBlock, type ScheduleRunResultBlock } from './lego_blocks/scheduleRunnerBlock';
 import { listTranscriptsBlock, readTranscriptBlock } from './lego_blocks/transcriptStoreBlock';
+import {
+  listNativeAiSessionsBlock,
+  readNativeAiSessionBlock,
+  type NativeAiSource,
+} from './lego_blocks/nativeAiSessionsBlock';
 import { startHeartbeatBlock, stopHeartbeatBlock } from './lego_blocks/heartbeatBlock';
 import {
   notifyNtfyBlock,
@@ -1881,6 +1886,17 @@ ipcMain.handle('vault:exists', async (_event, vaultRoot: string, relPath: string
     return false;
   }
 });
+
+// -- Native AI session stores (read-only, locked to ~/.claude/projects + ~/.codex/sessions) --
+ipcMain.handle('nativeAiSessions:list', async () => {
+  return listNativeAiSessionsBlock();
+});
+ipcMain.handle(
+  'nativeAiSessions:read',
+  async (_event, source: NativeAiSource, relPath: string) => {
+    return readNativeAiSessionBlock(source, relPath);
+  },
+);
 
 // -- Mkdir --
 ipcMain.handle('vault:mkdir', async (_event, vaultRoot: string, relPath: string) => {

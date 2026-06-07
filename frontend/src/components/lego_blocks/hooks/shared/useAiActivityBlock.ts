@@ -1,0 +1,313 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import {
+  getCachedSnapshot,
+  loadAiActivity,
+} from '@/services/lego_blocks/integrations/aiActivityCacheBlock'
+import {
+  buildChains,
+  inheritUnknownSessions,
+  type ActivityChain,
+  type ParsedSession,
+} from '@/services/lego_blocks/units/aiActivityParserBlock'
+
+// Local preset list — the shared DashboardRangePreset is tuned for the file
+// dashboard above and doesn't include the 6m midpoint that's useful for
+// month-over-month evolution watching.
+export type AiActivityPreset = '7d' | '30d' | '90d' | '180d' | '365d' | 'all'
+
+export const AI_ACTIVITY_PRESETS: ReadonlyArray<{
+  id: AiActivityPreset
+  label: string
+  /** Days back from today. `null` = no cap (everything cached). */
+  days: number | null
+}> = [
+  { id: '7d', label: '7d', days: 7 },
+  { id: '30d', label: '30d', days: 30 },
+  { id: '90d', label: '90d', days: 90 },
+  { id: '180d', label: '6m', days: 180 },
+  { id: '365d', label: '1y', days: 365 },
+  { id: 'all', label: 'all', days: null },
+]
+
+export interface ActivityDay {
+  date: string
+  totalMsgs: number
+  totalChains: number
+  /** Per-project msg counts on this day. */
+  byProject: Record<string, number>
+}
+
+export interface ActivityProject {
+  name: string
+  totalMsgs: number
+  totalChains: number
+  totalSessions: number
+  /** Msgs per day across the visible range, in chronological order. */
+  sparkline: number[]
+  /** Whether this is a noise bucket like [auto-commit] / [telegram]. */
+  isNoise: boolean
+  /** Whether this is the <unknown> bucket. */
+  isUnknown: boolean
+}
+
+export interface UseAiActivityResult {
+  /** All chains within the visible range, newest first. */
+  chains: ActivityChain[]
+  /** Today's chains, newest first — used by the auto-post-it. */
+  todayChains: ActivityChain[]
+  /** Per-day aggregates for the visible range. */
+  days: ActivityDay[]
+  /** Per-project aggregates for the visible range. */
+  projects: ActivityProject[]
+  /** Raw parsed sessions (post-filter), for callers that want their own view. */
+  sessions: ParsedSession[]
+  loading: boolean
+  error: string | null
+  preset: AiActivityPreset
+  setPreset: (preset: AiActivityPreset) => void
+  startIso: string
+  endIso: string
+  refresh: () => void
+}
+
+function isoDayLocal(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function rangeFromPreset(
+  preset: AiActivityPreset,
+  earliestSessionIso: string | null,
+): { startIso: string; endIso: string } {
+  const cfg = AI_ACTIVITY_PRESETS.find(p => p.id === preset) ?? AI_ACTIVITY_PRESETS[2]
+  const end = new Date()
+  const endIso = isoDayLocal(end)
+  if (cfg.days == null) {
+    return {
+      startIso: earliestSessionIso ?? isoDayLocal(new Date(end.getTime() - 365 * 86_400_000)),
+      endIso,
+    }
+  }
+  const start = new Date()
+  start.setDate(end.getDate() - (cfg.days - 1))
+  return { startIso: isoDayLocal(start), endIso }
+}
+
+function isoDaysBetween(startIso: string, endIso: string): string[] {
+  const out: string[] = []
+  const cur = new Date(startIso + 'T00:00:00')
+  const end = new Date(endIso + 'T00:00:00')
+  while (cur <= end) {
+    out.push(isoDayLocal(cur))
+    cur.setDate(cur.getDate() + 1)
+  }
+  return out
+}
+
+function isNoiseProject(name: string): boolean {
+  return name.startsWith('[') && name.endsWith(']')
+}
+
+const PRESET_STORAGE_KEY = 'thinkspc.aiActivity.preset.v1'
+const VALID_PRESET_IDS = new Set(AI_ACTIVITY_PRESETS.map(p => p.id))
+
+function readStoredPreset(): AiActivityPreset | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(PRESET_STORAGE_KEY)
+    if (raw && VALID_PRESET_IDS.has(raw as AiActivityPreset)) {
+      return raw as AiActivityPreset
+    }
+  } catch {
+    /* localStorage unavailable */
+  }
+  return null
+}
+
+function writeStoredPreset(preset: AiActivityPreset): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(PRESET_STORAGE_KEY, preset)
+  } catch {
+    /* localStorage unavailable */
+  }
+}
+
+export function useAiActivityBlock(
+  initialPreset: AiActivityPreset = '90d',
+): UseAiActivityResult {
+  // Persisted choice wins over the caller's initialPreset so the user's range
+  // stays put across reloads (and across HMR-preserved component state).
+  const [preset, setPresetState] = useState<AiActivityPreset>(
+    () => readStoredPreset() ?? initialPreset,
+  )
+  const setPreset = useCallback((next: AiActivityPreset) => {
+    writeStoredPreset(next)
+    setPresetState(next)
+  }, [])
+  // Seed from the module-level snapshot so a remount (or a second consumer
+  // mounting after the first) gets instant paint instead of a loading flash.
+  const initialSnapshot = getCachedSnapshot()
+  const [allSessions, setAllSessions] = useState<ParsedSession[]>(
+    initialSnapshot?.sessions ?? [],
+  )
+  const [loading, setLoading] = useState(initialSnapshot == null)
+  const [error, setError] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const earliestSessionIso = useMemo<string | null>(() => {
+    if (allSessions.length === 0) return null
+    let minMs = Infinity
+    for (const s of allSessions) {
+      const t = Date.parse(s.startedIso)
+      if (t < minMs) minMs = t
+    }
+    if (!Number.isFinite(minMs)) return null
+    return isoDayLocal(new Date(minMs))
+  }, [allSessions])
+
+  useEffect(() => {
+    let cancelled = false
+    // Don't flip back to loading=true if we already painted from the snapshot —
+    // background refreshes should feel seamless. refreshKey > 0 means the user
+    // hit refresh; we show the spinner so they get feedback.
+    if (refreshKey > 0 || allSessions.length === 0) setLoading(true)
+    setError(null)
+    const fs = getVaultFS()
+    loadAiActivity(fs, { force: refreshKey > 0 })
+      .then(result => {
+        if (cancelled) return
+        setAllSessions(result.sessions)
+        setLoading(false)
+      })
+      .catch(err => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'Failed to load Claude activity.')
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey])
+
+  const { startIso, endIso } = useMemo(
+    () => rangeFromPreset(preset, earliestSessionIso),
+    [preset, earliestSessionIso],
+  )
+
+  // Apply temporal-inheritance once at the all-sessions layer so every
+  // downstream view (range-filtered chains, today's chains, per-day, per-project)
+  // sees the same enriched project assignments. Anchors from outside the
+  // visible range can still rescue an unknown inside it.
+  const enrichedSessions = useMemo(
+    () => inheritUnknownSessions(allSessions),
+    [allSessions],
+  )
+
+  // Sessions whose activity window OVERLAPS the visible range. A long-running
+  // session (e.g. an 8-day Claude chat started a week ago but still active
+  // yesterday) should appear in 7d view because there's recent activity, not
+  // disappear because the *start* is older than the range.
+  const sessions = useMemo(() => {
+    const startMs = Date.parse(startIso + 'T00:00:00')
+    const endMs = Date.parse(endIso + 'T23:59:59')
+    return enrichedSessions.filter(s => {
+      const sStart = Date.parse(s.startedIso)
+      const sEnd = Date.parse(s.endedIso ?? s.startedIso)
+      // Overlap: [sStart, sEnd] intersects [startMs, endMs]
+      return sEnd >= startMs && sStart <= endMs
+    })
+  }, [enrichedSessions, startIso, endIso])
+
+  const chains = useMemo(() => buildChains(sessions), [sessions])
+
+  const todayIso = useMemo(() => isoDayLocal(new Date()), [])
+  const todayChains = useMemo(() => {
+    // Today's chains are most useful when computed across ALL sessions (not just
+    // the visible range), so a 7d-preset doesn't trim mid-chain sessions away.
+    const todaySessions = enrichedSessions.filter(
+      s => s.startedIso.slice(0, 10) === todayIso,
+    )
+    return buildChains(todaySessions)
+  }, [enrichedSessions, todayIso])
+
+  const days = useMemo<ActivityDay[]>(() => {
+    const dayList = isoDaysBetween(startIso, endIso)
+    const map = new Map<string, ActivityDay>()
+    for (const date of dayList) {
+      map.set(date, { date, totalMsgs: 0, totalChains: 0, byProject: {} })
+    }
+    for (const s of sessions) {
+      const date = s.startedIso.slice(0, 10)
+      const day = map.get(date)
+      if (!day) continue
+      day.totalMsgs += s.userMsgCount
+      day.byProject[s.project] = (day.byProject[s.project] ?? 0) + s.userMsgCount
+    }
+    // Chain counts per day (a chain belongs to its start day).
+    for (const c of chains) {
+      const date = c.startedIso.slice(0, 10)
+      const day = map.get(date)
+      if (day) day.totalChains += 1
+    }
+    return dayList.map(d => map.get(d)!)
+  }, [sessions, chains, startIso, endIso])
+
+  const projects = useMemo<ActivityProject[]>(() => {
+    const dayList = isoDaysBetween(startIso, endIso)
+    const dayIndex = new Map(dayList.map((d, i) => [d, i]))
+    const accum = new Map<string, ActivityProject>()
+    const sessionsByProject = new Map<string, ParsedSession[]>()
+
+    for (const s of sessions) {
+      const key = s.project
+      const existing = accum.get(key)
+      if (!existing) {
+        accum.set(key, {
+          name: key,
+          totalMsgs: 0,
+          totalChains: 0,
+          totalSessions: 0,
+          sparkline: new Array(dayList.length).fill(0),
+          isNoise: isNoiseProject(key),
+          isUnknown: key === '<unknown>',
+        })
+      }
+      const p = accum.get(key)!
+      p.totalMsgs += s.userMsgCount
+      p.totalSessions += 1
+      const idx = dayIndex.get(s.startedIso.slice(0, 10))
+      if (idx != null) p.sparkline[idx] += s.userMsgCount
+
+      const arr = sessionsByProject.get(key) ?? []
+      arr.push(s)
+      sessionsByProject.set(key, arr)
+    }
+    for (const c of chains) {
+      const p = accum.get(c.project)
+      if (p) p.totalChains += 1
+    }
+    return [...accum.values()].sort((a, b) => b.totalMsgs - a.totalMsgs)
+  }, [sessions, chains, startIso, endIso])
+
+  const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
+
+  return {
+    chains,
+    todayChains,
+    days,
+    projects,
+    sessions,
+    loading,
+    error,
+    preset,
+    setPreset,
+    startIso,
+    endIso,
+    refresh,
+  }
+}

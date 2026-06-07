@@ -22,6 +22,13 @@ export interface CanvasTileBase {
  */
 export type PostItFontSize = 's' | 'm' | 'l' | number
 
+export interface AutoActivityState {
+  /** ISO date (YYYY-MM-DD, local) this post-it owns. One auto post-it per day. */
+  date: string
+  /** Chain keys already rendered into the post-it body — used to append only the new ones. */
+  seenChainKeys: string[]
+}
+
 export interface CanvasPostItTile extends CanvasTileBase {
   type: 'post-it'
   text: string
@@ -29,6 +36,13 @@ export interface CanvasPostItTile extends CanvasTileBase {
   fontSize?: PostItFontSize
   /** Optional text color (any post-it color). Undefined = theme default. */
   textColor?: PostItColor
+  /**
+   * When set, this post-it is the auto-generated daily Claude activity skeleton
+   * for the named date. Refreshes append-only: the orchestrator diffs current
+   * chains against `seenChainKeys` and appends new ones to the bottom of `text`,
+   * leaving anything the user wrote alone.
+   */
+  autoActivityState?: AutoActivityState
 }
 
 export interface CanvasNoteTile extends CanvasTileBase {

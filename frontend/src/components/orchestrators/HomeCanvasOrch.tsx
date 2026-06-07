@@ -9,6 +9,8 @@ import {
   useCanvasTilesBlock,
   type CanvasTile,
 } from '@/components/lego_blocks/hooks/shared/useCanvasTilesBlock'
+import { useAiActivityBlock } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
+import { useAiActivityPostItBlock } from '@/components/lego_blocks/hooks/shared/useAiActivityPostItBlock'
 import Starfield from '@/components/lego_blocks/units/StarfieldBlock'
 import CanvasBloomBlock from '@/components/lego_blocks/units/CanvasBloomBlock'
 import CanvasTileBlock from '@/components/lego_blocks/units/CanvasTileBlock'
@@ -109,7 +111,9 @@ export default function HomeCanvasOrch() {
     worldHeight,
     viewportWidth,
     viewportHeight,
-  } = useInfiniteCanvasBlock({ onEdgeHit: flashEdge })
+    // The AI activity anchor extends below the legacy "today" panel; grow
+    // the world vertically so it stays inside the scrollable board.
+  } = useInfiniteCanvasBlock({ onEdgeHit: flashEdge, worldHeight: 3600 })
   const {
     tiles,
     focusedId,
@@ -168,6 +172,22 @@ export default function HomeCanvasOrch() {
       cancelled = true
     }
   }, [setAllTiles])
+
+  // Drives the auto "what I did today" post-it. Reads AI session activity
+  // (Claude + Codex, from vault and native stores) and appends new chains into
+  // the daily post-it on the canvas. Shares the cache with AiActivityPanelBlock
+  // further down the anchor, so a single load feeds both surfaces.
+  // Preset here is moot — the post-it only reads `todayChains`, which is
+  // computed independently of the range. The shared in-memory cache means
+  // both this hook and the activity panel hit the same data on first load.
+  const aiActivity = useAiActivityBlock('90d')
+  useAiActivityPostItBlock({
+    tiles,
+    todayChains: aiActivity.todayChains,
+    ready: !aiActivity.loading && !aiActivity.error,
+    canvasLoaded: loaded,
+    setAllTiles,
+  })
 
   // Debounced persist on tile changes
   const writeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)

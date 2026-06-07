@@ -260,6 +260,9 @@ function CreateTab() {
   const [targetFileState, setTargetFileState] = useState<TargetFileState | null>(null)
   const saveFeedbackTimeoutRef = useRef<number | null>(null)
   const loadTargetRequestRef = useRef(0)
+  const contentRef = useRef('')
+  const loadedBaseContentRef = useRef('')
+  useEffect(() => { contentRef.current = content }, [content])
   const [leftPanelHidden, setLeftPanelHidden] = useState(
     () => readJsonStorage<boolean>(LEFT_PANEL_HIDDEN_KEY, false),
   )
@@ -609,6 +612,7 @@ function CreateTab() {
           baseHash: targetFileState!.baseHash!,
         })
         const refreshed = await getThoughtForEdit(targetPath!)
+        loadedBaseContentRef.current = refreshed.content
         setContent(refreshed.content)
         setLoadedTargetPath(targetPath!)
         setTargetFileState({
@@ -638,6 +642,7 @@ function CreateTab() {
       })
 
       const refreshed = await getThoughtForEdit(data.output_path)
+      loadedBaseContentRef.current = refreshed.content
       setContent(refreshed.content)
       setLoadedTargetPath(data.output_path)
       setTargetFileState({
@@ -652,6 +657,7 @@ function CreateTab() {
       triggerSaveFeedback()
     } catch (err) {
       if (!makeThisTodo && err instanceof ThoughtConflictError && targetPath) {
+        loadedBaseContentRef.current = err.currentContent
         setContent(err.currentContent)
         setLoadedTargetPath(targetPath)
         setTargetFileState({
@@ -685,22 +691,39 @@ function CreateTab() {
   ])
 
   useEffect(() => {
+    const computeDraft = () => {
+      const current = contentRef.current
+      const base = loadedBaseContentRef.current
+      if (!current) return ''
+      if (!base) return current
+      if (current.startsWith(base)) return current.slice(base.length)
+      return current
+    }
+    const mergeDraft = (base: string, draft: string) => {
+      if (!draft) return base
+      if (!base) return draft
+      return base.endsWith('\n') || draft.startsWith('\n') ? base + draft : base + '\n' + draft
+    }
+
     if (makeThisTodo) {
       setLoadingTargetContent(false)
       setLoadedTargetPath(null)
       setTargetFileState(null)
       setSavedPath(null)
       setContent('')
+      loadedBaseContentRef.current = ''
       return
     }
     if (!targetPath) {
       setLoadedTargetPath(null)
       setTargetFileState(null)
-      setContent('')
       setSavedPath(null)
+      loadedBaseContentRef.current = ''
       return
     }
     if (targetPath === loadedTargetPath) return
+
+    const preservedDraft = computeDraft()
 
     const requestId = loadTargetRequestRef.current + 1
     loadTargetRequestRef.current = requestId
@@ -708,7 +731,6 @@ function CreateTab() {
     setLoadingTargetContent(true)
     setSavedPath(null)
     setError(null)
-    setContent('')
 
     void (async () => {
       try {
@@ -716,7 +738,8 @@ function CreateTab() {
         const exists = await fs.exists(targetPath)
         if (cancelled || requestId !== loadTargetRequestRef.current) return
         if (!exists) {
-          setContent('')
+          loadedBaseContentRef.current = ''
+          setContent(preservedDraft)
           setLoadedTargetPath(targetPath)
           setTargetFileState({
             path: targetPath,
@@ -728,7 +751,8 @@ function CreateTab() {
         }
         const existing = await getThoughtForEdit(targetPath)
         if (cancelled || requestId !== loadTargetRequestRef.current) return
-        setContent(existing.content)
+        loadedBaseContentRef.current = existing.content
+        setContent(mergeDraft(existing.content, preservedDraft))
         setLoadedTargetPath(targetPath)
         setTargetFileState({
           path: targetPath,

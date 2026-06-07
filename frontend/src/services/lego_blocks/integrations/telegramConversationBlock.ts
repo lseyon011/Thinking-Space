@@ -21,6 +21,17 @@ function stateRoot(): string {
 function convsDir(): string { return path.join(stateRoot(), 'conversations') }
 function activePathFor(): string { return path.join(stateRoot(), 'active.json') }
 function claudeProjectsRoot(): string { return path.join(os.homedir(), '.claude', 'projects') }
+// Vault location where the SessionEnd hook (~/.claude/hooks/render-session.sh)
+// writes rendered Claude session markdown. Telegram conversations close with
+// deleteClaudeSession=true also nuke the rendered md so the conversation
+// leaves no trace in the journal.
+function vaultClaudeSessionsRoot(): string {
+  return path.join(
+    os.homedir(),
+    'Library', 'Mobile Documents', 'iCloud~md~obsidian', 'Documents',
+    'Long-Term-Memory-iCloud', 'ai_raw', 'raw', 'claude-code',
+  )
+}
 
 export type ConversationStatus = 'active' | 'closed'
 export type CloseReason = 'wrap_up' | 'ttl' | 'error' | 'manual'
@@ -178,14 +189,32 @@ export interface CloseConversationResult {
 }
 
 function findClaudeSessionFilesBlock(sessionId: string): string[] {
-  const root = claudeProjectsRoot()
-  if (!fs.existsSync(root)) return []
   const matches: string[] = []
-  let projects: string[]
-  try { projects = fs.readdirSync(root) } catch { return [] }
-  for (const project of projects) {
-    const candidate = path.join(root, project, `${sessionId}.jsonl`)
-    if (fs.existsSync(candidate)) matches.push(candidate)
+  // 1. JSONL transcripts under ~/.claude/projects/<encoded-cwd>/<sid>.jsonl
+  const root = claudeProjectsRoot()
+  if (fs.existsSync(root)) {
+    let projects: string[]
+    try { projects = fs.readdirSync(root) } catch { projects = [] }
+    for (const project of projects) {
+      const candidate = path.join(root, project, `${sessionId}.jsonl`)
+      if (fs.existsSync(candidate)) matches.push(candidate)
+    }
+  }
+  // 2. Rendered markdown the SessionEnd hook drops into the vault. The hook
+  // keys files by the first 8 chars of the session id, with an optional slug:
+  //   YYYY-MM-DD_<shortId>.md  or  YYYY-MM-DD_<shortId>_<slug>.md
+  const vaultRoot = vaultClaudeSessionsRoot()
+  if (fs.existsSync(vaultRoot)) {
+    const shortId = sessionId.slice(0, 8)
+    let files: string[]
+    try { files = fs.readdirSync(vaultRoot) } catch { files = [] }
+    for (const name of files) {
+      if (!/^\d{4}-\d{2}-\d{2}_/.test(name)) continue
+      const afterDate = name.slice(11) // strip "YYYY-MM-DD_"
+      if (afterDate === `${shortId}.md` || afterDate.startsWith(`${shortId}_`)) {
+        matches.push(path.join(vaultRoot, name))
+      }
+    }
   }
   return matches
 }
