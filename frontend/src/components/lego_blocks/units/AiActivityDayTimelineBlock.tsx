@@ -14,8 +14,8 @@ interface AiActivityDayTimelineBlockProps {
 }
 
 const PIXELS_PER_HOUR = 32
-const ROW_HEIGHT = 12
-const ROW_GAP = 2
+const ROW_HEIGHT = 16
+const ROW_GAP = 3
 const MIN_PILL_PX = 8
 const PILL_DEFAULT_DURATION_MIN = 15
 // Slack: chains within this many pixels (~15 min) can share a row even if
@@ -23,7 +23,8 @@ const PILL_DEFAULT_DURATION_MIN = 15
 // from exploding the strip vertically.
 const ROW_PACK_SLACK_PX = 14
 // Cap the strip height so a busy day doesn't push everything below off-screen.
-const STRIP_MAX_HEIGHT_PX = 140
+// Tall enough that ~20 stacked rows are visible without internal scrolling.
+const STRIP_MAX_HEIGHT_PX = 440
 
 function fmtHour(h: number): string {
   // h may exceed 24 for overnight tail — wrap to 0-23 for display.
@@ -202,6 +203,11 @@ export default function AiActivityDayTimelineBlock({
             const isHover = hoverId === key
             const isHighlighted = highlightProject != null && chain.project === highlightProject
             const isDimmed = highlightProject != null && !isHighlighted
+            // Pills use the project's chipBg as a soft fill with NO border —
+            // borders were reading as dark outlines that fought the color
+            // language. Hover/highlight states use a project-tinted ring so the
+            // chrome stays in the same hue family as the pill itself.
+            const ringStyle = (isHighlighted || isHover) ? color.stroke : undefined
             return (
               <button
                 key={key}
@@ -209,9 +215,8 @@ export default function AiActivityDayTimelineBlock({
                 onMouseEnter={() => setHoverId(key)}
                 onMouseLeave={() => setHoverId(h => (h === key ? null : h))}
                 className={cn(
-                  'absolute overflow-hidden rounded-md border transition-all',
-                  isHover && 'shadow-md ring-1 ring-foreground/30 z-10',
-                  isHighlighted && 'ring-1 ring-foreground/50 shadow-sm',
+                  'absolute overflow-hidden rounded-md transition-all',
+                  (isHover || isHighlighted) && 'z-10 shadow-sm',
                   isDimmed && 'opacity-30',
                 )}
                 style={{
@@ -219,8 +224,12 @@ export default function AiActivityDayTimelineBlock({
                   width: widthPx,
                   top: row * (ROW_HEIGHT + ROW_GAP),
                   height: ROW_HEIGHT,
-                  background: color.chipBg,
-                  borderColor: color.dot,
+                  // Use the project's `fill` (≈45% alpha) instead of `chipBg`
+                  // (≈15%) — chipBg was too faint to read at small pill sizes.
+                  background: color.fill,
+                  boxShadow: ringStyle
+                    ? `inset 0 0 0 1.5px ${ringStyle}`
+                    : undefined,
                 }}
                 title={`${fmtTime(chain.startedIso)}–${fmtTime(chain.endedIso)} · ${chain.project} · ${chain.msgCount} msgs — ${chain.topic}`}
                 aria-label={`${chain.project} · ${chain.msgCount} msgs at ${fmtTime(chain.startedIso)}`}
@@ -267,12 +276,14 @@ export default function AiActivityDayTimelineBlock({
       />
     )}
 
-    {/* Chevron nav — appears only when there's content in that direction. */}
+    {/* Chevron nav — anchored to the bottom corners so they sit on the hour
+        axis row instead of overlapping pills in the strip. Smaller + softer
+        than before to disappear visually when not needed. */}
     {canScrollLeft && (
       <button
         type="button"
         onClick={() => scrollBy('left')}
-        className="absolute left-0 top-1/2 -translate-y-1/2 rounded-full border border-border/40 bg-background/80 p-1 text-muted-foreground shadow-sm transition-colors hover:border-border/70 hover:text-foreground"
+        className="absolute bottom-0 left-0 z-20 rounded-full border border-border/30 bg-background/85 p-0.5 text-muted-foreground shadow-sm transition-colors hover:border-border/60 hover:text-foreground"
         aria-label="Scroll timeline earlier"
       >
         <ChevronLeft className="h-3 w-3" />
@@ -282,7 +293,7 @@ export default function AiActivityDayTimelineBlock({
       <button
         type="button"
         onClick={() => scrollBy('right')}
-        className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full border border-border/40 bg-background/80 p-1 text-muted-foreground shadow-sm transition-colors hover:border-border/70 hover:text-foreground"
+        className="absolute bottom-0 right-0 z-20 rounded-full border border-border/30 bg-background/85 p-0.5 text-muted-foreground shadow-sm transition-colors hover:border-border/60 hover:text-foreground"
         aria-label="Scroll timeline later"
       >
         <ChevronRight className="h-3 w-3" />

@@ -89,10 +89,10 @@ const PALETTE: ReadonlyArray<{ match: (name: string) => boolean; entry: ProjectC
   {
     match: n => n === 'LTM',
     entry: {
-      stroke: 'rgb(148,163,184)',
-      fill: 'rgba(148,163,184,0.45)',
-      chipBg: 'rgba(148,163,184,0.15)',
-      dot: 'rgba(148,163,184,0.6)',
+      stroke: 'rgb(129,140,248)',
+      fill: 'rgba(129,140,248,0.45)',
+      chipBg: 'rgba(129,140,248,0.15)',
+      dot: 'rgba(129,140,248,0.6)',
     },
   },
 ]
@@ -107,11 +107,14 @@ const UNKNOWN_ENTRY: ProjectColorEntry = {
   dot: 'rgba(217,119,87,0.6)',
 }
 
+// Dusty mauve — visible against the grey empty-cell background while still
+// reading as a "noise / background activity" bucket (auto-commits, telegram
+// pings, etc.). Previously a stone-grey that blended into empty cells.
 const NOISE_ENTRY: ProjectColorEntry = {
-  stroke: 'rgb(120,113,108)',
-  fill: 'rgba(120,113,108,0.30)',
-  chipBg: 'rgba(120,113,108,0.10)',
-  dot: 'rgba(120,113,108,0.4)',
+  stroke: 'rgb(190,130,160)',
+  fill: 'rgba(190,130,160,0.40)',
+  chipBg: 'rgba(190,130,160,0.15)',
+  dot: 'rgba(190,130,160,0.55)',
 }
 
 export function getProjectColor(name: string): ProjectColorEntry {

@@ -41,6 +41,15 @@ const TELEGRAM_CONVS_DIR = join(TELEGRAM_STATE_DIR, 'conversations');
 const TELEGRAM_LONG_POLL_TIMEOUT_S = 25;
 const TELEGRAM_REPLY_CLAUDE_TIMEOUT_MS = 5 * 60 * 1000;
 const CLAUDE_PROJECTS_DIR = join(HOME, '.claude', 'projects');
+// Vault location where the SessionEnd hook (~/.claude/hooks/render-session.sh)
+// drops rendered session markdown, keyed by `YYYY-MM-DD_<sid8>[_slug].md`.
+// Session cleanup nukes both the JSONL and this mirror so incognito jobs
+// (autocommit/cc-anchor/telegram) leave nothing in the AI activity panel.
+const VAULT_CLAUDE_SESSIONS_DIR = join(
+  HOME,
+  'Library', 'Mobile Documents', 'iCloud~md~obsidian', 'Documents',
+  'Long-Term-Memory-iCloud', 'ai_raw', 'raw', 'claude-code',
+);
 
 const MAX_TRANSCRIPT_BYTES = 5 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -759,15 +768,34 @@ function spawnAndWait(command, args, options = {}) {
 }
 
 function deleteClaudeSessionFiles(sessionId) {
-  if (!existsSync(CLAUDE_PROJECTS_DIR)) return [];
   const removed = [];
-  let projects;
-  try { projects = readdirSync(CLAUDE_PROJECTS_DIR); } catch { return []; }
-  for (const project of projects) {
-    const candidate = join(CLAUDE_PROJECTS_DIR, project, `${sessionId}.jsonl`);
-    if (existsSync(candidate)) {
-      try { unlinkSync(candidate); removed.push(candidate); }
-      catch { /* best effort */ }
+  // 1. JSONL transcripts under ~/.claude/projects/<encoded-cwd>/<sid>.jsonl
+  if (existsSync(CLAUDE_PROJECTS_DIR)) {
+    let projects;
+    try { projects = readdirSync(CLAUDE_PROJECTS_DIR); } catch { projects = []; }
+    for (const project of projects) {
+      const candidate = join(CLAUDE_PROJECTS_DIR, project, `${sessionId}.jsonl`);
+      if (existsSync(candidate)) {
+        try { unlinkSync(candidate); removed.push(candidate); }
+        catch { /* best effort */ }
+      }
+    }
+  }
+  // 2. Vault md mirror dropped by ~/.claude/hooks/render-session.sh, keyed by
+  //    `YYYY-MM-DD_<sid8>[_slug].md`. Match the short-id pattern so we don't
+  //    have to know the date or slug ahead of time.
+  if (existsSync(VAULT_CLAUDE_SESSIONS_DIR)) {
+    const shortId = sessionId.slice(0, 8);
+    let files;
+    try { files = readdirSync(VAULT_CLAUDE_SESSIONS_DIR); } catch { files = []; }
+    for (const name of files) {
+      if (!/^\d{4}-\d{2}-\d{2}_/.test(name)) continue;
+      const afterDate = name.slice(11); // strip "YYYY-MM-DD_"
+      if (afterDate === `${shortId}.md` || afterDate.startsWith(`${shortId}_`)) {
+        const p = join(VAULT_CLAUDE_SESSIONS_DIR, name);
+        try { unlinkSync(p); removed.push(p); }
+        catch { /* best effort */ }
+      }
     }
   }
   return removed;
@@ -1021,8 +1049,16 @@ async function main() {
       console.log(JSON.stringify(r));
       process.exit(0);
     }
+    case 'cleanup-session': {
+      const sessionId = rest[0];
+      if (!sessionId) { console.error('usage: runner.mjs cleanup-session <sessionId>'); process.exit(2); }
+      const removed = deleteClaudeSessionFiles(sessionId);
+      logEvent({ kind: 'claude_session_cleanup', origin: 'cli', sessionId, removed });
+      console.log(JSON.stringify({ ok: true, sessionId, removed }));
+      process.exit(0);
+    }
     default:
-      console.error('usage: runner.mjs <run|stop|catchup-check|heartbeat-check|notify|status|telegram-poll> [args]');
+      console.error('usage: runner.mjs <run|stop|catchup-check|heartbeat-check|notify|status|telegram-poll|cleanup-session> [args]');
       process.exit(2);
   }
 }

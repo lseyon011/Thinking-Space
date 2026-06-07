@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, RefreshCw } from 'lucide-react'
+import { Archive, ChevronDown, ChevronUp, Hash, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { openVaultPathWithDefaultAppOrch } from '@/services/orchestrators/fileSystemOrch'
 import {
@@ -32,6 +32,9 @@ export default function AiActivityPanelBlock() {
   const [selectedRange, setSelectedRange] = useState<{ startIso: string; endIso: string } | null>(
     null,
   )
+  // Per-day session count pills on the trend chart. Off by default; users can
+  // opt in via the # button next to the view toggle when trend is selected.
+  const [showSessionCounts, setShowSessionCounts] = useState(false)
 
   // Totals match what the chips show: signal projects only, noise buckets
   // ([auto-commit], [telegram]) excluded. This keeps "278 msgs" in the strip
@@ -62,9 +65,15 @@ export default function AiActivityPanelBlock() {
       })
     }
     if (selectedRange) {
+      // Compare in local-calendar day, not UTC slice — matches how the heatmap
+      // buckets chains into days (see useAiActivityBlock days memo).
       return activity.chains.filter(c => {
-        const d = c.startedIso.slice(0, 10)
-        return d >= selectedRange.startIso && d <= selectedRange.endIso
+        const d = new Date(c.startedIso)
+        const y = d.getFullYear()
+        const m = String(d.getMonth() + 1).padStart(2, '0')
+        const day = String(d.getDate()).padStart(2, '0')
+        const localDay = `${y}-${m}-${day}`
+        return localDay >= selectedRange.startIso && localDay <= selectedRange.endIso
       })
     }
     return []
@@ -80,7 +89,27 @@ export default function AiActivityPanelBlock() {
     if (drillChains.length === 0) return undefined
     const msgs = drillChains.reduce((n, c) => n + c.msgCount, 0)
     const sessions = drillChains.reduce((n, c) => n + c.sessions.length, 0)
-    return `${drillChains.length} chains · ${sessions} sessions · ${msgs} msgs`
+    // Sum active time across chains. A chain's duration is (endedIso -
+    // startedIso); single-instant chains (where end==start) contribute 0.
+    // Multiple chains in the same hour are counted independently — that's
+    // "engagement time" not "wall-clock time", which is the more useful
+    // number when the user asks "how much time did I spend on AI today".
+    const totalMs = drillChains.reduce((n, c) => {
+      const start = Date.parse(c.startedIso)
+      const end = Date.parse(c.endedIso ?? c.startedIso)
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return n
+      return n + (end - start)
+    }, 0)
+    const totalMin = Math.round(totalMs / 60_000)
+    const hours = Math.floor(totalMin / 60)
+    const mins = totalMin % 60
+    const durLabel =
+      hours > 0
+        ? mins > 0
+          ? `${hours}h ${mins}m`
+          : `${hours}h`
+        : `${mins}m`
+    return `${drillChains.length} chains · ${sessions} sessions · ${msgs} msgs · ${durLabel}`
   }, [drillChains])
 
   function clearDrill() {
@@ -122,6 +151,13 @@ export default function AiActivityPanelBlock() {
       mo.disconnect()
     }
   }, [])
+
+  const scrollByPage = (direction: 'up' | 'down') => {
+    const el = scrollRef.current
+    if (!el) return
+    const delta = el.clientHeight * 0.7 * (direction === 'up' ? -1 : 1)
+    el.scrollBy({ top: delta, behavior: 'smooth' })
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -195,6 +231,26 @@ export default function AiActivityPanelBlock() {
             aria-hidden
           />
         )}
+        {showTopFade && (
+          <button
+            type="button"
+            onClick={() => scrollByPage('up')}
+            className="absolute right-3 top-1 z-20 rounded-full border border-border/30 bg-background/85 p-0.5 text-muted-foreground shadow-sm transition-colors hover:border-border/60 hover:text-foreground"
+            aria-label="Scroll up"
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {showBottomFade && (
+          <button
+            type="button"
+            onClick={() => scrollByPage('down')}
+            className="absolute right-3 bottom-1 z-20 rounded-full border border-border/30 bg-background/85 p-0.5 text-muted-foreground shadow-sm transition-colors hover:border-border/60 hover:text-foreground"
+            aria-label="Scroll down"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        )}
         <div ref={scrollRef} className="h-full overflow-y-auto pr-1">
       <div>
         <AiActivityProjectChipsBlock
@@ -224,6 +280,22 @@ export default function AiActivityPanelBlock() {
               clear filter · {activeProject}
             </button>
           )}
+          {view === 'trend' && (
+            <button
+              type="button"
+              onClick={() => setShowSessionCounts(v => !v)}
+              className={cn(
+                'ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] transition-colors',
+                showSessionCounts
+                  ? 'border-foreground/30 bg-foreground/10 text-foreground/85'
+                  : 'border-border/40 bg-card/40 text-muted-foreground hover:border-border/70 hover:text-foreground',
+              )}
+              title={showSessionCounts ? 'Hide per-day session counts' : 'Show per-day session counts'}
+            >
+              <Hash className="h-3 w-3" />
+              counts
+            </button>
+          )}
         </div>
         {view === 'heatmap' ? (
           <AiActivityHeatmapBlock
@@ -244,6 +316,7 @@ export default function AiActivityPanelBlock() {
             filterProject={activeProject}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
+            showSessionCounts={showSessionCounts}
           />
         )}
       </div>
@@ -286,7 +359,7 @@ function LegacyArchivesLink() {
     setOpen(false)
     openVaultPathWithDefaultAppOrch(path).catch(err => {
       // Swallow but log — most likely cause is non-Electron platform.
-      console.warn('[ai-activity] failed to open legacy archive:', err)
+      console.warn('[ai-activity] failed to open other-source archive:', err)
     })
   }
   return (
@@ -295,10 +368,10 @@ function LegacyArchivesLink() {
         type="button"
         onClick={() => setOpen(o => !o)}
         className="inline-flex items-center gap-1 rounded-full border border-border/30 bg-card/40 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground/80 transition-colors hover:border-border/60 hover:text-foreground"
-        title="Open legacy ChatGPT / Grok archives in Finder"
+        title="Open ChatGPT / Grok archives in Finder"
       >
         <Archive className="h-3 w-3" />
-        legacy
+        others
       </button>
       {open && (
         <>

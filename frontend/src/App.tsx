@@ -3395,11 +3395,11 @@ function App() {
               {!usesPersistentRouteSurface && (
                 <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>}>
                 <Routes>
-                  {/* Electron and iPad use the canvas home; iPhone/web keep
-                      the classic dashboard home (touch-first phone surface).
+                  {/* Native/Electron clients use the canvas home; web keeps
+                      the classic dashboard home.
                       The /home-canvas route stays accessible on all platforms
                       so the canvas can be tested from any client. */}
-                  <Route path="/" element={(isElectron() || (layout.surface === 'capacitor-ios' && layout.mode === 'tablet')) ? <HomeCanvas /> : <Home />} />
+                  <Route path="/" element={(isElectron() || layout.surface === 'capacitor-ios') ? <HomeCanvas /> : <Home />} />
                   <Route path="/home-canvas" element={<HomeCanvas />} />
                   <Route path="/ai" element={<Navigate to="/ai/chat" replace />} />
                   <Route path="/ai/schedules/*" element={<Schedules />} />

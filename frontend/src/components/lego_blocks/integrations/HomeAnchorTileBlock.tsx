@@ -1,10 +1,11 @@
-import { memo } from 'react'
+import { memo, useEffect, useState } from 'react'
 import DashboardChartsBlock from '@/components/lego_blocks/integrations/DashboardChartsBlock'
 import ActivityHotspotBlock from '@/components/lego_blocks/integrations/ActivityHotspotBlock'
 import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivityPanelBlock'
 import TodayFileActivityOrch from '@/components/orchestrators/TodayFileActivityOrch'
 import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
 import { useDashboardActivityBlock } from '@/components/lego_blocks/hooks/shared/useDashboardActivityBlock'
+import { readVaultUiPreferencesOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import {
   useCanvasThemeBlock,
   type CanvasThemeTokens,
@@ -21,7 +22,7 @@ const ANCHOR_ELEMENTS = {
   hotspot: { w: 880, h: 280, offsetY: 20 },
   today: { w: 880, h: 440, offsetY: 340 },
   // Tall enough to hold the chart + drill-down table without scrolling.
-  aiActivity: { w: 880, h: 760, offsetY: 820 },
+  aiActivity: { w: 880, h: 980, offsetY: 820 },
 } as const
 
 function FloatingPanel({
@@ -72,6 +73,15 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
   const theme = useCanvasThemeBlock()
   const { profile } = useUserProfileBlock()
   const activity = useDashboardActivityBlock('30d')
+  const [showDailyHighlights, setShowDailyHighlights] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    readVaultUiPreferencesOrch()
+      .then(prefs => { if (!cancelled) setShowDailyHighlights(prefs.showDailyHighlights) })
+      .catch(() => { /* leave off */ })
+    return () => { cancelled = true }
+  }, [])
 
   const place = (key: keyof typeof ANCHOR_ELEMENTS) => {
     const { w, h, offsetY } = ANCHOR_ELEMENTS[key]
@@ -120,6 +130,7 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
           error={activity.error}
           preset={activity.preset}
           onPresetChange={activity.setPreset}
+          showDailyHighlights={showDailyHighlights}
         />
       </FloatingPanel>
 
@@ -133,16 +144,6 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
       </FloatingPanel>
 
       <FloatingPanel {...today} theme={theme}>
-        <h2
-          style={{
-            fontSize: 13,
-            fontWeight: 600,
-            color: theme.anchorHeading,
-            margin: '0 0 12px',
-          }}
-        >
-          What you did today
-        </h2>
         <TodayFileActivityOrch
           highlights={activity.series?.highlights ?? null}
           highlightsLoading={activity.loading}

@@ -155,6 +155,64 @@ export function useInfiniteCanvasBlock(
     return () => el.removeEventListener('wheel', handleWheel)
   }, [handleWheel])
 
+  const handleBackdropPointerDown = useCallback(
+    (e: PointerEvent) => {
+      if (!e.isPrimary) return
+      const target = e.target as HTMLElement | null
+      if (!target?.closest('[data-canvas-backdrop="true"]')) return
+      if (
+        target.closest(
+          '[data-canvas-tile="true"], [data-canvas-anchor-element="true"], button, input, textarea, select, [contenteditable="true"]',
+        )
+      ) {
+        return
+      }
+
+      e.preventDefault()
+      const startX = e.clientX
+      const startY = e.clientY
+      const startTransform = transformRef.current
+
+      const onPointerMove = (ev: PointerEvent) => {
+        if (!ev.isPrimary || ev.pointerId !== e.pointerId) return
+        ev.preventDefault()
+        const desired = {
+          ...startTransform,
+          x: startTransform.x + ev.clientX - startX,
+          y: startTransform.y + ev.clientY - startY,
+        }
+        const clamped = clampTransform(desired)
+        setTransform(clamped)
+        const cb = onEdgeHitRef.current
+        if (cb) {
+          if (clamped.x > desired.x) cb('right')
+          else if (clamped.x < desired.x) cb('left')
+          if (clamped.y > desired.y) cb('bottom')
+          else if (clamped.y < desired.y) cb('top')
+        }
+      }
+
+      const onPointerUp = (ev: PointerEvent) => {
+        if (ev.pointerId !== e.pointerId) return
+        document.removeEventListener('pointermove', onPointerMove)
+        document.removeEventListener('pointerup', onPointerUp)
+        document.removeEventListener('pointercancel', onPointerUp)
+      }
+
+      document.addEventListener('pointermove', onPointerMove, { passive: false })
+      document.addEventListener('pointerup', onPointerUp)
+      document.addEventListener('pointercancel', onPointerUp)
+    },
+    [clampTransform],
+  )
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    el.addEventListener('pointerdown', handleBackdropPointerDown)
+    return () => el.removeEventListener('pointerdown', handleBackdropPointerDown)
+  }, [handleBackdropPointerDown])
+
   const resetZoom = useCallback(() => {
     setTransform(clampTransform({
       x: -worldWidth / 2 + window.innerWidth / 2,

@@ -45,6 +45,8 @@ import {
 } from '@/services/orchestrators/googleDriveAuthOrch'
 import {
   DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK,
+  readVaultUiPreferencesOrch,
+  setShowDailyHighlightsPreferenceOrch,
   type ExplorerFolderColorPreferenceBlock,
   type ExplorerIconStyleBlock,
 } from '@/services/orchestrators/vaultUiPreferencesOrch'
@@ -205,6 +207,27 @@ export default function SettingsOrch({
   const [markdownEditorSettings, setMarkdownEditorSettings] = useState<MarkdownEditorSettingsBlock>(
     () => readMarkdownEditorSettingsOrch(),
   )
+  const [showDailyHighlights, setShowDailyHighlights] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    void readVaultUiPreferencesOrch()
+      .then(prefs => {
+        if (cancelled) return
+        setShowDailyHighlights(prefs.showDailyHighlights)
+      })
+      .catch(() => {
+        /* leave default */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  const updateShowDailyHighlights = (next: boolean) => {
+    setShowDailyHighlights(next)
+    void setShowDailyHighlightsPreferenceOrch(next).catch(err => {
+      console.warn('[settings] failed to persist showDailyHighlights:', err)
+    })
+  }
   const [schedulerSettingsDraft, setSchedulerSettingsDraft] = useState<SchedulerSettingsBlock>(() => schedulerSettings)
   const [schedulerDirty, setSchedulerDirty] = useState(false)
   const [schedulerNewTimeByTaskId, setSchedulerNewTimeByTaskId] = useState<Record<string, string>>({})
@@ -912,6 +935,25 @@ export default function SettingsOrch({
                     preserveNewlinesInViewMode: checked,
                   })}
                   aria-label="Preserve new lines in view mode"
+                />
+              </label>
+            </div>
+            <div className="space-y-2 border-t border-border/50 pt-4">
+              <h3 className="text-sm font-medium text-foreground">Home dashboard</h3>
+              <p className="text-xs text-muted-foreground">
+                Optional widgets on the home "What you did today" panel.
+              </p>
+              <label className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
+                <div className="space-y-0.5">
+                  <div className="text-sm text-foreground">Show daily insight & memorization tiles</div>
+                  <div className="text-xs text-muted-foreground">
+                    Adds "Insights today" / "Memorized today" counters plus most-recent rows. Requires daily insight notes and memorization sessions to be meaningful — off by default.
+                  </div>
+                </div>
+                <Switch
+                  checked={showDailyHighlights}
+                  onCheckedChange={updateShowDailyHighlights}
+                  aria-label="Show daily insight and memorization tiles"
                 />
               </label>
             </div>

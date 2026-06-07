@@ -36,6 +36,8 @@ export interface ActivityDay {
   totalChains: number
   /** Per-project msg counts on this day. */
   byProject: Record<string, number>
+  /** Per-project chain message counts on this day, used by chain-based drill views. */
+  byChainProject: Record<string, number>
 }
 
 export interface ActivityProject {
@@ -301,7 +303,7 @@ export function useAiActivityBlock(
     // Source filter still applies — a "Codex only" view's auto-post-it should
     // reflect Codex activity, not the merged today list.
     const todaySessions = sourceFilteredSessions.filter(
-      s => s.startedIso.slice(0, 10) === todayIso,
+      s => isoDayLocal(new Date(s.startedIso)) === todayIso,
     )
     return buildChains(todaySessions)
   }, [sourceFilteredSessions, todayIso])
@@ -310,10 +312,21 @@ export function useAiActivityBlock(
     const dayList = isoDaysBetween(startIso, endIso)
     const map = new Map<string, ActivityDay>()
     for (const date of dayList) {
-      map.set(date, { date, totalMsgs: 0, totalChains: 0, byProject: {} })
+      map.set(date, {
+        date,
+        totalMsgs: 0,
+        totalChains: 0,
+        byProject: {},
+        byChainProject: {},
+      })
     }
+    // Day-bucketing uses LOCAL calendar day, not UTC. The drill-down filter
+    // (AiActivityPanelBlock) computes day boundaries via `Date.parse(selectedDate
+    // + 'T00:00:00')` which is local midnight; if we slice startedIso (UTC) here
+    // a late-night chain in CT lands in tomorrow UTC, the heatmap tints the
+    // wrong cell, and clicking it shows zero matching chains.
     for (const s of sessions) {
-      const date = s.startedIso.slice(0, 10)
+      const date = isoDayLocal(new Date(s.startedIso))
       const day = map.get(date)
       if (!day) continue
       day.totalMsgs += s.userMsgCount
@@ -321,9 +334,13 @@ export function useAiActivityBlock(
     }
     // Chain counts per day (a chain belongs to its start day).
     for (const c of chains) {
-      const date = c.startedIso.slice(0, 10)
+      const date = isoDayLocal(new Date(c.startedIso))
       const day = map.get(date)
-      if (day) day.totalChains += 1
+      if (day) {
+        day.totalChains += 1
+        day.byChainProject[c.project] =
+          (day.byChainProject[c.project] ?? 0) + c.msgCount
+      }
     }
     return dayList.map(d => map.get(d)!)
   }, [sessions, chains, startIso, endIso])
@@ -332,35 +349,35 @@ export function useAiActivityBlock(
     const dayList = isoDaysBetween(startIso, endIso)
     const dayIndex = new Map(dayList.map((d, i) => [d, i]))
     const accum = new Map<string, ActivityProject>()
-    const sessionsByProject = new Map<string, ParsedSession[]>()
 
-    for (const s of sessions) {
-      const key = s.project
+    const ensureProject = (key: string): ActivityProject => {
       const existing = accum.get(key)
-      if (!existing) {
-        accum.set(key, {
-          name: key,
-          totalMsgs: 0,
-          totalChains: 0,
-          totalSessions: 0,
-          sparkline: new Array(dayList.length).fill(0),
-          isNoise: isNoiseProject(key),
-          isUnknown: key === '<unknown>',
-        })
+      if (existing) return existing
+      const next: ActivityProject = {
+        name: key,
+        totalMsgs: 0,
+        totalChains: 0,
+        totalSessions: 0,
+        sparkline: new Array(dayList.length).fill(0),
+        isNoise: isNoiseProject(key),
+        isUnknown: key === '<unknown>',
       }
-      const p = accum.get(key)!
-      p.totalMsgs += s.userMsgCount
-      p.totalSessions += 1
-      const idx = dayIndex.get(s.startedIso.slice(0, 10))
-      if (idx != null) p.sparkline[idx] += s.userMsgCount
+      accum.set(key, next)
+      return next
+    }
 
-      const arr = sessionsByProject.get(key) ?? []
-      arr.push(s)
-      sessionsByProject.set(key, arr)
+    // Session count remains session-based, but visible project ranking/counts
+    // are chain-based so chips, heatmap tint, and drilldown table agree.
+    for (const s of sessions) {
+      const p = ensureProject(s.project)
+      p.totalSessions += 1
     }
     for (const c of chains) {
-      const p = accum.get(c.project)
-      if (p) p.totalChains += 1
+      const p = ensureProject(c.project)
+      p.totalMsgs += c.msgCount
+      p.totalChains += 1
+      const idx = dayIndex.get(isoDayLocal(new Date(c.startedIso)))
+      if (idx != null) p.sparkline[idx] += c.msgCount
     }
     return [...accum.values()].sort((a, b) => b.totalMsgs - a.totalMsgs)
   }, [sessions, chains, startIso, endIso])

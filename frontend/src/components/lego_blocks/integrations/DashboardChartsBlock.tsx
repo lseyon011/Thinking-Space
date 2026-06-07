@@ -90,6 +90,9 @@ interface DashboardChartsBlockProps {
   error: string | null
   preset: DashboardRangePreset
   onPresetChange: (preset: DashboardRangePreset) => void
+  /** Show the Insights + Memorized cards. Off by default — those depend on a
+   *  vault-specific note structure most users don't have. */
+  showDailyHighlights?: boolean
 }
 
 export default function DashboardChartsBlock({
@@ -98,8 +101,15 @@ export default function DashboardChartsBlock({
   error,
   preset,
   onPresetChange,
+  showDailyHighlights = false,
 }: DashboardChartsBlockProps) {
   const days = series?.days ?? []
+  const visibleCards = showDailyHighlights
+    ? CARDS
+    : CARDS.filter(c => c.key === 'files_modified')
+  const gridCols = visibleCards.length >= 3
+    ? 'md:grid-cols-3'
+    : visibleCards.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-1'
 
   return (
     <div className="space-y-4">
@@ -118,8 +128,8 @@ export default function DashboardChartsBlock({
           {error}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          {CARDS.map((card) => (
+        <div className={cn('grid grid-cols-1 gap-3', gridCols)}>
+          {visibleCards.map((card) => (
             <ChartCard
               key={card.key}
               spec={card}

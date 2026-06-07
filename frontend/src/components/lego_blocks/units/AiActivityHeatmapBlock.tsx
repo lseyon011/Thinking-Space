@@ -88,14 +88,17 @@ export default function AiActivityHeatmapBlock({
       let msgs = 0
       let topProject: string | null = null
       if (d) {
+        const projectCounts = d.byChainProject ?? d.byProject
         if (filterProject) {
-          msgs = d.byProject[filterProject] ?? 0
+          msgs = projectCounts[filterProject] ?? 0
           topProject = filterProject
         } else {
           msgs = d.totalMsgs
-          // Top project by msg count; ignore noise buckets for the tint hint.
+          // Top project by chain msg count so the cell tint matches the
+          // chain-based drilldown table. Ignore noise buckets for tint only;
+          // chips still surface them elsewhere when they are useful.
           let topMsgs = 0
-          for (const [name, n] of Object.entries(d.byProject)) {
+          for (const [name, n] of Object.entries(projectCounts)) {
             const isNoise = name.startsWith('[') && name.endsWith(']')
             if (isNoise) continue
             if (n > topMsgs) {
@@ -122,24 +125,52 @@ export default function AiActivityHeatmapBlock({
   // makes adjacent months collide ("JanFeb"). Build an absolutely-positioned
   // header row instead: each label parks at the first-week-of-its-month column,
   // and we skip any label that would sit closer than ~24px to the previous one.
-  const monthHeaders = useMemo(() => {
-    const headers: Array<{ col: number; label: string }> = []
+  // Both labels and dividers anchor to the FIRST column that contains any cell
+  // of the new month — not the first column whose Monday is in the new month.
+  // In mixed-week columns (e.g. Mon=Mar 30, Wed=Apr 1) anchoring to Monday
+  // strands the early days of the new month on the wrong side of the divider.
+  // Anchoring to the column that contains the 1st of the new month puts the
+  // mixed week on the new-month side, which strands fewer days and matches
+  // user intuition ("April starts in this column").
+  const monthTransitions = useMemo(() => {
+    const transitions: Array<{ col: number; month: number }> = []
     let lastMonth = -1
-    let lastCol = -Infinity
     weeks.forEach((week, idx) => {
-      const first = week[0]
-      if (!first) return
-      const m = new Date(first.date + 'T00:00:00').getMonth()
-      if (m !== lastMonth) {
-        if (idx - lastCol >= 2) {
-          headers.push({ col: idx, label: MONTH_LABELS[m] })
-          lastCol = idx
+      let newestMonth = -1
+      for (const cell of week) {
+        if (!cell.date) continue
+        const m = new Date(cell.date + 'T00:00:00').getMonth()
+        if (m !== lastMonth) {
+          newestMonth = m
+          break
         }
-        lastMonth = m
+      }
+      if (newestMonth !== -1) {
+        transitions.push({ col: idx, month: newestMonth })
+        lastMonth = newestMonth
       }
     })
-    return headers
+    return transitions
   }, [weeks])
+
+  const monthHeaders = useMemo(() => {
+    const headers: Array<{ col: number; label: string }> = []
+    let lastCol = -Infinity
+    for (const t of monthTransitions) {
+      if (t.col - lastCol >= 2) {
+        headers.push({ col: t.col, label: MONTH_LABELS[t.month] })
+        lastCol = t.col
+      }
+    }
+    return headers
+  }, [monthTransitions])
+
+  // Vertical separator on the heatmap so the eye can tell where one month ends
+  // and the next begins. Skip idx 0 — leftmost column needs no left-divider.
+  const monthDividerCols = useMemo(
+    () => monthTransitions.filter(t => t.col > 0).map(t => t.col),
+    [monthTransitions],
+  )
 
   const hovered = hoverDate ? dayMap.get(hoverDate) : null
 
@@ -216,7 +247,28 @@ export default function AiActivityHeatmapBlock({
                   </div>
                 ))}
               </div>
-              <div className="flex" style={{ gap: 3 }} onMouseLeave={() => setDragAnchor(null)}>
+              <div
+                className="relative flex"
+                style={{ gap: 3 }}
+                onMouseLeave={() => setDragAnchor(null)}
+              >
+                {/* Vertical month-boundary lines sit centered in the 3px gap
+                    before a month-start column. 1px wide, full grid height
+                    (7×12 + 6×3 = 102), very low contrast so they read as
+                    quiet structure rather than data. */}
+                {monthDividerCols.map(col => (
+                  <div
+                    key={`mdiv-${col}`}
+                    aria-hidden
+                    className="pointer-events-none absolute bg-foreground/15"
+                    style={{
+                      left: col * 15 - 2,
+                      top: 0,
+                      width: 1,
+                      height: 7 * 12 + 6 * 3,
+                    }}
+                  />
+                ))}
                 {weeks.map((week, wIdx) => (
                   <div key={wIdx} className="flex flex-col" style={{ gap: 3 }}>
                     {week.map(cell => {

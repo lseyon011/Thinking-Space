@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
+import { Maximize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
@@ -8,6 +9,7 @@ import {
   formatUsd,
   sumTokens,
 } from '@/services/lego_blocks/units/aiPriceTableBlock'
+import ChainTranscriptModalBlock from '@/components/lego_blocks/integrations/ChainTranscriptModalBlock'
 
 interface AiActivityDayTableBlockProps {
   /** Title shown above the table (e.g. day or range label). */
@@ -51,6 +53,21 @@ function fmtSpan(startIso: string, endIso: string): string {
   return `${a}–${b}`
 }
 
+/** Format a chain's duration as `Nh Mm`, `Nh`, `Mm`, or `<1m`. Single-instant
+ *  chains (end==start) render as em-dash since "0m" reads as missing data. */
+function fmtDuration(startIso: string, endIso: string): string {
+  const start = Date.parse(startIso)
+  const end = Date.parse(endIso)
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return '—'
+  const totalMin = Math.round((end - start) / 60_000)
+  if (totalMin < 1) return '<1m'
+  const hours = Math.floor(totalMin / 60)
+  const mins = totalMin % 60
+  if (hours === 0) return `${mins}m`
+  if (mins === 0) return `${hours}h`
+  return `${hours}h ${mins}m`
+}
+
 function isoDayLocal(iso: string): string {
   const d = new Date(iso)
   const y = d.getFullYear()
@@ -68,6 +85,33 @@ function fmtDividerDate(iso: string): string {
   })
 }
 
+function hasTokenUsage(
+  tokens: ActivityChain['sessions'][number]['tokens'],
+): tokens is NonNullable<ActivityChain['sessions'][number]['tokens']> {
+  if (!tokens) return false
+  return tokens.input + tokens.output + tokens.cacheRead + tokens.cacheCreation > 0
+}
+
+function estimateChainCostUsd(chain: ActivityChain): number {
+  return chain.sessions.reduce((total, session) => {
+    if (!hasTokenUsage(session.tokens)) return total
+    return total + estimateCostUsd(session.tokens, session.model)
+  }, 0)
+}
+
+function modelSummaryLabel(chain: ActivityChain): string | null {
+  const models = Array.from(
+    new Set(
+      chain.sessions
+        .map(session => session.model)
+        .filter((model): model is string => Boolean(model)),
+    ),
+  )
+  if (models.length === 0) return null
+  if (models.length === 1) return models[0]
+  return `${models.length} models`
+}
+
 export default function AiActivityDayTableBlock({
   title,
   chains,
@@ -77,6 +121,7 @@ export default function AiActivityDayTableBlock({
   onBack,
 }: AiActivityDayTableBlockProps) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const [transcriptChain, setTranscriptChain] = useState<ActivityChain | null>(null)
 
   // Sort by start time, oldest first for chronological reading.
   const sorted = useMemo(
@@ -97,16 +142,16 @@ export default function AiActivityDayTableBlock({
     let totalCachedTokens = 0
     let chainsWithTokens = 0
     for (const c of sorted) {
-      const chainTokens = sumTokens(c.sessions.map(s => s.tokens))
-      const hasTokens =
-        chainTokens.input + chainTokens.output + chainTokens.cacheRead + chainTokens.cacheCreation > 0
-      if (hasTokens) {
-        chainsWithTokens += 1
-        const chainModel = c.sessions.find(s => s.model)?.model
-        totalCostUsd += estimateCostUsd(chainTokens, chainModel)
-        totalFreshTokens += chainTokens.input + chainTokens.output
-        totalCachedTokens += chainTokens.cacheRead + chainTokens.cacheCreation
+      let chainHasTokens = false
+      for (const s of c.sessions) {
+        const t = s.tokens
+        if (!hasTokenUsage(t)) continue
+        chainHasTokens = true
+        totalCostUsd += estimateCostUsd(t, s.model)
+        totalFreshTokens += t.input + t.output
+        totalCachedTokens += t.cacheRead + t.cacheCreation
       }
+      if (chainHasTokens) chainsWithTokens += 1
     }
     return { totalCostUsd, totalFreshTokens, totalCachedTokens, chainsWithTokens }
   }, [sorted])
@@ -136,10 +181,26 @@ export default function AiActivityDayTableBlock({
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-border/40 bg-card/40">
-          <table className="w-full text-xs">
+          {/* table-layout: fixed so colgroup widths are authoritative AND a wide
+              `colSpan` cell (the expanded row's full topic text) cannot stretch
+              the table past its container — long topics wrap inside the row
+              instead of running off the right edge. */}
+          <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
+            {/* Explicit column widths so the Topic column takes the remaining
+                space instead of fighting with the natural widths of the other
+                cells. Without this, Time gets too much breathing room and
+                Topic is squashed to ~10 chars. */}
+            <colgroup>
+              <col style={{ width: '170px' }} />
+              <col style={{ width: '90px' }} />
+              <col style={{ width: '180px' }} />
+              <col style={{ width: '70px' }} />
+              <col />
+            </colgroup>
             <thead>
               <tr className="border-b border-border/30 text-left text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
                 <th className="px-3 py-1.5 font-medium">Time</th>
+                <th className="px-3 py-1.5 text-right font-medium">Duration</th>
                 <th className="px-3 py-1.5 font-medium">Project</th>
                 <th className="px-3 py-1.5 text-right font-medium">Msgs</th>
                 <th className="px-3 py-1.5 font-medium">Topic</th>
@@ -162,13 +223,13 @@ export default function AiActivityDayTableBlock({
                   const chainTokens = sumTokens(c.sessions.map(s => s.tokens))
                   const hasTokens =
                     chainTokens.input + chainTokens.output + chainTokens.cacheRead + chainTokens.cacheCreation > 0
-                  const chainModel = c.sessions.find(s => s.model)?.model
-                  const costUsd = hasTokens ? estimateCostUsd(chainTokens, chainModel) : 0
+                  const costUsd = hasTokens ? estimateChainCostUsd(c) : 0
+                  const modelLabel = modelSummaryLabel(c)
                   return (
                     <Fragment key={c.key}>
                       {showDivider && (
                         <tr className="border-y border-border/30 bg-muted/20">
-                          <td colSpan={4} className="px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                          <td colSpan={5} className="px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
                             {fmtDividerDate(rowDate)}
                             {anchorDateIso && rowDate > anchorDateIso && (
                               <span className="ml-1.5 text-muted-foreground/60">· overnight tail</span>
@@ -180,7 +241,6 @@ export default function AiActivityDayTableBlock({
                     className={cn(
                       'cursor-pointer border-b border-border/20 transition-colors last:border-0',
                       'hover:bg-foreground/[0.04]',
-                      isHighlighted && 'ring-1 ring-inset ring-foreground/15',
                       isExpanded && 'bg-foreground/[0.04]',
                     )}
                     style={isHighlighted ? { background: color.chipBg } : undefined}
@@ -188,6 +248,9 @@ export default function AiActivityDayTableBlock({
                   >
                     <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-foreground/80">
                       {fmtSpan(c.startedIso, c.endedIso)}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-foreground/70">
+                      {fmtDuration(c.startedIso, c.endedIso)}
                     </td>
                     <td className="whitespace-nowrap px-3 py-1.5">
                       <span className="inline-flex items-center gap-1.5" style={{ color: color.stroke }}>
@@ -204,7 +267,51 @@ export default function AiActivityDayTableBlock({
                   </tr>
                   {isExpanded && (
                     <tr className="border-b border-border/20 bg-foreground/[0.02]">
-                      <td colSpan={4} className="px-3 py-2 text-[11px] text-muted-foreground">
+                      <td
+                        colSpan={5}
+                        className="space-y-2 px-3 py-2 text-[11px] text-muted-foreground"
+                        // table-layout: fixed alone doesn't always stop long
+                        // unbroken text from stretching a colSpan cell. The
+                        // width:0 / max-width:0 pair forces the cell to compute
+                        // its width purely from the column track, so the inner
+                        // content has to wrap inside the available space.
+                        style={{ width: 0, maxWidth: 0 }}
+                      >
+                        {/* Full topic — the row cell truncates with ellipsis, this is
+                            the unabridged version. Multi-session chains list every
+                            session's opening topic so the user can see how a long
+                            chain shifted over time. */}
+                        <div className="space-y-1">
+                          <div className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70">
+                            Topic
+                          </div>
+                          <div
+                            className="whitespace-pre-wrap text-foreground/85"
+                            style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                          >
+                            {c.topic}
+                          </div>
+                          {c.sessions.length > 1 && (() => {
+                            const seen = new Set<string>([c.topic])
+                            const extras = c.sessions
+                              .map(s => s.topic)
+                              .filter(t => t && !seen.has(t) && (seen.add(t), true))
+                            if (extras.length === 0) return null
+                            return (
+                              <ul className="mt-1 space-y-0.5 pl-3 text-muted-foreground/80">
+                                {extras.map((t, i) => (
+                                  <li
+                                    key={i}
+                                    className="whitespace-pre-wrap"
+                                    style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                                  >
+                                    · {t}
+                                  </li>
+                                ))}
+                              </ul>
+                            )
+                          })()}
+                        </div>
                         {hasTokens ? (
                           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
                             <span>
@@ -228,9 +335,9 @@ export default function AiActivityDayTableBlock({
                               ~<strong className="tabular-nums text-foreground/80">{formatUsd(costUsd)}</strong>{' '}
                               est.
                             </span>
-                            {chainModel && (
+                            {modelLabel && (
                               <span className="rounded bg-muted/40 px-1.5 py-0.5 text-foreground/70">
-                                {chainModel}
+                                {modelLabel}
                               </span>
                             )}
                             <span className="text-muted-foreground/60">
@@ -242,6 +349,19 @@ export default function AiActivityDayTableBlock({
                             No token data — this chain came from the vault markdown source only.
                           </span>
                         )}
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation()
+                              setTranscriptChain(c)
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-card/60 px-2.5 py-1 text-[11px] text-foreground/80 transition-colors hover:border-border/80 hover:bg-card/80 hover:text-foreground"
+                          >
+                            <Maximize2 className="h-3 w-3" />
+                            Show entire chain
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )}
@@ -278,6 +398,7 @@ export default function AiActivityDayTableBlock({
           )}
         </div>
       )}
+      <ChainTranscriptModalBlock chain={transcriptChain} onClose={() => setTranscriptChain(null)} />
     </div>
   )
 }

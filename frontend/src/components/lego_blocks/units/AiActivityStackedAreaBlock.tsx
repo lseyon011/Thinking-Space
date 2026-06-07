@@ -3,6 +3,8 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  LabelList,
+  Line,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -26,6 +28,8 @@ interface AiActivityStackedAreaBlockProps {
   selectedDate?: string | null
   /** Click on a data point selects/unselects that day. Mirrors the heatmap. */
   onSelectDate?: (date: string | null) => void
+  /** Render the per-day session count as a small pill above each peak. */
+  showSessionCounts?: boolean
 }
 
 function formatTickDate(iso: string): string {
@@ -45,6 +49,7 @@ export default function AiActivityStackedAreaBlock({
   hideNoise = true,
   selectedDate = null,
   onSelectDate,
+  showSessionCounts = false,
 }: AiActivityStackedAreaBlockProps) {
   const visibleProjects = useMemo(() => {
     let list = projects
@@ -64,7 +69,12 @@ export default function AiActivityStackedAreaBlock({
 
   const data = useMemo(() => {
     return days.map(d => {
-      const row: Record<string, number | string> = { date: d.date }
+      const row: Record<string, number | string> = {
+        date: d.date,
+        // Session count stashed on the row so the invisible "labels line"
+        // below can pull it via dataKey for the per-day numeric label.
+        __sessionCount: d.totalChains,
+      }
       for (const p of visibleProjects) {
         row[p.name] = d.byProject[p.name] ?? 0
       }
@@ -81,6 +91,20 @@ export default function AiActivityStackedAreaBlock({
     }
     return Math.max(1, Math.ceil(max * 1.15))
   }, [data, visibleProjects])
+
+  // Anchor each session-count label just above that day's stacked peak —
+  // following the curve so labels hover over the silhouette, not pinned to the
+  // chart top. The anchor is the sum of visible project msgs for the day; the
+  // LabelList offset (`position="top"`) lifts it a few px above the area.
+  const dataWithAnchor = useMemo(
+    () =>
+      data.map(row => {
+        let stack = 0
+        for (const p of visibleProjects) stack += (row[p.name] as number) ?? 0
+        return { ...row, __topAnchor: stack }
+      }),
+    [data, visibleProjects],
+  )
 
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [ready, setReady] = useState(false)
@@ -99,8 +123,8 @@ export default function AiActivityStackedAreaBlock({
       {ready && (
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <AreaChart
-            data={data}
-            margin={{ top: 4, right: 4, bottom: 0, left: -22 }}
+            data={dataWithAnchor}
+            margin={{ top: 18, right: 4, bottom: 0, left: -22 }}
             onClick={evt => {
               if (!onSelectDate) return
               // Recharts passes the active payload's row in `activeLabel`. Toggle:
@@ -215,6 +239,72 @@ export default function AiActivityStackedAreaBlock({
                 />
               )
             })}
+            {/* Session-count labels — plotted as an invisible line that
+                follows each day's stacked peak, with a LabelList rendering a
+                small pill above each point. Toggled off by default; opt-in via
+                the "counts" button in the panel header. Days with 0 sessions
+                are suppressed regardless. */}
+            {showSessionCounts && (
+            <Line
+              type="monotone"
+              dataKey="__topAnchor"
+              stroke="transparent"
+              dot={false}
+              isAnimationActive={false}
+              activeDot={false}
+              legendType="none"
+            >
+              <LabelList
+                dataKey="__sessionCount"
+                position="top"
+                content={(props) => {
+                  const { x, y, value } = props as {
+                    x?: number
+                    y?: number
+                    value?: number | string
+                  }
+                  const n = typeof value === 'number' ? value : 0
+                  if (n <= 0 || x == null || y == null) return null
+                  // Pill badge: small rounded rect with the count inside.
+                  // Width grows with digit count so '12' and '8' both look
+                  // balanced.
+                  const text = String(n)
+                  const charW = 5.5
+                  const padX = 4
+                  const w = Math.max(14, text.length * charW + padX * 2)
+                  const h = 13
+                  const cx = x
+                  const top = y - h - 2
+                  return (
+                    <g>
+                      <rect
+                        x={cx - w / 2}
+                        y={top}
+                        width={w}
+                        height={h}
+                        rx={h / 2}
+                        ry={h / 2}
+                        fill="rgba(241,245,249,0.92)"
+                        stroke="rgba(148,163,184,0.25)"
+                        strokeWidth={0.5}
+                      />
+                      <text
+                        x={cx}
+                        y={top + h / 2 + 3}
+                        textAnchor="middle"
+                        fontSize={9}
+                        fontWeight={500}
+                        fill="rgba(148,163,184,0.95)"
+                        style={{ fontVariantNumeric: 'tabular-nums' }}
+                      >
+                        {text}
+                      </text>
+                    </g>
+                  )
+                }}
+              />
+            </Line>
+            )}
           </AreaChart>
         </ResponsiveContainer>
       )}

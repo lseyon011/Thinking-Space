@@ -101,6 +101,12 @@ export async function setExplorerIconStylePreferenceOrch(
   })
 }
 
+export async function setShowDailyHighlightsPreferenceOrch(
+  show: boolean,
+): Promise<VaultUiPreferencesBlock> {
+  return updateVaultUiPreferencesOrch({ showDailyHighlights: show })
+}
+
 export async function readNewThoughtQuickDestinationsPreferenceOrch(): Promise<
   NewThoughtQuickDestinationPreferenceBlock[]
 > {

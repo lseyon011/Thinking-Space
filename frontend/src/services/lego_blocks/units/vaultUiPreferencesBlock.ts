@@ -28,6 +28,11 @@ export interface VaultUiPreferencesBlock {
   webullTabIconText: string
   fileActivityIgnoredPaths: string[]
   schedulerTasks: VaultSchedulerTaskPreferenceBlock[]
+  /** Show "Insights today" / "Memorized today" tiles + most-recent highlight
+   *  rows on the home dashboard. Defaults to off — those tiles depend on a
+   *  particular note structure (daily insight files / memorization sessions)
+   *  most users won't have. */
+  showDailyHighlights: boolean
 }
 
 export const DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK: ExplorerFolderColorPreferenceBlock[] = [
@@ -60,6 +65,7 @@ export const DEFAULT_VAULT_UI_PREFERENCES_BLOCK: VaultUiPreferencesBlock = {
   webullTabIconText: '',
   fileActivityIgnoredPaths: [],
   schedulerTasks: [],
+  showDailyHighlights: false,
 }
 
 export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock {
@@ -71,6 +77,7 @@ export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock 
     webullTabIconText: '',
     fileActivityIgnoredPaths: [],
     schedulerTasks: [],
+    showDailyHighlights: false,
   }
 }
 
@@ -196,6 +203,9 @@ export function normalizeVaultUiPreferencesBlock(value: unknown): VaultUiPrefere
       : '',
     fileActivityIgnoredPaths: normalizeFileActivityIgnoredPathsBlock(record.fileActivityIgnoredPaths),
     schedulerTasks: normalizeSchedulerTasksPreferenceBlock(record.schedulerTasks),
+    showDailyHighlights: typeof record.showDailyHighlights === 'boolean'
+      ? record.showDailyHighlights
+      : DEFAULT_VAULT_UI_PREFERENCES_BLOCK.showDailyHighlights,
   }
 }
 

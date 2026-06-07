@@ -109,7 +109,19 @@ export default function CanvasWebWidgetBlock({ tile, suspended, reloadKey }: Pro
       >
         {site.name}
       </div>
-      <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          position: 'relative',
+          overflow: 'hidden',
+          // Fill behind the webview so dark mode doesn't flash bright grey/
+          // white before the page paints or while the tile is suspended.
+          // Solid (not the translucent tileBg token) so the underlying canvas
+          // backdrop never bleeds through.
+          background: theme.isDark ? '#141418' : '#ffffff',
+        }}
+      >
         <div
           style={{
             position: 'absolute',

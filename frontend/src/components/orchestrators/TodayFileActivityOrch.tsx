@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Lightbulb, Brain } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import ClickablePath from '@/components/lego_blocks/units/ClickablePathBlock'
-import MetricBlock from '@/components/lego_blocks/units/MetricBlock'
 import { getDayActivity } from '@/services/orchestrators/fileActivityOrch'
 import type { DayDetail } from '@/services/lego_blocks/units/typesBlock'
 import type { DashboardHighlights } from '@/services/lego_blocks/integrations/dashboardActivityBlock'
 import { getVaultFS, getPlatformName } from '@/services/lego_blocks/integrations/fsBlock'
 import { loadHomeSnapshot } from '@/services/lego_blocks/integrations/homeSnapshotBlock'
+import { readVaultUiPreferencesOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 
 interface TodayFileActivityOrchProps {
   highlights?: DashboardHighlights | null
@@ -55,8 +54,27 @@ export default function TodayFileActivityOrch({
   const [data, setData] = useState<DayDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Insights + memorized cards depend on a specific note structure (daily
+  // insight files / memorization sessions). Off by default; user opts in via
+  // Settings → Display → "Show daily insight & memorization tiles".
+  const [showDailyHighlights, setShowDailyHighlights] = useState(false)
 
   const today = todayDateStr()
+
+  useEffect(() => {
+    let cancelled = false
+    readVaultUiPreferencesOrch()
+      .then(prefs => {
+        if (cancelled) return
+        setShowDailyHighlights(prefs.showDailyHighlights)
+      })
+      .catch(() => {
+        /* leave default off */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -122,144 +140,168 @@ export default function TodayFileActivityOrch({
   }, [data])
 
   return (
-    <div className="min-w-0 w-full space-y-4 overflow-x-hidden">
-      <Card className="min-w-0 w-full">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Day Summary</CardTitle>
-          <div className="text-sm text-muted-foreground">
-            {formatLongDate(today)}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {error && (
-            <div className="text-sm text-destructive">{error}</div>
-          )}
-          <div className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <MetricBlock label="Total files" value={total} />
-            <MetricBlock label="Created" value={data?.created_count ?? 0} className="text-emerald-600" />
-            <MetricBlock label="Modified" value={data?.modified_count ?? 0} className="text-blue-600" />
-            <MetricBlock label="Active sections" value={sections.length} />
-            <MetricBlock
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-x-hidden">
+      {/* Header row mirrors the AI Activity panel: title + description on the
+          beige outer surface, no wrapping Card. Sections below are flat too. */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">What you did today</h3>
+          <p className="text-xs text-muted-foreground">
+            {formatLongDate(today)} · file activity in your vault.
+          </p>
+        </div>
+      </div>
+
+      {/* Metric strip — flat label/number pairs on the beige surface, no inner
+          card boxes. Mirrors the AI Activity totals strip styling. */}
+      <div className="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-2 text-sm">
+        <FlatMetric label="Total files" value={total} />
+        <FlatMetric label="Created" value={data?.created_count ?? 0} valueClassName="text-emerald-600" />
+        <FlatMetric label="Modified" value={data?.modified_count ?? 0} valueClassName="text-blue-600" />
+        <FlatMetric label="Active sections" value={sections.length} />
+        {showDailyHighlights && (
+          <>
+            <FlatMetric
               label="Insights today"
               value={highlights?.todayInsightsCount ?? 0}
-              className="text-amber-600"
+              valueClassName="text-amber-600"
             />
-            <MetricBlock
+            <FlatMetric
               label="Memorized today"
               value={highlights?.todayMemorizedCount ?? 0}
-              className="text-violet-600"
+              valueClassName="text-violet-600"
+            />
+          </>
+        )}
+      </div>
+
+      {error && (
+        <div className="mt-3 text-sm text-destructive">{error}</div>
+      )}
+
+      {showDailyHighlights &&
+        (highlights?.mostRecentInsight || highlights?.mostRecentMemorized || highlightsLoading) && (
+          <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2">
+            <HighlightRow
+              icon={<Lightbulb className="h-4 w-4 text-amber-500" />}
+              label="Most recent insight"
+              loading={!!highlightsLoading && !highlights}
+              primary={highlights?.mostRecentInsight?.text}
+              secondary={
+                highlights?.mostRecentInsight
+                  ? formatRelativeDay(highlights.mostRecentInsight.date, today)
+                  : undefined
+              }
+              href={highlights?.mostRecentInsight?.filePath}
+              emptyText="No insights logged yet"
+            />
+            <HighlightRow
+              icon={<Brain className="h-4 w-4 text-violet-500" />}
+              label="Most recent memorized"
+              loading={!!highlightsLoading && !highlights}
+              primary={highlights?.mostRecentMemorized?.title}
+              secondary={
+                highlights?.mostRecentMemorized
+                  ? formatRelativeDay(highlights.mostRecentMemorized.date, today)
+                  : undefined
+              }
+              href={highlights?.mostRecentMemorized?.filePath}
+              emptyText="No memorization sessions yet"
             />
           </div>
+        )}
 
-          {(highlights?.mostRecentInsight || highlights?.mostRecentMemorized || highlightsLoading) && (
-            <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-              <HighlightRow
-                icon={<Lightbulb className="h-4 w-4 text-amber-500" />}
-                label="Most recent insight"
-                loading={!!highlightsLoading && !highlights}
-                primary={highlights?.mostRecentInsight?.text}
-                secondary={
-                  highlights?.mostRecentInsight
-                    ? formatRelativeDay(highlights.mostRecentInsight.date, today)
-                    : undefined
-                }
-                href={highlights?.mostRecentInsight?.filePath}
-                emptyText="No insights logged yet"
-              />
-              <HighlightRow
-                icon={<Brain className="h-4 w-4 text-violet-500" />}
-                label="Most recent memorized"
-                loading={!!highlightsLoading && !highlights}
-                primary={highlights?.mostRecentMemorized?.title}
-                secondary={
-                  highlights?.mostRecentMemorized
-                    ? formatRelativeDay(highlights.mostRecentMemorized.date, today)
-                    : undefined
-                }
-                href={highlights?.mostRecentMemorized?.filePath}
-                emptyText="No memorization sessions yet"
-              />
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {loading && (
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <Card key={i} className="min-w-0 w-full">
-              <CardContent className="pt-5 space-y-2">
+      <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
+        {loading && (
+          <div className="grid min-w-0 gap-3 md:grid-cols-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="space-y-2 rounded-lg border border-border/30 bg-card/30 p-3">
                 <div className="h-5 w-28 animate-pulse rounded bg-muted/40" />
                 <div className="h-4 w-full animate-pulse rounded bg-muted/30" />
                 <div className="h-4 w-3/4 animate-pulse rounded bg-muted/30" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+              </div>
+            ))}
+          </div>
+        )}
 
-      {!loading && data && sections.length > 0 && (
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          {sections.map(section => (
-            <Card key={section.name} className="min-w-0 w-full">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">{section.name}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {section.created.length > 0 && (
-                  <div>
-                    <div className="text-xs font-medium text-muted-foreground mb-1">Created</div>
-                    <div className="space-y-0.5 text-sm">
-                      {section.created.map(f => (
-                        <div key={`c:${f.path}`} className="flex min-w-0 items-center justify-between gap-2">
-                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                            <ClickablePath path={f.path} className="block min-w-0 flex-1 truncate text-foreground/80">
-                              {fileName(f.path)}
-                            </ClickablePath>
+        {!loading && data && sections.length > 0 && (
+          <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            {sections.map(section => (
+              <div key={section.name} className="min-w-0 space-y-2">
+                <h4 className="text-sm font-semibold text-foreground/85">{section.name}</h4>
+                <div className="space-y-3">
+                  {section.created.length > 0 && (
+                    <div>
+                      <div className="mb-1 text-xs font-medium text-muted-foreground">Created</div>
+                      <div className="space-y-0.5 text-sm">
+                        {section.created.map(f => (
+                          <div key={`c:${f.path}`} className="flex min-w-0 items-center justify-between gap-2">
+                            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                              <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                              <ClickablePath path={f.path} className="block min-w-0 flex-1 truncate text-foreground/80">
+                                {fileName(f.path)}
+                              </ClickablePath>
+                            </div>
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              {formatBytes(f.size_bytes)}
+                            </span>
                           </div>
-                          <span className="text-xs text-muted-foreground shrink-0">
-                            {formatBytes(f.size_bytes)}
-                          </span>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-                {section.modified.length > 0 && (
-                  <div>
-                    <div className="text-xs font-medium text-muted-foreground mb-1">Modified</div>
-                    <div className="space-y-0.5 text-sm">
-                      {section.modified.map(f => (
-                        <div key={`m:${f.path}`} className="flex min-w-0 items-center justify-between gap-2">
-                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
-                            <ClickablePath path={f.path} className="block min-w-0 flex-1 truncate text-foreground/80">
-                              {fileName(f.path)}
-                            </ClickablePath>
+                  )}
+                  {section.modified.length > 0 && (
+                    <div>
+                      <div className="mb-1 text-xs font-medium text-muted-foreground">Modified</div>
+                      <div className="space-y-0.5 text-sm">
+                        {section.modified.map(f => (
+                          <div key={`m:${f.path}`} className="flex min-w-0 items-center justify-between gap-2">
+                            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                              <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
+                              <ClickablePath path={f.path} className="block min-w-0 flex-1 truncate text-foreground/80">
+                                {fileName(f.path)}
+                              </ClickablePath>
+                            </div>
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              {formatBytes(f.size_bytes)}
+                            </span>
                           </div>
-                          <span className="text-xs text-muted-foreground shrink-0">
-                            {formatBytes(f.size_bytes)}
-                          </span>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
-      {!loading && data && sections.length === 0 && (
-        <Card>
-          <CardContent className="py-8 text-center text-sm text-muted-foreground">
+        {!loading && data && sections.length === 0 && (
+          <div className="py-8 text-center text-sm text-muted-foreground">
             No file activity yet today.
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
+      </div>
     </div>
+  )
+}
+
+function FlatMetric({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string
+  value: number | string
+  valueClassName?: string
+}) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className={`text-base font-semibold tabular-nums text-foreground/85 ${valueClassName ?? ''}`}>
+        {value}
+      </span>
+    </span>
   )
 }
 

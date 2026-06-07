@@ -4,7 +4,8 @@
 // billing to set expectations.
 //
 // Sources (point-in-time, update as needed):
-//   - Anthropic Opus 4.x:  $15 input / $75 output / cache-read 10% of input
+//   - Anthropic Opus 4.5 / 4.6 / 4.7:  $5 input / $25 output / $0.50 cache-read / $6.25 cache-write-5m
+//   - Anthropic Opus 4.0–4.4 (legacy): $15 / $75 / $1.50 / $18.75
 //   - Anthropic Sonnet 4.x: $3 input / $15 output / cache-read 10% of input
 //   - Anthropic Haiku 4.x:  $1 input / $5 output / cache-read 10% of input
 //   - OpenAI GPT-5: ~$1.25 input / $10 output
@@ -37,7 +38,15 @@ const FALLBACK_PRICE: PricePerMillion = {
 }
 
 const PRICES: ReadonlyArray<{ match: RegExp; price: PricePerMillion }> = [
-  // Anthropic Opus family — 15 input, 75 output, 1.5 cache-read, 18.75 / 30 cache-create.
+  // Anthropic Opus 4.5 / 4.6 / 4.7 — new pricing: 5 input, 25 output, 0.50
+  // cache-read, 6.25 / 10 cache-create (5m / 1h). Must match BEFORE the legacy
+  // /opus/ rule so 4.0–4.4 model ids continue to bill at the old rate.
+  {
+    match: /opus-4-(5|6|7)/i,
+    price: { input: 5, output: 25, cacheRead: 0.5, cacheCreation5m: 6.25, cacheCreation1h: 10 },
+  },
+  // Anthropic Opus 4.0–4.4 (legacy) — 15 input, 75 output, 1.5 cache-read,
+  // 18.75 / 30 cache-create.
   {
     match: /opus/i,
     price: { input: 15, output: 75, cacheRead: 1.5, cacheCreation5m: 18.75, cacheCreation1h: 30 },
