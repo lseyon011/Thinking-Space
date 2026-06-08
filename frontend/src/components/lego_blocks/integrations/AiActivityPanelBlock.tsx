@@ -163,14 +163,14 @@ export default function AiActivityPanelBlock() {
     <div className="flex h-full min-h-0 flex-col">
       {/* Sticky header — title, range pills, totals stay visible while content
           below scrolls. Keeps the controls reachable on long drill-down tables. */}
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h3 className="text-base font-semibold text-foreground">AI activity</h3>
           <p className="text-xs text-muted-foreground">
             What you actually worked on with AI — sessions, msgs, projects over time.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <SourcePills
             value={activity.sourceFilter}
             onChange={next => {

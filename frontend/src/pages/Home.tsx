@@ -61,12 +61,7 @@ export default function Home() {
         </section>
 
         <section className="mt-10">
-          <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4">
-            <h2 className="text-base font-semibold">AI activity</h2>
-          </div>
-          <div className="mt-4">
-            <AiActivityPanelBlock />
-          </div>
+          <AiActivityPanelBlock />
         </section>
 
         <section className="mt-10">
