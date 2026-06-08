@@ -65,13 +65,12 @@ export default function Home() {
         </section>
 
         <section className="mt-10">
-          <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4">
-            <h2 className="text-base font-semibold">What you did today</h2>
+          <div className="flex justify-end">
             <Link to="/git-insights" className="text-sm text-muted-foreground hover:text-foreground">
               Open insights
             </Link>
           </div>
-          <div className="mt-4">
+          <div className="mt-2">
             <TodayFileActivityOrch
               highlights={activity.series?.highlights ?? null}
               highlightsLoading={activity.loading}
