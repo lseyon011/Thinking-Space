@@ -220,7 +220,7 @@ export default function AiActivityHeatmapBlock({
       {loading ? (
         <div className="h-32 w-full animate-pulse rounded-lg bg-muted/20" />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto pt-1.5 pb-1.5">
           <div className="inline-block min-w-full">
             <div
               className="relative ml-7 mb-1"

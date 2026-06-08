@@ -2241,7 +2241,7 @@ function App() {
   }, [compactNav])
 
   useEffect(() => {
-    if (!compactNav || drawerOpen || keyboardVisible || tabOwnsSidebarSwipe) {
+    if (!compactNav || drawerOpen || keyboardVisible || tabOwnsSidebarSwipe || iPhoneMode) {
       drawerEdgeSwipeStartRef.current = null
       return
     }
@@ -2285,7 +2285,7 @@ function App() {
       window.removeEventListener('touchend', clearGesture)
       window.removeEventListener('touchcancel', clearGesture)
     }
-  }, [compactNav, drawerOpen, keyboardVisible, tabOwnsSidebarSwipe])
+  }, [compactNav, drawerOpen, keyboardVisible, tabOwnsSidebarSwipe, iPhoneMode])
 
   useEffect(() => {
     if (keyboardVisible) {
@@ -2411,7 +2411,13 @@ function App() {
     canGitCommit: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
     canGitPush: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
     webullTabLabel,
-    onMenuTap: () => setDrawerOpen(true),
+    onMenuTap: () => {
+      // The mobile drawer is intentionally disabled on iPhone; iPad still
+      // opens it from the native menu button. iPhone uses the bottom tab
+      // bar + per-page sidebars for navigation instead.
+      if (iPhoneMode) return
+      setDrawerOpen(true)
+    },
     onNavItemTap: handleNativeTopDrawerNavItemTap,
     onSearchTap: openCommandPalette,
     onOpenDebugTap: openDebugPanel,
@@ -3459,7 +3465,7 @@ function App() {
         </div>
       </div>
 
-      {compactNav && !drawerOpen && !isCapacitorSurface && (
+      {compactNav && !drawerOpen && !isCapacitorSurface && !iPhoneMode && (
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
@@ -3471,7 +3477,7 @@ function App() {
         </button>
       )}
 
-      {compactNav && drawerOpen && (
+      {compactNav && drawerOpen && !iPhoneMode && (
         <>
           <div
             className="ltm-mobile-drawer-overlay ltm-shell-motion-overlay fixed inset-0 z-40 bg-background/65 backdrop-blur-sm"

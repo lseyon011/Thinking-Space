@@ -97,17 +97,30 @@ export default function AiActivityPanelBlock() {
     if (drillChains.length === 0) return undefined
     const msgs = drillChains.reduce((n, c) => n + c.msgCount, 0)
     const sessions = drillChains.reduce((n, c) => n + c.sessions.length, 0)
-    // Sum active time across chains. A chain's duration is (endedIso -
-    // startedIso); single-instant chains (where end==start) contribute 0.
-    // Multiple chains in the same hour are counted independently — that's
-    // "engagement time" not "wall-clock time", which is the more useful
-    // number when the user asks "how much time did I spend on AI today".
-    const totalMs = drillChains.reduce((n, c) => {
+    // Wall-clock time across chains: merge overlapping [start, end] windows
+    // before summing so two chains running in the same minute aren't counted
+    // twice. Single-instant chains (end==start) contribute 0.
+    const intervals: Array<[number, number]> = []
+    for (const c of drillChains) {
       const start = Date.parse(c.startedIso)
       const end = Date.parse(c.endedIso ?? c.startedIso)
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return n
-      return n + (end - start)
-    }, 0)
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue
+      intervals.push([start, end])
+    }
+    intervals.sort((a, b) => a[0] - b[0])
+    let totalMs = 0
+    let curStart = 0
+    let curEnd = 0
+    for (const [s, e] of intervals) {
+      if (s > curEnd) {
+        totalMs += curEnd - curStart
+        curStart = s
+        curEnd = e
+      } else if (e > curEnd) {
+        curEnd = e
+      }
+    }
+    totalMs += curEnd - curStart
     const totalMin = Math.round(totalMs / 60_000)
     const hours = Math.floor(totalMin / 60)
     const mins = totalMin % 60

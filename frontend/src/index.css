@@ -918,6 +918,38 @@
       border-radius: 0;
     }
 
+    /* When a page wants its backdrop to bleed to the screen edges (e.g. the
+       time-of-day Home backdrop on iPhone), the small inset + 1px border
+       around the content stage shows as a thin pale frame. Kill both when
+       the page opts in. */
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone']:has(.ltm-page-edge-bleed) .ltm-shell-stage {
+      padding-left: 0;
+      padding-right: 0;
+      padding-bottom: 0;
+    }
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone']:has(.ltm-page-edge-bleed) .ltm-shell-content-stage {
+      border: 0;
+      background: transparent;
+    }
+
+    /* The safe-area strip above the page (status bar region) inherits the
+       app-shell's `bg-background`, which stays light when the Home page
+       forces a dark time-of-day backdrop. Pin the page's bg-canvas to the
+       viewport on edge-bleed pages so it covers under the status bar too. */
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-page-edge-bleed .ltm-page-fixed-bg-anchor {
+      position: fixed;
+      inset: 0;
+      height: 100dvh;
+      width: 100vw;
+      z-index: 0;
+    }
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-page-edge-bleed .ltm-page-fixed-bg-canvas {
+      left: 0;
+      transform: none;
+      width: 100vw;
+      height: 100dvh;
+    }
+
     .ltm-page {
       min-height: 100%;
     }

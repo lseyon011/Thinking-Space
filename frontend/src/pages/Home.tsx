@@ -7,6 +7,7 @@ import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUs
 import { useDashboardActivityBlock } from '@/components/lego_blocks/hooks/shared/useDashboardActivityBlock'
 import { useCanvasThemeBlock } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
 import { useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
+import { isCapacitorNative } from '@/services/orchestrators/runtimeOrch'
 
 export default function Home() {
   const { profile } = useUserProfileBlock()
@@ -14,21 +15,30 @@ export default function Home() {
   const theme = useCanvasThemeBlock()
   const { colorModeId } = useUIThemeBlock()
 
-  // The dashboard cards below use app-wide foreground colors that don't flip
-  // unless the UI color mode is actually dark. If the canvas theme picked a
-  // dark backdrop (e.g. night phase) while the UI is still in light mode, the
-  // dark card text becomes unreadable. So: only honor the canvas backdrop
-  // when its darkness matches the UI mode; otherwise fall back to a soft
-  // light cream so text stays legible.
+  // On Capacitor (iPhone) always honor the time-of-day backdrop so Home picks
+  // up the same day/night hues the canvas uses. Elsewhere the dashboard cards
+  // use app-wide foreground colors that don't flip unless the UI color mode
+  // is dark — so if the backdrop went dark while UI is still light, card text
+  // becomes unreadable. Fall back to a soft cream there.
   const backdropMatchesUI =
-    (colorModeId === 'dark' && theme.isDark) || (colorModeId === 'light' && !theme.isDark)
+    isCapacitorNative() ||
+    (colorModeId === 'dark' && theme.isDark) ||
+    (colorModeId === 'light' && !theme.isDark)
   const bg = backdropMatchesUI ? theme.outerBg : '#f6efe0'
   const showStars = backdropMatchesUI && theme.showStars
   const showNebula = backdropMatchesUI && theme.showNebula
   const vignette = backdropMatchesUI ? theme.vignetteGradient : null
 
+  // If the backdrop is dark but the UI is still in light mode (only happens
+  // on Capacitor where we force the time-of-day bg), scope a `dark` class to
+  // the Home subtree so card text + muted colors flip to readable dark-mode
+  // values without affecting the rest of the app.
+  const scopeDark = theme.isDark && colorModeId !== 'dark'
+
   return (
-    <div className="relative isolate ltm-page">
+    <div
+      className={`relative isolate ltm-page ltm-page-edge-bleed${scopeDark ? ' dark' : ''}`}
+    >
       <div className="ltm-page-fixed-bg-anchor">
         <div className="ltm-page-fixed-bg-canvas" style={{ background: bg }}>
           {showNebula && (

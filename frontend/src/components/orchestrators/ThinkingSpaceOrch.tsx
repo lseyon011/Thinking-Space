@@ -381,7 +381,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
   }, [isIPhoneIosSurface])
 
   const handleExplorerOpenFile = useCallback((path: string) => {
-    if (isCapacitorNative()) {
+    if (isCapacitorNative() && isIPhoneIosSurface) {
       const url = `/thinking-space?file=${encodeURIComponent(path)}`
       // Await setStack before push so Swift's stack is guaranteed to be
       // [base, file] (count > 1) after push completes — that's what
@@ -403,7 +403,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
       return
     }
     setInlinePathAndSyncUrl(path)
-  }, [setInlinePathAndSyncUrl])
+  }, [isIPhoneIosSurface, setInlinePathAndSyncUrl])
 
   const handleInlineOpenPathForEdit = useCallback((nextPath: string) => {
     setInlinePathAndSyncUrl(nextPath, 'edit')
