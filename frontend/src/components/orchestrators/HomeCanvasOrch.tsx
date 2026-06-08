@@ -5,6 +5,7 @@ import {
   type CanvasEdge,
 } from '@/components/lego_blocks/hooks/shared/useInfiniteCanvasBlock'
 import { useCanvasThemeBlock } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import {
   useCanvasTilesBlock,
   type CanvasTile,
@@ -70,6 +71,8 @@ const WRITE_DEBOUNCE_MS = 500
 export default function HomeCanvasOrch() {
   const navigate = useNavigate()
   const theme = useCanvasThemeBlock()
+  const layout = useUILayoutBlock()
+  const isIos = layout.surface === 'capacitor-ios'
 
   const edgeTopRef = useRef<HTMLDivElement | null>(null)
   const edgeRightRef = useRef<HTMLDivElement | null>(null)
@@ -500,9 +503,9 @@ export default function HomeCanvasOrch() {
           transform: `translate3d(${transform.x}px, ${transform.y}px, 0) scale(${transform.scale})`,
           transformOrigin: '0 0',
           willChange: 'transform',
-          borderRadius: 16,
-          border: `1px solid ${theme.boardBorder}`,
-          boxShadow: theme.boardGlow,
+          borderRadius: isIos ? 0 : 16,
+          border: isIos ? 'none' : `1px solid ${theme.boardBorder}`,
+          boxShadow: isIos ? 'none' : theme.boardGlow,
         }}
       >
         <HomeAnchorTileBlock centerX={ANCHOR_CENTER_X} centerY={ANCHOR_CENTER_Y} />
