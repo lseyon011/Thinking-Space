@@ -113,7 +113,21 @@ export default function HomeCanvasOrch() {
     viewportHeight,
     // The AI activity anchor extends below the legacy "today" panel; grow
     // the world vertically so it stays inside the scrollable board.
-  } = useInfiniteCanvasBlock({ onEdgeHit: flashEdge, worldHeight: 3600 })
+    // initialFocus opens centered on the welcome + charts panels (top of the
+    // anchor stack) at a scale that fits the panel into the viewport — so
+    // iPhone (small viewport) starts at ~0.4 scale instead of 1.0 with the
+    // tile half-offscreen. Desktop computes scale > maxScale and clamps to
+    // 1.0, preserving previous behavior.
+  } = useInfiniteCanvasBlock({
+    onEdgeHit: flashEdge,
+    worldHeight: 3600,
+    initialFocus: {
+      worldX: ANCHOR_CENTER_X,
+      worldY: ANCHOR_CENTER_Y - 280,
+      contentWidth: 920,
+      contentHeight: 1100,
+    },
+  })
   const {
     tiles,
     focusedId,

@@ -18,6 +18,18 @@ export interface UseInfiniteCanvasOptions {
    * for wheel/trackpad pan; not for programmatic resetZoom / centerOnWorld /
    * zoom-driven clamping. */
   onEdgeHit?: (edge: CanvasEdge) => void
+  /** Initial focus + fit. When set, the hook computes an initial scale that
+   *  fits `contentWidth × contentHeight` into the viewport (clamped to
+   *  min/max scale, ~0.95 of the smaller axis so there's a small margin) and
+   *  centers (worldX, worldY) in the viewport. Applied once after the first
+   *  viewport measurement — so small viewports (iPhone) don't open at scale 1
+   *  with the content half-offscreen. */
+  initialFocus?: {
+    worldX: number
+    worldY: number
+    contentWidth?: number
+    contentHeight?: number
+  }
 }
 
 export interface UseInfiniteCanvasResult {
@@ -71,6 +83,12 @@ export function useInfiniteCanvasBlock(
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
+    // Block iOS Safari's native two-finger scroll / pinch-zoom on the canvas
+    // so our pointer-based pan + pinch get the gesture instead. `touch-action:
+    // none` opts the whole subtree out of browser-default touch gestures —
+    // children (tiles, buttons, scrollers) can opt back in with their own
+    // touch-action where needed.
+    el.style.touchAction = 'none'
     const measure = () => {
       const r = el.getBoundingClientRect()
       viewportRef.current = { left: r.left, top: r.top, width: r.width, height: r.height }
@@ -105,6 +123,25 @@ export function useInfiniteCanvasBlock(
     },
     [worldWidth, worldHeight],
   )
+
+  // Apply initialFocus once after the viewport has been measured. Done in an
+  // effect (not initial useState) because we need the actual viewport dims to
+  // pick a sane scale; on first paint the container hasn't laid out yet.
+  const initialFocusAppliedRef = useRef(false)
+  const initialFocusOpt = opts.initialFocus
+  useEffect(() => {
+    if (initialFocusAppliedRef.current) return
+    if (!initialFocusOpt) return
+    if (viewportSize.width === 0 || viewportSize.height === 0) return
+    const cw = initialFocusOpt.contentWidth ?? worldWidth
+    const ch = initialFocusOpt.contentHeight ?? worldHeight
+    const fitScale = Math.min(viewportSize.width / cw, viewportSize.height / ch) * 0.95
+    const scale = Math.min(maxScale, Math.max(minScale, fitScale))
+    const x = viewportSize.width / 2 - initialFocusOpt.worldX * scale
+    const y = viewportSize.height / 2 - initialFocusOpt.worldY * scale
+    setTransform(clampTransform({ x, y, scale }))
+    initialFocusAppliedRef.current = true
+  }, [viewportSize, initialFocusOpt, worldWidth, worldHeight, minScale, maxScale, clampTransform])
 
   const handleWheel = useCallback(
     (e: WheelEvent) => {
@@ -155,9 +192,46 @@ export function useInfiniteCanvasBlock(
     return () => el.removeEventListener('wheel', handleWheel)
   }, [handleWheel])
 
-  const handleBackdropPointerDown = useCallback(
-    (e: PointerEvent) => {
-      if (!e.isPrimary) return
+  // Multi-pointer gesture state. One pointer = pan; two pointers = pinch
+  // (zoom around the midpoint while panning by the midpoint delta). Touch +
+  // mouse + pen all unify under PointerEvent so we don't have to maintain
+  // separate iOS / Android / desktop paths.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const pointers = new Map<number, { x: number; y: number }>()
+    let mode: 'idle' | 'pan' | 'pinch' = 'idle'
+    let panStart = { x: 0, y: 0 }
+    let panStartTransform: CanvasTransform = transformRef.current
+    let pinchStartDist = 0
+    let pinchStartMid = { x: 0, y: 0 }
+    let pinchStartTransform: CanvasTransform = transformRef.current
+
+    const midOf = (pts: Array<{ x: number; y: number }>) => ({
+      x: (pts[0].x + pts[1].x) / 2,
+      y: (pts[0].y + pts[1].y) / 2,
+    })
+    const distOf = (pts: Array<{ x: number; y: number }>) => {
+      const dx = pts[0].x - pts[1].x
+      const dy = pts[0].y - pts[1].y
+      return Math.hypot(dx, dy)
+    }
+    const viewportLocal = (x: number, y: number) => {
+      const v = viewportRef.current
+      return { x: x - v.left, y: y - v.top }
+    }
+
+    const startPinch = () => {
+      const pts = [...pointers.values()]
+      if (pts.length < 2) return
+      pinchStartDist = distOf(pts) || 1
+      pinchStartMid = viewportLocal(midOf(pts).x, midOf(pts).y)
+      pinchStartTransform = transformRef.current
+      mode = 'pinch'
+    }
+
+    const onDown = (e: PointerEvent) => {
       const target = e.target as HTMLElement | null
       if (!target?.closest('[data-canvas-backdrop="true"]')) return
       if (
@@ -167,19 +241,41 @@ export function useInfiniteCanvasBlock(
       ) {
         return
       }
+      const isTouch = e.pointerType === 'touch'
+      // Mouse / pen still pans with a single button press — that's the
+      // ergonomic desktop pattern. Touch requires TWO fingers for any canvas
+      // gesture (pan + pinch), so a single tap can scroll a tile or open
+      // something without accidentally dragging the world. Tracking starts on
+      // the second touch finger; the first one only registers as "fingers
+      // down: 1" without entering pan mode.
+      if (e.pointerType === 'mouse' && e.button !== 0) return
 
-      e.preventDefault()
-      const startX = e.clientX
-      const startY = e.clientY
-      const startTransform = transformRef.current
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      try { el.setPointerCapture(e.pointerId) } catch { /* not supported */ }
 
-      const onPointerMove = (ev: PointerEvent) => {
-        if (!ev.isPrimary || ev.pointerId !== e.pointerId) return
-        ev.preventDefault()
+      if (!isTouch && pointers.size === 1) {
+        e.preventDefault()
+        panStart = { x: e.clientX, y: e.clientY }
+        panStartTransform = transformRef.current
+        mode = 'pan'
+      } else if (isTouch && pointers.size === 2) {
+        e.preventDefault()
+        // Two-finger gesture combines pan (midpoint translation) + pinch
+        // (distance ratio → scale). Single mode handles both.
+        startPinch()
+      }
+    }
+
+    const onMove = (e: PointerEvent) => {
+      if (!pointers.has(e.pointerId)) return
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
+      if (mode === 'pan' && pointers.size === 1) {
+        e.preventDefault()
         const desired = {
-          ...startTransform,
-          x: startTransform.x + ev.clientX - startX,
-          y: startTransform.y + ev.clientY - startY,
+          ...panStartTransform,
+          x: panStartTransform.x + e.clientX - panStart.x,
+          y: panStartTransform.y + e.clientY - panStart.y,
         }
         const clamped = clampTransform(desired)
         setTransform(clamped)
@@ -190,28 +286,52 @@ export function useInfiniteCanvasBlock(
           if (clamped.y > desired.y) cb('bottom')
           else if (clamped.y < desired.y) cb('top')
         }
+      } else if (mode === 'pinch' && pointers.size >= 2) {
+        e.preventDefault()
+        const pts = [...pointers.values()].slice(0, 2)
+        const newDist = distOf(pts) || 1
+        const newMidGlobal = midOf(pts)
+        const newMid = viewportLocal(newMidGlobal.x, newMidGlobal.y)
+        const ratio = newDist / pinchStartDist
+        const targetScale = Math.min(maxScale, Math.max(minScale, pinchStartTransform.scale * ratio))
+        const realFactor = targetScale / pinchStartTransform.scale
+        // Zoom anchored at the original midpoint (in viewport coords) PLUS pan
+        // by however far the midpoint itself has moved across the screen.
+        const x = pinchStartMid.x - (pinchStartMid.x - pinchStartTransform.x) * realFactor + (newMid.x - pinchStartMid.x)
+        const y = pinchStartMid.y - (pinchStartMid.y - pinchStartTransform.y) * realFactor + (newMid.y - pinchStartMid.y)
+        setTransform(clampTransform({ x, y, scale: targetScale }))
       }
+    }
 
-      const onPointerUp = (ev: PointerEvent) => {
-        if (ev.pointerId !== e.pointerId) return
-        document.removeEventListener('pointermove', onPointerMove)
-        document.removeEventListener('pointerup', onPointerUp)
-        document.removeEventListener('pointercancel', onPointerUp)
+    const onUp = (e: PointerEvent) => {
+      if (!pointers.has(e.pointerId)) return
+      const wasTouch = e.pointerType === 'touch'
+      pointers.delete(e.pointerId)
+      try { el.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
+      if (wasTouch) {
+        // Touch policy: ANY gesture requires two fingers. Dropping below 2
+        // touches exits the gesture entirely — we do NOT fall back to a
+        // one-finger pan (which would feel like the canvas is grabbing
+        // single taps).
+        if (pointers.size < 2) mode = 'idle'
+      } else if (pointers.size === 0) {
+        mode = 'idle'
       }
+    }
 
-      document.addEventListener('pointermove', onPointerMove, { passive: false })
-      document.addEventListener('pointerup', onPointerUp)
-      document.addEventListener('pointercancel', onPointerUp)
-    },
-    [clampTransform],
-  )
-
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    el.addEventListener('pointerdown', handleBackdropPointerDown)
-    return () => el.removeEventListener('pointerdown', handleBackdropPointerDown)
-  }, [handleBackdropPointerDown])
+    el.addEventListener('pointerdown', onDown)
+    el.addEventListener('pointermove', onMove, { passive: false })
+    el.addEventListener('pointerup', onUp)
+    el.addEventListener('pointercancel', onUp)
+    el.addEventListener('pointerleave', onUp)
+    return () => {
+      el.removeEventListener('pointerdown', onDown)
+      el.removeEventListener('pointermove', onMove)
+      el.removeEventListener('pointerup', onUp)
+      el.removeEventListener('pointercancel', onUp)
+      el.removeEventListener('pointerleave', onUp)
+    }
+  }, [clampTransform, minScale, maxScale])
 
   const resetZoom = useCallback(() => {
     setTransform(clampTransform({
