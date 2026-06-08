@@ -6,22 +6,37 @@ import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivi
 import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
 import { useDashboardActivityBlock } from '@/components/lego_blocks/hooks/shared/useDashboardActivityBlock'
 import { useCanvasThemeBlock } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
+import { useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
 
 export default function Home() {
   const { profile } = useUserProfileBlock()
   const activity = useDashboardActivityBlock('30d')
   const theme = useCanvasThemeBlock()
+  const { colorModeId } = useUIThemeBlock()
+
+  // The dashboard cards below use app-wide foreground colors that don't flip
+  // unless the UI color mode is actually dark. If the canvas theme picked a
+  // dark backdrop (e.g. night phase) while the UI is still in light mode, the
+  // dark card text becomes unreadable. So: only honor the canvas backdrop
+  // when its darkness matches the UI mode; otherwise fall back to a soft
+  // light cream so text stays legible.
+  const backdropMatchesUI =
+    (colorModeId === 'dark' && theme.isDark) || (colorModeId === 'light' && !theme.isDark)
+  const bg = backdropMatchesUI ? theme.outerBg : '#f6efe0'
+  const showStars = backdropMatchesUI && theme.showStars
+  const showNebula = backdropMatchesUI && theme.showNebula
+  const vignette = backdropMatchesUI ? theme.vignetteGradient : null
 
   return (
     <div className="relative isolate ltm-page">
       <div className="ltm-page-fixed-bg-anchor">
-        <div className="ltm-page-fixed-bg-canvas" style={{ background: theme.outerBg }}>
-          {theme.showNebula && (
+        <div className="ltm-page-fixed-bg-canvas" style={{ background: bg }}>
+          {showNebula && (
             <div className="absolute inset-0" style={{ backgroundImage: theme.nebulaGradient }} />
           )}
-          {theme.showStars && <Starfield />}
-          {theme.vignetteGradient && (
-            <div className="absolute inset-0" style={{ background: theme.vignetteGradient }} />
+          {showStars && <Starfield />}
+          {vignette && (
+            <div className="absolute inset-0" style={{ background: vignette }} />
           )}
         </div>
       </div>
