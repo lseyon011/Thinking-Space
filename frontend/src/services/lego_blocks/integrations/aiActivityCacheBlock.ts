@@ -19,11 +19,12 @@ import {
 import {
   listNativeAiSessions,
   loadAndParseNativeAiSession,
+  nativeAiSourcesAvailable,
 } from '@/services/lego_blocks/integrations/nativeAiSessionsBlock'
 import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserBlock'
 
-const CACHE_PATH = 'kai-workspace/.cache/claude-activity.json'
-const CACHE_DIR = 'kai-workspace/.cache'
+const CACHE_PATH = '.thinking-space/ai-activity-cache.json'
+const CACHE_DIR = '.thinking-space'
 const SOURCE_PREFIXES = ['ai_raw/raw/claude-code/', 'ai_raw/raw/codex/']
 // v11: Anthropic cache-creation now splits by TTL (`cacheCreation1h`) so the
 // cost math charges the 2.0x rate on 1-hour cache writes instead of treating
@@ -122,6 +123,12 @@ interface LoadOptions {
 
 async function performLoad(fs: VaultFS): Promise<LoadResult> {
   // ── 1. Discover the universe of session files across both source families ──
+  // On non-Electron clients (iPhone/web) the native IPC isn't present, so
+  // `listNativeAiSessions()` returns []. We still want the cached native
+  // sessions (Electron wrote them, iCloud synced them) — handled in step 3
+  // by carrying every cached native row through unchanged when the native
+  // source isn't available locally.
+  const nativeAvailable = nativeAiSourcesAvailable()
   const [vaultEntries, nativeEntries] = await Promise.all([
     fs.walkVault(['.md']),
     listNativeAiSessions(),
@@ -174,20 +181,34 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
     arr.push(sess)
     cachedByFileKey.set(fileKey, arr)
   }
-  for (const entry of nativeEntries) {
-    const key = `native/${entry.source}/${entry.relPath}`
-    const cachedWindows = cachedByFileKey.get(key) ?? []
-    const fresh = cachedWindows.length > 0 && cachedWindows.every(s => s.mtime === entry.mtime)
-    if (fresh) {
-      for (const s of cachedWindows) {
+  if (!nativeAvailable) {
+    // iPhone / web: no native IPC, so we can't list or re-parse native files.
+    // Carry every cached native window through unchanged — Electron wrote
+    // them, iCloud synced them to us. Without this, the prune step below
+    // would treat all native entries as stale and the next writeCache would
+    // wipe them from the shared cache, poisoning the next Electron launch.
+    for (const [, windows] of cachedByFileKey) {
+      for (const s of windows) {
         present.add(s.path)
         next[s.path] = s
       }
-    } else {
-      // Mark the base key present so a later prune step (if any) doesn't drop
-      // the file just because its window suffixes haven't been written yet.
-      present.add(key)
-      nativeToParse.push(entry)
+    }
+  } else {
+    for (const entry of nativeEntries) {
+      const key = `native/${entry.source}/${entry.relPath}`
+      const cachedWindows = cachedByFileKey.get(key) ?? []
+      const fresh = cachedWindows.length > 0 && cachedWindows.every(s => s.mtime === entry.mtime)
+      if (fresh) {
+        for (const s of cachedWindows) {
+          present.add(s.path)
+          next[s.path] = s
+        }
+      } else {
+        // Mark the base key present so a later prune step (if any) doesn't drop
+        // the file just because its window suffixes haven't been written yet.
+        present.add(key)
+        nativeToParse.push(entry)
+      }
     }
   }
   const nativeParsed = await runParallel(nativeToParse, READ_CONCURRENCY, async entry => {
@@ -206,8 +227,11 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
   }
 
   // ── 4. Persist the merged cache (raw, pre-dedup). ───────────────────────────
+  // Only Electron writes the cache — it's the only client that can actually
+  // re-parse native files, so it's the source of truth. iPhone/web stays
+  // read-only on the shared cache so it can't drop entries it can't verify.
   const stale = Object.keys(cache.sessions).filter(p => !present.has(p))
-  if (reparsed > 0 || stale.length > 0 || Object.keys(cache.sessions).length === 0) {
+  if (nativeAvailable && (reparsed > 0 || stale.length > 0 || Object.keys(cache.sessions).length === 0)) {
     await writeCache(fs, {
       version: CACHE_VERSION,
       sessions: next,

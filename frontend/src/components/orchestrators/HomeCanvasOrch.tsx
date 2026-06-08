@@ -71,7 +71,7 @@ const WRITE_DEBOUNCE_MS = 500
 export default function HomeCanvasOrch() {
   const navigate = useNavigate()
   const theme = useCanvasThemeBlock()
-  const layout = useUILayoutBlock()
+  const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
 
   const edgeTopRef = useRef<HTMLDivElement | null>(null)
