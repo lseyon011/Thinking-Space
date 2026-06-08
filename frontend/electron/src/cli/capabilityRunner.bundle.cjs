@@ -18953,6 +18953,19 @@ function activePathFor() {
 function claudeProjectsRoot() {
   return path3.join(os2.homedir(), ".claude", "projects");
 }
+function vaultClaudeSessionsRoot() {
+  return path3.join(
+    os2.homedir(),
+    "Library",
+    "Mobile Documents",
+    "iCloud~md~obsidian",
+    "Documents",
+    "Long-Term-Memory-iCloud",
+    "ai_raw",
+    "raw",
+    "claude-code"
+  );
+}
 function ensureDirs() {
   fs2.mkdirSync(convsDir(), { recursive: true });
 }
@@ -19040,18 +19053,36 @@ function openConversationBlock(input) {
   };
 }
 function findClaudeSessionFilesBlock(sessionId) {
-  const root = claudeProjectsRoot();
-  if (!fs2.existsSync(root)) return [];
   const matches = [];
-  let projects;
-  try {
-    projects = fs2.readdirSync(root);
-  } catch {
-    return [];
+  const root = claudeProjectsRoot();
+  if (fs2.existsSync(root)) {
+    let projects;
+    try {
+      projects = fs2.readdirSync(root);
+    } catch {
+      projects = [];
+    }
+    for (const project of projects) {
+      const candidate = path3.join(root, project, `${sessionId}.jsonl`);
+      if (fs2.existsSync(candidate)) matches.push(candidate);
+    }
   }
-  for (const project of projects) {
-    const candidate = path3.join(root, project, `${sessionId}.jsonl`);
-    if (fs2.existsSync(candidate)) matches.push(candidate);
+  const vaultRoot = vaultClaudeSessionsRoot();
+  if (fs2.existsSync(vaultRoot)) {
+    const shortId = sessionId.slice(0, 8);
+    let files;
+    try {
+      files = fs2.readdirSync(vaultRoot);
+    } catch {
+      files = [];
+    }
+    for (const name of files) {
+      if (!/^\d{4}-\d{2}-\d{2}_/.test(name)) continue;
+      const afterDate = name.slice(11);
+      if (afterDate === `${shortId}.md` || afterDate.startsWith(`${shortId}_`)) {
+        matches.push(path3.join(vaultRoot, name));
+      }
+    }
   }
   return matches;
 }

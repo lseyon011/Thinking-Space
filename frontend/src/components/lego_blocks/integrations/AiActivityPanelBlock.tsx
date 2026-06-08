@@ -28,7 +28,15 @@ export default function AiActivityPanelBlock() {
   const activity = useAiActivityBlock('90d')
   const [view, setView] = useState<ViewMode>('heatmap')
   const [activeProject, setActiveProject] = useState<string | null>(null)
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(() => {
+    // Default the heatmap drill-down to today so the panel opens already
+    // showing "what I did with AI today" instead of an empty drill area.
+    const d = new Date()
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  })
   const [selectedRange, setSelectedRange] = useState<{ startIso: string; endIso: string } | null>(
     null,
   )
