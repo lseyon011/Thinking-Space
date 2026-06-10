@@ -18,7 +18,7 @@ import {
 } from '@/services/lego_blocks/units/ruledNotebookPaginationBlock'
 import { assignOutlineLabelsBlock } from '@/services/lego_blocks/units/outlineCounterBlock'
 import { resolveFrontmatterDatesBlock } from '@/services/lego_blocks/units/frontmatterDatesBlock'
-import { appendTodayMemorizedSession } from '@/services/lego_blocks/units/memorizedSessionsBlock'
+import { appendMemorizedSession } from '@/services/lego_blocks/units/memorizedSessionsBlock'
 import {
   joinInkFencedBlock,
   splitInkFencedBlock,
@@ -489,9 +489,14 @@ export default function RuledNotebookDocumentBlock({
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
   }, [])
 
+  const memorizeStartedAtRef = useRef<Date | null>(null)
+
   const commitMemorizedSession = useCallback(async () => {
     if (content === null) return
-    const next = appendTodayMemorizedSession(content)
+    const startedAt = memorizeStartedAtRef.current
+    memorizeStartedAtRef.current = null
+    if (startedAt === null) return
+    const next = appendMemorizedSession(content, startedAt)
     if (next === null) return
     try {
       const result = await saveMarkdownDocument({
@@ -518,7 +523,11 @@ export default function RuledNotebookDocumentBlock({
 
   const handleToggleMemorize = useCallback(() => {
     setMemorizing((active) => {
-      if (active) void commitMemorizedSession()
+      if (active) {
+        void commitMemorizedSession()
+      } else {
+        memorizeStartedAtRef.current = new Date()
+      }
       return !active
     })
   }, [commitMemorizedSession])

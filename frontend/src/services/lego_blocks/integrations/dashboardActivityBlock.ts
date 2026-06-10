@@ -3,6 +3,7 @@ import {
   getNodesByMetadataKey,
   getNodesByRecordKind,
 } from '@/services/lego_blocks/integrations/dbBlock'
+import { normalizeMemorizedSessions } from '@/services/lego_blocks/units/memorizedSessionsBlock'
 
 export interface DashboardDay {
   date: string
@@ -147,18 +148,17 @@ export async function getDashboardActivity(
   let todayMemorizedCount = 0
   const memorizedNodes = await getNodesByMetadataKey('memorized_sessions')
   for (const node of memorizedNodes) {
-    const sessions = node.metadata?.memorized_sessions
-    if (!Array.isArray(sessions)) continue
-    for (const raw of sessions) {
-      if (typeof raw !== 'string') continue
-      if (inRange.has(raw)) {
-        memorizedByDate.set(raw, (memorizedByDate.get(raw) ?? 0) + 1)
+    const sessions = normalizeMemorizedSessions(node.metadata?.memorized_sessions)
+    for (const session of sessions) {
+      const date = session.date
+      if (inRange.has(date)) {
+        memorizedByDate.set(date, (memorizedByDate.get(date) ?? 0) + 1)
       }
-      if (raw === today) todayMemorizedCount += 1
-      if (!mostRecentMemorizedDate || raw > mostRecentMemorizedDate) {
-        mostRecentMemorizedDate = raw
+      if (date === today) todayMemorizedCount += 1
+      if (!mostRecentMemorizedDate || date > mostRecentMemorizedDate) {
+        mostRecentMemorizedDate = date
         mostRecentMemorized = {
-          date: raw,
+          date,
           title: node.title || node.filePath,
           filePath: node.filePath,
         }

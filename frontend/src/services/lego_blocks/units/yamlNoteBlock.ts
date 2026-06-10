@@ -91,6 +91,13 @@ export interface YAMLStateHistoryEntry {
   [extra: string]: unknown
 }
 
+export interface MemorizedSessionFrontmatterEntry {
+  date: string
+  started_at?: string
+  ended_at?: string
+  [extra: string]: unknown
+}
+
 export interface YAMLFrontmatter {
   // Identity
   uuid: string
@@ -165,9 +172,10 @@ export interface YAMLFrontmatter {
   record_kind?: RecordKind
   state_history?: YAMLStateHistoryEntry[]
 
-  // Memorization tracking — dates (YYYY-MM-DD) when the user toggled
-  // memorization mode in the ruled notebook view. One entry per day.
-  memorized_sessions?: string[]
+  // Memorization tracking — one entry per memorization-mode session in the
+  // ruled notebook view. New entries are objects with start/end timestamps;
+  // legacy entries are bare YYYY-MM-DD date strings (one per day).
+  memorized_sessions?: Array<string | MemorizedSessionFrontmatterEntry>
 
   // Legacy compat — preserve unknown fields roundtrip
   [extra: string]: unknown

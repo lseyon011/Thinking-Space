@@ -102,6 +102,12 @@ import {
   type MarkdownTableOfContentsItemBlock,
 } from '@/services/lego_blocks/units/markdownTableOfContentsBlock'
 
+function formatMemorizedTimeRange(startedIso: string, endedIso: string): string {
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return `${fmt(startedIso)}–${fmt(endedIso)}`
+}
+
 export type MarkdownViewerMode = 'view' | 'edit'
 
 interface MarkdownDocumentBlockProps {
@@ -1435,8 +1441,16 @@ function MarkdownTextDocumentRuntimeBlock({
                       Memorized
                     </span>
                     <span className="flex flex-wrap gap-x-2 gap-y-1">
-                      {memorizedSessions.map((date) => (
-                        <strong key={date} className="text-foreground/70">{date}</strong>
+                      {memorizedSessions.map((session, i) => (
+                        <strong key={`${session.date}-${session.startedAt ?? i}`} className="text-foreground/70">
+                          {session.date}
+                          {session.startedAt && session.endedAt && (
+                            <span className="font-normal text-muted-foreground">
+                              {' '}
+                              {formatMemorizedTimeRange(session.startedAt, session.endedAt)}
+                            </span>
+                          )}
+                        </strong>
                       ))}
                     </span>
                   </div>
