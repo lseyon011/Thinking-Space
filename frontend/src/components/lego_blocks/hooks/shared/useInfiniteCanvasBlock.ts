@@ -201,7 +201,7 @@ export function useInfiniteCanvasBlock(
     if (!el) return
 
     const pointers = new Map<number, { x: number; y: number }>()
-    let mode: 'idle' | 'pan' | 'pinch' = 'idle'
+    let mode: 'idle' | 'pan-pending' | 'pan' | 'pinch' = 'idle'
     let panStart = { x: 0, y: 0 }
     let panStartTransform: CanvasTransform = transformRef.current
     let pinchStartDist = 0
@@ -251,14 +251,20 @@ export function useInfiniteCanvasBlock(
       if (e.pointerType === 'mouse' && e.button !== 0) return
 
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
-      try { el.setPointerCapture(e.pointerId) } catch { /* not supported */ }
 
       if (!isTouch && pointers.size === 1) {
-        e.preventDefault()
+        // Don't capture or preventDefault yet: doing so on pointerdown
+        // retargets the eventual click/dblclick to the container, which
+        // silently kills the backdrop's double-click-to-create-post-it and
+        // mousedown-to-unfocus handlers. Pan only begins (and captures the
+        // pointer) once the mouse actually moves past a small threshold.
         panStart = { x: e.clientX, y: e.clientY }
         panStartTransform = transformRef.current
-        mode = 'pan'
+        mode = 'pan-pending'
       } else if (isTouch && pointers.size === 2) {
+        for (const id of pointers.keys()) {
+          try { el.setPointerCapture(id) } catch { /* not supported */ }
+        }
         e.preventDefault()
         // Two-finger gesture combines pan (midpoint translation) + pinch
         // (distance ratio → scale). Single mode handles both.
@@ -269,6 +275,13 @@ export function useInfiniteCanvasBlock(
     const onMove = (e: PointerEvent) => {
       if (!pointers.has(e.pointerId)) return
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
+      if (mode === 'pan-pending' && pointers.size === 1) {
+        const moved = Math.hypot(e.clientX - panStart.x, e.clientY - panStart.y)
+        if (moved < 4) return
+        try { el.setPointerCapture(e.pointerId) } catch { /* not supported */ }
+        mode = 'pan'
+      }
 
       if (mode === 'pan' && pointers.size === 1) {
         e.preventDefault()
