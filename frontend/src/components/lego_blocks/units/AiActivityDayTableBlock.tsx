@@ -9,7 +9,7 @@ import {
   formatUsd,
   sumTokens,
 } from '@/services/lego_blocks/units/aiPriceTableBlock'
-import ChainTranscriptModalBlock from '@/components/lego_blocks/integrations/ChainTranscriptModalBlock'
+import ChainTranscriptSlideOverBlock from '@/components/lego_blocks/integrations/ChainTranscriptSlideOverBlock'
 
 interface AiActivityDayTableBlockProps {
   /** Title shown above the table (e.g. day or range label). */
@@ -398,7 +398,7 @@ export default function AiActivityDayTableBlock({
           )}
         </div>
       )}
-      <ChainTranscriptModalBlock chain={transcriptChain} onClose={() => setTranscriptChain(null)} />
+      <ChainTranscriptSlideOverBlock chain={transcriptChain} onClose={() => setTranscriptChain(null)} />
     </div>
   )
 }

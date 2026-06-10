@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { X, Loader2 } from 'lucide-react'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { getChainTranscriptBlock } from '@/services/lego_blocks/units/getChainTranscriptBlock'
 
-interface ChainTranscriptModalBlockProps {
-  /** The chain whose full transcript should render. `null` closes the modal. */
+interface ChainTranscriptSlideOverBlockProps {
+  /** The chain whose full transcript should render. `null` closes the panel. */
   chain: ActivityChain | null
   onClose: () => void
 }
 
-export default function ChainTranscriptModalBlock({ chain, onClose }: ChainTranscriptModalBlockProps) {
+export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainTranscriptSlideOverBlockProps) {
   const [markdown, setMarkdown] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -45,14 +46,27 @@ export default function ChainTranscriptModalBlock({ chain, onClose }: ChainTrans
 
   if (!chain) return null
 
-  return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
+  // Portal to <body>: this block mounts inside the home-canvas anchor panel,
+  // whose transformed ancestors turn `position: fixed` into local positioning
+  // (and overflow:hidden would clip the panel).
+  return createPortal(
+    <div className="fixed inset-0 z-[100]">
+      <style>{`
+        @keyframes ltm-transcript-slideover-in {
+          from { transform: translateX(100%); }
+          to   { transform: translateX(0); }
+        }
+      `}</style>
+      {/* Transparent click-catcher: closes on outside click but leaves the
+          page visible so the day table can be read alongside the transcript. */}
+      <div className="absolute inset-0" onClick={onClose} />
       <div
-        className="relative flex h-[90vh] w-[min(900px,92vw)] flex-col overflow-hidden rounded-2xl border border-border/40 bg-background shadow-2xl"
-        onClick={e => e.stopPropagation()}
+        className="absolute right-0 top-0 flex h-full w-[min(760px,92vw)] flex-col overflow-hidden border-l border-border/40 bg-background shadow-2xl"
+        style={{
+          animation: 'ltm-transcript-slideover-in 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+          paddingTop: 'env(safe-area-inset-top)',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        }}
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/40 px-5 py-3">
           <div className="min-w-0">
@@ -94,6 +108,7 @@ export default function ChainTranscriptModalBlock({ chain, onClose }: ChainTrans
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
