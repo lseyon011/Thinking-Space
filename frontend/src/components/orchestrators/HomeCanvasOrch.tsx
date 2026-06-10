@@ -21,6 +21,7 @@ import CanvasContextMenuBlock from '@/components/lego_blocks/units/CanvasContext
 import CanvasWebWidgetPickerBlock from '@/components/lego_blocks/units/CanvasWebWidgetPickerBlock'
 import CanvasMinimapBlock from '@/components/lego_blocks/units/CanvasMinimapBlock'
 import HomeAnchorTileBlock from '@/components/lego_blocks/integrations/HomeAnchorTileBlock'
+import MoonSceneBlock from '@/components/lego_blocks/units/MoonSceneBlock'
 import ZoomIndicatorBlock from '@/components/lego_blocks/units/ZoomIndicatorBlock'
 import {
   readHomeCanvas,
@@ -28,7 +29,8 @@ import {
 } from '@/services/lego_blocks/integrations/homeCanvasStorageBlock'
 
 const ANCHOR_CENTER_X = 4500 / 2
-const ANCHOR_CENTER_Y = 3000 / 2
+// +200 vs the original 3000/2 center: extra sky above the moon scene.
+const ANCHOR_CENTER_Y = 3000 / 2 + 200
 
 const SEED_TILES: CanvasTile[] = [
   {
@@ -123,7 +125,7 @@ export default function HomeCanvasOrch() {
     // 1.0, preserving previous behavior.
   } = useInfiniteCanvasBlock({
     onEdgeHit: flashEdge,
-    worldHeight: 3600,
+    worldHeight: 3800,
     initialFocus: {
       worldX: ANCHOR_CENTER_X,
       worldY: ANCHOR_CENTER_Y - 280,
@@ -508,6 +510,7 @@ export default function HomeCanvasOrch() {
           boxShadow: isIos ? 'none' : theme.boardGlow,
         }}
       >
+        <MoonSceneBlock x={ANCHOR_CENTER_X - 260} y={ANCHOR_CENTER_Y - 810} />
         <HomeAnchorTileBlock centerX={ANCHOR_CENTER_X} centerY={ANCHOR_CENTER_Y} />
         {tiles.map(tile => (
           <CanvasTileBlock
