@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import WebOrch from '@/components/orchestrators/WebOrch'
 import RouteActivityProviderBlock from '@/components/lego_blocks/units/RouteActivityProviderBlock'
 
@@ -7,7 +8,9 @@ interface WebPageProps {
   onSelectSiteId?: (siteId: string) => void
 }
 
-export default function Web({
+// memo: persistent surface — skip re-renders caused by unrelated App shell state.
+// Callers must pass a stable onSelectSiteId for the memo to hold.
+export default memo(function Web({
   active = true,
   selectedSiteId,
   onSelectSiteId,
@@ -19,4 +22,4 @@ export default function Web({
       </div>
     </RouteActivityProviderBlock>
   )
-}
+})

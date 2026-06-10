@@ -1783,8 +1783,6 @@ function PdfDocumentRuntimeBlock({
   showCloseButton = false,
   className,
 }: MarkdownDocumentBlockProps) {
-  const { layout } = useUILayoutBlock()
-  const isIosPhone = layout.surface === 'capacitor-ios' && layout.mode === 'phone'
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const openInSystemLabel = getOpenInSystemLabelOrch()
@@ -1864,8 +1862,6 @@ function ImageDocumentRuntimeBlock({
   showCloseButton = false,
   className,
 }: MarkdownDocumentBlockProps) {
-  const { layout } = useUILayoutBlock()
-  const isIosPhone = layout.surface === 'capacitor-ios' && layout.mode === 'phone'
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const openInSystemLabel = getOpenInSystemLabelOrch()
@@ -1945,8 +1941,6 @@ function UnsupportedFileDocumentRuntimeBlock({
   showCloseButton = false,
   className,
 }: MarkdownDocumentBlockProps) {
-  const { layout } = useUILayoutBlock()
-  const isIosPhone = layout.surface === 'capacitor-ios' && layout.mode === 'phone'
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const openInSystemLabel = getOpenInSystemLabelOrch()

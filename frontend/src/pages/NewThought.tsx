@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, CheckCircle2, LayoutList, Eye, CheckSquare, X, Plus, FolderTree, Heart, Settings2 } from 'lucide-react'
 import {
   dispatchNewThoughtSidebarChromeStateBlock,
@@ -1360,10 +1360,11 @@ function CreateTab() {
   )
 }
 
-export default function NewThought() {
+// memo: persistent surface — skip re-renders caused by unrelated App shell state.
+export default memo(function NewThought() {
   return (
     <div className="ltm-page h-full">
       <CreateTab />
     </div>
   )
-}
+})

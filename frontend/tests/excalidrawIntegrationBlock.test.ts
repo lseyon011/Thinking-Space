@@ -115,25 +115,23 @@ describe('excalidrawIntegrationBlock', () => {
     expect(initial.files).toEqual({ fileA: { mimeType: 'image/png' } })
   })
 
-  it('clones scene change payloads so callers can mutate safely', () => {
+  // Scene change payloads are intentionally passed through by reference (no
+  // per-onChange cloning) — cloning every tick was too expensive. Callers only
+  // use the snapshot for save serialization.
+  it('passes scene change payloads through by reference without cloning', () => {
     const elements = [{ id: 'shape' }]
     const appState = { zoom: { value: 1 } }
     const files = { fileA: { mimeType: 'image/png' } }
 
-    const cloned = cloneExcalidrawSceneChangeBlock(elements, appState, files)
+    const snapshot = cloneExcalidrawSceneChangeBlock(elements, appState, files)
 
-    expect(cloned.elements).toEqual(elements)
-    expect(cloned.elements).not.toBe(elements)
-    expect(cloned.appState).toEqual(appState)
-    expect(cloned.appState).not.toBe(appState)
-    expect(cloned.files).toEqual(files)
-    expect(cloned.files).not.toBe(files)
+    expect(snapshot.elements).toBe(elements)
+    expect(snapshot.appState).toBe(appState)
+    expect(snapshot.files).toBe(files)
   })
 
-  it('clones scene payloads without throwing on getter traps', () => {
-    const appState: Record<string, unknown> = {
-      zoom: { value: 1.1 },
-    }
+  it('never enumerates payload properties (getter traps stay untriggered)', () => {
+    const appState: Record<string, unknown> = { zoom: { value: 1.1 } }
     Object.defineProperty(appState, 'badField', {
       enumerable: true,
       get() {
@@ -141,21 +139,17 @@ describe('excalidrawIntegrationBlock', () => {
       },
     })
 
-    const files: Record<string, unknown> = {
-      fileA: { mimeType: 'image/png' },
-    }
-    Object.defineProperty(files, 'badFile', {
-      enumerable: true,
-      get() {
-        throw new Error('boom-file')
-      },
-    })
+    expect(() => cloneExcalidrawSceneChangeBlock([{ id: 'shape' }], appState, {})).not.toThrow()
+  })
 
-    expect(() => cloneExcalidrawSceneChangeBlock([{ id: 'shape' }], appState, files)).not.toThrow()
-    const cloned = cloneExcalidrawSceneChangeBlock([{ id: 'shape' }], appState, files)
-    expect(cloned.appState).toMatchObject({ zoom: { value: 1.1 } })
-    expect(cloned.appState.badField).toBeUndefined()
-    expect(cloned.files).toMatchObject({ fileA: { mimeType: 'image/png' } })
-    expect(cloned.files.badFile).toBeUndefined()
+  it('defaults nullish payloads to empty containers', () => {
+    const snapshot = cloneExcalidrawSceneChangeBlock(
+      undefined as unknown as readonly unknown[],
+      null as unknown as Record<string, unknown>,
+      null as unknown as Record<string, unknown>,
+    )
+    expect(snapshot.elements).toEqual([])
+    expect(snapshot.appState).toEqual({})
+    expect(snapshot.files).toEqual({})
   })
 })

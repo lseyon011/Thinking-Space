@@ -78,6 +78,7 @@ import {
 import UniversalSearchBlock from './components/lego_blocks/integrations/UniversalSearchBlock'
 import { UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK } from './components/lego_blocks/integrations/universalSearchPresetBlock'
 import { useUILayoutBlock } from './components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useChromeStateEventBlock } from './components/lego_blocks/hooks/shared/useChromeStateEventBlock'
 import { useNativeTopChromeBlock } from './components/lego_blocks/hooks/shared/useNativeTopChromeBlock'
 import { useNativePushNavigationBlock } from './components/lego_blocks/hooks/shared/useNativePushNavigationBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
@@ -94,11 +95,26 @@ import {
 } from '@/services/orchestrators/gitSyncToolsOrch'
 import {
   STORAGE_KEYS,
-  getJsonStorageItem,
   getStoredVaultRoot,
   getStorageItem,
   setStorageItem,
 } from './services/orchestrators/storageOrch'
+import {
+  type AppWorkspaceTab,
+  appendPersistentSurfaceTabId,
+  applyPersistentSurfaceBudget,
+  createWorkspaceTabId,
+  getTabLabel,
+  getWindowScopedAppShellActiveTabStorageKey,
+  getWindowScopedAppShellTabsStorageKey,
+  normalizeTabRoute,
+  parseTabRoute,
+  readScopedAppShellActiveTabIdBlock,
+  readScopedAppShellTabsBlock,
+  resolvePreferredSameRouteTabLabel,
+  sameTabIdSequence,
+  setDynamicStorageItemBlock,
+} from './services/lego_blocks/integrations/workspaceTabsBlock'
 import {
   getWindowContextBlock,
   subscribeWindowContextBlock,
@@ -192,12 +208,6 @@ interface CommandItem {
   activePaths?: string[]
   keywords?: string
   description?: string
-}
-
-interface AppWorkspaceTab {
-  id: string
-  route: string
-  label?: string
 }
 
 interface SyncRunSummary {
@@ -378,196 +388,6 @@ function isNavItemActive(pathname: string, item: NavItem): boolean {
   if (pathname === item.to) return true
   const activePaths = item.activePaths ?? []
   return activePaths.some((path) => pathname === path || pathname.startsWith(`${path}/`))
-}
-
-function createWorkspaceTabId(): string {
-  return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function normalizeTabRoute(route: string): string {
-  const trimmed = route.trim()
-  if (!trimmed) return '/'
-  const withSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
-  // Migrate legacy /chat tabs to /ai/chat (preserves query/hash).
-  if (withSlash === '/chat' || withSlash.startsWith('/chat?') || withSlash.startsWith('/chat#')) {
-    return `/ai/chat${withSlash.slice('/chat'.length)}`
-  }
-  return withSlash
-}
-
-function parseTabRoute(route: string): { pathname: string; search: URLSearchParams } {
-  try {
-    const parsed = new URL(normalizeTabRoute(route), 'https://ltm.local')
-    return { pathname: parsed.pathname, search: parsed.searchParams }
-  } catch {
-    return { pathname: '/', search: new URLSearchParams() }
-  }
-}
-
-function dedupeTabIds(tabIds: string[]): string[] {
-  const next: string[] = []
-  for (const tabId of tabIds) {
-    if (!next.includes(tabId)) next.push(tabId)
-  }
-  return next
-}
-
-function sameTabIdSequence(left: string[], right: string[]): boolean {
-  return left.length === right.length && left.every((tabId, index) => tabId === right[index])
-}
-
-function applyPersistentSurfaceBudget(
-  tabIds: string[],
-  hiddenLimit: number,
-  activeTabId?: string | null,
-): string[] {
-  const deduped = dedupeTabIds(tabIds)
-  if (deduped.length === 0) return deduped
-
-  const normalizedHiddenLimit = Math.max(0, hiddenLimit)
-  const requestedActiveTabId = activeTabId?.trim() ? activeTabId : null
-  const protectedActiveTabId = requestedActiveTabId && deduped.includes(requestedActiveTabId)
-    ? requestedActiveTabId
-    : null
-  if (!protectedActiveTabId) {
-    return deduped.length <= normalizedHiddenLimit
-      ? deduped
-      : deduped.slice(-normalizedHiddenLimit)
-  }
-
-  const hiddenTabIds = deduped.filter((tabId) => tabId !== protectedActiveTabId)
-  const keptHiddenTabIds = hiddenTabIds.slice(-normalizedHiddenLimit)
-  return [...keptHiddenTabIds, protectedActiveTabId]
-}
-
-function appendPersistentSurfaceTabId(
-  tabIds: string[],
-  tabId: string,
-  hiddenLimit: number,
-  activeTabId?: string | null,
-): string[] {
-  return applyPersistentSurfaceBudget(
-    [...tabIds.filter((candidate) => candidate !== tabId), tabId],
-    hiddenLimit,
-    activeTabId,
-  )
-}
-
-function getWindowScopedStorageKey(baseKey: string, sessionId: string): string {
-  return `${baseKey}:${sessionId}`
-}
-
-function getWindowScopedAppShellTabsStorageKey(windowContext: WindowContextBlock): string {
-  return getWindowScopedStorageKey(STORAGE_KEYS.appShellTabs, windowContext.sessionId)
-}
-
-function getWindowScopedAppShellActiveTabStorageKey(windowContext: WindowContextBlock): string {
-  return getWindowScopedStorageKey(STORAGE_KEYS.appShellActiveTabId, windowContext.sessionId)
-}
-
-function getDynamicStorageItemBlock(key: string): string | null {
-  try {
-    if (typeof localStorage === 'undefined') return null
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
-function setDynamicStorageItemBlock(key: string, value: string): void {
-  try {
-    if (typeof localStorage === 'undefined') return
-    localStorage.setItem(key, value)
-  } catch {
-    // Ignore storage write failures in restricted runtimes.
-  }
-}
-
-function getDynamicJsonStorageItemBlock<T>(key: string, fallback: T): T {
-  const raw = getDynamicStorageItemBlock(key)
-  if (!raw) return fallback
-  try {
-    return JSON.parse(raw) as T
-  } catch {
-    return fallback
-  }
-}
-
-function readScopedAppShellTabsBlock(windowContext: WindowContextBlock): AppWorkspaceTab[] {
-  const scopedTabs = getDynamicJsonStorageItemBlock<AppWorkspaceTab[]>(
-    getWindowScopedAppShellTabsStorageKey(windowContext),
-    [],
-  )
-  if (scopedTabs.length > 0) return scopedTabs
-  if (!windowContext.isMainWindow) return []
-  return getJsonStorageItem<AppWorkspaceTab[]>(STORAGE_KEYS.appShellTabs, [])
-}
-
-function readScopedAppShellActiveTabIdBlock(windowContext: WindowContextBlock): string {
-  const scopedActiveTabId = getDynamicStorageItemBlock(getWindowScopedAppShellActiveTabStorageKey(windowContext))
-  if (scopedActiveTabId) return scopedActiveTabId
-  if (!windowContext.isMainWindow) return ''
-  return getStorageItem(STORAGE_KEYS.appShellActiveTabId) ?? ''
-}
-
-function toTitleCase(value: string): string {
-  return value
-    .split(/[\s_-]+/)
-    .filter(Boolean)
-    .map(part => `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`)
-    .join(' ')
-}
-
-function safeDecodeURIComponent(value: string): string {
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return value
-  }
-}
-
-function getTabLabel(route: string, labelByPath: Map<string, string>, chatLabel?: string, webLabel?: string, webullLabel?: string, webSiteLabels?: Record<string, string>): string {
-  const { pathname, search } = parseTabRoute(route)
-  if (pathname === '/thinking-space') {
-    const filePath = search.get('file')?.trim()
-    if (filePath) {
-      const name = safeDecodeURIComponent(filePath).split('/').filter(Boolean).pop() || 'File'
-      return `Space · ${name}`
-    }
-  }
-
-  if (pathname === '/thinking-organizer' || pathname === '/file-organizer') {
-    const tab = search.get('tab')?.trim()
-    if (tab) return `Organizer · ${toTitleCase(tab)}`
-  }
-
-  if (pathname === '/ai/chat' && chatLabel) return chatLabel
-
-  if (pathname === '/web') {
-    const siteId = search.get('site')
-    if (siteId && webSiteLabels) {
-      const siteName = webSiteLabels[siteId]
-      if (siteName) return `Web · ${siteName}`
-    }
-    if (webLabel) return webLabel
-  }
-
-  if (pathname === '/webull' && webullLabel) return webullLabel
-
-
-  return labelByPath.get(pathname) ?? 'Workspace'
-}
-
-function resolvePreferredSameRouteTabLabel(pathname: string, cachedLabel: string | undefined, derivedLabel: string): string {
-  const trimmedCachedLabel = cachedLabel?.trim()
-  const genericLabel = pathname === '/ai/chat'
-    ? 'AI'
-    : (pathname === '/web' ? 'Web' : null)
-
-  if (!genericLabel) return trimmedCachedLabel || derivedLabel
-  if (trimmedCachedLabel && trimmedCachedLabel !== genericLabel) return trimmedCachedLabel
-  if (derivedLabel !== genericLabel) return derivedLabel
-  return trimmedCachedLabel || derivedLabel
 }
 
 function buildThinkingSpaceFileRoute(path: string): string {
@@ -2147,6 +1967,21 @@ function App() {
     }
   }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
 
+  // Stable per-tab onSelectSiteId callbacks so the memoized Web surface
+  // doesn't re-render whenever App shell state changes. The ref indirection
+  // keeps each per-tab callback's identity fixed while always invoking the
+  // latest handler.
+  const handlePersistentWebSiteSelectRef = useRef<(tabId: string, siteId: string) => void>(() => {})
+  const webSiteSelectCallbackByTabIdRef = useRef(new Map<string, (siteId: string) => void>())
+  const getWebSiteSelectCallback = useCallback((tabId: string) => {
+    let callback = webSiteSelectCallbackByTabIdRef.current.get(tabId)
+    if (!callback) {
+      callback = (siteId: string) => handlePersistentWebSiteSelectRef.current(tabId, siteId)
+      webSiteSelectCallbackByTabIdRef.current.set(tabId, callback)
+    }
+    return callback
+  }, [])
+
   const handlePersistentWebSiteSelect = useCallback((tabId: string, siteId: string) => {
     const nextSearch = new URLSearchParams()
     nextSearch.set('site', siteId)
@@ -2165,6 +2000,7 @@ function App() {
     if (tabId !== activeWorkspaceTabId) return
     navigate(`/web?${nextSearch.toString()}`, { replace: true })
   }, [activeWorkspaceTabId, isWebRoute, navigate])
+  handlePersistentWebSiteSelectRef.current = handlePersistentWebSiteSelect
 
   const handleDrawerTouchStart = useCallback((event: React.TouchEvent<HTMLElement>) => {
     const touch = event.touches[0]
@@ -2623,6 +2459,9 @@ function App() {
 
   useEffect(() => {
     const tabIds = new Set(workspaceTabs.map((tab) => tab.id))
+    for (const tabId of webSiteSelectCallbackByTabIdRef.current.keys()) {
+      if (!tabIds.has(tabId)) webSiteSelectCallbackByTabIdRef.current.delete(tabId)
+    }
     setPersistentChatTabIds((prev) => {
       const next = applyPersistentSurfaceBudget(
         prev.filter((tabId) => tabIds.has(tabId)),
@@ -2703,6 +2542,7 @@ function App() {
   useEffect(() => {
     if (tabsPersistTimerRef.current) clearTimeout(tabsPersistTimerRef.current)
     tabsPersistTimerRef.current = setTimeout(() => {
+      tabsPersistTimerRef.current = null
       setDynamicStorageItemBlock(appShellTabsStorageKey, JSON.stringify(workspaceTabs))
     }, 500)
     return () => { if (tabsPersistTimerRef.current) clearTimeout(tabsPersistTimerRef.current) }
@@ -2713,10 +2553,37 @@ function App() {
     if (!activeWorkspaceTabId) return
     if (activeTabPersistTimerRef.current) clearTimeout(activeTabPersistTimerRef.current)
     activeTabPersistTimerRef.current = setTimeout(() => {
+      activeTabPersistTimerRef.current = null
       setDynamicStorageItemBlock(appShellActiveTabStorageKey, activeWorkspaceTabId)
     }, 300)
     return () => { if (activeTabPersistTimerRef.current) clearTimeout(activeTabPersistTimerRef.current) }
   }, [activeWorkspaceTabId, appShellActiveTabStorageKey])
+
+  // Flush pending debounced tab writes when the window is going away —
+  // without this, closing the app within the debounce window loses the most
+  // recent tab/active-tab change on relaunch.
+  useEffect(() => {
+    const flushPendingTabPersistence = () => {
+      if (tabsPersistTimerRef.current) {
+        clearTimeout(tabsPersistTimerRef.current)
+        tabsPersistTimerRef.current = null
+        setDynamicStorageItemBlock(appShellTabsStorageKey, JSON.stringify(workspaceTabs))
+      }
+      if (activeTabPersistTimerRef.current) {
+        clearTimeout(activeTabPersistTimerRef.current)
+        activeTabPersistTimerRef.current = null
+        if (activeWorkspaceTabId) {
+          setDynamicStorageItemBlock(appShellActiveTabStorageKey, activeWorkspaceTabId)
+        }
+      }
+    }
+    window.addEventListener('pagehide', flushPendingTabPersistence)
+    document.addEventListener('visibilitychange', flushPendingTabPersistence)
+    return () => {
+      window.removeEventListener('pagehide', flushPendingTabPersistence)
+      document.removeEventListener('visibilitychange', flushPendingTabPersistence)
+    }
+  }, [activeWorkspaceTabId, appShellActiveTabStorageKey, appShellTabsStorageKey, workspaceTabs])
 
   useEffect(() => {
     const onOpenRouteInNewTab = (event: Event) => {
@@ -2737,30 +2604,35 @@ function App() {
     }
   }, [])
 
-  useEffect(() => {
-    const handleChromeState = (event: Event) => {
-      const customEvent = event as CustomEvent<ThinkingSpaceGoogleWorkspaceChromeStateBlock>
-      const detail = customEvent.detail
-      if (!detail) return
+  const syncActiveWorkspaceTabLabel = (pathname: string, nextLabel: string) => {
+    if (parseTabRoute(currentRouteRef.current).pathname !== pathname) return
+    const tabId = activeWorkspaceTabIdRef.current
+    if (!tabId) return
+    setWorkspaceTabs((prev) => {
+      const index = prev.findIndex(tab => tab.id === tabId)
+      if (index === -1) return prev
+      if (prev[index].label === nextLabel) return prev
+      const next = prev.slice()
+      next[index] = { ...next[index], label: nextLabel }
+      return next
+    })
+  }
+
+  useChromeStateEventBlock<ThinkingSpaceGoogleWorkspaceChromeStateBlock>(
+    thinkingSpaceGoogleWorkspaceChromeBlock.stateEvent,
+    (detail) => {
       setThinkingSpaceGoogleWorkspaceChromeState({
         enabled: Boolean(detail.enabled),
         explorerCollapsed: Boolean(detail.explorerCollapsed),
         headerVisible: Boolean(detail.headerVisible),
         showHeaderToggle: Boolean(detail.showHeaderToggle),
       })
-    }
+    },
+  )
 
-    window.addEventListener(thinkingSpaceGoogleWorkspaceChromeBlock.stateEvent, handleChromeState as EventListener)
-    return () => {
-      window.removeEventListener(thinkingSpaceGoogleWorkspaceChromeBlock.stateEvent, handleChromeState as EventListener)
-    }
-  }, [])
-
-  useEffect(() => {
-    const handleChatChromeState = (event: Event) => {
-      const customEvent = event as CustomEvent<ChatSidebarChromeStateBlock>
-      const detail = customEvent.detail
-      if (!detail) return
+  useChromeStateEventBlock<ChatSidebarChromeStateBlock>(
+    chatSidebarChromeBlock.stateEvent,
+    (detail) => {
       const nextLabel = typeof detail.label === 'string' ? detail.label : 'AI'
       setChatSidebarChromeState({
         enabled: Boolean(detail.enabled),
@@ -2769,29 +2641,13 @@ function App() {
         showHeaderToggle: Boolean(detail.showHeaderToggle),
         label: nextLabel,
       })
-      if (parseTabRoute(currentRouteRef.current).pathname !== '/ai/chat') return
-      const tabId = activeWorkspaceTabIdRef.current
-      if (!tabId) return
-      setWorkspaceTabs((prev) => {
-        const index = prev.findIndex(tab => tab.id === tabId)
-        if (index === -1) return prev
-        if (prev[index].label === nextLabel) return prev
-        const next = prev.slice()
-        next[index] = { ...next[index], label: nextLabel }
-        return next
-      })
-    }
-    window.addEventListener(chatSidebarChromeBlock.stateEvent, handleChatChromeState as EventListener)
-    return () => {
-      window.removeEventListener(chatSidebarChromeBlock.stateEvent, handleChatChromeState as EventListener)
-    }
-  }, [])
+      syncActiveWorkspaceTabLabel('/ai/chat', nextLabel)
+    },
+  )
 
-  useEffect(() => {
-    const handleWebChromeState = (event: Event) => {
-      const customEvent = event as CustomEvent<WebSidebarChromeStateBlock>
-      const detail = customEvent.detail
-      if (!detail) return
+  useChromeStateEventBlock<WebSidebarChromeStateBlock>(
+    webSidebarChromeBlock.stateEvent,
+    (detail) => {
       const nextLabel = typeof detail.label === 'string' ? detail.label : 'Web'
       setWebSidebarChromeState(prev => ({
         enabled: Boolean(detail.enabled),
@@ -2804,97 +2660,65 @@ function App() {
       const currentNormalizedRoute = normalizeTabRoute(currentRouteRef.current)
       const pending = pendingWorkspaceTabNavigationRef.current
       if (pending && currentNormalizedRoute !== pending.route) return
-      if (parseTabRoute(currentRouteRef.current).pathname !== '/web') return
-      const tabId = activeWorkspaceTabIdRef.current
-      if (!tabId) return
-      setWorkspaceTabs((prev) => {
-        const index = prev.findIndex(tab => tab.id === tabId)
-        if (index === -1) return prev
-        if (prev[index].label === nextLabel) return prev
-        const next = prev.slice()
-        next[index] = { ...next[index], label: nextLabel }
-        return next
-      })
-    }
-    window.addEventListener(webSidebarChromeBlock.stateEvent, handleWebChromeState as EventListener)
-    return () => {
-      window.removeEventListener(webSidebarChromeBlock.stateEvent, handleWebChromeState as EventListener)
-    }
-  }, [])
+      syncActiveWorkspaceTabLabel('/web', nextLabel)
+    },
+  )
 
-  useEffect(() => {
-    const subscribers: Array<{ event: string; handler: EventListener }> = [
-      {
-        event: organizerSidebarChromeBlock.stateEvent,
-        handler: (event) => {
-          const detail = (event as CustomEvent<OrganizerSidebarChromeStateBlock>).detail
-          if (!detail) return
-          setOrganizerSidebarChromeState({
-            enabled: Boolean(detail.enabled),
-            collapsed: Boolean(detail.collapsed),
-            label: typeof detail.label === 'string' ? detail.label : 'Organizer',
-            headerVisible: detail.headerVisible !== false,
-            showHeaderToggle: Boolean(detail.showHeaderToggle),
-          })
-        },
-      },
-      {
-        event: webullSidebarChromeBlock.stateEvent,
-        handler: (event) => {
-          const detail = (event as CustomEvent<WebullSidebarChromeStateBlock>).detail
-          if (!detail) return
-          setWebullSidebarChromeState({
-            enabled: Boolean(detail.enabled),
-            collapsed: Boolean(detail.collapsed),
-            label: typeof detail.label === 'string' ? detail.label : 'webull',
-          })
-        },
-      },
-      {
-        event: toolsSidebarChromeBlock.stateEvent,
-        handler: (event) => {
-          const detail = (event as CustomEvent<ToolsSidebarChromeStateBlock>).detail
-          if (!detail) return
-          setToolsSidebarChromeState({
-            enabled: Boolean(detail.enabled),
-            collapsed: Boolean(detail.collapsed),
-            label: typeof detail.label === 'string' ? detail.label : 'Tools',
-          })
-        },
-      },
-      {
-        event: newThoughtSidebarChromeBlock.stateEvent,
-        handler: (event) => {
-          const detail = (event as CustomEvent<{ enabled: boolean; collapsed: boolean }>).detail
-          if (!detail) return
-          setNewThoughtSidebarChromeState({
-            enabled: Boolean(detail.enabled),
-            collapsed: Boolean(detail.collapsed),
-          })
-        },
-      },
-      {
-        event: settingsSidebarChromeBlock.stateEvent,
-        handler: (event) => {
-          const detail = (event as CustomEvent<SettingsSidebarChromeStateBlock>).detail
-          if (!detail) return
-          setSettingsSidebarChromeState({
-            enabled: Boolean(detail.enabled),
-            collapsed: Boolean(detail.collapsed),
-            label: typeof detail.label === 'string' ? detail.label : 'Settings',
-          })
-        },
-      },
-    ]
-    for (const { event, handler } of subscribers) {
-      window.addEventListener(event, handler)
-    }
-    return () => {
-      for (const { event, handler } of subscribers) {
-        window.removeEventListener(event, handler)
-      }
-    }
-  }, [])
+  useChromeStateEventBlock<OrganizerSidebarChromeStateBlock>(
+    organizerSidebarChromeBlock.stateEvent,
+    (detail) => {
+      setOrganizerSidebarChromeState({
+        enabled: Boolean(detail.enabled),
+        collapsed: Boolean(detail.collapsed),
+        label: typeof detail.label === 'string' ? detail.label : 'Organizer',
+        headerVisible: detail.headerVisible !== false,
+        showHeaderToggle: Boolean(detail.showHeaderToggle),
+      })
+    },
+  )
+
+  useChromeStateEventBlock<WebullSidebarChromeStateBlock>(
+    webullSidebarChromeBlock.stateEvent,
+    (detail) => {
+      setWebullSidebarChromeState({
+        enabled: Boolean(detail.enabled),
+        collapsed: Boolean(detail.collapsed),
+        label: typeof detail.label === 'string' ? detail.label : 'webull',
+      })
+    },
+  )
+
+  useChromeStateEventBlock<ToolsSidebarChromeStateBlock>(
+    toolsSidebarChromeBlock.stateEvent,
+    (detail) => {
+      setToolsSidebarChromeState({
+        enabled: Boolean(detail.enabled),
+        collapsed: Boolean(detail.collapsed),
+        label: typeof detail.label === 'string' ? detail.label : 'Tools',
+      })
+    },
+  )
+
+  useChromeStateEventBlock<{ enabled: boolean; collapsed: boolean }>(
+    newThoughtSidebarChromeBlock.stateEvent,
+    (detail) => {
+      setNewThoughtSidebarChromeState({
+        enabled: Boolean(detail.enabled),
+        collapsed: Boolean(detail.collapsed),
+      })
+    },
+  )
+
+  useChromeStateEventBlock<SettingsSidebarChromeStateBlock>(
+    settingsSidebarChromeBlock.stateEvent,
+    (detail) => {
+      setSettingsSidebarChromeState({
+        enabled: Boolean(detail.enabled),
+        collapsed: Boolean(detail.collapsed),
+        label: typeof detail.label === 'string' ? detail.label : 'Settings',
+      })
+    },
+  )
 
   useEffect(() => {
     const appShellNode = appShellRef.current
@@ -3332,7 +3156,7 @@ function App() {
                         <Web
                           active={webSurfaceActive}
                           selectedSiteId={persistentWebSiteIdByTabId[tabId] ?? null}
-                          onSelectSiteId={(siteId) => handlePersistentWebSiteSelect(tabId, siteId)}
+                          onSelectSiteId={getWebSiteSelectCallback(tabId)}
                         />
                       </FrozenRouteBlock>
                     </RouteActivityProviderBlock>

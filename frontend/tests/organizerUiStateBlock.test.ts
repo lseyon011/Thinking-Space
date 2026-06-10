@@ -70,7 +70,8 @@ describe('organizerUiStateBlock', () => {
     })
 
     expect(state.mkdirs).toContain('projects/demo/thinking-organizer')
-    expect(written.schemaVersion).toBe(1)
+    // Writes always stamp the current schema version, ignoring the caller's value.
+    expect(written.schemaVersion).toBe(3)
     expect(written.projectName).toBe('Demo Project')
     expect(written.presetTags).toEqual(['alpha', 'beta'])
     expect(written.tagColors).toEqual({

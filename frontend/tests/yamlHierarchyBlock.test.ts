@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ListedFiles, VaultEntry, VaultFS, VaultStat } from '@/services/lego_blocks/integrations/fsBlock'
 import { generateKey, parseNote } from '@/services/lego_blocks/units/yamlNoteBlock'
+import { parseOrganizerBodySections } from '@/services/lego_blocks/integrations/organizerBodyBlock'
 
 class FakeVaultFS implements VaultFS {
   private readonly files = new Map<string, string>()
@@ -236,13 +237,17 @@ describe('yamlHierarchyBlock project storage', () => {
     const note = parseNote(await fs.read(thought.filePath))
     expect(note).not.toBeNull()
     expect(note!.frontmatter.description).toBe('Record what worked and what failed in this sprint.')
-    expect(note!.frontmatter.comments?.length).toBe(1)
-    expect(note!.frontmatter.comments?.[0].text).toBe('Need numbers from analytics before finalizing.')
-    expect(note!.frontmatter.comments?.[0].added_by).toBe('unknown')
-    expect(note!.frontmatter.comments?.[0].added_at).toBeTruthy()
+    // Comments live in the markdown body only — never frontmatter.
+    expect(note!.frontmatter.comments).toBeUndefined()
     expect(note!.body).toContain('## Description')
     expect(note!.body).toContain('## Comments')
-    expect(note!.body).toContain('- Need numbers from analytics before finalizing.')
+
+    const sections = parseOrganizerBodySections(note!.body)
+    expect(sections.description).toBe('Record what worked and what failed in this sprint.')
+    expect(sections.comments.length).toBe(1)
+    expect(sections.comments[0].text).toBe('Need numbers from analytics before finalizing.')
+    expect(sections.comments[0].added_by).toBe('unknown')
+    expect(sections.comments[0].added_at).toBeTruthy()
   })
 
   it('updates description and comments after create', async () => {
@@ -276,12 +281,17 @@ describe('yamlHierarchyBlock project storage', () => {
     const note = parseNote(await fs.read(updated.filePath))
     expect(note).not.toBeNull()
     expect(note!.frontmatter.description).toBe('Refine intake prompts and simplify intake states.')
-    expect(note!.frontmatter.comments?.map(comment => comment.text)).toEqual([
+    // Comments live in the markdown body only — never frontmatter.
+    expect(note!.frontmatter.comments).toBeUndefined()
+
+    const sections = parseOrganizerBodySections(note!.body)
+    expect(sections.description).toBe('Refine intake prompts and simplify intake states.')
+    expect(sections.comments.map(comment => comment.text)).toEqual([
       'Capture current drop-off metrics',
       'Validate with PM before rollout',
     ])
-    expect(note!.frontmatter.comments?.every(comment => comment.added_by === 'unknown')).toBe(true)
-    expect(note!.frontmatter.comments?.every(comment => Boolean(comment.added_at))).toBe(true)
+    expect(sections.comments.every(comment => comment.added_by === 'unknown')).toBe(true)
+    expect(sections.comments.every(comment => Boolean(comment.added_at))).toBe(true)
   })
 
   it('updates generated obsidian hierarchy links when a node is moved', async () => {

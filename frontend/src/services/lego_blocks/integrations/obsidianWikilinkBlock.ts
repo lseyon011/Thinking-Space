@@ -118,7 +118,21 @@ function addLookupKey(map: Map<string, Set<string>>, key: string, path: string):
   map.set(normalizedKey, new Set([path]))
 }
 
+// Memoize the lookup by array identity. Sync runs and the wikilink path
+// cache pass the same candidatePaths array for every link in a pass, so
+// without this the full map (4 keys per vault file) was rebuilt per link —
+// O(files × links) work that dominated full-sync time on large vaults.
+const candidateLookupCache = new WeakMap<string[], Map<string, Set<string>>>()
+
 function buildCandidateLookup(candidatePaths: string[]): Map<string, Set<string>> {
+  const cached = candidateLookupCache.get(candidatePaths)
+  if (cached) return cached
+  const map = buildCandidateLookupUncached(candidatePaths)
+  candidateLookupCache.set(candidatePaths, map)
+  return map
+}
+
+function buildCandidateLookupUncached(candidatePaths: string[]): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>()
   for (const rawPath of candidatePaths) {
     const path = normalizeVaultPath(rawPath)

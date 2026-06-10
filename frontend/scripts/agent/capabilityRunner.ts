@@ -1585,27 +1585,29 @@ export async function runCapabilityRunnerCommand(
 
   const fs = new NodeVaultFS(payload.vaultRoot)
   const isWrite = capabilityRequiresVaultSync(payload.request.capability)
-  if (isWrite) {
-    // Two-phase sync to keep CLI writes fast:
-    //   1. If a disk snapshot exists for this vault, hydrate the in-memory
-    //      DB from it and run an incremental mtime-based sync — typical
-    //      warm-run cost is < 1 s for an unchanged vault.
-    //   2. Otherwise (cold start, vault changed, or snapshot missing) do a
-    //      full sync. Scope it to the project root when the capability
-    //      input supplies one so we don't pay for unrelated files.
-    const projectRoot = extractProjectRootFromInput(payload.request.input)
-    const loaded = await tryLoadCliCache(payload.vaultRoot)
-    if (loaded) {
-      await incrementalSync(loaded.lastSyncTimestamp, fs)
-    } else {
-      await fullSync(fs, projectRoot ? { rootPath: projectRoot } : undefined)
-    }
+  // Hydrate the organizer DB for every capability — reads included. Search,
+  // list, and get capabilities query IndexedDB, so skipping sync on reads
+  // silently returns empty results. Two-phase sync keeps this fast:
+  //   1. If a disk snapshot exists for this vault, hydrate the in-memory
+  //      DB from it and run an incremental mtime-based sync — typical
+  //      warm-run cost is < 1 s for an unchanged vault.
+  //   2. Otherwise (cold start, vault changed, or snapshot missing) do a
+  //      full sync. Scope it to the project root when the capability
+  //      input supplies one so we don't pay for unrelated files.
+  const projectRoot = extractProjectRootFromInput(payload.request.input)
+  const loaded = await tryLoadCliCache(payload.vaultRoot)
+  if (loaded) {
+    await incrementalSync(loaded.lastSyncTimestamp, fs)
+  } else {
+    await fullSync(fs, projectRoot ? { rootPath: projectRoot } : undefined)
   }
   const result = await invokeCapabilityOrch(payload.request, { fs })
-  if (isWrite) {
-    // Persist the post-write DB so the next CLI run starts warm. Done after
-    // a successful invoke so errors don't corrupt the cache. Snapshot save
-    // failures only get logged — they shouldn't break the user-visible result.
+  // Persist the DB so the next CLI run starts warm: after writes, and after
+  // an unscoped cold sync (a projectRoot-scoped sync would persist a partial
+  // snapshot). Done after a successful invoke so errors don't corrupt the
+  // cache. Snapshot save failures only get logged — they shouldn't break the
+  // user-visible result.
+  if (isWrite || (!loaded && !projectRoot)) {
     await saveCliCache(payload.vaultRoot).catch((err) => {
       console.warn(`[cli-cache] save failed: ${err instanceof Error ? err.message : String(err)}`)
     })

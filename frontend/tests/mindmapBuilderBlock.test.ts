@@ -101,7 +101,8 @@ describe('mindmapBuilderBlock', () => {
     )
 
     const elements = asSceneElements(result.scene)
-    const bulletText = elements.find((element) => element.type === 'text' && element.text === '• first bullet sentence\n\n\n• second bullet sentence')
+    // Runs of blank lines are collapsed to a single blank line between bullets.
+    const bulletText = elements.find((element) => element.type === 'text' && element.text === '• first bullet sentence\n\n• second bullet sentence')
     expect(bulletText).toBeDefined()
     const bulletContainerId = bulletText?.containerId
     expect(typeof bulletContainerId).toBe('string')

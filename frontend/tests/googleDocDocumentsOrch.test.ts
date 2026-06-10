@@ -102,47 +102,26 @@ describe('googleDocDocumentsOrch', () => {
     fakeFs = new FakeVaultFS()
   })
 
-  it('resolves proxy .gdoc by probing sibling metadata files', async () => {
-    const mod = await import('@/services/orchestrators/googleDocDocumentsOrch')
-    const path = 'leases/212 ridgewood road, Baltimore/212 Ridgewood Road _IRS report.gdoc'
-    const parent = 'leases/212 ridgewood road, Baltimore'
-    const sibling = `${parent}/212 Ridgewood Road _IRS report.gdoc.json`
-    const docId = '1A2b3C4d5E6f7G8h9I0j'
-
-    fakeFs.seedStat(path, { size: 0, mtime: 100, ctime: 100, isDirectory: false })
-    fakeFs.seedReadError(path, new Error('EISDIR: illegal operation on a directory, read'))
-    fakeFs.seedListError(path, new Error('ENOENT: no such file or directory, scandir'))
-    fakeFs.seedList(parent, {
-      files: ['212 Ridgewood Road _IRS report.gdoc', '212 Ridgewood Road _IRS report.gdoc.json'],
-      folders: [],
-    })
-    fakeFs.seedText(sibling, JSON.stringify({
-      url: `https://docs.google.com/document/d/${docId}/edit`,
-      title: 'IRS report',
-    }))
-
-    const loaded = await mod.readGoogleDocDocument(path)
-
-    expect(loaded.document.descriptor.fileId).toBe(docId)
-    expect(loaded.document.descriptor.openUrl).toBe(`https://docs.google.com/document/d/${docId}/edit`)
-  })
-
-  it('keeps directory-proxy fallback for directory-backed google shortcuts', async () => {
+  // NOTE: sibling-metadata / directory-proxy shortcut resolution lives on the
+  // unmerged fix/windows-gdoc-shortcut-resolution branch; main reads the
+  // .gdoc file content directly.
+  it('decodes a .gdoc JSON shortcut into a google doc descriptor', async () => {
     const mod = await import('@/services/orchestrators/googleDocDocumentsOrch')
     const path = 'docs/project/meeting-notes.gdoc'
     const docId = '1q2w3e4r5t6y7u8i9o0p'
 
-    fakeFs.seedStat(path, { size: 0, mtime: 42, ctime: 42, isDirectory: false })
-    fakeFs.seedReadError(path, new Error('EISDIR: illegal operation on a directory, read'))
-    fakeFs.seedList(path, {
-      files: ['shortcut.url'],
-      folders: [],
-    })
-    fakeFs.seedText(`${path}/shortcut.url`, `[InternetShortcut]\nURL=https://docs.google.com/document/d/${docId}/edit\n`)
+    fakeFs.seedText(
+      path,
+      JSON.stringify({ url: `https://docs.google.com/document/d/${docId}/edit`, doc_id: docId }),
+      { size: 64, mtime: 42, ctime: 42, isDirectory: false },
+    )
 
     const loaded = await mod.readGoogleDocDocument(path)
 
     expect(loaded.document.descriptor.fileId).toBe(docId)
     expect(loaded.document.descriptor.openUrl).toBe(`https://docs.google.com/document/d/${docId}/edit`)
+    expect(loaded.document.isBinaryDocx).toBe(false)
+    expect(loaded.mtime).toBe(42)
+    expect(loaded.hash).toMatch(/^[0-9a-f]{8}$/)
   })
 })

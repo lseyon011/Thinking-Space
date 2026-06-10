@@ -141,9 +141,9 @@ export function buildWindowStopPlistBlock(spec: ScheduleSpecBlock, ctx: PlistBui
   }
   const stopLabel = getStopLabelBlock(spec);
   const args = [ctx.electronBinary, ctx.runnerPath, 'stop', spec.key];
-  const dir = path.join(app.getPath('userData'), 'launchd-logs');
-  const stdout = path.join(dir, `${stopLabel}.out.log`);
-  const stderr = path.join(dir, `${stopLabel}.err.log`);
+  const dir = ctx.stdoutPath && ctx.stderrPath ? null : path.join(app.getPath('userData'), 'launchd-logs');
+  const stdout = ctx.stdoutPath ?? path.join(dir!, `${stopLabel}.out.log`);
+  const stderr = ctx.stderrPath ?? path.join(dir!, `${stopLabel}.err.log`);
   const stopEntries = renderWindowEntries(spec, 'stop');
 
   return `<?xml version="1.0" encoding="UTF-8"?>

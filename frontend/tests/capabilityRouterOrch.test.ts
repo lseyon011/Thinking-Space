@@ -725,16 +725,24 @@ describe('capabilityRouterOrch', () => {
       actor: ACTOR,
     }, { fs })
 
+    // Comments are stored in the markdown body (never frontmatter) and
+    // surfaced on the synced node record.
     const { frontmatter } = await capabilityOrch!.invokeCapabilityOrThrow({
       capability: 'organizer.node.read_frontmatter',
       input: { filePath: thought.filePath },
       actor: ACTOR,
     }, { fs })
-
     expect(frontmatter).not.toBeNull()
-    expect(frontmatter!.comments?.[0].text).toBe('Need validation numbers')
-    expect(frontmatter!.comments?.[0].added_by).toBe('unknown')
-    expect(frontmatter!.comments?.[0].added_at).toBeTruthy()
+    expect(frontmatter!.comments).toBeUndefined()
+
+    const { node: updatedThought } = await capabilityOrch!.invokeCapabilityOrThrow({
+      capability: 'organizer.node.get',
+      input: { uuid: thought.uuid },
+      actor: ACTOR,
+    }, { fs })
+    expect(updatedThought?.comments?.[0].text).toBe('Need validation numbers')
+    expect(updatedThought?.comments?.[0].added_by).toBe('unknown')
+    expect(updatedThought?.comments?.[0].added_at).toBeTruthy()
   })
 
   it('derives epic status from descendant task statuses', async () => {
@@ -802,7 +810,10 @@ describe('capabilityRouterOrch', () => {
     expect(epicAfterActive?.status).toBe('active')
   })
 
-  it('ignores manual epic status edits and keeps derived status', async () => {
+  // Manual epic status edits are honored as overrides: the update skips the
+  // derived-status policy for that epic (skipEpicKeys) and stamps
+  // epic_completed_at when completing.
+  it('honors manual epic status edits over derived status', async () => {
     const fs = new FakeVaultFS()
 
     const { node: program } = await capabilityOrch!.invokeCapabilityOrThrow({
@@ -859,7 +870,8 @@ describe('capabilityRouterOrch', () => {
       input: { uuid: epic.uuid },
       actor: ACTOR,
     }, { fs })
-    expect(epicAfterUpdate?.status).toBe('active')
+    expect(epicAfterUpdate?.status).toBe('completed')
+    expect(epicAfterUpdate?.epicCompletedAt).toBeTruthy()
   })
 
   it('supports dry-run preview for move without persisting', async () => {

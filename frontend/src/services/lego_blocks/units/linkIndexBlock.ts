@@ -200,6 +200,19 @@ function extractMarkdownLinks(
   return links
 }
 
+// Memoized by array identity — sync passes the same candidatePaths array for
+// every file in a run, so normalizing the whole vault's paths per file was
+// O(files²) work on large vaults.
+const normalizedCandidateSetCache = new WeakMap<string[], Set<string>>()
+
+function getNormalizedCandidateSet(candidatePaths: string[]): Set<string> {
+  const cached = normalizedCandidateSetCache.get(candidatePaths)
+  if (cached) return cached
+  const set = new Set(candidatePaths.map(normalizeLinkPath))
+  normalizedCandidateSetCache.set(candidatePaths, set)
+  return set
+}
+
 function extractYamlPathScalars(
   content: string,
   filePath: string,
@@ -211,8 +224,7 @@ function extractYamlPathScalars(
   const links: ExtractedLink[] = []
   const normalizedFilePath = normalizeLinkPath(filePath)
   const currentDir = dirnameLinkPath(normalizedFilePath)
-  // Pre-normalize candidate paths into a Set for O(1) lookups instead of O(n) .some()
-  const normalizedCandidateSet = new Set(candidatePaths.map(normalizeLinkPath))
+  const normalizedCandidateSet = getNormalizedCandidateSet(candidatePaths)
   const lines = frontmatter.split(/\r?\n/)
   if (lines.length < 3 || lines[0] !== '---') return []
 

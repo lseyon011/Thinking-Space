@@ -68,20 +68,23 @@ export interface VaultSyncOptions {
 // ── File paths cache ──
 // Avoid re-querying all file paths from IndexedDB on every single-file sync.
 // Invalidated after full/incremental sync completes.
-let _cachedFilePaths: Set<string> | null = null
+// Stable array identity matters: downstream link resolution memoizes per-array
+// lookups (WeakMap), so reusing the same array across single-file syncs keeps
+// those caches warm.
+let _cachedFilePathsArray: string[] | null = null
 let _cachedFilePathsAge = 0
 const FILE_PATHS_CACHE_TTL_MS = 30_000
 
-function getCachedFilePaths(): Set<string> | null {
-  if (_cachedFilePaths && (Date.now() - _cachedFilePathsAge) < FILE_PATHS_CACHE_TTL_MS) {
-    return _cachedFilePaths
+function getCachedFilePathsArray(): string[] | null {
+  if (_cachedFilePathsArray && (Date.now() - _cachedFilePathsAge) < FILE_PATHS_CACHE_TTL_MS) {
+    return _cachedFilePathsArray
   }
-  _cachedFilePaths = null
+  _cachedFilePathsArray = null
   return null
 }
 
 function setCachedFilePaths(paths: Set<string>): void {
-  _cachedFilePaths = paths
+  _cachedFilePathsArray = [...paths]
   _cachedFilePathsAge = Date.now()
 }
 
@@ -352,8 +355,8 @@ export async function syncSingleFile(
     await upsertNode(record)
 
     // Update link index for this file — use cached paths if available
-    const candidatePaths = getCachedFilePaths() ?? await getAllFilePaths()
-    const links = extractLinksFromContentBlock(content, filePath, [...candidatePaths])
+    const candidatePaths = getCachedFilePathsArray() ?? [...await getAllFilePaths()]
+    const links = extractLinksFromContentBlock(content, filePath, candidatePaths)
     const linkRecords: Omit<LinkRecord, 'id'>[] = links.map(l => ({
       sourceFilePath: filePath,
       targetFilePath: l.targetFilePath,
