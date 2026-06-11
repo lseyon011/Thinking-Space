@@ -18,11 +18,11 @@ interface AnchorElementProps {
 
 const ANCHOR_ELEMENTS = {
   welcome: { w: 640, h: 120, offsetY: -520 },
-  charts: { w: 880, h: 360, offsetY: -380 },
-  hotspot: { w: 880, h: 280, offsetY: 20 },
-  today: { w: 880, h: 440, offsetY: 340 },
   // Tall enough to hold the chart + drill-down table without scrolling.
-  aiActivity: { w: 880, h: 980, offsetY: 820 },
+  aiActivity: { w: 880, h: 980, offsetY: -380 },
+  charts: { w: 880, h: 360, offsetY: 640 },
+  hotspot: { w: 880, h: 280, offsetY: 1040 },
+  today: { w: 880, h: 440, offsetY: 1360 },
 } as const
 
 function FloatingPanel({
