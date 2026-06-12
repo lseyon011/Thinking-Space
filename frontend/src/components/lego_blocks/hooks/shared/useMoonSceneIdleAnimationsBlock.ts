@@ -4,9 +4,13 @@
  * from the library (skate, wizard, float, ...) for a short burst, then returns
  * to its idle loop. Each speaker runs an independent randomized timer chain so
  * the two never sync up. Disabled via the moonSceneIdleAnimationsEnabled pref.
+ *
+ * Also exposes playBurst() so clicking the scene triggers an immediate random
+ * burst for both sprites — manual bursts work even when ambient ones are
+ * disabled, since a click is explicit user intent.
  */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   MOON_SCENE_MESSAGES_UPDATED_EVENT_BLOCK,
   type MoonSceneAnimationBlock,
@@ -18,10 +22,11 @@ const IDLE_ANIMATION_POOL: MoonSceneAnimationBlock[] = [
   'wave', 'dance', 'hop', 'cheer', 'spin', 'skate', 'wizard', 'run', 'float', 'sleep',
 ]
 
-const IDLE_GAP_MIN_MS = 20_000
-const IDLE_GAP_MAX_MS = 45_000
+const IDLE_GAP_MIN_MS = 8 * 60_000
+const IDLE_GAP_MAX_MS = 14 * 60_000
 const PLAY_MIN_MS = 12_000
 const PLAY_MAX_MS = 18_000
+const CLICK_PLAY_MS = 7_000
 
 function randomBetween(min: number, max: number): number {
   return min + Math.random() * (max - min)
@@ -34,12 +39,34 @@ function randomIdleAnimation(previous: MoonSceneAnimationBlock): MoonSceneAnimat
 
 export type IdleMoonSceneAnimationsBlock = Record<MoonSceneSpeakerBlock, MoonSceneAnimationBlock>
 
-export function useMoonSceneIdleAnimationsBlock(): IdleMoonSceneAnimationsBlock {
+export interface MoonSceneIdleAnimationsResultBlock {
+  animations: IdleMoonSceneAnimationsBlock
+  playBurst: () => void
+}
+
+export function useMoonSceneIdleAnimationsBlock(): MoonSceneIdleAnimationsResultBlock {
   const [enabled, setEnabled] = useState(true)
   const [animations, setAnimations] = useState<IdleMoonSceneAnimationsBlock>({
     astronaut: 'none',
     clawd: 'none',
   })
+  const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const playBurst = useCallback(() => {
+    if (burstTimerRef.current) clearTimeout(burstTimerRef.current)
+    setAnimations(prev => ({
+      astronaut: randomIdleAnimation(prev.astronaut),
+      clawd: randomIdleAnimation(prev.clawd),
+    }))
+    burstTimerRef.current = setTimeout(() => {
+      setAnimations({ astronaut: 'none', clawd: 'none' })
+      burstTimerRef.current = null
+    }, CLICK_PLAY_MS)
+  }, [])
+
+  useEffect(() => () => {
+    if (burstTimerRef.current) clearTimeout(burstTimerRef.current)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -93,5 +120,5 @@ export function useMoonSceneIdleAnimationsBlock(): IdleMoonSceneAnimationsBlock 
     }
   }, [enabled])
 
-  return animations
+  return { animations, playBurst }
 }

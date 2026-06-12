@@ -203,10 +203,43 @@ const WIZARD_WAND = [
   '.G...',
 ]
 
-const SPARKLE = [
-  '.Y.',
-  'YYY',
-  '.Y.',
+// Plus-shaped sparkle, parameterized by color letter (gold for the wizard
+// wand, mixed colors for disco glints).
+function sparkleRows(c: string): string[] {
+  return [`.${c}.`, `${c}${c}${c}`, `.${c}.`]
+}
+
+const SPARKLE = sparkleRows('Y')
+
+// Disco ball — checkerboard facets; a white shine column sweeps across it
+// (clipped by an overflow-hidden wrapper) to fake rotation.
+const DISCO_BALL = [
+  '..SGSGS..',
+  '.GSGSGSG.',
+  'SGSGSGSGS',
+  'GSGSGSGSG',
+  'SGSGSGSGS',
+  'GSGSGSGSG',
+  '.SGSGSGS.',
+  '..GSGSG..',
+]
+
+const DISCO_SHINE = ['W', 'W', 'W', 'W']
+
+// Headphones worn in DJ mode — band arcs one row above each head with wide
+// 3-column cups hanging from its ends, poking out past the head sides.
+const HEADPHONES_ASTRO = [
+  '.KKKKKKKKKK.',
+  'KK........KK',
+  'KK........KK',
+  'KK........KK',
+]
+
+const HEADPHONES_CLAWD = [
+  '..KKKKKKKKKKKKK.',
+  '.KK...........KK',
+  '.KK...........KK',
+  '.KK...........KK',
 ]
 
 // Tiny pixel "Z" — three of these rise while a sprite sleeps.
@@ -392,11 +425,12 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
   const phase = useTimeOfDayBlock()
   const dj = phase === 'night'
   const activeMessages = useMoonSceneMessagesBlock()
-  const idleAnimations = useMoonSceneIdleAnimationsBlock()
+  const { animations: idleAnimations, playBurst } = useMoonSceneIdleAnimationsBlock()
   const astroMsg = activeMessages.astronaut
   const clawdMsg = activeMessages.clawd
-  // Scheduled messages take priority; otherwise the idle rotation may play a
-  // random animation burst. Night DJ mode keeps its own show.
+  // Scheduled messages take priority; otherwise the idle rotation (or a
+  // click-triggered burst) may play a random animation. Night DJ mode keeps
+  // its own show.
   const astroAnim: MoonSceneAnimationBlock = astroMsg
     ? astroMsg.animation
     : dj ? 'none' : idleAnimations.astronaut
@@ -533,6 +567,16 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           0%, 100% { opacity: 0.55; }
           50%      { opacity: 1; }
         }
+        /* Disco ball: gentle pendulum sway from the string anchor, plus a
+           shine column stepping across the facets to read as rotation. */
+        @keyframes moon-disco-sway {
+          from { transform: rotate(-4deg); }
+          to   { transform: rotate(4deg); }
+        }
+        @keyframes moon-disco-spin {
+          from { transform: translateX(-4px); }
+          to   { transform: translateX(36px); }
+        }
 
         /* --- scheduled-message animation library --- */
         @keyframes moon-msg-dance {
@@ -635,6 +679,55 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
               </div>
             </div>
           </div>
+
+          {/* disco ball hanging above the deck, swaying from its string */}
+          <div
+            style={{
+              position: 'absolute',
+              left: 236,
+              top: 18,
+              animation: 'moon-disco-sway 3.4s ease-in-out infinite alternate',
+              transformOrigin: 'top center',
+            }}
+          >
+            {/* string */}
+            <div style={{ width: 2, height: 14, margin: '0 auto', background: PALETTE.G }} />
+            {/* ball with shine sweep clipped to its bounds */}
+            <div style={{ position: 'relative', width: 36, height: 32, overflow: 'hidden' }}>
+              <PixelSprite rows={DISCO_BALL} px={4} />
+              <div
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 8,
+                  animation: 'moon-disco-spin 1.8s steps(10) infinite',
+                }}
+              >
+                <PixelSprite rows={DISCO_SHINE} px={4} />
+              </div>
+            </div>
+          </div>
+
+          {/* colored glints thrown off the ball */}
+          {[
+            { left: 200, top: 34, delay: 0, color: 'V' },
+            { left: 290, top: 26, delay: 0.5, color: 'R' },
+            { left: 214, top: 70, delay: 1.0, color: 'Y' },
+            { left: 282, top: 78, delay: 1.5, color: 'W' },
+          ].map(g => (
+            <div
+              key={`${g.left}-${g.top}`}
+              style={{
+                position: 'absolute',
+                left: g.left,
+                top: g.top,
+                animation: `moon-msg-sparkle 2s ease-in-out ${g.delay}s infinite`,
+                opacity: 0,
+              }}
+            >
+              <PixelSprite rows={sparkleRows(g.color)} px={3} />
+            </div>
+          ))}
 
           {/* floating notes above the deck */}
           {[
@@ -747,6 +840,12 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           >
             <PixelSprite rows={ASTRONAUT_ARM_R} />
           </div>
+          {/* headphones at night — band sits one row above the helmet */}
+          {dj && (
+            <div style={{ position: 'absolute', left: 0, top: -PX }}>
+              <PixelSprite rows={HEADPHONES_ASTRO} />
+            </div>
+          )}
           <MessageOverlaysBlock
             anim={astroAnim}
             skateboardLeft={6}
@@ -870,12 +969,18 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           >
             <PixelSprite rows={CLAWD_EYELIDS} />
           </div>
+          {/* headphones at night — band arcs over the ears */}
+          {dj && (
+            <div style={{ position: 'absolute', left: 0, top: -PX }}>
+              <PixelSprite rows={HEADPHONES_CLAWD} />
+            </div>
+          )}
           <MessageOverlaysBlock
             anim={clawdAnim}
             skateboardLeft={16}
             skateboardTop={CLAWD.length * PX - 2}
             hatLeft={12}
-            hatTop={-16}
+            hatTop={-24}
             wandLeft={72}
             wandTop={14}
           />
@@ -909,6 +1014,27 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           </div>
         )}
       </div>
+
+      {/* click targets over each sprite — kept tight so they don't swallow
+          canvas pan gestures elsewhere; clicking plays a random burst */}
+      {[
+        { left: 136, bottom: 50, width: 68, height: 78 },
+        { left: 308, bottom: 46, width: 88, height: 62 },
+      ].map(hit => (
+        <div
+          key={hit.left}
+          onClick={playBurst}
+          style={{
+            position: 'absolute',
+            left: hit.left,
+            bottom: hit.bottom,
+            width: hit.width,
+            height: hit.height,
+            pointerEvents: 'auto',
+            cursor: 'pointer',
+          }}
+        />
+      ))}
     </div>
   )
 }
