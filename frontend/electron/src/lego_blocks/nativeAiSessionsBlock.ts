@@ -1,13 +1,16 @@
 // Read-only access to native AI CLI session stores (Claude Code, Codex).
 //
-// Both tools save their transcripts as JSONL outside the vault:
+// Default locations (both tools save their transcripts as JSONL outside the vault):
 //   Claude Code:  ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl
 //   Codex:        ~/.codex/sessions/YYYY/MM/DD/rollout-<isots>-<id>.jsonl
 //
-// This block exposes list+read APIs that are hard-locked to those two roots —
-// any path that resolves outside is rejected. The renderer never sees absolute
-// paths; it works with paths relative to each store's root.
+// The user can re-point either root (Settings ▸ AI Activity ▸ Session sources);
+// overrides persist in `userData/state/ai-session-roots.json`. List+read APIs
+// are locked to the configured roots — any path that resolves outside is
+// rejected. The renderer never sees absolute session paths; it works with
+// paths relative to each store's root.
 
+import { app } from 'electron';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import * as os from 'os';
@@ -24,11 +27,83 @@ export interface NativeSessionEntry {
   size: number;
 }
 
-const CLAUDE_ROOT = path.join(os.homedir(), '.claude', 'projects');
-const CODEX_ROOT = path.join(os.homedir(), '.codex', 'sessions');
+const DEFAULT_ROOTS: Record<NativeAiSource, string> = {
+  claude: path.join(os.homedir(), '.claude', 'projects'),
+  codex: path.join(os.homedir(), '.codex', 'sessions'),
+};
+
+export interface NativeAiRootsBlock {
+  /** Effective root per source (override or default). */
+  claude: string;
+  codex: string;
+  /** Built-in defaults, so the UI can show/reset them. */
+  claudeDefault: string;
+  codexDefault: string;
+}
+
+function getRootsConfigPathBlock(): string {
+  return path.join(app.getPath('userData'), 'state', 'ai-session-roots.json');
+}
+
+function normalizeRootOverride(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  let v = value.trim();
+  if (!v) return null;
+  if (v === '~' || v.startsWith('~/')) v = path.join(os.homedir(), v.slice(1));
+  if (!path.isAbsolute(v)) return null;
+  return path.resolve(v);
+}
+
+let cachedRoots: NativeAiRootsBlock | null = null;
+
+export function readNativeAiRootsBlock(): NativeAiRootsBlock {
+  if (cachedRoots) return cachedRoots;
+  let overrides: Record<string, unknown> = {};
+  try {
+    const raw = fs.readFileSync(getRootsConfigPathBlock(), 'utf-8');
+    if (raw.trim()) overrides = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    // Missing/corrupt config — fall back to defaults.
+  }
+  cachedRoots = {
+    claude: normalizeRootOverride(overrides.claude) ?? DEFAULT_ROOTS.claude,
+    codex: normalizeRootOverride(overrides.codex) ?? DEFAULT_ROOTS.codex,
+    claudeDefault: DEFAULT_ROOTS.claude,
+    codexDefault: DEFAULT_ROOTS.codex,
+  };
+  return cachedRoots;
+}
+
+/**
+ * Persist root overrides. `null`/empty string resets a source to its default.
+ * A non-empty value must be an absolute path (after `~` expansion) or it throws.
+ */
+export function writeNativeAiRootsBlock(
+  next: Partial<Record<NativeAiSource, string | null>>,
+): NativeAiRootsBlock {
+  const current = readNativeAiRootsBlock();
+  const stored: Partial<Record<NativeAiSource, string>> = {};
+  for (const source of ['claude', 'codex'] as const) {
+    const raw = source in next ? next[source] : current[source];
+    if (raw == null || !String(raw).trim()) continue; // reset → omit from config
+    const normalized = normalizeRootOverride(raw);
+    if (!normalized) {
+      throw new Error(`Session root for ${source} must be an absolute path: ${raw}`);
+    }
+    if (normalized !== DEFAULT_ROOTS[source]) stored[source] = normalized;
+  }
+  const filePath = getRootsConfigPathBlock();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(stored, null, 2), { encoding: 'utf-8', mode: 0o600 });
+  fs.renameSync(tempPath, filePath);
+  cachedRoots = null;
+  return readNativeAiRootsBlock();
+}
 
 function rootFor(source: NativeAiSource): string {
-  return source === 'claude' ? CLAUDE_ROOT : CODEX_ROOT;
+  const roots = readNativeAiRootsBlock();
+  return source === 'claude' ? roots.claude : roots.codex;
 }
 
 function relPosix(absPath: string, root: string): string {
@@ -94,8 +169,8 @@ export async function listNativeAiSessionsBlock(): Promise<NativeSessionEntry[]>
   // Each store may or may not exist on a given machine — treat missing roots
   // as "no sessions" rather than errors.
   await Promise.all([
-    walkJsonlBlock('claude', CLAUDE_ROOT, out).catch(() => undefined),
-    walkJsonlBlock('codex', CODEX_ROOT, out).catch(() => undefined),
+    walkJsonlBlock('claude', rootFor('claude'), out).catch(() => undefined),
+    walkJsonlBlock('codex', rootFor('codex'), out).catch(() => undefined),
   ]);
   return out;
 }

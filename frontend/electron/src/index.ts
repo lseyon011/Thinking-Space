@@ -88,6 +88,8 @@ import { listTranscriptsBlock, readTranscriptBlock } from './lego_blocks/transcr
 import {
   listNativeAiSessionsBlock,
   readNativeAiSessionBlock,
+  readNativeAiRootsBlock,
+  writeNativeAiRootsBlock,
   type NativeAiSource,
 } from './lego_blocks/nativeAiSessionsBlock';
 import { startHeartbeatBlock, stopHeartbeatBlock } from './lego_blocks/heartbeatBlock';
@@ -1887,7 +1889,8 @@ ipcMain.handle('vault:exists', async (_event, vaultRoot: string, relPath: string
   }
 });
 
-// -- Native AI session stores (read-only, locked to ~/.claude/projects + ~/.codex/sessions) --
+// -- Native AI session stores (read-only, locked to the configured roots;
+//    defaults: ~/.claude/projects + ~/.codex/sessions) --
 ipcMain.handle('nativeAiSessions:list', async () => {
   return listNativeAiSessionsBlock();
 });
@@ -1895,6 +1898,15 @@ ipcMain.handle(
   'nativeAiSessions:read',
   async (_event, source: NativeAiSource, relPath: string) => {
     return readNativeAiSessionBlock(source, relPath);
+  },
+);
+ipcMain.handle('nativeAiSessions:getRoots', async () => {
+  return readNativeAiRootsBlock();
+});
+ipcMain.handle(
+  'nativeAiSessions:setRoots',
+  async (_event, roots: Partial<Record<NativeAiSource, string | null>>) => {
+    return writeNativeAiRootsBlock(roots);
   },
 );
 

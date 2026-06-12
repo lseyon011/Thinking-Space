@@ -22,6 +22,19 @@ function fmtWhen(iso: string): string {
   }
 }
 
+// Compact per-message stamp: "Jun 11, 4:48 PM". Returns '' for missing/unparseable.
+function fmtMsgWhen(iso: unknown): string {
+  if (typeof iso !== 'string' || !iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 // Native Claude transcripts are JSONL — one JSON event per line. We render
 // user + assistant turns inline (text + thinking blocks); tool_use, system
 // events, and other plumbing are summarized as a quiet one-liner so the
@@ -55,7 +68,9 @@ function renderJsonlTranscript(jsonl: string): string {
     const content = msg?.content
     const { text, thinking } = flattenContent(content)
     if (!text && !thinking) continue
-    out.push('---', '', `### ${type === 'user' ? 'User' : 'Assistant'}`, '')
+    const when = fmtMsgWhen(ev.timestamp)
+    const heading = `### ${type === 'user' ? 'User' : 'Assistant'}${when ? ` · ${when}` : ''}`
+    out.push('---', '', heading, '')
     if (thinking) {
       out.push('> **[thinking]**')
       for (const ln of thinking.split('\n')) out.push(`> ${ln}`)

@@ -10,7 +10,10 @@ import {
   type ActivityChain,
   type ParsedSession,
 } from '@/services/lego_blocks/units/aiActivityParserBlock'
-
+import {
+  resolveCanonicalProjectBlock,
+  subscribeAiActivityMappingBlock,
+} from '@/services/lego_blocks/units/aiActivityMappingBlock'
 // Local preset list — the shared DashboardRangePreset is tuned for the file
 // dashboard above and doesn't include the 6m midpoint that's useful for
 // month-over-month evolution watching.
@@ -203,6 +206,13 @@ export function useAiActivityBlock(
   const [loading, setLoading] = useState(initialSnapshot == null)
   const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  // Bumped whenever the user edits the project mapping so every derived view
+  // (chains, chips, heatmap, table) regroups/recolors without a reparse.
+  const [mappingVersion, setMappingVersion] = useState(0)
+  useEffect(
+    () => subscribeAiActivityMappingBlock(() => setMappingVersion(v => v + 1)),
+    [],
+  )
 
   const earliestSessionIso = useMemo<string | null>(() => {
     if (allSessions.length === 0) return null
@@ -254,13 +264,29 @@ export function useAiActivityBlock(
     [allSessions],
   )
 
+  // Apply the user's project mapping (rename / merge) on top of the auto-inferred
+  // names. Done here — after inheritance, before every aggregation — so chains,
+  // chips, heatmap, and the day table all group by the canonical name. Sessions
+  // whose name is unchanged keep their identity (no needless object churn).
+  const mappedSessions = useMemo(() => {
+    void mappingVersion // re-run when the mapping changes
+    let changed = false
+    const next = enrichedSessions.map(s => {
+      const canonical = resolveCanonicalProjectBlock(s.project, s.path, s.cwd)
+      if (canonical === s.project) return s
+      changed = true
+      return { ...s, project: canonical }
+    })
+    return changed ? next : enrichedSessions
+  }, [enrichedSessions, mappingVersion])
+
   // Apply the AI-source filter before the range overlap step so 'codex'/'claude
   // only' views drive every downstream aggregation (heatmap, area chart,
   // project chips, day timeline, today's chains) consistently.
   const sourceFilteredSessions = useMemo(() => {
-    if (sourceFilter === 'all') return enrichedSessions
-    return enrichedSessions.filter(s => s.source === sourceFilter)
-  }, [enrichedSessions, sourceFilter])
+    if (sourceFilter === 'all') return mappedSessions
+    return mappedSessions.filter(s => s.source === sourceFilter)
+  }, [mappedSessions, sourceFilter])
 
   // Sessions whose activity window OVERLAPS the visible range. A long-running
   // session (e.g. an 8-day Claude chat started a week ago but still active

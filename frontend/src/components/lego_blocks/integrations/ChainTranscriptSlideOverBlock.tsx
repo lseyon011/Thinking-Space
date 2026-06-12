@@ -12,6 +12,30 @@ interface ChainTranscriptSlideOverBlockProps {
   onClose: () => void
 }
 
+function fmtClock(iso: string): string {
+  const d = new Date(iso)
+  const h = d.getHours()
+  const m = d.getMinutes()
+  const suffix = h < 12 ? 'am' : 'pm'
+  const hour12 = h % 12 === 0 ? 12 : h % 12
+  return `${hour12}:${String(m).padStart(2, '0')}${suffix}`
+}
+
+/** Render a chain's date + time span for the header, e.g. "Jun 11 · 4:48pm–9:14am +1d". */
+function fmtChainWhen(startIso: string, endIso: string): string {
+  const start = new Date(startIso)
+  const date = start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const a = fmtClock(startIso)
+  const b = endIso ? fmtClock(endIso) : a
+  if (!endIso || a === b) return `${date} · ${a}`
+  const end = new Date(endIso)
+  const startDay = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())
+  const endDay = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate())
+  const dayDelta = Math.round((endDay - startDay) / 86_400_000)
+  const span = dayDelta > 0 ? `${a}–${b} +${dayDelta}d` : `${a}–${b}`
+  return `${date} · ${span}`
+}
+
 export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainTranscriptSlideOverBlockProps) {
   const [markdown, setMarkdown] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -75,6 +99,9 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
             </div>
             <div className="truncate text-[11px] text-muted-foreground">
               {chain.topic || '(no topic)'}
+            </div>
+            <div className="truncate text-[11px] text-muted-foreground/80">
+              {fmtChainWhen(chain.startedIso, chain.endedIso)}
             </div>
           </div>
           <button

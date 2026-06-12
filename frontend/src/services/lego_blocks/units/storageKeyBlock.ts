@@ -44,6 +44,8 @@ export const STORAGE_KEYS = {
   aiWebsites: 'ltm-ai-websites',
   webSites: 'ltm-web-sites',
   fileActivityIgnoredPaths: 'ltm-file-activity-ignored-paths',
+  aiActivityProjectMapping: 'ltm-ai-activity-project-mapping',
+  aiActivityVaultSourcePrefixes: 'ltm-ai-activity-vault-source-prefixes',
   vaultSyncExcludedPrefixes: 'ltm-vault-sync-excluded-prefixes',
 } as const
 

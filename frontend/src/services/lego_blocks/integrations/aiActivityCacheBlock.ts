@@ -22,15 +22,13 @@ import {
   nativeAiSourcesAvailable,
 } from '@/services/lego_blocks/integrations/nativeAiSessionsBlock'
 import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserBlock'
+import { readVaultSessionPrefixesBlock } from '@/services/lego_blocks/units/aiActivitySourcesBlock'
 
 const CACHE_PATH = '.thinking-space/ai-activity-cache.json'
 const CACHE_DIR = '.thinking-space'
-const SOURCE_PREFIXES = ['ai_raw/raw/claude-code/', 'ai_raw/raw/codex/']
-// v11: Anthropic cache-creation now splits by TTL (`cacheCreation1h`) so the
-// cost math charges the 2.0x rate on 1-hour cache writes instead of treating
-// everything as 1.25x 5-minute TTL. Existing v10 rows lack the field and
-// would underbill 1h-heavy sessions — bump to reparse Claude transcripts.
-const CACHE_VERSION = 11
+// v12: project detection switched to the generic "cwd folder name" scheme and
+// sessions now carry an explicit `cwd` — bump so every transcript re-classifies.
+const CACHE_VERSION = 12
 
 /** How long to trust the in-memory snapshot before re-walking on the next load call. */
 const MEM_TTL_MS = 5 * 60 * 1000
@@ -134,8 +132,9 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
     listNativeAiSessions(),
   ])
 
+  const sourcePrefixes = readVaultSessionPrefixesBlock()
   const vaultSessions: VaultEntry[] = vaultEntries.filter(e =>
-    SOURCE_PREFIXES.some(prefix => e.path.startsWith(prefix)),
+    sourcePrefixes.some(prefix => e.path.startsWith(prefix)),
   )
 
   const cache = await readCache(fs)

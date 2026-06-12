@@ -10,46 +10,23 @@
 //     Subsequent events have `type: "response_item" | "event_msg" | ...` and a
 //     `payload` whose `role` indicates user/assistant when applicable.
 //
-// We classify project directly from `cwd` (no heuristics needed — cwd is gold).
+// We classify project directly from `cwd` (no heuristics needed — cwd is gold):
+// the project is the working directory's folder name. Nothing user-specific in
+// code; renames/merges happen post-parse via the user's mapping rules.
 
 import type {
   ActivitySource,
   ParsedSession,
   SessionTokens,
 } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import { autoInferProjectFromPathBlock } from '@/services/lego_blocks/units/aiActivityMappingBlock'
 
 export type NativeSource = 'claude' | 'codex'
-
-const PERSONAL_GIT_RE = /\/PersonalGit\/([A-Za-z0-9_.-]+)/
-const NESTED_RES: ReadonlyArray<{ root: string; re: RegExp }> = [
-  { root: 'acceleration_core', re: /acceleration_core\/([A-Za-z0-9_.-]+)/ },
-  { root: 'lifeblood_systems', re: /lifeblood_systems\/([A-Za-z0-9_.-]+)/ },
-  { root: 'operations', re: /operations\/([A-Za-z0-9_.-]+)/ },
-]
-const VAULT_TOPLEVEL_RE = /Long-Term-Memory-iCloud\/([A-Za-z0-9_.-]+)/
-const VAULT_INFRA_NAMES = new Set([
-  '.cache', '.git', '.obsidian', '.thinking-space', '.trash',
-  'AGENTS.md', 'CLAUDE.md', 'README.md',
-])
-const VAULT_TOPLEVEL_SKIP = new Set([
-  'acceleration_core', 'lifeblood_systems', 'operations',
-])
 
 /** Classify an absolute cwd path into a project bucket. */
 function classifyCwd(cwd: string): string {
   if (!cwd) return '<unknown>'
-  const pg = PERSONAL_GIT_RE.exec(cwd)
-  if (pg) return pg[1]
-  for (const { re } of NESTED_RES) {
-    const m = re.exec(cwd)
-    if (m) return `LTM/${m[1]}`
-  }
-  const tl = VAULT_TOPLEVEL_RE.exec(cwd)
-  if (tl && !VAULT_TOPLEVEL_SKIP.has(tl[1]) && !VAULT_INFRA_NAMES.has(tl[1])) {
-    return `LTM/${tl[1]}`
-  }
-  if (/Long-Term-Memory-iCloud/.test(cwd)) return 'LTM'
-  return '<unknown>'
+  return autoInferProjectFromPathBlock(cwd) ?? '<unknown>'
 }
 
 function numericField(obj: Record<string, unknown>, key: string): number {
@@ -389,6 +366,7 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       startedIso,
       endedIso,
       project,
+      cwd: cwd || undefined,
       userMsgCount: scan.count,
       topic,
       hadClear: winHadClear,

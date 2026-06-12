@@ -76,6 +76,8 @@ import {
   updateAiWebsiteOrch,
 } from '@/services/orchestrators/aiWebsiteOrch'
 import type { AiWebsiteBlock } from '@/services/lego_blocks/units/aiWebsiteBlock'
+import AiActivityProjectMappingSettingsBlock from '@/components/lego_blocks/integrations/AiActivityProjectMappingSettingsBlock'
+import AiActivitySessionSourcesSettingsBlock from '@/components/lego_blocks/integrations/AiActivitySessionSourcesSettingsBlock'
 import {
   addWebSiteOrch,
   addWebSiteGroupOrch,
@@ -98,7 +100,7 @@ import {
   setConsoleWarningsVisible,
 } from '@/services/lego_blocks/units/consoleNoiseFilterBlock'
 
-export type SettingsTabId = 'theme' | 'explorer' | 'activity' | 'scheduler' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer'
+export type SettingsTabId = 'theme' | 'explorer' | 'activity' | 'ai_activity' | 'scheduler' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
 
 interface SettingsOrchProps {
@@ -146,6 +148,7 @@ const TAB_GROUPS: Array<{ heading: string; items: Array<{ id: SettingsTabWithPro
     heading: 'Productivity',
     items: [
       { id: 'activity', label: 'Activity Tracker' },
+      { id: 'ai_activity', label: 'AI Activity' },
       { id: 'scheduler', label: 'Scheduler' },
     ],
   },
@@ -1138,6 +1141,13 @@ export default function SettingsOrch({
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {activeTab === 'ai_activity' && (
+        <div className="space-y-6">
+          <AiActivitySessionSourcesSettingsBlock />
+          <AiActivityProjectMappingSettingsBlock />
+        </div>
       )}
 
       {activeTab === 'scheduler' && (

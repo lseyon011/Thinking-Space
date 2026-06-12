@@ -17,9 +17,22 @@ interface NativeListEntry {
   size: number
 }
 
+export interface NativeAiSessionRoots {
+  /** Effective root per source (override or default). */
+  claude: string
+  codex: string
+  /** Built-in defaults, so the UI can show/reset them. */
+  claudeDefault: string
+  codexDefault: string
+}
+
 interface NativeApi {
   nativeAiSessionsList?: () => Promise<NativeListEntry[]>
   nativeAiSessionRead?: (source: NativeSource, relPath: string) => Promise<string>
+  nativeAiSessionsGetRoots?: () => Promise<NativeAiSessionRoots>
+  nativeAiSessionsSetRoots?: (
+    roots: Partial<Record<NativeSource, string | null>>,
+  ) => Promise<NativeAiSessionRoots>
 }
 
 function getApi(): NativeApi | null {
@@ -32,6 +45,28 @@ function getApi(): NativeApi | null {
 
 export function nativeAiSourcesAvailable(): boolean {
   return getApi() !== null
+}
+
+/** Where the native session stores are read from. Null on non-Electron clients. */
+export async function getNativeAiSessionRoots(): Promise<NativeAiSessionRoots | null> {
+  const api = getApi()
+  if (!api?.nativeAiSessionsGetRoots) return null
+  try {
+    return await api.nativeAiSessionsGetRoots()
+  } catch {
+    return null
+  }
+}
+
+/** Re-point a native session store. Pass null/'' to reset a source to its default. */
+export async function setNativeAiSessionRoots(
+  roots: Partial<Record<NativeSource, string | null>>,
+): Promise<NativeAiSessionRoots> {
+  const api = getApi()
+  if (!api?.nativeAiSessionsSetRoots) {
+    throw new Error('Native AI session API not available on this platform')
+  }
+  return api.nativeAiSessionsSetRoots(roots)
 }
 
 export async function listNativeAiSessions(): Promise<NativeListEntry[]> {

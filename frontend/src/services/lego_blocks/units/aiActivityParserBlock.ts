@@ -3,6 +3,8 @@
 //
 // Ported from `kai-workspace/scripts/claude-activity.py` so the UI and the CLI
 // produce the same shape of data. Keep both in sync when changing chain rules.
+// (Divergence: project detection here is generic — cwd folder name — not the
+// script's hardcoded paths.)
 
 export type ActivitySource = 'claude-code' | 'codex'
 
@@ -16,8 +18,11 @@ export interface ParsedSession {
    *  last event in the file; vault markdown can't (no per-message timestamps),
    *  so it equals `startedIso` there. Used for accurate timeline pill widths. */
   endedIso?: string
-  /** Resolved project bucket (e.g. "Thinking-Space", "LTM/F9", "[auto-commit]"). */
+  /** Resolved project bucket (e.g. "Thinking-Space", "[auto-commit]"). */
   project: string
+  /** Working directory the session ran in, when the transcript reveals it.
+   *  Lets mapping rules / detection roots re-resolve without a reparse signal loss. */
+  cwd?: string
   /** Count of real user-message blocks (slash commands count, tool_results don't). */
   userMsgCount: number
   /** First substantive user prompt (preferred for topic labels); falls back to slash-command label. */
@@ -77,128 +82,27 @@ const COMMAND_NAME_RE = /<command-name>([^<]+)<\/command-name>/
 // is an exact match, not a fragile 8-char prefix scan.
 const FULL_UUID_RE = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
 
-// Detect the project a session was working in by scanning path mentions in the
-// transcript. Two source families:
-//   1. Code repos under PersonalGit (e.g. /PersonalGit/Thinking-Space/...).
-//   2. Vault subtrees, derived dynamically from path mentions:
-//        - acceleration_core/<name>  →  LTM/<name>
-//        - lifeblood_systems/<name>  →  LTM/<name>
-//        - operations/<name>          →  LTM/<name>
-//        - other top-level vault dirs (kai-workspace, ai_raw, etc.) → LTM/<name>
-// Whichever project gets the most mentions wins; ties prefer specific over LTM
-// generic fallback. Reads no project list anywhere — so new projects show up
-// automatically as soon as you do any work in them.
+// Detect the project a session was working in: the folder name of its working
+// directory. The cwd is the truth — nothing user- or machine-specific lives in
+// code. Wrong/ugly names are fixed post-parse via the user's mapping rules
+// (Settings ▸ AI Activity), and sessions without any cwd signal fall back to
+// `<unknown>` + temporal inheritance.
 
-const PERSONAL_GIT_RE = /\/PersonalGit\/([A-Za-z0-9_.-]+)/g
-const VAULT_NESTED_RES: ReadonlyArray<{ root: string; pattern: RegExp }> = [
-  { root: 'acceleration_core', pattern: /acceleration_core\/([A-Za-z0-9_.-]+)/g },
-  { root: 'lifeblood_systems', pattern: /lifeblood_systems\/([A-Za-z0-9_.-]+)/g },
-  { root: 'operations', pattern: /operations\/([A-Za-z0-9_.-]+)/g },
-]
-const VAULT_TOPLEVEL_RE = /Long-Term-Memory-iCloud\/([A-Za-z0-9_.-]+)/g
-const VAULT_ROOT_RE = /Long-Term-Memory-iCloud/g
-
-// Subpaths that are "infrastructure" and shouldn't masquerade as the project.
-const VAULT_INFRA_NAMES = new Set([
-  '.cache',
-  '.git',
-  '.obsidian',
-  '.thinking-space',
-  '.trash',
-  'AGENTS.md',
-  'CLAUDE.md',
-  'README.md',
-])
-// First segments under top-level that are themselves nested-root markers (already
-// covered by VAULT_NESTED_RES) or generic shared workspaces — don't double-count.
-const VAULT_TOPLEVEL_SKIP = new Set([
-  'acceleration_core',
-  'lifeblood_systems',
-  'operations',
-])
-
-function countMatches(text: string, re: RegExp): Map<string, number> {
-  const out = new Map<string, number>()
-  // Reset stateful regex between calls (the `g` flag carries lastIndex).
-  re.lastIndex = 0
-  let m: RegExpExecArray | null
-  while ((m = re.exec(text)) !== null) {
-    const name = m[1]
-    if (!name) continue
-    out.set(name, (out.get(name) ?? 0) + 1)
-  }
-  return out
-}
+import { autoInferProjectFromPathBlock } from '@/services/lego_blocks/units/aiActivityMappingBlock'
 
 // Claude Code writes a "Primary working directory:" line at the top of every
 // transcript. When present, this is a high-confidence signal — way more
-// reliable than counting random path mentions — so we short-circuit on it.
+// reliable than scanning random path mentions in tool output.
 const CWD_RE = /(?:Primary working directory|Working directory|cwd)\s*[:=]\s*([^\n`<]+)/i
 
-function classifyPath(path: string): string | null {
-  const trimmed = path.trim()
-  let m = /\/PersonalGit\/([A-Za-z0-9_.-]+)/.exec(trimmed)
-  if (m) return m[1]
-  for (const { pattern } of VAULT_NESTED_RES) {
-    const p = new RegExp(pattern.source) // single-shot copy without the /g state
-    const r = p.exec(trimmed)
-    if (r) return `LTM/${r[1]}`
+function detectProject(text: string): { project: string; cwd?: string } {
+  const cwdMatch = CWD_RE.exec(text)
+  const cwd = cwdMatch ? cwdMatch[1].trim() : undefined
+  if (cwd) {
+    const project = autoInferProjectFromPathBlock(cwd)
+    if (project) return { project, cwd }
   }
-  m = /Long-Term-Memory-iCloud\/([A-Za-z0-9_.-]+)/.exec(trimmed)
-  if (m && !VAULT_TOPLEVEL_SKIP.has(m[1]) && !VAULT_INFRA_NAMES.has(m[1])) {
-    return `LTM/${m[1]}`
-  }
-  if (/Long-Term-Memory-iCloud/.test(trimmed)) return 'LTM'
-  return null
-}
-
-function detectProjectFromCwd(text: string): string | null {
-  const m = CWD_RE.exec(text)
-  if (!m) return null
-  return classifyPath(m[1])
-}
-
-function detectProject(text: string): string {
-  // 1. Strongest signal: the session header's explicit cwd. If we can read it,
-  //    trust it absolutely — random path mentions in tool output can be misleading.
-  const fromCwd = detectProjectFromCwd(text)
-  if (fromCwd) return fromCwd
-
-  const scores = new Map<string, number>()
-  const bump = (name: string, by: number) => {
-    if (by <= 0) return
-    scores.set(name, (scores.get(name) ?? 0) + by)
-  }
-
-  // 1. Code repos under PersonalGit — top-level names like "Thinking-Space".
-  for (const [name, count] of countMatches(text, PERSONAL_GIT_RE)) {
-    bump(name, count)
-  }
-
-  // 2. Vault nested roots — projects live one level deep.
-  for (const { pattern } of VAULT_NESTED_RES) {
-    for (const [name, count] of countMatches(text, pattern)) {
-      bump(`LTM/${name}`, count)
-    }
-  }
-
-  // 3. Other top-level vault dirs (kai-workspace, ai_raw, etc.) — skip the
-  //    nested roots (already counted) and infra files/dirs.
-  for (const [name, count] of countMatches(text, VAULT_TOPLEVEL_RE)) {
-    if (VAULT_TOPLEVEL_SKIP.has(name)) continue
-    if (VAULT_INFRA_NAMES.has(name)) continue
-    bump(`LTM/${name}`, count)
-  }
-
-  if (scores.size > 0) {
-    let best: { name: string; count: number } | null = null
-    for (const [name, count] of scores) {
-      if (!best || count > best.count) best = { name, count }
-    }
-    if (best) return best.name
-  }
-
-  return VAULT_ROOT_RE.test(text) ? 'LTM' : '<unknown>'
+  return { project: '<unknown>', cwd }
 }
 
 function parseStarted(filename: string, text: string, mtimeUnix: number): string {
@@ -279,7 +183,8 @@ export function parseSession(input: ParseInput): ParsedSession | null {
 
   const source: ActivitySource = input.path.includes('/codex/') ? 'codex' : 'claude-code'
   const startedIso = parseStarted(filename, input.text, input.mtime)
-  let project = detectProject(input.text)
+  const detected = detectProject(input.text)
+  let project = detected.project
 
   // Noise buckets: automated wrapper sessions get their own buckets so they
   // don't inflate real project counts. Same first-2KB heuristic as Python.
@@ -303,6 +208,7 @@ export function parseSession(input: ParseInput): ParsedSession | null {
     // sources without inventing data we don't have.
     endedIso: startedIso,
     project,
+    cwd: detected.cwd,
     userMsgCount: count,
     topic,
     hadClear: CLEAR_RE.test(input.text),
