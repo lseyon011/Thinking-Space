@@ -28,7 +28,10 @@ const CACHE_PATH = '.thinking-space/ai-activity-cache.json'
 const CACHE_DIR = '.thinking-space'
 // v12: project detection switched to the generic "cwd folder name" scheme and
 // sessions now carry an explicit `cwd` — bump so every transcript re-classifies.
-const CACHE_VERSION = 12
+// v13: cwd detection now validates the captured value is a real path (rejects
+// shell/JSON fragments like `$(pwd | sed...`) and scans all matches for the
+// first sane one — re-parse so garbage project buckets disappear.
+const CACHE_VERSION = 13
 
 /** How long to trust the in-memory snapshot before re-walking on the next load call. */
 const MEM_TTL_MS = 5 * 60 * 1000

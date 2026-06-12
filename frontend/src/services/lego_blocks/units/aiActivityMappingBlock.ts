@@ -129,9 +129,13 @@ export function resolveCanonicalProjectBlock(
 
 // ---- path → project auto-infer (parse-time) ----------------------------------
 
-/** Segments that are infrastructure, not projects (dotdirs, loose doc files). */
+/** Segments that are infrastructure, not projects (dotdirs, loose doc files), or
+ *  junk that isn't a real folder name (shell/JSON fragments that leaked through
+ *  cwd detection — they contain metacharacters a real directory never has). */
 function isInfraSegment(seg: string): boolean {
-  return seg.startsWith('.') || /\.(md|txt|json)$/i.test(seg)
+  if (seg.startsWith('.') || /\.(md|txt|json)$/i.test(seg)) return true
+  if (/["'`$()|;*<>]/.test(seg)) return true
+  return false
 }
 
 /** The automatic project name for a working directory: its folder name (the

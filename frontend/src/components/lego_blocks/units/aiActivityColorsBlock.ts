@@ -2,9 +2,11 @@
 // Same color for the same project everywhere (chips, heatmap tint, stacked
 // area, sparkline) so the eye learns the mapping over time.
 //
-// A user-defined color (Settings ▸ AI Activity) takes precedence; everything
-// else gets a stable hash-assigned color from the anonymous palette below —
-// no project names are hardcoded here.
+// Color resolution order: user override (Settings ▸ AI Activity) > activity
+// rank slot > stable hash fallback. Projects are colored by activity rank
+// (busiest first) so the projects you look at most get the calm leading
+// palette colors instead of a random hash slot. No project names are
+// hardcoded — the ranking is fed in from the live data.
 
 import { resolveProjectColorOverrideBlock } from '@/services/lego_blocks/units/aiActivityMappingBlock'
 
@@ -28,17 +30,38 @@ function paletteEntry(r: number, g: number, b: number): ProjectColorEntry {
   }
 }
 
+// Ordered so the leading slots (assigned to the busiest projects) are calm,
+// cool tones; warmer/red hues sit later so they only appear once a user has
+// many projects.
 const PALETTE: ReadonlyArray<ProjectColorEntry> = [
   paletteEntry(56, 189, 248), // sky
   paletteEntry(52, 211, 153), // emerald
   paletteEntry(167, 139, 250), // violet
-  paletteEntry(251, 191, 36), // amber
-  paletteEntry(251, 113, 133), // rose
-  paletteEntry(232, 121, 249), // fuchsia
-  paletteEntry(251, 146, 60), // orange
   paletteEntry(45, 212, 191), // teal
   paletteEntry(129, 140, 248), // indigo
+  paletteEntry(251, 191, 36), // amber
+  paletteEntry(251, 146, 60), // orange
+  paletteEntry(251, 113, 133), // rose
+  paletteEntry(232, 121, 249), // fuchsia
 ]
+
+// Maps a project name to its activity-rank slot (0 = busiest). Fed from the
+// sorted project list via setProjectColorRanking; getProjectColor reads it to
+// assign palette colors by rank. Noise/unknown buckets are excluded so real
+// projects always claim the leading calm colors.
+const rankByName = new Map<string, number>()
+
+export function setProjectColorRanking(orderedNames: readonly string[]): void {
+  rankByName.clear()
+  let slot = 0
+  for (const name of orderedNames) {
+    if (name.startsWith('[') && name.endsWith(']')) continue
+    if (name === '<unknown>') continue
+    if (rankByName.has(name)) continue
+    rankByName.set(name, slot)
+    slot += 1
+  }
+}
 
 // Warm clay/terracotta — distinct from the grey empty-cell background so an
 // unknown-project day actually shows up on the heatmap (previously it blended
@@ -93,7 +116,10 @@ export function getProjectColor(name: string): ProjectColorEntry {
   }
   if (name.startsWith('[') && name.endsWith(']')) return NOISE_ENTRY
   if (name === '<unknown>') return UNKNOWN_ENTRY
-  // Stable hash so the same project always gets the same palette slot.
+  // Activity-rank slot: busiest projects get the calm leading palette colors.
+  const rank = rankByName.get(name)
+  if (rank != null) return PALETTE[rank % PALETTE.length]
+  // Stable hash fallback for any project not in the current ranking.
   let hash = 0
   for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) | 0
   return PALETTE[Math.abs(hash) % PALETTE.length]

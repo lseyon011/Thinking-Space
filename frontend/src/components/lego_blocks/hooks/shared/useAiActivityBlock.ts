@@ -14,6 +14,7 @@ import {
   resolveCanonicalProjectBlock,
   subscribeAiActivityMappingBlock,
 } from '@/services/lego_blocks/units/aiActivityMappingBlock'
+import { setProjectColorRanking } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 // Local preset list — the shared DashboardRangePreset is tuned for the file
 // dashboard above and doesn't include the 6m midpoint that's useful for
 // month-over-month evolution watching.
@@ -405,7 +406,12 @@ export function useAiActivityBlock(
       const idx = dayIndex.get(isoDayLocal(new Date(c.startedIso)))
       if (idx != null) p.sparkline[idx] += c.msgCount
     }
-    return [...accum.values()].sort((a, b) => b.totalMsgs - a.totalMsgs)
+    const sorted = [...accum.values()].sort((a, b) => b.totalMsgs - a.totalMsgs)
+    // Feed the activity ranking to the color block so palette slots are assigned
+    // busiest-first. Set here (during the hook's render, before children paint)
+    // so charts read the correct colors on first paint, not after a flash.
+    setProjectColorRanking(sorted.map(p => p.name))
+    return sorted
   }, [sessions, chains, startIso, endIso])
 
   const refresh = useCallback(() => setRefreshKey(k => k + 1), [])

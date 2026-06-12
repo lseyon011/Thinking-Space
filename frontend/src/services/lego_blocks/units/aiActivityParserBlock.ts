@@ -92,12 +92,35 @@ import { autoInferProjectFromPathBlock } from '@/services/lego_blocks/units/aiAc
 
 // Claude Code writes a "Primary working directory:" line at the top of every
 // transcript. When present, this is a high-confidence signal — way more
-// reliable than scanning random path mentions in tool output.
-const CWD_RE = /(?:Primary working directory|Working directory|cwd)\s*[:=]\s*([^\n`<]+)/i
+// reliable than scanning random path mentions in tool output. Global flag so we
+// can walk every match and pick the first that's an actual path (the regex also
+// matches JSON tool-args like {"cwd": "..."} and shell fragments deeper in the
+// body — those must be skipped, not blindly trusted).
+const CWD_RE = /(?:Primary working directory|Working directory|cwd)\s*[:=]\s*([^\n`<]+)/gi
+
+// Turn a raw captured cwd into a clean absolute path, or null if it doesn't look
+// like one. Strips JSON/quote wrappers, then requires an absolute-path shape and
+// rejects shell/JSON metacharacters — a real working directory never contains
+// `$( ) | " ; *` etc., but the garbage buckets ($(pwd | sed...), "Size: $(wc -c,
+// JSON arg blobs) always do.
+function sanitizeCwd(raw: string): string | null {
+  let v = raw.trim()
+  v = v.replace(/^["'`]+/, '').replace(/["'`,]+$/, '').trim()
+  if (!v) return null
+  if (!/^(~|\/|[A-Za-z]:[\\/])/.test(v)) return null
+  if (/[$()|`;*<>"]/.test(v)) return null
+  return v
+}
 
 function detectProject(text: string): { project: string; cwd?: string } {
-  const cwdMatch = CWD_RE.exec(text)
-  const cwd = cwdMatch ? cwdMatch[1].trim() : undefined
+  let cwd: string | undefined
+  for (const m of text.matchAll(CWD_RE)) {
+    const candidate = sanitizeCwd(m[1])
+    if (candidate) {
+      cwd = candidate
+      break
+    }
+  }
   if (cwd) {
     const project = autoInferProjectFromPathBlock(cwd)
     if (project) return { project, cwd }
