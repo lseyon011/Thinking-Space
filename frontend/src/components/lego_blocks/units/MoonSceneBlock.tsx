@@ -13,6 +13,8 @@
  */
 
 import { useTimeOfDayBlock } from '@/components/lego_blocks/hooks/shared/useTimeOfDayBlock'
+import { useMoonSceneMessagesBlock } from '@/components/lego_blocks/hooks/shared/useMoonSceneMessagesBlock'
+import type { MoonSceneAnimationBlock } from '@/services/lego_blocks/units/vaultUiPreferencesBlock'
 
 const PX = 5
 
@@ -209,9 +211,62 @@ function PixelSprite({ rows, px = PX }: { rows: string[]; px?: number }) {
   )
 }
 
+// Pixel-styled speech bubble for scheduled messages; anchored above a sprite
+// and grows upward with the text.
+function SpeechBubbleBlock({ text }: { text: string }) {
+  return (
+    <div style={{ position: 'relative', width: 'max-content', maxWidth: 160 }}>
+      <div
+        style={{
+          background: PALETTE.W,
+          color: PALETTE.K,
+          fontFamily: 'ui-monospace, monospace',
+          fontSize: 10,
+          fontWeight: 600,
+          lineHeight: 1.45,
+          padding: '6px 9px',
+          border: `3px solid ${PALETTE.K}`,
+          boxShadow: '0 3px 0 rgba(0,0,0,0.35)',
+        }}
+      >
+        {text}
+      </div>
+      {/* tail */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 10,
+          bottom: -7,
+          width: 10,
+          height: 10,
+          background: PALETTE.W,
+          borderLeft: `3px solid ${PALETTE.K}`,
+          borderBottom: `3px solid ${PALETTE.K}`,
+          transform: 'rotate(-45deg)',
+        }}
+      />
+    </div>
+  )
+}
+
+// Body-level animations replace the idle bob/wiggle; arm-level ones (wave,
+// cheer) keep the body idle and only override the arm overlays.
+const MSG_BODY_ANIMATION: Partial<Record<MoonSceneAnimationBlock, string>> = {
+  dance: 'moon-msg-dance 0.9s ease-in-out infinite',
+  hop: 'moon-msg-hop 1.6s ease-in-out infinite',
+  spin: 'moon-msg-spin 2.4s linear infinite',
+}
+
 export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
   const phase = useTimeOfDayBlock()
   const dj = phase === 'night'
+  const activeMessages = useMoonSceneMessagesBlock()
+  const astroMsg = activeMessages.astronaut
+  const clawdMsg = activeMessages.clawd
+  const astroAnim: MoonSceneAnimationBlock = astroMsg?.animation ?? 'none'
+  const clawdAnim: MoonSceneAnimationBlock = clawdMsg?.animation ?? 'none'
+  const astroBodyMsgAnimation = MSG_BODY_ANIMATION[astroAnim]
+  const clawdBodyMsgAnimation = MSG_BODY_ANIMATION[clawdAnim]
 
   const surfaceW = 520
   const surfaceH = 110
@@ -338,6 +393,40 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           0%, 100% { opacity: 0.55; }
           50%      { opacity: 1; }
         }
+
+        /* --- scheduled-message animation library --- */
+        @keyframes moon-msg-dance {
+          0%, 100% { transform: translateX(0) rotate(0deg); }
+          25%      { transform: translateX(-4px) rotate(-6deg); }
+          75%      { transform: translateX(4px) rotate(6deg); }
+        }
+        @keyframes moon-msg-hop {
+          0%, 60%, 100% { transform: translateY(0); }
+          30%           { transform: translateY(-14px); }
+        }
+        @keyframes moon-msg-spin {
+          0%   { transform: scaleX(1); }
+          25%  { transform: scaleX(0.1); }
+          50%  { transform: scaleX(-1); }
+          75%  { transform: scaleX(0.1); }
+          100% { transform: scaleX(1); }
+        }
+        @keyframes moon-msg-wave {
+          from { transform: rotate(15deg); }
+          to   { transform: rotate(50deg); }
+        }
+        @keyframes moon-msg-cheer-l {
+          from { transform: rotate(-35deg); }
+          to   { transform: rotate(-58deg); }
+        }
+        @keyframes moon-msg-cheer-r {
+          from { transform: rotate(35deg); }
+          to   { transform: rotate(58deg); }
+        }
+        @keyframes moon-msg-bubble-float {
+          0%, 100% { transform: translateY(0); }
+          50%      { transform: translateY(-4px); }
+        }
       `}</style>
 
       {/* moon surface */}
@@ -438,27 +527,33 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           position: 'absolute',
           left: 140,
           bottom: 52,
-          animation: dj ? undefined : 'moon-rare-hop 18s ease-in-out infinite',
+          animation: dj || astroBodyMsgAnimation ? undefined : 'moon-rare-hop 18s ease-in-out infinite',
         }}
       >
         <div
           style={{
             position: 'relative',
-            animation: dj
-              ? 'moon-dj-bob 0.52s ease-in-out infinite alternate'
-              : 'moon-bob 3.2s ease-in-out infinite',
+            transformOrigin: 'bottom center',
+            animation: astroBodyMsgAnimation
+              ?? (dj
+                ? 'moon-dj-bob 0.52s ease-in-out infinite alternate'
+                : 'moon-bob 3.2s ease-in-out infinite'),
           }}
         >
           <PixelSprite rows={ASTRONAUT} />
-          {/* arms: think-waggle by day, pump + scratch at night */}
+          {/* arms: think-waggle by day, pump + scratch at night, message overrides */}
           <div
             style={{
               position: 'absolute',
               left: 0,
               top: 0,
-              animation: dj
-                ? 'moon-arm-pump-l 0.52s ease-in-out infinite alternate'
-                : 'moon-arm-think-l 18s ease-in-out infinite',
+              animation: astroAnim === 'wave'
+                ? undefined
+                : astroAnim === 'cheer'
+                  ? 'moon-msg-cheer-l 0.5s ease-in-out infinite alternate'
+                  : dj
+                    ? 'moon-arm-pump-l 0.52s ease-in-out infinite alternate'
+                    : 'moon-arm-think-l 18s ease-in-out infinite',
               transformOrigin: `${3 * PX}px ${6.5 * PX}px`,
             }}
           >
@@ -469,16 +564,20 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
               position: 'absolute',
               left: 0,
               top: 0,
-              animation: dj
-                ? 'moon-arm-scratch 0.26s ease-in-out infinite alternate'
-                : 'moon-arm-think-r 18s ease-in-out infinite',
+              animation: astroAnim === 'wave'
+                ? 'moon-msg-wave 0.6s ease-in-out infinite alternate'
+                : astroAnim === 'cheer'
+                  ? 'moon-msg-cheer-r 0.5s ease-in-out infinite alternate'
+                  : dj
+                    ? 'moon-arm-scratch 0.26s ease-in-out infinite alternate'
+                    : 'moon-arm-think-r 18s ease-in-out infinite',
               transformOrigin: `${9 * PX}px ${6.5 * PX}px`,
             }}
           >
             <PixelSprite rows={ASTRONAUT_ARM_R} />
           </div>
           {/* thought bubble floats up-right of the helmet (day only) */}
-          {!dj && (
+          {!dj && !astroMsg && (
             <div
               style={{
                 position: 'absolute',
@@ -508,6 +607,20 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
             </div>
           )}
         </div>
+        {/* scheduled message speech bubble — outside the animated body so the
+            text never mirrors or tilts with dance/spin */}
+        {astroMsg && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 40,
+              bottom: ASTRONAUT.length * PX + 12,
+              animation: 'moon-msg-bubble-float 3.2s ease-in-out infinite',
+            }}
+          >
+            <SpeechBubbleBlock text={astroMsg.text} />
+          </div>
+        )}
       </div>
 
       {/* clawd */}
@@ -516,28 +629,35 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           position: 'absolute',
           left: 312,
           bottom: 48,
-          animation: dj
-            ? 'moon-dj-bob 0.52s ease-in-out 0.26s infinite alternate'
-            : 'moon-bob-slow 2.6s ease-in-out infinite',
+          animation: clawdBodyMsgAnimation
+            ? undefined
+            : dj
+              ? 'moon-dj-bob 0.52s ease-in-out 0.26s infinite alternate'
+              : 'moon-bob-slow 2.6s ease-in-out infinite',
         }}
       >
         <div
           style={{
             position: 'relative',
-            animation: dj ? undefined : 'moon-wiggle 13s ease-in-out infinite',
+            animation: clawdBodyMsgAnimation
+              ?? (dj ? undefined : 'moon-wiggle 13s ease-in-out infinite'),
             transformOrigin: 'bottom center',
           }}
         >
           <PixelSprite rows={CLAWD} />
-          {/* nub arms: flap while thinking by day, on the beat at night */}
+          {/* nub arms: flap while thinking by day, on the beat at night, message overrides */}
           <div
             style={{
               position: 'absolute',
               left: 0,
               top: 0,
-              animation: dj
-                ? 'moon-nub-flap 0.4s ease-in-out infinite alternate'
-                : 'moon-nub-think 18s ease-in-out 9s infinite',
+              animation: clawdAnim === 'wave'
+                ? undefined
+                : clawdAnim === 'cheer'
+                  ? 'moon-nub-flap 0.35s ease-in-out infinite alternate'
+                  : dj
+                    ? 'moon-nub-flap 0.4s ease-in-out infinite alternate'
+                    : 'moon-nub-think 18s ease-in-out 9s infinite',
             }}
           >
             <PixelSprite rows={CLAWD_ARM_L} />
@@ -547,9 +667,13 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
               position: 'absolute',
               left: 0,
               top: 0,
-              animation: dj
-                ? 'moon-nub-flap 0.4s ease-in-out 0.2s infinite alternate'
-                : 'moon-nub-think 18s ease-in-out 9.4s infinite',
+              animation: clawdAnim === 'wave'
+                ? 'moon-nub-flap 0.3s ease-in-out infinite alternate'
+                : clawdAnim === 'cheer'
+                  ? 'moon-nub-flap 0.35s ease-in-out 0.17s infinite alternate'
+                  : dj
+                    ? 'moon-nub-flap 0.4s ease-in-out 0.2s infinite alternate'
+                    : 'moon-nub-think 18s ease-in-out 9.4s infinite',
             }}
           >
             <PixelSprite rows={CLAWD_ARM_R} />
@@ -565,7 +689,7 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
             <PixelSprite rows={CLAWD_EYELIDS} />
           </div>
           {/* `>_` thought bubble, offset in time from the astronaut's (day only) */}
-          {!dj && (
+          {!dj && !clawdMsg && (
             <div
               style={{
                 position: 'absolute',
@@ -579,6 +703,20 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
             </div>
           )}
         </div>
+        {/* scheduled message speech bubble — outside the animated body so the
+            text never mirrors or tilts with dance/spin */}
+        {clawdMsg && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 52,
+              bottom: CLAWD.length * PX + 12,
+              animation: 'moon-msg-bubble-float 2.6s ease-in-out infinite',
+            }}
+          >
+            <SpeechBubbleBlock text={clawdMsg.text} />
+          </div>
+        )}
       </div>
     </div>
   )

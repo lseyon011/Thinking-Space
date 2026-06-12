@@ -4,11 +4,14 @@ import {
   DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK,
   normalizeExplorerFolderColorPreferencesBlock,
   normalizeExplorerIconStyleBlock,
+  normalizeMoonSceneMessagesPreferenceBlock,
   normalizeNewThoughtQuickDestinationsBlock,
   normalizeVaultUiPreferencesBlock,
   serializeVaultUiPreferencesBlock,
+  MOON_SCENE_MESSAGES_UPDATED_EVENT_BLOCK,
   type ExplorerFolderColorPreferenceBlock,
   type ExplorerIconStyleBlock,
+  type MoonSceneMessagePreferenceBlock,
   type NewThoughtQuickDestinationPreferenceBlock,
   type VaultSchedulerTaskPreferenceBlock,
   type VaultUiPreferencesBlock,
@@ -24,6 +27,7 @@ const LEGACY_UI_PREFERENCES_FILE_ORCH = `${LEGACY_UI_PREFERENCES_DIR_ORCH}/ui.js
 export type {
   ExplorerFolderColorPreferenceBlock,
   ExplorerIconStyleBlock,
+  MoonSceneMessagePreferenceBlock,
   NewThoughtQuickDestinationPreferenceBlock,
   VaultUiPreferencesBlock,
 }
@@ -153,6 +157,25 @@ export async function setFileActivityIgnoredPathsOrch(
   return updateVaultUiPreferencesOrch({
     fileActivityIgnoredPaths: paths.filter(p => typeof p === 'string' && p.trim().length > 0).map(p => p.trim()),
   })
+}
+
+export async function readMoonSceneMessagesPreferenceOrch(): Promise<
+  MoonSceneMessagePreferenceBlock[]
+> {
+  const preferences = await readVaultUiPreferencesOrch()
+  return preferences.moonSceneMessages
+}
+
+export async function setMoonSceneMessagesPreferenceOrch(
+  messages: MoonSceneMessagePreferenceBlock[],
+): Promise<VaultUiPreferencesBlock> {
+  const saved = await updateVaultUiPreferencesOrch({
+    moonSceneMessages: normalizeMoonSceneMessagesPreferenceBlock(messages),
+  })
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(MOON_SCENE_MESSAGES_UPDATED_EVENT_BLOCK))
+  }
+  return saved
 }
 
 export async function setSchedulerTasksPreferenceOrch(

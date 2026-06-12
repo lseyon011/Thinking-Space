@@ -46,10 +46,13 @@ import {
 import {
   DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK,
   readVaultUiPreferencesOrch,
+  setMoonSceneMessagesPreferenceOrch,
   setShowDailyHighlightsPreferenceOrch,
   type ExplorerFolderColorPreferenceBlock,
   type ExplorerIconStyleBlock,
+  type MoonSceneMessagePreferenceBlock,
 } from '@/services/orchestrators/vaultUiPreferencesOrch'
+import { MOON_SCENE_ANIMATION_IDS_BLOCK } from '@/services/lego_blocks/units/vaultUiPreferencesBlock'
 import {
   addRssFeedOrch,
   addRssFeedGroupOrch,
@@ -100,7 +103,7 @@ import {
   setConsoleWarningsVisible,
 } from '@/services/lego_blocks/units/consoleNoiseFilterBlock'
 
-export type SettingsTabId = 'theme' | 'explorer' | 'activity' | 'ai_activity' | 'scheduler' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer'
+export type SettingsTabId = 'theme' | 'explorer' | 'moon_scene' | 'activity' | 'ai_activity' | 'scheduler' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
 
 interface SettingsOrchProps {
@@ -119,6 +122,24 @@ interface SettingsOrchProps {
 
 function createExplorerColorRuleId(): string {
   return `explorer-color-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function createMoonSceneMessageId(): string {
+  return `moon-scene-message-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+const MOON_SCENE_SPEAKER_OPTIONS = [
+  { id: 'astronaut', label: 'Astronaut' },
+  { id: 'clawd', label: 'Clawd' },
+] as const
+
+const MOON_SCENE_ANIMATION_LABELS: Record<string, string> = {
+  none: 'None (idle)',
+  wave: 'Wave',
+  dance: 'Dance',
+  hop: 'Hop',
+  cheer: 'Cheer',
+  spin: 'Spin',
 }
 
 function normalizeExplorerFolderPathInput(value: string): string {
@@ -142,6 +163,7 @@ const TAB_GROUPS: Array<{ heading: string; items: Array<{ id: SettingsTabWithPro
     items: [
       { id: 'theme', label: 'Theme' },
       { id: 'explorer', label: 'Explorer' },
+      { id: 'moon_scene', label: 'Moon Scene' },
     ],
   },
   {
@@ -211,12 +233,17 @@ export default function SettingsOrch({
     () => readMarkdownEditorSettingsOrch(),
   )
   const [showDailyHighlights, setShowDailyHighlights] = useState(false)
+  const [moonSceneMessagesSaved, setMoonSceneMessagesSaved] = useState<MoonSceneMessagePreferenceBlock[]>([])
+  const [moonSceneMessagesDraft, setMoonSceneMessagesDraft] = useState<MoonSceneMessagePreferenceBlock[]>([])
+  const [moonSceneMessagesDirty, setMoonSceneMessagesDirty] = useState(false)
   useEffect(() => {
     let cancelled = false
     void readVaultUiPreferencesOrch()
       .then(prefs => {
         if (cancelled) return
         setShowDailyHighlights(prefs.showDailyHighlights)
+        setMoonSceneMessagesSaved(prefs.moonSceneMessages)
+        setMoonSceneMessagesDraft(prefs.moonSceneMessages)
       })
       .catch(() => {
         /* leave default */
@@ -714,6 +741,70 @@ export default function SettingsOrch({
     }
   }
 
+  const onAddMoonSceneMessage = () => {
+    setMoonSceneMessagesDraft(prev => [
+      ...prev,
+      {
+        id: createMoonSceneMessageId(),
+        speaker: 'clawd',
+        text: '',
+        startTime: '09:00',
+        endTime: '10:00',
+        animation: 'wave',
+        enabled: true,
+      },
+    ])
+    setMoonSceneMessagesDirty(true)
+    setMessage(null)
+    setError(null)
+  }
+
+  const onUpdateMoonSceneMessage = (
+    messageId: string,
+    patch: Partial<MoonSceneMessagePreferenceBlock>,
+  ) => {
+    setMoonSceneMessagesDraft(prev => prev.map(entry => (
+      entry.id === messageId ? { ...entry, ...patch } : entry
+    )))
+    setMoonSceneMessagesDirty(true)
+    setMessage(null)
+    setError(null)
+  }
+
+  const onRemoveMoonSceneMessage = (messageId: string) => {
+    setMoonSceneMessagesDraft(prev => prev.filter(entry => entry.id !== messageId))
+    setMoonSceneMessagesDirty(true)
+    setMessage(null)
+    setError(null)
+  }
+
+  const onResetMoonSceneMessages = () => {
+    setMoonSceneMessagesDraft(moonSceneMessagesSaved)
+    setMoonSceneMessagesDirty(false)
+    setMessage('Moon scene messages reset to saved values.')
+    setError(null)
+  }
+
+  const onSaveMoonSceneMessages = async () => {
+    const sanitized = moonSceneMessagesDraft
+      .map(entry => ({ ...entry, text: entry.text.trim() }))
+      .filter(entry => entry.text.length > 0)
+    setBusyAction('moon_scene')
+    setMessage(null)
+    setError(null)
+    try {
+      const saved = await setMoonSceneMessagesPreferenceOrch(sanitized)
+      setMoonSceneMessagesSaved(saved.moonSceneMessages)
+      setMoonSceneMessagesDraft(saved.moonSceneMessages)
+      setMoonSceneMessagesDirty(false)
+      setMessage('Moon scene messages saved.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save moon scene messages')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   const onAddExplorerColorRule = () => {
     setExplorerFolderColorRulesDraft((prev) => [
       ...prev,
@@ -1068,6 +1159,141 @@ export default function SettingsOrch({
                 variant="outline"
                 onClick={onResetExplorerColorRules}
                 disabled={busyAction === 'explorer' || !explorerRulesDirty}
+              >
+                Reset
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'moon_scene' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Moon Scene</CardTitle>
+            <CardDescription>
+              Schedule speech bubbles for the home-canvas moon scene. During a message's daily time window the
+              sprite shows your text (and optionally plays an animation) instead of its idle thought bubble.
+              Windows where start is after end wrap past midnight.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-medium text-foreground">Scheduled Messages</h3>
+              <Button type="button" variant="outline" size="sm" onClick={onAddMoonSceneMessage}>
+                Add Message
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              {moonSceneMessagesDraft.length === 0 && (
+                <div className="rounded-md border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
+                  No scheduled messages yet. Add one to make the astronaut or Clawd talk.
+                </div>
+              )}
+              {moonSceneMessagesDraft.map(entry => (
+                <div
+                  key={entry.id}
+                  className="grid gap-2 rounded-md border border-border/60 p-2 md:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto_auto_auto] md:items-end"
+                >
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground">Speaker</label>
+                    <select
+                      value={entry.speaker}
+                      onChange={event => onUpdateMoonSceneMessage(entry.id, {
+                        speaker: event.target.value as MoonSceneMessagePreferenceBlock['speaker'],
+                      })}
+                      className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-ring"
+                    >
+                      {MOON_SCENE_SPEAKER_OPTIONS.map(option => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground">Message</label>
+                    <input
+                      type="text"
+                      value={entry.text}
+                      maxLength={120}
+                      onChange={event => onUpdateMoonSceneMessage(entry.id, { text: event.target.value })}
+                      placeholder="e.g. time to wrap up and rest"
+                      className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-ring"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground">From</label>
+                    <input
+                      type="time"
+                      step={60}
+                      value={entry.startTime}
+                      onChange={event => onUpdateMoonSceneMessage(entry.id, { startTime: event.target.value })}
+                      className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-ring"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground">To</label>
+                    <input
+                      type="time"
+                      step={60}
+                      value={entry.endTime}
+                      onChange={event => onUpdateMoonSceneMessage(entry.id, { endTime: event.target.value })}
+                      className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-ring"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground">Animation</label>
+                    <select
+                      value={entry.animation}
+                      onChange={event => onUpdateMoonSceneMessage(entry.id, {
+                        animation: event.target.value as MoonSceneMessagePreferenceBlock['animation'],
+                      })}
+                      className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-ring"
+                    >
+                      {MOON_SCENE_ANIMATION_IDS_BLOCK.map(id => (
+                        <option key={id} value={id}>{MOON_SCENE_ANIMATION_LABELS[id] ?? id}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <label className="inline-flex h-9 items-center gap-2 text-xs text-foreground">
+                    <Switch
+                      checked={entry.enabled}
+                      onCheckedChange={checked => onUpdateMoonSceneMessage(entry.id, { enabled: checked })}
+                      aria-label={`Enable message "${entry.text || 'new message'}"`}
+                    />
+                    Enabled
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9"
+                    onClick={() => onRemoveMoonSceneMessage(entry.id)}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              One message per sprite is shown at a time — if windows overlap, the first matching entry in this
+              list wins. Messages with empty text are dropped on save.
+            </p>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={() => { void onSaveMoonSceneMessages() }}
+                disabled={busyAction === 'moon_scene' || !moonSceneMessagesDirty}
+              >
+                {busyAction === 'moon_scene' ? 'Saving...' : 'Save Moon Scene Settings'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onResetMoonSceneMessages}
+                disabled={busyAction === 'moon_scene' || !moonSceneMessagesDirty}
               >
                 Reset
               </Button>

@@ -20,6 +20,27 @@ export interface VaultSchedulerTaskPreferenceBlock {
   timesOfDay: string[]
 }
 
+export type MoonSceneSpeakerBlock = 'astronaut' | 'clawd'
+
+export const MOON_SCENE_ANIMATION_IDS_BLOCK = ['none', 'wave', 'dance', 'hop', 'cheer', 'spin'] as const
+export type MoonSceneAnimationBlock = (typeof MOON_SCENE_ANIMATION_IDS_BLOCK)[number]
+
+export interface MoonSceneMessagePreferenceBlock {
+  id: string
+  speaker: MoonSceneSpeakerBlock
+  text: string
+  /** HH:MM inclusive window start. A window where start > end wraps midnight. */
+  startTime: string
+  /** HH:MM exclusive window end. */
+  endTime: string
+  animation: MoonSceneAnimationBlock
+  enabled: boolean
+}
+
+/** Fired on window whenever moon scene messages are saved, so the mounted
+ *  scene can refresh without a reload. */
+export const MOON_SCENE_MESSAGES_UPDATED_EVENT_BLOCK = 'thinking-space:moon-scene-messages-updated'
+
 export interface VaultUiPreferencesBlock {
   explorerIconStyle: ExplorerIconStyleBlock
   newThoughtQuickDestinations: NewThoughtQuickDestinationPreferenceBlock[]
@@ -28,6 +49,7 @@ export interface VaultUiPreferencesBlock {
   webullTabIconText: string
   fileActivityIgnoredPaths: string[]
   schedulerTasks: VaultSchedulerTaskPreferenceBlock[]
+  moonSceneMessages: MoonSceneMessagePreferenceBlock[]
   /** Show "Insights today" / "Memorized today" tiles + most-recent highlight
    *  rows on the home dashboard. Defaults to off — those tiles depend on a
    *  particular note structure (daily insight files / memorization sessions)
@@ -65,6 +87,7 @@ export const DEFAULT_VAULT_UI_PREFERENCES_BLOCK: VaultUiPreferencesBlock = {
   webullTabIconText: '',
   fileActivityIgnoredPaths: [],
   schedulerTasks: [],
+  moonSceneMessages: [],
   showDailyHighlights: false,
 }
 
@@ -77,6 +100,7 @@ export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock 
     webullTabIconText: '',
     fileActivityIgnoredPaths: [],
     schedulerTasks: [],
+    moonSceneMessages: [],
     showDailyHighlights: false,
   }
 }
@@ -203,6 +227,7 @@ export function normalizeVaultUiPreferencesBlock(value: unknown): VaultUiPrefere
       : '',
     fileActivityIgnoredPaths: normalizeFileActivityIgnoredPathsBlock(record.fileActivityIgnoredPaths),
     schedulerTasks: normalizeSchedulerTasksPreferenceBlock(record.schedulerTasks),
+    moonSceneMessages: normalizeMoonSceneMessagesPreferenceBlock(record.moonSceneMessages),
     showDailyHighlights: typeof record.showDailyHighlights === 'boolean'
       ? record.showDailyHighlights
       : DEFAULT_VAULT_UI_PREFERENCES_BLOCK.showDailyHighlights,
@@ -239,6 +264,68 @@ function normalizeSchedulerTasksPreferenceBlock(value: unknown): VaultSchedulerT
     if (task) tasks.push(task)
   }
   return tasks
+}
+
+const TIME_OF_DAY_BLOCK_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
+
+function normalizeMoonSceneMessagePreferenceBlock(
+  value: unknown,
+  index: number,
+): MoonSceneMessagePreferenceBlock | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Partial<MoonSceneMessagePreferenceBlock>
+  const text = typeof record.text === 'string' ? record.text.trim() : ''
+  if (!text) return null
+  const startTime = typeof record.startTime === 'string' && TIME_OF_DAY_BLOCK_PATTERN.test(record.startTime.trim())
+    ? record.startTime.trim()
+    : null
+  const endTime = typeof record.endTime === 'string' && TIME_OF_DAY_BLOCK_PATTERN.test(record.endTime.trim())
+    ? record.endTime.trim()
+    : null
+  if (!startTime || !endTime) return null
+  const animation = MOON_SCENE_ANIMATION_IDS_BLOCK.includes(record.animation as MoonSceneAnimationBlock)
+    ? (record.animation as MoonSceneAnimationBlock)
+    : 'none'
+  return {
+    id: typeof record.id === 'string' && record.id.trim() ? record.id.trim() : `moon-scene-message-${index + 1}`,
+    speaker: record.speaker === 'clawd' ? 'clawd' : 'astronaut',
+    text: text.slice(0, 120),
+    startTime,
+    endTime,
+    animation,
+    enabled: record.enabled !== false,
+  }
+}
+
+export function normalizeMoonSceneMessagesPreferenceBlock(
+  value: unknown,
+): MoonSceneMessagePreferenceBlock[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  const normalized: MoonSceneMessagePreferenceBlock[] = []
+  for (const [index, candidate] of value.entries()) {
+    const message = normalizeMoonSceneMessagePreferenceBlock(candidate, index)
+    if (!message || seen.has(message.id)) continue
+    seen.add(message.id)
+    normalized.push(message)
+  }
+  return normalized
+}
+
+export function isMoonSceneMessageActiveBlock(
+  message: MoonSceneMessagePreferenceBlock,
+  now: Date = new Date(),
+): boolean {
+  if (!message.enabled) return false
+  const minutes = now.getHours() * 60 + now.getMinutes()
+  const [sh, sm] = message.startTime.split(':').map(Number)
+  const [eh, em] = message.endTime.split(':').map(Number)
+  const start = sh * 60 + sm
+  const end = eh * 60 + em
+  if (start === end) return false
+  if (start < end) return minutes >= start && minutes < end
+  // Window wraps midnight (e.g. 22:00 -> 06:00).
+  return minutes >= start || minutes < end
 }
 
 export function serializeVaultUiPreferencesBlock(preferences: VaultUiPreferencesBlock): string {
