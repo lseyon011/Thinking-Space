@@ -178,6 +178,16 @@ export async function setMoonSceneMessagesPreferenceOrch(
   return saved
 }
 
+export async function setMoonSceneIdleAnimationsEnabledOrch(
+  enabled: boolean,
+): Promise<VaultUiPreferencesBlock> {
+  const saved = await updateVaultUiPreferencesOrch({ moonSceneIdleAnimationsEnabled: enabled })
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(MOON_SCENE_MESSAGES_UPDATED_EVENT_BLOCK))
+  }
+  return saved
+}
+
 export async function setSchedulerTasksPreferenceOrch(
   tasks: VaultSchedulerTaskPreferenceBlock[],
 ): Promise<VaultUiPreferencesBlock> {

@@ -14,6 +14,7 @@
 
 import { useTimeOfDayBlock } from '@/components/lego_blocks/hooks/shared/useTimeOfDayBlock'
 import { useMoonSceneMessagesBlock } from '@/components/lego_blocks/hooks/shared/useMoonSceneMessagesBlock'
+import { useMoonSceneIdleAnimationsBlock } from '@/components/lego_blocks/hooks/shared/useMoonSceneIdleAnimationsBlock'
 import type { MoonSceneAnimationBlock } from '@/services/lego_blocks/units/vaultUiPreferencesBlock'
 
 const PX = 5
@@ -391,10 +392,17 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
   const phase = useTimeOfDayBlock()
   const dj = phase === 'night'
   const activeMessages = useMoonSceneMessagesBlock()
+  const idleAnimations = useMoonSceneIdleAnimationsBlock()
   const astroMsg = activeMessages.astronaut
   const clawdMsg = activeMessages.clawd
-  const astroAnim: MoonSceneAnimationBlock = astroMsg?.animation ?? 'none'
-  const clawdAnim: MoonSceneAnimationBlock = clawdMsg?.animation ?? 'none'
+  // Scheduled messages take priority; otherwise the idle rotation may play a
+  // random animation burst. Night DJ mode keeps its own show.
+  const astroAnim: MoonSceneAnimationBlock = astroMsg
+    ? astroMsg.animation
+    : dj ? 'none' : idleAnimations.astronaut
+  const clawdAnim: MoonSceneAnimationBlock = clawdMsg
+    ? clawdMsg.animation
+    : dj ? 'none' : idleAnimations.clawd
   const astroBodyMsgAnimation = MSG_BODY_ANIMATION[astroAnim]
   const clawdBodyMsgAnimation = MSG_BODY_ANIMATION[clawdAnim]
   const astroOuterMsgAnimation = MSG_OUTER_ANIMATION[astroAnim]
@@ -748,8 +756,8 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
             wandLeft={52}
             wandTop={26}
           />
-          {/* thought bubble floats up-right of the helmet (day only) */}
-          {!dj && !astroMsg && (
+          {/* thought bubble floats up-right of the helmet (day only, idle) */}
+          {!dj && !astroMsg && astroAnim === 'none' && (
             <div
               style={{
                 position: 'absolute',
@@ -871,8 +879,8 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
             wandLeft={72}
             wandTop={14}
           />
-          {/* `>_` thought bubble, offset in time from the astronaut's (day only) */}
-          {!dj && !clawdMsg && (
+          {/* `>_` thought bubble, offset in time from the astronaut's (day only, idle) */}
+          {!dj && !clawdMsg && clawdAnim === 'none' && (
             <div
               style={{
                 position: 'absolute',

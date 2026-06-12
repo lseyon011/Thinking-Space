@@ -50,6 +50,9 @@ export interface VaultUiPreferencesBlock {
   fileActivityIgnoredPaths: string[]
   schedulerTasks: VaultSchedulerTaskPreferenceBlock[]
   moonSceneMessages: MoonSceneMessagePreferenceBlock[]
+  /** When on (default), idle sprites occasionally play a random animation
+   *  from the library (skate, wizard, float, ...) between scheduled messages. */
+  moonSceneIdleAnimationsEnabled: boolean
   /** Show "Insights today" / "Memorized today" tiles + most-recent highlight
    *  rows on the home dashboard. Defaults to off — those tiles depend on a
    *  particular note structure (daily insight files / memorization sessions)
@@ -88,6 +91,7 @@ export const DEFAULT_VAULT_UI_PREFERENCES_BLOCK: VaultUiPreferencesBlock = {
   fileActivityIgnoredPaths: [],
   schedulerTasks: [],
   moonSceneMessages: [],
+  moonSceneIdleAnimationsEnabled: true,
   showDailyHighlights: false,
 }
 
@@ -101,6 +105,7 @@ export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock 
     fileActivityIgnoredPaths: [],
     schedulerTasks: [],
     moonSceneMessages: [],
+    moonSceneIdleAnimationsEnabled: true,
     showDailyHighlights: false,
   }
 }
@@ -228,6 +233,9 @@ export function normalizeVaultUiPreferencesBlock(value: unknown): VaultUiPrefere
     fileActivityIgnoredPaths: normalizeFileActivityIgnoredPathsBlock(record.fileActivityIgnoredPaths),
     schedulerTasks: normalizeSchedulerTasksPreferenceBlock(record.schedulerTasks),
     moonSceneMessages: normalizeMoonSceneMessagesPreferenceBlock(record.moonSceneMessages),
+    moonSceneIdleAnimationsEnabled: typeof record.moonSceneIdleAnimationsEnabled === 'boolean'
+      ? record.moonSceneIdleAnimationsEnabled
+      : true,
     showDailyHighlights: typeof record.showDailyHighlights === 'boolean'
       ? record.showDailyHighlights
       : DEFAULT_VAULT_UI_PREFERENCES_BLOCK.showDailyHighlights,

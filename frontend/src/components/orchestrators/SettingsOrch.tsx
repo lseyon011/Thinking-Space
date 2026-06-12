@@ -46,6 +46,7 @@ import {
 import {
   DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK,
   readVaultUiPreferencesOrch,
+  setMoonSceneIdleAnimationsEnabledOrch,
   setMoonSceneMessagesPreferenceOrch,
   setShowDailyHighlightsPreferenceOrch,
   type ExplorerFolderColorPreferenceBlock,
@@ -241,6 +242,7 @@ export default function SettingsOrch({
   const [moonSceneMessagesSaved, setMoonSceneMessagesSaved] = useState<MoonSceneMessagePreferenceBlock[]>([])
   const [moonSceneMessagesDraft, setMoonSceneMessagesDraft] = useState<MoonSceneMessagePreferenceBlock[]>([])
   const [moonSceneMessagesDirty, setMoonSceneMessagesDirty] = useState(false)
+  const [moonSceneIdleAnimationsEnabled, setMoonSceneIdleAnimationsEnabled] = useState(true)
   useEffect(() => {
     let cancelled = false
     void readVaultUiPreferencesOrch()
@@ -249,6 +251,7 @@ export default function SettingsOrch({
         setShowDailyHighlights(prefs.showDailyHighlights)
         setMoonSceneMessagesSaved(prefs.moonSceneMessages)
         setMoonSceneMessagesDraft(prefs.moonSceneMessages)
+        setMoonSceneIdleAnimationsEnabled(prefs.moonSceneIdleAnimationsEnabled)
       })
       .catch(() => {
         /* leave default */
@@ -746,6 +749,13 @@ export default function SettingsOrch({
     }
   }
 
+  const updateMoonSceneIdleAnimationsEnabled = (next: boolean) => {
+    setMoonSceneIdleAnimationsEnabled(next)
+    void setMoonSceneIdleAnimationsEnabledOrch(next).catch(err => {
+      console.warn('[settings] failed to persist moonSceneIdleAnimationsEnabled:', err)
+    })
+  }
+
   const onAddMoonSceneMessage = () => {
     setMoonSceneMessagesDraft(prev => [
       ...prev,
@@ -1183,7 +1193,22 @@ export default function SettingsOrch({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between gap-2">
+            <label className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
+              <div className="space-y-0.5">
+                <div className="text-sm text-foreground">Idle animation rotation</div>
+                <div className="text-xs text-muted-foreground">
+                  Between scheduled messages, the sprites occasionally play a random animation from the
+                  library (skateboard, wizard, float, ...). Saves immediately.
+                </div>
+              </div>
+              <Switch
+                checked={moonSceneIdleAnimationsEnabled}
+                onCheckedChange={updateMoonSceneIdleAnimationsEnabled}
+                aria-label="Idle animation rotation"
+              />
+            </label>
+
+            <div className="flex items-center justify-between gap-2 border-t border-border/50 pt-4">
               <h3 className="text-sm font-medium text-foreground">Scheduled Messages</h3>
               <Button type="button" variant="outline" size="sm" onClick={onAddMoonSceneMessage}>
                 Add Message

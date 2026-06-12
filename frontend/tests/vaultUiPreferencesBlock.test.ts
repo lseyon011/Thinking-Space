@@ -33,6 +33,13 @@ describe('vaultUiPreferencesBlock', () => {
     const normalized = normalizeVaultUiPreferencesBlock({})
     expect(normalized.moonSceneMessages).toEqual([])
   })
+
+  it('defaults moonSceneIdleAnimationsEnabled to true and respects explicit false', () => {
+    expect(normalizeVaultUiPreferencesBlock({}).moonSceneIdleAnimationsEnabled).toBe(true)
+    expect(
+      normalizeVaultUiPreferencesBlock({ moonSceneIdleAnimationsEnabled: false }).moonSceneIdleAnimationsEnabled,
+    ).toBe(false)
+  })
 })
 
 describe('normalizeMoonSceneMessagesPreferenceBlock', () => {
