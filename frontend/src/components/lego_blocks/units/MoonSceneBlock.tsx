@@ -251,6 +251,17 @@ const SLEEP_Z = [
   'WWW',
 ]
 
+// Stubby diagonal tail for the wag walk, parameterized by color letter so it
+// matches each sprite (coral for Clawd, suit gray for the astronaut). It sits
+// inside the flipping body so it swaps sides with the walk direction.
+function tailRows(c: string): string[] {
+  return [
+    `${c}..`,
+    `${c}${c}.`,
+    `.${c}${c}`,
+  ]
+}
+
 // Double eighth-note, parameterized by color letter.
 function noteRows(c: string): string[] {
   return [
@@ -338,11 +349,14 @@ const MSG_BODY_ANIMATION: Partial<Record<MoonSceneAnimationBlock, string>> = {
   run: 'moon-msg-run-face 3.2s steps(1) infinite',
   float: 'moon-msg-float 4s ease-in-out infinite alternate',
   sleep: 'moon-msg-sleep 5s ease-in-out infinite alternate',
+  hang: 'moon-msg-hang 2.8s ease-in-out infinite',
+  wag: 'moon-msg-wag-walk 6s steps(1) infinite',
 }
 
 const MSG_OUTER_ANIMATION: Partial<Record<MoonSceneAnimationBlock, string>> = {
   skate: 'moon-msg-skate-shuttle 5s ease-in-out infinite',
   run: 'moon-msg-run-shuttle 3.2s linear infinite',
+  wag: 'moon-msg-wag-shuttle 6s linear infinite',
 }
 
 // Hat, wand, and popping sparkles for the wizard animation; skateboard for
@@ -355,6 +369,9 @@ function MessageOverlaysBlock({
   hatTop,
   wandLeft,
   wandTop,
+  tailLeft,
+  tailTop,
+  tailColor,
 }: {
   anim: MoonSceneAnimationBlock
   skateboardLeft: number
@@ -363,7 +380,25 @@ function MessageOverlaysBlock({
   hatTop: number
   wandLeft: number
   wandTop: number
+  tailLeft: number
+  tailTop: number
+  tailColor: string
 }) {
+  if (anim === 'wag') {
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          left: tailLeft,
+          top: tailTop,
+          animation: 'moon-msg-wag-tail 0.35s ease-in-out infinite alternate',
+          transformOrigin: 'top right',
+        }}
+      >
+        <PixelSprite rows={tailRows(tailColor)} px={4} />
+      </div>
+    )
+  }
   if (anim === 'skate') {
     return (
       <div style={{ position: 'absolute', left: skateboardLeft, top: skateboardTop }}>
@@ -641,6 +676,33 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           from { transform: translateY(0) rotate(0deg); }
           to   { transform: translateY(-6px) rotate(-3deg); }
         }
+        /* hang: flipped about the body center (transform-origin overridden to
+           center for this anim), lifted off the ground, gently swinging. */
+        @keyframes moon-msg-hang {
+          0%, 100% { transform: translateY(-34px) rotate(174deg); }
+          50%      { transform: translateY(-34px) rotate(186deg); }
+        }
+        /* wag: relaxed walk shuttle; the body waddle + face flip is stepped so
+           the tilt jumps pixel-art style instead of easing. */
+        @keyframes moon-msg-wag-shuttle {
+          0%, 100% { transform: translateX(-60px); }
+          50%      { transform: translateX(60px); }
+        }
+        @keyframes moon-msg-wag-walk {
+          0%    { transform: scaleX(1) rotate(-3deg); }
+          12.5% { transform: scaleX(1) rotate(3deg); }
+          25%   { transform: scaleX(1) rotate(-3deg); }
+          37.5% { transform: scaleX(1) rotate(3deg); }
+          50%   { transform: scaleX(-1) rotate(-3deg); }
+          62.5% { transform: scaleX(-1) rotate(3deg); }
+          75%   { transform: scaleX(-1) rotate(-3deg); }
+          87.5% { transform: scaleX(-1) rotate(3deg); }
+          100%  { transform: scaleX(1) rotate(-3deg); }
+        }
+        @keyframes moon-msg-wag-tail {
+          from { transform: rotate(-14deg); }
+          to   { transform: rotate(16deg); }
+        }
       `}</style>
 
       {/* moon surface */}
@@ -797,7 +859,8 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
         <div
           style={{
             position: 'relative',
-            transformOrigin: 'bottom center',
+            // hang flips about the center so the sprite stays in place
+            transformOrigin: astroAnim === 'hang' ? 'center' : 'bottom center',
             animation: astroBodyMsgAnimation
               ?? (dj
                 ? 'moon-dj-bob 0.52s ease-in-out infinite alternate'
@@ -854,6 +917,9 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
             hatTop={-20}
             wandLeft={52}
             wandTop={26}
+            tailLeft={-8}
+            tailTop={44}
+            tailColor="G"
           />
           {/* thought bubble floats up-right of the helmet (day only, idle) */}
           {!dj && !astroMsg && astroAnim === 'none' && (
@@ -921,7 +987,8 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
             position: 'relative',
             animation: clawdBodyMsgAnimation
               ?? (dj ? undefined : 'moon-wiggle 13s ease-in-out infinite'),
-            transformOrigin: 'bottom center',
+            // hang flips about the center so the sprite stays in place
+            transformOrigin: clawdAnim === 'hang' ? 'center' : 'bottom center',
           }}
         >
           <PixelSprite rows={CLAWD} />
@@ -983,6 +1050,9 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
             hatTop={-24}
             wandLeft={72}
             wandTop={14}
+            tailLeft={-8}
+            tailTop={28}
+            tailColor="O"
           />
           {/* `>_` thought bubble, offset in time from the astronaut's (day only, idle) */}
           {!dj && !clawdMsg && clawdAnim === 'none' && (

@@ -22,7 +22,7 @@ export interface VaultSchedulerTaskPreferenceBlock {
 
 export type MoonSceneSpeakerBlock = 'astronaut' | 'clawd'
 
-export const MOON_SCENE_ANIMATION_IDS_BLOCK = ['none', 'wave', 'dance', 'hop', 'cheer', 'spin', 'skate', 'wizard', 'run', 'float', 'sleep'] as const
+export const MOON_SCENE_ANIMATION_IDS_BLOCK = ['none', 'wave', 'dance', 'hop', 'cheer', 'spin', 'skate', 'wizard', 'run', 'float', 'sleep', 'hang', 'wag'] as const
 export type MoonSceneAnimationBlock = (typeof MOON_SCENE_ANIMATION_IDS_BLOCK)[number]
 
 export interface MoonSceneMessagePreferenceBlock {
