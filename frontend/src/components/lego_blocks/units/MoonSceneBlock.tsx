@@ -27,6 +27,8 @@ const PALETTE: Record<string, string> = {
   K: '#1e293b', // dark (eyes / glyphs / deck)
   R: '#f87171', // flag red / red accent
   S: '#cbd5e1', // pole silver / records
+  P: '#8b5cf6', // wizard purple
+  Y: '#fbbf24', // sparkle gold
 }
 
 // Arms live in separate overlays so they can move while thinking / DJing.
@@ -173,6 +175,48 @@ const DJ_DISC_DOTS = [
   '....K..........K...',
 ]
 
+// Skateboard with upturned tips and silver wheels (message animation: skate).
+const SKATEBOARD = [
+  'R..........R',
+  'RRRRRRRRRRRR',
+  '..S......S..',
+]
+
+// Wizard hat — purple cone with a gold star tip and brim (message animation:
+// wizard), inspired by the Claude Code wizard-Clawd promo.
+const WIZARD_HAT = [
+  '......YY......',
+  '......PP......',
+  '.....PPPP.....',
+  '....PPPPPP....',
+  '...PPPPPPPP...',
+  '..PPPPPPPPPP..',
+  'PPPPPPPPPPPPPP',
+]
+
+// Wand: gold star tip on a gray stick, held out to the right.
+const WIZARD_WAND = [
+  '....Y',
+  '...YG',
+  '..G..',
+  '.G...',
+]
+
+const SPARKLE = [
+  '.Y.',
+  'YYY',
+  '.Y.',
+]
+
+// Tiny pixel "Z" — three of these rise while a sprite sleeps.
+const SLEEP_Z = [
+  'WWW',
+  '..W',
+  '.W.',
+  'W..',
+  'WWW',
+]
+
 // Double eighth-note, parameterized by color letter.
 function noteRows(c: string): string[] {
   return [
@@ -250,11 +294,97 @@ function SpeechBubbleBlock({ text }: { text: string }) {
 }
 
 // Body-level animations replace the idle bob/wiggle; arm-level ones (wave,
-// cheer) keep the body idle and only override the arm overlays.
+// cheer) keep the body idle and only override the arm overlays. Skate/run
+// additionally shuttle the outer wrapper so the speech bubble travels along.
 const MSG_BODY_ANIMATION: Partial<Record<MoonSceneAnimationBlock, string>> = {
   dance: 'moon-msg-dance 0.9s ease-in-out infinite',
   hop: 'moon-msg-hop 1.6s ease-in-out infinite',
   spin: 'moon-msg-spin 2.4s linear infinite',
+  skate: 'moon-msg-skate-tilt 1.25s ease-in-out infinite alternate',
+  run: 'moon-msg-run-face 3.2s steps(1) infinite',
+  float: 'moon-msg-float 4s ease-in-out infinite alternate',
+  sleep: 'moon-msg-sleep 5s ease-in-out infinite alternate',
+}
+
+const MSG_OUTER_ANIMATION: Partial<Record<MoonSceneAnimationBlock, string>> = {
+  skate: 'moon-msg-skate-shuttle 5s ease-in-out infinite',
+  run: 'moon-msg-run-shuttle 3.2s linear infinite',
+}
+
+// Hat, wand, and popping sparkles for the wizard animation; skateboard for
+// skate. Offsets differ per sprite, so they're passed in.
+function MessageOverlaysBlock({
+  anim,
+  skateboardLeft,
+  skateboardTop,
+  hatLeft,
+  hatTop,
+  wandLeft,
+  wandTop,
+}: {
+  anim: MoonSceneAnimationBlock
+  skateboardLeft: number
+  skateboardTop: number
+  hatLeft: number
+  hatTop: number
+  wandLeft: number
+  wandTop: number
+}) {
+  if (anim === 'skate') {
+    return (
+      <div style={{ position: 'absolute', left: skateboardLeft, top: skateboardTop }}>
+        <PixelSprite rows={SKATEBOARD} px={4} />
+      </div>
+    )
+  }
+  if (anim === 'sleep') {
+    // Rising zzz above the head; reuses the DJ-mode note-rise keyframe.
+    return (
+      <>
+        {[0, 1, 2].map(i => (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              left: wandLeft - 4 + i * 9,
+              top: hatTop - 4 - i * 6,
+              animation: `moon-note-rise 3s ease-out ${i * 1}s infinite`,
+              opacity: 0,
+            }}
+          >
+            <PixelSprite rows={SLEEP_Z} px={2} />
+          </div>
+        ))}
+      </>
+    )
+  }
+  if (anim === 'wizard') {
+    return (
+      <>
+        <div style={{ position: 'absolute', left: hatLeft, top: hatTop }}>
+          <PixelSprite rows={WIZARD_HAT} px={4} />
+        </div>
+        <div style={{ position: 'absolute', left: wandLeft, top: wandTop }}>
+          <PixelSprite rows={WIZARD_WAND} px={4} />
+        </div>
+        {[0, 1, 2].map(i => (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              left: wandLeft + 14 + i * 8,
+              top: wandTop - 8 - i * 8,
+              animation: `moon-msg-sparkle 1.2s ease-in-out ${i * 0.4}s infinite`,
+              opacity: 0,
+            }}
+          >
+            <PixelSprite rows={SPARKLE} px={3} />
+          </div>
+        ))}
+      </>
+    )
+  }
+  return null
 }
 
 export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
@@ -267,6 +397,8 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
   const clawdAnim: MoonSceneAnimationBlock = clawdMsg?.animation ?? 'none'
   const astroBodyMsgAnimation = MSG_BODY_ANIMATION[astroAnim]
   const clawdBodyMsgAnimation = MSG_BODY_ANIMATION[clawdAnim]
+  const astroOuterMsgAnimation = MSG_OUTER_ANIMATION[astroAnim]
+  const clawdOuterMsgAnimation = MSG_OUTER_ANIMATION[clawdAnim]
 
   const surfaceW = 520
   const surfaceH = 110
@@ -427,6 +559,36 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           0%, 100% { transform: translateY(0); }
           50%      { transform: translateY(-4px); }
         }
+        /* skate: the outer wrapper shuttles across the surface while the body
+           tilts; run: faster shuttle with a face flip at each turn. */
+        @keyframes moon-msg-skate-shuttle {
+          0%, 100% { transform: translateX(-80px); }
+          50%      { transform: translateX(80px); }
+        }
+        @keyframes moon-msg-skate-tilt {
+          from { transform: rotate(-7deg); }
+          to   { transform: rotate(7deg); }
+        }
+        @keyframes moon-msg-run-shuttle {
+          0%, 100% { transform: translateX(-70px); }
+          50%      { transform: translateX(70px); }
+        }
+        @keyframes moon-msg-run-face {
+          0%, 49.9% { transform: scaleX(1); }
+          50%, 100% { transform: scaleX(-1); }
+        }
+        @keyframes moon-msg-float {
+          from { transform: translateY(0) rotate(0deg); }
+          to   { transform: translateY(-18px) rotate(8deg); }
+        }
+        @keyframes moon-msg-sparkle {
+          0%, 100% { opacity: 0; transform: scale(0.4); }
+          50%      { opacity: 1; transform: scale(1); }
+        }
+        @keyframes moon-msg-sleep {
+          from { transform: translateY(0) rotate(0deg); }
+          to   { transform: translateY(-6px) rotate(-3deg); }
+        }
       `}</style>
 
       {/* moon surface */}
@@ -527,7 +689,8 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           position: 'absolute',
           left: 140,
           bottom: 52,
-          animation: dj || astroBodyMsgAnimation ? undefined : 'moon-rare-hop 18s ease-in-out infinite',
+          animation: astroOuterMsgAnimation
+            ?? (dj || astroBodyMsgAnimation ? undefined : 'moon-rare-hop 18s ease-in-out infinite'),
         }}
       >
         <div
@@ -576,6 +739,15 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           >
             <PixelSprite rows={ASTRONAUT_ARM_R} />
           </div>
+          <MessageOverlaysBlock
+            anim={astroAnim}
+            skateboardLeft={6}
+            skateboardTop={ASTRONAUT.length * PX - 2}
+            hatLeft={2}
+            hatTop={-20}
+            wandLeft={52}
+            wandTop={26}
+          />
           {/* thought bubble floats up-right of the helmet (day only) */}
           {!dj && !astroMsg && (
             <div
@@ -629,11 +801,12 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           position: 'absolute',
           left: 312,
           bottom: 48,
-          animation: clawdBodyMsgAnimation
-            ? undefined
-            : dj
-              ? 'moon-dj-bob 0.52s ease-in-out 0.26s infinite alternate'
-              : 'moon-bob-slow 2.6s ease-in-out infinite',
+          animation: clawdOuterMsgAnimation
+            ?? (clawdBodyMsgAnimation
+              ? undefined
+              : dj
+                ? 'moon-dj-bob 0.52s ease-in-out 0.26s infinite alternate'
+                : 'moon-bob-slow 2.6s ease-in-out infinite'),
         }}
       >
         <div
@@ -678,16 +851,26 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           >
             <PixelSprite rows={CLAWD_ARM_R} />
           </div>
+          {/* eyelids: blink cycle normally, held shut while sleeping */}
           <div
             style={{
               position: 'absolute',
               left: 0,
               top: 0,
-              animation: 'moon-blink 6s steps(1) infinite',
+              animation: clawdAnim === 'sleep' ? undefined : 'moon-blink 6s steps(1) infinite',
             }}
           >
             <PixelSprite rows={CLAWD_EYELIDS} />
           </div>
+          <MessageOverlaysBlock
+            anim={clawdAnim}
+            skateboardLeft={16}
+            skateboardTop={CLAWD.length * PX - 2}
+            hatLeft={12}
+            hatTop={-16}
+            wandLeft={72}
+            wandTop={14}
+          />
           {/* `>_` thought bubble, offset in time from the astronaut's (day only) */}
           {!dj && !clawdMsg && (
             <div

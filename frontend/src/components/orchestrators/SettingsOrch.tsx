@@ -140,6 +140,11 @@ const MOON_SCENE_ANIMATION_LABELS: Record<string, string> = {
   hop: 'Hop',
   cheer: 'Cheer',
   spin: 'Spin',
+  skate: 'Skateboard',
+  wizard: 'Wizard',
+  run: 'Run around',
+  float: 'Float',
+  sleep: 'Sleep (zzz)',
 }
 
 function normalizeExplorerFolderPathInput(value: string): string {
