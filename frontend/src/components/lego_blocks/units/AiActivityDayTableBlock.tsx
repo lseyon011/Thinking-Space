@@ -225,6 +225,7 @@ export default function AiActivityDayTableBlock({
                     chainTokens.input + chainTokens.output + chainTokens.cacheRead + chainTokens.cacheCreation > 0
                   const costUsd = hasTokens ? estimateChainCostUsd(c) : 0
                   const modelLabel = modelSummaryLabel(c)
+                  const isReconstructed = c.sessions.every(s => s.reconstructed)
                   return (
                     <Fragment key={c.key}>
                       {showDivider && (
@@ -262,6 +263,14 @@ export default function AiActivityDayTableBlock({
                       {c.msgCount}
                     </td>
                     <td className="max-w-0 truncate px-3 py-1.5 text-foreground/70" title={c.topic}>
+                      {isReconstructed && (
+                        <span
+                          className="mr-1.5 rounded bg-amber-500/15 px-1 py-px text-[9px] uppercase tracking-[0.08em] text-amber-500/90"
+                          title="Rebuilt from the prompt history log — the original transcript was deleted by Claude Code's cleanup. Times and prompt counts are real; tokens and assistant turns are gone."
+                        >
+                          rebuilt
+                        </span>
+                      )}
                       {c.topic}
                     </td>
                   </tr>
@@ -344,11 +353,22 @@ export default function AiActivityDayTableBlock({
                               · {c.sessions.length} session{c.sessions.length === 1 ? '' : 's'}
                             </span>
                           </div>
+                        ) : isReconstructed ? (
+                          <span className="text-muted-foreground/60">
+                            Reconstructed from <code>~/.claude/history.jsonl</code> — the original
+                            transcript was deleted by Claude Code's 30-day cleanup. Prompt counts
+                            and times are real; tokens, cost, and assistant turns are unrecoverable.
+                          </span>
+                        ) : c.source === 'chatgpt' || c.source === 'grok' ? (
+                          <span className="text-muted-foreground/60">
+                            Web chat ({c.source}) — providers don't expose token usage in exports.
+                          </span>
                         ) : (
                           <span className="text-muted-foreground/60">
                             No token data — this chain came from the vault markdown source only.
                           </span>
                         )}
+                        {!isReconstructed && (
                         <div className="pt-1">
                           <button
                             type="button"
@@ -362,6 +382,7 @@ export default function AiActivityDayTableBlock({
                             Show entire chain
                           </button>
                         </div>
+                        )}
                       </td>
                     </tr>
                   )}

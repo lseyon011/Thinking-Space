@@ -9,6 +9,8 @@ import { getJsonStorageItem, setJsonStorageItem, STORAGE_KEYS } from '@/services
 export const DEFAULT_VAULT_SESSION_PREFIXES = [
   'ai_raw/raw/claude-code/',
   'ai_raw/raw/codex/',
+  'ai_raw/raw/chatgpt/',
+  'ai_raw/raw/grok/',
 ]
 
 function sanitizePrefixes(raw: unknown): string[] | null {

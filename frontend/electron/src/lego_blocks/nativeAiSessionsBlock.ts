@@ -175,6 +175,22 @@ export async function listNativeAiSessionsBlock(): Promise<NativeSessionEntry[]>
   return out;
 }
 
+/**
+ * Read Claude Code's permanent prompt log (`~/.claude/history.jsonl` — sibling
+ * of the projects root). It survives transcript cleanup, so the renderer uses
+ * it to reconstruct sessions whose JSONL transcripts were deleted. Returns ''
+ * when the file doesn't exist.
+ */
+export async function readClaudeHistoryBlock(): Promise<string> {
+  const claudeRoot = readNativeAiRootsBlock().claude;
+  const historyPath = path.join(path.dirname(claudeRoot), 'history.jsonl');
+  try {
+    return await fsPromises.readFile(historyPath, 'utf-8');
+  } catch {
+    return '';
+  }
+}
+
 export async function readNativeAiSessionBlock(
   source: NativeAiSource,
   relPath: string,

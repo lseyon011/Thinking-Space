@@ -133,20 +133,23 @@ export default function AiActivityHeatmapBlock({
   // mixed week on the new-month side, which strands fewer days and matches
   // user intuition ("April starts in this column").
   const monthTransitions = useMemo(() => {
-    const transitions: Array<{ col: number; month: number }> = []
+    const transitions: Array<{ col: number; month: number; year: number }> = []
     let lastMonth = -1
     weeks.forEach((week, idx) => {
       let newestMonth = -1
+      let newestYear = -1
       for (const cell of week) {
         if (!cell.date) continue
-        const m = new Date(cell.date + 'T00:00:00').getMonth()
+        const d = new Date(cell.date + 'T00:00:00')
+        const m = d.getMonth()
         if (m !== lastMonth) {
           newestMonth = m
+          newestYear = d.getFullYear()
           break
         }
       }
       if (newestMonth !== -1) {
-        transitions.push({ col: idx, month: newestMonth })
+        transitions.push({ col: idx, month: newestMonth, year: newestYear })
         lastMonth = newestMonth
       }
     })
@@ -154,16 +157,28 @@ export default function AiActivityHeatmapBlock({
   }, [weeks])
 
   const monthHeaders = useMemo(() => {
-    const headers: Array<{ col: number; label: string }> = []
+    const headers: Array<{ col: number; label: string; month: number; year: number }> = []
     let lastCol = -Infinity
     for (const t of monthTransitions) {
       if (t.col - lastCol >= 2) {
-        headers.push({ col: t.col, label: MONTH_LABELS[t.month] })
+        headers.push({ col: t.col, label: MONTH_LABELS[t.month], month: t.month, year: t.year })
         lastCol = t.col
       }
     }
     return headers
   }, [monthTransitions])
+
+  // Click a month label → select that whole month (clamped to the visible
+  // range so a partial first/last month doesn't select invisible days).
+  function selectMonth(year: number, month: number) {
+    const monthStart = isoDayLocal(new Date(year, month, 1))
+    const monthEnd = isoDayLocal(new Date(year, month + 1, 0))
+    const a = monthStart < startIso ? startIso : monthStart
+    const b = monthEnd > endIso ? endIso : monthEnd
+    if (a > b) return
+    onSelectDate?.(null)
+    onSelectRange?.({ startIso: a, endIso: b })
+  }
 
   // Vertical separator on the heatmap so the eye can tell where one month ends
   // and the next begins. Skip idx 0 — leftmost column needs no left-divider.
@@ -227,13 +242,16 @@ export default function AiActivityHeatmapBlock({
               style={{ height: 14, width: weeks.length * 15 - 3 }}
             >
               {monthHeaders.map(h => (
-                <div
+                <button
                   key={`${h.col}-${h.label}`}
-                  className="absolute top-0 whitespace-nowrap text-[10px] text-muted-foreground"
+                  type="button"
+                  onClick={() => selectMonth(h.year, h.month)}
+                  className="absolute top-0 whitespace-nowrap rounded-sm text-[10px] text-muted-foreground transition-colors hover:text-foreground"
                   style={{ left: h.col * 15 }}
+                  title={`Select all of ${h.label}`}
                 >
                   {h.label}
-                </div>
+                </button>
               ))}
             </div>
             <div className="flex">
@@ -315,7 +333,7 @@ export default function AiActivityHeatmapBlock({
           </div>
         ) : (
           <span className="text-muted-foreground/60">
-            Hover for details · click a day for breakdown · shift-click for range
+            Hover for details · click a day · drag or shift-click for range · click a month label for the whole month
           </span>
         )}
       </div>

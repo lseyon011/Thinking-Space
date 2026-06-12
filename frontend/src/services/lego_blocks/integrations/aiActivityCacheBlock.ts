@@ -20,7 +20,9 @@ import {
   listNativeAiSessions,
   loadAndParseNativeAiSession,
   nativeAiSourcesAvailable,
+  readClaudeHistory,
 } from '@/services/lego_blocks/integrations/nativeAiSessionsBlock'
+import { parseClaudeHistoryBlock } from '@/services/lego_blocks/units/claudeHistoryParserBlock'
 import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserBlock'
 import { readVaultSessionPrefixesBlock } from '@/services/lego_blocks/units/aiActivitySourcesBlock'
 
@@ -130,9 +132,10 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
   // by carrying every cached native row through unchanged when the native
   // source isn't available locally.
   const nativeAvailable = nativeAiSourcesAvailable()
-  const [vaultEntries, nativeEntries] = await Promise.all([
+  const [vaultEntries, nativeEntries, historyText] = await Promise.all([
     fs.walkVault(['.md']),
     listNativeAiSessions(),
+    readClaudeHistory(),
   ])
 
   const sourcePrefixes = readVaultSessionPrefixesBlock()
@@ -228,6 +231,33 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
     if (windows.length > 0) reparsed += 1
   }
 
+  // ── 3b. Reconstructed sessions from ~/.claude/history.jsonl. ────────────────
+  // The permanent prompt log survives Claude Code's transcript cleanup, so it
+  // backfills sessions whose JSONL files were deleted (no tokens — just prompt
+  // counts, project, and a rough time window). Parsed fresh on every Electron
+  // load (single small file); non-Electron clients carry the cached entries
+  // through, same as native. Coverage filtering happens at dedup time below —
+  // a history row is dropped whenever a real transcript covers its sessionId.
+  if (!nativeAvailable || !historyText) {
+    for (const [path, sess] of Object.entries(cache.sessions)) {
+      if (!path.startsWith('history/')) continue
+      present.add(path)
+      next[path] = sess
+    }
+  } else {
+    const historySessions = parseClaudeHistoryBlock(historyText, 0)
+    let historyChanged = false
+    for (const s of historySessions) {
+      present.add(s.path)
+      next[s.path] = s
+      const cached = cache.sessions[s.path]
+      if (!cached || cached.userMsgCount !== s.userMsgCount || cached.endedIso !== s.endedIso) {
+        historyChanged = true
+      }
+    }
+    if (historyChanged) reparsed += 1
+  }
+
   // ── 4. Persist the merged cache (raw, pre-dedup). ───────────────────────────
   // Only Electron writes the cache — it's the only client that can actually
   // re-parse native files, so it's the source of truth. iPhone/web stays
@@ -245,7 +275,26 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
   // For each session id (full UUID for native, 8-char short id for vault),
   // prefer the richer native record when both exist — it has explicit cwd,
   // millisecond timestamps, and the full sessionId.
-  const all = Object.values(next)
+  // Reconstructed history rows are the lowest-priority source: drop every
+  // window of a history session when ANY real (native/vault) record covers the
+  // same base sessionId. Mixing windows from a real transcript with leftover
+  // history windows would double-count, so coverage is all-or-nothing per id.
+  const raw = Object.values(next)
+  const coveredFullIds = new Set<string>()
+  const coveredShortIds = new Set<string>()
+  for (const s of raw) {
+    if (s.path.startsWith('history/')) continue
+    const base = sessionIdOf(s).split('::', 1)[0]
+    if (base.length === 8) coveredShortIds.add(base)
+    else coveredFullIds.add(base)
+  }
+  const all = raw.filter(s => {
+    if (!s.path.startsWith('history/')) return true
+    const base = sessionIdOf(s).split('::', 1)[0]
+    if (coveredFullIds.has(base)) return false
+    return !coveredShortIds.has(base.slice(0, 8))
+  })
+
   const byId = new Map<string, ParsedSession>()
   for (const s of all) {
     const id = sessionIdOf(s)

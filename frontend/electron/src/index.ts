@@ -90,6 +90,7 @@ import {
   readNativeAiSessionBlock,
   readNativeAiRootsBlock,
   writeNativeAiRootsBlock,
+  readClaudeHistoryBlock,
   type NativeAiSource,
 } from './lego_blocks/nativeAiSessionsBlock';
 import { startHeartbeatBlock, stopHeartbeatBlock } from './lego_blocks/heartbeatBlock';
@@ -1909,6 +1910,9 @@ ipcMain.handle(
     return writeNativeAiRootsBlock(roots);
   },
 );
+ipcMain.handle('nativeAiSessions:readClaudeHistory', async () => {
+  return readClaudeHistoryBlock();
+});
 
 // -- Mkdir --
 ipcMain.handle('vault:mkdir', async (_event, vaultRoot: string, relPath: string) => {

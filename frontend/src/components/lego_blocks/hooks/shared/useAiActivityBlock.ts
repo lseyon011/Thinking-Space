@@ -57,7 +57,7 @@ export interface ActivityProject {
   isUnknown: boolean
 }
 
-export type AiSourceFilter = 'all' | 'claude-code' | 'codex'
+export type AiSourceFilter = 'all' | 'claude-code' | 'codex' | 'chatgpt' | 'grok'
 
 export interface UseAiActivityResult {
   /** All chains within the visible range, newest first. */
@@ -80,7 +80,7 @@ export interface UseAiActivityResult {
   setSourceFilter: (filter: AiSourceFilter) => void
   /** How many sessions exist per source across the visible range — used to label
    *  the source pills and disable empty ones. */
-  sourceCounts: { claudeCode: number; codex: number }
+  sourceCounts: { claudeCode: number; codex: number; chatgpt: number; grok: number }
   startIso: string
   endIso: string
   refresh: () => void
@@ -133,6 +133,8 @@ const VALID_SOURCE_FILTERS: ReadonlySet<AiSourceFilter> = new Set([
   'all',
   'claude-code',
   'codex',
+  'chatgpt',
+  'grok',
 ])
 
 function readStoredSourceFilter(): AiSourceFilter | null {
@@ -311,14 +313,18 @@ export function useAiActivityBlock(
     const endMs = Date.parse(endIso + 'T23:59:59')
     let claudeCode = 0
     let codex = 0
+    let chatgpt = 0
+    let grok = 0
     for (const s of enrichedSessions) {
       const sStart = Date.parse(s.startedIso)
       const sEnd = Date.parse(s.endedIso ?? s.startedIso)
       if (sEnd < startMs || sStart > endMs) continue
       if (s.source === 'codex') codex += 1
+      else if (s.source === 'chatgpt') chatgpt += 1
+      else if (s.source === 'grok') grok += 1
       else if (s.source === 'claude-code') claudeCode += 1
     }
-    return { claudeCode, codex }
+    return { claudeCode, codex, chatgpt, grok }
   }, [enrichedSessions, startIso, endIso])
 
   const chains = useMemo(() => buildChains(sessions), [sessions])

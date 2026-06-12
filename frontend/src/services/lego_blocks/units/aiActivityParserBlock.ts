@@ -6,7 +6,7 @@
 // (Divergence: project detection here is generic — cwd folder name — not the
 // script's hardcoded paths.)
 
-export type ActivitySource = 'claude-code' | 'codex'
+export type ActivitySource = 'claude-code' | 'codex' | 'chatgpt' | 'grok'
 
 export interface ParsedSession {
   /** Vault-relative path of the source markdown file. */
@@ -39,6 +39,11 @@ export interface ParsedSession {
    *  for exact dedup against the native ~/.claude/projects/<uuid>.jsonl source.
    *  Falls back to the 8-char short id if only that's available. */
   sessionId?: string
+  /** True when the session was rebuilt from `~/.claude/history.jsonl` (the
+   *  permanent prompt log) because the real transcript was deleted by Claude
+   *  Code's cleanup. Reconstructed sessions have prompt counts and a rough
+   *  time window but no tokens, model, or assistant turns. */
+  reconstructed?: boolean
 }
 
 export interface SessionTokens {
@@ -196,8 +201,75 @@ export interface ParseInput {
   mtime: number
 }
 
+// ── Chat-export sessions (ChatGPT / Grok) ───────────────────────────────────
+// The vault's `ai_raw/raw/{chatgpt,grok}/` markdown is generated from the
+// providers' export JSON by the user's converter scripts. Everything we need
+// is machine-written YAML frontmatter: provider, conversation_id, created/
+// updated (real local timestamps → real durations), user_messages, title,
+// model(s). No cwd exists for web chats — per user decision, the provider name
+// IS the project bucket.
+
+const CHAT_EXPORT_PROVIDERS = new Set<ActivitySource>(['chatgpt', 'grok'])
+
+function parseChatExportSession(input: ParseInput): ParsedSession | null {
+  if (!input.text.startsWith('---')) return null
+  const fmEnd = input.text.indexOf('\n---', 3)
+  if (fmEnd === -1) return null
+  const fm = input.text.slice(3, fmEnd)
+  const get = (key: string): string | null => {
+    const m = new RegExp(`^${key}:[ \\t]*(.+)$`, 'm').exec(fm)
+    if (!m) return null
+    const v = m[1].trim()
+    return v.replace(/^"(.*)"$/, '$1') || null
+  }
+
+  const provider = get('provider')
+  if (!provider || !CHAT_EXPORT_PROVIDERS.has(provider as ActivitySource)) return null
+  const conversationId = get('conversation_id')
+  const created = get('created')
+  if (!conversationId || !created) return null
+  // Timestamps are local-time `YYYY-MM-DD HH:MM` — Date parses the T-form as local.
+  const startedDate = new Date(created.replace(' ', 'T'))
+  if (Number.isNaN(startedDate.getTime())) return null
+  const updated = get('updated')
+  const updatedDate = updated ? new Date(updated.replace(' ', 'T')) : null
+  const endedDate =
+    updatedDate && !Number.isNaN(updatedDate.getTime()) && updatedDate > startedDate
+      ? updatedDate
+      : startedDate
+
+  const userMsgs = Number(get('user_messages'))
+  // `model: <scalar>` (ChatGPT) or a `models:` list (Grok) — take the first.
+  let model = get('model') ?? undefined
+  if (!model) {
+    const list = /^models:[ \t]*\n([ \t]+-[ \t]+.+)/m.exec(fm)
+    if (list) model = list[1].replace(/^[ \t]+-[ \t]+/, '').trim() || undefined
+  }
+  if (model === 'auto') model = undefined
+
+  return {
+    path: input.path,
+    source: provider as ActivitySource,
+    startedIso: startedDate.toISOString(),
+    endedIso: endedDate.toISOString(),
+    project: provider,
+    userMsgCount: Number.isFinite(userMsgs) && userMsgs > 0 ? userMsgs : 0,
+    topic: get('title') ?? '(untitled)',
+    hadClear: false,
+    mtime: input.mtime,
+    model,
+    sessionId: conversationId.toLowerCase(),
+  }
+}
+
 /** Parse a single session file. Returns null if the filename doesn't match the expected pattern. */
 export function parseSession(input: ParseInput): ParsedSession | null {
+  // Chat exports gate on frontmatter (`provider: chatgpt|grok`), not filename —
+  // their files are slug-named. Index/wikilink files lack the field and fall
+  // through to the date-prefixed filename check below, which rejects them.
+  const chatExport = parseChatExportSession(input)
+  if (chatExport) return chatExport
+
   const filename = input.path.split('/').pop() ?? ''
   // Codex filenames historically share the same YYYY-MM-DD_<id>.md shape; if not,
   // tolerate any filename starting with a date.
@@ -267,6 +339,9 @@ export function inheritUnknownSessions(sessions: ParsedSession[]): ParsedSession
   // session counts are in the low thousands at most.
   const anchors: Array<{ t: number; project: string }> = []
   for (const s of sorted) {
+    // Web-chat sessions (ChatGPT/Grok) bucket under their provider name — that
+    // label must never bleed onto a nearby unknown coding session.
+    if (s.source === 'chatgpt' || s.source === 'grok') continue
     if (isInheritable(s.project)) {
       anchors.push({ t: Date.parse(s.startedIso), project: s.project })
     }

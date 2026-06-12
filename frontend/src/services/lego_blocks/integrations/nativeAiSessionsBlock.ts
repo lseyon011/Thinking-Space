@@ -33,6 +33,7 @@ interface NativeApi {
   nativeAiSessionsSetRoots?: (
     roots: Partial<Record<NativeSource, string | null>>,
   ) => Promise<NativeAiSessionRoots>
+  nativeAiClaudeHistoryRead?: () => Promise<string>
 }
 
 function getApi(): NativeApi | null {
@@ -76,6 +77,18 @@ export async function listNativeAiSessions(): Promise<NativeListEntry[]> {
     return (await api.nativeAiSessionsList!()) ?? []
   } catch {
     return []
+  }
+}
+
+/** Claude Code's permanent prompt log (`~/.claude/history.jsonl`). Returns ''
+ *  on non-Electron clients or when the file is missing. */
+export async function readClaudeHistory(): Promise<string> {
+  const api = getApi()
+  if (!api?.nativeAiClaudeHistoryRead) return ''
+  try {
+    return (await api.nativeAiClaudeHistoryRead()) ?? ''
+  } catch {
+    return ''
   }
 }
 

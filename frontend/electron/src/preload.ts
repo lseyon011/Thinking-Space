@@ -405,6 +405,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     claudeDefault: string
     codexDefault: string
   }> => ipcRenderer.invoke('nativeAiSessions:setRoots', roots),
+  // Claude Code's permanent prompt log — used to reconstruct sessions whose
+  // transcripts were deleted by cleanup. '' when the file doesn't exist.
+  nativeAiClaudeHistoryRead: (): Promise<string> =>
+    ipcRenderer.invoke('nativeAiSessions:readClaudeHistory'),
 
   // Git (desktop-only)
   git: (vaultRoot: string, args: string[]) =>

@@ -13,8 +13,13 @@ import AiActivityProjectChipsBlock from '@/components/lego_blocks/units/AiActivi
 import AiActivityStackedAreaBlock from '@/components/lego_blocks/units/AiActivityStackedAreaBlock'
 import AiActivityDayTableBlock from '@/components/lego_blocks/units/AiActivityDayTableBlock'
 import AiActivityDayTimelineBlock from '@/components/lego_blocks/units/AiActivityDayTimelineBlock'
+import AiActivityAggregateBlock from '@/components/lego_blocks/units/AiActivityAggregateBlock'
+import {
+  fmtDurationMsBlock,
+  mergedDurationMsBlock,
+} from '@/services/lego_blocks/units/aiActivityStatsBlock'
 
-type ViewMode = 'heatmap' | 'trend'
+type ViewMode = 'heatmap' | 'trend' | 'totals'
 
 function fmtDateShort(iso: string): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, {
@@ -97,41 +102,41 @@ export default function AiActivityPanelBlock() {
     if (drillChains.length === 0) return undefined
     const msgs = drillChains.reduce((n, c) => n + c.msgCount, 0)
     const sessions = drillChains.reduce((n, c) => n + c.sessions.length, 0)
-    // Wall-clock time across chains: merge overlapping [start, end] windows
-    // before summing so two chains running in the same minute aren't counted
-    // twice. Single-instant chains (end==start) contribute 0.
-    const intervals: Array<[number, number]> = []
-    for (const c of drillChains) {
-      const start = Date.parse(c.startedIso)
-      const end = Date.parse(c.endedIso ?? c.startedIso)
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue
-      intervals.push([start, end])
+    const durLabel = fmtDurationMsBlock(mergedDurationMsBlock(drillChains))
+    const base = `${drillChains.length} chains · ${sessions} sessions · ${msgs} msgs · ${durLabel}`
+    // With a project filter active, append how much of the selection's
+    // wall-clock time belongs to that project.
+    if (activeProject) {
+      const projChains = drillChains.filter(c => c.project === activeProject)
+      const projDur = fmtDurationMsBlock(mergedDurationMsBlock(projChains))
+      return `${base} — ${activeProject}: ${projDur}`
     }
-    intervals.sort((a, b) => a[0] - b[0])
-    let totalMs = 0
-    let curStart = 0
-    let curEnd = 0
-    for (const [s, e] of intervals) {
-      if (s > curEnd) {
-        totalMs += curEnd - curStart
-        curStart = s
-        curEnd = e
-      } else if (e > curEnd) {
-        curEnd = e
-      }
-    }
-    totalMs += curEnd - curStart
-    const totalMin = Math.round(totalMs / 60_000)
-    const hours = Math.floor(totalMin / 60)
-    const mins = totalMin % 60
-    const durLabel =
-      hours > 0
-        ? mins > 0
-          ? `${hours}h ${mins}m`
-          : `${hours}h`
-        : `${mins}m`
-    return `${drillChains.length} chains · ${sessions} sessions · ${msgs} msgs · ${durLabel}`
-  }, [drillChains])
+    return base
+  }, [drillChains, activeProject])
+
+  // Project-filter stats across the whole visible range (independent of the
+  // drill selection) — surfaced next to the "clear filter" chip.
+  const activeProjectRangeDuration = useMemo(() => {
+    if (!activeProject) return null
+    const projChains = activity.chains.filter(c => c.project === activeProject)
+    return fmtDurationMsBlock(mergedDurationMsBlock(projChains))
+  }, [activity.chains, activeProject])
+
+  // Chains feeding the totals view: project filter wins; otherwise everything
+  // except noise buckets so totals agree with the totals strip + chips.
+  const aggregateChains = useMemo(() => {
+    if (activeProject) return activity.chains.filter(c => c.project === activeProject)
+    return activity.chains.filter(
+      c => !(c.project.startsWith('[') && c.project.endsWith(']')),
+    )
+  }, [activity.chains, activeProject])
+
+  const rangeDurationLabel = useMemo(() => {
+    const nonNoise = activity.chains.filter(
+      c => !(c.project.startsWith('[') && c.project.endsWith(']')),
+    )
+    return fmtDurationMsBlock(mergedDurationMsBlock(nonNoise))
+  }, [activity.chains])
 
   function clearDrill() {
     setSelectedDate(null)
@@ -230,6 +235,9 @@ export default function AiActivityPanelBlock() {
         <span>
           <strong className="tabular-nums text-foreground/85">{totals.sessions.toLocaleString()}</strong> sessions
         </span>
+        <span title="Merged wall-clock time across all non-noise chains in range">
+          <strong className="tabular-nums text-foreground/85">{rangeDurationLabel}</strong>
+        </span>
         <LegacyArchivesLink />
         <span className="ml-auto text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70">
           {activity.preset}
@@ -292,13 +300,27 @@ export default function AiActivityPanelBlock() {
       <div className="mt-3 space-y-3">
         <div className="flex items-center gap-1">
           <ViewToggle view={view} onChange={setView} />
+          {view === 'heatmap' && (
+            <QuickRangeChips
+              onSelect={range => {
+                setSelectedDate(null)
+                setSelectedRange(range)
+              }}
+            />
+          )}
           {activeProject && (
             <button
               type="button"
               onClick={() => setActiveProject(null)}
               className="ml-2 rounded-full border border-border/40 bg-card/40 px-2 py-0.5 text-[10px] text-muted-foreground hover:border-border/70 hover:text-foreground"
+              title={`Total active time for ${activeProject} across the visible range`}
             >
               clear filter · {activeProject}
+              {activeProjectRangeDuration && activeProjectRangeDuration !== '—' && (
+                <span className="ml-1 tabular-nums text-foreground/70">
+                  · {activeProjectRangeDuration}
+                </span>
+              )}
             </button>
           )}
           {view === 'trend' && (
@@ -329,6 +351,15 @@ export default function AiActivityPanelBlock() {
             onSelectDate={setSelectedDate}
             selectedRange={selectedRange}
             onSelectRange={setSelectedRange}
+          />
+        ) : view === 'totals' ? (
+          <AiActivityAggregateBlock
+            chains={aggregateChains}
+            filterProject={activeProject}
+            onSelectRange={range => {
+              setSelectedDate(null)
+              setSelectedRange(range)
+            }}
           />
         ) : (
           <AiActivityStackedAreaBlock
@@ -464,12 +495,14 @@ function SourcePills({
 }: {
   value: AiSourceFilter
   onChange: (next: AiSourceFilter) => void
-  counts: { claudeCode: number; codex: number }
+  counts: { claudeCode: number; codex: number; chatgpt: number; grok: number }
 }) {
   const opts: Array<{ id: AiSourceFilter; label: string; count: number | null }> = [
-    { id: 'all', label: 'All', count: counts.claudeCode + counts.codex },
+    { id: 'all', label: 'All', count: counts.claudeCode + counts.codex + counts.chatgpt + counts.grok },
     { id: 'claude-code', label: 'Claude', count: counts.claudeCode },
     { id: 'codex', label: 'Codex', count: counts.codex },
+    { id: 'chatgpt', label: 'ChatGPT', count: counts.chatgpt },
+    { id: 'grok', label: 'Grok', count: counts.grok },
   ]
   return (
     <div
@@ -507,6 +540,63 @@ function SourcePills({
   )
 }
 
+function QuickRangeChips({
+  onSelect,
+}: {
+  onSelect: (range: { startIso: string; endIso: string }) => void
+}) {
+  // One-click presets for the most common "show me these days" selections —
+  // complements drag/shift-click on the heatmap without any extra state.
+  const iso = (d: Date) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
+  const mondayOf = (date: Date) => {
+    const d = new Date(date)
+    const dow = d.getDay()
+    d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow))
+    return d
+  }
+  const pick = (id: string) => {
+    const now = new Date()
+    if (id === 'week') {
+      onSelect({ startIso: iso(mondayOf(now)), endIso: iso(now) })
+    } else if (id === 'lastweek') {
+      const start = mondayOf(now)
+      start.setDate(start.getDate() - 7)
+      const end = new Date(start)
+      end.setDate(end.getDate() + 6)
+      onSelect({ startIso: iso(start), endIso: iso(end) })
+    } else if (id === 'month') {
+      onSelect({
+        startIso: iso(new Date(now.getFullYear(), now.getMonth(), 1)),
+        endIso: iso(now),
+      })
+    }
+  }
+  const opts = [
+    { id: 'week', label: 'this wk' },
+    { id: 'lastweek', label: 'last wk' },
+    { id: 'month', label: 'this mo' },
+  ]
+  return (
+    <div className="ml-1 flex items-center gap-1">
+      {opts.map(o => (
+        <button
+          key={o.id}
+          type="button"
+          onClick={() => pick(o.id)}
+          className="rounded-full border border-border/40 bg-card/40 px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-border/70 hover:text-foreground"
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function ViewToggle({
   view,
   onChange,
@@ -517,6 +607,7 @@ function ViewToggle({
   const opts: Array<{ id: ViewMode; label: string }> = [
     { id: 'heatmap', label: 'heatmap' },
     { id: 'trend', label: 'trend' },
+    { id: 'totals', label: 'totals' },
   ]
   return (
     <div className="flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 p-0.5">
