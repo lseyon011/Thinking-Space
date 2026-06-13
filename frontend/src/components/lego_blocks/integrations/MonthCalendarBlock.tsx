@@ -148,8 +148,8 @@ export default function MonthCalendar({
               value={month}
               onChange={e => onMonthChange(year, Number(e.target.value))}
               className={`
-                appearance-none bg-muted/40 border border-border/30 rounded-lg font-semibold
-                cursor-pointer hover:bg-muted/60 transition-colors
+                appearance-none bg-muted/70 border border-border/50 rounded-lg font-semibold text-foreground
+                cursor-pointer hover:bg-muted transition-colors
                 focus:outline-none focus:ring-1 focus:ring-primary/50
                 ${compact ? 'px-1.5 py-0.5 text-xs' : 'px-2.5 py-1 text-sm'}
               `}
@@ -162,8 +162,8 @@ export default function MonthCalendar({
               value={year}
               onChange={e => onMonthChange(Number(e.target.value), month)}
               className={`
-                appearance-none bg-muted/40 border border-border/30 rounded-lg font-semibold
-                cursor-pointer hover:bg-muted/60 transition-colors
+                appearance-none bg-muted/70 border border-border/50 rounded-lg font-semibold text-foreground
+                cursor-pointer hover:bg-muted transition-colors
                 focus:outline-none focus:ring-1 focus:ring-primary/50
                 ${compact ? 'px-1.5 py-0.5 text-xs' : 'px-2.5 py-1 text-sm'}
               `}
@@ -234,7 +234,7 @@ export default function MonthCalendar({
                       ? 'font-bold text-primary'
                       : intensity > 0
                         ? 'font-medium text-foreground/90'
-                        : 'text-foreground/50'
+                        : 'text-foreground/70'
                   }`}
                 >
                   {cell.day}

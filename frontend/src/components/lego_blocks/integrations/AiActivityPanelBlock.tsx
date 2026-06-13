@@ -1,25 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ChevronDown, ChevronUp, Hash, RefreshCw } from 'lucide-react'
+import { CalendarDays, ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { openVaultPathWithDefaultAppOrch } from '@/services/orchestrators/fileSystemOrch'
 import {
   useAiActivityBlock,
   AI_ACTIVITY_PRESETS,
   type AiActivityPreset,
   type AiSourceFilter,
+  type CustomRange,
 } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import AiActivityHeatmapBlock from '@/components/lego_blocks/units/AiActivityHeatmapBlock'
 import AiActivityProjectChipsBlock from '@/components/lego_blocks/units/AiActivityProjectChipsBlock'
-import AiActivityStackedAreaBlock from '@/components/lego_blocks/units/AiActivityStackedAreaBlock'
+import AiActivityTrendChartBlock from '@/components/lego_blocks/units/AiActivityTrendChartBlock'
 import AiActivityDayTableBlock from '@/components/lego_blocks/units/AiActivityDayTableBlock'
 import AiActivityDayTimelineBlock from '@/components/lego_blocks/units/AiActivityDayTimelineBlock'
 import AiActivityAggregateBlock from '@/components/lego_blocks/units/AiActivityAggregateBlock'
+import MonthCalendar from '@/components/lego_blocks/integrations/MonthCalendarBlock'
 import {
   fmtDurationMsBlock,
   mergedDurationMsBlock,
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 
 type ViewMode = 'heatmap' | 'trend' | 'totals'
+
+/** Rolling presets tucked into the chevron menu instead of the pill row. */
+const MENU_PRESET_IDS = new Set<AiActivityPreset>(['180d'])
 
 function fmtDateShort(iso: string): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, {
@@ -45,10 +49,6 @@ export default function AiActivityPanelBlock() {
   const [selectedRange, setSelectedRange] = useState<{ startIso: string; endIso: string } | null>(
     null,
   )
-  // Per-day session count pills on the trend chart. Off by default; users can
-  // opt in via the # button next to the view toggle when trend is selected.
-  const [showSessionCounts, setShowSessionCounts] = useState(false)
-
   // Totals match what the chips show: signal projects only, noise buckets
   // ([auto-commit], [telegram]) excluded. This keeps "278 msgs" in the strip
   // equal to the sum of msgs across visible chips for the current range.
@@ -196,7 +196,9 @@ export default function AiActivityPanelBlock() {
             What you actually worked on with AI — sessions, msgs, projects over time.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Pills tuck into the card's top-right corner: sources on top, range
+            + refresh below, right edges flush. */}
+        <div className="flex flex-col items-stretch gap-1.5">
           <SourcePills
             value={activity.sourceFilter}
             onChange={next => {
@@ -207,20 +209,16 @@ export default function AiActivityPanelBlock() {
           />
           <RangePills
             preset={activity.preset}
+            customRange={activity.customRange}
             onChange={p => {
               activity.setPreset(p)
               clearDrill()
             }}
+            onQuickRange={range => {
+              activity.setCustomRange(range)
+              clearDrill()
+            }}
           />
-          <button
-            type="button"
-            onClick={activity.refresh}
-            disabled={activity.loading}
-            className="rounded-full border border-border/40 bg-muted/30 p-1.5 text-muted-foreground transition-colors hover:border-border/70 hover:text-foreground disabled:opacity-50"
-            title="Refresh from vault"
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', activity.loading && 'animate-spin')} />
-          </button>
         </div>
       </div>
 
@@ -238,9 +236,8 @@ export default function AiActivityPanelBlock() {
         <span title="Merged wall-clock time across all non-noise chains in range">
           <strong className="tabular-nums text-foreground/85">{rangeDurationLabel}</strong>
         </span>
-        <LegacyArchivesLink />
         <span className="ml-auto text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70">
-          {activity.preset}
+          {activity.customRange?.label ?? activity.preset}
         </span>
       </div>
 
@@ -300,14 +297,6 @@ export default function AiActivityPanelBlock() {
       <div className="mt-3 space-y-3">
         <div className="flex items-center gap-1">
           <ViewToggle view={view} onChange={setView} />
-          {view === 'heatmap' && (
-            <QuickRangeChips
-              onSelect={range => {
-                setSelectedDate(null)
-                setSelectedRange(range)
-              }}
-            />
-          )}
           {activeProject && (
             <button
               type="button"
@@ -321,22 +310,6 @@ export default function AiActivityPanelBlock() {
                   · {activeProjectRangeDuration}
                 </span>
               )}
-            </button>
-          )}
-          {view === 'trend' && (
-            <button
-              type="button"
-              onClick={() => setShowSessionCounts(v => !v)}
-              className={cn(
-                'ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] transition-colors',
-                showSessionCounts
-                  ? 'border-foreground/30 bg-foreground/10 text-foreground/85'
-                  : 'border-border/40 bg-card/40 text-muted-foreground hover:border-border/70 hover:text-foreground',
-              )}
-              title={showSessionCounts ? 'Hide per-day session counts' : 'Show per-day session counts'}
-            >
-              <Hash className="h-3 w-3" />
-              counts
             </button>
           )}
         </div>
@@ -362,13 +335,13 @@ export default function AiActivityPanelBlock() {
             }}
           />
         ) : (
-          <AiActivityStackedAreaBlock
+          <AiActivityTrendChartBlock
             days={activity.days}
+            chains={activity.chains}
             projects={activity.projects}
             filterProject={activeProject}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
-            showSessionCounts={showSessionCounts}
           />
         )}
       </div>
@@ -397,75 +370,36 @@ export default function AiActivityPanelBlock() {
   )
 }
 
-function LegacyArchivesLink() {
-  // ChatGPT and Grok exports live in the vault but aren't part of the active
-  // dev rollup (no cwd → can't bucket by project). Surfaced as a small "open
-  // in Finder" link so the panel feels complete without polluting the
-  // project-grounded view.
-  const [open, setOpen] = useState(false)
-  const targets: Array<{ label: string; path: string }> = [
-    { label: 'ChatGPT', path: 'ai_raw/raw/chatgpt' },
-    { label: 'Grok', path: 'ai_raw/raw/grok' },
-  ]
-  const handleOpen = (path: string) => {
-    setOpen(false)
-    openVaultPathWithDefaultAppOrch(path).catch(err => {
-      // Swallow but log — most likely cause is non-Electron platform.
-      console.warn('[ai-activity] failed to open other-source archive:', err)
-    })
-  }
-  return (
-    <span className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="inline-flex items-center gap-1 rounded-full border border-border/30 bg-card/40 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground/80 transition-colors hover:border-border/60 hover:text-foreground"
-        title="Open ChatGPT / Grok archives in Finder"
-      >
-        <Archive className="h-3 w-3" />
-        others
-      </button>
-      {open && (
-        <>
-          {/* Click-away catcher */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setOpen(false)}
-            aria-hidden
-          />
-          <div className="absolute left-0 top-full z-50 mt-1 min-w-[140px] rounded-lg border border-border/50 bg-popover/95 p-1 text-xs shadow-lg backdrop-blur">
-            {targets.map(t => (
-              <button
-                key={t.path}
-                type="button"
-                onClick={() => handleOpen(t.path)}
-                className="block w-full rounded-md px-2 py-1 text-left text-foreground/85 hover:bg-muted/50"
-              >
-                Open {t.label} archive
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </span>
-  )
-}
-
 function RangePills({
   preset,
+  customRange,
   onChange,
+  onQuickRange,
 }: {
   preset: AiActivityPreset
+  /** Active calendar-relative override; when set it owns the highlight and the
+   *  preset pills go inactive (the range they describe is no longer in effect). */
+  customRange?: CustomRange | null
   onChange: (p: AiActivityPreset) => void
+  /** Quick "this week / last week / this month" calendar filters, folded into
+   *  the same pill via a trailing chevron menu. Filters all data, not a drill.
+   *  Null clears the active range back to the preset. */
+  onQuickRange?: (range: CustomRange | null) => void
 }) {
+  const customActive = customRange != null
+  // Less-used rolling presets live in the chevron menu (alongside the calendar
+  // ranges) rather than as pills, to keep the pill row tight.
+  const pillPresets = AI_ACTIVITY_PRESETS.filter(opt => !MENU_PRESET_IDS.has(opt.id))
+  const menuPresets = AI_ACTIVITY_PRESETS.filter(opt => MENU_PRESET_IDS.has(opt.id))
+  const activeMenuPreset = !customActive && MENU_PRESET_IDS.has(preset) ? preset : null
   return (
     <div
       role="tablist"
       aria-label="Range"
-      className="flex shrink-0 items-center gap-1 rounded-full border border-border/40 bg-muted/30 p-1"
+      className="flex h-7 w-full items-center gap-0.5 rounded-full border border-border/40 bg-muted/30 p-1"
     >
-      {AI_ACTIVITY_PRESETS.map(opt => {
-        const active = opt.id === preset
+      {pillPresets.map(opt => {
+        const active = !customActive && opt.id === preset
         return (
           <button
             key={opt.id}
@@ -474,7 +408,7 @@ function RangePills({
             aria-selected={active}
             onClick={() => onChange(opt.id)}
             className={cn(
-              'rounded-full px-2.5 py-0.5 text-[11px] font-medium tabular-nums transition-all',
+              'flex-1 rounded-full px-2 py-0.5 text-center text-[11px] font-medium tabular-nums transition-all',
               active
                 ? 'bg-foreground text-background shadow-sm'
                 : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
@@ -484,6 +418,18 @@ function RangePills({
           </button>
         )
       })}
+      {onQuickRange && (
+        <>
+          <span className="mx-0.5 h-3.5 w-px shrink-0 bg-border/50" aria-hidden />
+          <QuickRangeMenu
+            activeId={customRange?.id ?? null}
+            onSelect={onQuickRange}
+            presetOptions={menuPresets}
+            activePresetId={activeMenuPreset}
+            onSelectPreset={onChange}
+          />
+        </>
+      )}
     </div>
   )
 }
@@ -508,7 +454,7 @@ function SourcePills({
     <div
       role="tablist"
       aria-label="AI source"
-      className="flex shrink-0 items-center gap-1 rounded-full border border-border/40 bg-muted/30 p-1"
+      className="flex h-7 w-full items-center gap-0.5 rounded-full border border-border/40 bg-muted/30 p-1"
     >
       {opts.map(opt => {
         const active = opt.id === value
@@ -524,7 +470,7 @@ function SourcePills({
             disabled={disabled}
             onClick={() => onChange(opt.id)}
             className={cn(
-              'rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-all',
+              'flex-1 rounded-full px-2 py-0.5 text-center text-[11px] font-medium transition-all',
               active
                 ? 'bg-foreground text-background shadow-sm'
                 : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
@@ -540,18 +486,63 @@ function SourcePills({
   )
 }
 
-function QuickRangeChips({
+function QuickRangeMenu({
+  activeId,
   onSelect,
+  presetOptions = [],
+  activePresetId = null,
+  onSelectPreset,
 }: {
-  onSelect: (range: { startIso: string; endIso: string }) => void
+  /** Id of the active custom range, or null when a preset is in effect. */
+  activeId: string | null
+  /** Receives the picked range, or null when the active range is toggled off. */
+  onSelect: (range: CustomRange | null) => void
+  /** Rolling presets (e.g. 6m) tucked in here instead of the pill row. */
+  presetOptions?: ReadonlyArray<{ id: AiActivityPreset; label: string }>
+  /** The menu-housed preset that's currently the active range, if any. */
+  activePresetId?: AiActivityPreset | null
+  onSelectPreset?: (id: AiActivityPreset) => void
 }) {
-  // One-click presets for the most common "show me these days" selections —
-  // complements drag/shift-click on the heatmap without any extra state.
+  // Calendar-relative whole-panel filters plus the overflow rolling presets.
+  // Rendered as the trailing item inside the range pill so it reads as one
+  // control; reachable from any view without crowding the toggle row.
+  const [open, setOpen] = useState(false)
+  // Custom date-range picker (two-click: first sets the start, second the end).
+  const now0 = new Date()
+  const [showCal, setShowCal] = useState(false)
+  const [calY, setCalY] = useState(now0.getFullYear())
+  const [calM, setCalM] = useState(now0.getMonth() + 1)
+  const [pendingStart, setPendingStart] = useState<string | null>(null)
   const iso = (d: Date) => {
     const y = d.getFullYear()
     const m = String(d.getMonth() + 1).padStart(2, '0')
     const day = String(d.getDate()).padStart(2, '0')
     return `${y}-${m}-${day}`
+  }
+  const fmtRangeLabel = (startIso: string, endIso: string) => {
+    const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    const part = (s: string) => {
+      const [, m, d] = s.split('-')
+      return `${MONTH[Number(m) - 1]} ${Number(d)}`
+    }
+    return startIso === endIso ? part(startIso) : `${part(startIso)} – ${part(endIso)}`
+  }
+  const onCalSelect = (date: string) => {
+    if (!pendingStart) {
+      setPendingStart(date)
+      return
+    }
+    const startIso = date < pendingStart ? date : pendingStart
+    const endIso = date < pendingStart ? pendingStart : date
+    onSelect({ id: 'custom', label: fmtRangeLabel(startIso, endIso), startIso, endIso })
+    setPendingStart(null)
+    setShowCal(false)
+    setOpen(false)
+  }
+  const closeMenu = () => {
+    setOpen(false)
+    setShowCal(false)
+    setPendingStart(null)
   }
   const mondayOf = (date: Date) => {
     const d = new Date(date)
@@ -559,41 +550,156 @@ function QuickRangeChips({
     d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow))
     return d
   }
-  const pick = (id: string) => {
+  const opts: Array<{ id: string; label: string }> = [
+    { id: 'week', label: 'This week' },
+    { id: 'lastweek', label: 'Last week' },
+    { id: 'month', label: 'This month' },
+  ]
+  const rangeFor = (id: string, label: string): CustomRange => {
     const now = new Date()
-    if (id === 'week') {
-      onSelect({ startIso: iso(mondayOf(now)), endIso: iso(now) })
-    } else if (id === 'lastweek') {
+    if (id === 'lastweek') {
       const start = mondayOf(now)
       start.setDate(start.getDate() - 7)
       const end = new Date(start)
       end.setDate(end.getDate() + 6)
-      onSelect({ startIso: iso(start), endIso: iso(end) })
-    } else if (id === 'month') {
-      onSelect({
+      return { id, label, startIso: iso(start), endIso: iso(end) }
+    }
+    if (id === 'month') {
+      return {
+        id,
+        label,
         startIso: iso(new Date(now.getFullYear(), now.getMonth(), 1)),
         endIso: iso(now),
-      })
+      }
     }
+    return { id, label, startIso: iso(mondayOf(now)), endIso: iso(now) }
   }
-  const opts = [
-    { id: 'week', label: 'this wk' },
-    { id: 'lastweek', label: 'last wk' },
-    { id: 'month', label: 'this mo' },
-  ]
+  const menuActive = activeId != null || activePresetId != null
   return (
-    <div className="ml-1 flex items-center gap-1">
-      {opts.map(o => (
-        <button
-          key={o.id}
-          type="button"
-          onClick={() => pick(o.id)}
-          className="rounded-full border border-border/40 bg-card/40 px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-border/70 hover:text-foreground"
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <span className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={cn(
+          'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 transition-colors',
+          menuActive
+            ? 'bg-foreground text-background shadow-sm'
+            : open
+              ? 'bg-foreground/10 text-foreground'
+              : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+        )}
+        title="More ranges — 6m, this week, last week, this month"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <CalendarDays className="h-3.5 w-3.5" />
+        <ChevronDown className="h-3 w-3" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={closeMenu} aria-hidden />
+          <div
+            role="menu"
+            className={cn(
+              'absolute right-0 top-full z-50 mt-1 rounded-lg border border-border/60 bg-popover p-1 text-xs shadow-xl',
+              showCal ? 'w-[248px]' : 'min-w-[136px]',
+            )}
+          >
+            {presetOptions.map(o => {
+              const active = activePresetId === o.id
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={active}
+                  onClick={() => {
+                    onSelectPreset?.(o.id)
+                    setOpen(false)
+                  }}
+                  className={cn(
+                    'block w-full rounded-md px-2 py-1 text-left tabular-nums transition-colors',
+                    active
+                      ? 'bg-foreground/10 font-medium text-foreground'
+                      : 'text-foreground/85 hover:bg-muted/50',
+                  )}
+                >
+                  {o.label}
+                </button>
+              )
+            })}
+            {presetOptions.length > 0 && (
+              <div className="my-1 h-px bg-border/40" aria-hidden />
+            )}
+            {opts.map(o => {
+              const active = activeId === o.id
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={active}
+                  onClick={() => {
+                    // Re-picking the active range clears it (back to the preset).
+                    onSelect(active ? null : rangeFor(o.id, o.label))
+                    setOpen(false)
+                  }}
+                  className={cn(
+                    'block w-full rounded-md px-2 py-1 text-left transition-colors',
+                    active
+                      ? 'bg-foreground/10 font-medium text-foreground'
+                      : 'text-foreground/85 hover:bg-muted/50',
+                  )}
+                >
+                  {o.label}
+                </button>
+              )
+            })}
+
+            <div className="my-1 h-px bg-border/40" aria-hidden />
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={activeId === 'custom'}
+              onClick={() => setShowCal(s => !s)}
+              className={cn(
+                'flex w-full items-center justify-between rounded-md px-2 py-1 text-left transition-colors',
+                activeId === 'custom'
+                  ? 'bg-foreground/10 font-medium text-foreground'
+                  : 'text-foreground/85 hover:bg-muted/50',
+              )}
+            >
+              <span>Custom range…</span>
+              <ChevronDown
+                className={cn('h-3 w-3 transition-transform', showCal && 'rotate-180')}
+              />
+            </button>
+
+            {showCal && (
+              <div className="mt-1 rounded-md border border-border/40 bg-muted/40 p-2">
+                <MonthCalendar
+                  compact
+                  year={calY}
+                  month={calM}
+                  days={[]}
+                  selectedDate={pendingStart}
+                  onSelectDate={onCalSelect}
+                  onMonthChange={(y, m) => {
+                    setCalY(y)
+                    setCalM(m)
+                  }}
+                />
+                <p className="mt-1.5 px-0.5 text-[10px] text-muted-foreground">
+                  {pendingStart
+                    ? `Start ${fmtRangeLabel(pendingStart, pendingStart)} — pick an end date`
+                    : 'Pick a start date'}
+                </p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </span>
   )
 }
 

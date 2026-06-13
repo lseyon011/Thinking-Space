@@ -204,14 +204,24 @@ export interface ParseInput {
 // ── Chat-export sessions (ChatGPT / Grok) ───────────────────────────────────
 // The vault's `ai_raw/raw/{chatgpt,grok}/` markdown is generated from the
 // providers' export JSON by the user's converter scripts. Everything we need
-// is machine-written YAML frontmatter: provider, conversation_id, created/
-// updated (real local timestamps → real durations), user_messages, title,
-// model(s). No cwd exists for web chats — per user decision, the provider name
-// IS the project bucket.
+// is machine-written YAML frontmatter: provider, conversation_id, created,
+// user_messages, title, model(s). No cwd exists for web chats — per user
+// decision, the provider name IS the project bucket.
 
 const CHAT_EXPORT_PROVIDERS = new Set<ActivitySource>(['chatgpt', 'grok'])
 
-function parseChatExportSession(input: ParseInput): ParsedSession | null {
+// Frontmatter `updated` is untrustworthy (provider migrations bulk-rewrite it
+// — dozens of conversations all "updated" the same minute), but the BODY has
+// real per-message timestamps: `## User` / `## Assistant` headers each followed
+// by `*YYYY-MM-DD HH:MM[ | model: …]*`. Durations come from those, split into
+// sittings at 1h idle gaps — same window logic as the history.jsonl parser. A
+// revisited conversation becomes several short sessions instead of one
+// months-long monster.
+
+const CHAT_EXPORT_MSG_RE = /^## (User|Assistant)[ \t]*\r?\n\*(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/gm
+const CHAT_EXPORT_WINDOW_GAP_MS = 3_600_000
+
+function parseChatExportSessions(input: ParseInput): ParsedSession[] | null {
   if (!input.text.startsWith('---')) return null
   const fmEnd = input.text.indexOf('\n---', 3)
   if (fmEnd === -1) return null
@@ -231,13 +241,6 @@ function parseChatExportSession(input: ParseInput): ParsedSession | null {
   // Timestamps are local-time `YYYY-MM-DD HH:MM` — Date parses the T-form as local.
   const startedDate = new Date(created.replace(' ', 'T'))
   if (Number.isNaN(startedDate.getTime())) return null
-  const updated = get('updated')
-  const updatedDate = updated ? new Date(updated.replace(' ', 'T')) : null
-  const endedDate =
-    updatedDate && !Number.isNaN(updatedDate.getTime()) && updatedDate > startedDate
-      ? updatedDate
-      : startedDate
-
   const userMsgs = Number(get('user_messages'))
   // `model: <scalar>` (ChatGPT) or a `models:` list (Grok) — take the first.
   let model = get('model') ?? undefined
@@ -247,29 +250,78 @@ function parseChatExportSession(input: ParseInput): ParsedSession | null {
   }
   if (model === 'auto') model = undefined
 
-  return {
-    path: input.path,
+  const base = {
     source: provider as ActivitySource,
-    startedIso: startedDate.toISOString(),
-    endedIso: endedDate.toISOString(),
     project: provider,
-    userMsgCount: Number.isFinite(userMsgs) && userMsgs > 0 ? userMsgs : 0,
     topic: get('title') ?? '(untitled)',
     hadClear: false,
     mtime: input.mtime,
     model,
-    sessionId: conversationId.toLowerCase(),
   }
+  const convId = conversationId.toLowerCase()
+
+  // Real per-message timestamps from the body.
+  const msgs: Array<{ user: boolean; ts: number }> = []
+  const body = input.text.slice(fmEnd + 4)
+  CHAT_EXPORT_MSG_RE.lastIndex = 0
+  for (let m = CHAT_EXPORT_MSG_RE.exec(body); m; m = CHAT_EXPORT_MSG_RE.exec(body)) {
+    const t = Date.parse(m[2].replace(' ', 'T'))
+    if (Number.isFinite(t)) msgs.push({ user: m[1] === 'User', ts: t })
+  }
+  msgs.sort((a, b) => a.ts - b.ts)
+
+  if (msgs.length === 0) {
+    // No body timestamps — fall back to a zero-duration point event at
+    // `created`, with the frontmatter user_messages count.
+    return [
+      {
+        ...base,
+        path: input.path,
+        startedIso: startedDate.toISOString(),
+        endedIso: startedDate.toISOString(),
+        userMsgCount: Number.isFinite(userMsgs) && userMsgs > 0 ? userMsgs : 0,
+        sessionId: convId,
+      },
+    ]
+  }
+
+  // Split at idle gaps — each window is one sitting.
+  const windows: Array<Array<{ user: boolean; ts: number }>> = []
+  let cur: Array<{ user: boolean; ts: number }> = []
+  for (const msg of msgs) {
+    if (cur.length > 0 && msg.ts - cur[cur.length - 1].ts > CHAT_EXPORT_WINDOW_GAP_MS) {
+      windows.push(cur)
+      cur = []
+    }
+    cur.push(msg)
+  }
+  windows.push(cur)
+
+  return windows.map((win, i) => ({
+    ...base,
+    path: i === 0 ? input.path : `${input.path}#w${i}`,
+    startedIso: new Date(win[0].ts).toISOString(),
+    endedIso: new Date(win[win.length - 1].ts).toISOString(),
+    userMsgCount: win.filter(m => m.user).length,
+    sessionId: i === 0 ? convId : `${convId}::w${i}`,
+  }))
+}
+
+/**
+ * Parse one vault markdown file into sessions. Chat exports (gated on
+ * frontmatter `provider: chatgpt|grok` — their files are slug-named) can yield
+ * multiple per-sitting windows; everything else yields 0 or 1 sessions via the
+ * date-prefixed-filename path. Index/wikilink files yield [].
+ */
+export function parseVaultSessionsBlock(input: ParseInput): ParsedSession[] {
+  const chatExport = parseChatExportSessions(input)
+  if (chatExport) return chatExport
+  const single = parseSession(input)
+  return single ? [single] : []
 }
 
 /** Parse a single session file. Returns null if the filename doesn't match the expected pattern. */
 export function parseSession(input: ParseInput): ParsedSession | null {
-  // Chat exports gate on frontmatter (`provider: chatgpt|grok`), not filename —
-  // their files are slug-named. Index/wikilink files lack the field and fall
-  // through to the date-prefixed filename check below, which rejects them.
-  const chatExport = parseChatExportSession(input)
-  if (chatExport) return chatExport
-
   const filename = input.path.split('/').pop() ?? ''
   // Codex filenames historically share the same YYYY-MM-DD_<id>.md shape; if not,
   // tolerate any filename starting with a date.

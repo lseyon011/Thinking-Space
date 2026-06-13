@@ -1,8 +1,8 @@
 import { useMemo, useRef, useEffect, useState } from 'react'
 import {
-  Area,
-  AreaChart,
+  Bar,
   CartesianGrid,
+  ComposedChart,
   LabelList,
   Line,
   ReferenceLine,
@@ -15,10 +15,17 @@ import type {
   ActivityDay,
   ActivityProject,
 } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
+import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import {
+  fmtDurationMsBlock,
+  mergedDurationMsBlock,
+} from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 
-interface AiActivityStackedAreaBlockProps {
+interface AiActivityTrendChartBlockProps {
   days: ActivityDay[]
+  /** Chains in range — the duration source (days only carry msg counts). */
+  chains: ActivityChain[]
   projects: ActivityProject[]
   /** When set, only that project's series is plotted (solo view). */
   filterProject?: string | null
@@ -28,8 +35,17 @@ interface AiActivityStackedAreaBlockProps {
   selectedDate?: string | null
   /** Click on a data point selects/unselects that day. Mirrors the heatmap. */
   onSelectDate?: (date: string | null) => void
-  /** Render the per-day session count as a small pill above each peak. */
+  /** Render the per-day total duration as a small pill above each peak. */
   showSessionCounts?: boolean
+}
+
+const HOUR_MS = 3_600_000
+
+function isoDayLocal(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 function formatTickDate(iso: string): string {
@@ -42,15 +58,15 @@ function formatTooltipDate(iso: string): string {
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-export default function AiActivityStackedAreaBlock({
+export default function AiActivityTrendChartBlock({
   days,
+  chains,
   projects,
   filterProject = null,
   hideNoise = true,
   selectedDate = null,
   onSelectDate,
-  showSessionCounts = false,
-}: AiActivityStackedAreaBlockProps) {
+}: AiActivityTrendChartBlockProps) {
   const visibleProjects = useMemo(() => {
     let list = projects
     if (hideNoise) list = list.filter(p => !p.isNoise)
@@ -58,29 +74,45 @@ export default function AiActivityStackedAreaBlock({
     return list
   }, [projects, hideNoise, filterProject])
 
-  // Chain count per day — surfaced in the tooltip so a hover shows how many
-  // distinct sessions ran that day on top of the per-project msg breakdown.
-  // Key by date, not stuffed into the row, so recharts doesn't try to plot it.
-  const chainsByDate = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const d of days) m.set(d.date, d.totalChains)
-    return m
-  }, [days])
+  // Per-day, per-project merged duration (ms). Days only carry msg counts, so
+  // duration is computed here from the chains' [start, end] windows — bucketed
+  // by the chain's local start day, consistent with the heatmap/drill views.
+  const durMsByDateProject = useMemo(() => {
+    const byDate = new Map<string, Map<string, ActivityChain[]>>()
+    for (const c of chains) {
+      const localDay = isoDayLocal(new Date(c.startedIso))
+      let byProject = byDate.get(localDay)
+      if (!byProject) {
+        byProject = new Map()
+        byDate.set(localDay, byProject)
+      }
+      const arr = byProject.get(c.project)
+      if (arr) arr.push(c)
+      else byProject.set(c.project, [c])
+    }
+    const out = new Map<string, Map<string, number>>()
+    for (const [date, byProject] of byDate) {
+      const durs = new Map<string, number>()
+      for (const [project, list] of byProject) durs.set(project, mergedDurationMsBlock(list))
+      out.set(date, durs)
+    }
+    return out
+  }, [chains])
 
   const data = useMemo(() => {
     return days.map(d => {
-      const row: Record<string, number | string> = {
-        date: d.date,
-        // Session count stashed on the row so the invisible "labels line"
-        // below can pull it via dataKey for the per-day numeric label.
-        __sessionCount: d.totalChains,
-      }
+      const durs = durMsByDateProject.get(d.date)
+      const row: Record<string, number | string> = { date: d.date }
       for (const p of visibleProjects) {
-        row[p.name] = d.byProject[p.name] ?? 0
+        // Plot hours so the y-axis reads naturally; ms kept for label/tooltip
+        // formatting via the `__durMs:<project>` sidecar keys.
+        const ms = durs?.get(p.name) ?? 0
+        row[p.name] = Math.round((ms / HOUR_MS) * 100) / 100
+        row[`__durMs:${p.name}`] = ms
       }
       return row
     })
-  }, [days, visibleProjects])
+  }, [days, visibleProjects, durMsByDateProject])
 
   const yMax = useMemo(() => {
     let max = 0
@@ -92,16 +124,19 @@ export default function AiActivityStackedAreaBlock({
     return Math.max(1, Math.ceil(max * 1.15))
   }, [data, visibleProjects])
 
-  // Anchor each session-count label just above that day's stacked peak —
-  // following the curve so labels hover over the silhouette, not pinned to the
-  // chart top. The anchor is the sum of visible project msgs for the day; the
-  // LabelList offset (`position="top"`) lifts it a few px above the area.
+  // Anchor each duration label just above that day's stacked peak — following
+  // the curve so labels hover over the silhouette. The anchor is the stacked
+  // hours for the day; `__dayDurMs` carries the same total in ms for the pill.
   const dataWithAnchor = useMemo(
     () =>
       data.map(row => {
-        let stack = 0
-        for (const p of visibleProjects) stack += (row[p.name] as number) ?? 0
-        return { ...row, __topAnchor: stack }
+        let stackHours = 0
+        let stackMs = 0
+        for (const p of visibleProjects) {
+          stackHours += (row[p.name] as number) ?? 0
+          stackMs += (row[`__durMs:${p.name}`] as number) ?? 0
+        }
+        return { ...row, __topAnchor: stackHours, __dayDurMs: stackMs }
       }),
     [data, visibleProjects],
   )
@@ -118,11 +153,29 @@ export default function AiActivityStackedAreaBlock({
     return () => obs.disconnect()
   }, [])
 
+  // The duration pills are light SVG badges, so their text must darken in dark
+  // mode to stay readable. The app toggles a `.dark` class on the canvas
+  // wrapper (covering explicit dark + night phase), so detect from the host's
+  // ancestry and re-check on class changes.
+  const [isDark, setIsDark] = useState(false)
+  useEffect(() => {
+    const update = () => setIsDark(!!hostRef.current?.closest('.dark'))
+    update()
+    const obs = new MutationObserver(update)
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+      subtree: true,
+    })
+    return () => obs.disconnect()
+  }, [])
+  const pillTextFill = isDark ? 'rgba(30,41,59,0.95)' : 'rgba(148,163,184,0.95)'
+
   return (
     <div ref={hostRef} className="h-44 min-w-0">
       {ready && (
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-          <AreaChart
+          <ComposedChart
             data={dataWithAnchor}
             margin={{ top: 18, right: 4, bottom: 0, left: -22 }}
             onClick={evt => {
@@ -136,18 +189,6 @@ export default function AiActivityStackedAreaBlock({
             }}
             style={{ cursor: onSelectDate ? 'pointer' : 'default' }}
           >
-            <defs>
-              {visibleProjects.map(p => {
-                const color = getProjectColor(p.name)
-                const id = `claude-act-grad-${p.name.replace(/[^a-z0-9]/gi, '-')}`
-                return (
-                  <linearGradient key={id} id={id} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={color.fill} />
-                    <stop offset="100%" stopColor={color.fill.replace(/[\d.]+\)/, '0)')} />
-                  </linearGradient>
-                )
-              })}
-            </defs>
             <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
             <XAxis
               dataKey="date"
@@ -163,49 +204,54 @@ export default function AiActivityStackedAreaBlock({
               tick={{ fontSize: 10, fill: 'rgba(148,163,184,0.7)' }}
               tickLine={false}
               axisLine={false}
-              width={28}
-              allowDecimals={false}
+              width={32}
+              tickFormatter={(v: number) => `${v}h`}
             />
             <Tooltip
-              cursor={{ stroke: 'rgba(148,163,184,0.4)', strokeWidth: 1 }}
+              cursor={{ fill: 'rgba(148,163,184,0.08)' }}
               content={({ active, payload, label }) => {
                 if (!active || !payload || payload.length === 0) return null
+                // Only the project bars carry a numeric hours value; sidecar/
+                // anchor keys are strings-or-hidden so they fall out here.
                 const rows = payload
-                  .filter(p => typeof p.value === 'number' && (p.value as number) > 0)
+                  .filter(
+                    p =>
+                      typeof p.value === 'number' &&
+                      (p.value as number) > 0 &&
+                      !String(p.dataKey).startsWith('__'),
+                  )
                   .reverse()
                 const dateIso = String(label)
-                const sessions = chainsByDate.get(dateIso) ?? 0
-                if (rows.length === 0 && sessions === 0) return null
+                const totalMs = rows.reduce((n, r) => n + (r.value as number) * HOUR_MS, 0)
+                if (rows.length === 0) return null
                 return (
                   <div className="rounded-lg border border-border/60 bg-background/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
                     <div className="flex items-baseline gap-2 text-foreground/70">
                       <span>{formatTooltipDate(dateIso)}</span>
-                      <span className="ml-auto tabular-nums text-foreground/60">
-                        {sessions} session{sessions === 1 ? '' : 's'}
+                      <span className="ml-auto tabular-nums text-foreground/85">
+                        {fmtDurationMsBlock(totalMs)}
                       </span>
                     </div>
-                    {rows.length > 0 && (
-                      <div className="mt-1 space-y-0.5">
-                        {rows.map(row => {
-                          const color = getProjectColor(String(row.dataKey))
-                          return (
-                            <div key={String(row.dataKey)} className="flex items-baseline gap-2">
-                              <span
-                                className="h-2 w-2 rounded-full"
-                                style={{ background: color.stroke }}
-                              />
-                              <span className="text-foreground/80">{String(row.dataKey)}</span>
-                              <span
-                                className="ml-auto tabular-nums"
-                                style={{ color: color.stroke }}
-                              >
-                                {row.value as number}
-                              </span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
+                    <div className="mt-1 space-y-0.5">
+                      {rows.map(row => {
+                        const color = getProjectColor(String(row.dataKey))
+                        return (
+                          <div key={String(row.dataKey)} className="flex items-baseline gap-2">
+                            <span
+                              className="h-2 w-2 rounded-full"
+                              style={{ background: color.stroke }}
+                            />
+                            <span className="text-foreground/80">{String(row.dataKey)}</span>
+                            <span
+                              className="ml-auto tabular-nums"
+                              style={{ color: color.stroke }}
+                            >
+                              {fmtDurationMsBlock((row.value as number) * HOUR_MS)}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 )
               }}
@@ -219,32 +265,22 @@ export default function AiActivityStackedAreaBlock({
                 ifOverflow="extendDomain"
               />
             )}
-            {visibleProjects.map(p => {
-              const color = getProjectColor(p.name)
-              const id = `claude-act-grad-${p.name.replace(/[^a-z0-9]/gi, '-')}`
-              return (
-                <Area
-                  key={p.name}
-                  type="monotone"
-                  dataKey={p.name}
-                  stackId="1"
-                  stroke={color.stroke}
-                  strokeWidth={1.5}
-                  fill={`url(#${id})`}
-                  isAnimationActive
-                  animationDuration={550}
-                  animationEasing="ease-out"
-                  dot={false}
-                  activeDot={{ r: 3, strokeWidth: 0, fill: color.stroke }}
-                />
-              )
-            })}
-            {/* Session-count labels — plotted as an invisible line that
-                follows each day's stacked peak, with a LabelList rendering a
-                small pill above each point. Toggled off by default; opt-in via
-                the "counts" button in the panel header. Days with 0 sessions
-                are suppressed regardless. */}
-            {showSessionCounts && (
+            {visibleProjects.map(p => (
+              <Bar
+                key={p.name}
+                dataKey={p.name}
+                stackId="1"
+                fill={getProjectColor(p.name).stroke}
+                fillOpacity={0.85}
+                isAnimationActive
+                animationDuration={550}
+                animationEasing="ease-out"
+              />
+            ))}
+            {/* Per-day total-duration labels — plotted as an invisible line
+                that follows each day's stacked peak, with a LabelList rendering
+                a small pill above each point. Days with 0 duration are
+                suppressed. */}
             <Line
               type="monotone"
               dataKey="__topAnchor"
@@ -255,7 +291,7 @@ export default function AiActivityStackedAreaBlock({
               legendType="none"
             >
               <LabelList
-                dataKey="__sessionCount"
+                dataKey="__dayDurMs"
                 position="top"
                 content={(props) => {
                   const { x, y, value } = props as {
@@ -263,12 +299,12 @@ export default function AiActivityStackedAreaBlock({
                     y?: number
                     value?: number | string
                   }
-                  const n = typeof value === 'number' ? value : 0
-                  if (n <= 0 || x == null || y == null) return null
-                  // Pill badge: small rounded rect with the count inside.
-                  // Width grows with digit count so '12' and '8' both look
+                  const ms = typeof value === 'number' ? value : 0
+                  if (ms <= 0 || x == null || y == null) return null
+                  // Pill badge: small rounded rect with the duration inside.
+                  // Width grows with text length so '12h' and '45m' both look
                   // balanced.
-                  const text = String(n)
+                  const text = fmtDurationMsBlock(ms)
                   const charW = 5.5
                   const padX = 4
                   const w = Math.max(14, text.length * charW + padX * 2)
@@ -294,7 +330,7 @@ export default function AiActivityStackedAreaBlock({
                         textAnchor="middle"
                         fontSize={9}
                         fontWeight={500}
-                        fill="rgba(148,163,184,0.95)"
+                        fill={pillTextFill}
                         style={{ fontVariantNumeric: 'tabular-nums' }}
                       >
                         {text}
@@ -304,8 +340,7 @@ export default function AiActivityStackedAreaBlock({
                 }}
               />
             </Line>
-            )}
-          </AreaChart>
+          </ComposedChart>
         </ResponsiveContainer>
       )}
     </div>

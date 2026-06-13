@@ -15,6 +15,7 @@ import {
   subscribeAiActivityMappingBlock,
 } from '@/services/lego_blocks/units/aiActivityMappingBlock'
 import { setProjectColorRanking } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 // Local preset list — the shared DashboardRangePreset is tuned for the file
 // dashboard above and doesn't include the 6m midpoint that's useful for
 // month-over-month evolution watching.
@@ -59,6 +60,16 @@ export interface ActivityProject {
 
 export type AiSourceFilter = 'all' | 'claude-code' | 'codex' | 'chatgpt' | 'grok'
 
+/** A named calendar range used as a whole-panel data filter. */
+export interface CustomRange {
+  /** Stable id for active-state matching (e.g. 'week', 'lastweek', 'month'). */
+  id: string
+  /** Short label for the active-range chip (e.g. 'This week'). */
+  label: string
+  startIso: string
+  endIso: string
+}
+
 export interface UseAiActivityResult {
   /** All chains within the visible range, newest first. */
   chains: ActivityChain[]
@@ -74,6 +85,11 @@ export interface UseAiActivityResult {
   error: string | null
   preset: AiActivityPreset
   setPreset: (preset: AiActivityPreset) => void
+  /** A calendar-relative range (this week / last week / this month) that
+   *  overrides the preset and narrows ALL data, not just the heatmap drill.
+   *  Null when a preset is the active range. */
+  customRange: CustomRange | null
+  setCustomRange: (range: CustomRange | null) => void
   /** Which AI tool's sessions to include. Project buckets stay folder-rooted; this
    *  just narrows which sessions feed every downstream aggregation. */
   sourceFilter: AiSourceFilter
@@ -189,9 +205,17 @@ export function useAiActivityBlock(
   const [preset, setPresetState] = useState<AiActivityPreset>(
     () => readStoredPreset() ?? initialPreset,
   )
+  // A calendar-relative override (this week / last week / this month). When
+  // set it replaces the preset-derived range for ALL aggregations. Picking a
+  // preset pill clears it so the two range controls never silently conflict.
+  const [customRange, setCustomRangeState] = useState<CustomRange | null>(null)
   const setPreset = useCallback((next: AiActivityPreset) => {
     writeStoredPreset(next)
     setPresetState(next)
+    setCustomRangeState(null)
+  }, [])
+  const setCustomRange = useCallback((range: CustomRange | null) => {
+    setCustomRangeState(range)
   }, [])
   const [sourceFilter, setSourceFilterState] = useState<AiSourceFilter>(
     () => readStoredSourceFilter() ?? 'all',
@@ -254,8 +278,11 @@ export function useAiActivityBlock(
   }, [refreshKey])
 
   const { startIso, endIso } = useMemo(
-    () => rangeFromPreset(preset, earliestSessionIso),
-    [preset, earliestSessionIso],
+    () =>
+      customRange
+        ? { startIso: customRange.startIso, endIso: customRange.endIso }
+        : rangeFromPreset(preset, earliestSessionIso),
+    [customRange, preset, earliestSessionIso],
   )
 
   // Apply temporal-inheritance once at the all-sessions layer so every
@@ -422,6 +449,10 @@ export function useAiActivityBlock(
 
   const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
 
+  // The top-chrome "Refresh" button is the single refresh affordance — when it
+  // fires, force-reload AI activity from the vault too (no panel-local button).
+  useEffect(() => addGlobalSyncRefreshListenerBlock(() => setRefreshKey(k => k + 1)), [])
+
   return {
     chains,
     todayChains,
@@ -432,6 +463,8 @@ export function useAiActivityBlock(
     error,
     preset,
     setPreset,
+    customRange,
+    setCustomRange,
     sourceFilter,
     setSourceFilter,
     sourceCounts,

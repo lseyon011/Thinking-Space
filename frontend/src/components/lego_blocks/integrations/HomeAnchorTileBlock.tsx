@@ -1,6 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 import DashboardChartsBlock from '@/components/lego_blocks/integrations/DashboardChartsBlock'
-import ActivityHotspotBlock from '@/components/lego_blocks/integrations/ActivityHotspotBlock'
+import ThisWeekDigestBlock from '@/components/lego_blocks/integrations/ThisWeekDigestBlock'
 import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivityPanelBlock'
 import TodayFileActivityOrch from '@/components/orchestrators/TodayFileActivityOrch'
 import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
@@ -21,8 +21,8 @@ const ANCHOR_ELEMENTS = {
   // Tall enough to hold the chart + drill-down table without scrolling.
   aiActivity: { w: 880, h: 980, offsetY: -380 },
   charts: { w: 880, h: 360, offsetY: 640 },
-  hotspot: { w: 880, h: 280, offsetY: 1040 },
-  today: { w: 880, h: 440, offsetY: 1360 },
+  thisWeek: { w: 880, h: 360, offsetY: 1040 },
+  today: { w: 880, h: 440, offsetY: 1440 },
 } as const
 
 function FloatingPanel({
@@ -90,7 +90,7 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
 
   const welcome = place('welcome')
   const charts = place('charts')
-  const hotspot = place('hotspot')
+  const thisWeek = place('thisWeek')
   const today = place('today')
   const aiActivity = place('aiActivity')
 
@@ -134,13 +134,8 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
         />
       </FloatingPanel>
 
-      <FloatingPanel {...hotspot} theme={theme}>
-        <ActivityHotspotBlock
-          days={activity.series?.days ?? []}
-          loading={activity.loading}
-          startIso={activity.startIso}
-          endIso={activity.endIso}
-        />
+      <FloatingPanel {...thisWeek} theme={theme}>
+        <ThisWeekDigestBlock />
       </FloatingPanel>
 
       <FloatingPanel {...today} theme={theme}>
@@ -157,7 +152,7 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
   )
 }
 
-// Memo prevents this whole subtree (charts, hotspot, today activity) from
+// Memo prevents this whole subtree (charts, this-week digest, today activity) from
 // re-rendering on every wheel pan/zoom in HomeCanvasOrch — its props are
 // constants for the lifetime of the page.
 const HomeAnchorTileBlock = memo(HomeAnchorTileBlockImpl)

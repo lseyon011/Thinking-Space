@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ActivityDay } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
@@ -20,6 +21,11 @@ interface AiActivityHeatmapBlockProps {
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const WEEKDAY_LABELS = ['Mon', '', 'Wed', '', 'Fri', '', '']
+
+/** Widest window the grid renders at once — longer ranges page via chevrons. */
+const MAX_VISIBLE_WEEKS = 53
+/** Chevron page step — half a window so adjacent pages share context. */
+const PAGE_STEP_WEEKS = 26
 
 function mondayOf(date: Date): Date {
   const d = new Date(date)
@@ -68,6 +74,10 @@ export default function AiActivityHeatmapBlock({
 }: AiActivityHeatmapBlockProps) {
   const [hoverDate, setHoverDate] = useState<string | null>(null)
   const [dragAnchor, setDragAnchor] = useState<string | null>(null)
+  // Weeks paged back from the most recent window (0 = latest). Reset when the
+  // range itself changes so a new range always opens on its newest data.
+  const [weeksBack, setWeeksBack] = useState(0)
+  useEffect(() => setWeeksBack(0), [startIso, endIso])
 
   const dayMap = useMemo(() => {
     const m = new Map<string, ActivityDay>()
@@ -75,7 +85,7 @@ export default function AiActivityHeatmapBlock({
     return m
   }, [days])
 
-  const weeks = useMemo(() => {
+  const allWeeks = useMemo(() => {
     const start = new Date(startIso + 'T00:00:00')
     const end = new Date(endIso + 'T00:00:00')
     const firstMonday = mondayOf(start)
@@ -110,9 +120,11 @@ export default function AiActivityHeatmapBlock({
       }
       cells.push({ date, msgs, intensity: msgs, topProject })
       cursor.setDate(cursor.getDate() + 1)
-      if (cells.length > 53 * 7) break
+      if (cells.length > 530 * 7) break // ~10y hard stop against degenerate ranges
     }
 
+    // Normalize against the WHOLE range, not the visible page, so a cell's
+    // shade means the same thing on every page.
     const max = cells.reduce((m, c) => (c.intensity > m ? c.intensity : m), 0)
     for (const c of cells) c.intensity = max > 0 ? Math.min(1, c.intensity / max) : 0
 
@@ -120,6 +132,24 @@ export default function AiActivityHeatmapBlock({
     for (let i = 0; i < cells.length; i += 7) w.push(cells.slice(i, i + 7))
     return w
   }, [dayMap, startIso, endIso, filterProject])
+
+  const maxWeeksBack = Math.max(0, allWeeks.length - MAX_VISIBLE_WEEKS)
+  const clampedWeeksBack = Math.min(weeksBack, maxWeeksBack)
+  const weeks = useMemo(() => {
+    if (allWeeks.length <= MAX_VISIBLE_WEEKS) return allWeeks
+    const start = maxWeeksBack - clampedWeeksBack
+    return allWeeks.slice(start, start + MAX_VISIBLE_WEEKS)
+  }, [allWeeks, maxWeeksBack, clampedWeeksBack])
+  const canPageBack = clampedWeeksBack < maxWeeksBack
+  const canPageForward = clampedWeeksBack > 0
+
+  function pageBy(dir: 'back' | 'forward') {
+    setWeeksBack(prev =>
+      dir === 'back'
+        ? Math.min(maxWeeksBack, prev + PAGE_STEP_WEEKS)
+        : Math.max(0, prev - PAGE_STEP_WEEKS),
+    )
+  }
 
   // Month labels are wider than one 12px column, so a naive per-column slot
   // makes adjacent months collide ("JanFeb"). Build an absolutely-positioned
@@ -161,7 +191,10 @@ export default function AiActivityHeatmapBlock({
     let lastCol = -Infinity
     for (const t of monthTransitions) {
       if (t.col - lastCol >= 2) {
-        headers.push({ col: t.col, label: MONTH_LABELS[t.month], month: t.month, year: t.year })
+        // Year on January so multi-year paging stays unambiguous.
+        const label =
+          t.month === 0 ? `${MONTH_LABELS[0]} ’${String(t.year).slice(2)}` : MONTH_LABELS[t.month]
+        headers.push({ col: t.col, label, month: t.month, year: t.year })
         lastCol = t.col
       }
     }
@@ -235,6 +268,7 @@ export default function AiActivityHeatmapBlock({
       {loading ? (
         <div className="h-32 w-full animate-pulse rounded-lg bg-muted/20" />
       ) : (
+        <div className="relative">
         <div className="overflow-x-auto pt-1.5 pb-1.5">
           <div className="inline-block min-w-full">
             <div
@@ -318,6 +352,29 @@ export default function AiActivityHeatmapBlock({
               </div>
             </div>
           </div>
+        </div>
+        {/* Page chevrons — same quiet style as the day timeline's. Only shown
+            when the range is wider than one grid window. */}
+        {canPageBack && (
+          <button
+            type="button"
+            onClick={() => pageBy('back')}
+            className="absolute bottom-1.5 left-0 z-20 rounded-full border border-border/30 bg-background/85 p-0.5 text-muted-foreground shadow-sm transition-colors hover:border-border/60 hover:text-foreground"
+            aria-label="Show earlier weeks"
+          >
+            <ChevronLeft className="h-3 w-3" />
+          </button>
+        )}
+        {canPageForward && (
+          <button
+            type="button"
+            onClick={() => pageBy('forward')}
+            className="absolute bottom-1.5 right-0 z-20 rounded-full border border-border/30 bg-background/85 p-0.5 text-muted-foreground shadow-sm transition-colors hover:border-border/60 hover:text-foreground"
+            aria-label="Show later weeks"
+          >
+            <ChevronRight className="h-3 w-3" />
+          </button>
+        )}
         </div>
       )}
       <div className="min-h-[1.5rem] text-xs">

@@ -13,7 +13,7 @@
 
 import type { VaultFS, VaultEntry } from '@/services/lego_blocks/integrations/fsBlock'
 import {
-  parseSession,
+  parseVaultSessionsBlock,
   type ParsedSession,
 } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import {
@@ -33,7 +33,11 @@ const CACHE_DIR = '.thinking-space'
 // v13: cwd detection now validates the captured value is a real path (rejects
 // shell/JSON fragments like `$(pwd | sed...`) and scans all matches for the
 // first sane one — re-parse so garbage project buckets disappear.
-const CACHE_VERSION = 13
+// v14: chat exports (chatgpt/grok) cap created→updated spans at 6h — revisited
+// conversations were producing multi-month "sessions"; re-parse to fix durations.
+// v15: chat exports now parse real per-message body timestamps into per-sitting
+// windows (`path#wN`) — frontmatter `updated` proved to be bulk-rewritten junk.
+const CACHE_VERSION = 15
 
 /** How long to trust the in-memory snapshot before re-walking on the next load call. */
 const MEM_TTL_MS = 5 * 60 * 1000
@@ -148,29 +152,46 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
   const present = new Set<string>()
   let reparsed = 0
 
-  // ── 2. Vault markdown — cached by relative vault path. ──────────────────────
+  // ── 2. Vault markdown — cached by relative vault path. Chat-export files
+  // (chatgpt/grok) can yield several per-sitting windows (`path`, `path#w1`,
+  // …) which all share the file's mtime — same sibling-restore scheme as the
+  // native step below. ──
+  const cachedByVaultFile = new Map<string, ParsedSession[]>()
+  for (const [path, sess] of Object.entries(cache.sessions)) {
+    if (path.startsWith('native/') || path.startsWith('history/')) continue
+    const fileKey = path.split('#', 1)[0]
+    const arr = cachedByVaultFile.get(fileKey) ?? []
+    arr.push(sess)
+    cachedByVaultFile.set(fileKey, arr)
+  }
   const vaultToParse: VaultEntry[] = []
   for (const entry of vaultSessions) {
-    present.add(entry.path)
-    const cached = cache.sessions[entry.path]
-    if (cached && cached.mtime === entry.mtime) {
-      next[entry.path] = cached
+    const cachedWindows = cachedByVaultFile.get(entry.path) ?? []
+    const fresh = cachedWindows.length > 0 && cachedWindows.every(s => s.mtime === entry.mtime)
+    if (fresh) {
+      for (const s of cachedWindows) {
+        present.add(s.path)
+        next[s.path] = s
+      }
     } else {
+      present.add(entry.path)
       vaultToParse.push(entry)
     }
   }
   const vaultParsed = await runParallel(vaultToParse, READ_CONCURRENCY, async entry => {
     try {
       const text = await fs.read(entry.path)
-      return parseSession({ path: entry.path, text, mtime: entry.mtime })
+      return parseVaultSessionsBlock({ path: entry.path, text, mtime: entry.mtime })
     } catch {
-      return cache.sessions[entry.path] ?? null
+      return cachedByVaultFile.get(entry.path) ?? []
     }
   })
-  for (const s of vaultParsed) {
-    if (!s) continue
-    next[s.path] = s
-    reparsed += 1
+  for (const windows of vaultParsed) {
+    for (const s of windows) {
+      present.add(s.path)
+      next[s.path] = s
+    }
+    if (windows.length > 0) reparsed += 1
   }
 
   // ── 3. Native sessions — cached by `native/<source>/<relPath>` synthetic key.

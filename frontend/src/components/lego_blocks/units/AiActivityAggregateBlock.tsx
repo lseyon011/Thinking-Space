@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
-  Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -12,12 +12,13 @@ import { cn } from '@/lib/utils'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import {
   aggregateChainsByPeriodBlock,
-  aggregateProjectDurationsByPeriodBlock,
+  aggregateProjectMetricsByPeriodBlock,
   fmtDurationMsBlock,
   mergedDurationMsBlock,
   periodKeyOfBlock,
   projectDigestBlock,
   type AggregateGranularity,
+  type ProjectPeriodMetrics,
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { formatTokens, formatUsd } from '@/services/lego_blocks/units/aiPriceTableBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
@@ -41,9 +42,45 @@ const GRANULARITY_STORAGE_KEY = 'thinkspc.aiActivity.aggGranularity.v1'
 const DISPLAY_STORAGE_KEY = 'thinkspc.aiActivity.aggDisplay.v1'
 
 type AggregateDisplay = 'table' | 'graph'
+type GraphMetric = 'time' | 'chains' | 'msgs' | 'cost'
 
-/** Max project lines on the graph — more becomes spaghetti. */
+const METRIC_STORAGE_KEY = 'thinkspc.aiActivity.aggGraphMetric.v1'
+const GRAPH_METRICS: ReadonlyArray<{ id: GraphMetric; label: string }> = [
+  { id: 'time', label: 'time' },
+  { id: 'chains', label: 'chains' },
+  { id: 'msgs', label: 'msgs' },
+  { id: 'cost', label: 'cost' },
+]
+
+/** Max named project segments per stacked bar — the rest roll into "other". */
 const MAX_GRAPH_SERIES = 6
+/** Stack key for the rolled-up remainder — parens keep it from colliding with a real project. */
+const OTHER_KEY = '(other)'
+const OTHER_COLOR = 'rgba(148,163,184,0.45)'
+
+function metricValueOf(metric: GraphMetric, m: ProjectPeriodMetrics): number {
+  if (metric === 'time') return m.durationMs / 3_600_000
+  if (metric === 'chains') return m.chains
+  if (metric === 'msgs') return m.msgs
+  return m.costUsd
+}
+
+function fmtMetricValue(metric: GraphMetric, v: number): string {
+  if (metric === 'time') return fmtDurationMsBlock(v * 3_600_000)
+  if (metric === 'cost') return `~${formatUsd(v)}`
+  return Math.round(v).toLocaleString()
+}
+
+function readStoredMetric(): GraphMetric | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(METRIC_STORAGE_KEY)
+    if (raw === 'time' || raw === 'chains' || raw === 'msgs' || raw === 'cost') return raw
+  } catch {
+    /* localStorage unavailable */
+  }
+  return null
+}
 
 function readStoredGranularity(): AggregateGranularity | null {
   if (typeof window === 'undefined') return null
@@ -94,6 +131,16 @@ export default function AiActivityAggregateBlock({
       /* localStorage unavailable */
     }
     setDisplayState(d)
+  }
+
+  const [metric, setMetricState] = useState<GraphMetric>(() => readStoredMetric() ?? 'time')
+  const setMetric = (m: GraphMetric) => {
+    try {
+      window.localStorage.setItem(METRIC_STORAGE_KEY, m)
+    } catch {
+      /* localStorage unavailable */
+    }
+    setMetricState(m)
   }
 
   const rows = useMemo(
@@ -163,26 +210,37 @@ export default function AiActivityAggregateBlock({
     ? getProjectColor(filterProject).stroke
     : 'rgba(148,163,184,0.9)'
 
-  // Multi-line graph: time per period, one line per project (top N by total
-  // duration). Hours as the unit — recharts rows carry the period bounds so a
-  // click can drill into that period, same as table rows.
+  // Stacked bar graph: one bar per period, stacked by project, showing the
+  // selected metric (time/chains/msgs/cost). Top N projects by that metric get
+  // named segments; the rest roll up into a gray "other" segment so stack
+  // heights still equal the period total. Rows carry the period bounds so a
+  // click can drill into that period, same as the graph always did.
   const graph = useMemo(() => {
     if (display !== 'graph') return null
-    const { periods, series } = aggregateProjectDurationsByPeriodBlock(chains, granularity)
-    const top = series.slice(0, MAX_GRAPH_SERIES)
+    const { periods, series } = aggregateProjectMetricsByPeriodBlock(chains, granularity)
+    const ranked = series
+      .map(s => ({ ...s, total: metricValueOf(metric, s.totals) }))
+      .filter(s => s.total > 0)
+      .sort((a, b) => b.total - a.total)
+    const top = ranked.slice(0, MAX_GRAPH_SERIES)
+    const rest = ranked.slice(MAX_GRAPH_SERIES)
+    const round = (v: number) => Math.round(v * 100) / 100
     const points = periods.map((p, i) => {
       const row: Record<string, number | string> = {
         label: p.label,
         startIso: p.startIso,
         endIso: p.endIso,
       }
-      for (const s of top) {
-        row[s.project] = Math.round((s.perPeriodMs[i] / 3_600_000) * 100) / 100
+      for (const s of top) row[s.project] = round(metricValueOf(metric, s.perPeriod[i]))
+      if (rest.length > 0) {
+        row[OTHER_KEY] = round(
+          rest.reduce((a, s) => a + metricValueOf(metric, s.perPeriod[i]), 0),
+        )
       }
       return row
     })
-    return { points, top, hiddenCount: series.length - top.length }
-  }, [display, chains, granularity])
+    return { points, top, hiddenCount: rest.length }
+  }, [display, chains, granularity, metric])
 
   // Same zero-size mount guard as the trend chart — recharts'
   // ResponsiveContainer warns and renders nothing if measured at width 0.
@@ -248,11 +306,33 @@ export default function AiActivityAggregateBlock({
           No activity in this range.
         </div>
       ) : display === 'graph' && graph ? (
-        <div className="rounded-lg border border-border/40 bg-card/40 px-2 pb-1 pt-3">
+        <div className="rounded-lg border border-border/40 bg-card/40 px-2 pb-1 pt-2">
+          <div className="flex items-center justify-end pb-1.5 pr-1">
+            <div className="flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 p-0.5 w-fit">
+              {GRAPH_METRICS.filter(m => m.id !== 'cost' || anyTokens).map(m => {
+                const active = metric === m.id
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setMetric(m.id)}
+                    className={cn(
+                      'rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] transition-all',
+                      active
+                        ? 'bg-foreground text-background'
+                        : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+                    )}
+                  >
+                    {m.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           <div ref={chartHostRef} className="h-52 min-w-0">
             {chartReady && (
             <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-              <LineChart
+              <BarChart
                 data={graph.points}
                 margin={{ top: 6, right: 10, bottom: 0, left: -18 }}
                 onClick={evt => {
@@ -280,36 +360,46 @@ export default function AiActivityAggregateBlock({
                   tick={{ fontSize: 10, fill: 'rgba(148,163,184,0.7)' }}
                   tickLine={false}
                   axisLine={false}
-                  width={34}
+                  width={40}
                   allowDecimals={false}
-                  unit="h"
+                  tickFormatter={(v: number) =>
+                    metric === 'time' ? `${v}h` : metric === 'cost' ? `$${v}` : String(v)
+                  }
                 />
                 <Tooltip
-                  cursor={{ stroke: 'rgba(148,163,184,0.4)', strokeWidth: 1 }}
+                  cursor={{ fill: 'rgba(148,163,184,0.08)' }}
                   content={({ active, payload, label }) => {
                     if (!active || !payload || payload.length === 0) return null
                     const entries = payload
                       .filter(p => typeof p.value === 'number' && (p.value as number) > 0)
                       .sort((a, b) => (b.value as number) - (a.value as number))
                     if (entries.length === 0) return null
+                    const total = entries.reduce((a, e) => a + (e.value as number), 0)
                     return (
                       <div className="rounded-lg border border-border/60 bg-background/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
-                        <div className="text-foreground/70">{String(label)}</div>
+                        <div className="flex items-baseline gap-3 text-foreground/70">
+                          {String(label)}
+                          <span className="ml-auto tabular-nums text-foreground/85">
+                            {fmtMetricValue(metric, total)}
+                          </span>
+                        </div>
                         <div className="mt-1 space-y-0.5">
                           {entries.map(e => {
-                            const color = getProjectColor(String(e.dataKey))
+                            const key = String(e.dataKey)
+                            const stroke =
+                              key === OTHER_KEY ? OTHER_COLOR : getProjectColor(key).stroke
                             return (
-                              <div key={String(e.dataKey)} className="flex items-baseline gap-2">
+                              <div key={key} className="flex items-baseline gap-2">
                                 <span
                                   className="h-2 w-2 rounded-full"
-                                  style={{ background: color.stroke }}
+                                  style={{ background: stroke }}
                                 />
-                                <span className="text-foreground/80">{String(e.dataKey)}</span>
+                                <span className="text-foreground/80">{key}</span>
                                 <span
                                   className="ml-auto pl-3 tabular-nums"
-                                  style={{ color: color.stroke }}
+                                  style={{ color: stroke }}
                                 >
-                                  {fmtDurationMsBlock((e.value as number) * 3_600_000)}
+                                  {fmtMetricValue(metric, e.value as number)}
                                 </span>
                               </div>
                             )
@@ -319,24 +409,29 @@ export default function AiActivityAggregateBlock({
                     )
                   }}
                 />
-                {graph.top.map(s => {
-                  const color = getProjectColor(s.project)
-                  return (
-                    <Line
-                      key={s.project}
-                      type="monotone"
-                      dataKey={s.project}
-                      stroke={color.stroke}
-                      strokeWidth={1.75}
-                      dot={{ r: 2.5, strokeWidth: 0, fill: color.stroke }}
-                      activeDot={{ r: 4, strokeWidth: 0, fill: color.stroke }}
-                      isAnimationActive
-                      animationDuration={450}
-                      animationEasing="ease-out"
-                    />
-                  )
-                })}
-              </LineChart>
+                {graph.top.map(s => (
+                  <Bar
+                    key={s.project}
+                    dataKey={s.project}
+                    stackId="period"
+                    fill={getProjectColor(s.project).stroke}
+                    fillOpacity={0.85}
+                    isAnimationActive
+                    animationDuration={450}
+                    animationEasing="ease-out"
+                  />
+                ))}
+                {graph.hiddenCount > 0 && (
+                  <Bar
+                    dataKey={OTHER_KEY}
+                    stackId="period"
+                    fill={OTHER_COLOR}
+                    isAnimationActive
+                    animationDuration={450}
+                    animationEasing="ease-out"
+                  />
+                )}
+              </BarChart>
             </ResponsiveContainer>
             )}
           </div>
@@ -351,15 +446,15 @@ export default function AiActivityAggregateBlock({
                   <span className="h-1.5 w-1.5 rounded-full" style={{ background: color.stroke }} />
                   {s.project}
                   <span className="tabular-nums text-muted-foreground/70">
-                    {fmtDurationMsBlock(s.totalMs)}
+                    {fmtMetricValue(metric, s.total)}
                   </span>
                 </span>
               )
             })}
             {graph.hiddenCount > 0 && (
-              <span className="text-[10px] text-muted-foreground/60">
-                +{graph.hiddenCount} more project{graph.hiddenCount === 1 ? '' : 's'} (top{' '}
-                {MAX_GRAPH_SERIES} by time shown)
+              <span className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground/60">
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: OTHER_COLOR }} />
+                other · {graph.hiddenCount} more project{graph.hiddenCount === 1 ? '' : 's'}
               </span>
             )}
           </div>
@@ -576,7 +671,7 @@ export default function AiActivityAggregateBlock({
       )}
       <p className="text-[10px] text-muted-foreground/60">
         {display === 'graph'
-          ? 'Lines show time per period per project · click a point to drill in'
+          ? `Bars stack ${metric === 'time' ? 'time' : metric === 'cost' ? '~cost' : metric} per period by project · click a bar to drill in`
           : 'Bars show relative time per period · click a row for a summary of what was worked on'}
         {display === 'table' && anyPartial && (
           <>
