@@ -644,6 +644,10 @@ function App() {
   const isMacDesktopSurface = isElectronDesktopSurface
     && typeof navigator !== 'undefined'
     && /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform || navigator.userAgent || '')
+  // Modifier glyph for rail tooltip shortcut hints (⌘N on mac, Ctrl+N elsewhere).
+  const isMacPlatform = typeof navigator !== 'undefined'
+    && /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform || navigator.userAgent || '')
+  const shortcutHint = (digit: number) => (isMacPlatform ? ` (⌘${digit})` : ` (Ctrl+${digit})`)
   // Keep the explorer collapse button in the same left-cluster position as every
   // other surface's chrome button (was previously right-aligned off Electron
   // desktop, which made it jump position on web/PWA). Capacitor still uses its
@@ -2938,14 +2942,14 @@ function App() {
                 <div className="flex h-full flex-col px-2 py-3">
                 <div className="ltm-nav-scroll ltm-sidebar-nav-scroll min-h-0 flex-1 overflow-y-auto">
                   <div className="ltm-sidebar-nav-group space-y-1">
-                    {primaryNavItems.map((item) => {
+                    {primaryNavItems.map((item, index) => {
                       const Icon = item.icon
                       const active = isNavItemActive(location.pathname, item)
                       return (
                         <Link
                           key={item.to}
                           to={resolveWorkspaceNavigationRoute(item.to)}
-                          title={item.label}
+                          title={`${item.label}${shortcutHint(index + 1)}`}
                           className={`ltm-motion-fast ltm-touch-row flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-colors ${
                             active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                           }`}
@@ -2963,7 +2967,7 @@ function App() {
                       return (
                         <Link
                           to={TOOLS_NAV_ITEM.to}
-                          title={TOOLS_NAV_ITEM.label}
+                          title={`${TOOLS_NAV_ITEM.label}${shortcutHint(primaryNavItems.length + 1)}`}
                           className={`ltm-motion-fast ltm-touch-row flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-colors ${
                             active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                           }`}
@@ -3004,7 +3008,7 @@ function App() {
                     </button>
                     <Link
                       to="/"
-                      title="Home"
+                      title={`Home${shortcutHint(0)}`}
                       aria-label="Home"
                       className="ltm-shell-logo ltm-motion-fast mt-2 inline-flex h-10 w-full items-center justify-center rounded-lg"
                     >
