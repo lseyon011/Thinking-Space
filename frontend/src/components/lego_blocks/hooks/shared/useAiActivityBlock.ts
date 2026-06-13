@@ -58,7 +58,7 @@ export interface ActivityProject {
   isUnknown: boolean
 }
 
-export type AiSourceFilter = 'all' | 'claude-code' | 'codex' | 'chatgpt' | 'grok'
+export type AiSourceFilter = 'all' | 'claude-code' | 'codex' | 'chatgpt' | 'grok' | 'goodnotes'
 
 /** A named calendar range used as a whole-panel data filter. */
 export interface CustomRange {
@@ -96,7 +96,7 @@ export interface UseAiActivityResult {
   setSourceFilter: (filter: AiSourceFilter) => void
   /** How many sessions exist per source across the visible range — used to label
    *  the source pills and disable empty ones. */
-  sourceCounts: { claudeCode: number; codex: number; chatgpt: number; grok: number }
+  sourceCounts: { claudeCode: number; codex: number; chatgpt: number; grok: number; goodnotes: number }
   startIso: string
   endIso: string
   refresh: () => void
@@ -151,6 +151,7 @@ const VALID_SOURCE_FILTERS: ReadonlySet<AiSourceFilter> = new Set([
   'codex',
   'chatgpt',
   'grok',
+  'goodnotes',
 ])
 
 function readStoredSourceFilter(): AiSourceFilter | null {
@@ -342,6 +343,7 @@ export function useAiActivityBlock(
     let codex = 0
     let chatgpt = 0
     let grok = 0
+    let goodnotes = 0
     for (const s of enrichedSessions) {
       const sStart = Date.parse(s.startedIso)
       const sEnd = Date.parse(s.endedIso ?? s.startedIso)
@@ -349,9 +351,10 @@ export function useAiActivityBlock(
       if (s.source === 'codex') codex += 1
       else if (s.source === 'chatgpt') chatgpt += 1
       else if (s.source === 'grok') grok += 1
+      else if (s.source === 'goodnotes') goodnotes += 1
       else if (s.source === 'claude-code') claudeCode += 1
     }
-    return { claudeCode, codex, chatgpt, grok }
+    return { claudeCode, codex, chatgpt, grok, goodnotes }
   }, [enrichedSessions, startIso, endIso])
 
   const chains = useMemo(() => buildChains(sessions), [sessions])

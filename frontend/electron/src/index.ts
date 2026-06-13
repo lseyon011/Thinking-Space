@@ -93,6 +93,11 @@ import {
   readClaudeHistoryBlock,
   type NativeAiSource,
 } from './lego_blocks/nativeAiSessionsBlock';
+import {
+  harvestGoodnotesReadingBlock,
+  readGoodnotesReadingLogBlock,
+  startGoodnotesWatcherBlock,
+} from './lego_blocks/goodnotesReadingBlock';
 import { startHeartbeatBlock, stopHeartbeatBlock } from './lego_blocks/heartbeatBlock';
 import {
   notifyNtfyBlock,
@@ -1912,6 +1917,20 @@ ipcMain.handle(
 );
 ipcMain.handle('nativeAiSessions:readClaudeHistory', async () => {
   return readClaudeHistoryBlock();
+});
+
+// -- GoodNotes reading activity (read-only against GoodNotes' Amplitude queue +
+//    fts.sqlite; writes only to the vault's durable reading log) --
+ipcMain.handle('goodnotes:harvest', async (_event, vaultRoot: string) => {
+  // The first harvest also arms the background watcher so reading sessions are
+  // captured before GoodNotes purges the Amplitude queue.
+  if (typeof vaultRoot === 'string' && vaultRoot) {
+    startGoodnotesWatcherBlock(vaultRoot);
+  }
+  return harvestGoodnotesReadingBlock(vaultRoot);
+});
+ipcMain.handle('goodnotes:readLog', async (_event, vaultRoot: string) => {
+  return readGoodnotesReadingLogBlock(vaultRoot);
 });
 
 // -- Mkdir --

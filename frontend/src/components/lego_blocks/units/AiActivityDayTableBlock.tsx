@@ -226,6 +226,9 @@ export default function AiActivityDayTableBlock({
                   const costUsd = hasTokens ? estimateChainCostUsd(c) : 0
                   const modelLabel = modelSummaryLabel(c)
                   const isReconstructed = c.sessions.every(s => s.reconstructed)
+                  // Reading chains (GoodNotes) have no transcript and no tokens —
+                  // they're harvested document sessions, not conversations.
+                  const isReading = c.source === 'goodnotes'
                   return (
                     <Fragment key={c.key}>
                       {showDivider && (
@@ -363,12 +366,17 @@ export default function AiActivityDayTableBlock({
                           <span className="text-muted-foreground/60">
                             Web chat ({c.source}) — providers don't expose token usage in exports.
                           </span>
+                        ) : isReading ? (
+                          <span className="text-muted-foreground/60">
+                            Reading session (GoodNotes) — harvested from the document's open-time;
+                            duration and page count are real, there's no transcript.
+                          </span>
                         ) : (
                           <span className="text-muted-foreground/60">
                             No token data — this chain came from the vault markdown source only.
                           </span>
                         )}
-                        {!isReconstructed && (
+                        {!isReconstructed && !isReading && (
                         <div className="pt-1">
                           <button
                             type="button"

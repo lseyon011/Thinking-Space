@@ -410,6 +410,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   nativeAiClaudeHistoryRead: (): Promise<string> =>
     ipcRenderer.invoke('nativeAiSessions:readClaudeHistory'),
 
+  // GoodNotes reading activity — harvest the ephemeral Amplitude analytics
+  // queue into a durable vault JSONL, then read it back. Harvest also starts a
+  // background watcher (first call) so reading sessions are captured before
+  // GoodNotes purges the queue. No-op/empty on machines without GoodNotes.
+  goodnotesHarvest: (vaultRoot: string): Promise<{
+    added: number
+    total: number
+    unavailable?: boolean
+  }> => ipcRenderer.invoke('goodnotes:harvest', vaultRoot),
+  goodnotesReadLog: (vaultRoot: string): Promise<Array<{
+    key: string
+    documentId: string
+    title: string
+    timeMs: number
+    durationMs: number
+    numPage: number
+    documentType: string
+    harvestedAt: number
+  }>> => ipcRenderer.invoke('goodnotes:readLog', vaultRoot),
+
   // Git (desktop-only)
   git: (vaultRoot: string, args: string[]) =>
     ipcRenderer.invoke('vault:git', vaultRoot, args),

@@ -6,7 +6,7 @@
 // (Divergence: project detection here is generic — cwd folder name — not the
 // script's hardcoded paths.)
 
-export type ActivitySource = 'claude-code' | 'codex' | 'chatgpt' | 'grok'
+export type ActivitySource = 'claude-code' | 'codex' | 'chatgpt' | 'grok' | 'goodnotes'
 
 export interface ParsedSession {
   /** Vault-relative path of the source markdown file. */
@@ -391,9 +391,10 @@ export function inheritUnknownSessions(sessions: ParsedSession[]): ParsedSession
   // session counts are in the low thousands at most.
   const anchors: Array<{ t: number; project: string }> = []
   for (const s of sorted) {
-    // Web-chat sessions (ChatGPT/Grok) bucket under their provider name — that
-    // label must never bleed onto a nearby unknown coding session.
-    if (s.source === 'chatgpt' || s.source === 'grok') continue
+    // Web-chat (ChatGPT/Grok) and reading (GoodNotes) sessions bucket under
+    // their own labels — those must never bleed onto a nearby unknown coding
+    // session via temporal inheritance.
+    if (s.source === 'chatgpt' || s.source === 'grok' || s.source === 'goodnotes') continue
     if (isInheritable(s.project)) {
       anchors.push({ t: Date.parse(s.startedIso), project: s.project })
     }

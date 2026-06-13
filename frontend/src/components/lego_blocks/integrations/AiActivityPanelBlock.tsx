@@ -441,14 +441,19 @@ function SourcePills({
 }: {
   value: AiSourceFilter
   onChange: (next: AiSourceFilter) => void
-  counts: { claudeCode: number; codex: number; chatgpt: number; grok: number }
+  counts: { claudeCode: number; codex: number; chatgpt: number; grok: number; goodnotes: number }
 }) {
   const opts: Array<{ id: AiSourceFilter; label: string; count: number | null }> = [
-    { id: 'all', label: 'All', count: counts.claudeCode + counts.codex + counts.chatgpt + counts.grok },
+    {
+      id: 'all',
+      label: 'All',
+      count: counts.claudeCode + counts.codex + counts.chatgpt + counts.grok + counts.goodnotes,
+    },
     { id: 'claude-code', label: 'Claude', count: counts.claudeCode },
     { id: 'codex', label: 'Codex', count: counts.codex },
     { id: 'chatgpt', label: 'ChatGPT', count: counts.chatgpt },
     { id: 'grok', label: 'Grok', count: counts.grok },
+    { id: 'goodnotes', label: 'Reading', count: counts.goodnotes },
   ]
   return (
     <div

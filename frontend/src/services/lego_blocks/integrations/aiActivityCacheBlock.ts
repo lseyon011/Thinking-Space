@@ -25,6 +25,7 @@ import {
 import { parseClaudeHistoryBlock } from '@/services/lego_blocks/units/claudeHistoryParserBlock'
 import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserBlock'
 import { readVaultSessionPrefixesBlock } from '@/services/lego_blocks/units/aiActivitySourcesBlock'
+import { loadGoodnotesReadingSessions } from '@/services/lego_blocks/integrations/goodnotesReadingBlock'
 
 const CACHE_PATH = '.thinking-space/ai-activity-cache.json'
 const CACHE_DIR = '.thinking-space'
@@ -292,6 +293,15 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
     })
   }
 
+  // ── 4b. GoodNotes reading sessions. ─────────────────────────────────────────
+  // Harvested (Electron) or read from the synced vault log (iPhone/web) into the
+  // shared ParsedSession shape, tagged source:'goodnotes'. Deliberately NOT
+  // written to the on-disk cache.json — the durable JSONL in the vault is their
+  // source of truth, so we read them fresh each load (small file) and merge them
+  // into the dedup below. They carry unique ids (no collision with claude/codex/
+  // chat sessions), so dedup leaves them intact.
+  const goodnotesSessions = await loadGoodnotesReadingSessions(fs).catch(() => [])
+
   // ── 5. Dedupe before returning to consumers. ────────────────────────────────
   // For each session id (full UUID for native, 8-char short id for vault),
   // prefer the richer native record when both exist — it has explicit cwd,
@@ -300,7 +310,7 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
   // window of a history session when ANY real (native/vault) record covers the
   // same base sessionId. Mixing windows from a real transcript with leftover
   // history windows would double-count, so coverage is all-or-nothing per id.
-  const raw = Object.values(next)
+  const raw = [...Object.values(next), ...goodnotesSessions]
   const coveredFullIds = new Set<string>()
   const coveredShortIds = new Set<string>()
   for (const s of raw) {
