@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { BookOpenText, Brain, ChevronLeft, ChevronRight, Eraser, List, Loader2, Pencil, X } from 'lucide-react'
+import { BookOpenText, ChevronLeft, ChevronRight, Eraser, List, Loader2, Pencil, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -18,7 +18,7 @@ import {
 } from '@/services/lego_blocks/units/ruledNotebookPaginationBlock'
 import { assignOutlineLabelsBlock } from '@/services/lego_blocks/units/outlineCounterBlock'
 import { resolveFrontmatterDatesBlock } from '@/services/lego_blocks/units/frontmatterDatesBlock'
-import { appendMemorizedSession } from '@/services/lego_blocks/units/memorizedSessionsBlock'
+import { appendMemorizedSessionInPlace } from '@/services/lego_blocks/units/memorizedSessionsBlock'
 import {
   joinInkFencedBlock,
   splitInkFencedBlock,
@@ -70,6 +70,10 @@ interface TransitionState {
 }
 
 const PAGE_TURN_MS = 640
+// Opening a ruled notebook auto-starts a memorization session; it only counts
+// once the document has been open for at least this long. Anything shorter is
+// treated as a passing glance and never written (avoids YAML churn).
+const MEMORIZE_MIN_MS = 10 * 60_000
 const REMARK_PLUGINS = [remarkGfm, ...markdownMathRemarkPluginsBlock]
 const REHYPE_PLUGINS = markdownMathRehypePluginsBlock as any
 
@@ -255,7 +259,6 @@ export default function RuledNotebookDocumentBlock({
   const [createdSeconds, setCreatedSeconds] = useState<number | null>(null)
   const [inkStrokes, setInkStrokes] = useState<InkStroke[]>([])
   const [tool, setTool] = useState<'off' | 'pen' | 'eraser'>('off')
-  const [memorizing, setMemorizing] = useState(false)
   const [penDefaults, setPenDefaults] = useState<ExcalidrawPenDefaultsOrch>(() => getDefaultExcalidrawPenDefaultsOrch())
   const [presets, setPresets] = useState<readonly ExcalidrawHighlighterPresetBlock[]>(EXCALIDRAW_HIGHLIGHTER_PRESETS_ORCH)
   const [activePresetId, setActivePresetId] = useState<string | null>(null)
@@ -489,14 +492,46 @@ export default function RuledNotebookDocumentBlock({
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
   }, [])
 
-  const memorizeStartedAtRef = useRef<Date | null>(null)
+  /* Memorization is measured in ACTIVE time, not wall-clock-since-open: we only
+     accumulate while this window is focused + visible, so a notebook left open
+     in the background (or forgotten for days) doesn't inflate the session.
+     - firstActive: when reading actually began (anchors the recorded start).
+     - activeMs: total focused time accumulated so far.
+     - segmentStart: Date.now() of the current active stretch, or null when paused. */
+  const memorizeFirstActiveRef = useRef<Date | null>(null)
+  const activeMsRef = useRef(0)
+  const segmentStartRef = useRef<number | null>(null)
+
+  const pauseMemorizeActive = useCallback(() => {
+    if (segmentStartRef.current !== null) {
+      activeMsRef.current += Date.now() - segmentStartRef.current
+      segmentStartRef.current = null
+    }
+  }, [])
+
+  const resumeMemorizeActive = useCallback(() => {
+    if (segmentStartRef.current !== null) return
+    // Visibility is the reliable cross-platform signal — it fires on iPad/iOS
+    // (background, tab switch, screen lock) where window focus events are flaky.
+    // Desktop app-switching (window stays visible but loses focus) is covered by
+    // the explicit blur/focus listeners, which pause/resume directly.
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+    segmentStartRef.current = Date.now()
+    if (memorizeFirstActiveRef.current === null) memorizeFirstActiveRef.current = new Date()
+  }, [])
 
   const commitMemorizedSession = useCallback(async () => {
     if (content === null) return
-    const startedAt = memorizeStartedAtRef.current
-    memorizeStartedAtRef.current = null
-    if (startedAt === null) return
-    const next = appendMemorizedSession(content, startedAt)
+    pauseMemorizeActive() // flush the in-flight active stretch
+    const activeMs = activeMsRef.current
+    const firstActive = memorizeFirstActiveRef.current
+    activeMsRef.current = 0
+    memorizeFirstActiveRef.current = null
+    // Only a real sitting counts — ignore anything under the active threshold.
+    if (firstActive === null || activeMs < MEMORIZE_MIN_MS) return
+    // Record a contiguous block whose duration equals the active time read.
+    const endedAt = new Date(firstActive.getTime() + activeMs)
+    const next = appendMemorizedSessionInPlace(content, firstActive, endedAt)
     if (next === null) return
     try {
       const result = await saveMarkdownDocument({
@@ -510,27 +545,38 @@ export default function RuledNotebookDocumentBlock({
     } catch (err) {
       console.warn('[ruled-notebook] memorized session save failed', err)
     }
-  }, [content, path])
+  }, [content, path, pauseMemorizeActive])
 
-  const memorizingRef = useRef(false)
-  useEffect(() => { memorizingRef.current = memorizing }, [memorizing])
   const commitMemorizedSessionRef = useRef(commitMemorizedSession)
   useEffect(() => { commitMemorizedSessionRef.current = commitMemorizedSession }, [commitMemorizedSession])
 
-  useEffect(() => () => {
-    if (memorizingRef.current) void commitMemorizedSessionRef.current()
-  }, [])
+  /* Auto-record: being in the ruled-notebook view IS the memorization session.
+     Opening a document starts active-time tracking; focus/visibility changes
+     pause and resume it so background time doesn't count; closing the document
+     (unmount) or switching to another one commits the sitting into
+     `memorized_sessions` YAML. No manual toggle. Sub-threshold sittings are
+     dropped in the commit. */
+  useEffect(() => {
+    activeMsRef.current = 0
+    memorizeFirstActiveRef.current = null
+    segmentStartRef.current = null
+    resumeMemorizeActive()
 
-  const handleToggleMemorize = useCallback(() => {
-    setMemorizing((active) => {
-      if (active) {
-        void commitMemorizedSession()
-      } else {
-        memorizeStartedAtRef.current = new Date()
-      }
-      return !active
-    })
-  }, [commitMemorizedSession])
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') pauseMemorizeActive()
+      else resumeMemorizeActive()
+    }
+    window.addEventListener('focus', resumeMemorizeActive)
+    window.addEventListener('blur', pauseMemorizeActive)
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      window.removeEventListener('focus', resumeMemorizeActive)
+      window.removeEventListener('blur', pauseMemorizeActive)
+      document.removeEventListener('visibilitychange', onVisibility)
+      void commitMemorizedSessionRef.current()
+    }
+  }, [path, pauseMemorizeActive, resumeMemorizeActive])
 
   /* Mount-once: load persisted pen settings + Obsidian-shared highlighter
      presets. Failures fall back to built-in defaults silently. */
@@ -720,15 +766,6 @@ export default function RuledNotebookDocumentBlock({
               aria-pressed={tool === 'eraser'}
             >
               <Eraser className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={memorizing ? 'default' : 'ghost'}
-              size="icon"
-              onClick={handleToggleMemorize}
-              title={memorizing ? 'Stop memorizing (saves today’s session)' : 'Start memorizing'}
-              aria-pressed={memorizing}
-            >
-              <Brain className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"

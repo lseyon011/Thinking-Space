@@ -180,31 +180,37 @@ export async function bulkUpsertNodes(
   const toAdd: Omit<NodeRecord, 'id'>[] = []
   const conflicts: NodeKeyConflictBlock[] = []
   for (const record of normalized) {
-    const incomingConflict = incomingByKey.get(record.key)
-    if (incomingConflict && incomingConflict.uuid !== record.uuid) {
-      conflicts.push({
-        key: record.key,
-        uuid: record.uuid,
-        filePath: record.filePath,
-        conflictingUuid: incomingConflict.uuid,
-        conflictingFilePath: incomingConflict.filePath,
-      })
-      continue
-    }
+    // Only real (truthy) keys can collide. A note with no `key:` (or an empty
+    // one) is a valid, keyless note — many hand-written vault notes have no
+    // YAML key at all — and must never be treated as conflicting with another
+    // keyless note, or all but the first would be dropped here.
+    if (record.key) {
+      const incomingConflict = incomingByKey.get(record.key)
+      if (incomingConflict && incomingConflict.uuid !== record.uuid) {
+        conflicts.push({
+          key: record.key,
+          uuid: record.uuid,
+          filePath: record.filePath,
+          conflictingUuid: incomingConflict.uuid,
+          conflictingFilePath: incomingConflict.filePath,
+        })
+        continue
+      }
 
-    const existingKeyNode = existingByKey.get(record.key)
-    if (existingKeyNode && existingKeyNode.uuid !== record.uuid) {
-      conflicts.push({
-        key: record.key,
-        uuid: record.uuid,
-        filePath: record.filePath,
-        conflictingUuid: existingKeyNode.uuid,
-        conflictingFilePath: existingKeyNode.filePath,
-      })
-      continue
-    }
+      const existingKeyNode = existingByKey.get(record.key)
+      if (existingKeyNode && existingKeyNode.uuid !== record.uuid) {
+        conflicts.push({
+          key: record.key,
+          uuid: record.uuid,
+          filePath: record.filePath,
+          conflictingUuid: existingKeyNode.uuid,
+          conflictingFilePath: existingKeyNode.filePath,
+        })
+        continue
+      }
 
-    incomingByKey.set(record.key, record)
+      incomingByKey.set(record.key, record)
+    }
 
     const existingNode = existingByUuid.get(record.uuid)
     if (existingNode?.id !== undefined) {
@@ -619,8 +625,16 @@ function normalizeRecordForStorage(record: Omit<NodeRecord, 'id'>): Omit<NodeRec
   // Pre-compute searchText for fast full-text search without loading all records
   const searchText = buildSearchText(record, tags, projectPresetTags, metadataText)
 
+  // Empty-string uuid/key must not occupy a slot on the unique `&uuid`/`&key`
+  // indexes — coerce them to undefined so Dexie excludes them (and so multiple
+  // such notes can coexist instead of clobbering one another).
+  const uuid = (typeof record.uuid === 'string' && record.uuid.trim()) ? record.uuid : (undefined as unknown as string)
+  const key = (typeof record.key === 'string' && record.key.trim()) ? record.key : (undefined as unknown as string)
+
   return {
     ...record,
+    uuid,
+    key,
     parent,
     dependsOn: record.dependsOn?.filter(Boolean),
     blockedBy: record.blockedBy?.filter(Boolean),

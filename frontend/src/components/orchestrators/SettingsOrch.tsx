@@ -14,6 +14,7 @@ import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUs
 import { UI_COLOR_MODE_OPTIONS_BLOCK, UI_THEME_OPTIONS_BLOCK, useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
 import { USER_PROFILE_FILE_PATH_BLOCK, deriveUserProfileSymbolBlock } from '@/services/lego_blocks/units/userProfileBlock'
 import { clearAppCacheOrch, hardRefreshOrch } from '@/services/orchestrators/appCacheOrch'
+import { backfillVaultUuidsOrch } from '@/services/orchestrators/vaultIndexBackfillOrch'
 import {
   readMarkdownEditorSettingsOrch,
   writeMarkdownEditorSettingsOrch,
@@ -206,7 +207,7 @@ const TAB_GROUPS: Array<{ heading: string; items: Array<{ id: SettingsTabWithPro
   {
     heading: 'System',
     items: [
-      { id: 'cache', label: 'Clear Cache' },
+      { id: 'cache', label: 'Index & Cache' },
       { id: 'about', label: 'About' },
       { id: 'developer', label: 'Developer' },
     ],
@@ -285,6 +286,7 @@ export default function SettingsOrch({
   const [googleDriveAuthBusy, setGoogleDriveAuthBusy] = useState(false)
   const [busyAction, setBusyAction] = useState<SettingsTabId | null>(null)
   const [busyGpuCache, setBusyGpuCache] = useState(false)
+  const [busyUuidBackfill, setBusyUuidBackfill] = useState(false)
   const [explorerFolderColorRulesDraft, setExplorerFolderColorRulesDraft] = useState<ExplorerFolderColorPreferenceBlock[]>(
     () => explorerFolderColorRules,
   )
@@ -520,6 +522,29 @@ export default function SettingsOrch({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to clear GPU cache')
       setBusyGpuCache(false)
+    }
+  }
+
+  const onBackfillUuids = async () => {
+    const confirmed = window.confirm(
+      'Stamp a Thinking Space uuid into every note that has frontmatter but no uuid? '
+        + 'This edits files in place (one line added) and re-indexes. Nothing is reformatted.',
+    )
+    if (!confirmed) return
+    setBusyUuidBackfill(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const r = await backfillVaultUuidsOrch()
+      const parts = [`Stamped ${r.stamped} of ${r.candidates} notes`,
+        `${r.alreadyHadUuid} already had a uuid`,
+        `${r.scanned} scanned`]
+      if (r.failed > 0) parts.push(`${r.failed} failed`)
+      setMessage(`${parts.join(', ')}.${r.stamped > 0 ? ' Index rebuilt.' : ''}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to backfill uuids')
+    } finally {
+      setBusyUuidBackfill(false)
     }
   }
 
@@ -1843,6 +1868,26 @@ export default function SettingsOrch({
       )}
 
       {activeTab === 'cache' && (
+        <div className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Faster Indexing</CardTitle>
+            <CardDescription>
+              Add a Thinking Space uuid to notes that don&apos;t have one, so they index reliably and show up
+              in features that read notes back (reading/memorization activity, related retrieval).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Only notes that already have YAML frontmatter but lack a uuid are touched — a single
+              <code className="mx-1">uuid:</code> line is inserted. Plain notes and harvested AI transcripts are left alone,
+              and nothing else in the file is reformatted. Safe to run repeatedly.
+            </p>
+            <Button type="button" onClick={onBackfillUuids} disabled={busyUuidBackfill}>
+              {busyUuidBackfill ? 'Stamping uuids...' : 'Add Thinking Space UUIDs'}
+            </Button>
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader>
             <CardTitle>Clear Cache</CardTitle>
@@ -1878,6 +1923,7 @@ export default function SettingsOrch({
             </div>
           </CardContent>
         </Card>
+        </div>
       )}
 
       {activeTab === 'vault' && (

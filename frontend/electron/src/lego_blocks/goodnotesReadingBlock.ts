@@ -251,6 +251,112 @@ async function readTitlesBlock(documentIds: string[]): Promise<Map<string, strin
   return titles;
 }
 
+// ── fts.sqlite wall-clock backfill ───────────────────────────────────────────
+// Correction to this block's original premise: `document_meta.last_modified` is
+// NOT all zeros. Most rows are the `1970-01-01` sentinel, but a large minority
+// carry a REAL wall-clock — the document's last edit/read time. It's the only
+// long-history true-time signal GoodNotes keeps (the Amplitude queue is purged),
+// giving one "read on date X" point per document, with NO duration. We harvest
+// these as duration-less touches to backfill reading history that predates (or
+// outlives) the ephemeral Amplitude window. A real duration-bearing session
+// always wins over a same-day touch — enforced at parse time, renderer-side.
+
+interface FtsTouch {
+  documentId: string;
+  name: string;
+  /** last_modified as epoch ms (UTC). */
+  timeMs: number;
+  /** UTC calendar day, YYYY-MM-DD — the backfill granularity. */
+  dayKey: string;
+}
+
+/** Dedup key for an fts touch: one per document per day, `|fts`-namespaced so it
+ *  never collides with an Amplitude session key. */
+function ftsTouchKey(documentId: string, dayKey: string): string {
+  return `${documentId}|${dayKey}|fts`;
+}
+
+/** Parse fts.sqlite's "YYYY-MM-DD HH:MM:SS.sss" (stored UTC) to epoch ms.
+ *  Returns 0 for the zero sentinel or anything unparseable. */
+function parseFtsDateMs(s: string): number {
+  const t = s.trim();
+  if (!t || t.startsWith('1970-01-01')) return 0;
+  const ms = Date.parse(`${t.replace(' ', 'T')}Z`);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+/** Per-document non-deleted page counts from page_meta, so a backfilled touch
+ *  carries a sensible page stat instead of a bare 1. */
+async function readPageCountsBlock(): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  try {
+    await fsPromises.access(FTS_DB);
+  } catch {
+    return counts;
+  }
+  const sql =
+    `SELECT document_id, COUNT(*) FROM page_meta ` +
+    `WHERE is_page_deleted=0 GROUP BY document_id;`;
+  try {
+    const { stdout } = await execFileAsync(
+      'sqlite3',
+      ['-readonly', '-separator', '\x1f', `file:${FTS_DB}?immutable=1`, sql],
+      { maxBuffer: 16 * 1024 * 1024 },
+    );
+    for (const line of stdout.split('\n')) {
+      if (!line) continue;
+      const sep = line.indexOf('\x1f');
+      if (sep === -1) continue;
+      const id = line.slice(0, sep);
+      const n = parseInt(line.slice(sep + 1), 10);
+      if (id && Number.isFinite(n)) counts.set(id, n);
+    }
+  } catch {
+    // sqlite3 missing / DB locked — page counts stay empty.
+  }
+  return counts;
+}
+
+/** Read every document with a real (non-sentinel) last_modified from fts.sqlite. */
+async function readFtsTouchesBlock(): Promise<FtsTouch[]> {
+  const out: FtsTouch[] = [];
+  try {
+    await fsPromises.access(FTS_DB);
+  } catch {
+    return out;
+  }
+  const sql =
+    `SELECT document_id, COALESCE(name, ''), last_modified FROM document_meta ` +
+    `WHERE is_deleted=0 AND last_modified > '1971-01-01';`;
+  try {
+    const { stdout } = await execFileAsync(
+      'sqlite3',
+      ['-readonly', '-separator', '\x1f', `file:${FTS_DB}?immutable=1`, sql],
+      { maxBuffer: 16 * 1024 * 1024 },
+    );
+    for (const line of stdout.split('\n')) {
+      if (!line) continue;
+      const a = line.indexOf('\x1f');
+      if (a === -1) continue;
+      const b = line.indexOf('\x1f', a + 1);
+      if (b === -1) continue;
+      const documentId = line.slice(0, a);
+      const name = line.slice(a + 1, b);
+      const timeMs = parseFtsDateMs(line.slice(b + 1));
+      if (!documentId || !timeMs) continue;
+      out.push({
+        documentId,
+        name,
+        timeMs,
+        dayKey: new Date(timeMs).toISOString().slice(0, 10),
+      });
+    }
+  } catch {
+    // sqlite3 missing / DB locked — no backfill this run.
+  }
+  return out;
+}
+
 function readingLogPath(vaultRoot: string): string {
   const resolved = path.resolve(vaultRoot, READING_LOG_RELPATH);
   const rootResolved = path.resolve(vaultRoot);
@@ -306,11 +412,42 @@ export async function harvestGoodnotesReadingBlock(
     if (seen.has(key) || fresh.has(key)) continue;
     fresh.set(key, s);
   }
-  if (fresh.size === 0) return { added: 0, total: existing.length };
 
-  const titles = await readTitlesBlock([...new Set([...fresh.values()].map(s => s.documentId))]);
+  // Day-level coverage from accurate (duration-bearing) sessions — existing real
+  // records plus this run's fresh ones. Used to suppress writing an fts touch for
+  // a (doc, day) we already cover with a real session. (Parse-time dedup is the
+  // authoritative guard; this just keeps the log from bloating.)
+  const realPairs = new Set<string>();
+  for (const r of existing) {
+    if (r.key.endsWith('|fts')) continue;
+    realPairs.add(`${r.documentId}|${new Date(r.timeMs).toISOString().slice(0, 10)}`);
+  }
+  for (const s of fresh.values()) {
+    realPairs.add(`${s.documentId}|${new Date(s.timeMs).toISOString().slice(0, 10)}`);
+  }
+
+  // fts.sqlite last_modified backfill — one duration-less touch per (doc, day),
+  // skipping days already covered by a real session and days already logged.
+  const touches = await readFtsTouchesBlock();
+  const freshTouches = new Map<string, FtsTouch>();
+  for (const t of touches) {
+    const key = ftsTouchKey(t.documentId, t.dayKey);
+    if (seen.has(key) || freshTouches.has(key)) continue;
+    if (realPairs.has(`${t.documentId}|${t.dayKey}`)) continue;
+    freshTouches.set(key, t);
+  }
+
+  if (fresh.size === 0 && freshTouches.size === 0) {
+    return { added: 0, total: existing.length };
+  }
+
   const harvestedAt = Math.floor(Date.now() / 1000);
-  const newRecords: GoodnotesReadingRecord[] = [...fresh.entries()].map(([key, s]) => ({
+  const [titles, pageCounts] = await Promise.all([
+    readTitlesBlock([...new Set([...fresh.values()].map(s => s.documentId))]),
+    freshTouches.size > 0 ? readPageCountsBlock() : Promise.resolve(new Map<string, number>()),
+  ]);
+
+  const amplitudeRecords: GoodnotesReadingRecord[] = [...fresh.entries()].map(([key, s]) => ({
     key,
     documentId: s.documentId,
     title: titles.get(s.documentId) ?? '',
@@ -320,6 +457,19 @@ export async function harvestGoodnotesReadingBlock(
     documentType: s.documentType,
     harvestedAt,
   }));
+  // Backfilled touches: no duration, page count joined from page_meta, marked
+  // `documentType: 'fts'` so the source is traceable in the durable log.
+  const ftsRecords: GoodnotesReadingRecord[] = [...freshTouches.entries()].map(([key, t]) => ({
+    key,
+    documentId: t.documentId,
+    title: t.name,
+    timeMs: t.timeMs,
+    durationMs: 0,
+    numPage: pageCounts.get(t.documentId) ?? 0,
+    documentType: 'fts',
+    harvestedAt,
+  }));
+  const newRecords: GoodnotesReadingRecord[] = [...amplitudeRecords, ...ftsRecords];
 
   await fsPromises.mkdir(path.dirname(logPath), { recursive: true });
   const payload = newRecords.map(r => JSON.stringify(r)).join('\n') + '\n';

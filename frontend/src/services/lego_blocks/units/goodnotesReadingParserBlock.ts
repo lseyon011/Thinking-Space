@@ -109,8 +109,20 @@ export function readingRecordToSession(rec: GoodnotesReadingRecord): ParsedSessi
 export function parseGoodnotesReadingLog(
   records: GoodnotesReadingRecord[],
 ): ParsedSession[] {
+  // A real, duration-bearing session (from the Amplitude queue) always wins over
+  // a duration-less fts "touch" for the same document on the same day. This is
+  // the authoritative guard against double-counting a day we have an accurate
+  // session for, regardless of the order the two sources landed in the log.
+  const dayOf = (rec: GoodnotesReadingRecord) =>
+    `${rec.documentId}|${new Date(rec.timeMs).toISOString().slice(0, 10)}`
+  const coveredByRealSession = new Set<string>()
+  for (const rec of records) {
+    if (rec.durationMs > 0) coveredByRealSession.add(dayOf(rec))
+  }
+
   const out: ParsedSession[] = []
   for (const rec of records) {
+    if (rec.durationMs <= 0 && coveredByRealSession.has(dayOf(rec))) continue
     const s = readingRecordToSession(rec)
     if (s) out.push(s)
   }
