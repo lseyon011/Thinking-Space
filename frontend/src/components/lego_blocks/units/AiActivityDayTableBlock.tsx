@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from 'react'
 import { Maximize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import { isReadingSource, type ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import {
   estimateCostUsd,
@@ -226,9 +226,10 @@ export default function AiActivityDayTableBlock({
                   const costUsd = hasTokens ? estimateChainCostUsd(c) : 0
                   const modelLabel = modelSummaryLabel(c)
                   const isReconstructed = c.sessions.every(s => s.reconstructed)
-                  // Reading chains (GoodNotes) have no transcript and no tokens —
-                  // they're harvested document sessions, not conversations.
-                  const isReading = c.source === 'goodnotes'
+                  // Reading/memorization chains (GoodNotes, memorized, markdown,
+                  // excalidraw) have no transcript and no tokens — they're
+                  // document/practice sessions, not conversations.
+                  const isReading = isReadingSource(c.source)
                   return (
                     <Fragment key={c.key}>
                       {showDivider && (
@@ -368,8 +369,13 @@ export default function AiActivityDayTableBlock({
                           </span>
                         ) : isReading ? (
                           <span className="text-muted-foreground/60">
-                            Reading session (GoodNotes) — harvested from the document's open-time;
-                            duration and page count are real, there's no transcript.
+                            {c.source === 'goodnotes'
+                              ? "Reading session (GoodNotes) — harvested from the document's open-time; duration and page count are real, there's no transcript."
+                              : c.source === 'memorized'
+                                ? 'Memorization session — recorded from the notebook timer; duration is real, there’s no transcript.'
+                                : c.source === 'reading-draw'
+                                  ? 'Drawing session (Excalidraw) — recorded from time the canvas was open; duration is real, there’s no transcript.'
+                                  : 'Reading session (Markdown) — recorded from time the document was open; duration is real, there’s no transcript.'}
                           </span>
                         ) : (
                           <span className="text-muted-foreground/60">

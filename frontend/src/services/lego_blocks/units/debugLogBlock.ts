@@ -1,6 +1,11 @@
 // Debug log event bus — broadcast structured log entries across the app.
 // Consumers (App.tsx) subscribe and drive the debug panel + toast UI.
 
+import {
+  isConsoleWarningsVisible,
+  isLibraryConsoleNoiseBlock,
+} from '@/services/lego_blocks/units/consoleNoiseFilterBlock'
+
 export type DebugLogLevel = 'error' | 'warn' | 'info' | 'debug'
 
 export interface DebugLogEntryBlock {
@@ -219,6 +224,10 @@ export function installConsoleInterceptBlock(): void {
     originalError(...args)
     if (shouldSuppressConsolePayloadBlock(args)) return
     const { message, details, stack } = formatConsolePayloadBlock(args)
+    // Honor the "show console warnings" toggle for known library dev-noise so
+    // the debug panel stays in sync with the native-console noise filter —
+    // otherwise recharts-style warnings leak into the panel even when muted.
+    if (!isConsoleWarningsVisible() && isLibraryConsoleNoiseBlock(message)) return
     dispatchDebugLogBlock({ level: 'error', message, details, stack, source: 'console' })
   }
 
@@ -227,6 +236,7 @@ export function installConsoleInterceptBlock(): void {
     originalWarn(...args)
     if (shouldSuppressConsolePayloadBlock(args)) return
     const { message, details } = formatConsolePayloadBlock(args)
+    if (!isConsoleWarningsVisible() && isLibraryConsoleNoiseBlock(message)) return
     dispatchDebugLogBlock({ level: 'warn', message, details, source: 'console' })
   }
 }

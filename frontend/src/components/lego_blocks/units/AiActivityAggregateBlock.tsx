@@ -331,7 +331,13 @@ export default function AiActivityAggregateBlock({
           </div>
           <div ref={chartHostRef} className="h-52 min-w-0">
             {chartReady && (
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              minWidth={1}
+              minHeight={1}
+              initialDimension={{ width: 1, height: 1 }}
+            >
               <BarChart
                 data={graph.points}
                 margin={{ top: 6, right: 10, bottom: 0, left: -18 }}

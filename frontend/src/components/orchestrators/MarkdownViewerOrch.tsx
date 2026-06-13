@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import MarkdownDocumentBlock, {
   type MarkdownViewerMode,
 } from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
+import { useReadingDwellBlock } from '@/components/lego_blocks/hooks/shared/useReadingDwellBlock'
 
 type MarkdownSavedCallback = (result: { output_path: string; revision_path: string | null }) => void
 
@@ -45,6 +46,11 @@ function MarkdownSideSheet({
   onOpenPathForEdit: (path: string) => void
   onClose: () => void
 }) {
+  // Track open-time for this document; emits a reading/drawing session to the
+  // durable log on close/switch once past the dwell threshold (markdown →
+  // reading-md, excalidraw → reading-draw). Re-runs on path change, so opening
+  // a new file closes out the previous sitting.
+  useReadingDwellBlock(path)
   return (
     <>
       <div

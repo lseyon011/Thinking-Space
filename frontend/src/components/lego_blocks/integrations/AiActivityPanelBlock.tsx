@@ -7,6 +7,8 @@ import {
   type AiActivityPreset,
   type AiSourceFilter,
   type CustomRange,
+  type ReadingCounts,
+  type ReadingSourceFilter,
 } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import AiActivityHeatmapBlock from '@/components/lego_blocks/units/AiActivityHeatmapBlock'
 import AiActivityProjectChipsBlock from '@/components/lego_blocks/units/AiActivityProjectChipsBlock'
@@ -207,6 +209,16 @@ export default function AiActivityPanelBlock() {
             }}
             counts={activity.sourceCounts}
           />
+          {activity.sourceFilter === 'reading' && (
+            <ReadingSubPills
+              value={activity.readingSource}
+              onChange={next => {
+                activity.setReadingSource(next)
+                clearDrill()
+              }}
+              counts={activity.readingCounts}
+            />
+          )}
           <RangePills
             preset={activity.preset}
             customRange={activity.customRange}
@@ -441,19 +453,19 @@ function SourcePills({
 }: {
   value: AiSourceFilter
   onChange: (next: AiSourceFilter) => void
-  counts: { claudeCode: number; codex: number; chatgpt: number; grok: number; goodnotes: number }
+  counts: { claudeCode: number; codex: number; chatgpt: number; grok: number; reading: number }
 }) {
   const opts: Array<{ id: AiSourceFilter; label: string; count: number | null }> = [
     {
       id: 'all',
       label: 'All',
-      count: counts.claudeCode + counts.codex + counts.chatgpt + counts.grok + counts.goodnotes,
+      count: counts.claudeCode + counts.codex + counts.chatgpt + counts.grok + counts.reading,
     },
     { id: 'claude-code', label: 'Claude', count: counts.claudeCode },
     { id: 'codex', label: 'Codex', count: counts.codex },
     { id: 'chatgpt', label: 'ChatGPT', count: counts.chatgpt },
     { id: 'grok', label: 'Grok', count: counts.grok },
-    { id: 'goodnotes', label: 'Reading', count: counts.goodnotes },
+    { id: 'reading', label: 'Reading', count: counts.reading },
   ]
   return (
     <div
@@ -482,6 +494,58 @@ function SourcePills({
               disabled && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground',
             )}
             title={opt.count != null ? `${opt.count} sessions in range` : undefined}
+          >
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function ReadingSubPills({
+  value,
+  onChange,
+  counts,
+}: {
+  value: ReadingSourceFilter
+  onChange: (next: ReadingSourceFilter) => void
+  counts: ReadingCounts
+}) {
+  // Second filter dimension within "Reading" — same role the project chips play
+  // for AI sessions. Only rendered while the Reading source pill is active.
+  const opts: Array<{ id: ReadingSourceFilter; label: string; count: number }> = [
+    { id: 'all', label: 'All', count: counts.all },
+    { id: 'goodnotes', label: 'GoodNotes', count: counts.goodnotes },
+    { id: 'memorized', label: 'Memorize', count: counts.memorized },
+    { id: 'reading-md', label: 'Markdown', count: counts.readingMd },
+    { id: 'reading-draw', label: 'Drawing', count: counts.readingDraw },
+  ]
+  return (
+    <div
+      role="tablist"
+      aria-label="Reading source"
+      className="flex h-7 w-full items-center gap-0.5 rounded-full border border-border/30 bg-muted/20 p-1"
+    >
+      {opts.map(opt => {
+        const active = opt.id === value
+        const disabled = opt.id !== 'all' && opt.count === 0
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            disabled={disabled}
+            onClick={() => onChange(opt.id)}
+            className={cn(
+              'flex-1 rounded-full px-2 py-0.5 text-center text-[10px] font-medium transition-all',
+              active
+                ? 'bg-foreground/90 text-background shadow-sm'
+                : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+              disabled && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground',
+            )}
+            title={`${opt.count} sessions in range`}
           >
             {opt.label}
           </button>

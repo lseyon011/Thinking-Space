@@ -26,6 +26,8 @@ import { parseClaudeHistoryBlock } from '@/services/lego_blocks/units/claudeHist
 import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserBlock'
 import { readVaultSessionPrefixesBlock } from '@/services/lego_blocks/units/aiActivitySourcesBlock'
 import { loadGoodnotesReadingSessions } from '@/services/lego_blocks/integrations/goodnotesReadingBlock'
+import { loadMemorizedSessions } from '@/services/lego_blocks/integrations/memorizedReadingBlock'
+import { loadThinkingspaceReadingSessions } from '@/services/lego_blocks/integrations/thinkingspaceReadingBlock'
 
 const CACHE_PATH = '.thinking-space/ai-activity-cache.json'
 const CACHE_DIR = '.thinking-space'
@@ -302,6 +304,19 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
   // chat sessions), so dedup leaves them intact.
   const goodnotesSessions = await loadGoodnotesReadingSessions(fs).catch(() => [])
 
+  // ── 4c. Memorization sessions. ──────────────────────────────────────────────
+  // Read from the `memorized_sessions` YAML indexed into IndexedDB (the durable
+  // source of truth is the notes themselves), tagged source:'memorized'. Like
+  // GoodNotes, NOT written to cache.json — read fresh each load, unique ids
+  // survive the dedup below.
+  const memorizedSessions = await loadMemorizedSessions().catch(() => [])
+
+  // ── 4d. In-app reading/drawing sessions (TS markdown + Excalidraw). ──────────
+  // Emitted by the viewers into a durable vault JSONL once a sitting crosses the
+  // dwell threshold, tagged source:'reading-md'/'reading-draw'. Like the others,
+  // NOT written to cache.json — read fresh each load, unique ids survive dedup.
+  const thinkingspaceReadingSessions = await loadThinkingspaceReadingSessions(fs).catch(() => [])
+
   // ── 5. Dedupe before returning to consumers. ────────────────────────────────
   // For each session id (full UUID for native, 8-char short id for vault),
   // prefer the richer native record when both exist — it has explicit cwd,
@@ -310,7 +325,12 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
   // window of a history session when ANY real (native/vault) record covers the
   // same base sessionId. Mixing windows from a real transcript with leftover
   // history windows would double-count, so coverage is all-or-nothing per id.
-  const raw = [...Object.values(next), ...goodnotesSessions]
+  const raw = [
+    ...Object.values(next),
+    ...goodnotesSessions,
+    ...memorizedSessions,
+    ...thinkingspaceReadingSessions,
+  ]
   const coveredFullIds = new Set<string>()
   const coveredShortIds = new Set<string>()
   for (const s of raw) {

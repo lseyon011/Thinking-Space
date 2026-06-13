@@ -6,7 +6,29 @@
 // (Divergence: project detection here is generic — cwd folder name — not the
 // script's hardcoded paths.)
 
-export type ActivitySource = 'claude-code' | 'codex' | 'chatgpt' | 'grok' | 'goodnotes'
+export type ActivitySource =
+  | 'claude-code'
+  | 'codex'
+  | 'chatgpt'
+  | 'grok'
+  | 'goodnotes'
+  | 'memorized'
+  | 'reading-md'
+  | 'reading-draw'
+
+/** Sources that represent reading/memorization rather than AI chat sessions.
+ *  These all roll up under the single "Reading" source pill and are filtered
+ *  among themselves by the reading sub-source pills. */
+export const READING_SOURCES: ReadonlySet<ActivitySource> = new Set<ActivitySource>([
+  'goodnotes',
+  'memorized',
+  'reading-md',
+  'reading-draw',
+])
+
+export function isReadingSource(source: ActivitySource): boolean {
+  return READING_SOURCES.has(source)
+}
 
 export interface ParsedSession {
   /** Vault-relative path of the source markdown file. */
@@ -391,10 +413,10 @@ export function inheritUnknownSessions(sessions: ParsedSession[]): ParsedSession
   // session counts are in the low thousands at most.
   const anchors: Array<{ t: number; project: string }> = []
   for (const s of sorted) {
-    // Web-chat (ChatGPT/Grok) and reading (GoodNotes) sessions bucket under
-    // their own labels — those must never bleed onto a nearby unknown coding
-    // session via temporal inheritance.
-    if (s.source === 'chatgpt' || s.source === 'grok' || s.source === 'goodnotes') continue
+    // Web-chat (ChatGPT/Grok) and reading/memorization (GoodNotes, memorized,
+    // markdown, excalidraw) sessions bucket under their own labels — those must
+    // never bleed onto a nearby unknown coding session via temporal inheritance.
+    if (s.source === 'chatgpt' || s.source === 'grok' || isReadingSource(s.source)) continue
     if (isInheritable(s.project)) {
       anchors.push({ t: Date.parse(s.startedIso), project: s.project })
     }

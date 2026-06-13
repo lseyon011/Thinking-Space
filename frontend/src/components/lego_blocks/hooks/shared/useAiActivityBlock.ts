@@ -7,7 +7,9 @@ import {
 import {
   buildChains,
   inheritUnknownSessions,
+  isReadingSource,
   type ActivityChain,
+  type ActivitySource,
   type ParsedSession,
 } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import {
@@ -58,7 +60,26 @@ export interface ActivityProject {
   isUnknown: boolean
 }
 
-export type AiSourceFilter = 'all' | 'claude-code' | 'codex' | 'chatgpt' | 'grok' | 'goodnotes'
+export type AiSourceFilter = 'all' | 'claude-code' | 'codex' | 'chatgpt' | 'grok' | 'reading'
+
+/** Sub-source filter shown only when the "Reading" source pill is active. Acts
+ *  as a second filter dimension within reading — the way the project chips
+ *  filter AI sessions. 'all' shows every reading-family source. */
+export type ReadingSourceFilter =
+  | 'all'
+  | 'goodnotes'
+  | 'memorized'
+  | 'reading-md'
+  | 'reading-draw'
+
+/** Per-reading-source counts for the sub-source pill labels. */
+export interface ReadingCounts {
+  all: number
+  goodnotes: number
+  memorized: number
+  readingMd: number
+  readingDraw: number
+}
 
 /** A named calendar range used as a whole-panel data filter. */
 export interface CustomRange {
@@ -94,9 +115,16 @@ export interface UseAiActivityResult {
    *  just narrows which sessions feed every downstream aggregation. */
   sourceFilter: AiSourceFilter
   setSourceFilter: (filter: AiSourceFilter) => void
+  /** Sub-source filter within the "Reading" pill (GoodNotes / Memorize /
+   *  Markdown / Drawing). Only meaningful while sourceFilter === 'reading'. */
+  readingSource: ReadingSourceFilter
+  setReadingSource: (filter: ReadingSourceFilter) => void
   /** How many sessions exist per source across the visible range — used to label
-   *  the source pills and disable empty ones. */
-  sourceCounts: { claudeCode: number; codex: number; chatgpt: number; grok: number; goodnotes: number }
+   *  the source pills and disable empty ones. `reading` is the sum of the whole
+   *  reading family. */
+  sourceCounts: { claudeCode: number; codex: number; chatgpt: number; grok: number; reading: number }
+  /** Per-reading-source counts for the reading sub-source pills. */
+  readingCounts: ReadingCounts
   startIso: string
   endIso: string
   refresh: () => void
@@ -144,6 +172,7 @@ function isNoiseProject(name: string): boolean {
 
 const PRESET_STORAGE_KEY = 'thinkspc.aiActivity.preset.v1'
 const SOURCE_FILTER_STORAGE_KEY = 'thinkspc.aiActivity.sourceFilter.v1'
+const READING_SOURCE_STORAGE_KEY = 'thinkspc.aiActivity.readingSource.v1'
 const VALID_PRESET_IDS = new Set(AI_ACTIVITY_PRESETS.map(p => p.id))
 const VALID_SOURCE_FILTERS: ReadonlySet<AiSourceFilter> = new Set([
   'all',
@@ -151,13 +180,22 @@ const VALID_SOURCE_FILTERS: ReadonlySet<AiSourceFilter> = new Set([
   'codex',
   'chatgpt',
   'grok',
+  'reading',
+])
+const VALID_READING_SOURCES: ReadonlySet<ReadingSourceFilter> = new Set([
+  'all',
   'goodnotes',
+  'memorized',
+  'reading-md',
+  'reading-draw',
 ])
 
 function readStoredSourceFilter(): AiSourceFilter | null {
   if (typeof window === 'undefined') return null
   try {
     const raw = window.localStorage.getItem(SOURCE_FILTER_STORAGE_KEY)
+    // Migrate the pre-umbrella 'goodnotes' pill onto the unified 'reading' pill.
+    if (raw === 'goodnotes') return 'reading'
     if (raw && VALID_SOURCE_FILTERS.has(raw as AiSourceFilter)) {
       return raw as AiSourceFilter
     }
@@ -171,6 +209,28 @@ function writeStoredSourceFilter(value: AiSourceFilter): void {
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(SOURCE_FILTER_STORAGE_KEY, value)
+  } catch {
+    /* localStorage unavailable */
+  }
+}
+
+function readStoredReadingSource(): ReadingSourceFilter | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(READING_SOURCE_STORAGE_KEY)
+    if (raw && VALID_READING_SOURCES.has(raw as ReadingSourceFilter)) {
+      return raw as ReadingSourceFilter
+    }
+  } catch {
+    /* localStorage unavailable */
+  }
+  return null
+}
+
+function writeStoredReadingSource(value: ReadingSourceFilter): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(READING_SOURCE_STORAGE_KEY, value)
   } catch {
     /* localStorage unavailable */
   }
@@ -224,6 +284,13 @@ export function useAiActivityBlock(
   const setSourceFilter = useCallback((next: AiSourceFilter) => {
     writeStoredSourceFilter(next)
     setSourceFilterState(next)
+  }, [])
+  const [readingSource, setReadingSourceState] = useState<ReadingSourceFilter>(
+    () => readStoredReadingSource() ?? 'all',
+  )
+  const setReadingSource = useCallback((next: ReadingSourceFilter) => {
+    writeStoredReadingSource(next)
+    setReadingSourceState(next)
   }, [])
   // Seed from the module-level snapshot so a remount (or a second consumer
   // mounting after the first) gets instant paint instead of a loading flash.
@@ -316,8 +383,16 @@ export function useAiActivityBlock(
   // project chips, day timeline, today's chains) consistently.
   const sourceFilteredSessions = useMemo(() => {
     if (sourceFilter === 'all') return mappedSessions
+    if (sourceFilter === 'reading') {
+      // Umbrella: every reading-family source, optionally narrowed to one
+      // sub-source by the reading sub-pills.
+      return mappedSessions.filter(s => {
+        if (!isReadingSource(s.source)) return false
+        return readingSource === 'all' || s.source === readingSource
+      })
+    }
     return mappedSessions.filter(s => s.source === sourceFilter)
-  }, [mappedSessions, sourceFilter])
+  }, [mappedSessions, sourceFilter, readingSource])
 
   // Sessions whose activity window OVERLAPS the visible range. A long-running
   // session (e.g. an 8-day Claude chat started a week ago but still active
@@ -336,7 +411,7 @@ export function useAiActivityBlock(
 
   // Counts for the pill labels — computed on the range-filtered superset (ignoring
   // the source filter) so each pill shows how many sessions it would surface.
-  const sourceCounts = useMemo(() => {
+  const { sourceCounts, readingCounts } = useMemo(() => {
     const startMs = Date.parse(startIso + 'T00:00:00')
     const endMs = Date.parse(endIso + 'T23:59:59')
     let claudeCode = 0
@@ -344,17 +419,28 @@ export function useAiActivityBlock(
     let chatgpt = 0
     let grok = 0
     let goodnotes = 0
+    let memorized = 0
+    let readingMd = 0
+    let readingDraw = 0
     for (const s of enrichedSessions) {
       const sStart = Date.parse(s.startedIso)
       const sEnd = Date.parse(s.endedIso ?? s.startedIso)
       if (sEnd < startMs || sStart > endMs) continue
-      if (s.source === 'codex') codex += 1
-      else if (s.source === 'chatgpt') chatgpt += 1
-      else if (s.source === 'grok') grok += 1
-      else if (s.source === 'goodnotes') goodnotes += 1
-      else if (s.source === 'claude-code') claudeCode += 1
+      const src: ActivitySource = s.source
+      if (src === 'codex') codex += 1
+      else if (src === 'chatgpt') chatgpt += 1
+      else if (src === 'grok') grok += 1
+      else if (src === 'goodnotes') goodnotes += 1
+      else if (src === 'memorized') memorized += 1
+      else if (src === 'reading-md') readingMd += 1
+      else if (src === 'reading-draw') readingDraw += 1
+      else if (src === 'claude-code') claudeCode += 1
     }
-    return { claudeCode, codex, chatgpt, grok, goodnotes }
+    const reading = goodnotes + memorized + readingMd + readingDraw
+    return {
+      sourceCounts: { claudeCode, codex, chatgpt, grok, reading },
+      readingCounts: { all: reading, goodnotes, memorized, readingMd, readingDraw },
+    }
   }, [enrichedSessions, startIso, endIso])
 
   const chains = useMemo(() => buildChains(sessions), [sessions])
@@ -470,7 +556,10 @@ export function useAiActivityBlock(
     setCustomRange,
     sourceFilter,
     setSourceFilter,
+    readingSource,
+    setReadingSource,
     sourceCounts,
+    readingCounts,
     startIso,
     endIso,
     refresh,

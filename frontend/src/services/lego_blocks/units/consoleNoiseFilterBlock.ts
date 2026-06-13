@@ -5,13 +5,24 @@ type LevelKey = 'log' | 'info' | 'warn' | 'debug'
 const FILTERED_LEVELS: LevelKey[] = ['log', 'info', 'warn', 'debug']
 
 // recharts (and a few other libs) route library-warnings through the
-// `warning` npm package, which lands on `console.error` even though the
-// content is a development warning, not a real error. We don't want to
-// blanket-mute `console.error` — real errors must always show — so we
+// `warning` npm package, which lands on `console.error`/`console.warn` even
+// though the content is a development warning, not a real error. We don't want
+// to blanket-mute those channels — real errors must always show — so we
 // targeted-mute only known noisy patterns when the toggle is off.
-const ERROR_NOISE_PATTERNS: RegExp[] = [
-  /The width\(\d+\) and height\(\d+\) of chart should be greater than 0/,
+//
+// Note the `-?\d+`: recharts reports the bad size as `width(-1)`/`height(-1)`
+// when the container is measured at zero, so the pattern MUST allow a leading
+// minus or it silently fails to match the very message it's meant to catch.
+const LIBRARY_NOISE_PATTERNS: RegExp[] = [
+  /The width\(-?\d+\) and height\(-?\d+\) of chart should be greater than 0/,
 ]
+
+/** True when a formatted console message is known library dev-noise that should
+ *  be hidden while the "show console warnings" toggle is off. Shared by the
+ *  native-console filter here and the in-app debug-panel intercept. */
+export function isLibraryConsoleNoiseBlock(text: string): boolean {
+  return !!text && LIBRARY_NOISE_PATTERNS.some(re => re.test(text))
+}
 
 let installed = false
 
@@ -68,7 +79,7 @@ export function installConsoleNoiseFilterBlock(): void {
       const text = typeof first === 'string'
         ? first
         : first instanceof Error ? first.message : ''
-      if (text && ERROR_NOISE_PATTERNS.some(re => re.test(text))) return
+      if (isLibraryConsoleNoiseBlock(text)) return
     }
     originalError(...args)
   }

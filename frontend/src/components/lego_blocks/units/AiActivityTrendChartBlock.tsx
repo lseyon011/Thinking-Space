@@ -174,7 +174,13 @@ export default function AiActivityTrendChartBlock({
   return (
     <div ref={hostRef} className="h-44 min-w-0">
       {ready && (
-        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+        <ResponsiveContainer
+          width="100%"
+          height="100%"
+          minWidth={1}
+          minHeight={1}
+          initialDimension={{ width: 1, height: 1 }}
+        >
           <ComposedChart
             data={dataWithAnchor}
             margin={{ top: 18, right: 4, bottom: 0, left: -22 }}
