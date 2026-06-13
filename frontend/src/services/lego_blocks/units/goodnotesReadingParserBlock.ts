@@ -23,6 +23,11 @@ export interface GoodnotesReadingRecord {
   numPage: number
   documentType: string
   harvestedAt: number
+  /** The document's latest fts.sqlite `last_modified`, epoch ms — i.e. the last
+   *  time an annotation/edit touched the file. Absent on older records. Used by
+   *  the annotation gate to tell real reading (file was marked up) from an idle
+   *  document-open session (no edit, so this stays before the session day). */
+  docModifiedMs?: number
 }
 
 // Reading-session durations from GoodNotes' "document open" telemetry can be
@@ -104,25 +109,61 @@ export function readingRecordToSession(rec: GoodnotesReadingRecord): ParsedSessi
   }
 }
 
+export interface ParseGoodnotesOptions {
+  /** When true, drop duration-bearing sessions whose day falls AFTER the
+   *  document's last annotation (fts modification). Filters idle document-open
+   *  sessions for readers who always mark up what they read. Default false. */
+  annotationGate?: boolean
+}
+
+const dayKeyMs = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+
 /** Parse the full durable JSONL log into ParsedSessions, newest-friendly order
  *  left to the caller's pipeline (buildChains sorts). Skips unparseable rows. */
 export function parseGoodnotesReadingLog(
   records: GoodnotesReadingRecord[],
+  opts: ParseGoodnotesOptions = {},
 ): ParsedSession[] {
   // A real, duration-bearing session (from the Amplitude queue) always wins over
   // a duration-less fts "touch" for the same document on the same day. This is
   // the authoritative guard against double-counting a day we have an accurate
   // session for, regardless of the order the two sources landed in the log.
   const dayOf = (rec: GoodnotesReadingRecord) =>
-    `${rec.documentId}|${new Date(rec.timeMs).toISOString().slice(0, 10)}`
+    `${rec.documentId}|${dayKeyMs(rec.timeMs)}`
   const coveredByRealSession = new Set<string>()
   for (const rec of records) {
     if (rec.durationMs > 0) coveredByRealSession.add(dayOf(rec))
   }
 
+  // Annotation gate: the document's last-modified day. Two sources, strongest
+  // first — the record's own `docModifiedMs` stamp (harvester-supplied), else the
+  // newest fts "touch" (duration 0) day seen for that doc in the log. A touch IS
+  // an annotation, so its day is a known modification day.
+  const lastModifiedDay = new Map<string, string>()
+  if (opts.annotationGate) {
+    const bump = (docId: string, day: string) => {
+      const prev = lastModifiedDay.get(docId)
+      if (!prev || day > prev) lastModifiedDay.set(docId, day)
+    }
+    for (const rec of records) {
+      if (typeof rec.docModifiedMs === 'number' && rec.docModifiedMs > 0) {
+        bump(rec.documentId, dayKeyMs(rec.docModifiedMs))
+      }
+      if (rec.durationMs <= 0) bump(rec.documentId, dayKeyMs(rec.timeMs))
+    }
+  }
+
   const out: ParsedSession[] = []
   for (const rec of records) {
     if (rec.durationMs <= 0 && coveredByRealSession.has(dayOf(rec))) continue
+    // Idle-open filter: a duration-bearing session dated strictly after the
+    // document's last annotation never marked up the file, so it's an
+    // open-and-idle session, not reading. Keep when we have no modification
+    // signal at all (can't gate on missing data).
+    if (opts.annotationGate && rec.durationMs > 0) {
+      const modDay = lastModifiedDay.get(rec.documentId)
+      if (modDay && dayKeyMs(rec.timeMs) > modDay) continue
+    }
     const s = readingRecordToSession(rec)
     if (s) out.push(s)
   }

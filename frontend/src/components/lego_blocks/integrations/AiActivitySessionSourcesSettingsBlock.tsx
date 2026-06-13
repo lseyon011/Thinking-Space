@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { Button } from '@/components/lego_blocks/units/ui/button'
+import { Switch } from '@/components/lego_blocks/units/ui/switch'
+import {
+  getGoodnotesAnnotationGate,
+  setGoodnotesAnnotationGate,
+} from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   getNativeAiSessionRoots,
   setNativeAiSessionRoots,
@@ -17,7 +22,14 @@ export default function AiActivitySessionSourcesSettingsBlock() {
   const [roots, setRoots] = useState<NativeAiSessionRoots | null>(null)
   const [rootsUnavailable, setRootsUnavailable] = useState(false)
   const [prefixes, setPrefixes] = useState<string[]>(() => readVaultSessionPrefixesBlock())
+  const [annotationGate, setAnnotationGate] = useState<boolean>(() => getGoodnotesAnnotationGate())
   const [error, setError] = useState<string | null>(null)
+
+  const toggleAnnotationGate = (checked: boolean) => {
+    setGoodnotesAnnotationGate(checked)
+    setAnnotationGate(checked)
+    clearAiActivitySnapshot()
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -111,6 +123,25 @@ export default function AiActivitySessionSourcesSettingsBlock() {
             Vault-relative folder prefixes scanned for saved session markdown, one per line.
           </p>
           <PrefixesEditor value={prefixes} onSave={savePrefixes} />
+        </div>
+
+        <div className="space-y-2 border-t border-border/60 pt-4">
+          <h3 className="text-sm font-medium text-foreground">Reading (GoodNotes)</h3>
+          <label className="flex items-start justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
+            <div className="min-w-0 space-y-0.5">
+              <div className="text-sm font-medium text-foreground">Only count annotated reading</div>
+              <p className="text-xs text-muted-foreground">
+                Counts a GoodNotes session only when you actually marked up the document that day
+                (a stroke or date added). Filters out sessions where a PDF was just left open and
+                idle. Leave off if you often read without annotating.
+              </p>
+            </div>
+            <Switch
+              checked={annotationGate}
+              onCheckedChange={toggleAnnotationGate}
+              aria-label="Only count annotated GoodNotes reading"
+            />
+          </label>
         </div>
       </CardContent>
     </Card>

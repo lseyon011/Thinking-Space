@@ -46,6 +46,7 @@ export const STORAGE_KEYS = {
   fileActivityIgnoredPaths: 'ltm-file-activity-ignored-paths',
   aiActivityProjectMapping: 'ltm-ai-activity-project-mapping',
   aiActivityVaultSourcePrefixes: 'ltm-ai-activity-vault-source-prefixes',
+  goodnotesReadingAnnotationGate: 'ltm-goodnotes-reading-annotation-gate',
   vaultSyncExcludedPrefixes: 'ltm-vault-sync-excluded-prefixes',
 } as const
 
@@ -135,6 +136,20 @@ export function setJsonStorageItem<T>(key: StorageKey, value: T): void {
 
 export function getStoredVaultRoot(): string | null {
   return getStorageItem(STORAGE_KEYS.vaultRoot)
+}
+
+/**
+ * Whether GoodNotes reading sessions should be gated on an annotation signal —
+ * only counted when the document was actually modified (an annotation/date added)
+ * on the session day, filtering out idle "left the PDF open" sessions. Off by
+ * default; opt-in for readers whose habit is to always mark up what they read.
+ */
+export function getGoodnotesAnnotationGate(): boolean {
+  return getLocalStorageItemBlock(STORAGE_KEYS.goodnotesReadingAnnotationGate) === 'true'
+}
+
+export function setGoodnotesAnnotationGate(enabled: boolean): void {
+  setLocalStorageItemBlock(STORAGE_KEYS.goodnotesReadingAnnotationGate, enabled ? 'true' : 'false')
 }
 
 export function setStoredVaultRoot(path: string): void {

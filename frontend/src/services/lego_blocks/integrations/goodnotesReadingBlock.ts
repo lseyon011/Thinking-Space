@@ -13,7 +13,7 @@ import {
   parseGoodnotesReadingLog,
   type GoodnotesReadingRecord,
 } from '@/services/lego_blocks/units/goodnotesReadingParserBlock'
-import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
+import { getGoodnotesAnnotationGate, getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 
 const READING_LOG_PATH = 'ai_raw/raw/goodnotes/reading.jsonl'
 
@@ -51,6 +51,7 @@ function parseLogText(text: string): GoodnotesReadingRecord[] {
  * read the synced vault log. Returns [] when GoodNotes/the log isn't present.
  */
 export async function loadGoodnotesReadingSessions(fs: VaultFS): Promise<ParsedSession[]> {
+  const parseOpts = { annotationGate: getGoodnotesAnnotationGate() }
   const api = getApi()
   if (api) {
     const vaultRoot = getStoredVaultRoot() ?? ''
@@ -62,7 +63,7 @@ export async function loadGoodnotesReadingSessions(fs: VaultFS): Promise<ParsedS
     }
     try {
       const records = (await api.goodnotesReadLog!(vaultRoot)) ?? []
-      return parseGoodnotesReadingLog(records)
+      return parseGoodnotesReadingLog(records, parseOpts)
     } catch {
       return []
     }
@@ -72,7 +73,7 @@ export async function loadGoodnotesReadingSessions(fs: VaultFS): Promise<ParsedS
   try {
     if (!(await fs.exists(READING_LOG_PATH))) return []
     const text = await fs.read(READING_LOG_PATH)
-    return parseGoodnotesReadingLog(parseLogText(text))
+    return parseGoodnotesReadingLog(parseLogText(text), parseOpts)
   } catch {
     return []
   }

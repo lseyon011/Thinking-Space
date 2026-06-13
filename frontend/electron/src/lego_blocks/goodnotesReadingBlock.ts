@@ -69,6 +69,10 @@ export interface GoodnotesReadingRecord {
   documentType: string;
   /** Unix-seconds timestamp when this record was first written. */
   harvestedAt: number;
+  /** The document's fts.sqlite `last_modified` (last annotation/edit), epoch ms;
+   *  0 when fts has no real timestamp. Lets the renderer's annotation gate tell
+   *  real reading (file was marked up) from an idle document-open session. */
+  docModifiedMs: number;
 }
 
 export interface GoodnotesHarvestResult {
@@ -429,6 +433,12 @@ export async function harvestGoodnotesReadingBlock(
   // fts.sqlite last_modified backfill — one duration-less touch per (doc, day),
   // skipping days already covered by a real session and days already logged.
   const touches = await readFtsTouchesBlock();
+  // Per-document latest annotation time (epoch ms), for the renderer's gate.
+  const docModifiedByDoc = new Map<string, number>();
+  for (const t of touches) {
+    const prev = docModifiedByDoc.get(t.documentId) ?? 0;
+    if (t.timeMs > prev) docModifiedByDoc.set(t.documentId, t.timeMs);
+  }
   const freshTouches = new Map<string, FtsTouch>();
   for (const t of touches) {
     const key = ftsTouchKey(t.documentId, t.dayKey);
@@ -456,6 +466,7 @@ export async function harvestGoodnotesReadingBlock(
     numPage: s.numPage,
     documentType: s.documentType,
     harvestedAt,
+    docModifiedMs: docModifiedByDoc.get(s.documentId) ?? 0,
   }));
   // Backfilled touches: no duration, page count joined from page_meta, marked
   // `documentType: 'fts'` so the source is traceable in the durable log.
@@ -468,6 +479,7 @@ export async function harvestGoodnotesReadingBlock(
     numPage: pageCounts.get(t.documentId) ?? 0,
     documentType: 'fts',
     harvestedAt,
+    docModifiedMs: t.timeMs,
   }));
   const newRecords: GoodnotesReadingRecord[] = [...amplitudeRecords, ...ftsRecords];
 
