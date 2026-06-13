@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { ChevronRight, FileText } from 'lucide-react'
+import { ChevronRight, FileText, MessageSquareText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type {
   WebullStudyCategoryOrch,
   WebullStudyRowOrch,
 } from '../../../services/orchestrators/webullStudyOrch'
+import type { WebullStudyCommentBlock } from '../../../services/lego_blocks/units/webullStudyRecordBlock'
 
 interface WebullStudyTableBlockProps {
   rows: WebullStudyRowOrch[]
@@ -78,6 +79,19 @@ function formatValidThroughBlock(row: WebullStudyRowOrch): string {
   if (days === null) return row.record.validThrough
   if (days < 0) return `${row.record.validThrough} (${Math.abs(days)}d past)`
   return `${row.record.validThrough} (${days}d)`
+}
+
+// Pick the comment to surface inline: the most recent dated one, else the last
+// entry in the section (study files append newest comments at the bottom).
+function pickHighlightCommentBlock(
+  comments: WebullStudyCommentBlock[],
+): WebullStudyCommentBlock | null {
+  if (comments.length === 0) return null
+  const dated = comments.filter((c) => c.date)
+  if (dated.length > 0) {
+    return dated.reduce((latest, c) => (c.date! > latest.date! ? c : latest))
+  }
+  return comments[comments.length - 1]
 }
 
 function HeldBadgeBlock({ row }: { row: WebullStudyRowOrch }) {
@@ -157,6 +171,12 @@ export default function WebullStudyTableBlock({
             ? `$${range.low.toLocaleString()}–$${range.high.toLocaleString()}`
             : '—'
           const optionCount = row.options.length
+          const impNote = row.record
+            ? pickHighlightCommentBlock(row.record.impQuickNotes)
+            : null
+          const extraNoteCount = row.record
+            ? Math.max(0, row.record.impQuickNotes.length - 1)
+            : 0
           return (
             <div
               key={row.ticker}
@@ -245,6 +265,33 @@ export default function WebullStudyTableBlock({
                 </div>
               </div>
 
+              {impNote && !isExpanded && (
+                <div
+                  className="flex cursor-pointer items-start gap-1.5 px-3 pb-2 pl-12 text-xs"
+                  onClick={() => onSelectTicker(row.ticker)}
+                  title={impNote.raw}
+                >
+                  <span className="mt-px shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                    Imp
+                  </span>
+                  <span className="min-w-0 flex-1 text-muted-foreground">
+                    {impNote.date && (
+                      <span className="mr-1.5 tabular-nums opacity-70">
+                        {impNote.date}
+                      </span>
+                    )}
+                    <span className="italic text-foreground/80">
+                      {impNote.text}
+                    </span>
+                    {extraNoteCount > 0 && (
+                      <span className="ml-1.5 not-italic opacity-60">
+                        +{extraNoteCount} more
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
+
               {isExpanded && (
                 <div className="border-t bg-muted/15 px-12 py-4">
                   {!row.record ? (
@@ -253,7 +300,57 @@ export default function WebullStudyTableBlock({
                       <code className="mx-1">{`${row.ticker}/${row.ticker.toLowerCase()}-study.md`}</code>
                       to capture your reasoning.
                     </p>
-                  ) : row.record.rangeHistory.length === 0 ? (
+                  ) : (
+                  <>
+                  {row.record.impQuickNotes.length > 0 && (
+                    <div className="mb-4">
+                      <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                        <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px]">
+                          Imp
+                        </span>
+                        Quick note
+                      </div>
+                      <ul className="flex flex-col gap-1.5">
+                        {row.record.impQuickNotes.map((note, i) => (
+                          <li
+                            key={`${note.raw}-${i}`}
+                            className="flex items-start gap-2 text-sm"
+                          >
+                            {note.date && (
+                              <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+                                {note.date}
+                              </span>
+                            )}
+                            <span>{note.text}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {row.record.comments.length > 0 && (
+                    <div className="mb-4">
+                      <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        <MessageSquareText className="h-3.5 w-3.5" />
+                        Comments
+                      </div>
+                      <ul className="flex flex-col gap-1.5">
+                        {row.record.comments.map((comment, i) => (
+                          <li
+                            key={`${comment.raw}-${i}`}
+                            className="flex items-start gap-2 text-sm"
+                          >
+                            {comment.date && (
+                              <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+                                {comment.date}
+                              </span>
+                            )}
+                            <span>{comment.text}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {row.record.rangeHistory.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
                       No range history entries parsed from the study record body.
                     </p>
@@ -280,6 +377,8 @@ export default function WebullStudyTableBlock({
                         </li>
                       ))}
                     </ol>
+                  )}
+                  </>
                   )}
                 </div>
               )}

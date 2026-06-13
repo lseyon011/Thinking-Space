@@ -56,6 +56,7 @@ export interface WebullStudyRecordBlock {
   options: WebullStudyOptionBlock[]
   rangeHistory: WebullStudyRangeHistoryEntryBlock[]
   comments: WebullStudyCommentBlock[]
+  impQuickNotes: WebullStudyCommentBlock[]
   body: string
   rawFrontmatter: Record<string, unknown>
   parseWarnings: string[]
@@ -239,12 +240,14 @@ function parseRangeHistoryBlock(body: string): WebullStudyRangeHistoryEntryBlock
 const COMMENT_DATE_PREFIX_RE_BLOCK =
   /^\s*(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?)\s*(?:[—\-:]\s*)(.*)$/
 
-function parseCommentsSectionBlock(body: string): WebullStudyCommentBlock[] {
+// Parse a `## <Heading>` section whose body is a list of `- ` / `* ` bullets,
+// each optionally prefixed with an ISO date. Shared by Comments and Imp Quick Note.
+function parseBulletSectionBlock(body: string, headingRe: RegExp): WebullStudyCommentBlock[] {
   const lines = body.split('\n')
   let startIdx = -1
   let endIdx = lines.length
   for (let i = 0; i < lines.length; i++) {
-    if (/^##\s+Comments\s*$/i.test(lines[i])) {
+    if (headingRe.test(lines[i])) {
       startIdx = i + 1
       for (let j = startIdx; j < lines.length; j++) {
         if (/^##\s+/.test(lines[j])) {
@@ -276,6 +279,15 @@ function parseCommentsSectionBlock(body: string): WebullStudyCommentBlock[] {
     }
   }
   return out
+}
+
+function parseCommentsSectionBlock(body: string): WebullStudyCommentBlock[] {
+  return parseBulletSectionBlock(body, /^##\s+Comments\s*$/i)
+}
+
+// Accepts "Imp Quick Note", "Important Quick Note", optional trailing "s".
+function parseImpQuickNoteSectionBlock(body: string): WebullStudyCommentBlock[] {
+  return parseBulletSectionBlock(body, /^##\s+(?:Imp|Important)\s+Quick\s+Notes?\s*$/i)
 }
 
 export function parseWebullStudyRecordBlock(input: {
@@ -322,6 +334,7 @@ export function parseWebullStudyRecordBlock(input: {
     options: parseOptionsBlock(frontmatter.options),
     rangeHistory: parseRangeHistoryBlock(body),
     comments: parseCommentsSectionBlock(body),
+    impQuickNotes: parseImpQuickNoteSectionBlock(body),
     body,
     rawFrontmatter: frontmatter,
     parseWarnings: warnings,
