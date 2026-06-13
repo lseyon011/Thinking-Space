@@ -15,7 +15,7 @@ struct RailTab: Identifiable, Equatable {
     let title: String
     let icon: RailIcon
     /// Additional pathnames that should also light up this tab as selected.
-    /// Mirrors `activePaths` in frontend/src/data/navItems.ts.
+    /// Mirrors `activePaths` on the matching nav item in frontend/src/App.tsx.
     let activePaths: [String]
 }
 
@@ -23,18 +23,35 @@ final class RailState: ObservableObject {
     @Published var tabs: [RailTab] = RailState.defaultTabs
     @Published var selectedId: String = "/"
 
-    /// Mirrors the Electron primary nav (frontend/src/data/navItems.ts plus
-    /// the workspace tabs declared in App.tsx). Home opens the app's root
-    /// route; F9 is the Webull workspace; Tools is the personal-tools shell.
+    /// MANUAL SYNC REQUIRED: this list is hardcoded and must be kept in sync by
+    /// hand with the React nav source of truth — `PRIMARY_NAV_ITEMS` and
+    /// `TOOLS_NAV_ITEM` in frontend/src/App.tsx. (We deliberately do NOT
+    /// data-drive this from React via the bridge — that caused ordering/timing
+    /// problems, so the rail stays static here.)
+    ///
+    /// AI, Web and Insights are intentionally NOT top-level rail tabs: they live
+    /// inside the Tools shell now. The Tools tab (`/tools`) covers them via
+    /// `activePaths` so it stays highlighted on those routes — mirroring
+    /// `nativeTopDrawerActiveNavItemId` in App.tsx, which funnels all tool
+    /// sub-routes to `/tools`.
+    ///
+    /// Keep order AND icons matched to the React nav. SF Symbol ↔ lucide map:
+    ///   Thinking Space   safari               ↔ Compass
+    ///   New Note         plus.square          ↔ PlusSquare
+    ///   Webull           chart.line.uptrend…  ↔ WebullNavIcon (user-renamable)
+    ///   Thinking Organizer rectangle.3.group  ↔ FolderKanban
+    ///   Tools            square.on.circle     ↔ Shapes
     static let defaultTabs: [RailTab] = [
         RailTab(id: "/",                   title: "Home",               icon: .asset("RailHomeIcon"),                  activePaths: []),
         RailTab(id: "/thinking-space",     title: "Thinking Space Explorer", icon: .system("safari"),                  activePaths: []),
         RailTab(id: "/new-thought",        title: "New Note",           icon: .system("plus.square"),                  activePaths: []),
-        RailTab(id: "/git-insights",       title: "Insights",           icon: .system("arrow.triangle.branch"),        activePaths: []),
-        RailTab(id: "/ai/chat",            title: "AI",                 icon: .system("bubble.left"),                  activePaths: ["/ai/schedules"]),
         RailTab(id: "/webull",             title: "Webull",             icon: .system("chart.line.uptrend.xyaxis"),    activePaths: []),
         RailTab(id: "/thinking-organizer", title: "Thinking Organizer", icon: .system("rectangle.3.group"),            activePaths: ["/file-organizer"]),
-        RailTab(id: "/personal-tools",     title: "Tools",              icon: .system("wrench.and.screwdriver"),       activePaths: ["/personal-extension"]),
+        RailTab(id: "/tools",              title: "Tools",              icon: .system("square.on.circle"),             activePaths: [
+            "/ai/chat", "/ai/schedules", "/web", "/git-insights",
+            "/excalidraw-plus", "/capabilities", "/extension-builder",
+            "/terminal", "/password-manager", "/personal-tools", "/personal-extension",
+        ]),
     ]
 
     /// Resolve the selected tab from a current path. Used when React pushes

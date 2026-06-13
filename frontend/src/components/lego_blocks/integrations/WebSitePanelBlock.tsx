@@ -9,6 +9,7 @@ import {
 } from '@/services/lego_blocks/units/webSiteBlock'
 import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useExpandedSetBlock'
 import SidebarGroupHeaderBlock from '@/components/lego_blocks/units/ui/SidebarGroupHeaderBlock'
+import ToolsBreadcrumbHeaderBlock from '@/components/lego_blocks/integrations/ToolsBreadcrumbHeaderBlock'
 
 interface WebSitePanelBlockProps {
   bookmarks: WebSiteBlock[]
@@ -35,9 +36,7 @@ export default function WebSitePanelBlock({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <p className="mb-2 mt-4 px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        Web
-      </p>
+      <ToolsBreadcrumbHeaderBlock currentId="web" />
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {bookmarks.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 px-4 py-8 text-center">

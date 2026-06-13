@@ -7,15 +7,13 @@ import {
   Compass,
   FileText,
   FolderKanban,
-  GitBranch,
   Loader2,
   Menu,
-  PanelLeft,
-  PanelLeftClose,
   PlusSquare,
   RefreshCw,
   Search,
   Settings as SettingsIcon,
+  Shapes,
   Sparkles,
   X,
 } from 'lucide-react'
@@ -47,6 +45,7 @@ const TerminalPage = lazy(() => import('./pages/TerminalPage'))
 const WebullPage = lazy(() => import('./personal_extension/pages/WebullPage'))
 const PersonalToolsPage = lazy(() => import('./personal_extension/pages/PersonalToolsPage'))
 import ToolsShellBlock, { isToolsShellRoute } from './components/lego_blocks/integrations/ToolsShellBlock'
+import ToolsLandingBlock from './components/lego_blocks/units/ui/ToolsLandingBlock'
 import { FrozenRouteBlock } from './components/lego_blocks/units/FrozenRouteBlock'
 import RouteActivityProviderBlock from './components/lego_blocks/units/RouteActivityProviderBlock'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
@@ -94,10 +93,7 @@ import {
   readGitSyncStatusOrch,
 } from '@/services/orchestrators/gitSyncToolsOrch'
 import {
-  STORAGE_KEYS,
   getStoredVaultRoot,
-  getStorageItem,
-  setStorageItem,
 } from './services/orchestrators/storageOrch'
 import {
   type AppWorkspaceTab,
@@ -259,27 +255,13 @@ function formatSyncTimestamp(value: number | null): string {
   return new Date(value).toLocaleString()
 }
 
-function ToolboxNavIcon({ className = 'h-4 w-4' }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <polygon points="6,2.9 9.5,9.1 2.5,9.1" />
-      <rect x="13.5" y="2.4" width="7.3" height="7.3" rx="1.5" />
-      <circle cx="6" cy="18" r="3.6" />
-      <polygon points="17.5,13.9 21.2,16.6 19.8,20.8 15.2,20.8 13.8,16.6" />
-    </svg>
-  )
-}
 
 const TOOLS_NAV_ACTIVE_PATHS: readonly string[] = [
+  '/tools',
+  '/ai/chat',
+  '/ai/schedules',
+  '/web',
+  '/git-insights',
   '/excalidraw-plus',
   '/excalidraw-plus/plugin',
   '/excalidraw-plus/format',
@@ -302,8 +284,6 @@ const TOOLS_NAV_ACTIVE_PATHS: readonly string[] = [
 const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/thinking-space', label: 'Thinking Space', icon: Compass },
   { to: '/new-thought', label: 'New Note', icon: PlusSquare },
-  { to: '/ai/chat', label: 'AI', icon: AINavIcon },
-  { to: '/web', label: 'Web', icon: WebNavIcon },
   { to: '/webull', label: 'Webull', icon: WebullNavIcon },
   {
     to: '/thinking-organizer',
@@ -311,13 +291,12 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
     icon: FolderKanban,
     activePaths: ['/file-organizer'],
   },
-  { to: '/git-insights', label: 'Insights', icon: GitBranch },
 ]
 
 const TOOLS_NAV_ITEM: NavItem = {
-  to: '/personal-tools',
+  to: '/tools',
   label: 'Tools',
-  icon: ToolboxNavIcon,
+  icon: Shapes,
   activePaths: TOOLS_NAV_ACTIVE_PATHS as string[],
 }
 
@@ -353,22 +332,6 @@ function WebullTextNavIcon({ text, className = 'h-4 w-4' }: { text: string; clas
   return (
     <span aria-hidden="true" className={`${className} inline-flex items-center justify-center text-[10px] font-semibold leading-none tracking-tight`}>
       {text}
-    </span>
-  )
-}
-
-function AINavIcon({ className = 'h-4 w-4' }: { className?: string }) {
-  return (
-    <span aria-hidden="true" className={`${className} inline-flex items-center justify-center text-[10px] font-semibold leading-none tracking-tight`}>
-      AI
-    </span>
-  )
-}
-
-function WebNavIcon({ className = 'h-4 w-4' }: { className?: string }) {
-  return (
-    <span aria-hidden="true" className={`${className} inline-flex items-center justify-center text-[10px] font-semibold leading-none tracking-tight`}>
-      web
     </span>
   )
 }
@@ -447,11 +410,6 @@ function App() {
   const gitSyncToolsSupported = useMemo(() => isGitSyncToolsSupportedOrch(), [])
 
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    const stored = getStorageItem(STORAGE_KEYS.appShellSidebarCollapsed)
-    if (stored === null) return true
-    return stored === '1'
-  })
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [commandQuery, setCommandQuery] = useState('')
   const [commandFileItems, setCommandFileItems] = useState<CommandItem[]>([])
@@ -686,9 +644,11 @@ function App() {
   const isMacDesktopSurface = isElectronDesktopSurface
     && typeof navigator !== 'undefined'
     && /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform || navigator.userAgent || '')
-  const showLeftAlignedGoogleWorkspaceChromeControls = showGoogleWorkspaceChromeControls && isElectronDesktopSurface
-  const showRightAlignedGoogleWorkspaceChromeControls = showGoogleWorkspaceChromeControls
-    && !showLeftAlignedGoogleWorkspaceChromeControls
+  // Keep the explorer collapse button in the same left-cluster position as every
+  // other surface's chrome button (was previously right-aligned off Electron
+  // desktop, which made it jump position on web/PWA). Capacitor still uses its
+  // own top-chrome menu variant.
+  const showLeftAlignedGoogleWorkspaceChromeControls = showGoogleWorkspaceChromeControls
     && layout.surface !== 'capacitor-ios'
     && layout.surface !== 'capacitor-android'
   const showThinkingSpaceHeaderToggle = showGoogleWorkspaceChromeControls
@@ -770,6 +730,7 @@ function App() {
   const routeLabelByPath = useMemo(() => {
     const entries = new Map<string, string>()
     entries.set('/', 'Home')
+    entries.set('/tools', 'Tools')
     entries.set('/file-organizer', 'Thinking Organizer')
     baseCommandItems.forEach((item) => {
       entries.set(item.to, item.label)
@@ -834,14 +795,17 @@ function App() {
       case '/':
       case '/thinking-space':
       case '/new-thought':
-      case '/git-insights':
-      case '/ai/chat':
-      case '/web':
       case '/webull':
       case '/settings':
         return location.pathname
+      case '/tools':
+      case '/git-insights':
+      case '/ai/chat':
+      case '/ai/schedules':
+      case '/web':
+        return '/tools'
       default:
-        if (isToolsShellRoute(location.pathname)) return '/personal-tools'
+        if (isToolsShellRoute(location.pathname)) return '/tools'
         return undefined
     }
   }, [location.pathname])
@@ -918,7 +882,7 @@ function App() {
     headerToggleLabels?: { show: string; hide: string }
     variant?: 'default' | 'soft'
     /** Where the button is rendered in the top toolbar. */
-    position?: 'inline' | 'capacitor-menu' | 'left-aligned' | 'right-aligned'
+    position?: 'inline' | 'capacitor-menu' | 'left-aligned'
   }
   const sidebarChromeButtons: SidebarChromeButtonConfig[] = ([
     {
@@ -944,18 +908,6 @@ function App() {
       headerToggleLabels: { show: 'Show document header', hide: 'Hide document header' },
       variant: 'soft',
       position: 'left-aligned',
-    },
-    {
-      id: 'thinking-space-explorer-right',
-      show: showRightAlignedGoogleWorkspaceChromeControls,
-      block: thinkingSpaceGoogleWorkspaceChromeBlock,
-      collapsed: thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed,
-      headerVisible: thinkingSpaceGoogleWorkspaceChromeState.headerVisible,
-      showHeaderToggle: thinkingSpaceGoogleWorkspaceChromeState.showHeaderToggle,
-      toggleLabels: { show: 'Show explorer', hide: 'Hide explorer' },
-      headerToggleLabels: { show: 'Show document header', hide: 'Hide document header' },
-      variant: 'soft',
-      position: 'right-aligned',
     },
     {
       id: 'chat',
@@ -1019,7 +971,6 @@ function App() {
   const inlineSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'inline')
   const capacitorMenuSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'capacitor-menu')
   const leftAlignedSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'left-aligned')
-  const rightAlignedSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'right-aligned')
   const leftGoogleWorkspaceChromeControlsWidthPx = showLeftAlignedGoogleWorkspaceChromeControls
     ? googleWorkspaceChromeLeftOffsetPx + 76
     : 0
@@ -1809,6 +1760,7 @@ function App() {
       case '/thinking-organizer':
       case '/terminal':
       case '/settings':
+      case '/tools':
       case '/personal-tools':
         navigate(resolveWorkspaceNavigationRoute(navItemId))
         return
@@ -2155,15 +2107,6 @@ function App() {
     nativeChromeLastScrollTopRef.current = 0
   }, [currentRoute, keyboardVisible, useNativeTopChrome])
 
-  // Debounce sidebar collapsed persistence — avoids synchronous localStorage write on every toggle
-  const sidebarCollapsedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => {
-    if (sidebarCollapsedTimerRef.current) clearTimeout(sidebarCollapsedTimerRef.current)
-    sidebarCollapsedTimerRef.current = setTimeout(() => {
-      setStorageItem(STORAGE_KEYS.appShellSidebarCollapsed, sidebarCollapsed ? '1' : '0')
-    }, 300)
-    return () => { if (sidebarCollapsedTimerRef.current) clearTimeout(sidebarCollapsedTimerRef.current) }
-  }, [sidebarCollapsed])
 
   useEffect(() => {
     if (!commandPaletteOpen) return
@@ -2209,11 +2152,6 @@ function App() {
         if (activeWorkspaceTab) {
           handleCloseWorkspaceTab(activeWorkspaceTab.id)
         }
-        return
-      }
-      if (withMeta && event.code === 'Backslash' && !compactNav) {
-        event.preventDefault()
-        setSidebarCollapsed(prev => !prev)
         return
       }
       if (event.key === 'Escape') {
@@ -2926,20 +2864,6 @@ function App() {
               }}
             >
               <div ref={syncToolsRef} className="inline-flex items-center gap-2">
-                {rightAlignedSidebarChromeButtons.map(cfg => cfg.show && (
-                  <SidebarChromeButtonBlock
-                    key={cfg.id}
-                    block={cfg.block}
-                    collapsed={cfg.collapsed}
-                    headerVisible={cfg.headerVisible}
-                    showHeaderToggle={cfg.showHeaderToggle}
-                    toggleLabels={cfg.toggleLabels}
-                    headerToggleLabels={cfg.headerToggleLabels}
-                    variant={cfg.variant}
-                    wrap={false}
-                  />
-                ))}
-
                 {/* Debug console toggle */}
                 <button
                   type="button"
@@ -2992,19 +2916,10 @@ function App() {
           )}
           <div className="ltm-shell-body-stage">
             {!compactNav && (
-              <aside className={`ltm-shell-sidebar ltm-shell-nav-surface hidden shrink-0 transition-[width] duration-200 lg:block ${
-                sidebarCollapsed ? 'ltm-sidebar-collapsed' : 'ltm-sidebar-expanded'
-              } ${
-                sidebarCollapsed ? 'w-16' : 'w-64'
-              }`} data-ltm-nav-region="rail">
-                <div className={`flex h-full flex-col py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
+              <aside className="ltm-shell-sidebar ltm-shell-nav-surface ltm-sidebar-collapsed hidden w-16 shrink-0 lg:block" data-ltm-nav-region="rail">
+                <div className="flex h-full flex-col px-2 py-3">
                 <div className="ltm-nav-scroll ltm-sidebar-nav-scroll min-h-0 flex-1 overflow-y-auto">
                   <div className="ltm-sidebar-nav-group space-y-1">
-                    {!sidebarCollapsed && (
-                      <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                        Core
-                      </div>
-                    )}
                     {primaryNavItems.map((item) => {
                       const Icon = item.icon
                       const active = isNavItemActive(location.pathname, item)
@@ -3012,15 +2927,12 @@ function App() {
                         <Link
                           key={item.to}
                           to={resolveWorkspaceNavigationRoute(item.to)}
-                          title={sidebarCollapsed ? item.label : undefined}
-                          className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
-                            sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                          } ${
+                          title={item.label}
+                          className={`ltm-motion-fast ltm-touch-row flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-colors ${
                             active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                           }`}
                         >
                           <Icon className="h-4 w-4" />
-                          {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
                         </Link>
                       )
                     })}
@@ -3033,15 +2945,12 @@ function App() {
                       return (
                         <Link
                           to={TOOLS_NAV_ITEM.to}
-                          title={sidebarCollapsed ? TOOLS_NAV_ITEM.label : undefined}
-                          className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
-                            sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                          } ${
+                          title={TOOLS_NAV_ITEM.label}
+                          className={`ltm-motion-fast ltm-touch-row flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-colors ${
                             active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                           }`}
                         >
                           <Icon className="h-4 w-4" />
-                          {!sidebarCollapsed && <span className="truncate">{TOOLS_NAV_ITEM.label}</span>}
                         </Link>
                       )
                     })()}
@@ -3057,55 +2966,33 @@ function App() {
                         <Link
                           key={item.to}
                           to={item.to}
-                          title={sidebarCollapsed ? item.label : undefined}
-                          className={`ltm-motion-fast ltm-touch-row flex items-center rounded-lg py-2 text-sm transition-colors ${
-                            sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                          } ${
+                          title={item.label}
+                          className={`ltm-motion-fast ltm-touch-row flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-colors ${
                             active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                           }`}
                         >
                           <Icon className="h-4 w-4" />
-                          {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
                         </Link>
                       )
                     })}
                     <button
                       type="button"
                       onClick={openCommandPalette}
-                      className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
-                        sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                      }`}
+                      className="ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center justify-center rounded-lg px-2 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
                       aria-label="Open quick search"
+                      title="Search"
                     >
                       <Search className="h-4 w-4" />
-                      {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">Search</span>}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSidebarCollapsed(prev => !prev)}
-                      className={`ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-foreground ${
-                        sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-2.5'
-                      }`}
-                      title={sidebarCollapsed ? 'Expand sidebar (Cmd/Ctrl+\\)' : 'Collapse sidebar (Cmd/Ctrl+\\)'}
-                      aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                    >
-                      {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-                      {!sidebarCollapsed && <span className="ltm-shell-action-label truncate">{sidebarCollapsed ? 'Expand drawer' : 'Collapse drawer'}</span>}
                     </button>
                     <Link
                       to="/"
-                      title={sidebarCollapsed ? 'Home' : undefined}
+                      title="Home"
                       aria-label="Home"
-                      className={`ltm-shell-logo ltm-motion-fast mt-2 inline-flex items-center rounded-lg ${
-                        sidebarCollapsed
-                          ? 'h-10 w-full justify-center'
-                          : 'gap-2 px-2.5 py-2 text-sm font-semibold tracking-tight'
-                      }`}
+                      className="ltm-shell-logo ltm-motion-fast mt-2 inline-flex h-10 w-full items-center justify-center rounded-lg"
                     >
                       <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full">
                         <AppBrandGlyph className="h-full w-full" />
                       </span>
-                      {!sidebarCollapsed && <span>Home</span>}
                     </Link>
                   </div>
                 </div>
@@ -3236,6 +3123,7 @@ function App() {
                   <Route path="/chat" element={<Navigate to="/ai/chat" replace />} />
                   <Route path="/thinking-space" element={<ThinkingSpace />} />
                   <Route element={<ToolsShellBlock />}>
+                    <Route path="/tools" element={<ToolsLandingBlock />} />
                     <Route path="/excalidraw-plus" element={<ExcalidrawPlus />}>
                       <Route index element={<Navigate to="plugin" replace />} />
                       <Route path="plugin" element={<ExcalidrawPlugin />} />
@@ -3248,6 +3136,7 @@ function App() {
                     <Route path="/password-manager" element={<PasswordManager />} />
                     <Route path="/personal-tools" element={<PersonalToolsPage />} />
                     <Route path="/personal-extension" element={<Navigate to="/personal-tools" replace />} />
+                    <Route path="/git-insights" element={<GitInsights />} />
                     <Route path="/capabilities" element={<CapabilityDiscovery />} />
                     <Route
                       path="/extension-builder"
@@ -3259,7 +3148,6 @@ function App() {
                   <Route path="/mindmap-builder" element={<Navigate to="/excalidraw-plus/mindmap" replace />} />
                   <Route path="/pdf-to-markdown" element={<Navigate to="/excalidraw-plus/pdf" replace />} />
                   <Route path="/transcript-cleaner" element={<Navigate to="/excalidraw-plus/transcript" replace />} />
-                  <Route path="/git-insights" element={<GitInsights />} />
                   <Route path="/webull" element={<WebullPage pageLabel={webullTabLabel} />} />
                   <Route
                     path="/settings"

@@ -1,9 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Bot, KeyRound, Terminal as TerminalIcon, Wrench } from 'lucide-react'
-import excalidrawLogo from '@/assets/excalidraw-logo.svg'
-import { isExcalidrawPlusRoute } from '@/components/lego_blocks/units/ExcalidrawPlusRoutesBlock'
-import { isEmbeddedTerminalSupported } from '@/services/orchestrators/runtimeOrch'
+import { getVisibleToolsSubtabs } from '@/components/lego_blocks/units/toolsSubtabsBlock'
 import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
@@ -17,77 +14,7 @@ import {
   TOOLS_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
 } from '@/services/lego_blocks/units/toolsSidebarChromeBlock'
 
-interface ToolsSubtab {
-  id: string
-  label: string
-  to: string
-  icon: ComponentType<{ className?: string }>
-  isActive: (pathname: string) => boolean
-  visible?: () => boolean
-}
-
-function ExcalidrawPlusIcon({ className = 'h-4 w-4' }: { className?: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`${className} inline-block`}
-      style={{
-        backgroundColor: 'currentColor',
-        maskImage: `url(${excalidrawLogo})`,
-        maskRepeat: 'no-repeat',
-        maskPosition: 'center',
-        maskSize: 'contain',
-        WebkitMaskImage: `url(${excalidrawLogo})`,
-        WebkitMaskRepeat: 'no-repeat',
-        WebkitMaskPosition: 'center',
-        WebkitMaskSize: 'contain',
-      }}
-    />
-  )
-}
-
-const TOOL_SUBTABS: readonly ToolsSubtab[] = [
-  {
-    id: 'excalidraw-plus',
-    label: 'Excalidraw++',
-    to: '/excalidraw-plus',
-    icon: ExcalidrawPlusIcon,
-    isActive: isExcalidrawPlusRoute,
-  },
-  {
-    id: 'capabilities',
-    label: 'AI Capabilities',
-    to: '/capabilities',
-    icon: Bot,
-    isActive: (pathname) => pathname === '/capabilities' || pathname === '/extension-builder',
-  },
-  {
-    id: 'terminal',
-    label: 'Terminal',
-    to: '/terminal',
-    icon: TerminalIcon,
-    isActive: (pathname) => pathname === '/terminal',
-    visible: () => isEmbeddedTerminalSupported(),
-  },
-  {
-    id: 'password-manager',
-    label: 'Passwords',
-    to: '/password-manager',
-    icon: KeyRound,
-    isActive: (pathname) => pathname === '/password-manager',
-  },
-  {
-    id: 'personal-tools',
-    label: 'Heading Assignments',
-    to: '/personal-tools',
-    icon: Wrench,
-    isActive: (pathname) => pathname === '/personal-tools' || pathname === '/personal-extension',
-  },
-]
-
-export function isToolsShellRoute(pathname: string): boolean {
-  return TOOL_SUBTABS.some(tab => tab.isActive(pathname))
-}
+export { isToolsShellRoute } from '@/components/lego_blocks/units/toolsSubtabsBlock'
 
 export default function ToolsShellBlock() {
   const location = useLocation()
@@ -95,10 +22,7 @@ export default function ToolsShellBlock() {
   const { layout } = useUILayoutBlock()
   const isIPhoneIosSurface = layout.surface === 'capacitor-ios' && layout.mode === 'phone'
 
-  const visibleSubtabs = useMemo(
-    () => TOOL_SUBTABS.filter(tab => (tab.visible ? tab.visible() : true)),
-    [],
-  )
+  const visibleSubtabs = useMemo(() => getVisibleToolsSubtabs(), [])
   const [sidebarCollapsed, setSidebarCollapsed] = useSessionStateBlock('tools-sidebar-collapsed', false)
 
   // iPhone list/detail mode. On entering the Tools rail tab, the user lands

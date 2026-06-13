@@ -46,6 +46,7 @@ import {
 } from '@/services/lego_blocks/units/chatSidebarChromeBlock'
 import CodexUsageDashboardOrch from '@/components/orchestrators/CodexUsageDashboardOrch'
 import SubNavTabsBlock from '@/components/lego_blocks/units/ui/SubNavTabsBlock'
+import ToolsBreadcrumbHeaderBlock from '@/components/lego_blocks/integrations/ToolsBreadcrumbHeaderBlock'
 
 const USAGE_DASHBOARD_SITE_ID_BLOCK = '__usage_dashboard__'
 
@@ -315,9 +316,7 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
         )}
         aria-hidden={sidebarCollapsed && !phoneListMode}
       >
-        <p className="mb-2 mt-4 px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          AI
-        </p>
+        <ToolsBreadcrumbHeaderBlock currentId="ai" />
         <div className="flex shrink-0 items-center justify-between gap-1 px-2 pb-2">
           <SubNavTabsBlock
             ariaLabel="AI section"
@@ -341,7 +340,7 @@ export default function ChatOrch({ active = true }: ChatOrchProps) {
               {/* API providers */}
               <div>
                 <SidebarGroupHeaderBlock
-                  name="Tools"
+                  name="Usage Tools"
                   expanded={isSectionExpanded('tools')}
                   onToggle={() => toggleSection('tools')}
                   badge={1}
