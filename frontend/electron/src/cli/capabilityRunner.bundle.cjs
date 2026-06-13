@@ -179,6 +179,9 @@ var init_storageKeyBlock = __esm({
       aiWebsites: "ltm-ai-websites",
       webSites: "ltm-web-sites",
       fileActivityIgnoredPaths: "ltm-file-activity-ignored-paths",
+      aiActivityProjectMapping: "ltm-ai-activity-project-mapping",
+      aiActivityVaultSourcePrefixes: "ltm-ai-activity-vault-source-prefixes",
+      goodnotesReadingAnnotationGate: "ltm-goodnotes-reading-annotation-gate",
       vaultSyncExcludedPrefixes: "ltm-vault-sync-excluded-prefixes"
     };
   }
@@ -3790,6 +3793,13 @@ var init_crossWindowSyncBlock = __esm({
   }
 });
 
+// src/services/lego_blocks/units/consoleNoiseFilterBlock.ts
+var init_consoleNoiseFilterBlock = __esm({
+  "src/services/lego_blocks/units/consoleNoiseFilterBlock.ts"() {
+    "use strict";
+  }
+});
+
 // src/services/lego_blocks/units/debugLogBlock.ts
 function makeId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -3811,6 +3821,7 @@ var DEBUG_LOG_EVENT;
 var init_debugLogBlock = __esm({
   "src/services/lego_blocks/units/debugLogBlock.ts"() {
     "use strict";
+    init_consoleNoiseFilterBlock();
     DEBUG_LOG_EVENT = "ltm:debug:log-entry";
   }
 });
@@ -11112,29 +11123,31 @@ async function bulkUpsertNodes(records) {
   const toAdd = [];
   const conflicts = [];
   for (const record of normalized) {
-    const incomingConflict = incomingByKey.get(record.key);
-    if (incomingConflict && incomingConflict.uuid !== record.uuid) {
-      conflicts.push({
-        key: record.key,
-        uuid: record.uuid,
-        filePath: record.filePath,
-        conflictingUuid: incomingConflict.uuid,
-        conflictingFilePath: incomingConflict.filePath
-      });
-      continue;
+    if (record.key) {
+      const incomingConflict = incomingByKey.get(record.key);
+      if (incomingConflict && incomingConflict.uuid !== record.uuid) {
+        conflicts.push({
+          key: record.key,
+          uuid: record.uuid,
+          filePath: record.filePath,
+          conflictingUuid: incomingConflict.uuid,
+          conflictingFilePath: incomingConflict.filePath
+        });
+        continue;
+      }
+      const existingKeyNode = existingByKey.get(record.key);
+      if (existingKeyNode && existingKeyNode.uuid !== record.uuid) {
+        conflicts.push({
+          key: record.key,
+          uuid: record.uuid,
+          filePath: record.filePath,
+          conflictingUuid: existingKeyNode.uuid,
+          conflictingFilePath: existingKeyNode.filePath
+        });
+        continue;
+      }
+      incomingByKey.set(record.key, record);
     }
-    const existingKeyNode = existingByKey.get(record.key);
-    if (existingKeyNode && existingKeyNode.uuid !== record.uuid) {
-      conflicts.push({
-        key: record.key,
-        uuid: record.uuid,
-        filePath: record.filePath,
-        conflictingUuid: existingKeyNode.uuid,
-        conflictingFilePath: existingKeyNode.filePath
-      });
-      continue;
-    }
-    incomingByKey.set(record.key, record);
     const existingNode = existingByUuid.get(record.uuid);
     if (existingNode?.id !== void 0) {
       toUpdate.push({ ...record, id: existingNode.id });
@@ -11312,8 +11325,12 @@ function normalizeRecordForStorage(record) {
   const projectPresetTags = record.projectPresetTags?.filter(Boolean);
   const metadataText = record.metadataText ?? buildMetadataSearchText(metadata);
   const searchText = buildSearchText(record, tags, projectPresetTags, metadataText);
+  const uuid = typeof record.uuid === "string" && record.uuid.trim() ? record.uuid : void 0;
+  const key = typeof record.key === "string" && record.key.trim() ? record.key : void 0;
   return {
     ...record,
+    uuid,
+    key,
     parent,
     dependsOn: record.dependsOn?.filter(Boolean),
     blockedBy: record.blockedBy?.filter(Boolean),
@@ -14940,6 +14957,11 @@ var CAPABILITY_REGISTRY = [
     readOnly: false
   },
   {
+    name: "tools.excalidraw.highlights",
+    description: "Extract highlighted text from an Excalidraw mindmap, grouped by tree node and color.",
+    readOnly: true
+  },
+  {
     name: "tools.pdf.preview",
     description: "Preview PDF to markdown conversion.",
     readOnly: true
@@ -15516,7 +15538,20 @@ var DEFAULT_FLAGS = {
   yaml_fields_auto_heal_enabled: false,
   hybrid_sync_reconciliation_enabled: false
 };
+var _flagsCache = null;
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key === null || event.key === STORAGE_KEYS.capabilityFeatureFlags) {
+      _flagsCache = null;
+    }
+  });
+}
 function getCapabilityFeatureFlags() {
+  if (_flagsCache) return _flagsCache;
+  _flagsCache = readCapabilityFeatureFlags();
+  return _flagsCache;
+}
+function readCapabilityFeatureFlags() {
   const stored = getJsonStorageItem(
     STORAGE_KEYS.capabilityFeatureFlags,
     DEFAULT_FLAGS
@@ -15603,7 +15638,15 @@ function addLookupKey(map2, key, path5) {
   }
   map2.set(normalizedKey, /* @__PURE__ */ new Set([path5]));
 }
+var candidateLookupCache = /* @__PURE__ */ new WeakMap();
 function buildCandidateLookup(candidatePaths) {
+  const cached = candidateLookupCache.get(candidatePaths);
+  if (cached) return cached;
+  const map2 = buildCandidateLookupUncached(candidatePaths);
+  candidateLookupCache.set(candidatePaths, map2);
+  return map2;
+}
+function buildCandidateLookupUncached(candidatePaths) {
   const map2 = /* @__PURE__ */ new Map();
   for (const rawPath of candidatePaths) {
     const path5 = normalizeVaultPath(rawPath);
@@ -15934,13 +15977,21 @@ function extractMarkdownLinks(content, filePath) {
   }
   return links;
 }
+var normalizedCandidateSetCache = /* @__PURE__ */ new WeakMap();
+function getNormalizedCandidateSet(candidatePaths) {
+  const cached = normalizedCandidateSetCache.get(candidatePaths);
+  if (cached) return cached;
+  const set2 = new Set(candidatePaths.map(normalizeLinkPath));
+  normalizedCandidateSetCache.set(candidatePaths, set2);
+  return set2;
+}
 function extractYamlPathScalars(content, filePath, candidatePaths) {
   const { frontmatter } = splitFrontmatterDocumentBlock(content);
   if (!frontmatter) return [];
   const links = [];
   const normalizedFilePath = normalizeLinkPath(filePath);
   const currentDir = dirnameLinkPath(normalizedFilePath);
-  const normalizedCandidateSet = new Set(candidatePaths.map(normalizeLinkPath));
+  const normalizedCandidateSet = getNormalizedCandidateSet(candidatePaths);
   const lines = frontmatter.split(/\r?\n/);
   if (lines.length < 3 || lines[0] !== "---") return [];
   const closeIndex = lines.findIndex((line, index) => index > 0 && line === "---");
@@ -16046,18 +16097,18 @@ function startActivity(input) {
 // src/services/orchestrators/vaultSyncOrch.ts
 init_vaultSyncExclusionsBlock();
 init_debugLogBlock();
-var _cachedFilePaths = null;
+var _cachedFilePathsArray = null;
 var _cachedFilePathsAge = 0;
 var FILE_PATHS_CACHE_TTL_MS = 3e4;
-function getCachedFilePaths() {
-  if (_cachedFilePaths && Date.now() - _cachedFilePathsAge < FILE_PATHS_CACHE_TTL_MS) {
-    return _cachedFilePaths;
+function getCachedFilePathsArray() {
+  if (_cachedFilePathsArray && Date.now() - _cachedFilePathsAge < FILE_PATHS_CACHE_TTL_MS) {
+    return _cachedFilePathsArray;
   }
-  _cachedFilePaths = null;
+  _cachedFilePathsArray = null;
   return null;
 }
 function setCachedFilePaths(paths) {
-  _cachedFilePaths = paths;
+  _cachedFilePathsArray = [...paths];
   _cachedFilePathsAge = Date.now();
 }
 var IOS_MAX_SYNC_FILE_SIZE_BYTES = 2 * 1024 * 1024;
@@ -16236,8 +16287,8 @@ async function syncSingleFile(filePath, fs4, options) {
     }
     const record = frontmatterToRecord(note.frontmatter, filePath, note.body);
     await upsertNode(record);
-    const candidatePaths = getCachedFilePaths() ?? await getAllFilePaths();
-    const links = extractLinksFromContentBlock(content, filePath, [...candidatePaths]);
+    const candidatePaths = getCachedFilePathsArray() ?? [...await getAllFilePaths()];
+    const links = extractLinksFromContentBlock(content, filePath, candidatePaths);
     const linkRecords = links.map((l) => ({
       sourceFilePath: filePath,
       targetFilePath: l.targetFilePath,
@@ -18076,6 +18127,206 @@ async function formatAndSave(inputPath, options) {
   };
 }
 
+// src/services/orchestrators/excalidrawHighlightsOrch.ts
+init_fsBlock();
+
+// src/services/lego_blocks/units/excalidrawHighlightExtractBlock.ts
+var COLOR_NAMES = {
+  "#f59f00": "amber",
+  "#d6336c": "pink",
+  "#fff9db": "yellow",
+  "#ffec99": "yellow",
+  "#ffd43b": "yellow",
+  "#1e1e1e": "black",
+  "#e64980": "pink",
+  "#4263eb": "blue",
+  "#40c057": "green",
+  "#fab005": "amber"
+};
+function colorName(hex) {
+  if (!hex) return "unknown";
+  return COLOR_NAMES[hex.toLowerCase()] ?? hex;
+}
+function parseExcalidrawSceneBlock(content) {
+  const trimmed = content.trimStart();
+  if (trimmed.startsWith("{")) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  }
+  const drawingMatch = content.match(/## Drawing\s*\n```json\s*\n([\s\S]*?)\n```/);
+  if (drawingMatch) {
+    try {
+      return JSON.parse(drawingMatch[1]);
+    } catch {
+      return null;
+    }
+  }
+  const jsonBlockMatch = content.match(/```json\s*\n([\s\S]*?)\n```/);
+  if (jsonBlockMatch) {
+    try {
+      return JSON.parse(jsonBlockMatch[1]);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+function isHighlightStroke(el) {
+  if (el.type !== "freedraw") return false;
+  const opacity = el.opacity ?? 100;
+  const strokeWidth = el.strokeWidth ?? 1;
+  return opacity <= 60 && strokeWidth >= 3;
+}
+function freedrawBbox(el) {
+  const pts = el.points ?? [];
+  if (pts.length === 0) {
+    return [el.x, el.y, el.x + (el.width || 0), el.y + (el.height || 0)];
+  }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [px, py] of pts) {
+    minX = Math.min(minX, el.x + px);
+    minY = Math.min(minY, el.y + py);
+    maxX = Math.max(maxX, el.x + px);
+    maxY = Math.max(maxY, el.y + py);
+  }
+  return [minX, minY, maxX, maxY];
+}
+function overlap1d(a0, a1, b0, b1) {
+  return Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
+}
+function cleanTitle(raw) {
+  let t = raw.trim();
+  const linkMatch = t.match(/\[\[([^\]]+)\]\]/);
+  if (linkMatch) t = linkMatch[1];
+  t = t.replace(/^[📍•\-\s]+/, "");
+  return t.trim().slice(0, 80);
+}
+function extractExcalidrawHighlightsBlock(content) {
+  const scene = parseExcalidrawSceneBlock(content);
+  if (!scene) {
+    throw new Error("Could not parse Excalidraw scene from file content.");
+  }
+  const elements = (scene.elements ?? []).filter((e) => !e.isDeleted);
+  const byId = /* @__PURE__ */ new Map();
+  for (const el of elements) byId.set(el.id, el);
+  const texts = elements.filter((e) => e.type === "text");
+  const arrows = elements.filter((e) => e.type === "arrow");
+  const highlights = elements.filter(isHighlightStroke);
+  const childToParent = /* @__PURE__ */ new Map();
+  for (const a of arrows) {
+    const parent = a.startBinding?.elementId;
+    const child = a.endBinding?.elementId;
+    if (parent && child) childToParent.set(child, parent);
+  }
+  const rectTitle = (rectId) => {
+    const rect = byId.get(rectId);
+    if (!rect) return rectId;
+    for (const bound of rect.boundElements ?? []) {
+      if (bound.type === "text") {
+        const t = byId.get(bound.id);
+        if (t?.text) return cleanTitle(t.text.split("\n")[0] ?? t.text);
+      }
+    }
+    return rectId;
+  };
+  const pathOf = (rectId) => {
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    let cursor = rectId;
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor);
+      out.push(rectTitle(cursor));
+      cursor = childToParent.get(cursor);
+    }
+    return out.reverse();
+  };
+  const segmentsByNode = /* @__PURE__ */ new Map();
+  const colorCounts = /* @__PURE__ */ new Map();
+  let unmatched = 0;
+  for (const h of highlights) {
+    const [hx0, hy0, hx1, hy1] = freedrawBbox(h);
+    let best = null;
+    let bestScore = 0;
+    for (const t of texts) {
+      const tx0 = t.x, ty0 = t.y, tx1 = t.x + t.width, ty1 = t.y + t.height;
+      const score = overlap1d(hx0, hx1, tx0, tx1) * overlap1d(hy0, hy1, ty0, ty1);
+      if (score > bestScore) {
+        bestScore = score;
+        best = t;
+      }
+    }
+    if (!best || bestScore <= 0) {
+      unmatched += 1;
+      continue;
+    }
+    const color = (h.strokeColor ?? "").toLowerCase();
+    colorCounts.set(color, (colorCounts.get(color) ?? 0) + 1);
+    const lines = (best.text ?? "").split("\n");
+    const lineCount = Math.max(1, lines.length);
+    const lineHeight = best.height / lineCount;
+    const phrases = [];
+    for (let li = 0; li < lines.length; li += 1) {
+      const ly0 = best.y + li * lineHeight;
+      const ly1 = ly0 + lineHeight;
+      const vOverlap = overlap1d(hy0, hy1, ly0, ly1);
+      if (vOverlap < lineHeight * 0.3) continue;
+      const line = lines[li];
+      const phrase = sliceLinePhrase(line, best.x, best.width, hx0, hx1);
+      if (phrase) phrases.push(phrase);
+    }
+    if (phrases.length === 0) continue;
+    const nodeId = best.containerId ?? best.id;
+    const seg = segmentsByNode.get(nodeId) ?? [];
+    seg.push({
+      color: color || "#000000",
+      colorName: colorName(color),
+      text: phrases.join(" ")
+    });
+    segmentsByNode.set(nodeId, seg);
+  }
+  const nodes = [];
+  for (const [nodeId, segments] of segmentsByNode) {
+    nodes.push({
+      nodeId,
+      title: rectTitle(nodeId),
+      path: pathOf(nodeId),
+      segments
+    });
+  }
+  nodes.sort((a, b) => a.path.length - b.path.length || a.title.localeCompare(b.title));
+  const colorLegend = [...colorCounts.entries()].map(([color, count]) => ({ color, colorName: colorName(color), count })).sort((a, b) => b.count - a.count);
+  return {
+    totalHighlights: highlights.length,
+    unmatched,
+    colorLegend,
+    nodes
+  };
+}
+function sliceLinePhrase(line, textX, textWidth, hx0, hx1) {
+  const trimmedFull = line.trim();
+  if (!trimmedFull || textWidth <= 0) return trimmedFull;
+  const len = line.length;
+  let c0 = Math.round((hx0 - textX) / textWidth * len);
+  let c1 = Math.round((hx1 - textX) / textWidth * len);
+  c0 = Math.max(0, Math.min(len, c0));
+  c1 = Math.max(0, Math.min(len, c1));
+  if (c1 <= c0) return trimmedFull;
+  if (c1 - c0 >= len * 0.85) return trimmedFull;
+  const sliced = line.slice(c0, c1).trim();
+  return sliced || trimmedFull;
+}
+
+// src/services/orchestrators/excalidrawHighlightsOrch.ts
+async function extractExcalidrawHighlights(inputPath, fs4) {
+  const vaultFs = fs4 ?? getVaultFS();
+  const content = await vaultFs.read(inputPath);
+  const extract = extractExcalidrawHighlightsBlock(content);
+  return { inputPath, ...extract };
+}
+
 // src/services/orchestrators/pdfToMarkdownOrch.ts
 function toolsApiUrl(path5) {
   const base = globalThis.__LTM_API_BASE__;
@@ -19774,6 +20025,12 @@ async function executeCapability(capability, input, fs4) {
       const result = await formatAndSave(payload.inputPath, payload.options);
       return { result };
     }
+    case "tools.excalidraw.highlights": {
+      const payload = input;
+      assertNonEmptyString(payload.inputPath, "inputPath");
+      const result = await extractExcalidrawHighlights(payload.inputPath, fs4);
+      return { result };
+    }
     case "tools.pdf.preview": {
       const payload = input;
       assertNonEmptyString(payload.inputPath, "inputPath");
@@ -20890,6 +21147,9 @@ var CAPABILITY_EXAMPLES = {
   "tools.excalidraw.format": [
     'thinkspc tools.excalidraw.format --inputPath "notes/diagram.md"'
   ],
+  "tools.excalidraw.highlights": [
+    'thinkspc tools.excalidraw.highlights --inputPath "notes/book (formatted for excalidraw) (mindmap full text).excalidraw.md"'
+  ],
   "tools.pdf.preview": [
     'thinkspc tools.pdf.preview --inputPath "docs/paper.pdf"'
   ],
@@ -21100,6 +21360,7 @@ var CAPABILITY_INPUT_FIELDS = {
   "tools.folders.list": [{ flag: "limit", required: false }],
   "tools.excalidraw.preview": [{ flag: "inputPath", required: true }],
   "tools.excalidraw.format": [{ flag: "inputPath", required: true }],
+  "tools.excalidraw.highlights": [{ flag: "inputPath", required: true }],
   "tools.pdf.preview": [{ flag: "inputPath", required: true }],
   "tools.pdf.convert": [{ flag: "inputPath", required: true }],
   "tools.transcript.preview": [
@@ -21579,17 +21840,15 @@ async function runCapabilityRunnerCommand(command, payload) {
   }
   const fs4 = new NodeVaultFS(payload.vaultRoot);
   const isWrite = capabilityRequiresVaultSync(payload.request.capability);
-  if (isWrite) {
-    const projectRoot = extractProjectRootFromInput(payload.request.input);
-    const loaded = await tryLoadCliCache(payload.vaultRoot);
-    if (loaded) {
-      await incrementalSync(loaded.lastSyncTimestamp, fs4);
-    } else {
-      await fullSync(fs4, projectRoot ? { rootPath: projectRoot } : void 0);
-    }
+  const projectRoot = extractProjectRootFromInput(payload.request.input);
+  const loaded = await tryLoadCliCache(payload.vaultRoot);
+  if (loaded) {
+    await incrementalSync(loaded.lastSyncTimestamp, fs4);
+  } else {
+    await fullSync(fs4, projectRoot ? { rootPath: projectRoot } : void 0);
   }
   const result = await invokeCapabilityOrch(payload.request, { fs: fs4 });
-  if (isWrite) {
+  if (isWrite || !loaded && !projectRoot) {
     await saveCliCache(payload.vaultRoot).catch((err) => {
       console.warn(`[cli-cache] save failed: ${err instanceof Error ? err.message : String(err)}`);
     });
