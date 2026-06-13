@@ -10,7 +10,7 @@
 
 ## Download
 
-- Latest macOS desktop build: [Thinking Space 2.5.0 arm64 DMG](https://github.com/anuragrpatil23/Thinking-Space/releases/download/v2.5.0/Thinking.Space-2.5.0-arm64.dmg)
+- Latest macOS desktop build: [Thinking Space 2.6.0 arm64 DMG](https://github.com/anuragrpatil23/Thinking-Space/releases/download/v2.6.0/Thinking.Space-2.6.0-arm64.dmg)
 - All release assets: [GitHub Releases](https://github.com/anuragrpatil23/Thinking-Space/releases)
 
 ---
