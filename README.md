@@ -32,6 +32,8 @@ Thinking Space does not impose a fixed way of thinking or organization. Your str
 Thinking Space is source-available and designed to be extendable with AI. You can inspect the source code, add features, and shape the app to fit your workflow under the terms in [LICENSE](LICENSE).
 
 - A chill markdown viewer — point it at a folder and read your notes
+- A freeform **home canvas** — post-its, live vault notes, and web widgets on an infinite board
+- An **AI Activity** dashboard that shows what you actually worked on with Claude, Codex, ChatGPT, Grok — and what you've been reading
 - A small, extendable Electron app you can use as a home for the little tools you build for yourself
 - Works alongside Obsidian — no conflicts
 - Local-first and portable (plain Markdown + YAML)
@@ -57,9 +59,9 @@ Thinking Space is built as three product pillars:
 <!-- Replace with an actual screen recording when available -->
 
 <p align="center">
-  <img src="docs/screenshots/home-dashboard.jpg" alt="Thinking Space home dashboard" width="900" />
+  <img src="docs/screenshots/home-dashboard.jpg" alt="Thinking Space home canvas" width="900" />
   <br />
-  <em>Home dashboard with daily activity summary and calm ambient chrome</em>
+  <em>Home canvas — pixel-art ambient scene, draggable notes/widgets, and the AI Activity dashboard</em>
 </p>
 
 <p align="center">
@@ -81,43 +83,50 @@ Thinking Space is built as three product pillars:
 
 Point Thinking Space at any folder on your machine — an existing notes vault, an iCloud directory, or a fresh folder. That folder becomes your Thinking Space. Everything is stored as plain Markdown files with YAML frontmatter, so your data is always yours.
 
-### 2. Home Dashboard
+### 2. Home Canvas
 
-After connecting, you land on a personalized home screen that greets you by name and shows **what you did today** — a live file activity feed of every note you created, edited, or deleted in this session.
+After connecting, you land on a freeform **home canvas** — an infinite board with a pixel-art ambient scene that greets you by name. Drop **post-its**, pin **live vault notes**, and add **web widgets** with per-tile auto-refresh, then pan/zoom with a minimap. On desktop the canvas is the default home; it doubles as your at-a-glance dashboard.
 
-### 3. Thinking Space (Markdown Workspace)
+### 3. AI Activity
+
+A dashboard for what you actually worked on with AI — **sessions, messages, and projects over time** across Claude, Codex, ChatGPT, and Grok, plus a **Reading** source that tracks GoodNotes reading sessions. Filter by source and date range, see a this-week digest, and drill into any day's chains. Activity heatmap, duration trend, and totals views included.
+
+### 4. Thinking Space (Markdown Workspace)
 
 The main workspace is a multi-document markdown editor with:
 - A **file explorer** sidebar with folder color coding and icon style options
 - **Tabbed editing** — open multiple documents side by side, tabs persist across sessions
 - **Conflict-safe saves** with mtime/hash checks so you never lose edits
 - **Obsidian wikilink** `[[navigation]]` — click through to linked notes
+- **Native LaTeX (KaTeX) and TikZ (TikZJax)** rendering for math and diagrams
+- **Ruled notebook** view and multiple reading layouts
 - **AI writing actions** — highlight text and get grammar, clarity, structure, or tone suggestions with diff preview
 
-### 4. New Note
+### 5. New Note
 
 Capture a thought quickly with emotion tags, type classification, and optional AI assistance. Notes land in your vault as Markdown files with structured YAML frontmatter.
 
-### 5. AI Chat
+### 6. AI Chat
 
 Have a conversation with AI models directly inside the app:
 - **Multi-provider**: OpenAI, Anthropic Claude, local models (LM Studio / OpenAI-compatible), Codex CLI
 - **Streaming responses** with token/latency telemetry
 - **Per-scope defaults** — set different models for different tasks
 
-### 6. Thinking Organizer
+### 7. Thinking Organizer
 
 A hierarchical tree view of your knowledge base: **Programs > Epics > Ideas > Thoughts**. Drag-and-drop to rearrange, create new nodes, reparent items. Hierarchy lives in YAML metadata, not folder structure — so your folders can be organized however you want.
 
-### 7. Built-in Browser & Web
+### 8. Built-in Browser & Web
 
 An in-app web browser with:
 - **Bookmark management** with groups
 - **Google Docs and Sheets** integration via OAuth
 - **RSS feed reader** with retention controls, feed groups, and preset tags
 
-### 8. Tools
+### 9. Tools
 
+Navigation folds AI, Web, and the utilities below into a single **Tools** toolbox (jump to any side-rail tab with Cmd/Ctrl + number):
 - **Git Insights** — activity heatmap, weekly commit trends, contributor stats
 - **PDF to Markdown** — extract content with layout preservation
 - **Transcript Cleaner** — heading extraction and normalization
@@ -125,13 +134,17 @@ An in-app web browser with:
 - **Mindmap Builder** — convert hierarchical markdown into visual diagrams
 - **Password Manager** — cross-device passphrase-encrypted vault
 
-### 9. Embedded Terminal
+### 10. Schedules
+
+Schedule recurring agent runs with a launchd-direct runner — no always-on server. Create/edit schedules from a sidebar, default new ones to **Claude Code** execution, and watch them via **live log streaming**, a transcript history viewer, and a heartbeat file. Optional **Telegram** resume loop and ntfy failure alerts keep you in the loop when you step away.
+
+### 11. Embedded Terminal
 
 A full VS Code-style terminal (xterm.js + node-pty) as a first-class nav item. Multi-tab, shells stay alive when switching pages. Run Claude Code or any CLI tool directly inside the app.
 
-### 10. Settings
+### 12. Settings
 
-Configure everything: theme, explorer appearance, scheduler jobs, AI providers, markdown editor behavior, Google Workspace auth, RSS feeds, cache, and vault switching. A **Developer** tab lets you toggle Live Source Mode and trigger the rebuild pipeline.
+Configure everything: theme, explorer appearance, schedules, AI providers, markdown editor behavior, Google Workspace auth, RSS feeds, cache, and vault switching. A **Developer** tab lets you toggle Live Source Mode and trigger the rebuild pipeline.
 
 </details>
 
@@ -141,18 +154,28 @@ Configure everything: theme, explorer appearance, scheduler jobs, AI providers, 
 
 ### Core Workspace
 - [x] Multi-document markdown workspace with file explorer, tabs, and workspace persistence
+- [x] Native LaTeX (KaTeX) and TikZ (TikZJax) rendering, ruled notebook + multiple reading views
 - [x] Thought capture with emotion tags and AI writing assistance
 - [x] Todo management with date-based organization
 - [x] Hierarchical organizer (Programs > Epics > Ideas > Thoughts) with drag-and-drop, create, reparent
 - [x] Cross-device password manager with passphrase-encrypted vault storage
 - [x] Conflict-safe file editing with mtime/hash checks
-- [x] Command palette (Cmd/Ctrl+K) with universal fuzzy search
+- [x] Command palette (Cmd/Ctrl+K) with universal fuzzy search; Cmd/Ctrl+number rail shortcuts
 - [x] Obsidian wikilink navigation
 - [x] Dark/light theme system with custom palettes
-- [x] Home dashboard with personalized greeting, starfield background, and today's file activity summary
+- [x] Home canvas — infinite board with post-its, live vault notes, and web widgets; pixel-art ambient scene
 - [x] User profile system with per-vault identity
 - [x] File activity tracker — tracks edits, creates, and deletes across your vault
+- [x] Cross-device home snapshot with iCloud-aware sync
 - [x] Git sync tools — commit and push directly from the app (Electron)
+
+### AI Activity & Schedules
+- [x] AI Activity dashboard — sessions, messages, and projects across Claude, Codex, ChatGPT, and Grok
+- [x] Reading source — GoodNotes reading tracking with dwell time and an idle-session gate
+- [x] Activity heatmap, duration trend, totals graph, this-week digest, and custom date ranges
+- [x] Schedules — launchd-direct recurring agent runs with Claude Code execution
+- [x] Live log streaming, transcript history viewer, heartbeat file, and ntfy failure alerts
+- [x] Telegram conversation resume loop + status notifications
 
 ### AI Integration
 - [x] Interactive AI chat with streaming responses
@@ -181,7 +204,6 @@ Configure everything: theme, explorer appearance, scheduler jobs, AI providers, 
 
 ### Settings & Customization
 - [x] Theme, explorer icon style, and folder color rules
-- [x] Scheduler — configure recurring automated tasks with cron-like scheduling
 - [x] Markdown editor settings (line numbers, word wrap, font size, etc.)
 - [x] Vault switching — connect to any folder as your Thinking Space
 - [x] Cache management and developer tools (Live Source Mode, rebuild pipeline)
@@ -209,7 +231,7 @@ Configure everything: theme, explorer appearance, scheduler jobs, AI providers, 
 ### Agent Capabilities
 - [x] 55+ typed capability operations with policy enforcement
 - [x] Capability router with audit trail and dry-run support
-- [x] CLI wrapper (`./thinkspc`) with brief/full output modes, shortcuts, and file-backed flag inputs
+- [x] Standalone `thinkspc` CLI bundled via Electron-as-Node (~0.1s cold start, no node_modules), with brief/full output modes, shortcuts, and file-backed flag inputs
 - [x] Task lifecycle management (claim, update, handoff, comment)
 - [x] Run logging and cross-session handoff records
 
