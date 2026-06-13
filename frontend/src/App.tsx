@@ -2154,6 +2154,24 @@ function App() {
         }
         return
       }
+      // Cmd/Ctrl + <digit> jumps to a side-rail tab: 1..N follow rail order
+      // (primary nav + Tools), 0 is Home. Driven by the same nav source as the
+      // rail so they stay in sync. Works cleanly in Electron; on web the
+      // browser may reserve these (tab switching / zoom reset).
+      if (withMeta && /^Digit[0-9]$/.test(event.code)) {
+        const digit = Number(event.code.slice(5))
+        if (digit === 0) {
+          event.preventDefault()
+          navigate('/')
+          return
+        }
+        const railTab = [...primaryNavItems, TOOLS_NAV_ITEM][digit - 1]
+        if (railTab) {
+          event.preventDefault()
+          navigate(resolveWorkspaceNavigationRoute(railTab.to))
+        }
+        return
+      }
       if (event.key === 'Escape') {
         setCommandPaletteOpen(false)
       }
@@ -2161,7 +2179,7 @@ function App() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeWorkspaceTab, compactNav, handleCloseWorkspaceTab, handleCreateWorkspaceTab])
+  }, [activeWorkspaceTab, compactNav, handleCloseWorkspaceTab, handleCreateWorkspaceTab, navigate, primaryNavItems])
 
   useNativeTopChromeBlock({
     enabled: useNativeTopChrome && !needsVaultSetup,
