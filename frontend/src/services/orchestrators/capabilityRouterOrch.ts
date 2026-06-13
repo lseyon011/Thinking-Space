@@ -44,6 +44,7 @@ import { logDailyInsight } from '@/services/lego_blocks/integrations/dailyInsigh
 import { createTodos, toggleTodo } from './todosOrch'
 import { listFiles, listFolders, listPdfFiles } from './fileSystemOrch'
 import { formatAndSave, previewFormat } from './formatExcalidrawOrch'
+import { extractExcalidrawHighlights } from './excalidrawHighlightsOrch'
 import { convertPdf, previewPdf } from './pdfToMarkdownOrch'
 import { cleanAndSave, previewTranscript } from './transcriptCleanerOrch'
 import { getCapabilityFeatureFlags } from '@/services/lego_blocks/integrations/capabilityFeatureFlagsBlock'
@@ -781,6 +782,12 @@ async function executeCapability<Name extends CapabilityName>(
       const payload = input as CapabilityInputMap['tools.excalidraw.format']
       assertNonEmptyString(payload.inputPath, 'inputPath')
       const result = await formatAndSave(payload.inputPath, payload.options)
+      return { result } as CapabilityOutputMap[Name]
+    }
+    case 'tools.excalidraw.highlights': {
+      const payload = input as CapabilityInputMap['tools.excalidraw.highlights']
+      assertNonEmptyString(payload.inputPath, 'inputPath')
+      const result = await extractExcalidrawHighlights(payload.inputPath, fs)
       return { result } as CapabilityOutputMap[Name]
     }
     case 'tools.pdf.preview': {

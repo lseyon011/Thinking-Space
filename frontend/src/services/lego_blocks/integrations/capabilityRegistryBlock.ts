@@ -16,6 +16,7 @@ import type {
   PdfPreviewData,
   TranscriptOptions,
 } from '@/services/lego_blocks/units/typesBlock'
+import type { ExcalidrawHighlightsExtractBlock } from '@/services/lego_blocks/units/excalidrawHighlightExtractBlock'
 
 export interface CapabilityActor {
   kind: 'human' | 'agent' | 'system'
@@ -57,6 +58,7 @@ export type CapabilityName =
   | 'tools.folders.list'
   | 'tools.excalidraw.preview'
   | 'tools.excalidraw.format'
+  | 'tools.excalidraw.highlights'
   | 'tools.pdf.preview'
   | 'tools.pdf.convert'
   | 'tools.transcript.preview'
@@ -265,6 +267,9 @@ export interface CapabilityInputMap {
     inputPath: string
     options: FormatOptions
   }
+  'tools.excalidraw.highlights': {
+    inputPath: string
+  }
   'tools.pdf.preview': {
     inputPath: string
     options: ConvertOptions
@@ -449,6 +454,9 @@ export interface CapabilityOutputMap {
   }
   'tools.excalidraw.format': {
     result: FormatResult
+  }
+  'tools.excalidraw.highlights': {
+    result: ExcalidrawHighlightsExtractBlock & { inputPath: string }
   }
   'tools.pdf.preview': {
     preview: PdfPreviewData
@@ -658,6 +666,11 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     name: 'tools.excalidraw.format',
     description: 'Format markdown for Excalidraw and persist output file.',
     readOnly: false,
+  },
+  {
+    name: 'tools.excalidraw.highlights',
+    description: 'Extract highlighted text from an Excalidraw mindmap, grouped by tree node and color.',
+    readOnly: true,
   },
   {
     name: 'tools.pdf.preview',

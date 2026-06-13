@@ -812,6 +812,9 @@ const CAPABILITY_EXAMPLES: Record<string, string[]> = {
   'tools.excalidraw.format': [
     'thinkspc tools.excalidraw.format --inputPath "notes/diagram.md"',
   ],
+  'tools.excalidraw.highlights': [
+    'thinkspc tools.excalidraw.highlights --inputPath "notes/book (formatted for excalidraw) (mindmap full text).excalidraw.md"',
+  ],
   'tools.pdf.preview': [
     'thinkspc tools.pdf.preview --inputPath "docs/paper.pdf"',
   ],
@@ -1025,6 +1028,7 @@ const CAPABILITY_INPUT_FIELDS: Record<string, Array<{ flag: string; required: bo
   'tools.folders.list': [{ flag: 'limit', required: false }],
   'tools.excalidraw.preview': [{ flag: 'inputPath', required: true }],
   'tools.excalidraw.format': [{ flag: 'inputPath', required: true }],
+  'tools.excalidraw.highlights': [{ flag: 'inputPath', required: true }],
   'tools.pdf.preview': [{ flag: 'inputPath', required: true }],
   'tools.pdf.convert': [{ flag: 'inputPath', required: true }],
   'tools.transcript.preview': [
