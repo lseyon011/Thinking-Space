@@ -1,4 +1,5 @@
-import { Move, Copy, Trash2, Droplet, ArrowUpRight, RefreshCw, Timer } from 'lucide-react'
+import { Move, Copy, Trash2, Droplet, ArrowUpRight, RefreshCw, Timer, Info } from 'lucide-react'
+import { HOME_CANVAS_PATH } from '@/services/lego_blocks/integrations/homeCanvasStorageBlock'
 import { useEffect, useState } from 'react'
 import type {
   CanvasTile,
@@ -48,6 +49,23 @@ function formatRefreshSec(sec: number | undefined): string {
 
 const ICON_SIZE = 16
 
+function formatTimestamp(ms: number | undefined): string {
+  if (!ms) return 'Unknown'
+  return new Date(ms).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+const TILE_TYPE_LABELS: Record<CanvasTile['type'], string> = {
+  'post-it': 'Post-it',
+  note: 'Note',
+  'web-widget': 'Web widget',
+}
+
 const FONT_SIZES: { key: Extract<PostItFontSize, 's' | 'm' | 'l'>; px: number }[] = [
   { key: 's', px: 11 },
   { key: 'm', px: 14 },
@@ -73,6 +91,7 @@ export default function CanvasTileToolbarBlock({
   const [colorOpen, setColorOpen] = useState(false)
   const [moveActive, setMoveActive] = useState(false)
   const [refreshIntervalOpen, setRefreshIntervalOpen] = useState(false)
+  const [infoOpen, setInfoOpen] = useState(false)
   const [fontSizeInput, setFontSizeInput] = useState('')
   const isPostIt = tile.type === 'post-it'
   const isNote = tile.type === 'note'
@@ -480,6 +499,74 @@ export default function CanvasTileToolbarBlock({
           )}
         </div>
       )}
+      <div style={{ position: 'relative' }}>
+        <button
+          style={{
+            ...buttonStyle,
+            color: infoOpen ? theme.tileText : theme.toolbarText,
+            background: infoOpen ? theme.toolbarHighlight : 'transparent',
+          }}
+          onClick={() => setInfoOpen(v => !v)}
+          title="Details"
+          aria-label="Tile details"
+          aria-pressed={infoOpen}
+        >
+          <Info size={ICON_SIZE} />
+        </button>
+        {infoOpen && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              marginTop: 8,
+              padding: 10,
+              background: theme.popoverBg,
+              border: `1px solid ${theme.popoverBorder}`,
+              borderRadius: 8,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              width: 240,
+              boxShadow: theme.isDark
+                ? '0 8px 20px rgba(0,0,0,0.4)'
+                : '0 8px 20px rgba(20,20,24,0.15)',
+              zIndex: 110,
+            }}
+          >
+            {[
+              { label: 'Type', value: TILE_TYPE_LABELS[tile.type] },
+              { label: 'Created', value: formatTimestamp(tile.createdAt) },
+              { label: 'Updated', value: formatTimestamp(tile.updatedAt) },
+              { label: 'Path', value: tile.type === 'note' ? tile.filePath : HOME_CANVAS_PATH },
+            ].map(row => (
+              <div key={row.label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: theme.popoverTextMuted,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  {row.label}
+                </span>
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: theme.popoverText,
+                    fontFamily: row.label === 'Path' ? 'monospace' : 'inherit',
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  {row.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <button
         style={buttonStyle}
         onClick={() => onDuplicate(tile.id)}

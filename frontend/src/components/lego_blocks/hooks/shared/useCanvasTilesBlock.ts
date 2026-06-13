@@ -13,6 +13,10 @@ export interface CanvasTileBase {
   w: number
   h: number
   locked: boolean
+  /** Epoch ms the tile was created. Optional: tiles persisted before this field shipped won't have it. */
+  createdAt?: number
+  /** Epoch ms of the last edit (content, style, move, or resize). Absent until first edit. */
+  updatedAt?: number
 }
 
 /**
@@ -121,6 +125,7 @@ export function useCanvasTilesBlock(initial: CanvasTile[] = []): UseCanvasTilesR
       text: '',
       color: DEFAULT_POST_IT_COLOR,
       locked: false, // newly spawned tiles are unlocked so you can place them; auto-lock on blur in orch
+      createdAt: Date.now(),
     }
     setTiles(prev => [...prev, tile])
     setFocusedId(id)
@@ -138,6 +143,7 @@ export function useCanvasTilesBlock(initial: CanvasTile[] = []): UseCanvasTilesR
       h: DEFAULT_TILE_H,
       filePath,
       locked: true,
+      createdAt: Date.now(),
     }
     setTiles(prev => [...prev, tile])
     setFocusedId(id)
@@ -165,6 +171,7 @@ export function useCanvasTilesBlock(initial: CanvasTile[] = []): UseCanvasTilesR
         siteId: spec.siteId,
         region: spec.region,
         pageWidth: spec.pageWidth,
+        createdAt: Date.now(),
       }
       setTiles(prev => [...prev, tile])
       setFocusedId(id)
@@ -175,13 +182,13 @@ export function useCanvasTilesBlock(initial: CanvasTile[] = []): UseCanvasTilesR
 
   const updateTileText = useCallback((id: string, text: string) => {
     setTiles(prev =>
-      prev.map(t => (t.id === id && t.type === 'post-it' ? { ...t, text } : t)),
+      prev.map(t => (t.id === id && t.type === 'post-it' ? { ...t, text, updatedAt: Date.now() } : t)),
     )
   }, [])
 
   const updateTileColor = useCallback((id: string, color: PostItColor) => {
     setTiles(prev =>
-      prev.map(t => (t.id === id && t.type === 'post-it' ? { ...t, color } : t)),
+      prev.map(t => (t.id === id && t.type === 'post-it' ? { ...t, color, updatedAt: Date.now() } : t)),
     )
   }, [])
 
@@ -189,7 +196,7 @@ export function useCanvasTilesBlock(initial: CanvasTile[] = []): UseCanvasTilesR
     setTiles(prev =>
       prev.map(t => {
         if (t.id !== id) return t
-        if (t.type === 'post-it' || t.type === 'note') return { ...t, fontSize }
+        if (t.type === 'post-it' || t.type === 'note') return { ...t, fontSize, updatedAt: Date.now() }
         return t
       }),
     )
@@ -199,7 +206,7 @@ export function useCanvasTilesBlock(initial: CanvasTile[] = []): UseCanvasTilesR
     (id: string, textColor: PostItColor | undefined) => {
       setTiles(prev =>
         prev.map(t =>
-          t.id === id && t.type === 'post-it' ? { ...t, textColor } : t,
+          t.id === id && t.type === 'post-it' ? { ...t, textColor, updatedAt: Date.now() } : t,
         ),
       )
     },
@@ -210,7 +217,7 @@ export function useCanvasTilesBlock(initial: CanvasTile[] = []): UseCanvasTilesR
     (id: string, refreshSec: number | undefined) => {
       setTiles(prev =>
         prev.map(t =>
-          t.id === id && t.type === 'web-widget' ? { ...t, refreshSec } : t,
+          t.id === id && t.type === 'web-widget' ? { ...t, refreshSec, updatedAt: Date.now() } : t,
         ),
       )
     },
@@ -219,14 +226,14 @@ export function useCanvasTilesBlock(initial: CanvasTile[] = []): UseCanvasTilesR
 
   const moveTile = useCallback((id: string, x: number, y: number) => {
     setTiles(prev =>
-      prev.map(t => (t.id === id ? { ...t, x: Math.round(x), y: Math.round(y) } : t)),
+      prev.map(t => (t.id === id ? { ...t, x: Math.round(x), y: Math.round(y), updatedAt: Date.now() } : t)),
     )
   }, [])
 
   const resizeTile = useCallback((id: string, w: number, h: number) => {
     const cw = Math.min(MAX_TILE_W, Math.max(MIN_TILE_W, Math.round(w)))
     const ch = Math.min(MAX_TILE_H, Math.max(MIN_TILE_H, Math.round(h)))
-    setTiles(prev => prev.map(t => (t.id === id ? { ...t, w: cw, h: ch } : t)))
+    setTiles(prev => prev.map(t => (t.id === id ? { ...t, w: cw, h: ch, updatedAt: Date.now() } : t)))
   }, [])
 
   const toggleTileLock = useCallback((id: string) => {
@@ -238,7 +245,8 @@ export function useCanvasTilesBlock(initial: CanvasTile[] = []): UseCanvasTilesR
       const src = prev.find(t => t.id === id)
       if (!src) return prev
       const newId = nextTileId()
-      const dup: CanvasTile = { ...src, id: newId, x: src.x + 24, y: src.y + 24, locked: false }
+      const now = Date.now()
+      const dup: CanvasTile = { ...src, id: newId, x: src.x + 24, y: src.y + 24, locked: false, createdAt: now, updatedAt: now }
       return [...prev, dup]
     })
   }, [])
