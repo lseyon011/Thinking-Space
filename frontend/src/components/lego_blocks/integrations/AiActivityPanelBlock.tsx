@@ -24,8 +24,10 @@ import {
 
 type ViewMode = 'heatmap' | 'trend' | 'totals'
 
-/** Rolling presets tucked into the chevron menu instead of the pill row. */
-const MENU_PRESET_IDS = new Set<AiActivityPreset>(['180d'])
+/** Rolling presets tucked into the chevron menu instead of the pill row.
+ *  Empty: every rolling preset (incl. 6m) lives on the pill strip; the menu is
+ *  only calendar-relative ranges (this week, last week, this month) + custom. */
+const MENU_PRESET_IDS = new Set<AiActivityPreset>([])
 
 function fmtDateShort(iso: string): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, {
@@ -657,7 +659,7 @@ function QuickRangeMenu({
               ? 'bg-foreground/10 text-foreground'
               : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
         )}
-        title="More ranges — 6m, this week, last week, this month"
+        title="More ranges — this week, last week, this month, custom"
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -670,7 +672,7 @@ function QuickRangeMenu({
           <div
             role="menu"
             className={cn(
-              'absolute right-0 top-full z-50 mt-1 rounded-lg border border-border/60 bg-popover p-1 text-xs shadow-xl',
+              'absolute right-0 top-full z-50 mt-1 rounded-lg border border-border/60 bg-card/95 p-1 text-xs shadow-xl backdrop-blur-xl',
               showCal ? 'w-[248px]' : 'min-w-[136px]',
             )}
           >
@@ -745,7 +747,7 @@ function QuickRangeMenu({
             </button>
 
             {showCal && (
-              <div className="mt-1 rounded-md border border-border/40 bg-muted/40 p-2">
+              <div className="mt-1 rounded-lg border border-border/50 bg-muted/30 p-2.5">
                 <MonthCalendar
                   compact
                   year={calY}
@@ -758,7 +760,7 @@ function QuickRangeMenu({
                     setCalM(m)
                   }}
                 />
-                <p className="mt-1.5 px-0.5 text-[10px] text-muted-foreground">
+                <p className="mt-2 border-t border-border/40 px-0.5 pt-2 text-[10px] text-muted-foreground">
                   {pendingStart
                     ? `Start ${fmtRangeLabel(pendingStart, pendingStart)} — pick an end date`
                     : 'Pick a start date'}

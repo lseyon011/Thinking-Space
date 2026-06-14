@@ -131,57 +131,48 @@ export default function MonthCalendar({
     )
   }
 
+  const navBtn = `inline-flex items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30 ${compact ? 'h-6 w-6' : 'h-8 w-8'}`
+  const selectCls = `appearance-none cursor-pointer rounded-md bg-transparent font-semibold text-foreground transition-colors hover:bg-muted/70 focus:outline-none focus:ring-1 focus:ring-primary/40 ${compact ? 'px-1.5 py-0.5 text-xs' : 'px-2 py-1 text-sm'}`
+
   return (
     <div className="space-y-1.5">
       {/* Header: month/year nav */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1">
-          <button
-            onClick={goPrev}
-            className={`rounded-md hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground ${compact ? 'p-0.5' : 'p-1'}`}
-          >
-            <ChevronLeft className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-          </button>
+      <div className="flex items-center justify-between gap-1">
+        <button onClick={goPrev} className={navBtn} aria-label="Previous month">
+          <ChevronLeft className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+        </button>
 
-          <div className={`flex items-center ${compact ? 'gap-1' : 'gap-1.5'}`}>
-            <select
-              value={month}
-              onChange={e => onMonthChange(year, Number(e.target.value))}
-              className={`
-                appearance-none bg-muted/70 border border-border/50 rounded-lg font-semibold text-foreground
-                cursor-pointer hover:bg-muted transition-colors
-                focus:outline-none focus:ring-1 focus:ring-primary/50
-                ${compact ? 'px-1.5 py-0.5 text-xs' : 'px-2.5 py-1 text-sm'}
-              `}
-            >
-              {(compact ? MONTH_SHORT : MONTH_NAMES).map((name, i) => (
-                <option key={i} value={i + 1}>{name}</option>
-              ))}
-            </select>
-            <select
-              value={year}
-              onChange={e => onMonthChange(Number(e.target.value), month)}
-              className={`
-                appearance-none bg-muted/70 border border-border/50 rounded-lg font-semibold text-foreground
-                cursor-pointer hover:bg-muted transition-colors
-                focus:outline-none focus:ring-1 focus:ring-primary/50
-                ${compact ? 'px-1.5 py-0.5 text-xs' : 'px-2.5 py-1 text-sm'}
-              `}
-            >
-              {yearOptions.map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-          </div>
-
-          <button
-            onClick={goNext}
-            disabled={!canGoForward}
-            className={`rounded-md hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed ${compact ? 'p-0.5' : 'p-1'}`}
+        <div className="flex items-center gap-0.5">
+          <select
+            value={month}
+            onChange={e => onMonthChange(year, Number(e.target.value))}
+            className={selectCls}
+            aria-label="Month"
           >
-            <ChevronRight className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-          </button>
+            {(compact ? MONTH_SHORT : MONTH_NAMES).map((name, i) => (
+              <option key={i} value={i + 1}>{name}</option>
+            ))}
+          </select>
+          <select
+            value={year}
+            onChange={e => onMonthChange(Number(e.target.value), month)}
+            className={selectCls}
+            aria-label="Year"
+          >
+            {yearOptions.map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
         </div>
+
+        <button
+          onClick={goNext}
+          disabled={!canGoForward}
+          className={navBtn}
+          aria-label="Next month"
+        >
+          <ChevronRight className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+        </button>
       </div>
 
       {/* Weekday labels */}
@@ -189,7 +180,7 @@ export default function MonthCalendar({
         {weekdayLabels.map((label, i) => (
           <div
             key={i}
-            className={`text-center font-medium text-muted-foreground ${
+            className={`text-center font-medium uppercase tracking-wider text-muted-foreground/70 ${
               compact ? 'text-[10px] py-0.5' : 'text-xs py-1'
             }`}
           >
@@ -202,7 +193,7 @@ export default function MonthCalendar({
       <div className={`grid grid-cols-7 ${gap}`}>
         {grid.map((cell, i) => {
           if (!cell) {
-            return <div key={`empty-${i}`} className={cellH} />
+            return <div key={`empty-${i}`} className={compact ? 'aspect-square' : cellH} />
           }
 
           const dayData = dayMap.get(cell.dateStr)
@@ -217,35 +208,26 @@ export default function MonthCalendar({
                 key={cell.dateStr}
                 onClick={() => onSelectDate(cell.dateStr)}
                 className={`
-                  relative h-8 rounded-md text-center transition-all
-                  hover:ring-1 hover:ring-foreground/20
+                  relative flex aspect-square items-center justify-center rounded-full text-[11px] tabular-nums leading-none transition-all
                   ${isSelected
-                    ? 'ring-2 ring-primary shadow-sm'
+                    ? 'bg-primary font-semibold text-primary-foreground shadow-sm'
                     : isToday
-                      ? 'ring-1 ring-foreground/20'
-                      : ''
+                      ? 'font-semibold text-primary ring-1 ring-inset ring-primary/40 hover:bg-primary/10'
+                      : intensity > 0
+                        ? 'font-medium text-foreground/90 hover:ring-1 hover:ring-inset hover:ring-foreground/20'
+                        : 'text-foreground/70 hover:bg-muted'
                   }
                 `}
-                style={{ background: bg }}
+                style={!isSelected && intensity > 0 ? { background: bg } : undefined}
               >
-                <span
-                  className={`text-[11px] tabular-nums leading-none ${
-                    isToday
-                      ? 'font-bold text-primary'
-                      : intensity > 0
-                        ? 'font-medium text-foreground/90'
-                        : 'text-foreground/70'
-                  }`}
-                >
-                  {cell.day}
-                </span>
+                {cell.day}
                 {dayData?.indicators && dayData.indicators.length > 0 && (
-                  <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5">
+                  <div className="absolute bottom-0.5 left-1/2 flex -translate-x-1/2 gap-0.5">
                     {dayData.indicators.map((ind, j) => (
                       <span
                         key={j}
                         className="block h-1 w-1 rounded-full"
-                        style={{ backgroundColor: ind.color }}
+                        style={{ backgroundColor: isSelected ? 'currentColor' : ind.color }}
                       />
                     ))}
                   </div>

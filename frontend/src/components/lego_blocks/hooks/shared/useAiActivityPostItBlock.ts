@@ -4,6 +4,7 @@ import type {
   CanvasTile,
 } from '@/components/lego_blocks/hooks/shared/useCanvasTilesBlock'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import { getAiActivityHomePostItEnabled } from '@/services/lego_blocks/units/storageKeyBlock'
 
 /**
  * Auto-drafts the "what I did today" post-it on the home canvas.
@@ -81,6 +82,9 @@ export function useAiActivityPostItBlock(opts: UseAiActivityPostItOptions): void
 
   const applyDailyDraft = useCallback(() => {
     if (!ready || !canvasLoaded) return
+    // Opt-in: the This Week digest covers the same ground, so the auto post-it
+    // only drafts when the user has explicitly enabled it in settings.
+    if (!getAiActivityHomePostItEnabled()) return
     const current = tilesRef.current
     const existing = current.find(
       (t): t is CanvasPostItTile =>

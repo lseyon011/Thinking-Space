@@ -83,6 +83,7 @@ import {
 import type { AiWebsiteBlock } from '@/services/lego_blocks/units/aiWebsiteBlock'
 import AiActivityProjectMappingSettingsBlock from '@/components/lego_blocks/integrations/AiActivityProjectMappingSettingsBlock'
 import AiActivitySessionSourcesSettingsBlock from '@/components/lego_blocks/integrations/AiActivitySessionSourcesSettingsBlock'
+import AiActivityHomePostItSettingsBlock from '@/components/lego_blocks/integrations/AiActivityHomePostItSettingsBlock'
 import {
   addWebSiteOrch,
   addWebSiteGroupOrch,
@@ -1430,6 +1431,7 @@ export default function SettingsOrch({
         <div className="space-y-6">
           <AiActivitySessionSourcesSettingsBlock />
           <AiActivityProjectMappingSettingsBlock />
+          <AiActivityHomePostItSettingsBlock />
         </div>
       )}
 

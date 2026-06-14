@@ -257,10 +257,10 @@ export default function AiActivityDayTableBlock({
                     <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-foreground/70">
                       {fmtDuration(c.startedIso, c.endedIso)}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-1.5">
-                      <span className="inline-flex items-center gap-1.5" style={{ color: color.stroke }}>
-                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: color.stroke }} />
-                        {c.project}
+                    <td className="px-3 py-1.5">
+                      <span className="flex items-center gap-1.5" style={{ color: color.stroke }}>
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color.stroke }} />
+                        <span className="truncate" title={c.project}>{c.project}</span>
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-foreground/80">

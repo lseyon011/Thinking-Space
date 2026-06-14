@@ -47,6 +47,7 @@ export const STORAGE_KEYS = {
   aiActivityProjectMapping: 'ltm-ai-activity-project-mapping',
   aiActivityVaultSourcePrefixes: 'ltm-ai-activity-vault-source-prefixes',
   goodnotesReadingAnnotationGate: 'ltm-goodnotes-reading-annotation-gate',
+  aiActivityHomePostItEnabled: 'ltm-ai-activity-home-post-it-enabled',
   vaultSyncExcludedPrefixes: 'ltm-vault-sync-excluded-prefixes',
 } as const
 
@@ -150,6 +151,19 @@ export function getGoodnotesAnnotationGate(): boolean {
 
 export function setGoodnotesAnnotationGate(enabled: boolean): void {
   setLocalStorageItemBlock(STORAGE_KEYS.goodnotesReadingAnnotationGate, enabled ? 'true' : 'false')
+}
+
+/**
+ * Whether the home canvas auto-drafts a daily "what I did with AI today" post-it.
+ * Off by default — the This Week digest card now covers the same ground, so the
+ * auto post-it is opt-in for users who still want it pinned on the canvas.
+ */
+export function getAiActivityHomePostItEnabled(): boolean {
+  return getLocalStorageItemBlock(STORAGE_KEYS.aiActivityHomePostItEnabled) === 'true'
+}
+
+export function setAiActivityHomePostItEnabled(enabled: boolean): void {
+  setLocalStorageItemBlock(STORAGE_KEYS.aiActivityHomePostItEnabled, enabled ? 'true' : 'false')
 }
 
 export function setStoredVaultRoot(path: string): void {
