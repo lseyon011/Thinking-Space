@@ -351,6 +351,10 @@ const MSG_BODY_ANIMATION: Partial<Record<MoonSceneAnimationBlock, string>> = {
   sleep: 'moon-msg-sleep 5s ease-in-out infinite alternate',
   hang: 'moon-msg-hang 2.8s ease-in-out infinite',
   wag: 'moon-msg-wag-walk 6s steps(1) infinite',
+  nod: 'moon-msg-nod 1.1s ease-in-out infinite',
+  wobble: 'moon-msg-wobble 0.7s ease-in-out infinite alternate',
+  stretch: 'moon-msg-stretch 2.4s ease-in-out infinite',
+  backflip: 'moon-msg-backflip 1.4s ease-in-out infinite',
 }
 
 const MSG_OUTER_ANIMATION: Partial<Record<MoonSceneAnimationBlock, string>> = {
@@ -703,6 +707,36 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           from { transform: rotate(-14deg); }
           to   { transform: rotate(16deg); }
         }
+        /* nod: gentle forward bow + dip, pivoting at the feet — reads as a
+           friendly "yes"/greeting. */
+        @keyframes moon-msg-nod {
+          0%, 100% { transform: rotate(0deg) translateY(0); }
+          25%      { transform: rotate(9deg) translateY(2px); }
+          50%      { transform: rotate(0deg) translateY(0); }
+          75%      { transform: rotate(9deg) translateY(2px); }
+        }
+        /* wobble: pendulum sway from the feet, more pronounced than the idle
+           wiggle — a playful tipsy lean. Paired with alternate. */
+        @keyframes moon-msg-wobble {
+          from { transform: rotate(-11deg); }
+          to   { transform: rotate(11deg); }
+        }
+        /* stretch: a slow yawn-and-stretch — grows upward from the feet then
+           settles, with a tiny squash at the bottom of the cycle. */
+        @keyframes moon-msg-stretch {
+          0%, 100% { transform: scaleY(1) scaleX(1); }
+          40%      { transform: scaleY(1.18) scaleX(0.94); }
+          70%      { transform: scaleY(0.96) scaleX(1.04); }
+        }
+        /* backflip: a leaping 360 rotation about the body center (origin
+           overridden for this anim) with an arc so the sprite hops as it flips. */
+        @keyframes moon-msg-backflip {
+          0%   { transform: translateY(0) rotate(0deg); }
+          25%  { transform: translateY(-22px) rotate(120deg); }
+          50%  { transform: translateY(-30px) rotate(220deg); }
+          75%  { transform: translateY(-16px) rotate(320deg); }
+          100% { transform: translateY(0) rotate(360deg); }
+        }
       `}</style>
 
       {/* moon surface */}
@@ -859,8 +893,8 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
         <div
           style={{
             position: 'relative',
-            // hang flips about the center so the sprite stays in place
-            transformOrigin: astroAnim === 'hang' ? 'center' : 'bottom center',
+            // hang/backflip rotate about the center so the sprite stays in place
+            transformOrigin: astroAnim === 'hang' || astroAnim === 'backflip' ? 'center' : 'bottom center',
             animation: astroBodyMsgAnimation
               ?? (dj
                 ? 'moon-dj-bob 0.52s ease-in-out infinite alternate'
@@ -988,7 +1022,7 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
             animation: clawdBodyMsgAnimation
               ?? (dj ? undefined : 'moon-wiggle 13s ease-in-out infinite'),
             // hang flips about the center so the sprite stays in place
-            transformOrigin: clawdAnim === 'hang' ? 'center' : 'bottom center',
+            transformOrigin: clawdAnim === 'hang' || clawdAnim === 'backflip' ? 'center' : 'bottom center',
           }}
         >
           <PixelSprite rows={CLAWD} />

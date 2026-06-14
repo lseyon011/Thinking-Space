@@ -20,6 +20,7 @@ import { readVaultUiPreferencesOrch } from '@/services/orchestrators/vaultUiPref
 
 const IDLE_ANIMATION_POOL: MoonSceneAnimationBlock[] = [
   'wave', 'dance', 'hop', 'cheer', 'spin', 'skate', 'wizard', 'run', 'float', 'sleep', 'hang', 'wag',
+  'nod', 'wobble', 'stretch', 'backflip',
 ]
 
 const IDLE_GAP_MIN_MS = 8 * 60_000

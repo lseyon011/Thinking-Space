@@ -150,6 +150,10 @@ const MOON_SCENE_ANIMATION_LABELS: Record<string, string> = {
   sleep: 'Sleep (zzz)',
   hang: 'Coping hang (upside down)',
   wag: 'Tail-wag walk',
+  nod: 'Nod',
+  wobble: 'Wobble',
+  stretch: 'Stretch',
+  backflip: 'Backflip',
 }
 
 function normalizeExplorerFolderPathInput(value: string): string {
