@@ -1,10 +1,14 @@
 // Renderer-side access to GoodNotes reading activity.
 //
-// On Electron: trigger a harvest of the ephemeral Amplitude queue into the
-// durable vault JSONL (which also arms the background watcher), then read the
-// log back over IPC. On non-Electron clients (iPhone/web) the IPC isn't
-// present, but the durable log lives in the vault and syncs — so we read and
-// parse `ai_raw/raw/goodnotes/reading.jsonl` straight through VaultFS. Either
+// On Electron: trigger the GoodNotes harvest (which itself fires the Apple
+// Screen Time dump first, then attributes app_usage focus events to docs
+// via fts.sqlite), then read the resulting reading.jsonl back over IPC. The
+// FDA-needed flag is captured from the harvest result so a Reading panel
+// banner can prompt the user.
+//
+// On non-Electron clients (iPhone/web) the IPC isn't present, but the
+// durable log lives in the vault and syncs — so we read and parse
+// `ai_raw/raw/goodnotes/reading.jsonl` straight through VaultFS. Either
 // way the caller gets the same ParsedSession[] tagged source:'goodnotes'.
 
 import type { VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
@@ -20,8 +24,23 @@ const READING_LOG_PATH = 'ai_raw/raw/goodnotes/reading.jsonl'
 interface GoodnotesApi {
   goodnotesHarvest?: (
     vaultRoot: string,
-  ) => Promise<{ added: number; total: number; unavailable?: boolean }>
+  ) => Promise<{
+    added: number
+    total: number
+    unavailable?: boolean
+    needsFullDiskAccess?: boolean
+  }>
   goodnotesReadLog?: (vaultRoot: string) => Promise<GoodnotesReadingRecord[]>
+}
+
+/** Sticky flag: last harvest reported macOS denied Knowledge DB access. The
+ *  Reading panel reads this to surface an FDA prompt. We keep it on the
+ *  module rather than per-call so the renderer can poll without re-running
+ *  the harvest. */
+let lastNeedsFullDiskAccess = false
+
+export function goodnotesNeedsFullDiskAccess(): boolean {
+  return lastNeedsFullDiskAccess
 }
 
 function getApi(): GoodnotesApi | null {
@@ -56,7 +75,8 @@ export async function loadGoodnotesReadingSessions(fs: VaultFS): Promise<ParsedS
   if (api) {
     const vaultRoot = getStoredVaultRoot() ?? ''
     try {
-      await api.goodnotesHarvest!(vaultRoot)
+      const result = await api.goodnotesHarvest!(vaultRoot)
+      lastNeedsFullDiskAccess = result?.needsFullDiskAccess === true
     } catch {
       // Harvest failed (no GoodNotes, sqlite missing, etc.) — fall through and
       // return whatever the durable log already holds.

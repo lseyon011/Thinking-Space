@@ -33,7 +33,11 @@ export interface GoodnotesReadingRecord {
 // Reading-session durations from GoodNotes' "document open" telemetry can be
 // huge (a book left open for hours). Cap the per-session duration so one
 // forgotten-open document doesn't dwarf a week of real reading on the charts.
-const MAX_SESSION_MS = 4 * 3_600_000 // 4h
+// 90 min is the upper bound of a plausible single uninterrupted reading session
+// — GoodNotes already splits on app close/sleep, so anything longer is almost
+// always "opened the doc and walked away" (which we saw with a 6.2h session
+// that, before this cap, swamped every chart).
+const MAX_SESSION_MS = 90 * 60_000 // 90 min
 
 // Publisher keywords used to gate the trailing "- <Publisher>" strip. Gating on
 // these (rather than any trailing "- Words") is deliberate: an ungated rule ate

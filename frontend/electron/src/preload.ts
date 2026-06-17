@@ -410,14 +410,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   nativeAiClaudeHistoryRead: (): Promise<string> =>
     ipcRenderer.invoke('nativeAiSessions:readClaudeHistory'),
 
-  // GoodNotes reading activity — harvest the ephemeral Amplitude analytics
-  // queue into a durable vault JSONL, then read it back. Harvest also starts a
-  // background watcher (first call) so reading sessions are captured before
-  // GoodNotes purges the queue. No-op/empty on machines without GoodNotes.
+  // GoodNotes reading activity — harvest macOS Screen Time's `knowledgeC.db`
+  // for GoodNotes app-focus sessions, attribute each to the doc whose
+  // last_modified falls inside the focus window (via fts.sqlite), and append
+  // to the vault's durable JSONL. Requires Full Disk Access for Thinking
+  // Space; `needsFullDiskAccess` is true when macOS denies the DB read.
   goodnotesHarvest: (vaultRoot: string): Promise<{
     added: number
     total: number
     unavailable?: boolean
+    needsFullDiskAccess?: boolean
   }> => ipcRenderer.invoke('goodnotes:harvest', vaultRoot),
   goodnotesReadLog: (vaultRoot: string): Promise<Array<{
     key: string

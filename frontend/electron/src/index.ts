@@ -96,8 +96,8 @@ import {
 import {
   harvestGoodnotesReadingBlock,
   readGoodnotesReadingLogBlock,
-  startGoodnotesWatcherBlock,
 } from './lego_blocks/goodnotesReadingBlock';
+import { harvestAppleScreenTimeBlock } from './lego_blocks/appleScreenTimeDumperBlock';
 import { startHeartbeatBlock, stopHeartbeatBlock } from './lego_blocks/heartbeatBlock';
 import {
   notifyNtfyBlock,
@@ -1625,6 +1625,11 @@ ipcMain.handle('vault:watch:start', async (_event, vaultRoot: string) => {
   if (typeof vaultRoot !== 'string' || !vaultRoot.trim()) {
     return { ok: false, error: 'vault:watch:start requires a vault root string.' };
   }
+  // App-launch trigger for the Apple Screen Time mirror — the renderer
+  // starts the vault watcher once on boot, so this is the natural place to
+  // top up the per-day JSONLs without waiting for the AI Activity panel to
+  // open. Fire-and-forget; FDA denial / unavailability is harmless.
+  void harvestAppleScreenTimeBlock(vaultRoot).catch(() => undefined);
   return startVaultWatcherBlock(vaultRoot, {
     onEvent: (_root, event) => {
       for (const win of BrowserWindow.getAllWindows()) {
@@ -1919,13 +1924,19 @@ ipcMain.handle('nativeAiSessions:readClaudeHistory', async () => {
   return readClaudeHistoryBlock();
 });
 
-// -- GoodNotes reading activity (read-only against GoodNotes' Amplitude queue +
-//    fts.sqlite; writes only to the vault's durable reading log) --
+// -- Apple Screen Time dump (mirrors knowledgeC.db streams into per-day
+//    JSONLs under ai_raw/raw/apple_screen_time/ so we keep history past the
+//    macOS 28-day cliff). Requires Full Disk Access. --
+ipcMain.handle('appleScreenTime:harvest', async (_event, vaultRoot: string) => {
+  return harvestAppleScreenTimeBlock(vaultRoot);
+});
+
+// -- GoodNotes reading activity (attributes app_usage focus events to docs
+//    via fts.sqlite; writes only to the vault's durable reading log). Runs
+//    the Screen Time dump first so its source data is fresh. --
 ipcMain.handle('goodnotes:harvest', async (_event, vaultRoot: string) => {
-  // The first harvest also arms the background watcher so reading sessions are
-  // captured before GoodNotes purges the Amplitude queue.
   if (typeof vaultRoot === 'string' && vaultRoot) {
-    startGoodnotesWatcherBlock(vaultRoot);
+    await harvestAppleScreenTimeBlock(vaultRoot);
   }
   return harvestGoodnotesReadingBlock(vaultRoot);
 });
