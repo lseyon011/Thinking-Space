@@ -469,19 +469,33 @@ export function buildChains(sessions: ParsedSession[]): ActivityChain[] {
   for (const [project, list] of byProject.entries()) {
     let current: ParsedSession[] = []
     let lastBreaker = false
+    // Track the latest end timestamp seen across every session already in the
+    // open chain so a new session that *overlaps* one of them (parallel work in
+    // two terminals on the same project) breaks into its own chain instead of
+    // getting absorbed. Without this, two concurrent Claude sessions on the
+    // same cwd merge into a single chain and the second session disappears from
+    // the drill-down table — the table row + timeline pill only carry the first
+    // session's topic + msg count.
+    let maxEndMs = -Infinity
     for (const s of list) {
+      const sStartMs = Date.parse(s.startedIso)
+      const sEndMs = Date.parse(s.endedIso ?? s.startedIso)
       if (current.length === 0) {
         current = [s]
         lastBreaker = s.hadClear
+        maxEndMs = sEndMs
         continue
       }
       const prev = current[current.length - 1]
-      const hoursSince = (Date.parse(s.startedIso) - Date.parse(prev.startedIso)) / 3_600_000
-      if (lastBreaker || hoursSince > GAP_HOURS) {
+      const hoursSince = (sStartMs - Date.parse(prev.startedIso)) / 3_600_000
+      const overlapsOpen = sStartMs < maxEndMs
+      if (lastBreaker || hoursSince > GAP_HOURS || overlapsOpen) {
         chains.push(makeChain(project, current))
         current = [s]
+        maxEndMs = sEndMs
       } else {
         current.push(s)
+        if (sEndMs > maxEndMs) maxEndMs = sEndMs
       }
       lastBreaker = s.hadClear
     }

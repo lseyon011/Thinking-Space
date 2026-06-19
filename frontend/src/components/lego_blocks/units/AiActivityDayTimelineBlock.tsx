@@ -61,19 +61,79 @@ export default function AiActivityDayTimelineBlock({
     [dateIso],
   )
 
-  // Compute axis: start at hour 0; end at the later of 24 and the latest
-  // chain-end hour (rounded up), capped at 30 to avoid runaway widths.
-  const { startHour, endHour } = useMemo(() => {
-    if (chains.length === 0) return { startHour: 0, endHour: 24 }
-    let latestHourFractional = 24
+  // Collapse overlapping same-project chains into a single visual pill so two
+  // parallel sessions (different terminals, same cwd) read as one block of
+  // work on the strip. The drill table below still surfaces each underlying
+  // chain on its own row — the timeline is the only place we merge.
+  type MergedPill = {
+    key: string
+    project: string
+    startedIso: string
+    endedIso: string
+    chains: ActivityChain[]
+    msgCount: number
+    topic: string
+  }
+  const pills = useMemo<MergedPill[]>(() => {
+    if (chains.length === 0) return []
+    const byProject = new Map<string, ActivityChain[]>()
     for (const c of chains) {
-      const startedH = (Date.parse(c.startedIso) - dayStartMs) / 3_600_000
-      const endedH = (Date.parse(c.endedIso) - dayStartMs) / 3_600_000
+      const arr = byProject.get(c.project) ?? []
+      arr.push(c)
+      byProject.set(c.project, arr)
+    }
+    const out: MergedPill[] = []
+    for (const [project, list] of byProject) {
+      const sorted = [...list].sort(
+        (a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso),
+      )
+      let cur: { startMs: number; endMs: number; chains: ActivityChain[] } | null = null
+      const flush = () => {
+        if (!cur) return
+        const first = cur.chains[0]
+        const msgCount = cur.chains.reduce((n, c) => n + c.msgCount, 0)
+        out.push({
+          key: `${project}::${cur.startMs}::${cur.chains.length}`,
+          project,
+          startedIso: new Date(cur.startMs).toISOString(),
+          endedIso: new Date(cur.endMs).toISOString(),
+          chains: cur.chains,
+          msgCount,
+          topic:
+            cur.chains.length === 1
+              ? first.topic
+              : `${cur.chains.length} parallel sessions · ${first.topic}`,
+        })
+      }
+      for (const c of sorted) {
+        const s = Date.parse(c.startedIso)
+        const e = Date.parse(c.endedIso)
+        if (cur && s < cur.endMs) {
+          cur.chains.push(c)
+          if (e > cur.endMs) cur.endMs = e
+        } else {
+          flush()
+          cur = { startMs: s, endMs: e, chains: [c] }
+        }
+      }
+      flush()
+    }
+    return out
+  }, [chains])
+
+  // Compute axis: start at hour 0; end at the later of 24 and the latest
+  // pill-end hour (rounded up), capped at 30 to avoid runaway widths.
+  const { startHour, endHour } = useMemo(() => {
+    if (pills.length === 0) return { startHour: 0, endHour: 24 }
+    let latestHourFractional = 24
+    for (const p of pills) {
+      const startedH = (Date.parse(p.startedIso) - dayStartMs) / 3_600_000
+      const endedH = (Date.parse(p.endedIso) - dayStartMs) / 3_600_000
       const lastTouched = Math.max(startedH, endedH) + PILL_DEFAULT_DURATION_MIN / 60
       if (lastTouched > latestHourFractional) latestHourFractional = lastTouched
     }
     return { startHour: 0, endHour: Math.min(30, Math.ceil(latestHourFractional)) }
-  }, [chains, dayStartMs])
+  }, [pills, dayStartMs])
 
   const widthPx = (endHour - startHour) * PIXELS_PER_HOUR
   const hourTicks = useMemo(() => {
@@ -82,16 +142,18 @@ export default function AiActivityDayTimelineBlock({
     return out
   }, [startHour, endHour])
 
-  // Lay chains out in rows; pack greedily so overlapping chains stack vertically.
+  // Lay pills out in rows; pack greedily so overlapping pills (different
+  // projects, since same-project overlaps are already merged into one pill)
+  // stack vertically.
   const placed = useMemo(() => {
     type Placed = {
       key: string
-      chain: ActivityChain
+      pill: MergedPill
       leftPx: number
       widthPx: number
       row: number
     }
-    const sorted = [...chains].sort(
+    const sorted = [...pills].sort(
       (a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso),
     )
     const rowEnds: number[] = []
@@ -117,10 +179,10 @@ export default function AiActivityDayTimelineBlock({
         rowEnds.push(0)
       }
       rowEnds[row] = leftPx + widthPx
-      out.push({ key: c.key, chain: c, leftPx, widthPx, row })
+      out.push({ key: c.key, pill: c, leftPx, widthPx, row })
     }
     return { placed: out, rows: rowEnds.length }
-  }, [chains, dayStartMs, startHour])
+  }, [pills, dayStartMs, startHour, endHour])
 
   if (chains.length === 0) {
     return (
@@ -198,10 +260,10 @@ export default function AiActivityDayTimelineBlock({
             )
           })}
 
-          {placed.placed.map(({ key, chain, leftPx, widthPx, row }) => {
-            const color = getProjectColor(chain.project)
+          {placed.placed.map(({ key, pill, leftPx, widthPx, row }) => {
+            const color = getProjectColor(pill.project)
             const isHover = hoverId === key
-            const isHighlighted = highlightProject != null && chain.project === highlightProject
+            const isHighlighted = highlightProject != null && pill.project === highlightProject
             const isDimmed = highlightProject != null && !isHighlighted
             // Pills use the project's chipBg as a soft fill with NO border —
             // borders were reading as dark outlines that fought the color
@@ -231,8 +293,8 @@ export default function AiActivityDayTimelineBlock({
                     ? `inset 0 0 0 1.5px ${ringStyle}`
                     : undefined,
                 }}
-                title={`${fmtTime(chain.startedIso)}–${fmtTime(chain.endedIso)} · ${chain.project} · ${chain.msgCount} msgs — ${chain.topic}`}
-                aria-label={`${chain.project} · ${chain.msgCount} msgs at ${fmtTime(chain.startedIso)}`}
+                title={`${fmtTime(pill.startedIso)}–${fmtTime(pill.endedIso)} · ${pill.project} · ${pill.msgCount} msgs — ${pill.topic}`}
+                aria-label={`${pill.project} · ${pill.msgCount} msgs at ${fmtTime(pill.startedIso)}`}
               />
             )
           })}
