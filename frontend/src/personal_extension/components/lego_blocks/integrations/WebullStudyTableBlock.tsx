@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { ChevronRight, FileText, MessageSquareText } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, FileText, MessageSquareText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type {
   WebullStudyCategoryOrch,
@@ -112,6 +112,35 @@ function HeldBadgeBlock({ row }: { row: WebullStudyRowOrch }) {
   )
 }
 
+function SortHeaderBlock({
+  label,
+  sortKey,
+  sort,
+  onToggle,
+}: {
+  label: string
+  sortKey: SortKey
+  sort: { key: SortKey; dir: SortDir } | null
+  onToggle: (key: SortKey) => void
+}) {
+  const active = sort?.key === sortKey
+  const Icon = !active ? ArrowUpDown : sort!.dir === 'asc' ? ArrowUp : ArrowDown
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(sortKey)}
+      className={cn(
+        'inline-flex items-center gap-1 text-left uppercase tracking-wide hover:text-foreground',
+        active && 'text-foreground',
+      )}
+      title={`Sort by ${label}`}
+    >
+      <span>{label}</span>
+      <Icon className={cn('h-3 w-3', !active && 'opacity-40')} />
+    </button>
+  )
+}
+
 function CategoryChipBlock({ category }: { category: WebullStudyCategoryOrch }) {
   return (
     <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide', CATEGORY_TONE_BLOCK[category])}>
@@ -123,6 +152,55 @@ function CategoryChipBlock({ category }: { category: WebullStudyCategoryOrch }) 
 const COLUMN_TEMPLATE_BLOCK =
   'grid grid-cols-[28px_minmax(140px,1.4fr)_70px_minmax(120px,1fr)_minmax(110px,1fr)_80px_minmax(150px,1.2fr)_minmax(110px,1fr)] gap-2 items-center px-3'
 
+type SortKey =
+  | 'ticker'
+  | 'held'
+  | 'range'
+  | 'price'
+  | 'delta'
+  | 'validThrough'
+  | 'lastUpdated'
+
+type SortDir = 'asc' | 'desc'
+
+const HELD_RANK: Record<'stock' | 'options' | 'none', number> = {
+  stock: 0,
+  options: 1,
+  none: 2,
+}
+
+function heldRankBlock(row: WebullStudyRowOrch): number {
+  if (!row.held) return HELD_RANK.none
+  return row.heldStock ? HELD_RANK.stock : HELD_RANK.options
+}
+
+function compareNullableBlock(
+  a: number | null | undefined,
+  b: number | null | undefined,
+  dir: SortDir,
+): number {
+  const aMissing = a === null || a === undefined || !Number.isFinite(a)
+  const bMissing = b === null || b === undefined || !Number.isFinite(b)
+  if (aMissing && bMissing) return 0
+  if (aMissing) return 1
+  if (bMissing) return -1
+  return dir === 'asc' ? (a as number) - (b as number) : (b as number) - (a as number)
+}
+
+function compareStringBlock(
+  a: string | null | undefined,
+  b: string | null | undefined,
+  dir: SortDir,
+): number {
+  const aMissing = !a
+  const bMissing = !b
+  if (aMissing && bMissing) return 0
+  if (aMissing) return 1
+  if (bMissing) return -1
+  const cmp = (a as string).localeCompare(b as string)
+  return dir === 'asc' ? cmp : -cmp
+}
+
 export default function WebullStudyTableBlock({
   rows,
   activeTicker,
@@ -130,6 +208,52 @@ export default function WebullStudyTableBlock({
   onOpenStudyFile,
 }: WebullStudyTableBlockProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>(null)
+
+  const toggleSort = (key: SortKey) => {
+    setSort((prev) => {
+      if (!prev || prev.key !== key) return { key, dir: 'asc' }
+      if (prev.dir === 'asc') return { key, dir: 'desc' }
+      return null
+    })
+  }
+
+  const sortedRows = useMemo(() => {
+    if (!sort) return rows
+    const { key, dir } = sort
+    const copy = [...rows]
+    copy.sort((a, b) => {
+      switch (key) {
+        case 'ticker':
+          return compareStringBlock(a.ticker, b.ticker, dir)
+        case 'held': {
+          const cmp = heldRankBlock(a) - heldRankBlock(b)
+          return dir === 'asc' ? cmp : -cmp
+        }
+        case 'range':
+          return compareNullableBlock(
+            a.record?.currentRange?.low ?? null,
+            b.record?.currentRange?.low ?? null,
+            dir,
+          )
+        case 'price':
+          return compareNullableBlock(a.livePrice.value, b.livePrice.value, dir)
+        case 'delta':
+          return compareNullableBlock(a.rangeDeltaPct, b.rangeDeltaPct, dir)
+        case 'validThrough':
+          return compareNullableBlock(a.daysToValidThrough, b.daysToValidThrough, dir)
+        case 'lastUpdated':
+          return compareStringBlock(
+            a.record?.lastUpdated ?? null,
+            b.record?.lastUpdated ?? null,
+            dir,
+          )
+        default:
+          return 0
+      }
+    })
+    return copy
+  }, [rows, sort])
 
   const toggleExpanded = (ticker: string) => {
     setExpanded((prev) => {
@@ -153,17 +277,17 @@ export default function WebullStudyTableBlock({
     <div className="overflow-hidden rounded-lg border bg-background">
       <div className={cn(COLUMN_TEMPLATE_BLOCK, 'border-b bg-muted/40 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground')}>
         <span aria-hidden="true" />
-        <span>Ticker</span>
-        <span>Held</span>
-        <span>Range</span>
-        <span>Price</span>
-        <span>Δ%</span>
-        <span>Valid through</span>
-        <span>Last updated</span>
+        <SortHeaderBlock label="Ticker" sortKey="ticker" sort={sort} onToggle={toggleSort} />
+        <SortHeaderBlock label="Held" sortKey="held" sort={sort} onToggle={toggleSort} />
+        <SortHeaderBlock label="Range" sortKey="range" sort={sort} onToggle={toggleSort} />
+        <SortHeaderBlock label="Price" sortKey="price" sort={sort} onToggle={toggleSort} />
+        <SortHeaderBlock label="Δ%" sortKey="delta" sort={sort} onToggle={toggleSort} />
+        <SortHeaderBlock label="Valid through" sortKey="validThrough" sort={sort} onToggle={toggleSort} />
+        <SortHeaderBlock label="Last updated" sortKey="lastUpdated" sort={sort} onToggle={toggleSort} />
       </div>
 
       <div className="divide-y">
-        {rows.map((row) => {
+        {sortedRows.map((row) => {
           const isExpanded = expanded.has(row.ticker)
           const isActive = activeTicker === row.ticker
           const range = row.record?.currentRange

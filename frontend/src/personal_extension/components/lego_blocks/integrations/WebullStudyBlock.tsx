@@ -54,7 +54,7 @@ export default function WebullStudyBlock() {
   }, [snapshot, activeTicker])
 
   const onOpenStudyFile = useCallback(
-    (filePath: string) => openFile(filePath, { mode: 'edit' }),
+    (filePath: string) => openFile(filePath, { mode: 'view' }),
     [openFile],
   )
 

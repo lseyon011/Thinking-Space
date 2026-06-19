@@ -1080,7 +1080,7 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
             anim={clawdAnim}
             skateboardLeft={16}
             skateboardTop={CLAWD.length * PX - 2}
-            hatLeft={12}
+            hatLeft={15}
             hatTop={-24}
             wandLeft={72}
             wandTop={14}

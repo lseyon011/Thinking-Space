@@ -1229,7 +1229,7 @@ function MarkdownTextDocumentRuntimeBlock({
             isExcalidrawDoc && !isEditing ? 'flex flex-col overflow-hidden' : (isExcalidrawDoc ? 'overflow-hidden' : 'overflow-y-auto'),
           )}
         >
-          <div ref={chromeContainerRef} className={cn(hideTopBarInView && 'hidden')}>
+          <div ref={chromeContainerRef} className={cn('sticky top-0 z-40 bg-card', hideTopBarInView && 'hidden')}>
             <div className={cn(
               'ts-md-header ts-doc-header flex items-start justify-between gap-3 border-b border-border/50',
               isIosPhone ? 'flex-col items-stretch px-4 py-3.5' : 'px-6 py-5',

@@ -21,6 +21,7 @@ import {
   fmtDurationMsBlock,
   mergedDurationMsBlock,
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
+import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 
 type ViewMode = 'heatmap' | 'trend' | 'totals'
 
@@ -69,6 +70,17 @@ export default function AiActivityPanelBlock() {
     return { msgs, chains, sessions }
   }, [activity.projects])
 
+  // Drive-by chains — a single user message in under 2 minutes — are real
+  // sessions but read as background noise in the day's drill view. Filter them
+  // out of the timeline + table so the day reads as actual work. They stay
+  // counted in totals, heatmap, chips, and project ranking so aggregates
+  // remain honest.
+  const isMinorChain = (c: ActivityChain): boolean => {
+    if (c.msgCount > 1) return false
+    const dur = Date.parse(c.endedIso) - Date.parse(c.startedIso)
+    return Number.isFinite(dur) && dur < 120_000
+  }
+
   const drillChains = useMemo(() => {
     if (selectedDate) {
       // Overnight-aware "day": chains starting between selectedDate 00:00 and
@@ -77,6 +89,7 @@ export default function AiActivityPanelBlock() {
       const dayStart = Date.parse(selectedDate + 'T00:00:00')
       const nextMorningCutoff = dayStart + 30 * 3_600_000
       return activity.chains.filter(c => {
+        if (isMinorChain(c)) return false
         const t = Date.parse(c.startedIso)
         return t >= dayStart && t < nextMorningCutoff
       })
@@ -85,6 +98,7 @@ export default function AiActivityPanelBlock() {
       // Compare in local-calendar day, not UTC slice — matches how the heatmap
       // buckets chains into days (see useAiActivityBlock days memo).
       return activity.chains.filter(c => {
+        if (isMinorChain(c)) return false
         const d = new Date(c.startedIso)
         const y = d.getFullYear()
         const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -94,6 +108,7 @@ export default function AiActivityPanelBlock() {
       })
     }
     return []
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activity.chains, selectedDate, selectedRange])
 
   const drillTitle = selectedDate

@@ -386,7 +386,12 @@ export function parseSession(input: ParseInput): ParsedSession | null {
   }
 }
 
-const GAP_HOURS = 4
+// Chains break when the *idle gap* (end of previous session → start of next)
+// exceeds this. Start-to-start was glueing four unrelated same-project bursts
+// across a workday into one 10-hour chain; idle-time is the real signal —
+// "I came back after an hour and kept going" reads as one chain, "I worked on
+// auth this morning and bills this afternoon" doesn't.
+const GAP_HOURS = 1
 // How close (in time) an unknown session has to be to a classified one to
 // inherit its project. Pure-chat sessions don't include any path signals in
 // the saved transcript, so they fall to <unknown> on the structural detector.
@@ -486,10 +491,16 @@ export function buildChains(sessions: ParsedSession[]): ActivityChain[] {
         maxEndMs = sEndMs
         continue
       }
+      // Idle gap = time between the chain's latest known end and the new
+      // session's start. Falls back to start-to-start when the previous
+      // session has no real end (vault markdown rows where endedIso ==
+      // startedIso) so we don't artificially over-merge.
       const prev = current[current.length - 1]
-      const hoursSince = (sStartMs - Date.parse(prev.startedIso)) / 3_600_000
+      const prevEndMs = Date.parse(prev.endedIso ?? prev.startedIso)
+      const referenceEndMs = Number.isFinite(maxEndMs) && maxEndMs > prevEndMs ? maxEndMs : prevEndMs
+      const idleHours = (sStartMs - referenceEndMs) / 3_600_000
       const overlapsOpen = sStartMs < maxEndMs
-      if (lastBreaker || hoursSince > GAP_HOURS || overlapsOpen) {
+      if (lastBreaker || idleHours > GAP_HOURS || overlapsOpen) {
         chains.push(makeChain(project, current))
         current = [s]
         maxEndMs = sEndMs
