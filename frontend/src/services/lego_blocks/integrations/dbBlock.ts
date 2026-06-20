@@ -683,9 +683,9 @@ function compareNodeDisplayOrder(a: NodeRecord, b: NodeRecord): number {
     ? b.sortOrder
     : Number.POSITIVE_INFINITY
   if (aOrder !== bOrder) return aOrder - bOrder
-  const byTitle = a.title.localeCompare(b.title)
+  const byTitle = (a.title ?? '').localeCompare(b.title ?? '')
   if (byTitle !== 0) return byTitle
-  return a.key.localeCompare(b.key)
+  return (a.key ?? '').localeCompare(b.key ?? '')
 }
 
 function extractMetadataKeys(metadata: Record<string, unknown> | undefined): string[] {

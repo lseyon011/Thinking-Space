@@ -120,7 +120,7 @@ function sortTimelineEpics(nodes: NodeRecord[]): NodeRecord[] {
   return [...nodes].sort((a, b) => {
     const byCompletion = timelineSortTimestamp(b) - timelineSortTimestamp(a)
     if (byCompletion !== 0) return byCompletion
-    return a.title.localeCompare(b.title)
+    return (a.title ?? '').localeCompare(b.title ?? '')
   })
 }
 
@@ -134,9 +134,9 @@ function sortBacklogNodes(nodes: NodeRecord[]): NodeRecord[] {
   return [...nodes].sort((a, b) => {
     const byOrder = displaySortOrder(a) - displaySortOrder(b)
     if (byOrder !== 0) return byOrder
-    const byTitle = a.title.localeCompare(b.title)
+    const byTitle = (a.title ?? '').localeCompare(b.title ?? '')
     if (byTitle !== 0) return byTitle
-    return a.key.localeCompare(b.key)
+    return (a.key ?? '').localeCompare(b.key ?? '')
   })
 }
 

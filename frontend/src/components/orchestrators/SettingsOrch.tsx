@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
-import SidebarGroupHeaderBlock from '@/components/lego_blocks/units/ui/SidebarGroupHeaderBlock'
-import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useExpandedSetBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
   dispatchSettingsSidebarChromeStateBlock,
@@ -316,14 +314,6 @@ export default function SettingsOrch({
     if (typeof window === 'undefined') return false
     return window.localStorage.getItem('settings_sidebar_collapsed') === '1'
   })
-  const {
-    isExpanded: isGroupExpanded,
-    toggle: toggleGroup,
-  } = useExpandedSetBlock(
-    'ltm-settings-expanded-sections',
-    TAB_GROUPS.map(g => g.heading),
-  )
-
   useEffect(() => {
     if (typeof window === 'undefined') return
     window.localStorage.setItem('settings_sidebar_collapsed', sidebarCollapsed ? '1' : '0')
@@ -945,53 +935,51 @@ export default function SettingsOrch({
   }
 
   return (
-    <div className={cn(
-      'h-full min-h-0 w-full',
-      sidebarCollapsed ? 'grid grid-cols-1' : 'grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]',
-    )}>
-      {!sidebarCollapsed && (
-        <aside className="flex flex-col self-stretch bg-background/40 lg:border-r lg:border-border/60 overflow-y-auto">
-          <p className="mb-2 mt-4 px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Settings
-          </p>
-          <div className="min-h-0 flex-1 py-1">
-            {TAB_GROUPS.map(group => {
-              const containsActive = group.items.some(item => item.id === activeTab)
-              const expanded = isGroupExpanded(group.heading) || containsActive
-              return (
-                <div key={group.heading}>
-                  <SidebarGroupHeaderBlock
-                    name={group.heading}
-                    expanded={expanded}
-                    onToggle={() => toggleGroup(group.heading)}
-                    badge={group.items.length}
-                  />
-                  {expanded && group.items.map(tab => {
-                    const active = activeTab === tab.id
-                    return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setActiveTab(tab.id)}
-                        className={cn(
-                          'flex w-full items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm transition-colors',
-                          active
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-foreground hover:bg-accent',
-                        )}
-                      >
-                        <span className="truncate">{tab.label}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )
-            })}
-          </div>
-        </aside>
-      )}
+    <div className="flex h-full min-h-0 w-full">
+      <aside
+        className={cn(
+          'flex flex-col self-stretch bg-background/40 overflow-y-auto overflow-x-hidden',
+          'shrink-0 transition-[width,opacity] duration-200 ease-out',
+          sidebarCollapsed
+            ? 'w-0 opacity-0 pointer-events-none border-r-0'
+            : 'w-[220px] opacity-100 lg:border-r lg:border-border/60',
+        )}
+      >
+        <p className="mb-2 mt-4 px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Settings
+        </p>
+        <nav className="min-h-0 flex-1 px-2 pb-4">
+          {TAB_GROUPS.map((group, groupIdx) => (
+            <div key={group.heading} className={groupIdx === 0 ? undefined : 'mt-5'}>
+              <p className="mb-1 px-2.5 text-[11px] font-medium text-muted-foreground/60">
+                {group.heading}
+              </p>
+              <div className="space-y-0.5">
+                {group.items.map(tab => {
+                  const active = activeTab === tab.id
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveTab(tab.id)}
+                      className={cn(
+                        'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors',
+                        active
+                          ? 'bg-foreground text-background'
+                          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                      )}
+                    >
+                      <span className="truncate">{tab.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
+      </aside>
 
-      <div className="space-y-4 min-w-0 px-4 py-4 lg:px-6 overflow-y-auto">
+      <div className="flex-1 space-y-4 min-w-0 px-4 py-4 lg:px-6 overflow-y-auto">
         <header className="mb-2">
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Settings</h1>
           <p className="text-sm text-muted-foreground">

@@ -119,7 +119,7 @@ function ViewTab() {
           actor: VIEW_ACTOR,
         })
         if (cancelled) return
-        const sorted = roots.sort((a, b) => a.title.localeCompare(b.title))
+        const sorted = roots.sort((a, b) => (a.title ?? '').localeCompare(b.title ?? ''))
         setPrograms(sorted)
 
         // Restore saved drill-down path from session
@@ -132,7 +132,7 @@ function ViewTab() {
               input: { parentKey: deepest.key },
               actor: VIEW_ACTOR,
             })
-            if (!cancelled) setCurrentNodes(children.sort((a, b) => a.title.localeCompare(b.title)))
+            if (!cancelled) setCurrentNodes(children.sort((a, b) => (a.title ?? '').localeCompare(b.title ?? '')))
           } catch {
             // If restoring fails (node deleted?), fall back to root
             if (!cancelled) {
@@ -165,7 +165,7 @@ function ViewTab() {
         input: { parentKey: node.key },
         actor: VIEW_ACTOR,
       })
-      setCurrentNodes(children.sort((a, b) => a.title.localeCompare(b.title)))
+      setCurrentNodes(children.sort((a, b) => (a.title ?? '').localeCompare(b.title ?? '')))
     } catch (err) {
       setError(errorMessage(err, 'Failed to load children'))
     } finally {
@@ -185,7 +185,7 @@ function ViewTab() {
         input: { parentKey: parent.key },
         actor: VIEW_ACTOR,
       })
-      setCurrentNodes(children.sort((a, b) => a.title.localeCompare(b.title)))
+      setCurrentNodes(children.sort((a, b) => (a.title ?? '').localeCompare(b.title ?? '')))
     } catch (err) {
       setError(errorMessage(err, 'Failed to rewind path'))
     } finally {
@@ -575,19 +575,22 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
 
   return (
     <div className="ltm-organizer-shell h-full min-h-0 w-full">
-      <div className={cn(
-        'h-full min-h-0',
-        phoneListMode || phoneDetailMode
-          ? 'flex'
-          : (sidebarCollapsed ? 'grid grid-cols-1' : 'grid grid-cols-[220px_minmax(0,1fr)]'),
-      )}>
+      <div className="flex h-full min-h-0">
         {/* On iPhone, the desktop collapse state is ignored — list/detail mode
             is the sole authority. Sidebar always shows in list mode. */}
-        {((phoneListMode || !sidebarCollapsed) && !phoneDetailMode) && (
-          <aside className={cn(
-            'ltm-organizer-shell-nav bg-background/40 px-3 py-4 overflow-y-auto',
-            phoneListMode ? 'flex-1' : 'border-r border-border/60',
-          )}>
+        {!phoneDetailMode && (
+          <aside
+            className={cn(
+              'ltm-organizer-shell-nav bg-background/40 overflow-y-auto overflow-x-hidden',
+              phoneListMode
+                ? 'flex-1 px-3 py-4 opacity-100'
+                : cn(
+                    'shrink-0 transition-[width,opacity] duration-200 ease-out',
+                    sidebarCollapsed
+                      ? 'w-0 opacity-0 pointer-events-none border-r-0 px-0 py-4'
+                      : 'w-[220px] opacity-100 border-r border-border/60 px-3 py-4',
+                  ),
+            )}>
             <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Thinking Organizer
             </p>

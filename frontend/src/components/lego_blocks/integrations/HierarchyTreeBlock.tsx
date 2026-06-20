@@ -74,7 +74,7 @@ export function defaultNodeKindLabel(type: NodeType): string {
 }
 
 function sortNodes(nodes: NodeRecord[]): NodeRecord[] {
-  return [...nodes].sort((a, b) => a.title.localeCompare(b.title))
+  return [...nodes].sort((a, b) => (a.title ?? '').localeCompare(b.title ?? ''))
 }
 
 function normalizeDroppedPath(event: React.DragEvent): string | null {
