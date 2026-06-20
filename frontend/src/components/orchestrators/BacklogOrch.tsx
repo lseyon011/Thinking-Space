@@ -3,6 +3,7 @@ import { Download, LayoutDashboard, List, Loader2, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import BacklogCanvasAnchorBlock from '@/components/lego_blocks/integrations/BacklogCanvasAnchorBlock'
+import BacklogCanvasMissionBlock from '@/components/lego_blocks/integrations/BacklogCanvasMissionBlock'
 import CanvasSurfaceOrch from '@/components/orchestrators/CanvasSurfaceOrch'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import ExecutionProgressBlock from '@/components/lego_blocks/units/ExecutionProgressBlock'
@@ -36,9 +37,7 @@ import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabi
 import {
   STORAGE_KEYS,
   getJsonStorageItem,
-  getStorageItem,
   setJsonStorageItem,
-  setStorageItem,
 } from '@/services/orchestrators/storageOrch'
 import {
   normalizeHexColorBlock,
@@ -326,24 +325,43 @@ function isTaskLikeNode(node: Pick<NodeRecord, 'type' | 'recordKind' | 'taskStat
 
 type BacklogNodeStatus = NodeStatus
 type BacklogTaskStatus = 'ready' | 'in_progress' | 'blocked' | 'done' | 'cancelled'
-type BacklogView = 'list' | 'canvas'
+export type BacklogView = 'list' | 'canvas'
 
-function parseBacklogView(raw: string | null): BacklogView {
+export function parseBacklogView(raw: string | null): BacklogView {
   return raw === 'canvas' ? 'canvas' : 'list'
 }
 
 // Bounded canvas world for the Backlog board view. Mirrors the Webull F9
-// pattern: fixed-width content with side breathing room, top padding for the
-// anchor, and a ResizeObserver-driven height that grows with content.
+// pattern: fixed-width content with side breathing room, mission text above,
+// then stacked anchor cards (execution progress + backlog list), each with a
+// ResizeObserver-driven height that grows the world.
 const BACKLOG_CANVAS_CONTENT_WIDTH = 1400
 const BACKLOG_CANVAS_SIDE_BREATHING = 400
 const BACKLOG_CANVAS_WORLD_WIDTH = BACKLOG_CANVAS_CONTENT_WIDTH + BACKLOG_CANVAS_SIDE_BREATHING * 2
 const BACKLOG_CANVAS_ANCHOR_CENTER_X = BACKLOG_CANVAS_WORLD_WIDTH / 2
-const BACKLOG_CANVAS_TOP_BREATHING = 240
+const BACKLOG_CANVAS_TOP_BREATHING = 80
+const BACKLOG_CANVAS_MISSION_HEIGHT = 160
+const BACKLOG_CANVAS_MISSION_GAP = 32
+const BACKLOG_CANVAS_CARD_GAP = 28
 const BACKLOG_CANVAS_BOTTOM_BREATHING = 320
-const BACKLOG_CANVAS_ANCHOR_INITIAL_HEIGHT = 800
+const BACKLOG_CANVAS_EXECUTION_INITIAL_HEIGHT = 280
+const BACKLOG_CANVAS_BACKLOG_INITIAL_HEIGHT = 800
 
-export default function BacklogOrch() {
+interface BacklogOrchProps {
+  view: BacklogView
+  onViewChange: (next: BacklogView) => void
+  /** Project name shown above the canvas anchor (canvas view only). */
+  canvasProjectName?: string
+  /** Mission statement shown under the project name in canvas view. */
+  canvasMissionStatement?: string
+}
+
+export default function BacklogOrch({
+  view: backlogView,
+  onViewChange: setBacklogView,
+  canvasProjectName,
+  canvasMissionStatement,
+}: BacklogOrchProps) {
   const { openFile } = useMarkdownViewer()
   const [searchParams, setSearchParams] = useSearchParams()
   const [programs, setPrograms] = useState<NodeRecord[]>([])
@@ -363,18 +381,17 @@ export default function BacklogOrch() {
   const [activeExecutionTasksLoading, setActiveExecutionTasksLoading] = useState(false)
   const [activeExecutionTasksError, setActiveExecutionTasksError] = useState<string | null>(null)
   const [programLayoutEditMode, setProgramLayoutEditMode] = useState(false)
-  const [backlogView, setBacklogViewState] = useState<BacklogView>(
-    () => parseBacklogView(getStorageItem(STORAGE_KEYS.thinkingOrganizerBacklogView)),
-  )
-  const setBacklogView = useCallback((next: BacklogView) => {
-    setBacklogViewState(next)
-    setStorageItem(STORAGE_KEYS.thinkingOrganizerBacklogView, next)
-  }, [])
   const [backlogCanvasAnchorHeight, setBacklogCanvasAnchorHeight] = useState(
-    BACKLOG_CANVAS_ANCHOR_INITIAL_HEIGHT,
+    BACKLOG_CANVAS_BACKLOG_INITIAL_HEIGHT,
   )
   const handleBacklogCanvasAnchorHeightChange = useCallback((next: number) => {
     setBacklogCanvasAnchorHeight(prev => (Math.abs(prev - next) < 1 ? prev : next))
+  }, [])
+  const [executionCanvasAnchorHeight, setExecutionCanvasAnchorHeight] = useState(
+    BACKLOG_CANVAS_EXECUTION_INITIAL_HEIGHT,
+  )
+  const handleExecutionCanvasAnchorHeightChange = useCallback((next: number) => {
+    setExecutionCanvasAnchorHeight(prev => (Math.abs(prev - next) < 1 ? prev : next))
   }, [])
   const [showRootProgramCreate, setShowRootProgramCreate] = useState(false)
   const [focusRootCreateRequestNonce, setFocusRootCreateRequestNonce] = useState(0)
@@ -1619,6 +1636,58 @@ export default function BacklogOrch() {
     setShowRootProgramCreate(false)
   }, [])
 
+  const executionProgressElement = (
+    <ExecutionProgressBlock
+      currentOperation={currentOperation}
+      tasks={activeExecutionTasks}
+      tasksLoading={activeExecutionTasksLoading}
+      tasksError={activeExecutionTasksError}
+      onSelectTask={(task) => {
+        setSelectedNode(task)
+        setMessage(`Focused task: ${task.ticket || task.title}`)
+      }}
+    />
+  )
+
+  const viewToggleElement = (
+    <div
+      className="inline-flex h-7 shrink-0 items-center rounded-md border border-border/70 bg-background/80 p-0.5 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+      role="tablist"
+      aria-label="Backlog view"
+    >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={backlogView === 'list'}
+        onClick={() => setBacklogView('list')}
+        title="List view"
+        className={`inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors ${
+          backlogView === 'list'
+            ? 'bg-foreground text-background'
+            : 'text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        <List className="h-3.5 w-3.5" />
+        List
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={backlogView === 'canvas'}
+        onClick={() => setBacklogView('canvas')}
+        title="Canvas view"
+        className={`inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors ${
+          backlogView === 'canvas'
+            ? 'bg-foreground text-background'
+            : 'text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        <LayoutDashboard className="h-3.5 w-3.5" />
+        Canvas
+      </button>
+    </div>
+  )
+
   const backlogListElement = (
     <BacklogListBlock
       programs={visiblePrograms}
@@ -1655,33 +1724,189 @@ export default function BacklogOrch() {
     />
   )
 
-  return (
-    <div className="space-y-4">
-      {(message || error) && (
-        <div className="space-y-2">
-          {message && (
-            <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
-              {message}
+  const projectModalBlock = (
+    <>
+      <div className="fixed inset-0 z-40 bg-background/50 backdrop-blur-sm" onClick={() => setProjectModalOpen(false)} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-xl border-border/80 shadow-2xl">
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>Create Project</CardTitle>
+                <CardDescription>
+                  Choose project name and destination. We will create a <code>{THINKING_ORGANIZER_DIR}</code> folder inside it.
+                </CardDescription>
+              </div>
+              <button
+                type="button"
+                className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+                onClick={() => setProjectModalOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-          )}
-          {error && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Project name</label>
+              <input
+                value={newProjectName}
+                onChange={e => setNewProjectName(e.target.value)}
+                placeholder="Data Ingestion"
+                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              />
             </div>
-          )}
+
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Project root folder</label>
+              <CascadingFolderPicker
+                defaultPath={destinationSegments}
+                onChange={handleDestinationChange}
+                requiredSuffixSegments={[THINKING_ORGANIZER_DIR]}
+                previewLabel="Organizer folder preview"
+                storageKey={PROJECT_DESTINATION_RECENTS_KEY}
+                maxRecents={12}
+              />
+            </div>
+
+            <div className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
+              Project root:{' '}
+              <span className="font-mono text-foreground">
+                {destinationBasePath.trim()
+                  ? normalizePath(destinationBasePath)
+                  : '(choose destination folder)'}
+              </span>
+            </div>
+
+            <div className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
+              Organizer storage folder:{' '}
+              <span className="font-mono text-foreground">
+                {destinationPath.trim()
+                  ? normalizePath(destinationPath)
+                  : '(choose destination folder)'}
+              </span>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setProjectModalOpen(false)} disabled={creatingProject}>
+                Cancel
+              </Button>
+              <Button onClick={() => { void createProject() }} disabled={creatingProject}>
+                {creatingProject ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create Project'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </>
+  )
+
+  const bannersBlock = (message || error) ? (
+    <div className="space-y-2">
+      {message && (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
+          {message}
         </div>
       )}
+      {error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+    </div>
+  ) : null
 
-      <ExecutionProgressBlock
-        currentOperation={currentOperation}
-        tasks={activeExecutionTasks}
-        tasksLoading={activeExecutionTasksLoading}
-        tasksError={activeExecutionTasksError}
-        onSelectTask={(task) => {
-          setSelectedNode(task)
-          setMessage(`Focused task: ${task.ticket || task.title}`)
-        }}
-      />
+  const overlaysBlock = (
+    <>
+      {selectedNode && (
+        <NodeDetailPanelBlock
+          node={selectedNode}
+          frontmatter={selectedFrontmatter}
+          onClose={() => setSelectedNode(null)}
+          onRename={renameNode}
+          onUpdateStatus={updateStatus}
+          onUpdateTaskStatus={updateTaskStatus}
+          onUpdatePriority={updatePriority}
+          onUpdateTags={updateNodeTags}
+          onUpdateProjectPresetTags={updateNodeProjectPresetTags}
+          presetTags={selectedProjectPresetTags}
+          projectTagColors={selectedProjectTagColors}
+          onUpdateNotes={updateNodeNotes}
+          onUpdateEpicCompletedAt={async (completionDate) => {
+            await updateEpicCompletionDateFor(selectedNode, completionDate)
+          }}
+          onOpenFile={() => openFile(selectedNode.filePath)}
+          onDelete={() => deleteAnyNode(selectedNode)}
+        />
+      )}
+      {projectModalOpen && projectModalBlock}
+    </>
+  )
+
+  if (backlogView === 'canvas') {
+    const canvasMissionTopY = BACKLOG_CANVAS_TOP_BREATHING
+    const canvasExecutionTopY = canvasMissionTopY + BACKLOG_CANVAS_MISSION_HEIGHT + BACKLOG_CANVAS_MISSION_GAP
+    const canvasBacklogTopY = canvasExecutionTopY + executionCanvasAnchorHeight + BACKLOG_CANVAS_CARD_GAP
+    const canvasWorldHeight = canvasBacklogTopY + backlogCanvasAnchorHeight + BACKLOG_CANVAS_BOTTOM_BREATHING
+    return (
+      <div className="relative h-full w-full">
+        <CanvasSurfaceOrch
+          surfaceId="thinking-org-board"
+          storage={thinkingOrgCanvasStorage}
+          worldWidth={BACKLOG_CANVAS_WORLD_WIDTH}
+          worldHeight={canvasWorldHeight}
+          clampMinScaleToFit
+          initialFocus={{
+            worldX: BACKLOG_CANVAS_ANCHOR_CENTER_X,
+            worldY: canvasBacklogTopY + backlogCanvasAnchorHeight / 2,
+            contentWidth: BACKLOG_CANVAS_CONTENT_WIDTH,
+            contentHeight: backlogCanvasAnchorHeight + executionCanvasAnchorHeight + BACKLOG_CANVAS_CARD_GAP,
+          }}
+          worldExtras={
+            <>
+              <BacklogCanvasMissionBlock
+                centerX={BACKLOG_CANVAS_ANCHOR_CENTER_X}
+                topY={canvasMissionTopY}
+                width={BACKLOG_CANVAS_CONTENT_WIDTH}
+                height={BACKLOG_CANVAS_MISSION_HEIGHT}
+                projectName={canvasProjectName}
+                missionStatement={canvasMissionStatement}
+              />
+              <BacklogCanvasAnchorBlock
+                centerX={BACKLOG_CANVAS_ANCHOR_CENTER_X}
+                topY={canvasExecutionTopY}
+                width={BACKLOG_CANVAS_CONTENT_WIDTH}
+                onHeightChange={handleExecutionCanvasAnchorHeightChange}
+              >
+                {executionProgressElement}
+              </BacklogCanvasAnchorBlock>
+              <BacklogCanvasAnchorBlock
+                centerX={BACKLOG_CANVAS_ANCHOR_CENTER_X}
+                topY={canvasBacklogTopY}
+                width={BACKLOG_CANVAS_CONTENT_WIDTH}
+                onHeightChange={handleBacklogCanvasAnchorHeightChange}
+              >
+                {backlogListElement}
+              </BacklogCanvasAnchorBlock>
+            </>
+          }
+        />
+        {bannersBlock && (
+          <div className="pointer-events-none absolute left-3 top-3 z-40 max-w-md space-y-2 [&>*]:pointer-events-auto">
+            {bannersBlock}
+          </div>
+        )}
+        <div className="absolute right-3 top-3 z-40">{viewToggleElement}</div>
+        {overlaysBlock}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {bannersBlock}
+
+      {executionProgressElement}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button
@@ -1728,42 +1953,7 @@ export default function BacklogOrch() {
             <Download className="mr-1 h-3.5 w-3.5" />
             Export Excalidraw
           </Button>
-          <div
-            className="inline-flex h-7 shrink-0 items-center rounded-md border border-border/70 bg-muted/30 p-0.5"
-            role="tablist"
-            aria-label="Backlog view"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={backlogView === 'list'}
-              onClick={() => setBacklogView('list')}
-              title="List view"
-              className={`inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors ${
-                backlogView === 'list'
-                  ? 'bg-foreground text-background'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <List className="h-3.5 w-3.5" />
-              List
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={backlogView === 'canvas'}
-              onClick={() => setBacklogView('canvas')}
-              title="Canvas view"
-              className={`inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors ${
-                backlogView === 'canvas'
-                  ? 'bg-foreground text-background'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <LayoutDashboard className="h-3.5 w-3.5" />
-              Canvas
-            </button>
-          </div>
+          {viewToggleElement}
         </div>
       </div>
 
@@ -1791,140 +1981,13 @@ export default function BacklogOrch() {
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading hierarchy...
         </div>
-      ) : backlogView === 'list' ? (
+      ) : (
         <ScrollableZoomSurfaceBlock controlsLabel="Table zoom">
           {backlogListElement}
         </ScrollableZoomSurfaceBlock>
-      ) : (
-        <div className="-mx-6 -mb-5 h-[calc(100vh-260px)] min-h-[600px] overflow-hidden">
-          <CanvasSurfaceOrch
-            surfaceId="thinking-org-board"
-            storage={thinkingOrgCanvasStorage}
-            worldWidth={BACKLOG_CANVAS_WORLD_WIDTH}
-            worldHeight={
-              BACKLOG_CANVAS_TOP_BREATHING
-              + backlogCanvasAnchorHeight
-              + BACKLOG_CANVAS_BOTTOM_BREATHING
-            }
-            clampMinScaleToFit
-            initialFocus={{
-              worldX: BACKLOG_CANVAS_ANCHOR_CENTER_X,
-              worldY: BACKLOG_CANVAS_TOP_BREATHING + backlogCanvasAnchorHeight / 2,
-              contentWidth: BACKLOG_CANVAS_CONTENT_WIDTH,
-              contentHeight: backlogCanvasAnchorHeight,
-            }}
-            worldExtras={
-              <BacklogCanvasAnchorBlock
-                centerX={BACKLOG_CANVAS_ANCHOR_CENTER_X}
-                topY={BACKLOG_CANVAS_TOP_BREATHING}
-                width={BACKLOG_CANVAS_CONTENT_WIDTH}
-                onHeightChange={handleBacklogCanvasAnchorHeightChange}
-              >
-                {backlogListElement}
-              </BacklogCanvasAnchorBlock>
-            }
-          />
-        </div>
       )}
 
-      {selectedNode && (
-        <NodeDetailPanelBlock
-          node={selectedNode}
-          frontmatter={selectedFrontmatter}
-          onClose={() => setSelectedNode(null)}
-          onRename={renameNode}
-          onUpdateStatus={updateStatus}
-          onUpdateTaskStatus={updateTaskStatus}
-          onUpdatePriority={updatePriority}
-          onUpdateTags={updateNodeTags}
-          onUpdateProjectPresetTags={updateNodeProjectPresetTags}
-          presetTags={selectedProjectPresetTags}
-          projectTagColors={selectedProjectTagColors}
-          onUpdateNotes={updateNodeNotes}
-          onUpdateEpicCompletedAt={async (completionDate) => {
-            await updateEpicCompletionDateFor(selectedNode, completionDate)
-          }}
-          onOpenFile={() => openFile(selectedNode.filePath)}
-          onDelete={() => deleteAnyNode(selectedNode)}
-        />
-      )}
-
-      {projectModalOpen && (
-        <>
-          <div className="fixed inset-0 z-40 bg-background/50 backdrop-blur-sm" onClick={() => setProjectModalOpen(false)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <Card className="w-full max-w-xl border-border/80 shadow-2xl">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <CardTitle>Create Project</CardTitle>
-                    <CardDescription>
-                      Choose project name and destination. We will create a <code>{THINKING_ORGANIZER_DIR}</code> folder inside it.
-                    </CardDescription>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-md p-1 text-muted-foreground hover:bg-muted"
-                    onClick={() => setProjectModalOpen(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs text-muted-foreground">Project name</label>
-                  <input
-                    value={newProjectName}
-                    onChange={e => setNewProjectName(e.target.value)}
-                    placeholder="Data Ingestion"
-                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs text-muted-foreground">Project root folder</label>
-                  <CascadingFolderPicker
-                    defaultPath={destinationSegments}
-                    onChange={handleDestinationChange}
-                    requiredSuffixSegments={[THINKING_ORGANIZER_DIR]}
-                    previewLabel="Organizer folder preview"
-                    storageKey={PROJECT_DESTINATION_RECENTS_KEY}
-                    maxRecents={12}
-                  />
-                </div>
-
-                <div className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
-                  Project root:{' '}
-                  <span className="font-mono text-foreground">
-                    {destinationBasePath.trim()
-                      ? normalizePath(destinationBasePath)
-                      : '(choose destination folder)'}
-                  </span>
-                </div>
-
-                <div className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
-                  Organizer storage folder:{' '}
-                  <span className="font-mono text-foreground">
-                    {destinationPath.trim()
-                      ? normalizePath(destinationPath)
-                      : '(choose destination folder)'}
-                  </span>
-                </div>
-
-                <div className="flex justify-end gap-2">
-                  <Button variant="secondary" onClick={() => setProjectModalOpen(false)} disabled={creatingProject}>
-                    Cancel
-                  </Button>
-                  <Button onClick={() => { void createProject() }} disabled={creatingProject}>
-                    {creatingProject ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create Project'}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </>
-      )}
+      {overlaysBlock}
     </div>
   )
 }

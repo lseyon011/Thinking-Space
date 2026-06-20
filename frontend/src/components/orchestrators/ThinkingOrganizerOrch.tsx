@@ -5,7 +5,9 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
   STORAGE_KEYS,
   getJsonStorageItem,
+  getStorageItem,
   setJsonStorageItem,
+  setStorageItem,
 } from '@/services/orchestrators/storageOrch'
 import {
   dispatchOrganizerSidebarChromeStateBlock,
@@ -19,6 +21,8 @@ import {
 import BacklogOrch, {
   ORGANIZER_OPEN_CREATE_PROJECT_EVENT,
   ORGANIZER_PROJECTS_UPDATED_EVENT,
+  parseBacklogView,
+  type BacklogView,
   type OrganizerProjectsUpdatedDetail,
 } from '@/components/orchestrators/BacklogOrch'
 import { cn } from '@/lib/utils'
@@ -88,6 +92,13 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
     const stored = window.localStorage.getItem(ORGANIZER_SIDEBAR_COLLAPSED_KEY)
     return stored === '1'
   })
+  const [backlogView, setBacklogViewState] = useState<BacklogView>(
+    () => parseBacklogView(getStorageItem(STORAGE_KEYS.thinkingOrganizerBacklogView)),
+  )
+  const setBacklogView = useCallback((next: BacklogView) => {
+    setBacklogViewState(next)
+    setStorageItem(STORAGE_KEYS.thinkingOrganizerBacklogView, next)
+  }, [])
 
   // Project context
   const [projectUiState, setProjectUiState] = useState<OrganizerUiStateOrch | null>(null)
@@ -324,11 +335,21 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
         )}
 
         <div className={cn(
-          'min-w-0 overflow-y-auto px-6 py-5',
+          'min-w-0',
           phoneListMode ? 'hidden' : 'flex-1',
+          backlogView === 'canvas'
+            ? 'flex flex-col overflow-hidden'
+            : 'overflow-y-auto px-6 py-5',
         )}>
-          {headerBlock}
-          <BacklogOrch />
+          {backlogView !== 'canvas' && headerBlock}
+          <div className={backlogView === 'canvas' ? 'min-h-0 flex-1' : ''}>
+            <BacklogOrch
+              view={backlogView}
+              onViewChange={setBacklogView}
+              canvasProjectName={projectName}
+              canvasMissionStatement={missionStatement}
+            />
+          </div>
         </div>
       </div>
     </div>
