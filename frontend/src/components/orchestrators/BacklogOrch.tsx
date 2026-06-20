@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, Loader2, X } from 'lucide-react'
+import { Download, LayoutDashboard, List, Loader2, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
+import BacklogCanvasAnchorBlock from '@/components/lego_blocks/integrations/BacklogCanvasAnchorBlock'
+import CanvasSurfaceOrch from '@/components/orchestrators/CanvasSurfaceOrch'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import ExecutionProgressBlock from '@/components/lego_blocks/units/ExecutionProgressBlock'
+import { thinkingOrgCanvasStorage } from '@/services/lego_blocks/integrations/thinkingOrgCanvasStorageBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import {
   TagDisclosureButtonBlock,
@@ -33,7 +36,9 @@ import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabi
 import {
   STORAGE_KEYS,
   getJsonStorageItem,
+  getStorageItem,
   setJsonStorageItem,
+  setStorageItem,
 } from '@/services/orchestrators/storageOrch'
 import {
   normalizeHexColorBlock,
@@ -321,6 +326,22 @@ function isTaskLikeNode(node: Pick<NodeRecord, 'type' | 'recordKind' | 'taskStat
 
 type BacklogNodeStatus = NodeStatus
 type BacklogTaskStatus = 'ready' | 'in_progress' | 'blocked' | 'done' | 'cancelled'
+type BacklogView = 'list' | 'canvas'
+
+function parseBacklogView(raw: string | null): BacklogView {
+  return raw === 'canvas' ? 'canvas' : 'list'
+}
+
+// Bounded canvas world for the Backlog board view. Mirrors the Webull F9
+// pattern: fixed-width content with side breathing room, top padding for the
+// anchor, and a ResizeObserver-driven height that grows with content.
+const BACKLOG_CANVAS_CONTENT_WIDTH = 1400
+const BACKLOG_CANVAS_SIDE_BREATHING = 400
+const BACKLOG_CANVAS_WORLD_WIDTH = BACKLOG_CANVAS_CONTENT_WIDTH + BACKLOG_CANVAS_SIDE_BREATHING * 2
+const BACKLOG_CANVAS_ANCHOR_CENTER_X = BACKLOG_CANVAS_WORLD_WIDTH / 2
+const BACKLOG_CANVAS_TOP_BREATHING = 240
+const BACKLOG_CANVAS_BOTTOM_BREATHING = 320
+const BACKLOG_CANVAS_ANCHOR_INITIAL_HEIGHT = 800
 
 export default function BacklogOrch() {
   const { openFile } = useMarkdownViewer()
@@ -342,6 +363,19 @@ export default function BacklogOrch() {
   const [activeExecutionTasksLoading, setActiveExecutionTasksLoading] = useState(false)
   const [activeExecutionTasksError, setActiveExecutionTasksError] = useState<string | null>(null)
   const [programLayoutEditMode, setProgramLayoutEditMode] = useState(false)
+  const [backlogView, setBacklogViewState] = useState<BacklogView>(
+    () => parseBacklogView(getStorageItem(STORAGE_KEYS.thinkingOrganizerBacklogView)),
+  )
+  const setBacklogView = useCallback((next: BacklogView) => {
+    setBacklogViewState(next)
+    setStorageItem(STORAGE_KEYS.thinkingOrganizerBacklogView, next)
+  }, [])
+  const [backlogCanvasAnchorHeight, setBacklogCanvasAnchorHeight] = useState(
+    BACKLOG_CANVAS_ANCHOR_INITIAL_HEIGHT,
+  )
+  const handleBacklogCanvasAnchorHeightChange = useCallback((next: number) => {
+    setBacklogCanvasAnchorHeight(prev => (Math.abs(prev - next) < 1 ? prev : next))
+  }, [])
   const [showRootProgramCreate, setShowRootProgramCreate] = useState(false)
   const [focusRootCreateRequestNonce, setFocusRootCreateRequestNonce] = useState(0)
   const [completedEpicTimeline, setCompletedEpicTimeline] = useState<NodeRecord[]>([])
@@ -1585,6 +1619,42 @@ export default function BacklogOrch() {
     setShowRootProgramCreate(false)
   }, [])
 
+  const backlogListElement = (
+    <BacklogListBlock
+      programs={visiblePrograms}
+      loadEpics={handleLoadEpics}
+      loadChildren={handleLoadChildren}
+      treeRevision={treeRevision}
+      externallyUpdatedNode={lastExternallyUpdatedNode}
+      selectedNodeId={selectedNode?.uuid ?? null}
+      onSelectNode={handleSelectNode}
+      onCreateChild={createChildNode}
+      onDropNodeToNode={dropNodeToNode}
+      onReorderSiblings={reorderSiblingRows}
+      projectPresetTagsByRoot={projectPresetTagsByRoot}
+      projectTagColorsByRoot={projectTagColorsByRoot}
+      programGroups={activeProjectProgramGroups}
+      programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
+      persistenceKey={activeProjectRoot || 'all-projects'}
+      onCreateProgramGroup={createActiveProjectProgramGroup}
+      onDeleteProgramGroup={deleteActiveProjectProgramGroup}
+      onToggleProgramGroupCollapsed={toggleActiveProjectProgramGroupCollapsed}
+      onAssignProgramToGroup={handleAssignProgramToGroup}
+      showProgramLayoutToggle={false}
+      programLayoutEditMode={programLayoutEditMode}
+      onProgramLayoutEditModeChange={setProgramLayoutEditMode}
+      focusRootCreateRequestNonce={focusRootCreateRequestNonce}
+      showRootInlineCreate={showRootProgramCreate}
+      onRootInlineCreateCreated={handleRootInlineCreateCreated}
+      onUpdateNodeStatus={updateNodeStatusFor}
+      onUpdateTaskStatus={updateTaskStatusFor}
+      onUpdateNodeNotes={updateNodeNotesFor}
+      completedEpics={completedEpicTimeline}
+      programTitleByKey={programTitleByKey}
+      onSelectEpic={setSelectedNode}
+    />
+  )
+
   return (
     <div className="space-y-4">
       {(message || error) && (
@@ -1658,6 +1728,42 @@ export default function BacklogOrch() {
             <Download className="mr-1 h-3.5 w-3.5" />
             Export Excalidraw
           </Button>
+          <div
+            className="inline-flex h-7 shrink-0 items-center rounded-md border border-border/70 bg-muted/30 p-0.5"
+            role="tablist"
+            aria-label="Backlog view"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={backlogView === 'list'}
+              onClick={() => setBacklogView('list')}
+              title="List view"
+              className={`inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors ${
+                backlogView === 'list'
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <List className="h-3.5 w-3.5" />
+              List
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={backlogView === 'canvas'}
+              onClick={() => setBacklogView('canvas')}
+              title="Canvas view"
+              className={`inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors ${
+                backlogView === 'canvas'
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <LayoutDashboard className="h-3.5 w-3.5" />
+              Canvas
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1685,42 +1791,40 @@ export default function BacklogOrch() {
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading hierarchy...
         </div>
-      ) : (
+      ) : backlogView === 'list' ? (
         <ScrollableZoomSurfaceBlock controlsLabel="Table zoom">
-            <BacklogListBlock
-              programs={visiblePrograms}
-              loadEpics={handleLoadEpics}
-              loadChildren={handleLoadChildren}
-              treeRevision={treeRevision}
-              externallyUpdatedNode={lastExternallyUpdatedNode}
-              selectedNodeId={selectedNode?.uuid ?? null}
-              onSelectNode={handleSelectNode}
-              onCreateChild={createChildNode}
-              onDropNodeToNode={dropNodeToNode}
-              onReorderSiblings={reorderSiblingRows}
-              projectPresetTagsByRoot={projectPresetTagsByRoot}
-              projectTagColorsByRoot={projectTagColorsByRoot}
-              programGroups={activeProjectProgramGroups}
-              programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
-              persistenceKey={activeProjectRoot || 'all-projects'}
-              onCreateProgramGroup={createActiveProjectProgramGroup}
-              onDeleteProgramGroup={deleteActiveProjectProgramGroup}
-              onToggleProgramGroupCollapsed={toggleActiveProjectProgramGroupCollapsed}
-              onAssignProgramToGroup={handleAssignProgramToGroup}
-              showProgramLayoutToggle={false}
-              programLayoutEditMode={programLayoutEditMode}
-              onProgramLayoutEditModeChange={setProgramLayoutEditMode}
-              focusRootCreateRequestNonce={focusRootCreateRequestNonce}
-              showRootInlineCreate={showRootProgramCreate}
-              onRootInlineCreateCreated={handleRootInlineCreateCreated}
-              onUpdateNodeStatus={updateNodeStatusFor}
-              onUpdateTaskStatus={updateTaskStatusFor}
-              onUpdateNodeNotes={updateNodeNotesFor}
-              completedEpics={completedEpicTimeline}
-              programTitleByKey={programTitleByKey}
-              onSelectEpic={setSelectedNode}
-            />
+          {backlogListElement}
         </ScrollableZoomSurfaceBlock>
+      ) : (
+        <div className="-mx-6 -mb-5 h-[calc(100vh-260px)] min-h-[600px] overflow-hidden">
+          <CanvasSurfaceOrch
+            surfaceId="thinking-org-board"
+            storage={thinkingOrgCanvasStorage}
+            worldWidth={BACKLOG_CANVAS_WORLD_WIDTH}
+            worldHeight={
+              BACKLOG_CANVAS_TOP_BREATHING
+              + backlogCanvasAnchorHeight
+              + BACKLOG_CANVAS_BOTTOM_BREATHING
+            }
+            clampMinScaleToFit
+            initialFocus={{
+              worldX: BACKLOG_CANVAS_ANCHOR_CENTER_X,
+              worldY: BACKLOG_CANVAS_TOP_BREATHING + backlogCanvasAnchorHeight / 2,
+              contentWidth: BACKLOG_CANVAS_CONTENT_WIDTH,
+              contentHeight: backlogCanvasAnchorHeight,
+            }}
+            worldExtras={
+              <BacklogCanvasAnchorBlock
+                centerX={BACKLOG_CANVAS_ANCHOR_CENTER_X}
+                topY={BACKLOG_CANVAS_TOP_BREATHING}
+                width={BACKLOG_CANVAS_CONTENT_WIDTH}
+                onHeightChange={handleBacklogCanvasAnchorHeightChange}
+              >
+                {backlogListElement}
+              </BacklogCanvasAnchorBlock>
+            }
+          />
+        </div>
       )}
 
       {selectedNode && (
