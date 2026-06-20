@@ -28,12 +28,11 @@ import { readWebullCredentialStatusBlock } from '../../services/lego_blocks/unit
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
 
-type WebullSubtabId = 'overall' | 'memory' | 'study'
+type WebullSubtabId = 'overall' | 'study'
 
 const Webull_SUBTABS: Array<{ id: WebullSubtabId; label: string }> = [
   { id: 'study', label: 'Study' },
   { id: 'overall', label: 'Overall Positions' },
-  { id: 'memory', label: 'Pin Board' },
 ]
 
 const WEBULL_AUTO_REFRESH_STALENESS_MS = 60_000

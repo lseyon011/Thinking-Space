@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BookOpen, Building2, Pin, Wallet, type LucideIcon } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { BookOpen, Building2, Wallet, type LucideIcon } from 'lucide-react'
 import {
   dispatchWebullSidebarChromeStateBlock,
   Webull_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
@@ -9,7 +9,6 @@ import FileSelectionViewerBlock from '@/components/lego_blocks/integrations/File
 import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
-import PinBoardBlock from '@/components/lego_blocks/integrations/PinBoardBlock'
 import WebullStudyBlock from './WebullStudyBlock'
 import WebullF9CanvasOrch from '@/personal_extension/components/orchestrators/WebullF9CanvasOrch'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
@@ -28,12 +27,9 @@ import {
 } from '@/services/lego_blocks/units/topChromeNativeBridgeBlock'
 import { getAllNodes, type NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services/orchestrators/storageOrch'
-import { readOrganizerUiStateOrch, writeOrganizerUiStateOrch } from '@/services/orchestrators/organizerUiStateOrch'
 import {
-  createPinBoardPanelBlock,
   normalizeOrganizerUiStateBlock,
   type OrganizerProgramGroupEntryBlock,
-  type PinBoardPanelBlock,
 } from '@/services/lego_blocks/integrations/organizerUiStateBlock'
 import { normalizeTagBlock, normalizeTagListBlock, splitTagInputBlock, tagsEqualBlock } from '@/services/lego_blocks/units/tagBlock'
 import { NODE_STATUSES, type NodePriority, type NodeStatus, type YAMLCommentEntry, type YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
@@ -50,7 +46,7 @@ import type {
   WebullPositionSummaryBlock,
 } from '@/personal_extension/services/orchestrators/webullExecutionOrch'
 
-type WebullSubtabIdBlock = 'overall' | 'memory' | 'study'
+type WebullSubtabIdBlock = 'overall' | 'study'
 
 interface WebullSubtabBlock {
   id: WebullSubtabIdBlock
@@ -59,7 +55,6 @@ interface WebullSubtabBlock {
 
 const WEBULL_SUBTAB_ICONS: Record<WebullSubtabIdBlock, LucideIcon> = {
   overall: Wallet,
-  memory: Pin,
   study: BookOpen,
 }
 
@@ -159,7 +154,6 @@ const Webull_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK = 'webull_workspace_side_tabs
 const Webull_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK = 'min-w-[1360px]'
 type WebullProjectPresetTagsByRootBlock = Record<string, string[]>
 type WebullProjectProgramGroupsByRootBlock = Record<string, OrganizerProgramGroupEntryBlock[]>
-type WebullProjectMemoryFilesByRootBlock = Record<string, { panels: PinBoardPanelBlock[] }>
 type WebullOverallRememberByProjectRootBlock = Record<string, string>
 
 function makeProgramGroupIdBlock(): string {
@@ -1127,11 +1121,9 @@ export default function WebullWorkspaceBlock({
   const [projectProgramGroupsByRoot, setProjectProgramGroupsByRoot] = useState<WebullProjectProgramGroupsByRootBlock>(
     () => getJsonStorageItem<WebullProjectProgramGroupsByRootBlock>(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, {}),
   )
-  const [projectMemoryFilesByRoot, setProjectMemoryFilesByRoot] = useState<WebullProjectMemoryFilesByRootBlock>({})
   const [overallRememberByProjectRoot, setOverallRememberByProjectRoot] = useState<WebullOverallRememberByProjectRootBlock>(
     () => getJsonStorageItem<WebullOverallRememberByProjectRootBlock>(STORAGE_KEYS.webullOverallRememberByProjectRoot, {}),
   )
-  const projectMemoryHydratedRootsRef = useRef<Set<string>>(new Set())
   const [linkOptions, setLinkOptions] = useState<WebullLinkOptionBlock[]>([])
   const [pdfOptions, setPdfOptions] = useState<WebullPdfOptionBlock[]>([])
   const [companyFilePickerOpen, setCompanyFilePickerOpen] = useState(false)
@@ -1759,72 +1751,6 @@ export default function WebullWorkspaceBlock({
     return { [projectRootKey]: allTags }
   }, [availableProjectPresetTags, backlogTableModel.nodeByUuid, projectRootKey])
 
-  useEffect(() => {
-    const normalizedRoot = normalizeRelativePathBlock(projectRootKey)
-    if (!normalizedRoot) return
-    if (projectMemoryHydratedRootsRef.current.has(normalizedRoot)) return
-
-    let cancelled = false
-    void (async () => {
-      try {
-        const state = await readOrganizerUiStateOrch(normalizedRoot)
-        if (cancelled) return
-        const panels = state?.pinBoardPanels ?? []
-        setProjectMemoryFilesByRoot((prev) => {
-          const next: WebullProjectMemoryFilesByRootBlock = { ...prev }
-          if (panels.length > 0) next[normalizedRoot] = { panels }
-          else delete next[normalizedRoot]
-          return next
-        })
-      } catch {
-        // Ignore read failures and fallback to empty selections for this root.
-      } finally {
-        projectMemoryHydratedRootsRef.current.add(normalizedRoot)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [projectRootKey])
-
-  const activeProjectPanels = useMemo(() => {
-    const normalizedRoot = normalizeRelativePathBlock(projectRootKey)
-    if (!normalizedRoot) return []
-    return projectMemoryFilesByRoot[normalizedRoot]?.panels ?? []
-  }, [projectMemoryFilesByRoot, projectRootKey])
-
-  const updateActiveProjectPanels = useCallback(async (nextPanels: PinBoardPanelBlock[]) => {
-    const normalizedRoot = normalizeRelativePathBlock(projectRootKey)
-    if (!normalizedRoot) return
-
-    setProjectMemoryFilesByRoot((prev) => {
-      const draft: WebullProjectMemoryFilesByRootBlock = { ...prev }
-      if (nextPanels.length > 0) draft[normalizedRoot] = { panels: nextPanels }
-      else delete draft[normalizedRoot]
-      return draft
-    })
-
-    try {
-      const stateFromVault = await readOrganizerUiStateOrch(normalizedRoot)
-      const baseState = normalizeOrganizerUiStateBlock(stateFromVault ?? {})
-      const persisted = await writeOrganizerUiStateOrch(normalizedRoot, {
-        ...baseState,
-        updatedAt: new Date().toISOString(),
-        pinBoardPanels: nextPanels,
-      })
-      const persistedPanels = persisted.pinBoardPanels ?? []
-      setProjectMemoryFilesByRoot((prev) => {
-        const draft: WebullProjectMemoryFilesByRootBlock = { ...prev }
-        if (persistedPanels.length > 0) draft[normalizedRoot] = { panels: persistedPanels }
-        else delete draft[normalizedRoot]
-        return draft
-      })
-      projectMemoryHydratedRootsRef.current.add(normalizedRoot)
-    } catch {
-      // Leave local view state as-is even if persistence fails.
-    }
-  }, [projectMemoryFilesByRoot, projectRootKey])
-
   const updateActiveOverallRememberPath = useCallback((path: string | null) => {
     const normalizedRoot = normalizeRelativePathBlock(projectRootKey)
     if (!normalizedRoot) return
@@ -1866,19 +1792,16 @@ export default function WebullWorkspaceBlock({
   const selectedProjectRememberLabel = selectedProjectRememberPath
     ? (linkOptionsByPath.get(selectedProjectRememberPath)?.label ?? linkLabelFromPathBlock(selectedProjectRememberPath))
     : ''
-  const memoryTabActive = !showCompanyView && activeSubtabId === 'memory'
   const overallTabActive = !showCompanyView && activeSubtabId === 'overall'
   const studyTabActive = !showCompanyView && activeSubtabId === 'study'
   const workspaceTitle = showCompanyView && selectedCompany
     ? `${selectedCompany.companyTicker} Positions`
-    : (studyTabActive ? 'Study' : (memoryTabActive ? 'Pin Board' : 'Overall Positions'))
+    : (studyTabActive ? 'Study' : 'Overall Positions')
   const workspaceDescription = showCompanyView && selectedCompany
     ? 'Company-specific position rows and overlay edits.'
     : (studyTabActive
       ? 'Company study records (watchlist + held) with live prices.'
-      : (memoryTabActive
-        ? 'Project-level pinned notes files.'
-        : 'Canonical overall positions from Webull sync.'))
+      : 'Canonical overall positions from Webull sync.')
 
   return (
     <div className="ltm-webull-shell flex h-full min-h-0 w-full">
@@ -2040,26 +1963,6 @@ export default function WebullWorkspaceBlock({
 
           {studyTabActive && !isElectron && (
             <WebullStudyBlock />
-          )}
-
-          {memoryTabActive && (
-            <PinBoardBlock
-              markdownOptions={linkOptions}
-              panels={activeProjectPanels}
-              onUpdatePanel={(id, updates) => {
-                const next = activeProjectPanels.map(p => p.id === id ? { ...p, ...updates } : p)
-                void updateActiveProjectPanels(next)
-              }}
-              onAddPanel={(type) => {
-                const newPanel = createPinBoardPanelBlock(type, activeProjectPanels)
-                void updateActiveProjectPanels([...activeProjectPanels, newPanel])
-              }}
-              onRemovePanel={(id) => {
-                void updateActiveProjectPanels(activeProjectPanels.filter(p => p.id !== id))
-              }}
-              onOpenFile={onOpenNodeFile}
-              disabled={workspaceBusy}
-            />
           )}
 
           {loading && (
