@@ -341,7 +341,7 @@ export default function PersonalToolsOrch() {
                 placeholder={bootstrapLoading ? 'Loading markdown files…' : 'Search vault files by name or path'}
                 emptyMessage="No markdown files match this search."
                 inputWrapperClassName="relative"
-                inputClassName="h-10 border border-slate-200 bg-white pl-10 pr-4 text-sm shadow-sm focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                inputClassName="h-10 border border-slate-200 bg-white pl-10 pr-4 text-sm shadow-sm focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-border dark:bg-background dark:text-foreground"
                 dropdownClassName="z-50 mt-1"
                 listClassName="max-h-64 overflow-auto p-1"
               />
@@ -471,7 +471,7 @@ export default function PersonalToolsOrch() {
               <p className="text-sm text-muted-foreground">No markdown headings were found in the selected file.</p>
             )}
             {headings.length > 0 && (
-              <div className="overflow-x-auto rounded-md border border-border/60 bg-white">
+              <div className="overflow-x-auto rounded-md border border-border/60 bg-white dark:bg-background">
                 <table className="w-full min-w-[840px] table-fixed text-left text-sm">
                   <thead className="border-b border-border/50 bg-muted/20 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
                     <tr>
@@ -507,7 +507,7 @@ export default function PersonalToolsOrch() {
                               onValueChange={(value) => handleAssignmentChange(heading.id, value)}
                               disabled={dropdownValues.length === 0}
                             >
-                              <SelectTrigger className={assigned ? 'border-emerald-300 bg-white shadow-sm focus:ring-emerald-500' : 'border-slate-200 bg-white shadow-sm'}>
+                              <SelectTrigger className={assigned ? 'border-emerald-300 bg-white shadow-sm focus:ring-emerald-500 dark:bg-background' : 'border-slate-200 bg-white shadow-sm dark:border-border dark:bg-background'}>
                                 <SelectValue placeholder={dropdownValues.length === 0 ? 'Add values first' : 'Choose a value'} />
                               </SelectTrigger>
                               <SelectContent>

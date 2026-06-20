@@ -129,7 +129,7 @@ export function BacklogProgramRowBlock({
       onDrop={onDrop}
       className={cn(
         'cursor-pointer overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
-        'border-b border-border/70 bg-card px-3 py-2 transition-colors hover:bg-zinc-50',
+        'border-b border-border/70 bg-card px-3 py-2 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60',
         selected && 'bg-accent/40',
         dragOver && 'ring-2 ring-primary/40 bg-primary/5',
         dragOver && dragOverEdge === 'before' && 'shadow-[inset_0_2px_0_rgba(59,130,246,0.7)]',
