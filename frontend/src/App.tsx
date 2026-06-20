@@ -2158,6 +2158,11 @@ function App() {
         }
         return
       }
+      if (withMeta && event.key.toLowerCase() === 'r') {
+        event.preventDefault()
+        handleGlobalRefresh()
+        return
+      }
       // Cmd/Ctrl + <digit> jumps to a side-rail tab: 1..N follow rail order
       // (primary nav + Tools), 0 is Home. Driven by the same nav source as the
       // rail so they stay in sync. Works cleanly in Electron; on web the
@@ -2183,7 +2188,7 @@ function App() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeWorkspaceTab, compactNav, handleCloseWorkspaceTab, handleCreateWorkspaceTab, navigate, primaryNavItems])
+  }, [activeWorkspaceTab, compactNav, handleCloseWorkspaceTab, handleCreateWorkspaceTab, handleGlobalRefresh, navigate, primaryNavItems])
 
   useNativeTopChromeBlock({
     enabled: useNativeTopChrome && !needsVaultSetup,
@@ -2910,7 +2915,7 @@ function App() {
                     phoneMode ? 'w-8 px-0' : 'px-3'
                   }`}
                   aria-label="Refresh current workspace"
-                  title="Refresh current workspace"
+                  title={`Refresh current workspace (${isMacPlatform ? '⌘R' : 'Ctrl+R'})`}
                 >
                   {refreshRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                   {!phoneMode && <span className="hidden lg:inline">Refresh</span>}

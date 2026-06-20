@@ -187,6 +187,10 @@ export function setManualOpenSourceAiCredentialsBlock(input: {
   const baseUrl = sanitizeValue(input.baseUrl) || DEFAULT_OPENSOURCE_AI_BASE_URL
   const apiKey = sanitizeValue(input.apiKey) || undefined
   const model = sanitizeValue(input.model) || undefined
+  // Mirror the base URL into main-process persistence so setupContentSecurityPolicy
+  // can include this origin in connect-src at the next app launch. localStorage
+  // remains the UI's source of truth; this is a write-through side effect.
+  void window.electronAPI?.opensourceAiBaseUrlSetPersisted?.(baseUrl)
   return writeAiManualCredentialsBlock({
     ...current,
     opensourceAi: {

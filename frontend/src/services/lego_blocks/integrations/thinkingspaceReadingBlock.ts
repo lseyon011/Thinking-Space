@@ -79,6 +79,76 @@ export async function appendReadingSession(
   return _writeChain
 }
 
+/** Same-source same-doc rows that overlap the edited window with this much
+ *  grace on each side get absorbed. Matches the goodnotes harvester's grace
+ *  so editing feels consistent across reading sources. */
+const ABSORB_GRACE_MS = 5 * 60_000
+
+/**
+ * Edit a single reading-md / reading-draw row in place: update startMs/endMs/
+ * pages, mark `userEdited`, then delete every other row of the same source +
+ * same filePath whose window overlaps the edited window (with 5-min grace on
+ * each side). Serialized through the same write chain as appendReadingSession
+ * so the dwell-emit-on-unmount path can't clobber an in-flight edit.
+ */
+export async function editThinkingspaceReadingRecord(
+  fs: VaultFS,
+  input: { key: string; startMs: number; endMs: number; pages: number },
+): Promise<{ ok: boolean; absorbed: number; total: number }> {
+  let result: { ok: boolean; absorbed: number; total: number } = {
+    ok: false, absorbed: 0, total: 0,
+  }
+  _writeChain = _writeChain.then(async () => {
+    try {
+      if (!(await fs.exists(READING_LOG_PATH))) return
+      const existingText = await fs.read(READING_LOG_PATH)
+      const records = parseLogText(existingText)
+      const idx = records.findIndex(r => r.key === input.key)
+      if (idx === -1) return
+      const target = records[idx]
+      if (
+        !Number.isFinite(input.startMs)
+        || !Number.isFinite(input.endMs)
+        || input.endMs - input.startMs < 60_000
+      ) return
+
+      const updated: ThinkingspaceReadingRecord = {
+        ...target,
+        startMs: input.startMs,
+        endMs: input.endMs,
+        pages: Math.max(1, Math.round(input.pages) || 1),
+        userEdited: true,
+      }
+
+      const absorbStart = updated.startMs - ABSORB_GRACE_MS
+      const absorbEnd = updated.endMs + ABSORB_GRACE_MS
+      const survivors: ThinkingspaceReadingRecord[] = []
+      let absorbed = 0
+      for (let i = 0; i < records.length; i += 1) {
+        if (i === idx) continue
+        const r = records[i]
+        const sameDoc = r.source === updated.source && r.filePath === updated.filePath
+        const overlaps = sameDoc
+          && r.startMs <= absorbEnd
+          && r.endMs >= absorbStart
+        if (overlaps) { absorbed += 1; continue }
+        survivors.push(r)
+      }
+      survivors.splice(Math.min(idx, survivors.length), 0, updated)
+
+      const next = survivors.length === 0
+        ? ''
+        : survivors.map(r => JSON.stringify(r)).join('\n') + '\n'
+      await fs.write(READING_LOG_PATH, next)
+      result = { ok: true, absorbed, total: survivors.length }
+    } catch {
+      // Best-effort; leave result with ok:false.
+    }
+  })
+  await _writeChain
+  return result
+}
+
 /**
  * Load in-app reading/drawing sessions from the durable vault log. Returns []
  * when nothing has been logged yet.

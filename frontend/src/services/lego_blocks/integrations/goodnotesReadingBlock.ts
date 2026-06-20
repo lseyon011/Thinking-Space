@@ -31,6 +31,15 @@ interface GoodnotesApi {
     needsFullDiskAccess?: boolean
   }>
   goodnotesReadLog?: (vaultRoot: string) => Promise<GoodnotesReadingRecord[]>
+  goodnotesEditRecord?: (
+    vaultRoot: string,
+    input: { key: string; startMs: number; endMs: number; pages: number },
+  ) => Promise<{
+    ok: boolean
+    reason?: 'not-found' | 'invalid' | 'failed'
+    absorbed: number
+    total: number
+  }>
 }
 
 /** Sticky flag: last harvest reported macOS denied Knowledge DB access. The
@@ -96,5 +105,27 @@ export async function loadGoodnotesReadingSessions(fs: VaultFS): Promise<ParsedS
     return parseGoodnotesReadingLog(parseLogText(text), parseOpts)
   } catch {
     return []
+  }
+}
+
+/**
+ * Edit a single goodnotes record's start/end/pages. Routes through the
+ * electron IPC so the main process is the sole writer for the goodnotes
+ * JSONL — sidesteps races with the harvester. Returns null on platforms
+ * without the IPC (iPhone/web), where editing isn't supported yet (those
+ * surfaces don't run the harvester anyway, so there's nothing to clean up).
+ */
+export async function editGoodnotesReadingRecord(
+  input: { key: string; startMs: number; endMs: number; pages: number },
+): Promise<{ ok: boolean; absorbed: number; total: number } | null> {
+  const api = getApi()
+  if (!api?.goodnotesEditRecord) return null
+  const vaultRoot = getStoredVaultRoot() ?? ''
+  if (!vaultRoot) return null
+  try {
+    const result = await api.goodnotesEditRecord(vaultRoot, input)
+    return { ok: result.ok, absorbed: result.absorbed, total: result.total }
+  } catch {
+    return { ok: false, absorbed: 0, total: 0 }
   }
 }

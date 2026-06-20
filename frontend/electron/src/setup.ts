@@ -908,8 +908,28 @@ export function setupWebviewSessionPermissions(): void {
   });
 }
 
-// Set a CSP up for our application based on the custom scheme
-export function setupContentSecurityPolicy(customScheme: string): void {
+// Derive a CSP source expression (scheme://host:port) from a URL string.
+// Returns null if the URL is unparseable or uses an unsupported scheme.
+function opensourceAiBaseUrlSourceExprBlock(baseUrl: string | null): string | null {
+  if (!baseUrl) return null
+  try {
+    const u = new URL(baseUrl)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
+    const port = u.port ? `:${u.port}` : ''
+    return `${u.protocol}//${u.hostname}${port}`
+  } catch {
+    return null
+  }
+}
+
+// Set a CSP up for our application based on the custom scheme.
+// `opensourceAiBaseUrl` (when present) gets its origin appended to connect-src
+// so the renderer's fetch() to user-configured local AI servers is permitted.
+export function setupContentSecurityPolicy(
+  customScheme: string,
+  opensourceAiBaseUrl: string | null = null,
+): void {
+  const userOrigin = opensourceAiBaseUrlSourceExprBlock(opensourceAiBaseUrl)
   const aiConnectSrc = [
     'https://api.anthropic.com',
     'https://*.openai.azure.com',
@@ -917,13 +937,19 @@ export function setupContentSecurityPolicy(customScheme: string): void {
     'https://api.openai.com',
     'https://auth.openai.com',
     'https://chatgpt.com',
-    // Allow local OpenAI-compatible runtimes (LM Studio, etc.) from Electron renderer.
-    'http://localhost:1234',
-    'http://127.0.0.1:1234',
-    'http://192.168.4.23:1234',
-    'ws://localhost:1234',
-    'ws://127.0.0.1:1234',
-    'ws://192.168.4.23:1234',
+    // Loopback fallback: covers any local OpenAI-compatible runtime (LM Studio,
+    // rapid-mlx, ollama, llama.cpp, ...) running on this machine without
+    // requiring the user to save settings first. Loopback isn't a useful
+    // exfil target so the wildcard is safe here.
+    'http://localhost:*',
+    'http://127.0.0.1:*',
+    'ws://localhost:*',
+    'ws://127.0.0.1:*',
+    // User-configured Open Source AI base URL, persisted via the main-process
+    // store and read at startup. Handles LAN IPs / hostnames the loopback rule
+    // can't cover. Requires app restart when the URL changes — the CSP is set
+    // once per session.
+    ...(userOrigin ? [userOrigin] : []),
   ].join(' ');
   const frameSrc = [
     `${customScheme}://*`,

@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
-import { Maximize2 } from 'lucide-react'
+import { Maximize2, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isReadingSource, type ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
@@ -10,6 +10,10 @@ import {
   sumTokens,
 } from '@/services/lego_blocks/units/aiPriceTableBlock'
 import ChainTranscriptSlideOverBlock from '@/components/lego_blocks/integrations/ChainTranscriptSlideOverBlock'
+import ReadingSessionEditModalBlock, {
+  isReadingSessionEditableBlock,
+} from '@/components/lego_blocks/integrations/ReadingSessionEditModalBlock'
+import { useChainTitleBlock } from '@/components/lego_blocks/hooks/units/useChainTitleBlock'
 
 interface AiActivityDayTableBlockProps {
   /** Title shown above the table (e.g. day or range label). */
@@ -25,6 +29,9 @@ interface AiActivityDayTableBlockProps {
    *  them so the user can see when the table crosses midnight (overnight tail). */
   anchorDateIso?: string | null
   onBack?: () => void
+  /** Called when a reading-session edit lands. Caller should refresh AI
+   *  activity so the new times propagate to the timeline, totals, heatmap, etc. */
+  onReadingEdited?: () => void
 }
 
 function fmtTime(iso: string): string {
@@ -119,9 +126,11 @@ export default function AiActivityDayTableBlock({
   highlightProject = null,
   anchorDateIso = null,
   onBack,
+  onReadingEdited,
 }: AiActivityDayTableBlockProps) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [transcriptChain, setTranscriptChain] = useState<ActivityChain | null>(null)
+  const [editingChain, setEditingChain] = useState<ActivityChain | null>(null)
 
   // Sort by start time, oldest first for chronological reading.
   const sorted = useMemo(
@@ -266,17 +275,7 @@ export default function AiActivityDayTableBlock({
                     <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-foreground/80">
                       {c.msgCount}
                     </td>
-                    <td className="max-w-0 truncate px-3 py-1.5 text-foreground/70" title={c.topic}>
-                      {isReconstructed && (
-                        <span
-                          className="mr-1.5 rounded bg-amber-500/15 px-1 py-px text-[9px] uppercase tracking-[0.08em] text-amber-500/90"
-                          title="Rebuilt from the prompt history log — the original transcript was deleted by Claude Code's cleanup. Times and prompt counts are real; tokens and assistant turns are gone."
-                        >
-                          rebuilt
-                        </span>
-                      )}
-                      {c.topic}
-                    </td>
+                    <ChainTopicCellBlock chain={c} isReconstructed={isReconstructed} />
                   </tr>
                   {isExpanded && (
                     <tr className="border-b border-border/20 bg-foreground/[0.02]">
@@ -290,41 +289,7 @@ export default function AiActivityDayTableBlock({
                         // content has to wrap inside the available space.
                         style={{ width: 0, maxWidth: 0 }}
                       >
-                        {/* Full topic — the row cell truncates with ellipsis, this is
-                            the unabridged version. Multi-session chains list every
-                            session's opening topic so the user can see how a long
-                            chain shifted over time. */}
-                        <div className="space-y-1">
-                          <div className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70">
-                            Topic
-                          </div>
-                          <div
-                            className="whitespace-pre-wrap text-foreground/85"
-                            style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
-                          >
-                            {c.topic}
-                          </div>
-                          {c.sessions.length > 1 && (() => {
-                            const seen = new Set<string>([c.topic])
-                            const extras = c.sessions
-                              .map(s => s.topic)
-                              .filter(t => t && !seen.has(t) && (seen.add(t), true))
-                            if (extras.length === 0) return null
-                            return (
-                              <ul className="mt-1 space-y-0.5 pl-3 text-muted-foreground/80">
-                                {extras.map((t, i) => (
-                                  <li
-                                    key={i}
-                                    className="whitespace-pre-wrap"
-                                    style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
-                                  >
-                                    · {t}
-                                  </li>
-                                ))}
-                              </ul>
-                            )
-                          })()}
-                        </div>
+                        <ChainTopicExpandedBlock chain={c} />
                         {hasTokens ? (
                           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
                             <span>
@@ -397,6 +362,22 @@ export default function AiActivityDayTableBlock({
                           </button>
                         </div>
                         )}
+                        {isReading && isReadingSessionEditableBlock(c.source) && (
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation()
+                              setEditingChain(c)
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-card/60 px-2.5 py-1 text-[11px] text-foreground/80 transition-colors hover:border-border/80 hover:bg-card/80 hover:text-foreground"
+                            title="Adjust this session's start, end, or pages. Other nearby records of the same document will be absorbed."
+                          >
+                            <Pencil className="h-3 w-3" />
+                            Edit session
+                          </button>
+                        </div>
+                        )}
                       </td>
                     </tr>
                   )}
@@ -434,6 +415,100 @@ export default function AiActivityDayTableBlock({
         </div>
       )}
       <ChainTranscriptSlideOverBlock chain={transcriptChain} onClose={() => setTranscriptChain(null)} />
+      {editingChain && (
+        <ReadingSessionEditModalBlock
+          chain={editingChain}
+          dayChains={sorted}
+          onClose={() => setEditingChain(null)}
+          onSaved={() => {
+            setEditingChain(null)
+            onReadingEdited?.()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Topic cell — shows the AI-generated short title when a local LLM is
+// running and a title has been cached; otherwise renders chain.topic (first
+// user message). Subtle styling distinguishes the two so it's clear when the
+// label is summarized vs raw.
+function ChainTopicCellBlock({
+  chain,
+  isReconstructed,
+}: {
+  chain: ActivityChain
+  isReconstructed: boolean
+}) {
+  const { display, isAi, loading } = useChainTitleBlock(chain)
+  return (
+    <td
+      className="max-w-0 truncate px-3 py-1.5 text-foreground/70"
+      title={isAi ? `${display}\n\n(original: ${chain.topic})` : chain.topic}
+    >
+      {isReconstructed && (
+        <span
+          className="mr-1.5 rounded bg-amber-500/15 px-1 py-px text-[9px] uppercase tracking-[0.08em] text-amber-500/90"
+          title="Rebuilt from the prompt history log — the original transcript was deleted by Claude Code's cleanup. Times and prompt counts are real; tokens and assistant turns are gone."
+        >
+          rebuilt
+        </span>
+      )}
+      <span className={cn(isAi && 'text-foreground/85')}>{display}</span>
+      {loading && (
+        <span className="ml-1 text-[9px] uppercase tracking-[0.08em] text-muted-foreground/60">
+          …
+        </span>
+      )}
+    </td>
+  )
+}
+
+// Expanded-row topic block — shows the AI title (if any) as the headline
+// label, with the original first-message snippet below for context. Keeps
+// the previous multi-session topic list intact.
+function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
+  const { display, isAi } = useChainTitleBlock(chain)
+  const seen = new Set<string>([chain.topic])
+  const extras =
+    chain.sessions.length > 1
+      ? chain.sessions
+          .map(s => s.topic)
+          .filter(t => t && !seen.has(t) && (seen.add(t), true))
+      : []
+  return (
+    <div className="space-y-1">
+      <div className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70">
+        Topic
+      </div>
+      <div
+        className="whitespace-pre-wrap text-foreground/85"
+        style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+      >
+        {display}
+      </div>
+      {isAi && (
+        <div
+          className="whitespace-pre-wrap pl-3 text-[10px] text-muted-foreground/70"
+          style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+        >
+          opened with: {chain.topic}
+        </div>
+      )}
+      {extras.length > 0 && (
+        <ul className="mt-1 space-y-0.5 pl-3 text-muted-foreground/80">
+          {extras.map((t, i) => (
+            <li
+              key={i}
+              className="whitespace-pre-wrap"
+              style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+            >
+              · {t}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

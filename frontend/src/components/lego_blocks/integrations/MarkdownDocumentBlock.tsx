@@ -290,6 +290,9 @@ function MarkdownTextDocumentRuntimeBlock({
   const isExcalidrawDoc = isExcalidrawPathBlock(path)
   const chromeContainerRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
+  const lastScrollTopRef = useRef(0)
+  const [isHeaderHidden, setIsHeaderHidden] = useState(false)
+  const [headerHeight, setHeaderHeight] = useState(0)
   const headerRenameInputRef = useRef<HTMLInputElement | null>(null)
   const manualSaveFeedbackTimeoutRef = useRef<number | null>(null)
   const excalidrawSceneRef = useRef<ParsedExcalidrawScene | null>(null)
@@ -470,6 +473,23 @@ function MarkdownTextDocumentRuntimeBlock({
     && !/\.excalidraw\.md$/i.test(path)
   const effectiveTopBarHidden = topBarHiddenProp !== undefined ? topBarHiddenProp : topBarHiddenInViewMode
   const hideTopBarInView = !isEditing && effectiveTopBarHidden
+
+  useEffect(() => {
+    const el = chromeContainerRef.current
+    if (!el) {
+      setHeaderHeight(0)
+      return
+    }
+    if (hideTopBarInView) {
+      setHeaderHeight(0)
+      return
+    }
+    const measure = () => setHeaderHeight(el.offsetHeight)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [hideTopBarInView, showMeta, isEditing, isIosPhone])
   const hasTextChanges = isEditing && content !== null && draft !== content
   const hasChanges = isExcalidrawDoc ? (isEditing && hasExcalidrawChanges) : hasTextChanges
 
@@ -1224,12 +1244,29 @@ function MarkdownTextDocumentRuntimeBlock({
       <div className="relative min-h-0 flex-1">
         <div
           ref={contentScrollRef}
+          onScroll={(e) => {
+            const top = (e.target as HTMLDivElement).scrollTop
+            const prev = lastScrollTopRef.current
+            const delta = top - prev
+            if (Math.abs(delta) < 4) return
+            if (top <= 4) setIsHeaderHidden(false)
+            else if (delta > 0) setIsHeaderHidden(true)
+            else setIsHeaderHidden(false)
+            lastScrollTopRef.current = top
+          }}
           className={cn(
             'relative h-full min-h-0 p-0',
             isExcalidrawDoc && !isEditing ? 'flex flex-col overflow-hidden' : (isExcalidrawDoc ? 'overflow-hidden' : 'overflow-y-auto'),
           )}
         >
-          <div ref={chromeContainerRef} className={cn('sticky top-0 z-40 bg-card', hideTopBarInView && 'hidden')}>
+          <div
+            ref={chromeContainerRef}
+            className={cn(
+              'sticky top-0 z-40 bg-card transition-transform duration-200 ease-out',
+              isHeaderHidden && '-translate-y-full',
+              hideTopBarInView && 'hidden',
+            )}
+          >
             <div className={cn(
               'ts-md-header ts-doc-header flex items-start justify-between gap-3 border-b border-border/50',
               isIosPhone ? 'flex-col items-stretch px-4 py-3.5' : 'px-6 py-5',
@@ -1547,7 +1584,10 @@ function MarkdownTextDocumentRuntimeBlock({
 
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && (
             <div>
-              <div className="sticky top-0 z-30 flex flex-wrap items-center gap-1 border-b border-border/20 bg-background p-2">
+              <div
+                className="sticky z-30 flex flex-wrap items-center gap-1 border-b border-border/20 bg-background p-2"
+                style={{ top: isHeaderHidden ? 0 : headerHeight }}
+              >
                 <MarkdownTableOfContentsBlock
                   content={displayContent}
                   currentLine={0}

@@ -41,6 +41,10 @@ import {
   writePersistedVaultRootBlock,
 } from './lego_blocks/vaultRootPersistenceBlock';
 import {
+  readPersistedOpensourceAiBaseUrlBlock,
+  writePersistedOpensourceAiBaseUrlBlock,
+} from './lego_blocks/opensourceAiBaseUrlPersistenceBlock';
+import {
   startVaultWatcherBlock,
   stopVaultWatcherBlock,
   stopAllVaultWatcherBlocks,
@@ -96,6 +100,8 @@ import {
 import {
   harvestGoodnotesReadingBlock,
   readGoodnotesReadingLogBlock,
+  editGoodnotesReadingRecordBlock,
+  type GoodnotesEditInput,
 } from './lego_blocks/goodnotesReadingBlock';
 import { harvestAppleScreenTimeBlock } from './lego_blocks/appleScreenTimeDumperBlock';
 import { startHeartbeatBlock, stopHeartbeatBlock } from './lego_blocks/heartbeatBlock';
@@ -352,7 +358,10 @@ if (hasSingleInstanceLock) {
         console.warn('[gpu-cache] cleanup failed:', err);
       }
       // Security - Set Content-Security-Policy based on whether or not we are in dev mode.
-      setupContentSecurityPolicy(myCapacitorApp.getCustomURLScheme());
+      setupContentSecurityPolicy(
+        myCapacitorApp.getCustomURLScheme(),
+        readPersistedOpensourceAiBaseUrlBlock(),
+      );
       setupWebviewSessionPermissions();
       // Phase 5: If no source path is configured yet and bundled source exists,
       // extract it to a writable userData location for regular users.
@@ -1621,6 +1630,17 @@ ipcMain.handle('vault:root:setPersisted', async (_event, vaultRoot: string | nul
   writePersistedVaultRootBlock(vaultRoot);
 });
 
+ipcMain.on('opensource-ai:base-url:getPersistedSync', (event) => {
+  event.returnValue = readPersistedOpensourceAiBaseUrlBlock();
+});
+
+ipcMain.handle('opensource-ai:base-url:setPersisted', async (_event, baseUrl: string | null) => {
+  if (baseUrl !== null && typeof baseUrl !== 'string') {
+    throw new Error('Persisted Open Source AI base URL must be a string or null.');
+  }
+  writePersistedOpensourceAiBaseUrlBlock(baseUrl);
+});
+
 ipcMain.handle('vault:watch:start', async (_event, vaultRoot: string) => {
   if (typeof vaultRoot !== 'string' || !vaultRoot.trim()) {
     return { ok: false, error: 'vault:watch:start requires a vault root string.' };
@@ -1943,6 +1963,13 @@ ipcMain.handle('goodnotes:harvest', async (_event, vaultRoot: string) => {
 ipcMain.handle('goodnotes:readLog', async (_event, vaultRoot: string) => {
   return readGoodnotesReadingLogBlock(vaultRoot);
 });
+ipcMain.handle('goodnotes:editRecord', async (
+  _event,
+  vaultRoot: string,
+  input: GoodnotesEditInput,
+) => {
+  return editGoodnotesReadingRecordBlock(vaultRoot, input);
+});
 
 // -- Mkdir --
 ipcMain.handle('vault:mkdir', async (_event, vaultRoot: string, relPath: string) => {
@@ -2194,3 +2221,30 @@ ipcMain.handle(
     return chatCodexWithOauthBlock(messages, accessToken, accountId, model);
   },
 );
+
+// =====================================================================
+// IPC Handlers — AI session-title sidecar cache
+// =====================================================================
+
+import {
+  readSessionTitleBlock,
+  writeSessionTitleBlock,
+  type SessionTitleRecord,
+} from './lego_blocks/sessionTitleStoreBlock';
+
+ipcMain.handle('session-titles:get', async (_event, key: string) => {
+  if (typeof key !== 'string' || !key.trim()) return null;
+  return readSessionTitleBlock(key.trim());
+});
+
+ipcMain.handle('session-titles:set', async (_event, record: SessionTitleRecord) => {
+  if (!record || typeof record.sessionId !== 'string' || typeof record.title !== 'string') {
+    return { ok: false, error: 'invalid record' };
+  }
+  try {
+    await writeSessionTitleBlock(record);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});

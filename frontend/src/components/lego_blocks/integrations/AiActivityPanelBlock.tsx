@@ -390,6 +390,7 @@ export default function AiActivityPanelBlock() {
             summary={drillSummary}
             highlightProject={activeProject}
             onBack={clearDrill}
+            onReadingEdited={activity.refresh}
           />
         </div>
       )}

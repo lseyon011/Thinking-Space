@@ -16,27 +16,34 @@ export interface GoodnotesReadingRecord {
   documentId: string
   /** Raw fts.sqlite document name. May be '' when fts had no row. */
   title: string
+  /** Wall-clock session start, epoch ms. */
+  startMs: number
   /** Wall-clock session end, epoch ms. */
-  timeMs: number
-  /** Session open-duration in ms. */
-  durationMs: number
-  numPage: number
+  endMs: number
+  /** Pages associated with the session (count from fts.sqlite at harvest time,
+   *  or a user-supplied value once the row has been edited). Minimum 1. */
+  pages: number
+  /** 'screentime' for Mac focus sessions; 'phantom-ipad' for sessions inferred
+   *  from an fts last_modified jump with no Mac focus session. */
   documentType: string
   harvestedAt: number
   /** The document's latest fts.sqlite `last_modified`, epoch ms — i.e. the last
-   *  time an annotation/edit touched the file. Absent on older records. Used by
-   *  the annotation gate to tell real reading (file was marked up) from an idle
-   *  document-open session (no edit, so this stays before the session day). */
+   *  time an annotation/edit touched the file. Used by the annotation gate to
+   *  tell real reading (file was marked up) from an idle document-open session. */
   docModifiedMs?: number
+  /** Set by the edit IPC when the user has hand-tuned this row. Parsers skip
+   *  the duration cap for user-edited rows so a real 4h reading session can
+   *  exceed the screentime-only sanity cap. */
+  userEdited?: boolean
 }
 
 // Reading-session durations from GoodNotes' "document open" telemetry can be
 // huge (a book left open for hours). Cap the per-session duration so one
 // forgotten-open document doesn't dwarf a week of real reading on the charts.
 // 90 min is the upper bound of a plausible single uninterrupted reading session
-// — GoodNotes already splits on app close/sleep, so anything longer is almost
-// always "opened the doc and walked away" (which we saw with a 6.2h session
-// that, before this cap, swamped every chart).
+// — Screen Time already splits on app close/sleep, so anything longer is almost
+// always "opened the doc and walked away". User-edited rows skip this cap (the
+// user has explicitly vouched for the duration).
 const MAX_SESSION_MS = 90 * 60_000 // 90 min
 
 // Publisher keywords used to gate the trailing "- <Publisher>" strip. Gating on
@@ -88,9 +95,11 @@ export function cleanReadingTitleBlock(rawTitle: string, documentId: string): st
 /** Convert one durable reading record into a ParsedSession. Returns null for
  *  records with no usable timestamp. */
 export function readingRecordToSession(rec: GoodnotesReadingRecord): ParsedSession | null {
-  const startMs = rec.timeMs - Math.max(0, rec.durationMs)
+  const startMs = rec.startMs
   if (!Number.isFinite(startMs) || startMs <= 0) return null
-  const dur = Math.min(Math.max(0, rec.durationMs), MAX_SESSION_MS)
+  const rawDur = Math.max(0, rec.endMs - startMs)
+  // User-edited rows reflect the user's vouched-for duration — skip the cap.
+  const dur = rec.userEdited ? rawDur : Math.min(rawDur, MAX_SESSION_MS)
   const title = cleanReadingTitleBlock(rec.title, rec.documentId)
   const startedIso = new Date(startMs).toISOString()
   const endedIso = new Date(startMs + dur).toISOString()
@@ -105,7 +114,7 @@ export function readingRecordToSession(rec: GoodnotesReadingRecord): ParsedSessi
     project: title,
     // Pages read is the natural unit for reading; feeds the "msgs" stat + the
     // project ranking. Min 1 so a zero-page record still counts as a session.
-    userMsgCount: Math.max(1, Math.round(rec.numPage) || 1),
+    userMsgCount: Math.max(1, Math.round(rec.pages) || 1),
     topic: title,
     hadClear: false,
     mtime: rec.harvestedAt || Math.floor(startMs / 1000),
@@ -128,45 +137,32 @@ export function parseGoodnotesReadingLog(
   records: GoodnotesReadingRecord[],
   opts: ParseGoodnotesOptions = {},
 ): ParsedSession[] {
-  // A real, duration-bearing session (from the Amplitude queue) always wins over
-  // a duration-less fts "touch" for the same document on the same day. This is
-  // the authoritative guard against double-counting a day we have an accurate
-  // session for, regardless of the order the two sources landed in the log.
-  const dayOf = (rec: GoodnotesReadingRecord) =>
-    `${rec.documentId}|${dayKeyMs(rec.timeMs)}`
-  const coveredByRealSession = new Set<string>()
-  for (const rec of records) {
-    if (rec.durationMs > 0) coveredByRealSession.add(dayOf(rec))
-  }
-
-  // Annotation gate: the document's last-modified day. Two sources, strongest
-  // first — the record's own `docModifiedMs` stamp (harvester-supplied), else the
-  // newest fts "touch" (duration 0) day seen for that doc in the log. A touch IS
-  // an annotation, so its day is a known modification day.
+  // Annotation gate: the document's last-modified day, sourced from
+  // `docModifiedMs` (harvester-supplied on every row). A duration-bearing
+  // session dated strictly after the doc's last annotation never marked up the
+  // file, so it's an open-and-idle session, not reading. Phantom-iPad rows are
+  // inferred *from* an annotation event — they're always considered annotated.
+  // User-edited rows also bypass the gate (the user has vouched for them).
   const lastModifiedDay = new Map<string, string>()
   if (opts.annotationGate) {
-    const bump = (docId: string, day: string) => {
-      const prev = lastModifiedDay.get(docId)
-      if (!prev || day > prev) lastModifiedDay.set(docId, day)
-    }
     for (const rec of records) {
       if (typeof rec.docModifiedMs === 'number' && rec.docModifiedMs > 0) {
-        bump(rec.documentId, dayKeyMs(rec.docModifiedMs))
+        const day = dayKeyMs(rec.docModifiedMs)
+        const prev = lastModifiedDay.get(rec.documentId)
+        if (!prev || day > prev) lastModifiedDay.set(rec.documentId, day)
       }
-      if (rec.durationMs <= 0) bump(rec.documentId, dayKeyMs(rec.timeMs))
     }
   }
 
   const out: ParsedSession[] = []
   for (const rec of records) {
-    if (rec.durationMs <= 0 && coveredByRealSession.has(dayOf(rec))) continue
-    // Idle-open filter: a duration-bearing session dated strictly after the
-    // document's last annotation never marked up the file, so it's an
-    // open-and-idle session, not reading. Keep when we have no modification
-    // signal at all (can't gate on missing data).
-    if (opts.annotationGate && rec.durationMs > 0) {
+    if (
+      opts.annotationGate
+      && rec.documentType !== 'phantom-ipad'
+      && !rec.userEdited
+    ) {
       const modDay = lastModifiedDay.get(rec.documentId)
-      if (modDay && dayKeyMs(rec.timeMs) > modDay) continue
+      if (modDay && dayKeyMs(rec.endMs) > modDay) continue
     }
     const s = readingRecordToSession(rec)
     if (s) out.push(s)

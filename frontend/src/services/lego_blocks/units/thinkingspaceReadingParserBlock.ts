@@ -29,10 +29,17 @@ export interface ThinkingspaceReadingRecord {
   endMs: number
   /** When the record was appended, epoch ms. */
   recordedAt: number
+  /** Optional user-supplied "pages read" / "blocks read" count. Defaults to 1
+   *  when missing. Surfaced as the row's msg count in the panel. */
+  pages?: number
+  /** Set when the user has hand-tuned this row via the edit modal. Parser
+   *  skips the duration cap for user-edited rows. */
+  userEdited?: boolean
 }
 
 // Cap a single sitting so a document left open all day (timer never stopped)
 // doesn't dwarf real activity on the charts — same rationale as GoodNotes.
+// User-edited rows bypass the cap (the user has explicitly vouched).
 const MAX_SESSION_MS = 4 * 3_600_000 // 4h
 
 /** Derive a readable title from a vault path, stripping the markdown/excalidraw
@@ -47,7 +54,8 @@ export function readingTitleFromPathBlock(filePath: string): string {
 export function readingRecordToSession(rec: ThinkingspaceReadingRecord): ParsedSession | null {
   const startMs = rec.startMs
   if (!Number.isFinite(startMs) || startMs <= 0) return null
-  const dur = Math.min(Math.max(0, rec.endMs - startMs), MAX_SESSION_MS)
+  const rawDur = Math.max(0, rec.endMs - startMs)
+  const dur = rec.userEdited ? rawDur : Math.min(rawDur, MAX_SESSION_MS)
   const title = (rec.title ?? '').trim() || readingTitleFromPathBlock(rec.filePath)
   return {
     path: `${rec.source}/${rec.filePath}#${startMs}`,
@@ -55,7 +63,7 @@ export function readingRecordToSession(rec: ThinkingspaceReadingRecord): ParsedS
     startedIso: new Date(startMs).toISOString(),
     endedIso: new Date(startMs + dur).toISOString(),
     project: title,
-    userMsgCount: 1,
+    userMsgCount: Math.max(1, Math.round(rec.pages ?? 0) || 1),
     topic: title,
     hadClear: false,
     mtime: Math.floor((rec.recordedAt || startMs) / 1000),

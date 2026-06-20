@@ -4,6 +4,7 @@ import type { CanvasWebWidgetTile } from '@/components/lego_blocks/hooks/shared/
 import { useCanvasThemeBlock } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
 import type { WebSiteBlock } from '@/services/lego_blocks/units/webSiteBlock'
 import { readWebSitePreferencesOrch } from '@/services/orchestrators/webSiteOrch'
+import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 
 interface Props {
   tile: CanvasWebWidgetTile
@@ -30,6 +31,17 @@ export default function CanvasWebWidgetBlock({ tile, suspended, reloadKey }: Pro
     const id = setInterval(() => setAutoTick(t => t + 1), tile.refreshSec * 1000)
     return () => clearInterval(id)
   }, [tile.refreshSec, suspended])
+
+  // Global ⌘R / top-bar refresh also reloads this widget — but only if the
+  // user already opted in to auto-refresh on this tile. Tiles without a
+  // refresh cadence are assumed to hold state worth preserving (auth, forms,
+  // scroll), so we leave them alone.
+  useEffect(() => {
+    if (!tile.refreshSec) return
+    return addGlobalSyncRefreshListenerBlock(() => {
+      setAutoTick(t => t + 1)
+    })
+  }, [tile.refreshSec])
 
   useEffect(() => {
     let cancelled = false

@@ -34,6 +34,21 @@ function readPersistedVaultRootSyncBlock(): string | null {
   }
 }
 
+function normalizePersistedOpensourceAiBaseUrlBlock(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : null
+}
+
+function readPersistedOpensourceAiBaseUrlSyncBlock(): string | null {
+  try {
+    const value = ipcRenderer.sendSync('opensource-ai:base-url:getPersistedSync')
+    return normalizePersistedOpensourceAiBaseUrlBlock(value)
+  } catch {
+    return null
+  }
+}
+
 function normalizeWindowContextBlock(value: unknown): ElectronWindowContextBlock {
   if (!value || typeof value !== 'object') return DEFAULT_WINDOW_CONTEXT_BLOCK
   const record = value as Record<string, unknown>
@@ -65,6 +80,7 @@ function readWindowContextSyncBlock(): ElectronWindowContextBlock {
 // Cache the sync IPC result so we only make ONE synchronous round-trip at preload time.
 // Subsequent calls return the cached value without blocking the renderer.
 let persistedVaultRootBlock: string | null = readPersistedVaultRootSyncBlock()
+let persistedOpensourceAiBaseUrlBlock: string | null = readPersistedOpensourceAiBaseUrlSyncBlock()
 let windowContextBlock: ElectronWindowContextBlock = readWindowContextSyncBlock()
 
 function getPersistedVaultRootBlock(): string | null {
@@ -353,6 +369,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     persistedVaultRootBlock = normalized
   },
 
+  // Open Source AI base URL — persisted in main process so it can be applied
+  // to the CSP `connect-src` directive at app startup. localStorage in the
+  // renderer remains the UI's source of truth; this is a write-through mirror.
+  opensourceAiBaseUrlGetPersisted: () => persistedOpensourceAiBaseUrlBlock,
+  opensourceAiBaseUrlSetPersisted: async (baseUrl: string | null) => {
+    const normalized = normalizePersistedOpensourceAiBaseUrlBlock(baseUrl)
+    await ipcRenderer.invoke('opensource-ai:base-url:setPersisted', normalized)
+    persistedOpensourceAiBaseUrlBlock = normalized
+  },
+
   // Filesystem operations (all take vaultRoot as first arg)
   read: (vaultRoot: string, relPath: string) =>
     ipcRenderer.invoke('vault:read', vaultRoot, relPath),
@@ -425,12 +451,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     key: string
     documentId: string
     title: string
-    timeMs: number
-    durationMs: number
-    numPage: number
+    startMs: number
+    endMs: number
+    pages: number
     documentType: string
     harvestedAt: number
+    docModifiedMs?: number
+    userEdited?: boolean
   }>> => ipcRenderer.invoke('goodnotes:readLog', vaultRoot),
+  goodnotesEditRecord: (
+    vaultRoot: string,
+    input: { key: string; startMs: number; endMs: number; pages: number },
+  ): Promise<{
+    ok: boolean
+    reason?: 'not-found' | 'invalid' | 'failed'
+    absorbed: number
+    total: number
+  }> => ipcRenderer.invoke('goodnotes:editRecord', vaultRoot, input),
 
   // Git (desktop-only)
   git: (vaultRoot: string, args: string[]) =>
@@ -551,4 +588,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     expires: number | null
     status: string | null
   } | null) => ipcRenderer.invoke('webull:token:set', payload),
+
+  // AI-generated session titles — sidecar JSON under ~/.thinking-space/session-titles/.
+  sessionTitleGet: (key: string): Promise<{
+    sessionId: string
+    title: string
+    model: string
+    generatedAt: string
+    sourceMtimeMs: number
+    msgCount: number
+  } | null> => ipcRenderer.invoke('session-titles:get', key),
+  sessionTitleSet: (record: {
+    sessionId: string
+    title: string
+    model: string
+    generatedAt: string
+    sourceMtimeMs: number
+    msgCount: number
+  }): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('session-titles:set', record),
 });
