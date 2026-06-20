@@ -7,12 +7,13 @@
 // every visible day-table row. Sending transcript text to a cloud model would
 // be wasteful and privacy-leaky.
 
-import {
-  DEFAULT_OPENSOURCE_AI_BASE_URL,
-  getManualOpenSourceAiCredentialsBlock,
-} from '@/services/lego_blocks/integrations/aiCredentialStoreBlock'
+import { getManualOpenSourceAiCredentialsBlock } from '@/services/lego_blocks/integrations/aiCredentialStoreBlock'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { readNativeAiSession } from '@/services/lego_blocks/integrations/nativeAiSessionsBlock'
+import {
+  discoverOpenSourceAiModelBlock,
+  normalizeOpenSourceAiBaseUrlBlock,
+} from '@/services/lego_blocks/units/openSourceAiModelDiscoveryBlock'
 
 interface LocalLlmConfig {
   baseUrl: string
@@ -20,26 +21,15 @@ interface LocalLlmConfig {
   model?: string
 }
 
-function normalizeBaseUrl(raw: string | null | undefined): string {
-  const trimmed = typeof raw === 'string' ? raw.trim() : ''
-  const normalized = (trimmed || DEFAULT_OPENSOURCE_AI_BASE_URL).replace(/\/+$/, '')
-  return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
-}
-
 function resolveConfig(): LocalLlmConfig | null {
   const manual = getManualOpenSourceAiCredentialsBlock()
   if (!manual?.baseUrl) return null
   return {
-    baseUrl: normalizeBaseUrl(manual.baseUrl),
+    baseUrl: normalizeOpenSourceAiBaseUrlBlock(manual.baseUrl),
     apiKey: manual.apiKey?.trim() || undefined,
     model: manual.model?.trim() || undefined,
   }
 }
-
-// 5s probe so a dead server doesn't stall the UI; the result is cached for
-// the lifetime of the page so we don't probe per row.
-let availabilityCache: { at: number; ok: boolean; model: string | null } | null = null
-const AVAILABILITY_TTL_MS = 60_000
 
 export interface LocalLlmAvailability {
   available: boolean
@@ -50,39 +40,9 @@ export interface LocalLlmAvailability {
 export async function probeLocalLlmAvailabilityBlock(force = false): Promise<LocalLlmAvailability> {
   const config = resolveConfig()
   if (!config) return { available: false, baseUrl: null, modelHint: null }
-
-  if (!force && availabilityCache && Date.now() - availabilityCache.at < AVAILABILITY_TTL_MS) {
-    return {
-      available: availabilityCache.ok,
-      baseUrl: config.baseUrl,
-      modelHint: availabilityCache.model,
-    }
-  }
-
-  const url = `${config.baseUrl}/models`
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 5000)
-  try {
-    const res = await fetch(url, {
-      headers: config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {},
-      signal: controller.signal,
-    })
-    if (!res.ok) {
-      availabilityCache = { at: Date.now(), ok: false, model: null }
-      return { available: false, baseUrl: config.baseUrl, modelHint: null }
-    }
-    const body = (await res.json()) as { data?: Array<{ id?: string }> }
-    const first = body?.data?.find(m => typeof m.id === 'string')?.id ?? null
-    const modelHint = config.model || first
-    const ok = !!modelHint
-    availabilityCache = { at: Date.now(), ok, model: modelHint }
-    return { available: ok, baseUrl: config.baseUrl, modelHint }
-  } catch {
-    availabilityCache = { at: Date.now(), ok: false, model: null }
-    return { available: false, baseUrl: config.baseUrl, modelHint: null }
-  } finally {
-    clearTimeout(timeout)
-  }
+  const discovered = await discoverOpenSourceAiModelBlock(config.baseUrl, config.apiKey, force)
+  const modelHint = config.model || discovered
+  return { available: !!modelHint, baseUrl: config.baseUrl, modelHint }
 }
 
 // What we feed the model:
@@ -315,8 +275,15 @@ function stripWrappers(s: string): string {
 
 function sanitizeTitle(raw: string, projectName: string): string | null {
   let v = raw.trim()
-  // Drop <think>…</think> blocks from thinking-mode models.
+  // Drop <think>…</think> blocks from thinking-mode models. Handle the
+  // truncated case too (Qwen3 reasoning can blow the token budget mid-thought
+  // and never emit the closing tag) — strip from <think> to end of string.
   v = v.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+  v = v.replace(/<think>[\s\S]*$/i, '').trim()
+  // Some reasoning models emit a plain-text "thinking process" preamble
+  // instead of (or after) the <think> tag. Drop a leading preamble line if
+  // it looks like one and the rest of the output looks like a thought dump.
+  v = v.replace(/^[^\n]*\b(thinking process|let me think|let's think|here'?s (?:my|the) (?:thinking|reasoning))\b[^\n]*\n+/i, '').trim()
   // Drop parenthetical meta-commentary (whole-line "(Note: …)" blocks).
   v = v.replace(/^\s*\((?:note|comment)[^)]*\)\s*$/gim, '').trim()
 
@@ -376,7 +343,7 @@ export interface GeneratedTitle {
 // Bump this when the prompt or sanitizer changes meaningfully so previously
 // cached titles (generated with the old prompt) get regenerated. The hook
 // reads `record.promptVersion` and treats anything below this as stale.
-export const TITLE_PROMPT_VERSION = 6
+export const TITLE_PROMPT_VERSION = 7
 
 export async function generateChainTitleBlock(chain: ActivityChain): Promise<GeneratedTitle | null> {
   const availability = await probeLocalLlmAvailabilityBlock()
@@ -411,13 +378,20 @@ export async function generateChainTitleBlock(chain: ActivityChain): Promise<Gen
         ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
       },
       body: JSON.stringify({
+        // Disable Qwen3-style reasoning explicitly — titles are one-liners,
+        // and burning the token budget on a hidden thought leaks the raw
+        // reasoning when the response is truncated before </think>.
         model,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user },
         ],
-        max_tokens: 120,
+        max_tokens: 400,
         temperature: 0.2,
+        extra_body: {
+          chat_template_kwargs: { enable_thinking: false },
+          enable_thinking: false,
+        },
       }),
       signal: controller.signal,
     })

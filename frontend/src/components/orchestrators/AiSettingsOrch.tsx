@@ -434,7 +434,7 @@ export default function AiSettingsOrch() {
                   value={openSourceAiModelInput}
                   onChange={(event) => setOpenSourceAiModelInput(event.target.value)}
                   className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  placeholder="Model id (e.g. qwen/qwen3.5-35b-a3b)"
+                  placeholder="Model id (optional — auto-detected from server)"
                 />
               </div>
             </div>

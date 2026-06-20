@@ -15,12 +15,15 @@ import {
 } from '@/services/lego_blocks/integrations/aiProviderBlock'
 import { resolveAiThinkingForProviderBlock } from '@/services/lego_blocks/integrations/aiSettingsBlock'
 import {
-  DEFAULT_OPENSOURCE_AI_BASE_URL,
   getManualAzureCredentialsBlock,
   getManualClaudeApiKeyBlock,
   getManualOpenSourceAiCredentialsBlock,
   getManualOpenAiApiKeyBlock,
 } from '@/services/lego_blocks/integrations/aiCredentialStoreBlock'
+import {
+  discoverOpenSourceAiModelBlock,
+  normalizeOpenSourceAiBaseUrlBlock,
+} from '@/services/lego_blocks/units/openSourceAiModelDiscoveryBlock'
 import {
   getNativeClaudeOauthCredentialsBlock,
   getNativeCodexOauthCredentialsBlock,
@@ -66,12 +69,6 @@ export interface ChatSendOptions {
 function resolveRequestedModel(provider: AiProvider, requested?: string): string {
   const normalized = typeof requested === 'string' ? requested.trim() : ''
   return normalized || defaultProviderModelBlock(provider)
-}
-
-function normalizeOpenSourceAiBaseUrlBlock(raw: string | null | undefined): string {
-  const trimmed = typeof raw === 'string' ? raw.trim() : ''
-  const normalized = (trimmed || DEFAULT_OPENSOURCE_AI_BASE_URL).replace(/\/+$/, '')
-  return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
 }
 
 function resolveOpenSourceAiConfigBlock(options?: ChatSendOptions): {
@@ -214,12 +211,16 @@ async function sendOpenSourceAiDirectBlock(
 ): Promise<ChatResponse> {
   const { default: OpenAI } = await import('openai')
   const config = resolveOpenSourceAiConfigBlock(options)
+  const sentinel = defaultProviderModelBlock('opensource-ai')
   const optionModel = typeof model === 'string' ? model.trim() : ''
-  const requestedModel = (
-    optionModel && optionModel !== defaultProviderModelBlock('opensource-ai')
-      ? optionModel
-      : (config.model || optionModel || resolveRequestedModel('opensource-ai', model))
-  )
+  // Treat empty AND the `local-model` sentinel as "not set" — fall back to
+  // the user's configured model, then auto-discover whatever is loaded on
+  // the local server, then the sentinel as last resort.
+  let requestedModel = optionModel && optionModel !== sentinel ? optionModel : (config.model || '')
+  if (!requestedModel || requestedModel === sentinel) {
+    const discovered = await discoverOpenSourceAiModelBlock(config.baseUrl, config.apiKey)
+    requestedModel = discovered || optionModel || sentinel
+  }
   const client = new OpenAI({
     apiKey: config.apiKey || 'local-not-required',
     baseURL: config.baseUrl,
