@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CalendarDays, Download, Loader2, X } from 'lucide-react'
+import { Download, Loader2, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import PinBoardBlock, { type PinBoardFileOptionBlock } from '@/components/lego_blocks/integrations/PinBoardBlock'
@@ -392,7 +392,7 @@ function isTaskLikeNode(node: Pick<NodeRecord, 'type' | 'recordKind' | 'taskStat
 
 type BacklogNodeStatus = NodeStatus
 type BacklogTaskStatus = 'ready' | 'in_progress' | 'blocked' | 'done' | 'cancelled'
-type BacklogSubTab = 'hierarchy' | 'timeline' | 'memory'
+type BacklogSubTab = 'hierarchy' | 'memory'
 
 interface BacklogOrchProps {
   pinBoardHeaderVisible?: boolean
@@ -422,14 +422,16 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
     BACKLOG_SUBTAB_SESSION_KEY,
     'hierarchy',
   )
+  useEffect(() => {
+    if ((activeBacklogSubTab as string) === 'timeline') {
+      setActiveBacklogSubTab('hierarchy')
+    }
+  }, [activeBacklogSubTab, setActiveBacklogSubTab])
   const [programLayoutEditMode, setProgramLayoutEditMode] = useState(false)
   const [pinBoardLayoutEditMode, setPinBoardLayoutEditMode] = useState(false)
   const [showRootProgramCreate, setShowRootProgramCreate] = useState(false)
   const [focusRootCreateRequestNonce, setFocusRootCreateRequestNonce] = useState(0)
   const [completedEpicTimeline, setCompletedEpicTimeline] = useState<NodeRecord[]>([])
-  const [timelineLoading, setTimelineLoading] = useState(false)
-  const [timelineError, setTimelineError] = useState<string | null>(null)
-  const [timelineSavingByEpic, setTimelineSavingByEpic] = useState<Record<string, boolean>>({})
 
   const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>(
     () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
@@ -1132,8 +1134,6 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
   }, [activeProjectRoot])
 
   const refreshEpicTimeline = useCallback(async () => {
-    setTimelineLoading(true)
-    setTimelineError(null)
     try {
       const { nodes } = await invokeCapabilityOrThrow({
         capability: 'organizer.nodes.list_all',
@@ -1141,16 +1141,14 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
         actor: BACKLOG_ACTOR,
       })
       const epics = nodes
-        .filter(node => node.type === 'epic' && node.status === 'completed')
+        .filter(node => node.type === 'epic')
         .filter(node => {
           if (!activeProjectRoot) return true
           return normalizePath(node.projectRoot ?? '') === activeProjectRoot
         })
       setCompletedEpicTimeline(sortTimelineEpics(epics))
     } catch (err) {
-      setTimelineError(errorMessage(err, 'Failed to load epic timeline'))
-    } finally {
-      setTimelineLoading(false)
+      console.warn('[BacklogOrch] failed to refresh epic timeline', err)
     }
   }, [activeProjectRoot])
 
@@ -1277,6 +1275,22 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
     if (!activeProjectRoot) return programs
     return programs.filter(program => normalizePath(program.projectRoot ?? '') === activeProjectRoot)
   }, [activeProjectRoot, programs])
+
+  const programTitleByKey = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const program of programs) {
+      const title = program.title ?? ''
+      const ticket = program.ticket?.trim()
+      // Frontmatter often stores titles as "TICKET - description"; the row
+      // chrome already renders the ticket as its own chip, so the timeline
+      // label should show just the human title.
+      const cleaned = ticket && title.startsWith(`${ticket} - `)
+        ? title.slice(ticket.length + 3).trim()
+        : title
+      out[program.key] = cleaned || program.title
+    }
+    return out
+  }, [programs])
 
   const handleDestinationChange = useCallback((change: CascadingFolderPickerChange) => {
     setDestinationSegments(change.baseSegments)
@@ -1497,7 +1511,6 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
     if (node.type !== 'epic') throw new Error('Completion date is only available for epics.')
 
     const normalizedDate = completionDate?.trim() ?? ''
-    setTimelineSavingByEpic(prev => ({ ...prev, [node.uuid]: true }))
     setError(null)
     try {
       const { node: updated } = await invokeCapabilityOrThrow({
@@ -1516,7 +1529,7 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
       setCompletedEpicTimeline(prev => {
         const withoutCurrent = prev.filter(item => item.uuid !== updated.uuid)
         const inScope = !activeProjectRoot || normalizePath(updated.projectRoot ?? '') === activeProjectRoot
-        if (updated.type === 'epic' && updated.status === 'completed' && inScope) {
+        if (updated.type === 'epic' && inScope) {
           return sortTimelineEpics([...withoutCurrent, updated])
         }
         return withoutCurrent
@@ -1526,7 +1539,6 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
       setError(errorMessage(err, 'Failed to update epic completion date'))
       throw err
     } finally {
-      setTimelineSavingByEpic(prev => ({ ...prev, [node.uuid]: false }))
       void refreshEpicTimeline()
     }
   }, [activeProjectRoot, applyUpdatedNode, refreshEpicTimeline])
@@ -1915,20 +1927,6 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
         <button
           type="button"
           role="tab"
-          aria-selected={activeBacklogSubTab === 'timeline'}
-          className={`inline-flex h-8 shrink-0 min-w-[7.25rem] items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors sm:min-w-[9rem] ${
-            activeBacklogSubTab === 'timeline'
-              ? 'border-black bg-black text-white'
-              : 'border-transparent bg-transparent text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setActiveBacklogSubTab('timeline')}
-        >
-          <CalendarDays className="h-3.5 w-3.5" />
-          Epic Timeline
-        </button>
-        <button
-          type="button"
-          role="tab"
           aria-selected={activeBacklogSubTab === 'memory'}
           className={`inline-flex h-8 shrink-0 min-w-[7.25rem] items-center justify-center rounded-md px-3 text-xs font-medium transition-colors sm:min-w-[9rem] ${
             activeBacklogSubTab === 'memory'
@@ -2015,67 +2013,6 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
         </div>
       )}
 
-      {activeBacklogSubTab === 'timeline' && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CalendarDays className="h-4 w-4 text-muted-foreground" />
-              Epic Timeline
-            </CardTitle>
-            <CardDescription>
-              Completed epics sorted by completion date. Date is auto-set when an epic completes, and can be backfilled.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {timelineLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading timeline...
-              </div>
-            ) : timelineError ? (
-              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {timelineError}
-              </div>
-            ) : completedEpicTimeline.length === 0 ? (
-              <div className="text-sm text-muted-foreground">
-                No completed epics yet.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {completedEpicTimeline.map(epic => {
-                  const completionDate = toDateInputValue(epic.epicCompletedAt)
-                  const saving = !!timelineSavingByEpic[epic.uuid]
-                  return (
-                    <div key={epic.uuid} className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/15 px-3 py-2">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedNode(epic)}
-                        className="min-w-0 flex-1 truncate text-left text-sm font-medium text-foreground hover:underline"
-                      >
-                        {epic.ticket ? `${epic.ticket} - ` : ''}{epic.title}
-                      </button>
-                      <input
-                        key={`${epic.uuid}-${completionDate}`}
-                        type="date"
-                        defaultValue={completionDate}
-                        disabled={saving}
-                        className="h-8 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                        onBlur={(event) => {
-                          const nextValue = event.currentTarget.value.trim()
-                          if (nextValue === completionDate) return
-                          void updateEpicCompletionDateFor(epic, nextValue || null)
-                        }}
-                      />
-                      {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
       {activeBacklogSubTab === 'hierarchy' && (
         loading ? (
           <div className="flex items-center gap-2 px-2 py-4 text-sm text-muted-foreground">
@@ -2113,6 +2050,9 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
                 onUpdateNodeStatus={updateNodeStatusFor}
                 onUpdateTaskStatus={updateTaskStatusFor}
                 onUpdateNodeNotes={updateNodeNotesFor}
+                completedEpics={completedEpicTimeline}
+                programTitleByKey={programTitleByKey}
+                onSelectEpic={setSelectedNode}
               />
           </ScrollableZoomSurfaceBlock>
         )

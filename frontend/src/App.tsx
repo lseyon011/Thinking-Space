@@ -44,6 +44,8 @@ const PasswordManager = lazy(() => import('./pages/PasswordManager'))
 const TerminalPage = lazy(() => import('./pages/TerminalPage'))
 const WebullPage = lazy(() => import('./personal_extension/pages/WebullPage'))
 const PersonalToolsPage = lazy(() => import('./personal_extension/pages/PersonalToolsPage'))
+const StewardQueueOrch = lazy(() => import('./components/orchestrators/StewardQueueOrch'))
+const OrganizerIntegrityOrch = lazy(() => import('./components/orchestrators/OrganizerIntegrityOrch'))
 import ToolsShellBlock, { isToolsShellRoute } from './components/lego_blocks/integrations/ToolsShellBlock'
 import ToolsLandingBlock from './components/lego_blocks/units/ui/ToolsLandingBlock'
 import { FrozenRouteBlock } from './components/lego_blocks/units/FrozenRouteBlock'
@@ -268,6 +270,8 @@ const TOOLS_NAV_ACTIVE_PATHS: readonly string[] = [
   '/password-manager',
   '/personal-tools',
   '/personal-extension',
+  '/ai-steward',
+  '/ai-integrity',
 ]
 
 const PRIMARY_NAV_ITEMS: NavItem[] = [
@@ -2681,6 +2685,34 @@ function App() {
                     <Route
                       path="/extension-builder"
                       element={extensionBuilderEnabled ? <ExtensionBuilder /> : <Navigate to="/capabilities" replace />}
+                    />
+                    <Route
+                      path="/ai-steward"
+                      element={
+                        <div className="ltm-page">
+                          <div className="ltm-page-shell ltm-shell-wide">
+                            <header className="mb-6">
+                              <h1 className="text-2xl font-semibold tracking-tight">AI Steward</h1>
+                              <p className="text-muted-foreground">Review and act on steward proposals across the vault.</p>
+                            </header>
+                            <StewardQueueOrch />
+                          </div>
+                        </div>
+                      }
+                    />
+                    <Route
+                      path="/ai-integrity"
+                      element={
+                        <div className="ltm-page">
+                          <div className="ltm-page-shell ltm-shell-wide">
+                            <header className="mb-6">
+                              <h1 className="text-2xl font-semibold tracking-tight">AI Integrity Fix</h1>
+                              <p className="text-muted-foreground">Detect and repair organizer integrity issues.</p>
+                            </header>
+                            <OrganizerIntegrityOrch />
+                          </div>
+                        </div>
+                      }
                     />
                   </Route>
                   <Route path="/excalidraw-plugin" element={<Navigate to="/excalidraw-plus/plugin" replace />} />

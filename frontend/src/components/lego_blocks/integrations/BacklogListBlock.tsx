@@ -7,6 +7,7 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import { BacklogInlineCreateBlock } from '@/components/lego_blocks/integrations/BacklogInlineCreateBlock'
 import { BacklogInlineNotesEditorBlock } from '@/components/lego_blocks/integrations/BacklogInlineNotesEditorBlock'
 import { ProgramGroupHeaderBlock } from '@/components/lego_blocks/integrations/ProgramGroupHeaderBlock'
+import EpicTimelineStripBlock from '@/components/lego_blocks/units/EpicTimelineStripBlock'
 import LinkedItemChipsBlock from '@/components/lego_blocks/units/LinkedItemChipsBlock'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import { tagLookupKeyBlock } from '@/services/lego_blocks/units/tagBlock'
@@ -179,6 +180,10 @@ export interface BacklogListBlockProps {
   programLabelPlural?: string
   programGroupLabelSingular?: string
   persistenceKey?: string
+  /** Completed epics scoped to the current project — rendered as a horizontal time strip atop each group card. */
+  completedEpics?: NodeRecord[]
+  programTitleByKey?: Record<string, string>
+  onSelectEpic?: (epic: NodeRecord) => void
 }
 
 
@@ -243,6 +248,9 @@ function BacklogListBlockImpl({
   programLabelPlural = 'programs',
   programGroupLabelSingular = 'group',
   persistenceKey,
+  completedEpics = [],
+  programTitleByKey,
+  onSelectEpic,
 }: BacklogListBlockProps) {
   const normalizedPersistenceKey = persistenceKey?.trim() ?? ''
   const storageKey = normalizedPersistenceKey ? `${BACKLOG_LIST_PERSISTENCE_PREFIX}:${normalizedPersistenceKey}` : ''
@@ -327,6 +335,27 @@ function BacklogListBlockImpl({
       ungrouped,
     }
   }, [programGroups, programs, resolvedProgramGroupIdByProgram])
+
+  // Bucket completed epics by their program's group so each group card can
+  // show only the epics it owns. Unmapped epics (program-less or program with
+  // no group assignment) land in the ungrouped bucket alongside ungrouped
+  // programs.
+  const completedEpicsByGroupId = useMemo(() => {
+    const programGroupByKey = new Map<string, string | null>()
+    for (const program of programs) {
+      const groupId = resolvedProgramGroupIdByProgram[program.uuid] ?? null
+      programGroupByKey.set(program.key, groupId)
+    }
+    const grouped = new Map<string, NodeRecord[]>(programGroups.map(group => [group.id, []]))
+    const ungrouped: NodeRecord[] = []
+    for (const epic of completedEpics) {
+      const parentKey = epic.parent
+      const groupId = parentKey ? programGroupByKey.get(parentKey) ?? null : null
+      if (groupId && grouped.has(groupId)) grouped.get(groupId)!.push(epic)
+      else ungrouped.push(epic)
+    }
+    return { grouped, ungrouped }
+  }, [completedEpics, programGroups, programs, resolvedProgramGroupIdByProgram])
 
   useEffect(() => {
     const persisted = readPersistedBacklogListStateBlock(storageKey)
@@ -1180,6 +1209,7 @@ function BacklogListBlockImpl({
         <div className="space-y-3">
           {programGroups.map((group) => {
             const groupedPrograms = groupedProgramsByGroupId.grouped.get(group.id) ?? []
+            const groupEpics = completedEpicsByGroupId.grouped.get(group.id) ?? []
             return (
               <div key={`program-group-${group.id}`} className="space-y-2">
                 <ProgramGroupHeaderBlock
@@ -1190,6 +1220,16 @@ function BacklogListBlockImpl({
                   onToggle={() => onToggleProgramGroupCollapsed?.(group.id)}
                   onDelete={allowProgramLayoutEditing && onDeleteProgramGroup ? () => onDeleteProgramGroup(group.id) : undefined}
                 />
+                {!group.collapsed && groupEpics.length > 0 && (
+                  <div className="rounded-md border border-border/40 bg-card px-3 py-2">
+                    <EpicTimelineStripBlock
+                      epics={groupEpics}
+                      programTitleByKey={programTitleByKey}
+                      onSelectEpic={onSelectEpic}
+                      watermarkLabel={group.name}
+                    />
+                  </div>
+                )}
                 {!group.collapsed && (
                   groupedPrograms.length > 0 ? (
                     <div className="space-y-2">
@@ -1213,6 +1253,15 @@ function BacklogListBlockImpl({
             <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               {`Ungrouped ${programNounPluralTitle}`}
             </p>
+          )}
+          {completedEpicsByGroupId.ungrouped.length > 0 && (
+            <div className="rounded-md border border-border/40 bg-card px-3 py-2">
+              <EpicTimelineStripBlock
+                epics={completedEpicsByGroupId.ungrouped}
+                programTitleByKey={programTitleByKey}
+                onSelectEpic={onSelectEpic}
+              />
+            </div>
           )}
           {groupedProgramsByGroupId.ungrouped.map(program => renderProgramSection(program, programIndexById.get(program.uuid) ?? 0))}
         </div>

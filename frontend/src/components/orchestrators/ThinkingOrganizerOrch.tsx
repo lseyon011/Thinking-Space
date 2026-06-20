@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowRight, BadgeCheck, Check, Eye, FolderTree, Handshake, Layers, Lightbulb, Link2, ListChecks, Loader2, Pencil, Play, Plus, X, type LucideIcon } from 'lucide-react'
+import { ArrowRight, Check, Eye, FolderTree, Handshake, Layers, Lightbulb, Link2, ListChecks, Loader2, Pencil, Play, Plus, X, type LucideIcon } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
@@ -32,8 +32,6 @@ import BacklogOrch, {
   type OrganizerProjectsUpdatedDetail,
 } from '@/components/orchestrators/BacklogOrch'
 import LinkingOrch from '@/components/orchestrators/LinkingOrch'
-import OrganizerIntegrityOrch from '@/components/orchestrators/OrganizerIntegrityOrch'
-import StewardQueueOrch from '@/components/orchestrators/StewardQueueOrch'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
@@ -45,14 +43,12 @@ import {
   setNativeNavigationStackBlock,
 } from '@/services/lego_blocks/units/topChromeNativeBridgeBlock'
 
-type TabMode = 'backlog' | 'view' | 'link' | 'steward' | 'integrity'
+type TabMode = 'backlog' | 'view' | 'link'
 const PROJECT_ROOT_QUERY_PARAM = 'projectRoot'
 const THINKING_ORGANIZER_TABS: Array<{ id: TabMode; label: string; icon: LucideIcon }> = [
   { id: 'backlog', label: 'Create', icon: Plus },
   { id: 'view', label: 'View', icon: Eye },
   { id: 'link', label: 'Link', icon: Link2 },
-  { id: 'steward', label: 'Steward', icon: Handshake },
-  { id: 'integrity', label: 'Integrity', icon: BadgeCheck },
 ]
 
 function nodeIcon(type: NodeType) {
@@ -80,7 +76,7 @@ const VIEW_ACTOR: CapabilityActor = {
 }
 
 function parseTabMode(raw: string | null): TabMode | null {
-  if (raw === 'backlog' || raw === 'view' || raw === 'link' || raw === 'steward' || raw === 'integrity') return raw
+  if (raw === 'backlog' || raw === 'view' || raw === 'link') return raw
   return null
 }
 
@@ -373,8 +369,6 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
     backlog: tab === 'backlog',
     view: tab === 'view',
     link: tab === 'link',
-    steward: tab === 'steward',
-    integrity: tab === 'integrity',
   }))
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false
@@ -674,12 +668,6 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
           </section>
           <section hidden={tab !== 'link'} aria-hidden={tab !== 'link'}>
             {mountedTabs.link ? <LinkingOrch /> : null}
-          </section>
-          <section hidden={tab !== 'steward'} aria-hidden={tab !== 'steward'}>
-            {mountedTabs.steward ? <StewardQueueOrch /> : null}
-          </section>
-          <section hidden={tab !== 'integrity'} aria-hidden={tab !== 'integrity'}>
-            {mountedTabs.integrity ? <OrganizerIntegrityOrch /> : null}
           </section>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { type ComponentType } from 'react'
-import { Bot, Boxes, GitBranch, Globe, KeyRound, Terminal as TerminalIcon, Wrench } from 'lucide-react'
+import { BadgeCheck, Bot, Boxes, GitBranch, Globe, Handshake, KeyRound, Terminal as TerminalIcon, Wrench } from 'lucide-react'
 import excalidrawLogo from '@/assets/excalidraw-logo.svg'
 import { isExcalidrawPlusRoute } from '@/components/lego_blocks/units/ExcalidrawPlusRoutesBlock'
 import { isEmbeddedTerminalSupported } from '@/services/orchestrators/runtimeOrch'
@@ -76,6 +76,22 @@ export const TOOLS_SUBTABS: readonly ToolsSubtab[] = [
     to: '/capabilities',
     icon: Boxes,
     isActive: (pathname) => pathname === '/capabilities' || pathname === '/extension-builder',
+    routed: true,
+  },
+  {
+    id: 'ai-steward',
+    label: 'AI Steward',
+    to: '/ai-steward',
+    icon: Handshake,
+    isActive: (pathname) => pathname === '/ai-steward',
+    routed: true,
+  },
+  {
+    id: 'ai-integrity',
+    label: 'AI Integrity Fix',
+    to: '/ai-integrity',
+    icon: BadgeCheck,
+    isActive: (pathname) => pathname === '/ai-integrity',
     routed: true,
   },
   {
