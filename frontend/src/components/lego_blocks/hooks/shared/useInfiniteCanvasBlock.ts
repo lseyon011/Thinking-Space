@@ -14,6 +14,11 @@ export interface UseInfiniteCanvasOptions {
   minScale?: number
   maxScale?: number
   initialScale?: number
+  /** When true, the effective min scale never drops below the value that fits
+   * the entire world into the current viewport — i.e. the user can't zoom out
+   * past "the whole board is visible". Use for surfaces that should behave
+   * like a bounded canvas (Webull F9) instead of an infinite-feeling space. */
+  clampMinScaleToFit?: boolean
   /** Fires when a pan attempt is clamped at the board boundary. Only fires
    * for wheel/trackpad pan; not for programmatic resetZoom / centerOnWorld /
    * zoom-driven clamping. */
@@ -53,9 +58,10 @@ export function useInfiniteCanvasBlock(
 ): UseInfiniteCanvasResult {
   const worldWidth = opts.worldWidth ?? 4500
   const worldHeight = opts.worldHeight ?? 3000
-  const minScale = opts.minScale ?? 0.25
+  const baseMinScale = opts.minScale ?? 0.25
   const maxScale = opts.maxScale ?? 1.5
   const initialScale = opts.initialScale ?? 1
+  const clampMinScaleToFit = opts.clampMinScaleToFit ?? false
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [transform, setTransform] = useState<CanvasTransform>(() => ({
@@ -79,6 +85,17 @@ export function useInfiniteCanvasBlock(
   // without re-querying the DOM.
   const viewportRef = useRef({ left: 0, top: 0, width: 0, height: 0 })
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
+
+  // When clampMinScaleToFit is on, the floor for zoom-out is the scale at
+  // which the entire world fits inside the current viewport — keeps the user
+  // from panning into infinite sky on bounded surfaces like F9.
+  const minScale = (() => {
+    if (!clampMinScaleToFit || viewportSize.width === 0 || viewportSize.height === 0) {
+      return baseMinScale
+    }
+    const fitScale = Math.min(viewportSize.width / worldWidth, viewportSize.height / worldHeight)
+    return Math.max(baseMinScale, fitScale)
+  })()
 
   useEffect(() => {
     const el = containerRef.current
@@ -123,6 +140,23 @@ export function useInfiniteCanvasBlock(
     },
     [worldWidth, worldHeight],
   )
+
+  // When the effective min scale rises (e.g. viewport just laid out, or the
+  // window shrank), pull the current transform up to it so the user is never
+  // stuck "below" the new floor.
+  useEffect(() => {
+    setTransform(prev => {
+      if (prev.scale >= minScale) return prev
+      const factor = minScale / prev.scale
+      const cx = viewportSize.width / 2
+      const cy = viewportSize.height / 2
+      return clampTransform({
+        scale: minScale,
+        x: cx - (cx - prev.x) * factor,
+        y: cy - (cy - prev.y) * factor,
+      })
+    })
+  }, [minScale, viewportSize.width, viewportSize.height, clampTransform])
 
   // Apply initialFocus once after the viewport has been measured. Done in an
   // effect (not initial useState) because we need the actual viewport dims to

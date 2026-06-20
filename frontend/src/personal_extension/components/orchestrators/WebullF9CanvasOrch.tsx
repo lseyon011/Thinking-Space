@@ -4,31 +4,33 @@ import type { CanvasTile } from '@/components/lego_blocks/hooks/shared/useCanvas
 import { webullF9CanvasStorage } from '@/personal_extension/services/lego_blocks/integrations/webullCanvasStorageBlock'
 import WebullStudyAnchorBlock from '@/personal_extension/components/lego_blocks/integrations/WebullStudyAnchorBlock'
 
-// World extents are tuned so panning clamps right at the content edges
-// (no empty sky outside the board). Width fits the leftmost / rightmost
-// seed post-its with a small margin; height grows with the study card via
-// the measured-height callback from the anchor.
-const WORLD_WIDTH = 2200
+// World extents balance "bounded board" feel with some breathing room on the
+// edges (~400px sky each side, generous top/bottom) — same vibe as Home canvas
+// but tighter overall. `clampMinScaleToFit` keeps the user from zooming out
+// past the world bounds; the existing edge-flash handles pan clamping.
+const CONTENT_WIDTH = 2200
+const SIDE_BREATHING = 400
+const WORLD_WIDTH = CONTENT_WIDTH + SIDE_BREATHING * 2
 const ANCHOR_CENTER_X = WORLD_WIDTH / 2
 
 const MISSION_HEIGHT = 180
 const MISSION_GAP = 32
-const ANCHOR_TOP_BREATHING = 80
+const ANCHOR_TOP_BREATHING = 240
 
 // Top of the study card stays fixed so the mission text above it doesn't shift
 // when rows expand. The card grows downward; world height stretches to fit.
 const STUDY_TOP_Y = MISSION_HEIGHT + MISSION_GAP + ANCHOR_TOP_BREATHING
 
 const STUDY_MIN_HEIGHT_FOR_LAYOUT = 600 // first-render fallback before ResizeObserver fires
-const STUDY_BOTTOM_BREATHING = 240
+const STUDY_BOTTOM_BREATHING = 320
 
 // Seed post-it positions are absolute world coords picked from the initial
 // layout assumption. They only apply on first run (storage returns null);
 // once the canvas is persisted, user-edited positions win.
-const POSTIT_LEFT_X = ANCHOR_CENTER_X - 1100 + 60
-const POSTIT_RIGHT_X = ANCHOR_CENTER_X + 600
-const POSTIT_TOP_Y = STUDY_TOP_Y + 80
-const POSTIT_BOTTOM_Y = STUDY_TOP_Y + STUDY_MIN_HEIGHT_FOR_LAYOUT - 120
+const POSTIT_LEFT_X = ANCHOR_CENTER_X - 720
+const POSTIT_RIGHT_X = ANCHOR_CENTER_X + 460
+const POSTIT_TOP_Y = STUDY_TOP_Y + 120
+const POSTIT_BOTTOM_Y = STUDY_TOP_Y + STUDY_MIN_HEIGHT_FOR_LAYOUT - 80
 const POSTIT_BOTTOM_HEIGHT = 200
 const POSTIT_REACH_Y = POSTIT_BOTTOM_Y + POSTIT_BOTTOM_HEIGHT
 
@@ -89,6 +91,7 @@ export default function WebullF9CanvasOrch() {
       seedTiles={SEED_TILES}
       worldWidth={WORLD_WIDTH}
       worldHeight={worldHeight}
+      clampMinScaleToFit
       initialFocus={{
         worldX: ANCHOR_CENTER_X,
         worldY: STUDY_TOP_Y + studyHeight / 2,

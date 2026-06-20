@@ -43,6 +43,9 @@ export interface CanvasSurfaceOrchProps {
     contentWidth: number
     contentHeight: number
   }
+  /** When true, zoom-out is capped at the scale where the whole world fits the
+   * viewport — no infinite sky outside the board. For bounded surfaces (F9). */
+  clampMinScaleToFit?: boolean
   /** Rendered inside the transformed world *before* the tile layer (anchors, scenes, etc). */
   worldExtras?: ReactNode
   /** Optional hook bridge so callers can run effects against tile state (e.g. auto-spawn post-its). Render-prop component pattern. */
@@ -59,6 +62,7 @@ export default function CanvasSurfaceOrch({
   worldWidth: worldWidthProp,
   worldHeight: worldHeightProp,
   initialFocus,
+  clampMinScaleToFit,
   worldExtras,
   tilesEffect: TilesEffect,
 }: CanvasSurfaceOrchProps) {
@@ -112,6 +116,7 @@ export default function CanvasSurfaceOrch({
     worldWidth: worldWidthProp ?? DEFAULT_WORLD_WIDTH,
     worldHeight: worldHeightProp ?? DEFAULT_WORLD_HEIGHT,
     initialFocus,
+    clampMinScaleToFit,
   })
 
   const {
