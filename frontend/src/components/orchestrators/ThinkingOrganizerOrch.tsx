@@ -1,14 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowRight, Check, Eye, FolderTree, Handshake, LayoutDashboard, Layers, Lightbulb, Link2, ListChecks, Loader2, Pencil, Play, Plus, X, type LucideIcon } from 'lucide-react'
+import { Check, FolderTree, LayoutDashboard, Loader2, Pencil, Plus, X, type LucideIcon } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
-import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
-import type { NodeType } from '@/services/lego_blocks/units/yamlNoteBlock'
-import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
-import { defaultNodeKindLabel } from '@/components/lego_blocks/integrations/HierarchyTreeBlock'
-import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
-import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 import {
   STORAGE_KEYS,
   getStorageItem,
@@ -31,9 +25,7 @@ import BacklogOrch, {
   ORGANIZER_PROJECTS_UPDATED_EVENT,
   type OrganizerProjectsUpdatedDetail,
 } from '@/components/orchestrators/BacklogOrch'
-import LinkingOrch from '@/components/orchestrators/LinkingOrch'
 import ThinkingOrgCanvasOrch from '@/components/orchestrators/ThinkingOrgCanvasOrch'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
@@ -44,41 +36,19 @@ import {
   setNativeNavigationStackBlock,
 } from '@/services/lego_blocks/units/topChromeNativeBridgeBlock'
 
-type TabMode = 'backlog' | 'view' | 'board' | 'link'
+type TabMode = 'backlog' | 'board'
 const PROJECT_ROOT_QUERY_PARAM = 'projectRoot'
 const THINKING_ORGANIZER_TABS: Array<{ id: TabMode; label: string; icon: LucideIcon }> = [
   { id: 'backlog', label: 'Create', icon: Plus },
-  { id: 'view', label: 'View', icon: Eye },
   { id: 'board', label: 'Board', icon: LayoutDashboard },
-  { id: 'link', label: 'Link', icon: Link2 },
 ]
-
-function nodeIcon(type: NodeType) {
-  if (type === 'program') return FolderTree
-  if (type === 'epic') return Layers
-  if (type === 'task') return ListChecks
-  if (type === 'run') return Play
-  if (type === 'handoff') return Handshake
-  return Lightbulb
-}
-
-function errorMessage(value: unknown, fallback: string): string {
-  if (value instanceof Error && value.message) return value.message
-  if (typeof value === 'string' && value.trim()) return value
-  return fallback
-}
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
 }
 
-const VIEW_ACTOR: CapabilityActor = {
-  kind: 'human',
-  id: 'ui.organizer-view',
-}
-
 function parseTabMode(raw: string | null): TabMode | null {
-  if (raw === 'backlog' || raw === 'view' || raw === 'board' || raw === 'link') return raw
+  if (raw === 'backlog' || raw === 'board') return raw
   return null
 }
 
@@ -93,228 +63,6 @@ function usePersistentTab(): [TabMode, (value: TabMode) => void] {
   }, [tab])
 
   return [tab, setTab]
-}
-
-function ViewTab() {
-  const { openFile } = useMarkdownViewer()
-  const [programs, setPrograms] = useState<NodeRecord[]>([])
-  const [selectedPath, setSelectedPath] = useSessionStateBlock<NodeRecord[]>('organizer-view-path', [])
-  const [currentNodes, setCurrentNodes] = useState<NodeRecord[]>([])
-  const [loading, setLoading] = useState(true)
-  const [nodesLoading, setNodesLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  // On mount: load programs, then restore saved path if any.
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const { nodes: roots } = await invokeCapabilityOrThrow({
-          capability: 'organizer.nodes.list_roots',
-          input: { typeFilter: 'program' },
-          actor: VIEW_ACTOR,
-        })
-        if (cancelled) return
-        const sorted = roots.sort((a, b) => (a.title ?? '').localeCompare(b.title ?? ''))
-        setPrograms(sorted)
-
-        // Restore saved drill-down path from session
-        const saved = selectedPath
-        if (saved.length > 0) {
-          const deepest = saved[saved.length - 1]
-          try {
-            const { nodes: children } = await invokeCapabilityOrThrow({
-              capability: 'organizer.nodes.list_children',
-              input: { parentKey: deepest.key },
-              actor: VIEW_ACTOR,
-            })
-            if (!cancelled) setCurrentNodes(children.sort((a, b) => (a.title ?? '').localeCompare(b.title ?? '')))
-          } catch {
-            // If restoring fails (node deleted?), fall back to root
-            if (!cancelled) {
-              setSelectedPath([])
-              setCurrentNodes(sorted)
-            }
-          }
-        } else {
-          setCurrentNodes(sorted)
-        }
-      } catch (err) {
-        if (!cancelled) setError(errorMessage(err, 'Failed to load programs'))
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => { cancelled = true }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount; selectedPath read from session initial value
-  }, [])
-
-  const openPathNode = useCallback(async (node: NodeRecord) => {
-    setError(null)
-    setNodesLoading(true)
-    const nextPath = [...selectedPath, node]
-    setSelectedPath(nextPath)
-
-    try {
-      const { nodes: children } = await invokeCapabilityOrThrow({
-        capability: 'organizer.nodes.list_children',
-        input: { parentKey: node.key },
-        actor: VIEW_ACTOR,
-      })
-      setCurrentNodes(children.sort((a, b) => (a.title ?? '').localeCompare(b.title ?? '')))
-    } catch (err) {
-      setError(errorMessage(err, 'Failed to load children'))
-    } finally {
-      setNodesLoading(false)
-    }
-  }, [selectedPath])
-
-  const rewindPath = useCallback(async (index: number) => {
-    const nextPath = selectedPath.slice(0, index + 1)
-    setSelectedPath(nextPath)
-    const parent = nextPath[nextPath.length - 1]
-    setNodesLoading(true)
-    setError(null)
-    try {
-      const { nodes: children } = await invokeCapabilityOrThrow({
-        capability: 'organizer.nodes.list_children',
-        input: { parentKey: parent.key },
-        actor: VIEW_ACTOR,
-      })
-      setCurrentNodes(children.sort((a, b) => (a.title ?? '').localeCompare(b.title ?? '')))
-    } catch (err) {
-      setError(errorMessage(err, 'Failed to rewind path'))
-    } finally {
-      setNodesLoading(false)
-    }
-  }, [selectedPath])
-
-  const resetToPrograms = useCallback(() => {
-    setSelectedPath([])
-    setCurrentNodes(programs)
-  }, [programs])
-
-  const levelLabel = selectedPath.length === 0 ? 'Programs' : 'Children'
-
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Hierarchy View</CardTitle>
-          <CardDescription>
-            Start at programs and drill down through your hierarchy.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-center gap-1.5 text-sm">
-            <button
-              type="button"
-              className="rounded-md px-2 py-1 text-muted-foreground hover:bg-muted"
-              onClick={resetToPrograms}
-            >
-              Programs
-            </button>
-            {selectedPath.map((node, idx) => (
-              <span key={node.uuid} className="inline-flex items-center gap-1.5">
-                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
-                <button
-                  type="button"
-                  className="rounded-md px-2 py-1 text-muted-foreground hover:bg-muted"
-                  onClick={() => {
-                    void rewindPath(idx)
-                  }}
-                >
-                  {node.title}
-                </button>
-              </span>
-            ))}
-          </div>
-
-          {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading programs...
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                {levelLabel}
-              </div>
-              <div className={nodesLoading ? 'pointer-events-none opacity-60 transition-opacity' : 'transition-opacity'}>
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {currentNodes.map(node => {
-                    const Icon = nodeIcon(node.type)
-                    return (
-                      <button
-                        key={node.uuid}
-                        type="button"
-                        className="rounded-xl border border-border/60 bg-card px-3 py-2.5 text-left transition-colors hover:bg-muted/40"
-                        onClick={() => {
-                          void openPathNode(node)
-                        }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Icon className="h-4 w-4 text-muted-foreground" />
-                          <div className="truncate text-sm font-medium">{node.title}</div>
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {defaultNodeKindLabel(node.type)}
-                          {node.status !== 'active' && ` \u00b7 ${node.status}`}
-                        </div>
-                        {node.aiSummary && (
-                          <div className="mt-1 truncate text-xs text-muted-foreground/70">
-                            {node.aiSummary}
-                          </div>
-                        )}
-                      </button>
-                    )
-                  })}
-                  {currentNodes.length === 0 && !nodesLoading && (
-                    <div className="rounded-xl border border-dashed border-border/70 px-3 py-6 text-sm text-muted-foreground">
-                      No nodes at this level.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {selectedPath.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Node Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs text-muted-foreground">
-            {(() => {
-              const node = selectedPath[selectedPath.length - 1]
-              return (
-                <>
-                  <div>Title: <span className="font-medium text-foreground">{node.title}</span></div>
-                  <div>Type: {defaultNodeKindLabel(node.type)}</div>
-                  <div>Key: <span className="font-mono">{node.key}</span></div>
-                  <div>Path: <span className="font-mono">{node.filePath}</span></div>
-                  {node.tags && node.tags.length > 0 && <div>Tags: {node.tags.join(', ')}</div>}
-                  <Button size="sm" variant="outline" onClick={() => openFile(node.filePath)}>
-                    Open File
-                  </Button>
-                </>
-              )
-            })()}
-          </CardContent>
-        </Card>
-      )}
-
-      {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-    </div>
-  )
 }
 
 const ORGANIZER_SIDEBAR_COLLAPSED_KEY = 'organizer_sidebar_collapsed'
@@ -369,9 +117,7 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   }, [isIPhoneIosSurface, setTab])
   const [mountedTabs, setMountedTabs] = useState<Record<TabMode, boolean>>(() => ({
     backlog: tab === 'backlog',
-    view: tab === 'view',
     board: tab === 'board',
-    link: tab === 'link',
   }))
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false
@@ -666,18 +412,12 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
               />
             ) : null}
           </section>
-          <section hidden={tab !== 'view'} aria-hidden={tab !== 'view'}>
-            {mountedTabs.view ? <ViewTab /> : null}
-          </section>
           <section hidden={tab !== 'board'} aria-hidden={tab !== 'board'}>
             {mountedTabs.board ? (
               <div className="-mx-6 -mb-5 h-[calc(100vh-220px)] min-h-[600px] overflow-hidden">
                 <ThinkingOrgCanvasOrch />
               </div>
             ) : null}
-          </section>
-          <section hidden={tab !== 'link'} aria-hidden={tab !== 'link'}>
-            {mountedTabs.link ? <LinkingOrch /> : null}
           </section>
         </div>
       </div>
