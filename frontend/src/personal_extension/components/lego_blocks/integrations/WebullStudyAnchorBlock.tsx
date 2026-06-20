@@ -1,29 +1,50 @@
+import { useEffect, useRef } from 'react'
 import { useCanvasThemeBlock } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
 import { useCanvasProjectBindingBlock } from '@/components/lego_blocks/hooks/shared/useCanvasProjectBindingBlock'
 import CanvasProjectPickerBlock from '@/components/lego_blocks/integrations/CanvasProjectPickerBlock'
 import WebullStudyBlock from './WebullStudyBlock'
 
 interface AnchorProps {
+  /** Horizontal center of the anchor in world coords. */
   centerX: number
-  centerY: number
+  /** Top edge of the study card in world coords (fixed; lets the card grow downward without shifting mission text). */
+  studyTopY: number
+  /** Notified whenever the study card's intrinsic content height changes (row expand/collapse, row count change). */
+  onStudyHeightChange: (height: number) => void
 }
 
 const STUDY_W = 920
-const STUDY_H = 760
 const MISSION_W = 720
 const MISSION_H = 180
-const MISSION_OFFSET_Y = -(STUDY_H / 2) - MISSION_H - 32
+const MISSION_GAP = 32
+const STUDY_VERTICAL_PADDING = 40 // matches `padding: 20` (top + bottom)
 
-export default function WebullStudyAnchorBlock({ centerX, centerY }: AnchorProps) {
+export default function WebullStudyAnchorBlock({ centerX, studyTopY, onStudyHeightChange }: AnchorProps) {
   const theme = useCanvasThemeBlock()
   const { project } = useCanvasProjectBindingBlock('webull-f9')
   const projectName = project?.name?.trim() || 'No project bound'
   const projectMission = project?.mission?.trim() || 'Pick a project to show its mission here, or add one in Settings → Projects.'
+  const contentRef = useRef<HTMLDivElement | null>(null)
+
+  // Measure the study card's intrinsic content height with ResizeObserver so the
+  // canvas world grows when rows expand or the company list changes. Reports up
+  // via callback so the parent orch can size + clamp the world accordingly.
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const inner = entry.contentRect.height
+        onStudyHeightChange(inner + STUDY_VERTICAL_PADDING)
+      }
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [onStudyHeightChange])
 
   const missionX = centerX - MISSION_W / 2
-  const missionY = centerY + MISSION_OFFSET_Y
+  const missionY = studyTopY - MISSION_H - MISSION_GAP
   const studyX = centerX - STUDY_W / 2
-  const studyY = centerY - STUDY_H / 2
 
   return (
     <div className={theme.isDark ? 'dark' : ''}>
@@ -86,29 +107,30 @@ export default function WebullStudyAnchorBlock({ centerX, centerY }: AnchorProps
         style={{
           position: 'absolute',
           left: studyX,
-          top: studyY,
+          top: studyTopY,
           width: STUDY_W,
-          height: STUDY_H,
           padding: 20,
           borderRadius: 14,
           background: theme.anchorPanelBg,
           border: `1px solid ${theme.anchorPanelBorder}`,
           boxShadow: theme.anchorPanelShadow,
-          overflow: 'auto',
+          overflow: 'visible',
           cursor: 'default',
           zIndex: 2,
           color: theme.tileText,
         }}
       >
-        <div style={{ marginBottom: 12 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 600, color: theme.anchorHeading, margin: 0 }}>
-            Study
-          </h2>
-          <p style={{ fontSize: 13, color: theme.tileTextMuted, margin: '4px 0 0' }}>
-            Company study records (watchlist + held) with live prices.
-          </p>
+        <div ref={contentRef}>
+          <div style={{ marginBottom: 12 }}>
+            <h2 style={{ fontSize: 20, fontWeight: 600, color: theme.anchorHeading, margin: 0 }}>
+              Study
+            </h2>
+            <p style={{ fontSize: 13, color: theme.tileTextMuted, margin: '4px 0 0' }}>
+              Company study records (watchlist + held) with live prices.
+            </p>
+          </div>
+          <WebullStudyBlock />
         </div>
-        <WebullStudyBlock />
       </div>
     </div>
   )

@@ -1,10 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback } from 'react'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
-import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
-import {
-  loadWebullStudySnapshotOrch,
-  type WebullStudySnapshotOrch,
-} from '../../../services/orchestrators/webullStudyOrch'
+import { useWebullStudySnapshotBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullStudySnapshotBlock'
 import WebullStudyTableBlock from './WebullStudyTableBlock'
 
 function formatLoadedAtBlock(iso: string | null): string {
@@ -23,32 +19,7 @@ function formatLoadedAtBlock(iso: string | null): string {
 
 export default function WebullStudyBlock() {
   const { openFile } = useMarkdownViewer()
-  const [snapshot, setSnapshot] = useState<WebullStudySnapshotOrch | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const next = await loadWebullStudySnapshotOrch()
-      setSnapshot(next)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
-
-  useEffect(() => {
-    return addGlobalSyncRefreshListenerBlock(() => {
-      void refresh()
-    })
-  }, [refresh])
+  const { snapshot, loading, error } = useWebullStudySnapshotBlock()
 
   const onOpenStudyFile = useCallback(
     (filePath: string) => openFile(filePath, { mode: 'view' }),

@@ -31,9 +31,9 @@ import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
 type WebullSubtabId = 'overall' | 'memory' | 'study'
 
 const Webull_SUBTABS: Array<{ id: WebullSubtabId; label: string }> = [
+  { id: 'study', label: 'Study' },
   { id: 'overall', label: 'Overall Positions' },
   { id: 'memory', label: 'Pin Board' },
-  { id: 'study', label: 'Study' },
 ]
 
 const WEBULL_AUTO_REFRESH_STALENESS_MS = 60_000
@@ -131,7 +131,7 @@ interface WebullOrchProps {
 
 export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
   const { openFile } = useMarkdownViewer()
-  const [activeSubtabId, setActiveSubtabId] = useState<WebullSubtabId>('overall')
+  const [activeSubtabId, setActiveSubtabId] = useState<WebullSubtabId>('study')
   const [snapshot, setSnapshot] = useState<WebullOverallSnapshotOrch | null>(null)
   const [executionOverview, setExecutionOverview] = useState<WebullExecutionOverviewBlock | null>(null)
   const [executionSync, setExecutionSync] = useState<SyncWebullExecutionResultBlock | null>(null)

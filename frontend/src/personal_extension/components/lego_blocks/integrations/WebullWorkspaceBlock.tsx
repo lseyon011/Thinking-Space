@@ -1983,6 +1983,14 @@ export default function WebullWorkspaceBlock({
         </aside>
       )}
 
+      {studyTabActive && isElectron && !showCompanyView ? (
+        <div className={cn(
+          'min-w-0 overflow-hidden',
+          phoneListMode ? 'hidden' : 'flex-1',
+        )}>
+          <WebullF9CanvasOrch />
+        </div>
+      ) : (
       <div className={cn(
         'min-w-0 overflow-auto px-6 py-5',
         phoneListMode ? 'hidden' : 'flex-1',
@@ -2030,14 +2038,8 @@ export default function WebullWorkspaceBlock({
             </div>
           )}
 
-          {studyTabActive && (
-            isElectron ? (
-              <div className="-mx-6 -mb-6 h-[calc(100vh-260px)] min-h-[600px] overflow-hidden">
-                <WebullF9CanvasOrch />
-              </div>
-            ) : (
-              <WebullStudyBlock />
-            )
+          {studyTabActive && !isElectron && (
+            <WebullStudyBlock />
           )}
 
           {memoryTabActive && (
@@ -2613,6 +2615,7 @@ export default function WebullWorkspaceBlock({
         />
       )}
       </div>
+      )}
     </div>
   )
 }
