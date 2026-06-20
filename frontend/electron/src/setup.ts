@@ -13,6 +13,12 @@ import windowStateKeeper from 'electron-window-state';
 import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import {
+  buildUserAiOriginEntryBlock,
+  collectCspSourcesForDirectiveBlock,
+  type CspBuildOptionsBlock,
+  type CspDirective,
+} from './lego_blocks/cspWhitelistBlock';
 
 // Define components for a watcher to detect when the webapp is changed so we can reload in Dev mode.
 const reloadWatcher = {
@@ -908,59 +914,46 @@ export function setupWebviewSessionPermissions(): void {
   });
 }
 
-// Derive a CSP source expression (scheme://host:port) from a URL string.
-// Returns null if the URL is unparseable or uses an unsupported scheme.
-function opensourceAiBaseUrlSourceExprBlock(baseUrl: string | null): string | null {
-  if (!baseUrl) return null
-  try {
-    const u = new URL(baseUrl)
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
-    const port = u.port ? `:${u.port}` : ''
-    return `${u.protocol}//${u.hostname}${port}`
-  } catch {
-    return null
-  }
-}
-
-// Set a CSP up for our application based on the custom scheme.
-// `opensourceAiBaseUrl` (when present) gets its origin appended to connect-src
-// so the renderer's fetch() to user-configured local AI servers is permitted.
+// Build the CSP from the declarative whitelist in `cspWhitelistBlock.ts`.
+//
+// The third-party hosts the renderer is allowed to talk to live in that
+// registry — adding a new outbound origin should be a one-line append there,
+// not an edit to this template. The template below only encodes infrastructure
+// sources (the app's own scheme, `data:`, `blob:`, `'unsafe-inline'`, etc.) and
+// the per-directive base shape.
 export function setupContentSecurityPolicy(
   customScheme: string,
   opensourceAiBaseUrl: string | null = null,
 ): void {
-  const userOrigin = opensourceAiBaseUrlSourceExprBlock(opensourceAiBaseUrl)
-  const aiConnectSrc = [
-    'https://api.anthropic.com',
-    'https://*.openai.azure.com',
-    'https://platform.claude.com',
-    'https://api.openai.com',
-    'https://auth.openai.com',
-    'https://chatgpt.com',
-    // Loopback fallback: covers any local OpenAI-compatible runtime (LM Studio,
-    // rapid-mlx, ollama, llama.cpp, ...) running on this machine without
-    // requiring the user to save settings first. Loopback isn't a useful
-    // exfil target so the wildcard is safe here.
-    'http://localhost:*',
-    'http://127.0.0.1:*',
-    'ws://localhost:*',
-    'ws://127.0.0.1:*',
-    // User-configured Open Source AI base URL, persisted via the main-process
-    // store and read at startup. Handles LAN IPs / hostnames the loopback rule
-    // can't cover. Requires app restart when the URL changes — the CSP is set
-    // once per session.
-    ...(userOrigin ? [userOrigin] : []),
-  ].join(' ');
-  const frameSrc = [
-    `${customScheme}://*`,
-    'blob:',
-    'https://accounts.google.com',
-    'https://docs.google.com',
-    'https://drive.google.com',
-  ].join(' ');
-  const tikzJaxSrc = 'https://tikzjax.com'
-  const devCsp = `default-src ${customScheme}://* data: ${tikzJaxSrc}; script-src ${customScheme}://* 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' devtools://* ${tikzJaxSrc}; style-src ${customScheme}://* 'unsafe-inline' ${tikzJaxSrc}; img-src ${customScheme}://* data: blob: https:; media-src ${customScheme}://* data: blob: https:; connect-src ${customScheme}://* ${aiConnectSrc} ${tikzJaxSrc} devtools://*; frame-src ${frameSrc}`
-  const prodCsp = `default-src ${customScheme}://* data: ${tikzJaxSrc}; script-src ${customScheme}://* 'unsafe-inline' 'wasm-unsafe-eval' ${tikzJaxSrc}; style-src ${customScheme}://* 'unsafe-inline' ${tikzJaxSrc}; img-src ${customScheme}://* data: blob: https:; media-src ${customScheme}://* data: blob: https:; connect-src ${customScheme}://* ${aiConnectSrc} ${tikzJaxSrc}; frame-src ${frameSrc}`
+  const userEntry = buildUserAiOriginEntryBlock(opensourceAiBaseUrl)
+  const buildCsp = (isDev: boolean): string => {
+    const opts: CspBuildOptionsBlock = {
+      isDev,
+      runtimeEntries: userEntry ? [userEntry] : [],
+    }
+    const directive = (name: CspDirective, base: string[]): string => {
+      const extras = collectCspSourcesForDirectiveBlock(name, opts)
+      return `${name} ${[...base, ...extras].join(' ')}`
+    }
+    const scheme = `${customScheme}://*`
+    return [
+      directive('default-src', [scheme, 'data:']),
+      directive('script-src', [
+        scheme,
+        "'unsafe-inline'",
+        ...(isDev ? ["'unsafe-eval'"] : []),
+        "'wasm-unsafe-eval'",
+      ]),
+      directive('style-src', [scheme, "'unsafe-inline'"]),
+      directive('img-src', [scheme, 'data:', 'blob:', 'https:']),
+      directive('media-src', [scheme, 'data:', 'blob:', 'https:']),
+      directive('connect-src', [scheme]),
+      directive('frame-src', [scheme, 'blob:']),
+    ].join('; ')
+  }
+
+  const devCsp = buildCsp(true)
+  const prodCsp = buildCsp(false)
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     if (!details.url.startsWith(`${customScheme}://`)) {
       callback({ responseHeaders: details.responseHeaders });
