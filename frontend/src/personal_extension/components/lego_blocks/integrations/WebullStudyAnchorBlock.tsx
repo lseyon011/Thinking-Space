@@ -1,4 +1,6 @@
 import { useCanvasThemeBlock } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
+import { useCanvasProjectBindingBlock } from '@/components/lego_blocks/hooks/shared/useCanvasProjectBindingBlock'
+import CanvasProjectPickerBlock from '@/components/lego_blocks/integrations/CanvasProjectPickerBlock'
 import WebullStudyBlock from './WebullStudyBlock'
 
 interface AnchorProps {
@@ -9,11 +11,14 @@ interface AnchorProps {
 const STUDY_W = 920
 const STUDY_H = 760
 const MISSION_W = 720
-const MISSION_H = 120
+const MISSION_H = 180
 const MISSION_OFFSET_Y = -(STUDY_H / 2) - MISSION_H - 32
 
 export default function WebullStudyAnchorBlock({ centerX, centerY }: AnchorProps) {
   const theme = useCanvasThemeBlock()
+  const { project } = useCanvasProjectBindingBlock('webull-f9')
+  const projectName = project?.name?.trim() || 'No project bound'
+  const projectMission = project?.mission?.trim() || 'Pick a project to show its mission here, or add one in Settings → Projects.'
 
   const missionX = centerX - MISSION_W / 2
   const missionY = centerY + MISSION_OFFSET_Y
@@ -56,17 +61,22 @@ export default function WebullStudyAnchorBlock({ centerX, centerY }: AnchorProps
             margin: '8px 0 0',
           }}
         >
-          Personal market workspace
+          {projectName}
         </h1>
         <p
           style={{
             fontSize: 14,
             color: theme.anchorEyebrow,
-            margin: '6px 0 0',
+            margin: '8px 0 0',
+            fontStyle: project?.mission?.trim() ? 'italic' : 'normal',
+            lineHeight: 1.5,
           }}
         >
-          Webull-backed views, ranges, and study notes.
+          {projectMission}
         </p>
+        <div style={{ marginTop: 12 }}>
+          <CanvasProjectPickerBlock surfaceId="webull-f9" />
+        </div>
       </div>
 
       <div

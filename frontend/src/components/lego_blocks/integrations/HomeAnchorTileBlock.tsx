@@ -4,6 +4,8 @@ import ThisWeekDigestBlock from '@/components/lego_blocks/integrations/ThisWeekD
 import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivityPanelBlock'
 import TodayFileActivityOrch from '@/components/orchestrators/TodayFileActivityOrch'
 import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
+import { useCanvasProjectBindingBlock } from '@/components/lego_blocks/hooks/shared/useCanvasProjectBindingBlock'
+import CanvasProjectPickerBlock from '@/components/lego_blocks/integrations/CanvasProjectPickerBlock'
 import { useDashboardActivityBlock } from '@/components/lego_blocks/hooks/shared/useDashboardActivityBlock'
 import { readVaultUiPreferencesOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import {
@@ -17,7 +19,7 @@ interface AnchorElementProps {
 }
 
 const ANCHOR_ELEMENTS = {
-  welcome: { w: 640, h: 120, offsetY: -520 },
+  welcome: { w: 640, h: 200, offsetY: -540 },
   // Tall enough to hold the chart + drill-down table without scrolling.
   aiActivity: { w: 880, h: 980, offsetY: -380 },
   charts: { w: 880, h: 360, offsetY: 640 },
@@ -73,6 +75,7 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
   const theme = useCanvasThemeBlock()
   const { profile } = useUserProfileBlock()
   const activity = useDashboardActivityBlock('30d')
+  const { project } = useCanvasProjectBindingBlock('home')
   const [showDailyHighlights, setShowDailyHighlights] = useState(false)
 
   useEffect(() => {
@@ -120,6 +123,22 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
           >
             Welcome, {profile.name}
           </h1>
+          {project && project.mission.trim() && (
+            <p
+              style={{
+                fontSize: 14,
+                color: theme.anchorEyebrow,
+                margin: '12px 0 0',
+                fontStyle: 'italic',
+                lineHeight: 1.5,
+              }}
+            >
+              {project.mission}
+            </p>
+          )}
+          <div style={{ marginTop: 14 }}>
+            <CanvasProjectPickerBlock surfaceId="home" />
+          </div>
         </div>
       </FloatingPanel>
 

@@ -93,6 +93,7 @@ import {
 } from '@/services/orchestrators/webSiteOrch'
 import type { WebSitePreferencesBlock } from '@/services/lego_blocks/units/webSiteBlock'
 import DeveloperSetupBlock from '@/components/lego_blocks/integrations/DeveloperSetupBlock'
+import ProjectsSettingsBlock from '@/components/lego_blocks/integrations/ProjectsSettingsBlock'
 import { readFileActivityIgnoredPaths, writeFileActivityIgnoredPaths } from '@/services/orchestrators/fileActivityOrch'
 import { setFileActivityIgnoredPathsOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import {
@@ -104,7 +105,7 @@ import {
   setConsoleWarningsVisible,
 } from '@/services/lego_blocks/units/consoleNoiseFilterBlock'
 
-export type SettingsTabId = 'theme' | 'explorer' | 'moon_scene' | 'activity' | 'ai_activity' | 'scheduler' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer'
+export type SettingsTabId = 'theme' | 'explorer' | 'moon_scene' | 'activity' | 'ai_activity' | 'scheduler' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer' | 'projects'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
 
 interface SettingsOrchProps {
@@ -167,6 +168,7 @@ const TAB_GROUPS: Array<{ heading: string; items: Array<{ id: SettingsTabWithPro
     heading: 'Workspace',
     items: [
       { id: 'profile', label: 'Profile' },
+      { id: 'projects', label: 'Projects' },
       { id: 'vault', label: 'Select Thinking Space' },
     ],
   },
@@ -1919,6 +1921,8 @@ export default function SettingsOrch({
         </Card>
         </div>
       )}
+
+      {activeTab === 'projects' && <ProjectsSettingsBlock />}
 
       {activeTab === 'vault' && (
         <Card>
