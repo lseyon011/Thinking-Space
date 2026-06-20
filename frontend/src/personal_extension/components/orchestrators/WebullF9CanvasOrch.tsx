@@ -15,7 +15,7 @@ const ANCHOR_CENTER_X = WORLD_WIDTH / 2
 
 const MISSION_HEIGHT = 180
 const MISSION_GAP = 32
-const ANCHOR_TOP_BREATHING = 240
+const ANCHOR_TOP_BREATHING = 520
 
 // Top of the study card stays fixed so the mission text above it doesn't shift
 // when rows expand. The card grows downward; world height stretches to fit.
