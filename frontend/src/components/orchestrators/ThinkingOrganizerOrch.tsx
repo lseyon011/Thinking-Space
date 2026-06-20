@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowRight, Check, Eye, FolderTree, Handshake, Layers, Lightbulb, Link2, ListChecks, Loader2, Pencil, Play, Plus, X, type LucideIcon } from 'lucide-react'
+import { ArrowRight, Check, Eye, FolderTree, Handshake, LayoutDashboard, Layers, Lightbulb, Link2, ListChecks, Loader2, Pencil, Play, Plus, X, type LucideIcon } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
@@ -32,6 +32,7 @@ import BacklogOrch, {
   type OrganizerProjectsUpdatedDetail,
 } from '@/components/orchestrators/BacklogOrch'
 import LinkingOrch from '@/components/orchestrators/LinkingOrch'
+import ThinkingOrgCanvasOrch from '@/components/orchestrators/ThinkingOrgCanvasOrch'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
@@ -43,11 +44,12 @@ import {
   setNativeNavigationStackBlock,
 } from '@/services/lego_blocks/units/topChromeNativeBridgeBlock'
 
-type TabMode = 'backlog' | 'view' | 'link'
+type TabMode = 'backlog' | 'view' | 'board' | 'link'
 const PROJECT_ROOT_QUERY_PARAM = 'projectRoot'
 const THINKING_ORGANIZER_TABS: Array<{ id: TabMode; label: string; icon: LucideIcon }> = [
   { id: 'backlog', label: 'Create', icon: Plus },
   { id: 'view', label: 'View', icon: Eye },
+  { id: 'board', label: 'Board', icon: LayoutDashboard },
   { id: 'link', label: 'Link', icon: Link2 },
 ]
 
@@ -76,7 +78,7 @@ const VIEW_ACTOR: CapabilityActor = {
 }
 
 function parseTabMode(raw: string | null): TabMode | null {
-  if (raw === 'backlog' || raw === 'view' || raw === 'link') return raw
+  if (raw === 'backlog' || raw === 'view' || raw === 'board' || raw === 'link') return raw
   return null
 }
 
@@ -368,6 +370,7 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   const [mountedTabs, setMountedTabs] = useState<Record<TabMode, boolean>>(() => ({
     backlog: tab === 'backlog',
     view: tab === 'view',
+    board: tab === 'board',
     link: tab === 'link',
   }))
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -665,6 +668,13 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
           </section>
           <section hidden={tab !== 'view'} aria-hidden={tab !== 'view'}>
             {mountedTabs.view ? <ViewTab /> : null}
+          </section>
+          <section hidden={tab !== 'board'} aria-hidden={tab !== 'board'}>
+            {mountedTabs.board ? (
+              <div className="-mx-6 -mb-5 h-[calc(100vh-220px)] min-h-[600px] overflow-hidden">
+                <ThinkingOrgCanvasOrch />
+              </div>
+            ) : null}
           </section>
           <section hidden={tab !== 'link'} aria-hidden={tab !== 'link'}>
             {mountedTabs.link ? <LinkingOrch /> : null}
