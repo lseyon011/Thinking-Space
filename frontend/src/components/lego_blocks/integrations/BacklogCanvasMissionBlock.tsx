@@ -48,7 +48,7 @@ export default function BacklogCanvasMissionBlock({
             margin: 0,
           }}
         >
-          Backlog
+          Thinking Organizer
         </p>
         <h1
           style={{

@@ -296,6 +296,9 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
                   ),
             )}>
             <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Thinking Organizer
+            </p>
+            <p className="mb-2 mt-5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Projects
             </p>
             <nav className="space-y-1">
