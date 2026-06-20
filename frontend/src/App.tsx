@@ -96,21 +96,10 @@ import {
   getStoredVaultRoot,
 } from './services/orchestrators/storageOrch'
 import {
-  type AppWorkspaceTab,
-  appendPersistentSurfaceTabId,
-  applyPersistentSurfaceBudget,
-  createWorkspaceTabId,
   getTabLabel,
-  getWindowScopedAppShellActiveTabStorageKey,
-  getWindowScopedAppShellTabsStorageKey,
   normalizeTabRoute,
-  parseTabRoute,
-  readScopedAppShellActiveTabIdBlock,
-  readScopedAppShellTabsBlock,
-  resolvePreferredSameRouteTabLabel,
-  sameTabIdSequence,
-  setDynamicStorageItemBlock,
 } from './services/lego_blocks/integrations/workspaceTabsBlock'
+import { useWorkspaceTabsOrch } from './components/orchestrators/useWorkspaceTabsOrch'
 import {
   getWindowContextBlock,
   subscribeWindowContextBlock,
@@ -343,10 +332,6 @@ const EXCALIDRAW_NAV_ITEM: NavItem = {
   activePaths: EXCALIDRAW_PLUS_TOOL_ROUTES.flatMap(tool => [tool.route, tool.legacyRoute]),
 }
 
-const MAX_HIDDEN_PERSISTENT_CHAT_SURFACES = 1
-const MAX_HIDDEN_PERSISTENT_WEB_SURFACES = 1
-const MAX_HIDDEN_PERSISTENT_THINKING_SPACE_SURFACES = 2
-
 function isNavItemActive(pathname: string, item: NavItem): boolean {
   if (pathname === item.to) return true
   const activePaths = item.activePaths ?? []
@@ -502,19 +487,8 @@ function App() {
   const scrollbarActivityTimeoutRef = useRef<number | null>(null)
   const nativeChromeScrollTargetRef = useRef<EventTarget | null>(null)
   const nativeChromeLastScrollTopRef = useRef(0)
-  const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
-  // [tab-switch-perf] one-shot ref populated by handleSelectWorkspaceTab; read
-  // and cleared by the layout-effect/rAF below. Remove with the related code
-  // block once we've diagnosed the tab-switch lag.
-  const tabSwitchPerfRef = useRef<{
-    tabId: string
-    label: string
-    route: string
-    clickAt: number
-  } | null>(null)
   const initialWindowContextRef = useRef<WindowContextBlock>(getWindowContextBlock())
   const [windowContext, setWindowContext] = useState<WindowContextBlock>(initialWindowContextRef.current)
-  const activeWorkspaceTabIdRef = useRef(readScopedAppShellActiveTabIdBlock(initialWindowContextRef.current))
   const currentRouteRef = useRef(currentRoute)
   const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerPanelSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -527,95 +501,6 @@ function App() {
     if (isCapacitorNative() && stored.startsWith('/')) return true
     return false
   })
-  const [workspaceTabs, setWorkspaceTabs] = useState<AppWorkspaceTab[]>(() => {
-    const savedTabs = readScopedAppShellTabsBlock(initialWindowContextRef.current)
-      .filter((candidate) => (
-        !!candidate
-        && typeof candidate.id === 'string'
-        && typeof candidate.route === 'string'
-        && candidate.id.trim().length > 0
-        && candidate.route.trim().length > 0
-      ))
-      .slice(0, 24)
-      .map((candidate) => ({
-        id: candidate.id.trim(),
-        route: normalizeTabRoute(candidate.route),
-        label: typeof candidate.label === 'string' && candidate.label.trim().length > 0
-          ? candidate.label.trim()
-          : undefined,
-      }))
-
-    if (savedTabs.length > 0) return savedTabs
-
-    return [{ id: createWorkspaceTabId(), route: normalizeTabRoute(currentRoute) }]
-  })
-  const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState(
-    () => readScopedAppShellActiveTabIdBlock(initialWindowContextRef.current),
-  )
-  const [persistentChatTabIds, setPersistentChatTabIds] = useState<string[]>(
-    () => applyPersistentSurfaceBudget(
-      workspaceTabs
-        .filter((tab) => parseTabRoute(tab.route).pathname === '/ai/chat')
-        .map((tab) => tab.id),
-      MAX_HIDDEN_PERSISTENT_CHAT_SURFACES,
-    ),
-  )
-  const [persistentWebTabIds, setPersistentWebTabIds] = useState<string[]>(
-    () => applyPersistentSurfaceBudget(
-      workspaceTabs
-        .filter((tab) => parseTabRoute(tab.route).pathname === '/web')
-        .map((tab) => tab.id),
-      MAX_HIDDEN_PERSISTENT_WEB_SURFACES,
-    ),
-  )
-  const [persistentWebSiteIdByTabId, setPersistentWebSiteIdByTabId] = useState<Record<string, string | null>>(
-    () => Object.fromEntries(
-      workspaceTabs.map((tab) => {
-        const parsed = parseTabRoute(tab.route)
-        return [tab.id, parsed.pathname === '/web' ? parsed.search.get('site') : null]
-      }),
-    ),
-  )
-  const [persistentThinkingSpaceTabIds, setPersistentThinkingSpaceTabIds] = useState<string[]>(
-    () => applyPersistentSurfaceBudget(
-      workspaceTabs
-        .filter((tab) => parseTabRoute(tab.route).pathname === '/thinking-space')
-        .map((tab) => tab.id),
-      MAX_HIDDEN_PERSISTENT_THINKING_SPACE_SURFACES,
-    ),
-  )
-  const [persistentOrganizerRouteByTabId, setPersistentOrganizerRouteByTabId] = useState<Record<string, string>>(
-    () => Object.fromEntries(
-      workspaceTabs.flatMap((tab) => {
-        const pathname = parseTabRoute(tab.route).pathname
-        return pathname === '/thinking-organizer' || pathname === '/file-organizer'
-          ? [[tab.id, normalizeTabRoute(tab.route)]]
-          : []
-      }),
-    ),
-  )
-  const [persistentRouteMounts, setPersistentRouteMounts] = useState(() => ({
-    organizer: location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer',
-    newThought: location.pathname === '/new-thought',
-    thinkingSpace: location.pathname === '/thinking-space',
-    webull: location.pathname === '/webull',
-  }))
-  const appShellTabsStorageKey = useMemo(
-    () => getWindowScopedAppShellTabsStorageKey(windowContext),
-    [windowContext],
-  )
-  const appShellActiveTabStorageKey = useMemo(
-    () => getWindowScopedAppShellActiveTabStorageKey(windowContext),
-    [windowContext],
-  )
-
-  // Pre-compute a Set of mounted tab IDs for O(1) lookups in persistent route rendering
-  // (replaces O(n) workspaceTabs.some() calls inside .map() loops)
-  const mountedTabIdSet = useMemo(
-    () => new Set(workspaceTabs.map(tab => tab.id)),
-    [workspaceTabs],
-  )
-
   const showGoogleWorkspaceChromeControls = location.pathname === '/thinking-space'
     && thinkingSpaceGoogleWorkspaceChromeState.enabled
   const showChatSidebarChromeControl = location.pathname === '/ai/chat'
@@ -657,14 +542,6 @@ function App() {
     && layout.surface !== 'capacitor-android'
   const showThinkingSpaceHeaderToggle = showGoogleWorkspaceChromeControls
     && thinkingSpaceGoogleWorkspaceChromeState.showHeaderToggle
-  const isChatRoute = location.pathname === '/ai/chat'
-  const isWebRoute = location.pathname === '/web'
-  const isOrganizerRoute = location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer'
-  const isNewThoughtRoute = location.pathname === '/new-thought'
-  const isThinkingSpaceRoute = location.pathname === '/thinking-space'
-  const isWebullRoute = location.pathname === '/webull'
-  const usesPersistentRouteSurface = isChatRoute || isWebRoute || isOrganizerRoute || isNewThoughtRoute || isThinkingSpaceRoute || isWebullRoute
-
   const resolvedWebullIcon = useMemo(() => {
     if (!webullTabIconText) return WebullNavIcon
     const text = webullTabIconText
@@ -755,41 +632,51 @@ function App() {
     })
   }, [])
 
-  const activeWorkspaceTab = useMemo(
-    () => workspaceTabs.find(tab => tab.id === activeWorkspaceTabId) ?? null,
-    [activeWorkspaceTabId, workspaceTabs],
-  )
+  const {
+    workspaceTabs,
+    activeWorkspaceTabId,
+    activeWorkspaceTab,
+    persistentWebSiteIdByTabId,
+    persistentRouteMounts,
+    mountedTabIdSet,
+    isChatRoute,
+    isWebRoute,
+    isOrganizerRoute,
+    isNewThoughtRoute,
+    isThinkingSpaceRoute,
+    isWebullRoute,
+    usesPersistentRouteSurface,
+    activeChatTabIds: renderedPersistentChatTabIds,
+    activeWebTabIds: renderedPersistentWebTabIds,
+    activeThinkingSpaceTabIds: renderedPersistentThinkingSpaceTabIds,
+    activeOrganizerRoute,
+    derivedActiveWorkspaceTabLabel,
+    activeWorkspaceTabLabel,
+    pendingWorkspaceTabNavigationRef,
+    tabSwitchPerfRef,
+    handleCreateWorkspaceTab,
+    handleSelectWorkspaceTab,
+    handleCloseWorkspaceTab,
+    getWebSiteSelectCallback,
+    syncActiveWorkspaceTabLabel,
+  } = useWorkspaceTabsOrch({
+    windowContext,
+    location,
+    currentRoute,
+    routeLabelByPath,
+    chatChromeLabel: chatSidebarChromeState.label,
+    webChromeLabel: webSidebarChromeState.label,
+    webChromeSiteLabels: webSidebarChromeState.siteLabels,
+    webullTabLabel,
+  })
+  const organizerNavRoute = activeOrganizerRoute ?? '/thinking-organizer'
+  void derivedActiveWorkspaceTabLabel
+  void activeWorkspaceTab
 
   useEffect(() => {
-    activeWorkspaceTabIdRef.current = activeWorkspaceTabId
     currentRouteRef.current = currentRoute
-  }, [activeWorkspaceTabId, currentRoute])
+  }, [currentRoute])
 
-  const activeWorkspaceTabDisplayRoute = useMemo(() => {
-    const pending = pendingWorkspaceTabNavigationRef.current
-    if (pending && pending.tabId === activeWorkspaceTabId) return pending.route
-    return currentRoute
-  }, [activeWorkspaceTabId, currentRoute])
-
-  const derivedActiveWorkspaceTabLabel = useMemo(
-    () => getTabLabel(
-      activeWorkspaceTabDisplayRoute,
-      routeLabelByPath,
-      chatSidebarChromeState.label,
-      webSidebarChromeState.label,
-      webullTabLabel,
-      webSidebarChromeState.siteLabels,
-    ),
-    [activeWorkspaceTabDisplayRoute, routeLabelByPath, chatSidebarChromeState.label, webSidebarChromeState.label, webSidebarChromeState.siteLabels, webullTabLabel],
-  )
-  const activeWorkspaceTabLabel = useMemo(
-    () => resolvePreferredSameRouteTabLabel(
-      parseTabRoute(activeWorkspaceTabDisplayRoute).pathname,
-      activeWorkspaceTab?.label,
-      derivedActiveWorkspaceTabLabel,
-    ),
-    [activeWorkspaceTab?.label, activeWorkspaceTabDisplayRoute, derivedActiveWorkspaceTabLabel],
-  )
   const nativeTopDrawerActiveNavItemId = useMemo(() => {
     if (location.pathname === '/thinking-organizer' || location.pathname === '/file-organizer') {
       return '/thinking-organizer'
@@ -813,30 +700,6 @@ function App() {
         return undefined
     }
   }, [location.pathname])
-  const renderedPersistentChatTabIds = useMemo(
-    () => (isChatRoute && activeWorkspaceTabId && !persistentChatTabIds.includes(activeWorkspaceTabId)
-      ? [...persistentChatTabIds, activeWorkspaceTabId]
-      : persistentChatTabIds),
-    [activeWorkspaceTabId, isChatRoute, persistentChatTabIds],
-  )
-  const renderedPersistentWebTabIds = useMemo(
-    () => (isWebRoute && activeWorkspaceTabId && !persistentWebTabIds.includes(activeWorkspaceTabId)
-      ? [...persistentWebTabIds, activeWorkspaceTabId]
-      : persistentWebTabIds),
-    [activeWorkspaceTabId, isWebRoute, persistentWebTabIds],
-  )
-  const renderedPersistentThinkingSpaceTabIds = useMemo(
-    () => (isThinkingSpaceRoute && activeWorkspaceTabId && !persistentThinkingSpaceTabIds.includes(activeWorkspaceTabId)
-      ? [...persistentThinkingSpaceTabIds, activeWorkspaceTabId]
-      : persistentThinkingSpaceTabIds),
-    [activeWorkspaceTabId, isThinkingSpaceRoute, persistentThinkingSpaceTabIds],
-  )
-  const organizerNavRoute = useMemo(
-    () => (activeWorkspaceTabId
-      ? (persistentOrganizerRouteByTabId[activeWorkspaceTabId] ?? '/thinking-organizer')
-      : '/thinking-organizer'),
-    [activeWorkspaceTabId, persistentOrganizerRouteByTabId],
-  )
   const resolveWorkspaceNavigationRoute = useCallback((route: string) => (
     route === '/thinking-organizer' ? organizerNavRoute : route
   ), [organizerNavRoute])
@@ -1657,96 +1520,6 @@ function App() {
     navigate(resolveWorkspaceNavigationRoute(item.to))
   }, [navigate, resolveWorkspaceNavigationRoute])
 
-  useEffect(() => {
-    setPersistentRouteMounts(prev => (
-      prev.organizer === isOrganizerRoute
-        && prev.newThought === isNewThoughtRoute
-        && prev.thinkingSpace === isThinkingSpaceRoute
-        && prev.webull === isWebullRoute
-        ? prev
-        : {
-            organizer: prev.organizer || isOrganizerRoute,
-            newThought: prev.newThought || isNewThoughtRoute,
-            thinkingSpace: prev.thinkingSpace || isThinkingSpaceRoute,
-            webull: prev.webull || isWebullRoute,
-          }
-    ))
-    if (!activeWorkspaceTabId) return
-    const normalizedCurrentRoute = normalizeTabRoute(currentRoute)
-    const pending = pendingWorkspaceTabNavigationRef.current
-    const activeTabRoutePending = pending?.tabId === activeWorkspaceTabId
-      && pending.route !== normalizedCurrentRoute
-
-    if (isChatRoute) {
-      setPersistentChatTabIds((prev) => {
-        const next = appendPersistentSurfaceTabId(
-          prev,
-          activeWorkspaceTabId,
-          MAX_HIDDEN_PERSISTENT_CHAT_SURFACES,
-          activeWorkspaceTabId,
-        )
-        return sameTabIdSequence(next, prev) ? prev : next
-      })
-    }
-
-    if (isWebRoute) {
-      const selectedSiteId = new URLSearchParams(location.search).get('site')
-      setPersistentWebTabIds((prev) => {
-        const next = appendPersistentSurfaceTabId(
-          prev,
-          activeWorkspaceTabId,
-          MAX_HIDDEN_PERSISTENT_WEB_SURFACES,
-          activeWorkspaceTabId,
-        )
-        return sameTabIdSequence(next, prev) ? prev : next
-      })
-      // Only update the stored site ID when the URL explicitly carries a site param.
-      // Navigating to bare /web (e.g. via sidebar) must not wipe a previously stored selection.
-      if (!activeTabRoutePending && selectedSiteId !== null) {
-        setPersistentWebSiteIdByTabId((prev) => (
-          prev[activeWorkspaceTabId] === selectedSiteId
-            ? prev
-            : { ...prev, [activeWorkspaceTabId]: selectedSiteId }
-        ))
-      }
-    }
-
-    if (isThinkingSpaceRoute) {
-      setPersistentThinkingSpaceTabIds((prev) => {
-        const next = appendPersistentSurfaceTabId(
-          prev,
-          activeWorkspaceTabId,
-          MAX_HIDDEN_PERSISTENT_THINKING_SPACE_SURFACES,
-          activeWorkspaceTabId,
-        )
-        return sameTabIdSequence(next, prev) ? prev : next
-      })
-    }
-
-    if (isOrganizerRoute) {
-      if (activeTabRoutePending) return
-      setPersistentOrganizerRouteByTabId((prev) => (
-        prev[activeWorkspaceTabId] === normalizedCurrentRoute
-          ? prev
-          : { ...prev, [activeWorkspaceTabId]: normalizedCurrentRoute }
-      ))
-    }
-  }, [activeWorkspaceTabId, currentRoute, isChatRoute, isNewThoughtRoute, isOrganizerRoute, isThinkingSpaceRoute, isWebRoute, isWebullRoute, location.search])
-
-  const handleCreateWorkspaceTab = useCallback(() => {
-    const tab: AppWorkspaceTab = {
-      id: createWorkspaceTabId(),
-      route: '/',
-    }
-    pendingWorkspaceTabNavigationRef.current = {
-      tabId: tab.id,
-      route: normalizeTabRoute(tab.route),
-    }
-    setWorkspaceTabs(prev => [...prev, tab])
-    setActiveWorkspaceTabId(tab.id)
-    navigate(tab.route)
-  }, [navigate])
-
   const openNativeCreateSurface = useCallback(() => {
     handleCreateWorkspaceTab()
     navigate('/new-thought')
@@ -1826,33 +1599,6 @@ function App() {
     }
   }, [nativeHeaderToolControl.kind])
 
-  const handleSelectWorkspaceTab = useCallback((tabId: string) => {
-    if (tabId === activeWorkspaceTabId) return
-    const target = workspaceTabs.find(tab => tab.id === tabId)
-    if (!target) return
-    // Capture click time for the perf tracer. Cheap; gated on read side.
-    if (perfTraceEnabled()) {
-      tabSwitchPerfRef.current = {
-        tabId,
-        label: target.label ?? tabId,
-        route: target.route,
-        clickAt: performance.now(),
-      }
-    }
-    if (target.route !== currentRoute) {
-      pendingWorkspaceTabNavigationRef.current = {
-        tabId,
-        route: normalizeTabRoute(target.route),
-      }
-    } else if (pendingWorkspaceTabNavigationRef.current?.tabId === tabId) {
-      pendingWorkspaceTabNavigationRef.current = null
-    }
-    setActiveWorkspaceTabId(tabId)
-    if (target.route !== currentRoute) {
-      navigate(target.route)
-    }
-  }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
-
   // Tab-switch perf tracing. Fires on ANY pathname change (catches tab
   // strip, sidebar nav, command palette). Logged via perfTraceBlock — gated
   // by `localStorage.thinkspc.perfTrace = '1'` or `?perfTrace=1`, so this is
@@ -1900,63 +1646,6 @@ function App() {
   useEffect(() => {
     logPerfTraceBootBanner()
   }, [])
-
-  const handleCloseWorkspaceTab = useCallback((tabId: string) => {
-    if (workspaceTabs.length <= 1) return
-    if (pendingWorkspaceTabNavigationRef.current?.tabId === tabId) {
-      pendingWorkspaceTabNavigationRef.current = null
-    }
-    const closeIndex = workspaceTabs.findIndex(tab => tab.id === tabId)
-    if (closeIndex === -1) return
-    const nextTabs = workspaceTabs.filter(tab => tab.id !== tabId)
-    setWorkspaceTabs(nextTabs)
-    if (tabId !== activeWorkspaceTabId) return
-    const nextActive = nextTabs[Math.max(0, closeIndex - 1)] ?? nextTabs[0]
-    if (!nextActive) return
-    setActiveWorkspaceTabId(nextActive.id)
-    if (nextActive.route !== currentRoute) {
-      pendingWorkspaceTabNavigationRef.current = {
-        tabId: nextActive.id,
-        route: normalizeTabRoute(nextActive.route),
-      }
-      navigate(nextActive.route)
-    }
-  }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
-
-  // Stable per-tab onSelectSiteId callbacks so the memoized Web surface
-  // doesn't re-render whenever App shell state changes. The ref indirection
-  // keeps each per-tab callback's identity fixed while always invoking the
-  // latest handler.
-  const handlePersistentWebSiteSelectRef = useRef<(tabId: string, siteId: string) => void>(() => {})
-  const webSiteSelectCallbackByTabIdRef = useRef(new Map<string, (siteId: string) => void>())
-  const getWebSiteSelectCallback = useCallback((tabId: string) => {
-    let callback = webSiteSelectCallbackByTabIdRef.current.get(tabId)
-    if (!callback) {
-      callback = (siteId: string) => handlePersistentWebSiteSelectRef.current(tabId, siteId)
-      webSiteSelectCallbackByTabIdRef.current.set(tabId, callback)
-    }
-    return callback
-  }, [])
-
-  const handlePersistentWebSiteSelect = useCallback((tabId: string, siteId: string) => {
-    const nextSearch = new URLSearchParams()
-    nextSearch.set('site', siteId)
-    setPersistentWebTabIds((prev) => {
-      const next = appendPersistentSurfaceTabId(
-        prev,
-        tabId,
-        MAX_HIDDEN_PERSISTENT_WEB_SURFACES,
-        isWebRoute ? activeWorkspaceTabId : null,
-      )
-      return sameTabIdSequence(next, prev) ? prev : next
-    })
-    setPersistentWebSiteIdByTabId((prev) => (
-      prev[tabId] === siteId ? prev : { ...prev, [tabId]: siteId }
-    ))
-    if (tabId !== activeWorkspaceTabId) return
-    navigate(`/web?${nextSearch.toString()}`, { replace: true })
-  }, [activeWorkspaceTabId, isWebRoute, navigate])
-  handlePersistentWebSiteSelectRef.current = handlePersistentWebSiteSelect
 
   const handleDrawerTouchStart = useCallback((event: React.TouchEvent<HTMLElement>) => {
     const touch = event.touches[0]
@@ -2406,182 +2095,6 @@ function App() {
       cancelled = true
     }
   }, [needsVaultSetup])
-
-  useEffect(() => {
-    if (workspaceTabs.length === 0) {
-      const fallbackTab: AppWorkspaceTab = {
-        id: createWorkspaceTabId(),
-        route: normalizeTabRoute(currentRoute),
-      }
-      setWorkspaceTabs([fallbackTab])
-      setActiveWorkspaceTabId(fallbackTab.id)
-      return
-    }
-    if (activeWorkspaceTabId && workspaceTabs.some(tab => tab.id === activeWorkspaceTabId)) return
-    const matchingRouteTab = workspaceTabs.find(tab => tab.route === normalizeTabRoute(currentRoute))
-    setActiveWorkspaceTabId((matchingRouteTab ?? workspaceTabs[0]).id)
-  }, [activeWorkspaceTabId, currentRoute, workspaceTabs])
-
-  useEffect(() => {
-    const tabIds = new Set(workspaceTabs.map((tab) => tab.id))
-    for (const tabId of webSiteSelectCallbackByTabIdRef.current.keys()) {
-      if (!tabIds.has(tabId)) webSiteSelectCallbackByTabIdRef.current.delete(tabId)
-    }
-    setPersistentChatTabIds((prev) => {
-      const next = applyPersistentSurfaceBudget(
-        prev.filter((tabId) => tabIds.has(tabId)),
-        MAX_HIDDEN_PERSISTENT_CHAT_SURFACES,
-        isChatRoute ? activeWorkspaceTabId : null,
-      )
-      return sameTabIdSequence(next, prev) ? prev : next
-    })
-    setPersistentWebTabIds((prev) => {
-      const next = applyPersistentSurfaceBudget(
-        prev.filter((tabId) => tabIds.has(tabId)),
-        MAX_HIDDEN_PERSISTENT_WEB_SURFACES,
-        isWebRoute ? activeWorkspaceTabId : null,
-      )
-      return sameTabIdSequence(next, prev) ? prev : next
-    })
-    setPersistentThinkingSpaceTabIds((prev) => {
-      const next = applyPersistentSurfaceBudget(
-        prev.filter((tabId) => tabIds.has(tabId)),
-        MAX_HIDDEN_PERSISTENT_THINKING_SPACE_SURFACES,
-        isThinkingSpaceRoute ? activeWorkspaceTabId : null,
-      )
-      return sameTabIdSequence(next, prev) ? prev : next
-    })
-    setPersistentWebSiteIdByTabId((prev) => {
-      const nextEntries = Object.entries(prev).filter(([tabId]) => tabIds.has(tabId))
-      return nextEntries.length === Object.keys(prev).length ? prev : Object.fromEntries(nextEntries)
-    })
-    setPersistentOrganizerRouteByTabId((prev) => {
-      const nextEntries = Object.entries(prev).filter(([tabId]) => tabIds.has(tabId))
-      return nextEntries.length === Object.keys(prev).length ? prev : Object.fromEntries(nextEntries)
-    })
-  }, [activeWorkspaceTabId, isChatRoute, isThinkingSpaceRoute, isWebRoute, workspaceTabs])
-
-  useEffect(() => {
-    if (!activeWorkspaceTabId) return
-    setWorkspaceTabs((prev) => {
-      const index = prev.findIndex(tab => tab.id === activeWorkspaceTabId)
-      if (index === -1) return prev
-      const pending = pendingWorkspaceTabNavigationRef.current
-      const normalizedCurrentRoute = normalizeTabRoute(currentRoute)
-      if (pending) {
-        if (activeWorkspaceTabId !== pending.tabId) return prev
-        if (normalizedCurrentRoute !== pending.route) return prev
-      }
-      const pathname = parseTabRoute(normalizedCurrentRoute).pathname
-      const prevPathname = parseTabRoute(prev[index].route).pathname
-      const nextLabel = (pathname === '/ai/chat' || pathname === '/web') && prevPathname === pathname
-        ? resolvePreferredSameRouteTabLabel(pathname, prev[index].label, derivedActiveWorkspaceTabLabel)
-        : derivedActiveWorkspaceTabLabel
-      if (prev[index].route === normalizedCurrentRoute && prev[index].label === nextLabel) return prev
-      const next = prev.slice()
-      next[index] = { ...next[index], route: normalizedCurrentRoute, label: nextLabel }
-      return next
-    })
-  }, [activeWorkspaceTabId, currentRoute, derivedActiveWorkspaceTabLabel])
-
-  useEffect(() => {
-    const pending = pendingWorkspaceTabNavigationRef.current
-    if (!pending) return
-    if (activeWorkspaceTabId !== pending.tabId) return
-    if (!workspaceTabs.some(tab => tab.id === pending.tabId)) {
-      pendingWorkspaceTabNavigationRef.current = null
-      return
-    }
-
-    const normalizedCurrentRoute = normalizeTabRoute(currentRoute)
-    if (normalizedCurrentRoute !== pending.route) {
-      navigate(pending.route)
-      return
-    }
-
-    pendingWorkspaceTabNavigationRef.current = null
-  }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
-
-  // Debounce workspace tab persistence — rapid tab switches only write once after settling
-  const tabsPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => {
-    if (tabsPersistTimerRef.current) clearTimeout(tabsPersistTimerRef.current)
-    tabsPersistTimerRef.current = setTimeout(() => {
-      tabsPersistTimerRef.current = null
-      setDynamicStorageItemBlock(appShellTabsStorageKey, JSON.stringify(workspaceTabs))
-    }, 500)
-    return () => { if (tabsPersistTimerRef.current) clearTimeout(tabsPersistTimerRef.current) }
-  }, [appShellTabsStorageKey, workspaceTabs])
-
-  const activeTabPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => {
-    if (!activeWorkspaceTabId) return
-    if (activeTabPersistTimerRef.current) clearTimeout(activeTabPersistTimerRef.current)
-    activeTabPersistTimerRef.current = setTimeout(() => {
-      activeTabPersistTimerRef.current = null
-      setDynamicStorageItemBlock(appShellActiveTabStorageKey, activeWorkspaceTabId)
-    }, 300)
-    return () => { if (activeTabPersistTimerRef.current) clearTimeout(activeTabPersistTimerRef.current) }
-  }, [activeWorkspaceTabId, appShellActiveTabStorageKey])
-
-  // Flush pending debounced tab writes when the window is going away —
-  // without this, closing the app within the debounce window loses the most
-  // recent tab/active-tab change on relaunch.
-  useEffect(() => {
-    const flushPendingTabPersistence = () => {
-      if (tabsPersistTimerRef.current) {
-        clearTimeout(tabsPersistTimerRef.current)
-        tabsPersistTimerRef.current = null
-        setDynamicStorageItemBlock(appShellTabsStorageKey, JSON.stringify(workspaceTabs))
-      }
-      if (activeTabPersistTimerRef.current) {
-        clearTimeout(activeTabPersistTimerRef.current)
-        activeTabPersistTimerRef.current = null
-        if (activeWorkspaceTabId) {
-          setDynamicStorageItemBlock(appShellActiveTabStorageKey, activeWorkspaceTabId)
-        }
-      }
-    }
-    window.addEventListener('pagehide', flushPendingTabPersistence)
-    document.addEventListener('visibilitychange', flushPendingTabPersistence)
-    return () => {
-      window.removeEventListener('pagehide', flushPendingTabPersistence)
-      document.removeEventListener('visibilitychange', flushPendingTabPersistence)
-    }
-  }, [activeWorkspaceTabId, appShellActiveTabStorageKey, appShellTabsStorageKey, workspaceTabs])
-
-  useEffect(() => {
-    const onOpenRouteInNewTab = (event: Event) => {
-      const customEvent = event as CustomEvent<string>
-      const route = normalizeTabRoute(customEvent.detail ?? '/')
-      const tab: AppWorkspaceTab = {
-        id: createWorkspaceTabId(),
-        route,
-      }
-      pendingWorkspaceTabNavigationRef.current = { tabId: tab.id, route }
-      setWorkspaceTabs(prev => [...prev, tab])
-      setActiveWorkspaceTabId(tab.id)
-    }
-
-    window.addEventListener('ltm:workspace-open-route-in-new-tab', onOpenRouteInNewTab as EventListener)
-    return () => {
-      window.removeEventListener('ltm:workspace-open-route-in-new-tab', onOpenRouteInNewTab as EventListener)
-    }
-  }, [])
-
-  const syncActiveWorkspaceTabLabel = (pathname: string, nextLabel: string) => {
-    if (parseTabRoute(currentRouteRef.current).pathname !== pathname) return
-    const tabId = activeWorkspaceTabIdRef.current
-    if (!tabId) return
-    setWorkspaceTabs((prev) => {
-      const index = prev.findIndex(tab => tab.id === tabId)
-      if (index === -1) return prev
-      if (prev[index].label === nextLabel) return prev
-      const next = prev.slice()
-      next[index] = { ...next[index], label: nextLabel }
-      return next
-    })
-  }
 
   useChromeStateEventBlock<ThinkingSpaceGoogleWorkspaceChromeStateBlock>(
     thinkingSpaceGoogleWorkspaceChromeBlock.stateEvent,
