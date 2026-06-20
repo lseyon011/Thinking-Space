@@ -8,11 +8,11 @@ import type {
   WebullStudyRowOrch,
 } from '../../../services/orchestrators/webullStudyOrch'
 import type { WebullStudyCommentBlock } from '../../../services/lego_blocks/units/webullStudyRecordBlock'
+import TickerLogoBlock from '../units/TickerLogoBlock'
 
 interface WebullStudyTableBlockProps {
   rows: WebullStudyRowOrch[]
-  activeTicker: string | null
-  onSelectTicker: (ticker: string) => void
+  executionRoot: string
   onOpenStudyFile: (filePath: string) => void
 }
 
@@ -28,17 +28,29 @@ const CATEGORY_LABEL_BLOCK: Record<WebullStudyCategoryOrch, string> = {
   'no-study': 'No study yet',
 }
 
-const CATEGORY_TONE_BLOCK: Record<WebullStudyCategoryOrch, string> = {
-  'in-range': 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
-  'approaching': 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
-  'above-range': 'bg-muted text-muted-foreground border-border',
-  'below-range': 'bg-muted text-muted-foreground border-border',
-  'restudy-soon': 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
-  'stale': 'bg-destructive/15 text-destructive border-destructive/30',
-  'too-hard': 'bg-muted/60 text-muted-foreground border-border',
-  'no-range': 'bg-muted/60 text-muted-foreground border-border',
-  'no-study': 'bg-muted/60 text-muted-foreground border-border',
+const CATEGORY_DOT_BLOCK: Record<WebullStudyCategoryOrch, string> = {
+  'in-range': 'bg-emerald-500',
+  'approaching': 'bg-amber-500',
+  'above-range': 'bg-muted-foreground/40',
+  'below-range': 'bg-emerald-600',
+  'restudy-soon': 'bg-amber-500',
+  'stale': 'bg-destructive',
+  'too-hard': 'bg-muted-foreground/30',
+  'no-range': 'bg-muted-foreground/30',
+  'no-study': 'bg-muted-foreground/30',
 }
+
+const CATEGORY_ORDER_BLOCK: WebullStudyCategoryOrch[] = [
+  'below-range',
+  'in-range',
+  'approaching',
+  'restudy-soon',
+  'stale',
+  'above-range',
+  'too-hard',
+  'no-range',
+  'no-study',
+]
 
 function formatMoneyBlock(value: number | null, opts?: { sign?: boolean }): string {
   if (value === null || !Number.isFinite(value)) return '—'
@@ -61,6 +73,8 @@ function formatPctBlock(value: number | null): string {
 
 function deltaToneBlock(category: WebullStudyCategoryOrch): string {
   switch (category) {
+    case 'below-range':
+      return 'text-emerald-700 dark:text-emerald-300 font-semibold'
     case 'in-range':
       return 'text-emerald-700 dark:text-emerald-300 font-medium'
     case 'approaching':
@@ -71,6 +85,15 @@ function deltaToneBlock(category: WebullStudyCategoryOrch): string {
     default:
       return 'text-muted-foreground'
   }
+}
+
+function rangeDeltaDollarsBlock(row: WebullStudyRowOrch): number | null {
+  const price = row.livePrice.value
+  const range = row.record?.currentRange
+  if (price === null || !Number.isFinite(price) || !range) return null
+  if (price > range.high) return price - range.high
+  if (price < range.low) return price - range.low
+  return null
 }
 
 function formatValidThroughBlock(row: WebullStudyRowOrch): string {
@@ -96,17 +119,19 @@ function pickHighlightCommentBlock(
 
 function HeldBadgeBlock({ row }: { row: WebullStudyRowOrch }) {
   if (!row.held) {
-    return <span className="text-xs text-muted-foreground">No</span>
+    return <span className="text-xs text-muted-foreground/70">—</span>
   }
   if (row.heldStock) {
     return (
-      <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+      <span className="inline-flex items-center gap-1.5 text-xs text-foreground/80">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
         Stock
       </span>
     )
   }
   return (
-    <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300">
+    <span className="inline-flex items-center gap-1.5 text-xs text-foreground/80">
+      <span className="h-1.5 w-1.5 rounded-full bg-blue-500" aria-hidden="true" />
       Options
     </span>
   )
@@ -141,16 +166,17 @@ function SortHeaderBlock({
   )
 }
 
-function CategoryChipBlock({ category }: { category: WebullStudyCategoryOrch }) {
+function CategoryDotBlock({ category }: { category: WebullStudyCategoryOrch }) {
   return (
-    <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide', CATEGORY_TONE_BLOCK[category])}>
-      {CATEGORY_LABEL_BLOCK[category]}
-    </span>
+    <span
+      className={cn('h-2 w-2 shrink-0 rounded-full', CATEGORY_DOT_BLOCK[category])}
+      aria-hidden="true"
+    />
   )
 }
 
 const COLUMN_TEMPLATE_BLOCK =
-  'grid grid-cols-[28px_minmax(140px,1.4fr)_70px_minmax(120px,1fr)_minmax(110px,1fr)_80px_minmax(150px,1.2fr)_minmax(110px,1fr)] gap-2 items-center px-3'
+  'grid grid-cols-[24px_minmax(120px,1.2fr)_84px_minmax(120px,1fr)_minmax(110px,1fr)_80px_minmax(150px,1.2fr)_minmax(110px,1fr)] gap-3 items-center px-1'
 
 type SortKey =
   | 'ticker'
@@ -203,8 +229,7 @@ function compareStringBlock(
 
 export default function WebullStudyTableBlock({
   rows,
-  activeTicker,
-  onSelectTicker,
+  executionRoot,
   onOpenStudyFile,
 }: WebullStudyTableBlockProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -264,6 +289,18 @@ export default function WebullStudyTableBlock({
     })
   }
 
+  const groupedRows = useMemo(() => {
+    const buckets = new Map<WebullStudyCategoryOrch, WebullStudyRowOrch[]>()
+    for (const row of sortedRows) {
+      const list = buckets.get(row.category) ?? []
+      list.push(row)
+      buckets.set(row.category, list)
+    }
+    return CATEGORY_ORDER_BLOCK
+      .filter((cat) => buckets.has(cat))
+      .map((cat) => ({ category: cat, rows: buckets.get(cat)! }))
+  }, [sortedRows])
+
   if (rows.length === 0) {
     return (
       <div className="rounded-lg border border-dashed bg-muted/20 p-8 text-center text-sm text-muted-foreground">
@@ -274,8 +311,8 @@ export default function WebullStudyTableBlock({
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-background">
-      <div className={cn(COLUMN_TEMPLATE_BLOCK, 'border-b bg-muted/40 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground')}>
+    <div>
+      <div className={cn(COLUMN_TEMPLATE_BLOCK, 'py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70')}>
         <span aria-hidden="true" />
         <SortHeaderBlock label="Ticker" sortKey="ticker" sort={sort} onToggle={toggleSort} />
         <SortHeaderBlock label="Held" sortKey="held" sort={sort} onToggle={toggleSort} />
@@ -286,10 +323,20 @@ export default function WebullStudyTableBlock({
         <SortHeaderBlock label="Last updated" sortKey="lastUpdated" sort={sort} onToggle={toggleSort} />
       </div>
 
-      <div className="divide-y">
-        {sortedRows.map((row) => {
+      {groupedRows.map((group) => (
+        <div key={group.category} className="mt-4 first:mt-2">
+          <div className="flex items-baseline gap-2 px-1 pb-1.5">
+            <CategoryDotBlock category={group.category} />
+            <span className="text-xs font-medium text-foreground/80">
+              {CATEGORY_LABEL_BLOCK[group.category]}
+            </span>
+            <span className="text-[11px] tabular-nums text-muted-foreground/60">
+              {group.rows.length}
+            </span>
+          </div>
+          <div className="divide-y divide-border/40">
+            {group.rows.map((row) => {
           const isExpanded = expanded.has(row.ticker)
-          const isActive = activeTicker === row.ticker
           const range = row.record?.currentRange
           const rangeLabel = range
             ? `$${range.low.toLocaleString()}–$${range.high.toLocaleString()}`
@@ -306,45 +353,39 @@ export default function WebullStudyTableBlock({
               key={row.ticker}
               className={cn(
                 'transition-colors',
-                isActive ? 'bg-accent/40' : 'hover:bg-muted/30',
+                isExpanded ? 'bg-muted/20' : 'hover:bg-muted/30',
               )}
             >
               <div
                 className={cn(COLUMN_TEMPLATE_BLOCK, 'cursor-pointer py-2.5 text-sm')}
-                onClick={() => onSelectTicker(row.ticker)}
+                onClick={() => toggleExpanded(row.ticker)}
                 role="button"
                 tabIndex={0}
+                aria-expanded={isExpanded}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
-                    onSelectTicker(row.ticker)
+                    toggleExpanded(row.ticker)
                   }
                 }}
               >
-                <button
-                  type="button"
-                  className="flex h-6 w-6 items-center justify-center rounded hover:bg-muted"
-                  aria-label={isExpanded ? 'Collapse evolution' : 'Expand evolution'}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    toggleExpanded(row.ticker)
-                  }}
+                <span
+                  className="flex h-6 w-6 items-center justify-center text-muted-foreground"
+                  aria-hidden="true"
                 >
                   <ChevronRight
                     className={cn('h-4 w-4 transition-transform', isExpanded && 'rotate-90')}
                   />
-                </button>
+                </span>
 
-                <div className="flex flex-col gap-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold tracking-tight">{row.ticker}</span>
-                    {optionCount > 0 && (
-                      <span className="rounded border border-border bg-muted/50 px-1.5 text-[10px] font-medium text-muted-foreground">
-                        +{optionCount} opt
-                      </span>
-                    )}
-                  </div>
-                  <CategoryChipBlock category={row.category} />
+                <div className="flex items-center gap-2">
+                  <TickerLogoBlock ticker={row.ticker} executionRoot={executionRoot} />
+                  <span className="text-base font-semibold tracking-tight">{row.ticker}</span>
+                  {optionCount > 0 && (
+                    <span className="text-[10px] font-medium text-muted-foreground/70">
+                      +{optionCount} opt
+                    </span>
+                  )}
                 </div>
 
                 <div>
@@ -362,8 +403,19 @@ export default function WebullStudyTableBlock({
                   )}
                 </div>
 
-                <div className={cn('tabular-nums text-sm', deltaToneBlock(row.category))}>
-                  {formatPctBlock(row.rangeDeltaPct)}
+                <div className="tabular-nums">
+                  <div className={cn('text-sm', deltaToneBlock(row.category))}>
+                    {formatPctBlock(row.rangeDeltaPct)}
+                  </div>
+                  {(() => {
+                    const deltaDollars = rangeDeltaDollarsBlock(row)
+                    if (deltaDollars === null) return null
+                    return (
+                      <div className="text-[8.5px] text-muted-foreground">
+                        {formatMoneyBlock(deltaDollars, { sign: true })}
+                      </div>
+                    )
+                  })()}
                 </div>
 
                 <div className={cn('text-sm tabular-nums', row.category === 'stale' && 'text-destructive')}>
@@ -391,8 +443,8 @@ export default function WebullStudyTableBlock({
 
               {impNote && !isExpanded && (
                 <div
-                  className="flex cursor-pointer items-start gap-1.5 px-3 pb-2 pl-12 text-xs"
-                  onClick={() => onSelectTicker(row.ticker)}
+                  className="flex cursor-pointer items-start gap-1.5 px-1 pb-2 pl-9 text-xs"
+                  onClick={() => toggleExpanded(row.ticker)}
                   title={impNote.raw}
                 >
                   <span className="mt-px shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
@@ -417,7 +469,7 @@ export default function WebullStudyTableBlock({
               )}
 
               {isExpanded && (
-                <div className="border-t bg-muted/15 px-12 py-4">
+                <div className="border-t border-border/40 py-4 pl-9 pr-1">
                   {!row.record ? (
                     <p className="text-sm text-muted-foreground">
                       No study record yet for this held ticker. Add one under
@@ -479,11 +531,11 @@ export default function WebullStudyTableBlock({
                       No range history entries parsed from the study record body.
                     </p>
                   ) : (
-                    <ol className="flex flex-col divide-y divide-border/40">
+                    <ol className="flex flex-col gap-3">
                       {row.record.rangeHistory.map((entry, i) => (
                         <li
                           key={`${entry.heading}-${i}`}
-                          className="py-3 first:pt-0 last:pb-0"
+                          className="rounded-xl border border-foreground/[0.06] bg-background/70 p-4 shadow-[0_6px_20px_-8px_rgba(20,20,24,0.12)] backdrop-blur-sm"
                         >
                           <div className="mb-2 flex items-baseline gap-3">
                             <span className="text-[10px] font-semibold uppercase tracking-wide tabular-nums text-muted-foreground">
@@ -508,8 +560,10 @@ export default function WebullStudyTableBlock({
               )}
             </div>
           )
-        })}
-      </div>
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
