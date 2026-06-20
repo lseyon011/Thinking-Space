@@ -338,18 +338,16 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
           'min-w-0',
           phoneListMode ? 'hidden' : 'flex-1',
           backlogView === 'canvas'
-            ? 'flex flex-col overflow-hidden'
+            ? 'relative overflow-hidden'
             : 'overflow-y-auto px-6 py-5',
         )}>
           {backlogView !== 'canvas' && headerBlock}
-          <div className={backlogView === 'canvas' ? 'min-h-0 flex-1' : ''}>
-            <BacklogOrch
-              view={backlogView}
-              onViewChange={setBacklogView}
-              canvasProjectName={projectName}
-              canvasMissionStatement={missionStatement}
-            />
-          </div>
+          <BacklogOrch
+            view={backlogView}
+            onViewChange={setBacklogView}
+            canvasProjectName={projectName}
+            canvasMissionStatement={missionStatement}
+          />
         </div>
       </div>
     </div>

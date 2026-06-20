@@ -1849,7 +1849,7 @@ export default function BacklogOrch({
     const canvasBacklogTopY = canvasExecutionTopY + executionCanvasAnchorHeight + BACKLOG_CANVAS_CARD_GAP
     const canvasWorldHeight = canvasBacklogTopY + backlogCanvasAnchorHeight + BACKLOG_CANVAS_BOTTOM_BREATHING
     return (
-      <div className="relative h-full w-full">
+      <div className="absolute inset-0">
         <CanvasSurfaceOrch
           surfaceId="thinking-org-board"
           storage={thinkingOrgCanvasStorage}
