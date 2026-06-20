@@ -125,20 +125,36 @@ export function useInfiniteCanvasBlock(
     }
   }, [])
 
-  // Clamp the pan so panning can't run off into infinity. We allow one viewport
-  // worth of overscroll past the board edge on each side — enough to drag the
-  // board fully off-screen if you want, but no more than that.
+  // Clamp the pan so panning can't run off into infinity. Two modes:
+  //   - Default (Home): allow one viewport worth of overscroll past each edge,
+  //     so the user can drag the board fully off-screen if they want.
+  //   - clampMinScaleToFit (F9): tight clamp — the board edges meet the
+  //     viewport edges, never crossing them. Combined with the fit floor on
+  //     `minScale` above, this guarantees the board always fills the viewport
+  //     and you can never see "sky" outside it.
   // Reads cached viewport dims — does NOT force layout.
   const clampTransform = useCallback(
     (t: CanvasTransform): CanvasTransform => {
       const { width: viewW, height: viewH } = viewportRef.current
       const boardW = worldWidth * t.scale
       const boardH = worldHeight * t.scale
-      const x = Math.min(viewW, Math.max(-boardW, t.x))
-      const y = Math.min(viewH, Math.max(-boardH, t.y))
+      let x: number
+      let y: number
+      if (clampMinScaleToFit) {
+        const minX = viewW - boardW
+        const minY = viewH - boardH
+        // When the board is smaller than the viewport on an axis (shouldn't
+        // happen with the fit-floor on minScale, but guard anyway), pin the
+        // board centered instead of pinning to the left edge.
+        x = boardW <= viewW ? (viewW - boardW) / 2 : Math.min(0, Math.max(minX, t.x))
+        y = boardH <= viewH ? (viewH - boardH) / 2 : Math.min(0, Math.max(minY, t.y))
+      } else {
+        x = Math.min(viewW, Math.max(-boardW, t.x))
+        y = Math.min(viewH, Math.max(-boardH, t.y))
+      }
       return { ...t, x, y }
     },
-    [worldWidth, worldHeight],
+    [worldWidth, worldHeight, clampMinScaleToFit],
   )
 
   // When the effective min scale rises (e.g. viewport just laid out, or the
