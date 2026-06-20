@@ -11,6 +11,7 @@ import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDeta
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
 import PinBoardBlock from '@/components/lego_blocks/integrations/PinBoardBlock'
 import WebullStudyBlock from './WebullStudyBlock'
+import WebullF9CanvasOrch from '@/personal_extension/components/orchestrators/WebullF9CanvasOrch'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
@@ -896,6 +897,7 @@ export default function WebullWorkspaceBlock({
 }: WebullWorkspaceBlockProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
+  const isElectron = layout.surface === 'electron'
   const isIPhoneIosSurface = isIos && layout.mode === 'phone'
 
   // iPhone list/detail: Webull sidebar (subtabs + companies + add) is the
@@ -1993,7 +1995,7 @@ export default function WebullWorkspaceBlock({
           </p>
         </div>
       )}
-      <Card>
+      <Card className="border-foreground/[0.06] bg-white shadow-[0_2px_10px_-4px_rgba(20,20,24,0.08)] hover:shadow-[0_2px_10px_-4px_rgba(20,20,24,0.08)] dark:bg-background">
         <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
           <div>
             <CardTitle>{workspaceTitle}</CardTitle>
@@ -2029,7 +2031,13 @@ export default function WebullWorkspaceBlock({
           )}
 
           {studyTabActive && (
-            <WebullStudyBlock />
+            isElectron ? (
+              <div className="-mx-6 -mb-6 h-[calc(100vh-260px)] min-h-[600px] overflow-hidden">
+                <WebullF9CanvasOrch />
+              </div>
+            ) : (
+              <WebullStudyBlock />
+            )
           )}
 
           {memoryTabActive && (
