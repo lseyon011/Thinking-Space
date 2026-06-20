@@ -479,14 +479,14 @@ export default function WebullStudyTableBlock({
                       No range history entries parsed from the study record body.
                     </p>
                   ) : (
-                    <ol className="flex flex-col gap-3">
+                    <ol className="flex flex-col divide-y divide-border/40">
                       {row.record.rangeHistory.map((entry, i) => (
                         <li
                           key={`${entry.heading}-${i}`}
-                          className="rounded-md border bg-background p-3 shadow-sm"
+                          className="py-3 first:pt-0 last:pb-0"
                         >
-                          <div className="mb-2 flex items-baseline gap-3 border-b pb-2">
-                            <span className="rounded bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide tabular-nums text-muted-foreground">
+                          <div className="mb-2 flex items-baseline gap-3">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide tabular-nums text-muted-foreground">
                               {entry.date ?? 'undated'}
                             </span>
                             <span className="text-sm font-semibold">{entry.heading}</span>
