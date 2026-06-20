@@ -1013,26 +1013,30 @@ export default function VaultExplorerBlock({
               }}
               ref={bindRowRef('folder', folderPath)}
               className={cn(
-                'ltm-explorer-row ltm-explorer-folder-row ltm-touch-row group flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/90 transition-colors hover:bg-muted/70',
-                inSelectionTrail && 'bg-[#e8eaee] text-foreground hover:bg-[#e8eaee]',
-                expanded && !inSelectionTrail && 'bg-muted/50',
+                'ltm-explorer-row ltm-explorer-folder-row ltm-touch-row group relative flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/90 transition-colors hover:bg-muted/40',
+                inSelectionTrail && 'text-indigo-400 font-medium after:absolute after:left-[3px] after:top-1/2 after:h-3.5 after:w-[2.5px] after:-translate-y-1/2 after:rounded-full after:bg-indigo-400 after:content-[""]',
+                inSelectionTrail && depth > 0 && 'before:absolute before:left-[5.5px] before:top-1/2 before:h-[1.5px] before:w-[var(--ltm-explorer-trail-line)] before:-translate-y-1/2 before:bg-gradient-to-r before:from-indigo-400 before:from-0% before:to-transparent before:to-60% before:content-[""]',
                 canDropOnRows && dropOverPath === folderPath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
               )}
-              style={{ paddingLeft: `${8 + depth * 14}px` }}
+              style={{
+                paddingLeft: `${8 + depth * 14}px`,
+                ['--ltm-explorer-trail-line' as string]: `${Math.max(13, 8 + depth * 14 + 14 - 5.5)}px`,
+              }}
               data-path={folderPath}
               data-selected={inSelectionTrail ? 'true' : undefined}
             >
               <ChevronRight
+                strokeWidth={inSelectionTrail ? 2.75 : 2}
                 className={cn(
                   'h-3.5 w-3.5 text-muted-foreground transition-transform',
                   expanded && 'rotate-90',
-                  inSelectionTrail && 'text-foreground/75',
+                  inSelectionTrail && 'text-indigo-400',
                 )}
               />
               {expanded ? (
-                <FolderOpen className={cn('ltm-explorer-glyph ltm-explorer-folder-icon h-3.5 w-3.5 text-blue-500', inSelectionTrail && 'text-foreground/85')} />
+                <FolderOpen className={cn('ltm-explorer-glyph ltm-explorer-folder-icon h-3.5 w-3.5 text-blue-500', inSelectionTrail && 'text-indigo-400')} />
               ) : (
-                <Folder className={cn('ltm-explorer-glyph ltm-explorer-folder-icon h-3.5 w-3.5 text-blue-500', inSelectionTrail && 'text-foreground/85')} />
+                <Folder className={cn('ltm-explorer-glyph ltm-explorer-folder-icon h-3.5 w-3.5 text-blue-500', inSelectionTrail && 'text-indigo-400')} />
               )}
               <span className="truncate">{folderName}</span>
               {folderNode.loading && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-muted-foreground" />}
