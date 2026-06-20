@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
@@ -189,6 +189,8 @@ export default function EpicTimelineStripBlock({
   const scrollWrapRef = useRef<HTMLDivElement | null>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
+  const [canScrollUp, setCanScrollUp] = useState(false)
+  const [canScrollDown, setCanScrollDown] = useState(false)
 
   useEffect(() => {
     const el = scrollWrapRef.current
@@ -196,6 +198,8 @@ export default function EpicTimelineStripBlock({
     const update = () => {
       setCanScrollLeft(el.scrollLeft > 0)
       setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
+      setCanScrollUp(el.scrollTop > 0)
+      setCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 1)
     }
     update()
     el.addEventListener('scroll', update, { passive: true })
@@ -219,6 +223,12 @@ export default function EpicTimelineStripBlock({
     if (!el) return
     const delta = el.clientWidth * 0.5 * (direction === 'left' ? -1 : 1)
     el.scrollBy({ left: delta, behavior: 'smooth' })
+  }
+  const scrollByVertical = (direction: 'up' | 'down') => {
+    const el = scrollWrapRef.current
+    if (!el) return
+    const delta = el.clientHeight * 0.5 * (direction === 'up' ? -1 : 1)
+    el.scrollBy({ top: delta, behavior: 'smooth' })
   }
 
   if (prepared.length === 0) {
@@ -386,6 +396,26 @@ export default function EpicTimelineStripBlock({
           aria-label="Scroll timeline later"
         >
           <ChevronRight className="h-3 w-3" />
+        </button>
+      )}
+      {canScrollUp && (
+        <button
+          type="button"
+          onClick={() => scrollByVertical('up')}
+          className="absolute right-0 top-0 z-30 rounded-full border border-border/30 bg-background/85 p-0.5 text-muted-foreground transition-colors hover:border-border/60 hover:text-foreground"
+          aria-label="Scroll timeline up"
+        >
+          <ChevronUp className="h-3 w-3" />
+        </button>
+      )}
+      {canScrollDown && (
+        <button
+          type="button"
+          onClick={() => scrollByVertical('down')}
+          className="absolute bottom-6 right-0 z-30 rounded-full border border-border/30 bg-background/85 p-0.5 text-muted-foreground transition-colors hover:border-border/60 hover:text-foreground"
+          aria-label="Scroll timeline down"
+        >
+          <ChevronDown className="h-3 w-3" />
         </button>
       )}
     </div>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, LayoutDashboard, List, Loader2, X } from 'lucide-react'
+import { Download, Loader2, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import BacklogCanvasAnchorBlock from '@/components/lego_blocks/integrations/BacklogCanvasAnchorBlock'
@@ -327,8 +327,10 @@ type BacklogNodeStatus = NodeStatus
 type BacklogTaskStatus = 'ready' | 'in_progress' | 'blocked' | 'done' | 'cancelled'
 export type BacklogView = 'list' | 'canvas'
 
-export function parseBacklogView(raw: string | null): BacklogView {
-  return raw === 'canvas' ? 'canvas' : 'list'
+export function parseBacklogView(raw: string | null, fallback: BacklogView = 'list'): BacklogView {
+  if (raw === 'canvas') return 'canvas'
+  if (raw === 'list') return 'list'
+  return fallback
 }
 
 // Bounded canvas world for the Backlog board view. Mirrors the Webull F9
@@ -336,10 +338,10 @@ export function parseBacklogView(raw: string | null): BacklogView {
 // then stacked anchor cards (execution progress + backlog list), each with a
 // ResizeObserver-driven height that grows the world.
 const BACKLOG_CANVAS_CONTENT_WIDTH = 1400
-const BACKLOG_CANVAS_SIDE_BREATHING = 400
+const BACKLOG_CANVAS_SIDE_BREATHING = 1600
 const BACKLOG_CANVAS_WORLD_WIDTH = BACKLOG_CANVAS_CONTENT_WIDTH + BACKLOG_CANVAS_SIDE_BREATHING * 2
 const BACKLOG_CANVAS_ANCHOR_CENTER_X = BACKLOG_CANVAS_WORLD_WIDTH / 2
-const BACKLOG_CANVAS_TOP_BREATHING = 80
+const BACKLOG_CANVAS_TOP_BREATHING = 400
 const BACKLOG_CANVAS_MISSION_HEIGHT = 160
 const BACKLOG_CANVAS_MISSION_GAP = 32
 const BACKLOG_CANVAS_CARD_GAP = 28
@@ -349,7 +351,6 @@ const BACKLOG_CANVAS_BACKLOG_INITIAL_HEIGHT = 800
 
 interface BacklogOrchProps {
   view: BacklogView
-  onViewChange: (next: BacklogView) => void
   /** Project name shown above the canvas anchor (canvas view only). */
   canvasProjectName?: string
   /** Mission statement shown under the project name in canvas view. */
@@ -358,7 +359,6 @@ interface BacklogOrchProps {
 
 export default function BacklogOrch({
   view: backlogView,
-  onViewChange: setBacklogView,
   canvasProjectName,
   canvasMissionStatement,
 }: BacklogOrchProps) {
@@ -1636,7 +1636,7 @@ export default function BacklogOrch({
     setShowRootProgramCreate(false)
   }, [])
 
-  const executionProgressElement = (
+  const renderExecutionProgressElement = (bare: boolean) => (
     <ExecutionProgressBlock
       currentOperation={currentOperation}
       tasks={activeExecutionTasks}
@@ -1646,47 +1646,10 @@ export default function BacklogOrch({
         setSelectedNode(task)
         setMessage(`Focused task: ${task.ticket || task.title}`)
       }}
+      bare={bare}
     />
   )
-
-  const viewToggleElement = (
-    <div
-      className="inline-flex h-7 shrink-0 items-center rounded-md border border-border/70 bg-background/80 p-0.5 backdrop-blur supports-[backdrop-filter]:bg-background/60"
-      role="tablist"
-      aria-label="Backlog view"
-    >
-      <button
-        type="button"
-        role="tab"
-        aria-selected={backlogView === 'list'}
-        onClick={() => setBacklogView('list')}
-        title="List view"
-        className={`inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors ${
-          backlogView === 'list'
-            ? 'bg-foreground text-background'
-            : 'text-muted-foreground hover:text-foreground'
-        }`}
-      >
-        <List className="h-3.5 w-3.5" />
-        List
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={backlogView === 'canvas'}
-        onClick={() => setBacklogView('canvas')}
-        title="Canvas view"
-        className={`inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors ${
-          backlogView === 'canvas'
-            ? 'bg-foreground text-background'
-            : 'text-muted-foreground hover:text-foreground'
-        }`}
-      >
-        <LayoutDashboard className="h-3.5 w-3.5" />
-        Canvas
-      </button>
-    </div>
-  )
+  const executionProgressElement = renderExecutionProgressElement(false)
 
   const backlogListElement = (
     <BacklogListBlock
@@ -1878,7 +1841,7 @@ export default function BacklogOrch({
                 width={BACKLOG_CANVAS_CONTENT_WIDTH}
                 onHeightChange={handleExecutionCanvasAnchorHeightChange}
               >
-                {executionProgressElement}
+                {renderExecutionProgressElement(true)}
               </BacklogCanvasAnchorBlock>
               <BacklogCanvasAnchorBlock
                 centerX={BACKLOG_CANVAS_ANCHOR_CENTER_X}
@@ -1896,7 +1859,6 @@ export default function BacklogOrch({
             {bannersBlock}
           </div>
         )}
-        <div className="absolute right-3 top-3 z-40">{viewToggleElement}</div>
         {overlaysBlock}
       </div>
     )
@@ -1953,7 +1915,6 @@ export default function BacklogOrch({
             <Download className="mr-1 h-3.5 w-3.5" />
             Export Excalidraw
           </Button>
-          {viewToggleElement}
         </div>
       </div>
 

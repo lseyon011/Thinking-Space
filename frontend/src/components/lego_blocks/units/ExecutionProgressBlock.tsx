@@ -1,7 +1,7 @@
 import { Loader2, RefreshCw } from 'lucide-react'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/lego_blocks/units/ui/card'
 
 interface ExecutionProgressBlockProps {
   currentOperation: string | null
@@ -10,6 +10,9 @@ interface ExecutionProgressBlockProps {
   tasksError: string | null
   onRefresh?: () => void
   onSelectTask: (node: NodeRecord) => void
+  /** When true, skip the outer Card chrome (used inside canvas anchor wrappers
+   *  that already provide their own card surface). */
+  bare?: boolean
 }
 
 function formatTimestamp(value: string | undefined): string {
@@ -35,21 +38,22 @@ export default function ExecutionProgressBlock({
   tasksError,
   onRefresh,
   onSelectTask,
+  bare = false,
 }: ExecutionProgressBlockProps) {
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-sm">Execution Progress</CardTitle>
-          {onRefresh && (
-            <Button size="sm" variant="outline" onClick={onRefresh} disabled={tasksLoading}>
-              {tasksLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
-              Refresh
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
+  const headerBlock = (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-sm font-semibold leading-none tracking-tight">Execution Progress</span>
+      {onRefresh && (
+        <Button size="sm" variant="outline" onClick={onRefresh} disabled={tasksLoading}>
+          {tasksLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
+          Refresh
+        </Button>
+      )}
+    </div>
+  )
+
+  const bodyBlock = (
+    <div className="space-y-3">
         {currentOperation && (
           <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-sm text-foreground">
             {currentOperation}
@@ -86,6 +90,25 @@ export default function ExecutionProgressBlock({
             </button>
           ))}
         </div>
+    </div>
+  )
+
+  if (bare) {
+    return (
+      <div className="space-y-3">
+        {headerBlock}
+        {bodyBlock}
+      </div>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        {headerBlock}
+      </CardHeader>
+      <CardContent>
+        {bodyBlock}
       </CardContent>
     </Card>
   )
