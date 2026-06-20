@@ -8,7 +8,7 @@ interface ThinkingOrganizerPageProps {
 // memo: persistent surface — skip re-renders caused by unrelated App shell state.
 export default memo(function ThinkingOrganizer({ active = true }: ThinkingOrganizerPageProps) {
   return (
-    <div className="ltm-page">
+    <div className="ltm-page h-full">
       <ThinkingOrganizerOrch active={active} />
     </div>
   )
