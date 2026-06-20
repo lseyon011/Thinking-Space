@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Download, Loader2, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
-import PinBoardBlock, { type PinBoardFileOptionBlock } from '@/components/lego_blocks/integrations/PinBoardBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
-import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
 import ExecutionProgressBlock from '@/components/lego_blocks/units/ExecutionProgressBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import {
@@ -17,7 +15,7 @@ import CascadingFolderPicker, {
 } from '@/components/lego_blocks/integrations/CascadingFolderPickerBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
-import { getAllNodes, type NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
+import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import type { NodeStatus, NodeType, YAMLCommentEntry, YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
 import {
   THINKING_ORGANIZER_DIR,
@@ -48,14 +46,9 @@ import { getUserCommentAuthorBlock } from '@/services/lego_blocks/units/userProf
 import {
   readOrganizerUiStateOrch,
   writeOrganizerUiStateOrch,
-  type OrganizerPinBoardGroupEntryOrch,
   type OrganizerProgramGroupEntryOrch,
   type OrganizerUiStateOrch,
 } from '@/services/orchestrators/organizerUiStateOrch'
-import {
-  createPinBoardPanelBlock,
-  type PinBoardPanelBlock,
-} from '@/services/lego_blocks/integrations/organizerUiStateBlock'
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 
 interface ProjectEntry {
@@ -64,8 +57,6 @@ interface ProjectEntry {
 }
 type ProjectPresetTagsByRoot = Record<string, string[]>
 type ProjectTagColorsByRoot = Record<string, Record<string, string>>
-type PinBoardByRoot = Record<string, { panels: PinBoardPanelBlock[] }>
-interface PinBoardGroupEntry extends OrganizerPinBoardGroupEntryOrch {}
 interface ProgramGroupEntry extends OrganizerProgramGroupEntryOrch {
   id: string
   name: string
@@ -73,7 +64,6 @@ interface ProgramGroupEntry extends OrganizerProgramGroupEntryOrch {
   collapsed?: boolean
 }
 type ProjectProgramGroupsByRoot = Record<string, ProgramGroupEntry[]>
-type ProjectPinBoardGroupsByRoot = Record<string, PinBoardGroupEntry[]>
 
 const BACKLOG_ACTOR: CapabilityActor = {
   kind: 'human',
@@ -85,8 +75,6 @@ const SELECTED_NODE_QUERY_PARAM = 'selectedNode'
 export const ORGANIZER_OPEN_CREATE_PROJECT_EVENT = 'ltm:organizer:open-create-project'
 export const ORGANIZER_PROJECTS_UPDATED_EVENT = 'ltm:organizer:projects-updated'
 export interface OrganizerProjectsUpdatedDetail { projects: Array<{ name: string; root: string }> }
-const BACKLOG_SUBTAB_SESSION_KEY = 'thinking-organizer-backlog-subtab'
-
 function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
   if (typeof value === 'string' && value.trim()) return value
@@ -163,18 +151,6 @@ function dedupeProgramIds(ids: string[]): string[] {
   return deduped
 }
 
-function dedupePinBoardPanelIds(ids: string[]): string[] {
-  const seen = new Set<string>()
-  const deduped: string[] = []
-  for (const id of ids) {
-    const normalized = id.trim()
-    if (!normalized || seen.has(normalized)) continue
-    seen.add(normalized)
-    deduped.push(normalized)
-  }
-  return deduped
-}
-
 function normalizeProgramGroups(groups: ProgramGroupEntry[]): ProgramGroupEntry[] {
   const seenGroupIds = new Set<string>()
   const assignedPrograms = new Set<string>()
@@ -204,42 +180,6 @@ function normalizeProgramGroups(groups: ProgramGroupEntry[]): ProgramGroupEntry[
   return normalized
 }
 
-function normalizePinBoardGroups(groups: PinBoardGroupEntry[]): PinBoardGroupEntry[] {
-  const seenGroupIds = new Set<string>()
-  const assignedPanels = new Set<string>()
-  const normalized: PinBoardGroupEntry[] = []
-
-  for (const group of groups) {
-    const id = group.id?.trim()
-    const name = group.name?.trim()
-    if (!id || seenGroupIds.has(id)) continue
-    seenGroupIds.add(id)
-
-    const nextPanelIds: string[] = []
-    for (const panelId of dedupePinBoardPanelIds(group.panelIds ?? [])) {
-      if (assignedPanels.has(panelId)) continue
-      assignedPanels.add(panelId)
-      nextPanelIds.push(panelId)
-    }
-
-    normalized.push({
-      id,
-      name: name || 'Group',
-      panelIds: nextPanelIds,
-      collapsed: !!group.collapsed,
-    })
-  }
-
-  return normalized
-}
-
-function makePinBoardGroupId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  return `pin-group-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-}
-
 function normalizeTagColorMap(colors: Record<string, string>): Record<string, string> {
   const normalized: Record<string, string> = {}
   for (const [tag, color] of Object.entries(colors)) {
@@ -254,8 +194,6 @@ function normalizeTagColorMap(colors: Record<string, string>): Record<string, st
 function projectUiStateSignature(state: OrganizerUiStateOrch): string {
   return JSON.stringify({
     projectName: state.projectName ?? null,
-    pinBoardPanels: state.pinBoardPanels ?? [],
-    pinBoardGroups: normalizePinBoardGroups(state.pinBoardGroups ?? []),
     presetTags: normalizeTagListBlock(state.presetTags ?? []),
     tagColors: normalizeTagColorMap(state.tagColors ?? {}),
     programGroups: normalizeProgramGroups(state.programGroups ?? []),
@@ -265,8 +203,6 @@ function projectUiStateSignature(state: OrganizerUiStateOrch): string {
 function hasProjectUiStateData(state: OrganizerUiStateOrch): boolean {
   return Boolean(
     (state.projectName && state.projectName.trim())
-    || (state.pinBoardPanels && state.pinBoardPanels.length > 0)
-    || state.pinBoardGroups.length > 0
     || state.presetTags.length > 0
     || Object.keys(state.tagColors).length > 0
     || state.programGroups.length > 0,
@@ -366,13 +302,6 @@ function humanizeKey(value: string): string {
     .join(' ') || 'Project'
 }
 
-function labelFromMarkdownPath(path: string): string {
-  const normalized = normalizePath(path)
-  if (!normalized) return ''
-  const fileName = normalized.split('/').pop() ?? normalized
-  return fileName.toLowerCase().endsWith('.md') ? fileName.slice(0, -3) : fileName
-}
-
 function allowedChildTypes(parentType: NodeType | null): NodeType[] {
   if (!parentType) return ['program']
   const all: NodeType[] = ['epic', 'idea_bucket', 'idea', 'thought_bucket', 'thought', 'task', 'run', 'handoff']
@@ -392,14 +321,8 @@ function isTaskLikeNode(node: Pick<NodeRecord, 'type' | 'recordKind' | 'taskStat
 
 type BacklogNodeStatus = NodeStatus
 type BacklogTaskStatus = 'ready' | 'in_progress' | 'blocked' | 'done' | 'cancelled'
-type BacklogSubTab = 'hierarchy' | 'memory'
 
-interface BacklogOrchProps {
-  pinBoardHeaderVisible?: boolean
-  onPinBoardActiveChange?: (active: boolean) => void
-}
-
-export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardActiveChange }: BacklogOrchProps) {
+export default function BacklogOrch() {
   const { openFile } = useMarkdownViewer()
   const [searchParams, setSearchParams] = useSearchParams()
   const [programs, setPrograms] = useState<NodeRecord[]>([])
@@ -418,17 +341,7 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
   const [activeExecutionTasks, setActiveExecutionTasks] = useState<NodeRecord[]>([])
   const [activeExecutionTasksLoading, setActiveExecutionTasksLoading] = useState(false)
   const [activeExecutionTasksError, setActiveExecutionTasksError] = useState<string | null>(null)
-  const [activeBacklogSubTab, setActiveBacklogSubTab] = useSessionStateBlock<BacklogSubTab>(
-    BACKLOG_SUBTAB_SESSION_KEY,
-    'hierarchy',
-  )
-  useEffect(() => {
-    if ((activeBacklogSubTab as string) === 'timeline') {
-      setActiveBacklogSubTab('hierarchy')
-    }
-  }, [activeBacklogSubTab, setActiveBacklogSubTab])
   const [programLayoutEditMode, setProgramLayoutEditMode] = useState(false)
-  const [pinBoardLayoutEditMode, setPinBoardLayoutEditMode] = useState(false)
   const [showRootProgramCreate, setShowRootProgramCreate] = useState(false)
   const [focusRootCreateRequestNonce, setFocusRootCreateRequestNonce] = useState(0)
   const [completedEpicTimeline, setCompletedEpicTimeline] = useState<NodeRecord[]>([])
@@ -445,11 +358,6 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
   const [projectProgramGroupsByRoot, setProjectProgramGroupsByRoot] = useState<ProjectProgramGroupsByRoot>(
     () => getJsonStorageItem<ProjectProgramGroupsByRoot>(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, {}),
   )
-  const [projectPinBoardGroupsByRoot, setProjectPinBoardGroupsByRoot] = useState<ProjectPinBoardGroupsByRoot>(
-    () => getJsonStorageItem<ProjectPinBoardGroupsByRoot>(STORAGE_KEYS.thinkingOrganizerProjectPinBoardGroups, {}),
-  )
-  const [pinBoardByRoot, setPinBoardByRoot] = useState<PinBoardByRoot>({})
-  const [pinBoardFileOptions, setPinBoardFileOptions] = useState<PinBoardFileOptionBlock[]>([])
   const projectUiStateHydratedRootsRef = useRef<Set<string>>(new Set())
   const projectUiStatePersistedSignatureByRootRef = useRef<Record<string, string>>({})
   const [initialProjectLoadResolved, setInitialProjectLoadResolved] = useState(false)
@@ -478,7 +386,6 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
   const buildProjectUiState = useCallback((projectRoot: string): OrganizerUiStateOrch => {
     const normalizedRoot = normalizePath(projectRoot)
     const projectEntry = projectEntries.find(entry => normalizePath(entry.root) === normalizedRoot)
-    const projectPinBoard = pinBoardByRoot[normalizedRoot] ?? { panels: [] }
     const projectPrograms = programs.filter(
       program => normalizePath(program.projectRoot ?? '') === normalizedRoot && program.type === 'program',
     )
@@ -490,13 +397,11 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
       schemaVersion: 2,
       updatedAt: new Date().toISOString(),
       projectName: projectEntry?.name?.trim() || undefined,
-      pinBoardPanels: projectPinBoard.panels,
-      pinBoardGroups: normalizePinBoardGroups(projectPinBoardGroupsByRoot[normalizedRoot] ?? []),
       presetTags: normalizeTagListBlock(projectPresetTagsByRoot[normalizedRoot] ?? []),
       tagColors: normalizeTagColorMap(projectTagColorsByRoot[normalizedRoot] ?? {}),
       programGroups: mergedProgramGroups,
     }
-  }, [programs, projectEntries, pinBoardByRoot, projectPinBoardGroupsByRoot, projectPresetTagsByRoot, projectProgramGroupsByRoot, projectTagColorsByRoot])
+  }, [programs, projectEntries, projectPresetTagsByRoot, projectProgramGroupsByRoot, projectTagColorsByRoot])
 
   const persistProjectUiState = useCallback(async (
     projectRoot: string,
@@ -516,8 +421,6 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
     if (!normalizedRoot) return
     const normalizedState: OrganizerUiStateOrch = {
       ...state,
-      pinBoardPanels: state.pinBoardPanels ?? [],
-      pinBoardGroups: normalizePinBoardGroups(state.pinBoardGroups ?? []),
       presetTags: normalizeTagListBlock(state.presetTags ?? []),
       tagColors: normalizeTagColorMap(state.tagColors ?? {}),
       programGroups: normalizeProgramGroups(state.programGroups ?? []),
@@ -559,29 +462,9 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
       return next
     })
 
-    setProjectPinBoardGroupsByRoot((prev) => {
-      const next: ProjectPinBoardGroupsByRoot = { ...prev }
-      if (normalizedState.pinBoardGroups.length > 0) next[normalizedRoot] = normalizedState.pinBoardGroups
-      else delete next[normalizedRoot]
-      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectPinBoardGroups, next)
-      return next
-    })
-
-    setPinBoardByRoot((prev) => {
-      const next: PinBoardByRoot = { ...prev }
-      const panels = normalizedState.pinBoardPanels ?? []
-      if (panels.length > 0) next[normalizedRoot] = { panels }
-      else delete next[normalizedRoot]
-      return next
-    })
-
     projectUiStatePersistedSignatureByRootRef.current[normalizedRoot] = projectUiStateSignature(normalizedState)
     projectUiStateHydratedRootsRef.current.add(normalizedRoot)
   }, [])
-
-  useEffect(() => {
-    onPinBoardActiveChange?.(activeBacklogSubTab === 'memory')
-  }, [activeBacklogSubTab, onPinBoardActiveChange])
 
   useEffect(() => {
     if (!activeProjectRoot) return
@@ -682,35 +565,6 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
     return () => { cancelled = true }
   }, [loadPrograms])
 
-  useEffect(() => {
-    let cancelled = false
-    void getAllNodes()
-      .then((nodes) => {
-        if (cancelled) return
-        const options: PinBoardFileOptionBlock[] = []
-        const seen = new Set<string>()
-        for (const node of nodes) {
-          const path = normalizePath(node.filePath)
-          if (!path || seen.has(path)) continue
-          seen.add(path)
-          options.push({
-            path,
-            label: node.title?.trim() || labelFromMarkdownPath(path),
-            summary: node.aiSummary?.trim() || node.bodyExcerpt?.trim() || node.description?.trim() || undefined,
-          })
-        }
-        options.sort((a, b) => a.label.localeCompare(b.label))
-        setPinBoardFileOptions(options)
-      })
-      .catch(() => {
-        if (cancelled) return
-        setPinBoardFileOptions([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   const selectProject = useCallback((root: string) => {
     const normalized = normalizePath(root)
     setSearchParams((prev) => {
@@ -788,142 +642,6 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
     if (!activeProjectRoot) return {}
     return projectTagColorsByRoot[activeProjectRoot] ?? {}
   }, [activeProjectRoot, projectTagColorsByRoot])
-  const activeProjectPanels = useMemo(() => {
-    if (!activeProjectRoot) return []
-    return pinBoardByRoot[activeProjectRoot]?.panels ?? []
-  }, [activeProjectRoot, pinBoardByRoot])
-  const activeProjectPinBoardGroups = useMemo(() => {
-    if (!activeProjectRoot) return []
-    const validPanelIds = new Set(activeProjectPanels.map(panel => panel.id))
-    return normalizePinBoardGroups(projectPinBoardGroupsByRoot[activeProjectRoot] ?? []).map((group) => ({
-      ...group,
-      panelIds: group.panelIds.filter(panelId => validPanelIds.has(panelId)),
-    }))
-  }, [activeProjectPanels, activeProjectRoot, projectPinBoardGroupsByRoot])
-  const activeProjectPinBoardGroupIdByPanel = useMemo(() => {
-    const byPanel: Record<string, string> = {}
-    for (const group of activeProjectPinBoardGroups) {
-      for (const panelId of group.panelIds) {
-        byPanel[panelId] = group.id
-      }
-    }
-    return byPanel
-  }, [activeProjectPinBoardGroups])
-
-  const updateActiveProjectPanel = useCallback((id: string, updates: Partial<PinBoardPanelBlock>) => {
-    if (!activeProjectRoot) return
-    setPinBoardByRoot((prev) => {
-      const current = prev[activeProjectRoot]?.panels ?? []
-      const next = current.map(p => p.id === id ? { ...p, ...updates } : p)
-      return { ...prev, [activeProjectRoot]: { panels: next } }
-    })
-  }, [activeProjectRoot])
-
-  const addActiveProjectPanel = useCallback((type: 'markdown' | 'todos') => {
-    if (!activeProjectRoot) return
-    setPinBoardByRoot((prev) => {
-      const current = prev[activeProjectRoot]?.panels ?? []
-      const newPanel = createPinBoardPanelBlock(type, current)
-      return { ...prev, [activeProjectRoot]: { panels: [...current, newPanel] } }
-    })
-  }, [activeProjectRoot])
-
-  const removeActiveProjectPanel = useCallback((id: string) => {
-    if (!activeProjectRoot) return
-    setPinBoardByRoot((prev) => {
-      const current = prev[activeProjectRoot]?.panels ?? []
-      const next = current.filter(p => p.id !== id)
-      const updated: PinBoardByRoot = { ...prev }
-      if (next.length > 0) updated[activeProjectRoot] = { panels: next }
-      else delete updated[activeProjectRoot]
-      return updated
-    })
-    setProjectPinBoardGroupsByRoot((prev) => {
-      const current = normalizePinBoardGroups(prev[activeProjectRoot] ?? [])
-      const nextGroups = current.map(group => ({
-        ...group,
-        panelIds: group.panelIds.filter(panelId => panelId !== id),
-      }))
-      const next: ProjectPinBoardGroupsByRoot = { ...prev }
-      if (nextGroups.length > 0) next[activeProjectRoot] = nextGroups
-      else delete next[activeProjectRoot]
-      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectPinBoardGroups, next)
-      return next
-    })
-  }, [activeProjectRoot])
-
-  const updateProjectPinBoardGroups = useCallback((
-    projectRoot: string,
-    updater: (groups: PinBoardGroupEntry[]) => PinBoardGroupEntry[],
-  ) => {
-    const normalizedRoot = normalizePath(projectRoot)
-    if (!normalizedRoot) return
-    setProjectPinBoardGroupsByRoot((prev) => {
-      const current = normalizePinBoardGroups(prev[normalizedRoot] ?? [])
-      const nextGroups = normalizePinBoardGroups(updater(current))
-      const next: ProjectPinBoardGroupsByRoot = { ...prev }
-      if (nextGroups.length > 0) next[normalizedRoot] = nextGroups
-      else delete next[normalizedRoot]
-      setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjectPinBoardGroups, next)
-      return next
-    })
-  }, [])
-
-  const createActiveProjectPinBoardGroup = useCallback((name: string) => {
-    if (!activeProjectRoot) return
-    const trimmed = name.trim()
-    if (!trimmed) return
-    updateProjectPinBoardGroups(activeProjectRoot, (groups) => [
-      ...groups,
-      {
-        id: makePinBoardGroupId(),
-        name: trimmed,
-        panelIds: [],
-        collapsed: false,
-      },
-    ])
-  }, [activeProjectRoot, updateProjectPinBoardGroups])
-
-  const deleteActiveProjectPinBoardGroup = useCallback((groupId: string) => {
-    if (!activeProjectRoot) return
-    const normalizedGroupId = groupId.trim()
-    if (!normalizedGroupId) return
-    updateProjectPinBoardGroups(activeProjectRoot, groups =>
-      groups.filter(group => group.id !== normalizedGroupId),
-    )
-  }, [activeProjectRoot, updateProjectPinBoardGroups])
-
-  const toggleActiveProjectPinBoardGroupCollapsed = useCallback((groupId: string) => {
-    if (!activeProjectRoot) return
-    const normalizedGroupId = groupId.trim()
-    if (!normalizedGroupId) return
-    updateProjectPinBoardGroups(activeProjectRoot, groups =>
-      groups.map(group => (
-        group.id === normalizedGroupId
-          ? { ...group, collapsed: !group.collapsed }
-          : group
-      )),
-    )
-  }, [activeProjectRoot, updateProjectPinBoardGroups])
-
-  const assignActiveProjectPanelToGroup = useCallback((panelId: string, nextGroupId: string | null) => {
-    if (!activeProjectRoot) return
-    const normalizedPanelId = panelId.trim()
-    if (!normalizedPanelId) return
-    const normalizedGroupId = nextGroupId?.trim() || null
-    updateProjectPinBoardGroups(activeProjectRoot, (groups) => {
-      const stripped = groups.map(group => ({
-        ...group,
-        panelIds: group.panelIds.filter(existing => existing !== normalizedPanelId),
-      }))
-      if (!normalizedGroupId) return stripped
-      return stripped.map(group => (
-        group.id === normalizedGroupId
-          ? { ...group, panelIds: dedupePinBoardPanelIds([...group.panelIds, normalizedPanelId]) }
-          : group
-      ))
-    })
-  }, [activeProjectRoot, updateProjectPinBoardGroups])
 
   const addActiveProjectPresetTags = useCallback(() => {
     if (!activeProjectRoot) return
@@ -1832,20 +1550,9 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
     }
   }, [openFile, refreshExecutionProgress])
 
-  const layoutEditMode = activeBacklogSubTab === 'hierarchy'
-    ? programLayoutEditMode
-    : activeBacklogSubTab === 'memory'
-      ? pinBoardLayoutEditMode
-      : false
-  const toggleActiveLayoutEditMode = useCallback(() => {
-    if (activeBacklogSubTab === 'hierarchy') {
-      setProgramLayoutEditMode(prev => !prev)
-      return
-    }
-    if (activeBacklogSubTab === 'memory') {
-      setPinBoardLayoutEditMode(prev => !prev)
-    }
-  }, [activeBacklogSubTab])
+  const toggleProgramLayoutEditMode = useCallback(() => {
+    setProgramLayoutEditMode(prev => !prev)
+  }, [])
 
   // Stable callbacks for BacklogListBlock. These were previously defined
   // inline at the call site, which created fresh function references on
@@ -1906,70 +1613,32 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
         }}
       />
 
-      <div
-        className="flex w-full items-center overflow-x-auto rounded-md border border-border/70 bg-muted/30 p-0.5 text-xs whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-        role="tablist"
-        aria-label="Backlog views"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeBacklogSubTab === 'hierarchy'}
-          className={`inline-flex h-8 shrink-0 min-w-[7.25rem] items-center justify-center rounded-md px-3 text-xs font-medium transition-colors sm:min-w-[9rem] ${
-            activeBacklogSubTab === 'hierarchy'
-              ? 'border-black bg-black text-white'
-              : 'border-transparent bg-transparent text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setActiveBacklogSubTab('hierarchy')}
-        >
-          Hierarchy
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeBacklogSubTab === 'memory'}
-          className={`inline-flex h-8 shrink-0 min-w-[7.25rem] items-center justify-center rounded-md px-3 text-xs font-medium transition-colors sm:min-w-[9rem] ${
-            activeBacklogSubTab === 'memory'
-              ? 'border-black bg-black text-white'
-              : 'border-transparent bg-transparent text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setActiveBacklogSubTab('memory')}
-        >
-          Pin Board
-        </button>
-      </div>
-
       <div className="flex flex-wrap items-center gap-2">
-        {activeBacklogSubTab === 'hierarchy' && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 shrink-0 px-2 text-[11px]"
-            onClick={() => {
-              if (!showRootProgramCreate) {
-                setActiveBacklogSubTab('hierarchy')
-                setFocusRootCreateRequestNonce(prev => prev + 1)
-              }
-              setShowRootProgramCreate(prev => !prev)
-            }}
-            disabled={loading || creatingProject}
-          >
-            Add New Program
-          </Button>
-        )}
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 shrink-0 px-2 text-[11px]"
+          onClick={() => {
+            if (!showRootProgramCreate) {
+              setFocusRootCreateRequestNonce(prev => prev + 1)
+            }
+            setShowRootProgramCreate(prev => !prev)
+          }}
+          disabled={loading || creatingProject}
+        >
+          Add New Program
+        </Button>
         <div className="ml-auto flex max-w-full items-center justify-start gap-2 overflow-x-auto pb-1 whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:justify-end">
           {(working || syncing) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-          {(activeBacklogSubTab === 'hierarchy' || activeBacklogSubTab === 'memory') && (
-            <Button
-              size="sm"
-              variant={layoutEditMode ? 'default' : 'outline'}
-              className="h-7 px-2 text-[11px]"
-              onClick={toggleActiveLayoutEditMode}
-              disabled={loading}
-            >
-              {layoutEditMode ? 'Done Editing Layout' : 'Edit Layout'}
-            </Button>
-          )}
+          <Button
+            size="sm"
+            variant={programLayoutEditMode ? 'default' : 'outline'}
+            className="h-7 px-2 text-[11px]"
+            onClick={toggleProgramLayoutEditMode}
+            disabled={loading}
+          >
+            {programLayoutEditMode ? 'Done Editing Layout' : 'Edit Layout'}
+          </Button>
           {activeProjectRoot && (
             <TagDisclosureButtonBlock
               label="Project Tags"
@@ -1979,18 +1648,16 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
               className="h-7 px-2 text-[11px]"
             />
           )}
-          {activeBacklogSubTab === 'hierarchy' && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-2 text-[11px]"
-              onClick={() => { void exportToExcalidraw() }}
-              disabled={working}
-            >
-              <Download className="mr-1 h-3.5 w-3.5" />
-              Export Excalidraw
-            </Button>
-          )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-[11px]"
+            onClick={() => { void exportToExcalidraw() }}
+            disabled={working}
+          >
+            <Download className="mr-1 h-3.5 w-3.5" />
+            Export Excalidraw
+          </Button>
         </div>
       </div>
 
@@ -2013,80 +1680,47 @@ export default function BacklogOrch({ pinBoardHeaderVisible = true, onPinBoardAc
         </div>
       )}
 
-      {activeBacklogSubTab === 'hierarchy' && (
-        loading ? (
-          <div className="flex items-center gap-2 px-2 py-4 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading hierarchy...
-          </div>
-        ) : (
-          <ScrollableZoomSurfaceBlock controlsLabel="Table zoom">
-              <BacklogListBlock
-                programs={visiblePrograms}
-                loadEpics={handleLoadEpics}
-                loadChildren={handleLoadChildren}
-                treeRevision={treeRevision}
-                externallyUpdatedNode={lastExternallyUpdatedNode}
-                selectedNodeId={selectedNode?.uuid ?? null}
-                onSelectNode={handleSelectNode}
-                onCreateChild={createChildNode}
-                onDropNodeToNode={dropNodeToNode}
-                onReorderSiblings={reorderSiblingRows}
-                projectPresetTagsByRoot={projectPresetTagsByRoot}
-                projectTagColorsByRoot={projectTagColorsByRoot}
-                programGroups={activeProjectProgramGroups}
-                programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
-                persistenceKey={activeProjectRoot || 'all-projects'}
-                onCreateProgramGroup={createActiveProjectProgramGroup}
-                onDeleteProgramGroup={deleteActiveProjectProgramGroup}
-                onToggleProgramGroupCollapsed={toggleActiveProjectProgramGroupCollapsed}
-                onAssignProgramToGroup={handleAssignProgramToGroup}
-                showProgramLayoutToggle={false}
-                programLayoutEditMode={programLayoutEditMode}
-                onProgramLayoutEditModeChange={setProgramLayoutEditMode}
-                focusRootCreateRequestNonce={focusRootCreateRequestNonce}
-                showRootInlineCreate={showRootProgramCreate}
-                onRootInlineCreateCreated={handleRootInlineCreateCreated}
-                onUpdateNodeStatus={updateNodeStatusFor}
-                onUpdateTaskStatus={updateTaskStatusFor}
-                onUpdateNodeNotes={updateNodeNotesFor}
-                completedEpics={completedEpicTimeline}
-                programTitleByKey={programTitleByKey}
-                onSelectEpic={setSelectedNode}
-              />
-          </ScrollableZoomSurfaceBlock>
-        )
-      )}
-
-      {activeBacklogSubTab === 'memory' && (
-        activeProjectRoot ? (
-          <PinBoardBlock
-            markdownOptions={pinBoardFileOptions}
-            panels={activeProjectPanels}
-            panelGroups={activeProjectPinBoardGroups}
-            panelGroupIdByPanel={activeProjectPinBoardGroupIdByPanel}
-            onCreatePanelGroup={createActiveProjectPinBoardGroup}
-            onDeletePanelGroup={deleteActiveProjectPinBoardGroup}
-            onTogglePanelGroupCollapsed={toggleActiveProjectPinBoardGroupCollapsed}
-            onAssignPanelToGroup={(panel, groupId) => {
-              assignActiveProjectPanelToGroup(panel.id, groupId)
-            }}
-            onUpdatePanel={updateActiveProjectPanel}
-            onAddPanel={addActiveProjectPanel}
-            onRemovePanel={removeActiveProjectPanel}
-            onOpenFile={openFile}
-            disabled={working || syncing || creatingProject}
-            topBarHidden={!pinBoardHeaderVisible}
-            layoutEditMode={pinBoardLayoutEditMode}
-            showLayoutModeToggle={false}
-          />
-        ) : (
-          <Card>
-            <CardContent className="py-6 text-sm text-muted-foreground">
-              Select a project to manage the pin board.
-            </CardContent>
-          </Card>
-        )
+      {loading ? (
+        <div className="flex items-center gap-2 px-2 py-4 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading hierarchy...
+        </div>
+      ) : (
+        <ScrollableZoomSurfaceBlock controlsLabel="Table zoom">
+            <BacklogListBlock
+              programs={visiblePrograms}
+              loadEpics={handleLoadEpics}
+              loadChildren={handleLoadChildren}
+              treeRevision={treeRevision}
+              externallyUpdatedNode={lastExternallyUpdatedNode}
+              selectedNodeId={selectedNode?.uuid ?? null}
+              onSelectNode={handleSelectNode}
+              onCreateChild={createChildNode}
+              onDropNodeToNode={dropNodeToNode}
+              onReorderSiblings={reorderSiblingRows}
+              projectPresetTagsByRoot={projectPresetTagsByRoot}
+              projectTagColorsByRoot={projectTagColorsByRoot}
+              programGroups={activeProjectProgramGroups}
+              programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
+              persistenceKey={activeProjectRoot || 'all-projects'}
+              onCreateProgramGroup={createActiveProjectProgramGroup}
+              onDeleteProgramGroup={deleteActiveProjectProgramGroup}
+              onToggleProgramGroupCollapsed={toggleActiveProjectProgramGroupCollapsed}
+              onAssignProgramToGroup={handleAssignProgramToGroup}
+              showProgramLayoutToggle={false}
+              programLayoutEditMode={programLayoutEditMode}
+              onProgramLayoutEditModeChange={setProgramLayoutEditMode}
+              focusRootCreateRequestNonce={focusRootCreateRequestNonce}
+              showRootInlineCreate={showRootProgramCreate}
+              onRootInlineCreateCreated={handleRootInlineCreateCreated}
+              onUpdateNodeStatus={updateNodeStatusFor}
+              onUpdateTaskStatus={updateTaskStatusFor}
+              onUpdateNodeNotes={updateNodeNotesFor}
+              completedEpics={completedEpicTimeline}
+              programTitleByKey={programTitleByKey}
+              onSelectEpic={setSelectedNode}
+            />
+        </ScrollableZoomSurfaceBlock>
       )}
 
       {selectedNode && (

@@ -1,19 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Check, FolderTree, LayoutDashboard, Loader2, Pencil, Plus, X, type LucideIcon } from 'lucide-react'
+import { Check, FolderTree, Loader2, Pencil, Plus, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
-import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
   STORAGE_KEYS,
-  getStorageItem,
   getJsonStorageItem,
   setJsonStorageItem,
-  setStorageItem,
 } from '@/services/orchestrators/storageOrch'
 import {
   dispatchOrganizerSidebarChromeStateBlock,
   ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
-  ORGANIZER_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK,
 } from '@/services/lego_blocks/units/organizerSidebarChromeBlock'
 import {
   readOrganizerUiStateOrch,
@@ -25,7 +21,6 @@ import BacklogOrch, {
   ORGANIZER_PROJECTS_UPDATED_EVENT,
   type OrganizerProjectsUpdatedDetail,
 } from '@/components/orchestrators/BacklogOrch'
-import ThinkingOrgCanvasOrch from '@/components/orchestrators/ThinkingOrgCanvasOrch'
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
@@ -36,33 +31,10 @@ import {
   setNativeNavigationStackBlock,
 } from '@/services/lego_blocks/units/topChromeNativeBridgeBlock'
 
-type TabMode = 'backlog' | 'board'
 const PROJECT_ROOT_QUERY_PARAM = 'projectRoot'
-const THINKING_ORGANIZER_TABS: Array<{ id: TabMode; label: string; icon: LucideIcon }> = [
-  { id: 'backlog', label: 'Create', icon: Plus },
-  { id: 'board', label: 'Board', icon: LayoutDashboard },
-]
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
-}
-
-function parseTabMode(raw: string | null): TabMode | null {
-  if (raw === 'backlog' || raw === 'board') return raw
-  return null
-}
-
-function usePersistentTab(): [TabMode, (value: TabMode) => void] {
-  const [tab, setTab] = useSessionStateBlock<TabMode>('organizer-tab', () => {
-    const saved = parseTabMode(getStorageItem(STORAGE_KEYS.thinkingOrganizerTab))
-    return saved ?? 'backlog'
-  })
-
-  useEffect(() => {
-    setStorageItem(STORAGE_KEYS.thinkingOrganizerTab, tab)
-  }, [tab])
-
-  return [tab, setTab]
 }
 
 const ORGANIZER_SIDEBAR_COLLAPSED_KEY = 'organizer_sidebar_collapsed'
@@ -81,51 +53,41 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   const isIos = layout.surface === 'capacitor-ios'
   const isIPhoneIosSurface = isIos && layout.mode === 'phone'
   const [searchParams, setSearchParams] = useSearchParams()
-  const [tab, setTab] = usePersistentTab()
 
   // iPhone list/detail mode. On entering Organizer from the rail, the user
-  // lands on the sidebar (tabs + projects) full-screen; tapping a tab pushes
-  // into the tab's content. Back chevron / edge-swipe / projects-on-sidebar-
-  // tap returns to the list. Project taps are context-only (no push).
-  const [phonePickedTab, setPhonePickedTab] = useState(false)
-  const phoneListMode = isIPhoneIosSurface && !phonePickedTab
-  const phoneDetailMode = isIPhoneIosSurface && phonePickedTab
+  // lands on the projects sidebar full-screen; tapping a project pushes into
+  // the project's content. Back chevron / edge-swipe returns to the list.
+  const [phoneInDetail, setPhoneInDetail] = useState(false)
+  const phoneListMode = isIPhoneIosSurface && !phoneInDetail
+  const phoneDetailMode = isIPhoneIosSurface && phoneInDetail
 
   useNativeBackHandlerBlock({
     active: phoneDetailMode,
-    onBack: () => setPhonePickedTab(false),
+    onBack: () => setPhoneInDetail(false),
   })
 
-  const pushPhoneTab = useCallback((nextTab: TabMode) => {
+  const pushPhoneToDetail = useCallback(() => {
     if (!(isCapacitorNative() && isIPhoneIosSurface)) {
-      setTab(nextTab)
+      setPhoneInDetail(true)
       return
     }
     void (async () => {
       try {
         await setNativeNavigationStackBlock(['/thinking-organizer'])
         await pushNativeWithForwardBlock('/thinking-organizer', () => {
-          setTab(nextTab)
-          setPhonePickedTab(true)
+          setPhoneInDetail(true)
         })
       } catch (err) {
-        console.warn('[Organizer] phone tab push failed, falling back', err)
-        setTab(nextTab)
-        setPhonePickedTab(true)
+        console.warn('[Organizer] phone detail push failed, falling back', err)
+        setPhoneInDetail(true)
       }
     })()
-  }, [isIPhoneIosSurface, setTab])
-  const [mountedTabs, setMountedTabs] = useState<Record<TabMode, boolean>>(() => ({
-    backlog: tab === 'backlog',
-    board: tab === 'board',
-  }))
+  }, [isIPhoneIosSurface])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false
     const stored = window.localStorage.getItem(ORGANIZER_SIDEBAR_COLLAPSED_KEY)
     return stored === '1'
   })
-  const [pinBoardHeaderVisible, setPinBoardHeaderVisible] = useState(true)
-  const [pinBoardActive, setPinBoardActive] = useState(false)
 
   // Project context
   const [projectUiState, setProjectUiState] = useState<OrganizerUiStateOrch | null>(null)
@@ -159,7 +121,8 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
       STORAGE_KEYS.thinkingOrganizerSelectedProjectRoot,
       normalized ? normalized.split('/') : [],
     )
-  }, [setSearchParams])
+    if (normalized) pushPhoneToDetail()
+  }, [setSearchParams, pushPhoneToDetail])
 
 
   useEffect(() => {
@@ -171,7 +134,6 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
     return () => { cancelled = true }
   }, [projectRoot])
 
-  const activeTabLabel = THINKING_ORGANIZER_TABS.find(t => t.id === tab)?.label ?? tab
   const projectName = projectUiState?.projectName
     || (projectRoot ? (projectRoot.split('/').pop() ?? projectRoot) : '')
   const missionStatement = projectUiState?.missionStatement ?? ''
@@ -190,7 +152,6 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
       const base: OrganizerUiStateOrch = current ?? {
         schemaVersion: 2,
         updatedAt: new Date().toISOString(),
-        pinBoardGroups: [],
         presetTags: [],
         tagColors: {},
         programGroups: [],
@@ -207,10 +168,6 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   }, [projectRoot, missionDraft])
 
   useEffect(() => {
-    setMountedTabs(prev => (prev[tab] ? prev : { ...prev, [tab]: true }))
-  }, [tab])
-
-  useEffect(() => {
     if (typeof window === 'undefined') return
     window.localStorage.setItem(ORGANIZER_SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? '1' : '0')
   }, [sidebarCollapsed])
@@ -221,23 +178,16 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
       enabled: true,
       collapsed: sidebarCollapsed,
       label: 'Organizer',
-      headerVisible: pinBoardHeaderVisible,
-      showHeaderToggle: tab === 'backlog' && pinBoardActive,
+      headerVisible: true,
+      showHeaderToggle: false,
     })
-  }, [active, pinBoardActive, pinBoardHeaderVisible, sidebarCollapsed, tab])
+  }, [active, sidebarCollapsed])
 
   useEffect(() => {
     if (!active) return
     const handler = () => setSidebarCollapsed(prev => !prev)
     window.addEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
     return () => window.removeEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
-  }, [active])
-
-  useEffect(() => {
-    if (!active) return
-    const handler = () => setPinBoardHeaderVisible(prev => !prev)
-    window.addEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
-    return () => window.removeEventListener(ORGANIZER_SIDEBAR_CHROME_TOGGLE_HEADER_EVENT_BLOCK, handler)
   }, [active])
 
   const handleToggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), [])
@@ -251,7 +201,7 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   const headerBlock = (
     <div className="mb-4">
       <h1 className="text-xl font-semibold tracking-tight md:text-2xl">
-        {projectName ? `${activeTabLabel} · ${projectName}` : activeTabLabel}
+        {projectName || 'Thinking Organizer'}
       </h1>
 
       {projectRoot && (
@@ -335,32 +285,6 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
                   ),
             )}>
             <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Thinking Organizer
-            </p>
-            <nav className="space-y-1">
-              {THINKING_ORGANIZER_TABS.map((item) => {
-                const Icon = item.icon
-                const active = tab === item.id
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => pushPhoneTab(item.id)}
-                    className={cn(
-                      'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-                      active && !phoneListMode
-                        ? 'bg-foreground text-background'
-                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                    )}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span className="truncate">{item.label}</span>
-                  </button>
-                )
-              })}
-            </nav>
-
-            <p className="mb-2 mt-5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Projects
             </p>
             <nav className="space-y-1">
@@ -404,21 +328,7 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
           phoneListMode ? 'hidden' : 'flex-1',
         )}>
           {headerBlock}
-          <section hidden={tab !== 'backlog'} aria-hidden={tab !== 'backlog'}>
-            {mountedTabs.backlog ? (
-              <BacklogOrch
-                pinBoardHeaderVisible={pinBoardHeaderVisible}
-                onPinBoardActiveChange={setPinBoardActive}
-              />
-            ) : null}
-          </section>
-          <section hidden={tab !== 'board'} aria-hidden={tab !== 'board'}>
-            {mountedTabs.board ? (
-              <div className="-mx-6 -mb-5 h-[calc(100vh-220px)] min-h-[600px] overflow-hidden">
-                <ThinkingOrgCanvasOrch />
-              </div>
-            ) : null}
-          </section>
+          <BacklogOrch />
         </div>
       </div>
     </div>

@@ -1,6 +1,5 @@
 export const STORAGE_KEYS = {
   vaultRoot: 'ltm-vault-root',
-  thinkingOrganizerTab: 'ltm-thinking-organizer-tab',
   thinkingOrganizerTemplates: 'ltm-thinking-organizer-level-templates',
   thinkingOrganizerRecentTemplates: 'ltm-thinking-organizer-recent-templates',
   thinkingOrganizerNodeKinds: 'ltm-thinking-organizer-node-kinds',
@@ -11,7 +10,6 @@ export const STORAGE_KEYS = {
   thinkingOrganizerProjectPresetTags: 'ltm-thinking-organizer-project-preset-tags',
   thinkingOrganizerProjectTagColors: 'ltm-thinking-organizer-project-tag-colors',
   thinkingOrganizerProjectProgramGroups: 'ltm-thinking-organizer-project-program-groups',
-  thinkingOrganizerProjectPinBoardGroups: 'ltm-thinking-organizer-project-pin-board-groups',
   thinkingOrganizerProjectCreateDestination: 'ltm-thinking-organizer-project-create-destination',
   appShellSidebarCollapsed: 'ltm-app-shell-sidebar-collapsed',
   appShellExcalidrawExpanded: 'ltm-app-shell-excalidraw-expanded',

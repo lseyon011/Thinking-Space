@@ -1,6 +1,5 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
-  type OrganizerPinBoardGroupEntryBlock,
   organizerUiStatePathBlock,
   readOrganizerUiStateBlock,
   writeOrganizerUiStateBlock,
@@ -9,7 +8,6 @@ import {
 } from '@/services/lego_blocks/integrations/organizerUiStateBlock'
 
 export type OrganizerProgramGroupEntryOrch = OrganizerProgramGroupEntryBlock
-export type OrganizerPinBoardGroupEntryOrch = OrganizerPinBoardGroupEntryBlock
 export type OrganizerUiStateOrch = OrganizerUiStateBlock
 
 export function organizerUiStatePathOrch(projectRoot: string): string {
