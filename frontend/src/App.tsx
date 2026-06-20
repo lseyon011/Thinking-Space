@@ -2955,8 +2955,8 @@ function App() {
                           key={item.to}
                           to={resolveWorkspaceNavigationRoute(item.to)}
                           title={`${item.label}${shortcutHint(index + 1)}`}
-                          className={`ltm-motion-fast ltm-touch-row flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-colors ${
-                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          className={`ltm-motion-fast ltm-touch-row ltm-shell-nav-pill flex items-center justify-center rounded-lg px-2 py-2 text-sm ${
+                            active ? 'ltm-shell-nav-pill-active' : 'ltm-shell-nav-pill-idle'
                           }`}
                         >
                           <Icon className="h-4 w-4" />
@@ -2973,8 +2973,8 @@ function App() {
                         <Link
                           to={TOOLS_NAV_ITEM.to}
                           title={`${TOOLS_NAV_ITEM.label}${shortcutHint(primaryNavItems.length + 1)}`}
-                          className={`ltm-motion-fast ltm-touch-row flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-colors ${
-                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          className={`ltm-motion-fast ltm-touch-row ltm-shell-nav-pill flex items-center justify-center rounded-lg px-2 py-2 text-sm ${
+                            active ? 'ltm-shell-nav-pill-active' : 'ltm-shell-nav-pill-idle'
                           }`}
                         >
                           <Icon className="h-4 w-4" />
@@ -2994,8 +2994,8 @@ function App() {
                           key={item.to}
                           to={item.to}
                           title={item.label}
-                          className={`ltm-motion-fast ltm-touch-row flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-colors ${
-                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          className={`ltm-motion-fast ltm-touch-row ltm-shell-nav-pill flex items-center justify-center rounded-lg px-2 py-2 text-sm ${
+                            active ? 'ltm-shell-nav-pill-active' : 'ltm-shell-nav-pill-idle'
                           }`}
                         >
                           <Icon className="h-4 w-4" />
@@ -3267,8 +3267,8 @@ function App() {
                         key={item.to}
                         to={resolveWorkspaceNavigationRoute(item.to)}
                         onClick={() => setDrawerOpen(false)}
-                        className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        className={`ltm-motion-fast ltm-touch-row ltm-shell-nav-pill flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm ${
+                          active ? 'ltm-shell-nav-pill-active' : 'ltm-shell-nav-pill-idle'
                         }`}
                       >
                         <Icon className="h-4 w-4" />
@@ -3286,8 +3286,8 @@ function App() {
                       <Link
                         to={TOOLS_NAV_ITEM.to}
                         onClick={() => setDrawerOpen(false)}
-                        className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        className={`ltm-motion-fast ltm-touch-row ltm-shell-nav-pill flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm ${
+                          active ? 'ltm-shell-nav-pill-active' : 'ltm-shell-nav-pill-idle'
                         }`}
                       >
                         <Icon className="h-4 w-4" />
@@ -3309,8 +3309,8 @@ function App() {
                         key={item.to}
                         to={item.to}
                         onClick={() => setDrawerOpen(false)}
-                        className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        className={`ltm-motion-fast ltm-touch-row ltm-shell-nav-pill flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm ${
+                          active ? 'ltm-shell-nav-pill-active' : 'ltm-shell-nav-pill-idle'
                         }`}
                       >
                         <Icon className="h-4 w-4" />
