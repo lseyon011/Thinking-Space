@@ -63,23 +63,12 @@ export default function WebullStudyAnchorBlock({ centerX, studyTopY, onStudyHeig
           zIndex: 2,
         }}
       >
-        <p
-          style={{
-            fontSize: 12,
-            color: theme.anchorEyebrow,
-            letterSpacing: '0.24em',
-            textTransform: 'uppercase',
-            margin: 0,
-          }}
-        >
-          F9
-        </p>
         <h1
           style={{
             fontSize: 32,
             fontWeight: 600,
             color: theme.anchorHeading,
-            margin: '8px 0 0',
+            margin: 0,
           }}
         >
           {projectName}

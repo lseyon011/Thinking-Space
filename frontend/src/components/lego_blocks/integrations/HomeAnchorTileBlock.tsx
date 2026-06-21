@@ -5,7 +5,6 @@ import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivi
 import TodayFileActivityOrch from '@/components/orchestrators/TodayFileActivityOrch'
 import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
 import { useCanvasProjectBindingBlock } from '@/components/lego_blocks/hooks/shared/useCanvasProjectBindingBlock'
-import CanvasProjectPickerBlock from '@/components/lego_blocks/integrations/CanvasProjectPickerBlock'
 import { useDashboardActivityBlock } from '@/components/lego_blocks/hooks/shared/useDashboardActivityBlock'
 import { readVaultUiPreferencesOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import {
@@ -136,9 +135,6 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
               {project.mission}
             </p>
           )}
-          <div style={{ marginTop: 14 }}>
-            <CanvasProjectPickerBlock surfaceId="home" />
-          </div>
         </div>
       </FloatingPanel>
 

@@ -135,7 +135,6 @@ var init_storageKeyBlock = __esm({
     "use strict";
     STORAGE_KEYS = {
       vaultRoot: "ltm-vault-root",
-      thinkingOrganizerTab: "ltm-thinking-organizer-tab",
       thinkingOrganizerTemplates: "ltm-thinking-organizer-level-templates",
       thinkingOrganizerRecentTemplates: "ltm-thinking-organizer-recent-templates",
       thinkingOrganizerNodeKinds: "ltm-thinking-organizer-node-kinds",
@@ -146,7 +145,7 @@ var init_storageKeyBlock = __esm({
       thinkingOrganizerProjectPresetTags: "ltm-thinking-organizer-project-preset-tags",
       thinkingOrganizerProjectTagColors: "ltm-thinking-organizer-project-tag-colors",
       thinkingOrganizerProjectProgramGroups: "ltm-thinking-organizer-project-program-groups",
-      thinkingOrganizerProjectPinBoardGroups: "ltm-thinking-organizer-project-pin-board-groups",
+      thinkingOrganizerBacklogView: "ltm-thinking-organizer-backlog-view",
       thinkingOrganizerProjectCreateDestination: "ltm-thinking-organizer-project-create-destination",
       appShellSidebarCollapsed: "ltm-app-shell-sidebar-collapsed",
       appShellExcalidrawExpanded: "ltm-app-shell-excalidraw-expanded",
@@ -11368,9 +11367,9 @@ function compareNodeDisplayOrder(a, b) {
   const aOrder = typeof a.sortOrder === "number" && Number.isFinite(a.sortOrder) ? a.sortOrder : Number.POSITIVE_INFINITY;
   const bOrder = typeof b.sortOrder === "number" && Number.isFinite(b.sortOrder) ? b.sortOrder : Number.POSITIVE_INFINITY;
   if (aOrder !== bOrder) return aOrder - bOrder;
-  const byTitle = a.title.localeCompare(b.title);
+  const byTitle = (a.title ?? "").localeCompare(b.title ?? "");
   if (byTitle !== 0) return byTitle;
-  return a.key.localeCompare(b.key);
+  return (a.key ?? "").localeCompare(b.key ?? "");
 }
 function extractMetadataKeys(metadata) {
   if (!metadata) return [];
