@@ -28,6 +28,8 @@ const DEFAULT_POSITION_BODY_BLOCK = [
   '',
 ].join('\n')
 
+const ARCHIVED_POSITIONS_DIR_NAME_BLOCK = 'archived_positions'
+
 const DEFAULT_COMPANY_INDEX_BODY_BLOCK = [
   '## Strategy Notes',
   '',
@@ -308,25 +310,79 @@ export async function syncWebullExecutionStorageBlock(
     await ensureDirBlock(fs, positionsDir)
 
     const indexId = `${ticker}-index`
-    const existingRecords = await readExistingPositionRecordsBlock(fs, positionsDir)
-    const existingById = new Map(existingRecords.map((record) => [record.id, record]))
+    const archivedDir = joinPathBlock(companyDir, ARCHIVED_POSITIONS_DIR_NAME_BLOCK)
+    const activeRecords = await readExistingPositionRecordsBlock(fs, positionsDir)
+    const archivedRecords = await readExistingPositionRecordsBlock(fs, archivedDir)
+    const activeById = new Map(activeRecords.map((record) => [record.id, record]))
+    const archivedById = new Map(archivedRecords.map((record) => [record.id, record]))
+    const writtenFilePaths = new Set<string>()
 
     for (const row of groupedRows.get(ticker) ?? []) {
+      // Revival pre-seed: if this position_id was previously archived, hand
+      // upsert the archived record as `existing` so the user's notes/comments
+      // and other curated frontmatter survive the revival. Active wins if both
+      // somehow exist.
+      const existingForUpsert = new Map(activeById)
+      for (const [id, archived] of archivedById) {
+        if (!existingForUpsert.has(id)) existingForUpsert.set(id, archived)
+      }
       const next = await upsertPositionRecordBlock({
         fs,
         companyTicker: ticker,
         indexId,
         positionsDir,
         row,
-        existingById,
+        existingById: existingForUpsert,
       })
-      existingById.set(next.id, next)
+      const revived = archivedById.get(next.id)
+      if (revived) {
+        try {
+          if (await fs.exists(revived.filePath)) {
+            await fs.delete(revived.filePath)
+          }
+        } catch (err) {
+          console.warn('[webull] failed to delete stale archived copy', revived.filePath, err)
+        }
+        archivedById.delete(next.id)
+      }
+      activeById.set(next.id, next)
+      writtenFilePaths.add(next.filePath)
       totalPositions += 1
     }
 
-    const mergedSummaries = sortPositionSummariesAscendingBlock(
-      [...existingById.values()].map((record) => record.summary),
-    )
+    // Archive (don't delete): any active position file the sync didn't write
+    // belongs to a position the broker no longer reports — closed leg, reissued
+    // position_id, prior payload-shape change, etc. Move it to
+    // archived_positions/ with status='archived' so the user keeps their notes
+    // and can choose to bulk-delete archived later. Reactivation is symmetric:
+    // if the position_id reappears in a future payload, the revival branch
+    // above moves the record back to positions/.
+    const archivedThisSync: ExistingPositionRecordBlock[] = []
+    for (const record of [...activeById.values()]) {
+      if (writtenFilePaths.has(record.filePath)) continue
+      try {
+        const archived = await archivePositionRecordBlock({
+          fs,
+          record,
+          archivedDir,
+          companyTicker: ticker,
+        })
+        activeById.delete(record.id)
+        archivedById.set(archived.id, archived)
+        archivedThisSync.push(archived)
+      } catch (err) {
+        console.warn('[webull] failed to archive orphan position file', record.filePath, err)
+      }
+    }
+    if (archivedThisSync.length > 0) {
+      const names = archivedThisSync.map(r => r.fileName).join(', ')
+      warnings.push(`Archived ${archivedThisSync.length} position file(s) under ${ticker}: ${names}`)
+    }
+
+    const mergedSummaries = [
+      ...sortPositionSummariesAscendingBlock([...activeById.values()].map((record) => record.summary)),
+      ...sortPositionSummariesAscendingBlock([...archivedById.values()].map((record) => record.summary)),
+    ]
     await upsertCompanyIndexBlock({
       fs,
       companyDir,
@@ -474,7 +530,11 @@ export async function readWebullPositionDetailBlock(
     throw new Error(`Invalid company ticker: ${input.companyTicker}`)
   }
   const fileName = sanitizeFileNameBlock(input.fileName)
-  const filePath = joinPathBlock(executionRoot, ticker, 'positions', fileName)
+  const activePath = joinPathBlock(executionRoot, ticker, 'positions', fileName)
+  const archivedPath = joinPathBlock(executionRoot, ticker, ARCHIVED_POSITIONS_DIR_NAME_BLOCK, fileName)
+  // Try active first; fall back to archived so archived records can still be
+  // opened/edited in the UI without separate code paths.
+  const filePath = (await fs.exists(activePath)) ? activePath : archivedPath
   const parsed = parseMarkdownFrontmatterBlock(await fs.read(filePath))
   const summary = buildPositionSummaryFromFrontmatterBlock(parsed.frontmatter, fileName, ticker)
   return {
@@ -897,14 +957,6 @@ async function upsertPositionRecordBlock(input: {
     }
   }
 
-  // Heal: if this position previously lived under a stale filename (e.g. a
-  // last-resort fallback name written before option metadata was available),
-  // migrate it to the canonical name now. We write the new file below and
-  // delete the stale one after the write succeeds.
-  const stalePathToDelete = existing && existing.fileName !== fileName
-    ? existing.filePath
-    : null
-
   let existingFrontmatter: Record<string, unknown> = {}
   let existingBody = ''
   if (existing && existing.fileName === fileName) {
@@ -938,12 +990,15 @@ async function upsertPositionRecordBlock(input: {
     symbol: companyTicker,
     company_ticker: companyTicker,
     source: 'webull',
-    status: normalizePositionStatusBlock(
-      readStringFieldBlock(existingFrontmatter.status)
-      || readStringFieldBlock(row.status)
-      || readStringFieldBlock(row.position_status)
-      || 'taken',
-    ),
+    status: normalizePositionStatusBlock((() => {
+      // Don't preserve a stale 'archived' status when reviving: if the broker
+      // is reporting this position again, it's live.
+      const prior = readStringFieldBlock(existingFrontmatter.status)
+      if (prior && prior.toLowerCase() !== 'archived') return prior
+      return readStringFieldBlock(row.status)
+        || readStringFieldBlock(row.position_status)
+        || 'taken'
+    })()),
     linked_idea_id: readNullableStringFieldBlock(existingFrontmatter.linked_idea_id),
     created_at: readStringFieldBlock(existingFrontmatter.created_at) || now,
     updated_at: now,
@@ -957,17 +1012,6 @@ async function upsertPositionRecordBlock(input: {
 
   const body = existingBody.trim() ? existingBody : DEFAULT_POSITION_BODY_BLOCK
   await fs.write(filePath, stringifyMarkdownFrontmatterBlock(nextFrontmatter, body))
-  if (stalePathToDelete && stalePathToDelete !== filePath) {
-    try {
-      if (await fs.exists(stalePathToDelete)) {
-        await fs.delete(stalePathToDelete)
-      }
-    } catch (err) {
-      // Non-fatal: the new canonical file is already written. Leave the stale
-      // file in place rather than failing the whole sync.
-      console.warn('[webull] failed to delete stale position file', stalePathToDelete, err)
-    }
-  }
   const summary = buildPositionSummaryFromFrontmatterBlock(nextFrontmatter, fileName, companyTicker)
   return {
     id: positionId,
@@ -975,6 +1019,51 @@ async function upsertPositionRecordBlock(input: {
     filePath,
     frontmatter: nextFrontmatter,
     body,
+    summary,
+  }
+}
+
+async function archivePositionRecordBlock(input: {
+  fs: VaultFS
+  record: ExistingPositionRecordBlock
+  archivedDir: string
+  companyTicker: string
+}): Promise<ExistingPositionRecordBlock> {
+  const { fs, record, archivedDir, companyTicker } = input
+  await ensureDirBlock(fs, archivedDir)
+  const targetPath = joinPathBlock(archivedDir, record.fileName)
+  const now = new Date().toISOString()
+  const history = asHistoryEntryListBlock(record.frontmatter.history)
+  history.push({
+    at: now,
+    type: 'archive',
+    source: 'webull-overall',
+    note: 'Archived: position no longer reported in Webull overall payload.',
+  })
+  const nextFrontmatter: Record<string, unknown> = {
+    ...record.frontmatter,
+    status: 'archived',
+    archived_at: now,
+    updated_at: now,
+    history: history.slice(-80),
+  }
+  await fs.write(targetPath, stringifyMarkdownFrontmatterBlock(nextFrontmatter, record.body))
+  if (record.filePath !== targetPath) {
+    try {
+      if (await fs.exists(record.filePath)) {
+        await fs.delete(record.filePath)
+      }
+    } catch (err) {
+      console.warn('[webull] failed to delete original after archive', record.filePath, err)
+    }
+  }
+  const summary = buildPositionSummaryFromFrontmatterBlock(nextFrontmatter, record.fileName, companyTicker)
+  return {
+    id: record.id,
+    fileName: record.fileName,
+    filePath: targetPath,
+    frontmatter: nextFrontmatter,
+    body: record.body,
     summary,
   }
 }

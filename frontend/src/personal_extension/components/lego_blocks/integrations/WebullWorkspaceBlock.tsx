@@ -1023,35 +1023,14 @@ export default function WebullWorkspaceBlock({
 
     for (const company of companiesForTable) {
       const companyTicker = company.companyTicker.toUpperCase()
-      const programUuid = `webull-company-${normalizeKeyFragmentBlock(companyTicker)}`
-      const companyTotals = computeCompanyTotalsBlock(company.positions)
-      companyTickerByProgramUuid.set(programUuid, companyTicker)
-      const programNode: NodeRecord = {
-        uuid: programUuid,
-        key: programUuid,
-        title: `${companyTicker} Positions`,
-        type: 'program',
-        level: 0,
-        filePath: company.indexFilePath || `webull/${companyTicker}/${companyTicker}-index.md`,
-        projectRoot: executionRoot ?? 'webull-execution',
-        tags: ['webull', 'execution', companyTicker.toLowerCase()],
-        status: 'active',
-        createdAt: now,
-        updatedAt: now,
-        metadata: {
-          webull_company_ticker: companyTicker,
-          webull_position_count: company.positions.length,
-          webull_total_cost: companyTotals.totalCost,
-          webull_avg_unit_cost: companyTotals.avgUnitCost,
-          webull_total_unrealized_profit_loss: companyTotals.totalUnrealizedProfitLoss,
-          webull_total_current_price: companyTotals.totalCurrentPrice,
-          program_group: company.programGroupId,
-        },
-      }
-      programs.push(programNode)
-      nodeByUuid.set(programUuid, programNode)
+      const activePositions = company.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived')
+      const archivedPositions = company.positions.filter(p => normalizePositionStatusBlock(p.status) === 'archived')
 
-      const nodes = company.positions.map((position, index) => {
+      const buildPositionNodes = (
+        positions: WebullPositionSummaryBlock[],
+        parentProgramUuid: string,
+        positionsSubdir: 'positions' | 'archived_positions',
+      ): NodeRecord[] => positions.map((position, index) => {
         const positionStatus = normalizePositionStatusBlock(position.status)
         const fileName = position.fileName
         const nodeUuid = `webull-pos-${normalizeKeyFragmentBlock(companyTicker)}-${normalizeKeyFragmentBlock(fileName)}`
@@ -1074,12 +1053,12 @@ export default function WebullWorkspaceBlock({
           title: positionTitleFromSummaryBlock(position),
           type: 'epic',
           level: 1,
-          parent: programUuid,
-          parentUuid: programUuid,
+          parent: parentProgramUuid,
+          parentUuid: parentProgramUuid,
           parentType: 'program',
           filePath: executionRoot
-            ? `${executionRoot}/${companyTicker}/positions/${fileName}`
-            : `webull/${companyTicker}/positions/${fileName}`,
+            ? `${executionRoot}/${companyTicker}/${positionsSubdir}/${fileName}`
+            : `webull/${companyTicker}/${positionsSubdir}/${fileName}`,
           projectRoot: executionRoot ?? 'webull-execution',
           description: undefined,
           tags: positionTags,
@@ -1101,7 +1080,64 @@ export default function WebullWorkspaceBlock({
         return nodeRecord
       })
 
-      positionNodesByProgramUuid.set(programUuid, nodes)
+      const programUuid = `webull-company-${normalizeKeyFragmentBlock(companyTicker)}`
+      const companyTotals = computeCompanyTotalsBlock(activePositions)
+      companyTickerByProgramUuid.set(programUuid, companyTicker)
+      const programNode: NodeRecord = {
+        uuid: programUuid,
+        key: programUuid,
+        title: `${companyTicker} Positions`,
+        type: 'program',
+        level: 0,
+        filePath: company.indexFilePath || `webull/${companyTicker}/${companyTicker}-index.md`,
+        projectRoot: executionRoot ?? 'webull-execution',
+        tags: ['webull', 'execution', companyTicker.toLowerCase()],
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+        metadata: {
+          webull_company_ticker: companyTicker,
+          webull_position_count: activePositions.length,
+          webull_total_cost: companyTotals.totalCost,
+          webull_avg_unit_cost: companyTotals.avgUnitCost,
+          webull_total_unrealized_profit_loss: companyTotals.totalUnrealizedProfitLoss,
+          webull_total_current_price: companyTotals.totalCurrentPrice,
+          program_group: company.programGroupId,
+        },
+      }
+      programs.push(programNode)
+      nodeByUuid.set(programUuid, programNode)
+      positionNodesByProgramUuid.set(programUuid, buildPositionNodes(activePositions, programUuid, 'positions'))
+
+      if (archivedPositions.length > 0) {
+        const archivedProgramUuid = `webull-company-archived-${normalizeKeyFragmentBlock(companyTicker)}`
+        companyTickerByProgramUuid.set(archivedProgramUuid, companyTicker)
+        const archivedProgramNode: NodeRecord = {
+          uuid: archivedProgramUuid,
+          key: archivedProgramUuid,
+          title: `${companyTicker} Archived`,
+          type: 'program',
+          level: 0,
+          filePath: company.indexFilePath || `webull/${companyTicker}/${companyTicker}-index.md`,
+          projectRoot: executionRoot ?? 'webull-execution',
+          tags: ['webull', 'execution', 'archived', companyTicker.toLowerCase()],
+          status: 'archived',
+          createdAt: now,
+          updatedAt: now,
+          metadata: {
+            webull_company_ticker: companyTicker,
+            webull_position_count: archivedPositions.length,
+            webull_archived_section: true,
+            program_group: company.programGroupId,
+          },
+        }
+        programs.push(archivedProgramNode)
+        nodeByUuid.set(archivedProgramUuid, archivedProgramNode)
+        positionNodesByProgramUuid.set(
+          archivedProgramUuid,
+          buildPositionNodes(archivedPositions, archivedProgramUuid, 'archived_positions'),
+        )
+      }
     }
 
     return {
@@ -1868,7 +1904,9 @@ export default function WebullWorkspaceBlock({
                     {companyIndex + 1}
                   </sup>
                   <span className="truncate">{company.companyTicker}</span>
-                  <span className="ml-auto text-xs opacity-80">{company.positions.length}</span>
+                  <span className="ml-auto text-xs opacity-80">
+                    {company.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived').length}
+                  </span>
                 </button>
               )
             })}
