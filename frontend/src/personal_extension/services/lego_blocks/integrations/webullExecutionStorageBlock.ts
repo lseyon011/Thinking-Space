@@ -897,6 +897,14 @@ async function upsertPositionRecordBlock(input: {
     }
   }
 
+  // Heal: if this position previously lived under a stale filename (e.g. a
+  // last-resort fallback name written before option metadata was available),
+  // migrate it to the canonical name now. We write the new file below and
+  // delete the stale one after the write succeeds.
+  const stalePathToDelete = existing && existing.fileName !== fileName
+    ? existing.filePath
+    : null
+
   let existingFrontmatter: Record<string, unknown> = {}
   let existingBody = ''
   if (existing && existing.fileName === fileName) {
@@ -949,6 +957,17 @@ async function upsertPositionRecordBlock(input: {
 
   const body = existingBody.trim() ? existingBody : DEFAULT_POSITION_BODY_BLOCK
   await fs.write(filePath, stringifyMarkdownFrontmatterBlock(nextFrontmatter, body))
+  if (stalePathToDelete && stalePathToDelete !== filePath) {
+    try {
+      if (await fs.exists(stalePathToDelete)) {
+        await fs.delete(stalePathToDelete)
+      }
+    } catch (err) {
+      // Non-fatal: the new canonical file is already written. Leave the stale
+      // file in place rather than failing the whole sync.
+      console.warn('[webull] failed to delete stale position file', stalePathToDelete, err)
+    }
+  }
   const summary = buildPositionSummaryFromFrontmatterBlock(nextFrontmatter, fileName, companyTicker)
   return {
     id: positionId,
@@ -1400,9 +1419,26 @@ function buildPreferredFileNameBlock(
     const baseName = `${ticker}STOCK`
     return accountFragment ? `${baseName}-${accountFragment}.md` : `${baseName}.md`
   }
-  const suffix = sanitizeFileFragmentBlock(positionId) || 'position'
-  const baseName = `${ticker}-${suffix}`
+  // Last-resort fallback. Avoid baking the broker's raw position_id into the
+  // filename — it leaks internal IDs and produces long, unreadable names. Use
+  // a short deterministic hash of the position_id for uniqueness instead.
+  const instrumentType = readStringFieldBlock(row.instrument_type)?.toUpperCase() ?? ''
+  const kind = instrumentType.includes('OPTION') ? 'OPTION' : 'POSITION'
+  const hash = shortPositionIdHashBlock(positionId)
+  const baseName = hash ? `${ticker}-${kind}-${hash}` : `${ticker}-${kind}`
   return accountFragment ? `${baseName}-${accountFragment}.md` : `${baseName}.md`
+}
+
+function shortPositionIdHashBlock(value: string): string {
+  if (!value) return ''
+  // FNV-1a 32-bit — deterministic, dependency-free, plenty of uniqueness for
+  // the handful of positions per ticker.
+  let hash = 0x811c9dc5
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  return hash.toString(16).padStart(8, '0')
 }
 
 function isStockRowBlock(row: Record<string, unknown>): boolean {

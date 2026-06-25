@@ -54,15 +54,21 @@ export function startVaultWatcherBlock(
     return { ok: true };
   }
 
+  // iCloud-backed vaults don't reliably emit native FSEvents for external
+  // writes (e.g. CLI processes editing files while the app is open). Without
+  // polling, those changes only land in the renderer's IndexedDB cache when
+  // the user manually rebuilds or returns focus to the window — leaving
+  // titles/parents/new files visibly stale. Native paths skip polling.
+  const isICloudPath = /\/Library\/Mobile Documents\//.test(vaultRoot);
+
   try {
     const watcher = chokidar.watch(vaultRoot, {
       ignored: (p: string) => isIgnored(p),
       ignoreInitial: true,
       persistent: true,
-      // iCloud / network drives — polling fallback in case native events miss
-      // some changes. Tradeoff: a bit of background work, but accuracy on
-      // iCloud is worth it.
-      usePolling: false,
+      usePolling: isICloudPath,
+      interval: 2000,
+      binaryInterval: 5000,
       awaitWriteFinish: {
         stabilityThreshold: 300,
         pollInterval: 100,

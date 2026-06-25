@@ -949,6 +949,11 @@ export default function BacklogOrch({
       setMessage(null)
       setError(null)
       setCurrentOperation('Refreshing organizer views')
+      // Invalidate BacklogListBlock's local children cache so expanded epics
+      // re-fetch their children. Without this, renames inside an epic stay
+      // stale and newly-created siblings stay invisible until the user
+      // collapses + re-expands the parent.
+      setTreeRevision(prev => prev + 1)
       void loadPrograms(false)
         .then((ok) => {
           if (!ok) return
