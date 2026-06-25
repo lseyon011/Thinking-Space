@@ -1013,7 +1013,14 @@ function BacklogListBlockImpl({
   }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
 
   const renderProgramSection = useCallback((program: NodeRecord, programIndex: number) => {
-    void ensureProgramLoaded(program)
+    // Programs with status='archived' are collapsed by default and gated by
+    // the existing expandedNodes mechanism. Other programs stay eagerly
+    // expanded as before so we don't regress existing callers.
+    const isArchivedProgram = program.status === 'archived'
+    const isProgramExpanded = !isArchivedProgram || !!expandedNodes[program.uuid]
+    if (isProgramExpanded) {
+      void ensureProgramLoaded(program)
+    }
     const childState = childrenByNode[program.uuid]
     const newlyCreated = !!newlyCreatedNodeIds[program.uuid]
     const assignedGroupId = resolvedProgramGroupIdByProgram[program.uuid] ?? '__ungrouped__'
@@ -1072,7 +1079,10 @@ function BacklogListBlockImpl({
           programGroups={programGroups}
           ticketBadge={renderTicketBadge(program)}
           lookupTagColor={lookupTagColor}
-          onSelectProgram={() => onSelectNode(program)}
+          onSelectProgram={() => {
+            if (isArchivedProgram) toggleNode(program)
+            else onSelectNode(program)
+          }}
           onDragStart={makeDragStart(program)}
           onDragEnd={handleDragEnd}
           onDragOver={event => handleDragOver(program, event)}
@@ -1088,29 +1098,31 @@ function BacklogListBlockImpl({
         {renderInlineDetailsPanel(program, 36)}
         {renderInlineNotesEditor(program, 36)}
 
-        <div className="bg-muted/15">
-          {childState?.loading && (
-            <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Loading children...
-            </div>
-          )}
-          {childState?.error && (
-            <div className="px-3 py-1 text-xs text-destructive">{childState.error}</div>
-          )}
-          {childState?.loaded && (
-            <>
-              {childState.nodes.map((node, idx) => renderNodeBranch(node, 0, idx, program, node.type === 'epic' ? node : null))}
-              {childState.nodes.length === 0 && (
-                <div className="px-3 py-2 text-xs text-muted-foreground">No items yet.</div>
-              )}
-            </>
-          )}
-          {renderInlineCreate(program, `program-${program.uuid}`, 'Add child...')}
-        </div>
+        {isProgramExpanded && (
+          <div className="bg-muted/15">
+            {childState?.loading && (
+              <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Loading children...
+              </div>
+            )}
+            {childState?.error && (
+              <div className="px-3 py-1 text-xs text-destructive">{childState.error}</div>
+            )}
+            {childState?.loaded && (
+              <>
+                {childState.nodes.map((node, idx) => renderNodeBranch(node, 0, idx, program, node.type === 'epic' ? node : null))}
+                {childState.nodes.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">No items yet.</div>
+                )}
+              </>
+            )}
+            {renderInlineCreate(program, `program-${program.uuid}`, 'Add child...')}
+          </div>
+        )}
       </div>
     )
-  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showProgramCopyButton, showProgramStatus, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleRowDetails, wrapTitleText])
+  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, expandedNodes, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showProgramCopyButton, showProgramStatus, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
 
   return (
     <div className="flex flex-col space-y-3">

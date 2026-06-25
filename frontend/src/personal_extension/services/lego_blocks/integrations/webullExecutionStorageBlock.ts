@@ -379,6 +379,28 @@ export async function syncWebullExecutionStorageBlock(
       warnings.push(`Archived ${archivedThisSync.length} position file(s) under ${ticker}: ${names}`)
     }
 
+    // Cross-folder dedup: if an archived record shares a filename with any
+    // active record (broker reissued the position under a new position_id but
+    // the canonical filename — derived from option metadata — is identical),
+    // the archived copy is stale. The active record is the current truth.
+    const activeFileNames = new Set([...activeById.values()].map(r => r.fileName.toLowerCase()))
+    const archivedDuplicates: ExistingPositionRecordBlock[] = []
+    for (const record of [...archivedById.values()]) {
+      if (!activeFileNames.has(record.fileName.toLowerCase())) continue
+      try {
+        if (await fs.exists(record.filePath)) {
+          await fs.delete(record.filePath)
+        }
+      } catch (err) {
+        console.warn('[webull] failed to delete duplicate archived copy', record.filePath, err)
+      }
+      archivedById.delete(record.id)
+      archivedDuplicates.push(record)
+    }
+    if (archivedDuplicates.length > 0) {
+      warnings.push(`Removed ${archivedDuplicates.length} duplicate archived file(s) under ${ticker}`)
+    }
+
     const mergedSummaries = [
       ...sortPositionSummariesAscendingBlock([...activeById.values()].map((record) => record.summary)),
       ...sortPositionSummariesAscendingBlock([...archivedById.values()].map((record) => record.summary)),
