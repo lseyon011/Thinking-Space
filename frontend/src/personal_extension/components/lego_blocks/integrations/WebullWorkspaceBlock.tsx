@@ -442,6 +442,11 @@ interface WebullAccountLabelEntryBlock {
   accountNumber: string | null
 }
 
+// Friendly personal-account display names, in account discovery order.
+// Index 0 == the account previously labeled "Account 1", index 1 == "Account 2", etc.
+// Any account beyond this list falls back to the generic "Account N" label.
+const PERSONAL_WEBULL_ACCOUNT_LABELS_BLOCK = ['Individual Cash', 'Roth IRA']
+
 function buildAccountLabelEntriesBlock(
   accounts: WebullAccountSnapshotOrch[],
   selectedAccount: WebullSelectedAccountOrch | null,
@@ -460,7 +465,7 @@ function buildAccountLabelEntriesBlock(
     if (seen.has(dedupeKey)) continue
     seen.add(dedupeKey)
     entries.push({
-      label: `Account ${entries.length + 1}`,
+      label: PERSONAL_WEBULL_ACCOUNT_LABELS_BLOCK[entries.length] ?? `Account ${entries.length + 1}`,
       accountId,
       accountNumber,
     })
@@ -686,10 +691,20 @@ function resolveUnitCostBlock(payload: Record<string, unknown> | null | undefine
   return readNumberFromRecordBlock(payload, 'cost', 'unit_cost', 'avg_cost', 'average_cost', 'cost_price')
 }
 
+// Share/contract count held for a position, using the same field aliases the cost math relies on.
+function resolveQuantityBlock(payload: Record<string, unknown> | null | undefined): number | null {
+  return readNumberFromRecordBlock(payload, 'quantity', 'qty', 'position', 'position_size', 'held', 'amount')
+}
+
+function formatQuantityBlock(value: number | null): string {
+  if (value === null) return '—'
+  return value.toLocaleString(undefined, { maximumFractionDigits: 4 })
+}
+
 function resolveTotalCostBlock(payload: Record<string, unknown> | null | undefined): number | null {
   const unitCost = resolveUnitCostBlock(payload)
   if (unitCost === null) return null
-  const quantity = readNumberFromRecordBlock(payload, 'quantity', 'qty', 'position', 'position_size', 'held', 'amount')
+  const quantity = resolveQuantityBlock(payload)
   const multiplier = readNumberFromRecordBlock(payload, 'option_contract_multiplier') ?? 1
   if (quantity === null || quantity <= 0) return unitCost
   return unitCost * quantity * multiplier
@@ -1477,6 +1492,20 @@ export default function WebullWorkspaceBlock({
               {accountLabel}
             </span>
           ) : '—'
+        },
+      },
+      {
+        id: 'units',
+        label: 'Units',
+        widthClassName: 'w-20',
+        align: 'right',
+        render: (node) => {
+          if (node.type !== 'epic') return '—'
+          const metadata = asMetadataRecordBlock(node)
+          const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
+          const instrumentType = firstStringBlock(payload?.instrument_type, payload?.type).toUpperCase()
+          if (instrumentType === 'CASH') return '—' // cash balances aren't a share count
+          return formatQuantityBlock(resolveQuantityBlock(payload))
         },
       },
       {
