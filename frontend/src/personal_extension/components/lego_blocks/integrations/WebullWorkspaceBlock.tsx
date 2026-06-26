@@ -11,6 +11,8 @@ import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/Markdow
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
 import WebullStudyBlock from './WebullStudyBlock'
+import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_blocks/integrations/webullStudyVaultBlock'
+import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import WebullF9CanvasOrch from '@/personal_extension/components/orchestrators/WebullF9CanvasOrch'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
@@ -1045,6 +1047,29 @@ export default function WebullWorkspaceBlock({
   })
   const projectRootKey = normalizeRelativePathBlock(executionRoot ?? 'webull-execution') || 'webull-execution'
 
+  // Ticker → display name (e.g. "AAPL" → "Apple"). Sourced from each study
+  // record's `company` frontmatter field; section titles fall back to the
+  // ticker when absent.
+  const [tickerToCompanyName, setTickerToCompanyName] = useState<Map<string, string>>(() => new Map())
+  useEffect(() => {
+    if (!executionRoot) {
+      setTickerToCompanyName(new Map())
+      return
+    }
+    let cancelled = false
+    void scanWebullStudyVaultBlock(executionRoot).then((scan) => {
+      if (cancelled) return
+      const next = new Map<string, string>()
+      for (const loaded of scan.records) {
+        if (loaded.record.company) {
+          next.set(loaded.record.ticker.toUpperCase(), loaded.record.company)
+        }
+      }
+      setTickerToCompanyName(next)
+    })
+    return () => { cancelled = true }
+  }, [executionRoot])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     window.localStorage.setItem(Webull_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK, sideTabsCollapsed ? '1' : '0')
@@ -1072,6 +1097,13 @@ export default function WebullWorkspaceBlock({
     onOpenNodeFile(path)
   }, [onOpenNodeFile])
   const handleBacklogCanOpenDetails = useCallback((node: NodeRecord) => node.type === 'epic', [])
+  const renderProgramTitlePrefix = useCallback((program: NodeRecord) => {
+    const ticker = typeof program.metadata?.webull_company_ticker === 'string'
+      ? program.metadata.webull_company_ticker
+      : null
+    if (!ticker || !executionRoot) return null
+    return <TickerLogoBlock ticker={ticker} executionRoot={executionRoot} />
+  }, [executionRoot])
   useIosSidebarSwipeBlock({
     isIos,
     isOpen: !sideTabsCollapsed,
@@ -1195,7 +1227,7 @@ export default function WebullWorkspaceBlock({
       const programNode: NodeRecord = {
         uuid: programUuid,
         key: programUuid,
-        title: `${companyTicker} Positions`,
+        title: `${tickerToCompanyName.get(companyTicker) ?? companyTicker} Positions`,
         type: 'program',
         level: 0,
         filePath: company.indexFilePath || `webull/${companyTicker}/${companyTicker}-index.md`,
@@ -1224,7 +1256,7 @@ export default function WebullWorkspaceBlock({
         const archivedProgramNode: NodeRecord = {
           uuid: archivedProgramUuid,
           key: archivedProgramUuid,
-          title: `${companyTicker} Archived`,
+          title: `${tickerToCompanyName.get(companyTicker) ?? companyTicker} Archived`,
           type: 'program',
           level: 0,
           filePath: company.indexFilePath || `webull/${companyTicker}/${companyTicker}-index.md`,
@@ -1257,7 +1289,7 @@ export default function WebullWorkspaceBlock({
       positionRefByNodeUuid,
       nodeUuidByCompanyAndFile,
     }
-  }, [companiesForTable, executionRoot])
+  }, [companiesForTable, executionRoot, tickerToCompanyName])
 
   // Sort companies by active cost-basis to match the Allocation pie ordering,
   // then map each program (live + archived) to the same Tailwind border class
@@ -2709,6 +2741,7 @@ export default function WebullWorkspaceBlock({
               >
                 <BacklogListBlock
                   programs={backlogTableModel.programs}
+                  renderProgramTitlePrefix={renderProgramTitlePrefix}
                   epicBorderClassByProgramUuid={companyBorderClassByProgramUuid}
                   loadEpics={loadBacklogEpics}
                   loadChildren={loadBacklogChildren}

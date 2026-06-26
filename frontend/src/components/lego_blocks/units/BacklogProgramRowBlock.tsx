@@ -35,6 +35,10 @@ interface BacklogProgramRowBlockProps {
   canEditNodeStatus: boolean
   canToggleDetails: boolean
   linksSlot?: ReactNode
+  /** Rendered immediately before the program's title text — used by callers
+   * (e.g. Webull workspace) to surface a logo or other per-program marker
+   * without coupling this generic row to domain-specific concepts. */
+  titlePrefixSlot?: ReactNode
   rowColumns: BacklogRowColumnBlock[]
   showRowColumnsOnCompact?: boolean
   rowPresetTagsClassName?: string
@@ -85,6 +89,7 @@ export function BacklogProgramRowBlock({
   canEditNodeStatus,
   canToggleDetails,
   linksSlot,
+  titlePrefixSlot,
   rowColumns,
   showRowColumnsOnCompact = false,
   rowPresetTagsClassName,
@@ -177,6 +182,7 @@ export function BacklogProgramRowBlock({
         'items-center',
       )} style={scaledWidthStyleFromClassBlock(titleColumnClassName)}>
         {ticketBadge}
+        {titlePrefixSlot}
         <span className={cn(
           'min-w-0 text-sm font-bold',
           wrapTitleText ? 'break-words whitespace-normal leading-snug' : 'flex-1 truncate',

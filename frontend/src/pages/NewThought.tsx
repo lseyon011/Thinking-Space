@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, CheckCircle2, LayoutList, Eye, CheckSquare, X, Plus, FolderTree, Heart, Settings2 } from 'lucide-react'
+import { Loader2, CheckCircle2, LayoutList, Eye, CheckSquare, X, Plus, FolderTree, Heart, Settings2, List, LayoutDashboard } from 'lucide-react'
 import {
   dispatchNewThoughtSidebarChromeStateBlock,
   NEW_THOUGHT_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
@@ -15,6 +15,12 @@ import CascadingFolderPicker, {
 import EmotionTagger from '@/components/lego_blocks/integrations/EmotionTaggerBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
+import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
+import CanvasSurfaceOrch from '@/components/orchestrators/CanvasSurfaceOrch'
+import BacklogCanvasAnchorBlock from '@/components/lego_blocks/integrations/BacklogCanvasAnchorBlock'
+import CanvasAnchorPanelBlock from '@/components/lego_blocks/units/CanvasAnchorPanelBlock'
+import { createNoteFenceCanvasStorage } from '@/services/lego_blocks/integrations/noteFenceCanvasStorageBlock'
+import { applyNoteCanvasToContent, parseNoteCanvasBlock } from '@/services/lego_blocks/units/noteCanvasBlock'
 import ThoughtsCalendarOrch from '@/components/orchestrators/ThoughtsCalendarOrch'
 import TodoCalendarOrch from '@/components/orchestrators/TodoCalendarOrch'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
@@ -38,6 +44,13 @@ const LEGACY_QUICK_DESTINATIONS_KEY = 'ltm-new-note-quick-destinations'
 const DESTINATION_USAGE_COUNTS_KEY = 'ltm-new-note-destination-usage-counts'
 const LEFT_PANEL_HIDDEN_KEY = 'ltm-new-note-left-panel-hidden'
 const DEFAULT_BASE_PATH = ['lifeblood_systems', 'sfdl']
+
+const NEW_THOUGHT_CANVAS_WORLD_WIDTH = 4500
+const NEW_THOUGHT_CANVAS_ANCHOR_WIDTH = 1024
+const NEW_THOUGHT_CANVAS_ANCHOR_CENTER_X = NEW_THOUGHT_CANVAS_WORLD_WIDTH / 2
+const NEW_THOUGHT_CANVAS_HEADING_TOP_Y = 320
+const NEW_THOUGHT_CANVAS_ANCHOR_TOP_Y = 500
+const NEW_THOUGHT_CANVAS_BOTTOM_BREATHING = 800
 const THOUGHTS_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.new-note' }
 const TODO_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.new-note.todos' }
 
@@ -246,6 +259,28 @@ function CreateTab() {
   const [todoDateStr, setTodoDateStr] = useState(todayDateStr())
   const [itemsAdded, setItemsAdded] = useState(0)
   const [content, setContent] = useState('')
+  const [viewSurface, setViewSurface] = useState<'doc' | 'canvas'>('doc')
+  const [canvasAnchorHeight, setCanvasAnchorHeight] = useState(800)
+  // Refs let the canvas adapter (created once) always see the latest content
+  // without remounting CanvasSurfaceOrch (which would reset pan/zoom).
+  const canvasContentRef = useRef(content)
+  canvasContentRef.current = content
+  const canvasStorage = useMemo(
+    () =>
+      createNoteFenceCanvasStorage({
+        getValue: () => canvasContentRef.current,
+        onWrite: (next) => setContent(next),
+      }),
+    [],
+  )
+  // The rich editor only sees the markdown body — the canvas fence is hidden
+  // so users don't stare at raw JSON in doc mode. On editor edits we re-apply
+  // any existing canvas tiles back into the body before storing.
+  const editorBody = useMemo(() => parseNoteCanvasBlock(content).bodyWithoutCanvas, [content])
+  const handleEditorBodyChange = useCallback((nextBody: string) => {
+    const { tiles, hadFence } = parseNoteCanvasBlock(canvasContentRef.current)
+    setContent(hadFence ? applyNoteCanvasToContent(nextBody, tiles) : nextBody)
+  }, [])
   const [emotions, setEmotions] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [loadingTargetContent, setLoadingTargetContent] = useState(false)
@@ -993,10 +1028,27 @@ function CreateTab() {
         </aside>
       )}
 
-      <div className="min-w-0 flex-1 overflow-auto px-6 py-5">
+      <div className={cn(
+        'relative min-w-0 flex-1',
+        tab === 'create' && viewSurface === 'canvas' ? 'overflow-hidden' : 'overflow-auto px-6 pb-5 pt-14',
+      )}>
+        {tab === 'create' && (
+          <div className="absolute right-3 top-3 z-40">
+            <SegmentedToggleBlock
+              value={viewSurface}
+              onChange={setViewSurface}
+              ariaLabel="Note view"
+              options={[
+                { value: 'doc', label: 'Doc', icon: List, title: 'Document view' },
+                { value: 'canvas', label: 'Canvas', icon: LayoutDashboard, title: 'Canvas view' },
+              ]}
+            />
+          </div>
+        )}
         {tab === 'view' && <ThoughtsCalendarOrch />}
         {tab === 'view_todos' && <TodoCalendarOrch />}
-        {tab === 'create' && (
+        {tab === 'create' && (() => {
+          const createTabBlock = (
           <div className="space-y-4">
             {(message || error) && (
               <div className="space-y-2">
@@ -1013,11 +1065,10 @@ function CreateTab() {
               </div>
             )}
 
-            <Card className="overflow-hidden">
-            <CardContent className="p-0">
+            <div className="overflow-hidden">
               <MarkdownRichEditorBlock
-                value={content}
-                onChange={setContent}
+                value={editorBody}
+                onChange={handleEditorBodyChange}
                 currentPath={targetPath ?? ''}
                 placeholder={makeThisTodo ? 'One task per line...' : "What's on your mind?"}
                 toolbarAlwaysVisible
@@ -1028,7 +1079,6 @@ function CreateTab() {
                 aiAssistDisabled={saving || loadingTargetContent}
                 aiAssistHelperText="Suggestions apply inline. Configure provider/model in AI Settings."
                 onRelatedThoughtOpenPath={handleRelatedThoughtOpenPath}
-                toolbarClassName="rounded-tl-lg rounded-tr-lg"
                 className="min-h-[520px] rounded-none border-0 border-b border-border/40 md:min-h-[620px]"
               />
 
@@ -1065,9 +1115,13 @@ function CreateTab() {
                   </div>
                 )}
 
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-muted-foreground">{makeThisTodo ? 'Date' : 'Filename'}</label>
+                  <InfoPanelToggleButtonBlock active={showMetaPanel} onToggle={() => setShowMetaPanel(v => !v)} />
+                </div>
+
                 <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
                   <div className="space-y-2">
-                    <label className="text-xs text-muted-foreground">{makeThisTodo ? 'Date' : 'Filename'}</label>
                     {makeThisTodo ? (
                       <input
                         type="date"
@@ -1248,15 +1302,8 @@ function CreateTab() {
                   </div>
                 )}
 
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs font-medium text-muted-foreground/60">
-                    {makeThisTodo ? 'Compose To Dos' : 'Compose Note'}
-                  </span>
-                  <InfoPanelToggleButtonBlock active={showMetaPanel} onToggle={() => setShowMetaPanel(v => !v)} />
-                </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
 
             <div className="flex flex-wrap gap-2 pt-1">
               {revealButtons.map(({ id, label, icon: Icon, disabled }) => {
@@ -1286,7 +1333,58 @@ function CreateTab() {
             {revealedPanel === 'emotions' && !makeThisTodo && emotionsPanel}
             {revealedPanel === 'note-settings' && !makeThisTodo && noteSettingsPanel}
           </div>
-        )}
+          )
+          return viewSurface === 'canvas' ? (
+            <div className="absolute inset-0">
+              <CanvasSurfaceOrch
+                surfaceId={`new-thought:${targetPath ?? 'draft'}`}
+                storage={canvasStorage}
+                worldWidth={NEW_THOUGHT_CANVAS_WORLD_WIDTH}
+                worldHeight={NEW_THOUGHT_CANVAS_ANCHOR_TOP_Y + canvasAnchorHeight + NEW_THOUGHT_CANVAS_BOTTOM_BREATHING}
+                clampMinScaleToFit
+                initialFocus={{
+                  worldX: NEW_THOUGHT_CANVAS_ANCHOR_CENTER_X,
+                  worldY: NEW_THOUGHT_CANVAS_ANCHOR_TOP_Y + canvasAnchorHeight / 2,
+                  contentWidth: NEW_THOUGHT_CANVAS_ANCHOR_WIDTH,
+                  contentHeight: canvasAnchorHeight,
+                }}
+                worldExtras={
+                  <>
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: NEW_THOUGHT_CANVAS_ANCHOR_CENTER_X - NEW_THOUGHT_CANVAS_ANCHOR_WIDTH / 2,
+                        top: NEW_THOUGHT_CANVAS_HEADING_TOP_Y,
+                        width: NEW_THOUGHT_CANVAS_ANCHOR_WIDTH,
+                        textAlign: 'center',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      <div className="text-3xl font-semibold tracking-tight text-foreground/90">
+                        What's on your mind today?
+                      </div>
+                      <div className="mt-2 text-sm text-muted-foreground">
+                        Compose below. Right-click anywhere on the canvas to drop a sticky.
+                      </div>
+                    </div>
+                    <BacklogCanvasAnchorBlock
+                      centerX={NEW_THOUGHT_CANVAS_ANCHOR_CENTER_X}
+                      topY={NEW_THOUGHT_CANVAS_ANCHOR_TOP_Y}
+                      width={NEW_THOUGHT_CANVAS_ANCHOR_WIDTH}
+                      onHeightChange={setCanvasAnchorHeight}
+                    >
+                      {createTabBlock}
+                    </BacklogCanvasAnchorBlock>
+                  </>
+                }
+              />
+            </div>
+          ) : (
+            <CanvasAnchorPanelBlock>
+              {createTabBlock}
+            </CanvasAnchorPanelBlock>
+          )
+        })()}
       </div>
 
       {quickDestinationModalOpen && (

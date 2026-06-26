@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
-  bytesToPngObjectUrlBlock,
   loadOrFetchTickerLogoBlock,
+  tickerLogoToObjectUrlBlock,
 } from '../../../services/lego_blocks/units/tickerLogoBlock'
 
 interface TickerLogoBlockProps {
@@ -50,13 +50,13 @@ export default function TickerLogoBlock({
       return
     }
 
-    void loadOrFetchTickerLogoBlock(executionRoot, ticker).then((bytes) => {
+    void loadOrFetchTickerLogoBlock(executionRoot, ticker).then((result) => {
       if (cancelled) return
-      if (!bytes) {
+      if (!result) {
         setFailed(true)
         return
       }
-      createdUrl = bytesToPngObjectUrlBlock(bytes)
+      createdUrl = tickerLogoToObjectUrlBlock(result)
       setUrl(createdUrl)
     })
 
@@ -66,7 +66,7 @@ export default function TickerLogoBlock({
     }
   }, [ticker, executionRoot])
 
-  const sizeClasses = cn('h-5 w-5 shrink-0 overflow-hidden rounded-md', className)
+  const sizeClasses = cn('h-5 w-5 shrink-0 overflow-hidden rounded-full', className)
 
   if (failed) {
     return (
@@ -85,12 +85,16 @@ export default function TickerLogoBlock({
   if (!url) {
     return <span className={cn(sizeClasses, 'bg-muted/60')} aria-hidden="true" />
   }
+  // Use an explicit wrapper for the circle clip — applying border-radius
+  // directly on <img> doesn't always clip the bitmap content reliably.
   return (
-    <img
-      src={url}
-      alt=""
-      className={cn(sizeClasses, 'bg-white object-contain')}
-      onError={() => setFailed(true)}
-    />
+    <span className={cn(sizeClasses, 'block bg-white')} style={{ borderRadius: '9999px' }} aria-hidden="true">
+      <img
+        src={url}
+        alt=""
+        className="block h-full w-full object-cover"
+        onError={() => setFailed(true)}
+      />
+    </span>
   )
 }

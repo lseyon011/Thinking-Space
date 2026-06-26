@@ -46,6 +46,9 @@ export interface WebullStudyRecordBlock {
   filePath: string
   fileName: string
   ticker: string
+  // Display name pulled from the study's frontmatter (e.g. "Apple"). Falls
+  // back to the ticker symbol upstream when absent.
+  company: string | null
   status: WebullStudyStatusBlock
   statusRaw: string | null
   monitor: boolean
@@ -324,6 +327,7 @@ export function parseWebullStudyRecordBlock(input: {
     filePath,
     fileName,
     ticker: ticker.toUpperCase(),
+    company: asStringOrNullBlock(frontmatter.company),
     status,
     statusRaw,
     monitor: asBooleanBlock(frontmatter.monitor, false),

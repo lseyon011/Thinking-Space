@@ -222,16 +222,20 @@ function categorizeRowOrch(
     return { category: 'no-range', rangeDeltaPct: null }
   }
 
-  let rangeDeltaPct: number | null = null
+  const midpoint = (range.low + range.high) / 2
+  // Displayed delta is always vs. the range midpoint so percentages are
+  // comparable across in/below/above states. Classification still uses the
+  // bound-relative percentage for the "approaching" threshold semantics.
+  const rangeDeltaPct: number | null = midpoint > 0
+    ? ((livePrice - midpoint) / midpoint) * 100
+    : null
   let category: WebullStudyCategoryOrch
   if (livePrice >= range.low && livePrice <= range.high) {
-    rangeDeltaPct = 0
     category = 'in-range'
   } else if (livePrice > range.high) {
-    rangeDeltaPct = ((livePrice - range.high) / range.high) * 100
-    category = rangeDeltaPct <= APPROACHING_WINDOW_PCT_ORCH ? 'approaching' : 'above-range'
+    const aboveBoundPct = ((livePrice - range.high) / range.high) * 100
+    category = aboveBoundPct <= APPROACHING_WINDOW_PCT_ORCH ? 'approaching' : 'above-range'
   } else {
-    rangeDeltaPct = ((livePrice - range.low) / range.low) * 100
     category = 'below-range'
   }
 

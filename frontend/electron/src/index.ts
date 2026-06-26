@@ -1751,6 +1751,42 @@ ipcMain.handle('net:fetchText', async (_event, url: string): Promise<{ status: n
   return fetchTextOnce(url.trim());
 });
 
+// Fetch binary bytes from an https URL — used to bypass renderer CORS for
+// resources like the parqet logo CDN that don't send Access-Control headers.
+ipcMain.handle('net:fetchBytes', async (_event, url: string): Promise<{ status: number; bytesBase64: string; contentType: string | null }> => {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url.trim())) {
+    throw new Error('net:fetchBytes requires an http/https URL');
+  }
+  const defaultHeaders = {
+    'User-Agent': 'Mozilla/5.0 (compatible; ThinkingSpace/1.0)',
+    'Accept': 'image/png, image/svg+xml, image/*;q=0.8, */*;q=0.5',
+  };
+  function fetchBytesOnce(targetUrl: string): Promise<{ status: number; bytesBase64: string; contentType: string | null }> {
+    return new Promise((resolve, reject) => {
+      const req = https.request(targetUrl, { method: 'GET', headers: defaultHeaders }, (res) => {
+        const status = res.statusCode ?? 0;
+        const location = res.headers.location;
+        if ([301, 302, 303, 307, 308].includes(status) && location) {
+          res.resume();
+          fetchBytesOnce(new URL(location, targetUrl).toString()).then(resolve).catch(reject);
+          return;
+        }
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        res.on('end', () => {
+          const raw = Buffer.concat(chunks);
+          const ctHeader = res.headers['content-type'];
+          const contentType = (Array.isArray(ctHeader) ? (ctHeader[0] ?? null) : (ctHeader ?? null)) ?? null;
+          resolve({ status, bytesBase64: raw.toString('base64'), contentType });
+        });
+      });
+      req.on('error', reject);
+      req.end();
+    });
+  }
+  return fetchBytesOnce(url.trim());
+});
+
 // -- Read file --
 ipcMain.handle('vault:read', async (_event, vaultRoot: string, relPath: string) => {
   const full = assertInsideVault(vaultRoot, relPath);

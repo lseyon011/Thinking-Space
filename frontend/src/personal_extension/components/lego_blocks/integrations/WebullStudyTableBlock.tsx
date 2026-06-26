@@ -9,6 +9,7 @@ import type {
 } from '../../../services/orchestrators/webullStudyOrch'
 import type { WebullStudyCommentBlock } from '../../../services/lego_blocks/units/webullStudyRecordBlock'
 import TickerLogoBlock from '../units/TickerLogoBlock'
+import TickerChartBlock from '../units/TickerChartBlock'
 
 interface WebullStudyTableBlockProps {
   rows: WebullStudyRowOrch[]
@@ -91,9 +92,9 @@ function rangeDeltaDollarsBlock(row: WebullStudyRowOrch): number | null {
   const price = row.livePrice.value
   const range = row.record?.currentRange
   if (price === null || !Number.isFinite(price) || !range) return null
-  if (price > range.high) return price - range.high
-  if (price < range.low) return price - range.low
-  return null
+  // Always relative to the range midpoint so the dollar delta matches the
+  // percentage delta (also midpoint-based) shown above it.
+  return price - (range.low + range.high) / 2
 }
 
 function formatValidThroughBlock(row: WebullStudyRowOrch): string {
@@ -341,6 +342,7 @@ export default function WebullStudyTableBlock({
           const rangeLabel = range
             ? `$${range.low.toLocaleString()}–$${range.high.toLocaleString()}`
             : '—'
+          const rangeMidpoint = range ? (range.low + range.high) / 2 : null
           const optionCount = row.options.length
           const impNote = row.record
             ? pickHighlightCommentBlock(row.record.impQuickNotes)
@@ -392,7 +394,14 @@ export default function WebullStudyTableBlock({
                   <HeldBadgeBlock row={row} />
                 </div>
 
-                <div className="tabular-nums text-sm">{rangeLabel}</div>
+                <div className="tabular-nums">
+                  <div className="text-sm">{rangeLabel}</div>
+                  {rangeMidpoint !== null && (
+                    <div className="text-[10px] text-muted-foreground">
+                      mid {formatMoneyBlock(rangeMidpoint)}
+                    </div>
+                  )}
+                </div>
 
                 <div className="tabular-nums">
                   <div className="text-sm">{formatMoneyBlock(row.livePrice.value)}</div>
@@ -554,6 +563,12 @@ export default function WebullStudyTableBlock({
                       ))}
                     </ol>
                   )}
+                  <div className="mt-4">
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Chart
+                    </div>
+                    <TickerChartBlock ticker={row.ticker} executionRoot={executionRoot} />
+                  </div>
                   </>
                   )}
                 </div>

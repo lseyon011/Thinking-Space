@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, FolderTree, LayoutDashboard, List, Loader2, Pencil, Plus, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/lego_blocks/units/ui/button'
+import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
 import {
   STORAGE_KEYS,
   getJsonStorageItem,
@@ -348,42 +349,15 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
             : 'overflow-y-auto px-6 py-5',
         )}>
           <div className="absolute right-3 top-3 z-40">
-            <div
-              className="inline-flex h-7 shrink-0 items-center rounded-md border border-border/70 bg-background/80 p-0.5 backdrop-blur supports-[backdrop-filter]:bg-background/60"
-              role="tablist"
-              aria-label="Backlog view"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={backlogView === 'list'}
-                onClick={() => setBacklogView('list')}
-                title="List view"
-                className={`inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors ${
-                  backlogView === 'list'
-                    ? 'bg-foreground text-background'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <List className="h-3.5 w-3.5" />
-                List
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={backlogView === 'canvas'}
-                onClick={() => setBacklogView('canvas')}
-                title="Canvas view"
-                className={`inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors ${
-                  backlogView === 'canvas'
-                    ? 'bg-foreground text-background'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <LayoutDashboard className="h-3.5 w-3.5" />
-                Canvas
-              </button>
-            </div>
+            <SegmentedToggleBlock
+              value={backlogView}
+              onChange={setBacklogView}
+              ariaLabel="Backlog view"
+              options={[
+                { value: 'list', label: 'List', icon: List, title: 'List view' },
+                { value: 'canvas', label: 'Canvas', icon: LayoutDashboard, title: 'Canvas view' },
+              ]}
+            />
           </div>
           {backlogView !== 'canvas' && headerBlock}
           <BacklogOrch

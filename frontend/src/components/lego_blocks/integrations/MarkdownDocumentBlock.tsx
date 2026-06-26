@@ -15,7 +15,7 @@ import {
   markdownMathRemarkPluginsBlock,
 } from '@/services/lego_blocks/integrations/markdownMathPluginsBlock'
 import TikzDiagramBlock from '@/components/lego_blocks/units/TikzDiagramBlock'
-import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow } from 'lucide-react'
+import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow, List, LayoutDashboard } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -54,6 +54,9 @@ import MarkdownMindmapPanelBlock from '@/components/lego_blocks/integrations/Mar
 import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/MarkdownMiniNavBlock'
 import MarkdownTableOfContentsBlock from '@/components/lego_blocks/integrations/MarkdownTableOfContentsBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
+import NoteCanvasBlock from '@/components/lego_blocks/integrations/NoteCanvasBlock'
+import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
+import { parseNoteCanvasBlock } from '@/services/lego_blocks/units/noteCanvasBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
 import { resolveFrontmatterDatesBlock } from '@/services/lego_blocks/units/frontmatterDatesBlock'
 import { cn } from '@/lib/utils'
@@ -255,6 +258,8 @@ function MarkdownTextDocumentRuntimeBlock({
   const isElectronSurface = layout.surface === 'electron'
   const isIosPhone = isIosSurface && layout.mode === 'phone'
   const [mode, setMode] = useState<MarkdownViewerMode>(initialMode)
+  const [viewSurface, setViewSurface] = useState<'doc' | 'canvas'>('doc')
+  const [canvasSaveError, setCanvasSaveError] = useState<string | null>(null)
   const [content, setContent] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [baseMtime, setBaseMtime] = useState<number | null>(null)
@@ -517,7 +522,13 @@ function MarkdownTextDocumentRuntimeBlock({
   const shouldPadViewerContent = !isEditing && !isExcalidrawDoc && !isHtmlDoc
   const showMiniNavRail = layout.mode === 'desktop' && !layout.isCapacitorNative && !isHtmlDoc
   const displayContent = useMemo(
-    () => (content !== null ? stripFrontmatter(content) : ''),
+    () => {
+      if (content === null) return ''
+      const stripped = stripFrontmatter(content)
+      // Hide the raw canvas fence in doc-mode rendering so users don't see
+      // the JSON payload backing canvas mode.
+      return parseNoteCanvasBlock(stripped).bodyWithoutCanvas
+    },
     [content],
   )
   const displayDraft = useMemo(
@@ -1137,6 +1148,29 @@ function MarkdownTextDocumentRuntimeBlock({
   }
   handleSaveRef.current = handleSave
 
+  const handleCanvasChange = useCallback(async (nextContent: string) => {
+    if (baseMtime === null || content === null) return
+    if (nextContent === content) return
+    try {
+      const result = await saveMarkdownDocument({
+        path,
+        content: nextContent,
+        baseMtime,
+        baseHash,
+        baseContent: content,
+      })
+      setContent(nextContent)
+      setBaseMtime(result.mtime)
+      setBaseCtime(result.ctime)
+      setBaseHash(result.hash)
+      setSizeBytes(result.size)
+      setCanvasSaveError(null)
+      onSaved?.(result)
+    } catch (err) {
+      setCanvasSaveError(err instanceof Error ? err.message : 'Failed to save canvas')
+    }
+  }, [baseHash, baseMtime, content, onSaved, path])
+
   const commitHeaderRename = useCallback(async () => {
     if (!isEditing || !canRenameInHeader || renaming) return
     const nextName = filenameDraft.trim()
@@ -1327,6 +1361,21 @@ function MarkdownTextDocumentRuntimeBlock({
                 isIosPhone && 'w-full min-w-0 flex-wrap justify-start gap-1.5',
               )}>
                 <InfoPanelToggleButtonBlock active={showMeta} onToggle={() => setShowMeta(v => !v)} />
+
+                {/* Doc/Canvas toggle temporarily disabled in the explorer
+                    viewer until the canvas mode is fully wired here. The
+                    NewThought compose page still surfaces it. */}
+                {false && !isEditing && !isExcalidrawDoc && !isHtmlDoc && (
+                  <SegmentedToggleBlock
+                    value={viewSurface}
+                    onChange={setViewSurface}
+                    ariaLabel="Note view"
+                    options={[
+                      { value: 'doc', label: 'Doc', icon: List, title: 'Document view' },
+                      { value: 'canvas', label: 'Canvas', icon: LayoutDashboard, title: 'Canvas view' },
+                    ]}
+                  />
+                )}
 
                 {!isEditing && (
                   <button
@@ -1582,7 +1631,24 @@ function MarkdownTextDocumentRuntimeBlock({
             </div>
           )}
 
-          {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && (
+          {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && viewSurface === 'canvas' && (
+            <div className="flex h-full min-h-[60vh] flex-col">
+              {canvasSaveError && (
+                <div className="border-b border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
+                  {canvasSaveError}
+                </div>
+              )}
+              <div className="min-h-[60vh] flex-1">
+                <NoteCanvasBlock
+                  surfaceId={`note:${path}`}
+                  value={content}
+                  onChange={(next) => { void handleCanvasChange(next) }}
+                />
+              </div>
+            </div>
+          )}
+
+          {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && viewSurface === 'doc' && (
             <div>
               <div
                 className="sticky z-30 flex flex-wrap items-center gap-1 border-b border-border/20 bg-background p-2"

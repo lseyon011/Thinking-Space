@@ -178,6 +178,9 @@ export interface BacklogListBlockProps {
   showPriorityDots?: boolean
   programLabelSingular?: string
   programLabelPlural?: string
+  /** Optional per-program slot rendered before the title text (e.g. a logo).
+   * Keep the returned node stable across renders to avoid memo invalidation. */
+  renderProgramTitlePrefix?: (program: NodeRecord) => ReactNode
   programGroupLabelSingular?: string
   persistenceKey?: string
   /** Completed epics scoped to the current project — rendered as a horizontal time strip atop each group card. */
@@ -249,6 +252,7 @@ function BacklogListBlockImpl({
   showPriorityDots = true,
   programLabelSingular = 'program',
   programLabelPlural = 'programs',
+  renderProgramTitlePrefix,
   programGroupLabelSingular = 'group',
   persistenceKey,
   completedEpics = [],
@@ -1069,6 +1073,7 @@ function BacklogListBlockImpl({
           canEditNodeStatus={!!onUpdateNodeStatus}
           canToggleDetails={canToggleDetails}
           linksSlot={renderRelatedNodeLinksSlot(program)}
+          titlePrefixSlot={renderProgramTitlePrefix?.(program)}
           rowColumns={rowColumns}
           showRowColumnsOnCompact={showRowColumnsOnCompact}
           rowPresetTagsClassName={rowPresetTagsClassName}
@@ -1130,7 +1135,7 @@ function BacklogListBlockImpl({
         )}
       </div>
     )
-  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, expandedNodes, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showProgramCopyButton, showProgramStatus, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
+  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, expandedNodes, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderProgramTitlePrefix, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showProgramCopyButton, showProgramStatus, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
 
   return (
     <div className="flex flex-col space-y-3">
