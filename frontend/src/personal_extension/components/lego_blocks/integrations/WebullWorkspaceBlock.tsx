@@ -158,6 +158,15 @@ const COMPANY_PIE_PALETTE = [
   '#6366f1', '#ec4899', '#84cc16', '#f97316', '#06b6d4', '#8b5cf6',
 ]
 
+// Parallel to COMPANY_PIE_PALETTE, expressed as Tailwind border classes so the
+// position-table left stripe matches the donut wedge for the same business.
+const COMPANY_PIE_BORDER_PALETTE = [
+  'border-l-emerald-500', 'border-l-sky-500', 'border-l-purple-500',
+  'border-l-amber-500', 'border-l-red-500', 'border-l-teal-500',
+  'border-l-indigo-500', 'border-l-pink-500', 'border-l-lime-500',
+  'border-l-orange-500', 'border-l-cyan-500', 'border-l-violet-500',
+]
+
 interface CompanyPieSliceBlock {
   key: string
   ticker: string
@@ -1211,6 +1220,38 @@ export default function WebullWorkspaceBlock({
       nodeUuidByCompanyAndFile,
     }
   }, [companiesForTable, executionRoot])
+
+  // Sort companies by active cost-basis to match the Allocation pie ordering,
+  // then map each program (live + archived) to the same Tailwind border class
+  // the pie wedge uses. Keeps the position-table left stripe visually anchored
+  // to the donut.
+  const companyBorderClassByProgramUuid = useMemo(() => {
+    const sourceCompanies = (executionOverview?.companies.length ?? 0) > 0
+      ? executionOverview!.companies
+      : companiesForTable
+    const tickerTotals = sourceCompanies
+      .map((company) => {
+        const ticker = company.companyTicker.toUpperCase()
+        const activePositions = company.positions.filter(
+          p => normalizePositionStatusBlock(p.status) !== 'archived',
+        )
+        const metrics = computeCompanySummaryMetricsBlock(activePositions)
+        const total = Math.max(0, metrics.stockCost ?? 0) + Math.max(0, metrics.optionCost ?? 0)
+        return { ticker, total }
+      })
+      .filter(entry => entry.total > 0)
+      .sort((a, b) => b.total - a.total)
+    const borderByTicker = new Map<string, string>()
+    tickerTotals.forEach((entry, index) => {
+      borderByTicker.set(entry.ticker, COMPANY_PIE_BORDER_PALETTE[index % COMPANY_PIE_BORDER_PALETTE.length])
+    })
+    const map: Record<string, string> = {}
+    for (const [programUuid, ticker] of backlogTableModel.companyTickerByProgramUuid) {
+      const borderClass = borderByTicker.get(ticker.toUpperCase())
+      if (borderClass) map[programUuid] = borderClass
+    }
+    return map
+  }, [backlogTableModel.companyTickerByProgramUuid, companiesForTable, executionOverview])
 
   const [detailPanelNodeId, setDetailPanelNodeId] = useState<string | null>(null)
   const [projectPresetTagsByRoot, setProjectPresetTagsByRoot] = useState<WebullProjectPresetTagsByRootBlock>(
@@ -2413,6 +2454,7 @@ export default function WebullWorkspaceBlock({
                 >
                   <BacklogListBlock
                     programs={backlogTableModel.programs}
+                    epicBorderClassByProgramUuid={companyBorderClassByProgramUuid}
                     loadEpics={loadBacklogEpics}
                     loadChildren={loadBacklogChildren}
                     selectedNodeId={selectedBacklogNodeId}
@@ -2613,6 +2655,7 @@ export default function WebullWorkspaceBlock({
               >
                 <BacklogListBlock
                   programs={backlogTableModel.programs}
+                  epicBorderClassByProgramUuid={companyBorderClassByProgramUuid}
                   loadEpics={loadBacklogEpics}
                   loadChildren={loadBacklogChildren}
                   selectedNodeId={selectedBacklogNodeId}

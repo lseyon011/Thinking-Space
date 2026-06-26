@@ -184,6 +184,9 @@ export interface BacklogListBlockProps {
   completedEpics?: NodeRecord[]
   programTitleByKey?: Record<string, string>
   onSelectEpic?: (epic: NodeRecord) => void
+  /** When set, epics under the given program uuid use this `border-l-*` class
+   *  for every sibling row, instead of rotating through the default palette. */
+  epicBorderClassByProgramUuid?: Record<string, string>
 }
 
 
@@ -251,6 +254,7 @@ function BacklogListBlockImpl({
   completedEpics = [],
   programTitleByKey,
   onSelectEpic,
+  epicBorderClassByProgramUuid,
 }: BacklogListBlockProps) {
   const normalizedPersistenceKey = persistenceKey?.trim() ?? ''
   const storageKey = normalizedPersistenceKey ? `${BACKLOG_LIST_PERSISTENCE_PREFIX}:${normalizedPersistenceKey}` : ''
@@ -887,11 +891,15 @@ function BacklogListBlockImpl({
       void ensureChildrenLoaded(node)
     }
     const childCount = childState?.loaded ? childState.nodes.length : null
+    const programOverrideBorderClass = depth === 0 && parentNode
+      ? epicBorderClassByProgramUuid?.[parentNode.uuid]
+      : undefined
     const borderColorClass = depth === 0
-      ? EPIC_BORDER_PALETTE[siblingIndex % EPIC_BORDER_PALETTE.length]
+      ? (programOverrideBorderClass ?? EPIC_BORDER_PALETTE[siblingIndex % EPIC_BORDER_PALETTE.length])
       : 'border-l-zinc-300'
     const iconColorClass = node.type === 'epic' && depth === 0
-      ? (EPIC_ICON_COLOR_BY_BORDER[borderColorClass] ?? iconColorForNodeType(node.type))
+      ? (EPIC_ICON_COLOR_BY_BORDER[borderColorClass]
+        ?? (programOverrideBorderClass ? programOverrideBorderClass.replace('border-l-', 'text-').replace('-500', '-600') : iconColorForNodeType(node.type)))
       : iconColorForNodeType(node.type)
 
     const effectiveEpicContext = node.type === 'epic' ? node : epicContext
@@ -1010,7 +1018,7 @@ function BacklogListBlockImpl({
         )}
       </div>
     )
-  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
+  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, epicBorderClassByProgramUuid, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
 
   const renderProgramSection = useCallback((program: NodeRecord, programIndex: number) => {
     // Programs with status='archived' are collapsed by default and gated by
