@@ -74,6 +74,13 @@ export const EPIC_ICON_COLOR_BY_BORDER: Record<string, string> = {
   'border-l-cyan-500': 'text-cyan-600',
   'border-l-fuchsia-500': 'text-fuchsia-600',
   'border-l-lime-500': 'text-lime-600',
+  'border-l-sky-500': 'text-sky-600',
+  'border-l-purple-500': 'text-purple-600',
+  'border-l-red-500': 'text-red-600',
+  'border-l-teal-500': 'text-teal-600',
+  'border-l-indigo-500': 'text-indigo-600',
+  'border-l-pink-500': 'text-pink-600',
+  'border-l-orange-500': 'text-orange-600',
 }
 
 export const NEW_ROW_HIGHLIGHT_MS = 2200
