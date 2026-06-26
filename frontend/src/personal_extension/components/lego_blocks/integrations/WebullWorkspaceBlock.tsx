@@ -172,11 +172,9 @@ function buildCompanyPieDataBlock(companies: WebullCompanyOverviewBlock[]): {
   slices: CompanyPieSliceBlock[]
   total: number
 } {
-  const CASH_EQUIVS = new Set<string>(['JPST'])
   const tickerTotals: Array<{ ticker: string; stock: number; option: number; total: number }> = []
   for (const company of companies) {
     const ticker = company.companyTicker.toUpperCase()
-    if (CASH_EQUIVS.has(ticker)) continue
     const activePositions = company.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived')
     const metrics = computeCompanySummaryMetricsBlock(activePositions)
     const stock = Math.max(0, metrics.stockCost ?? 0)
@@ -1040,10 +1038,13 @@ export default function WebullWorkspaceBlock({
     [activeCompanyTicker, executionOverview],
   )
   const showCompanyView = !!selectedCompany && !preserveOverallContext
-  const selectedCompanyMetrics = useMemo(
-    () => (selectedCompany ? computeCompanySummaryMetricsBlock(selectedCompany.positions) : null),
-    [selectedCompany],
-  )
+  const selectedCompanyMetrics = useMemo(() => {
+    if (!selectedCompany) return null
+    const activePositions = selectedCompany.positions.filter(
+      p => normalizePositionStatusBlock(p.status) !== 'archived',
+    )
+    return computeCompanySummaryMetricsBlock(activePositions)
+  }, [selectedCompany])
   const portfolioTotalCost = useMemo(() => {
     if (!executionOverview) return null
     let total = 0
@@ -1844,13 +1845,17 @@ export default function WebullWorkspaceBlock({
   const companyPortfolioWeight = percentOfBlock(selectedCompanyMetrics?.totalCost ?? null, portfolioTotalCost)
   const stockCostWeight = percentOfBlock(selectedCompanyMetrics?.stockCost ?? null, selectedCompanyMetrics?.totalCost ?? null)
   const optionCostWeight = percentOfBlock(selectedCompanyMetrics?.optionCost ?? null, selectedCompanyMetrics?.totalCost ?? null)
-  const stockProfitLossWeight = percentOfBlock(
+  const stockProfitLossReturn = percentOfBlock(
     selectedCompanyMetrics?.stockProfitLoss ?? null,
-    selectedCompanyMetrics?.totalProfitLoss ?? null,
+    selectedCompanyMetrics?.stockCost ?? null,
   )
-  const optionProfitLossWeight = percentOfBlock(
+  const optionProfitLossReturn = percentOfBlock(
     selectedCompanyMetrics?.optionProfitLoss ?? null,
+    selectedCompanyMetrics?.optionCost ?? null,
+  )
+  const totalProfitLossReturn = percentOfBlock(
     selectedCompanyMetrics?.totalProfitLoss ?? null,
+    selectedCompanyMetrics?.totalCost ?? null,
   )
   const selectedCompanyFilePath = normalizeRelativePathBlock(selectedCompany?.valuationNotePath ?? '')
   const selectedCompanyFileLabel = selectedCompanyFilePath
@@ -2291,15 +2296,12 @@ export default function WebullWorkspaceBlock({
                                   style={{ backgroundColor: entry.color }}
                                 />
                                 <span className="truncate font-medium text-foreground">{entry.ticker}</span>
-                                {entry.option > 0 && entry.stock > 0 && (
+                                {entry.option > 0 && (
                                   <span
-                                    className="inline-block h-1.5 w-1.5 shrink-0 rounded-full ring-1 ring-inset"
-                                    style={{ backgroundColor: 'transparent', color: entry.color, boxShadow: `inset 0 0 0 1px ${entry.color}` }}
-                                    title="Has stock and options"
+                                    className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                                    style={{ backgroundColor: 'transparent', boxShadow: `inset 0 0 0 1px ${entry.color}` }}
+                                    title={entry.stock > 0 ? 'Has stock and options' : 'Options only'}
                                   />
-                                )}
-                                {entry.option > 0 && entry.stock === 0 && (
-                                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">opt</span>
                                 )}
                               </div>
                               <div className="flex shrink-0 items-center gap-3 tabular-nums">
@@ -2307,7 +2309,7 @@ export default function WebullWorkspaceBlock({
                                 <span className="w-14 text-right text-foreground/80">{formatCurrencyKBlock(entry.total)}</span>
                                 <span
                                   className={cn(
-                                    'w-14 text-right',
+                                    'w-12 text-right text-[10px]',
                                     entry.plPercent === null
                                       ? 'text-muted-foreground/60'
                                       : entry.plPercent >= 0
@@ -2350,11 +2352,18 @@ export default function WebullWorkspaceBlock({
                 </div>
                 <div className="rounded-lg border bg-background p-3">
                   <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Current P/L</p>
-                  <p className="mt-1 text-lg font-semibold">{formatCurrencyKBlock(selectedCompanyMetrics?.totalProfitLoss ?? null)}</p>
+                  <p className="mt-1 text-lg font-semibold">
+                    {formatCurrencyKBlock(selectedCompanyMetrics?.totalProfitLoss ?? null)}
+                    {totalProfitLossReturn !== null && (
+                      <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                        ({totalProfitLossReturn >= 0 ? '+' : ''}{totalProfitLossReturn.toFixed(1)}%)
+                      </span>
+                    )}
+                  </p>
                   <p className="text-xs text-muted-foreground">
-                    Stock {formatPercentBlock(stockProfitLossWeight)} ({formatCurrencyKBlock(selectedCompanyMetrics?.stockProfitLoss ?? null)})
+                    Stock {formatPercentBlock(stockProfitLossReturn)} ({formatCurrencyKBlock(selectedCompanyMetrics?.stockProfitLoss ?? null)})
                     {' · '}
-                    Option {formatPercentBlock(optionProfitLossWeight)} ({formatCurrencyKBlock(selectedCompanyMetrics?.optionProfitLoss ?? null)})
+                    Option {formatPercentBlock(optionProfitLossReturn)} ({formatCurrencyKBlock(selectedCompanyMetrics?.optionProfitLoss ?? null)})
                   </p>
                 </div>
               </div>
