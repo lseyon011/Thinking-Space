@@ -63,6 +63,7 @@ export interface WebullPositionSummaryBlock {
   optionType: string | null
   optionExpireDate: string | null
   optionExercisePrice: string | null
+  quantity: string | null
   cost: string | null
   proportion: string | null
   lastPrice: string | null
@@ -937,6 +938,7 @@ async function upsertCompanyIndexBlock(input: {
       option_type: summary.optionType,
       option_expire_date: summary.optionExpireDate,
       option_exercise_price: summary.optionExercisePrice,
+      quantity: summary.quantity,
       cost: summary.cost,
       proportion: summary.proportion,
       last_price: summary.lastPrice,
@@ -1254,6 +1256,7 @@ function buildPositionSummaryFromFrontmatterBlock(
     optionType: readNullableStringFieldBlock(frontmatter.option_type),
     optionExpireDate: readNullableStringFieldBlock(frontmatter.option_expire_date),
     optionExercisePrice: readNullableStringFieldBlock(frontmatter.option_exercise_price),
+    quantity: readNullableStringFieldBlock(frontmatter.quantity),
     cost: readNullableStringFieldBlock(frontmatter.cost),
     proportion: readNullableStringFieldBlock(frontmatter.proportion),
     lastPrice: readNullableStringFieldBlock(frontmatter.last_price),
@@ -1288,6 +1291,7 @@ function asPositionSummaryListBlock(value: unknown): WebullPositionSummaryBlock[
       optionType: readNullableStringFieldBlock(record.option_type),
       optionExpireDate: readNullableStringFieldBlock(record.option_expire_date),
       optionExercisePrice: readNullableStringFieldBlock(record.option_exercise_price),
+      quantity: readNullableStringFieldBlock(record.quantity),
       cost: readNullableStringFieldBlock(record.cost),
       proportion: readNullableStringFieldBlock(record.proportion),
       lastPrice: readNullableStringFieldBlock(record.last_price),
@@ -1401,6 +1405,7 @@ function normalizePositionRowForStorageBlock(
     account_number: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['account_number', 'accountNumber'])),
     subscription_id: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['subscription_id', 'subscriptionId'])),
     cash_currency: cashCurrency,
+    quantity: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['quantity', 'qty', 'position', 'position_size', 'shares', 'held'])),
     cost: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['cost', 'avg_cost', 'average_cost', 'cost_price'])),
     proportion: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['proportion', 'weight'])),
     leg_id: normalizeMissingTokenBlock(readFirstStringFromFieldsBlock(row, firstLeg, ['leg_id', 'legId'])),

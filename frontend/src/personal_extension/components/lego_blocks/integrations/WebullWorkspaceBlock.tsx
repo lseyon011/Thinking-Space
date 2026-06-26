@@ -510,6 +510,11 @@ interface WebullAccountLabelEntryBlock {
   accountNumber: string | null
 }
 
+// Friendly personal-account display names, in account discovery order.
+// Index 0 == the account previously labeled "Account 1", index 1 == "Account 2", etc.
+// Any account beyond this list falls back to the generic "Account N" label.
+const PERSONAL_WEBULL_ACCOUNT_LABELS_BLOCK = ['Individual Cash', 'Roth IRA']
+
 function buildAccountLabelEntriesBlock(
   accounts: WebullAccountSnapshotOrch[],
   selectedAccount: WebullSelectedAccountOrch | null,
@@ -528,7 +533,7 @@ function buildAccountLabelEntriesBlock(
     if (seen.has(dedupeKey)) continue
     seen.add(dedupeKey)
     entries.push({
-      label: `Account ${entries.length + 1}`,
+      label: PERSONAL_WEBULL_ACCOUNT_LABELS_BLOCK[entries.length] ?? `Account ${entries.length + 1}`,
       accountId,
       accountNumber,
     })
@@ -554,6 +559,15 @@ function resolveAccountLabelBlock(
 function formatAccountDescriptorBlock(entry: WebullAccountLabelEntryBlock): string {
   const suffix = entry.accountNumber ?? entry.accountId
   return suffix ? `${entry.label} (${suffix})` : entry.label
+}
+
+// Pastel account chip colors: Roth IRA = bright amber, Individual Cash (and any other) = soft blue.
+function accountPillClassBlock(label: string | null): string {
+  const base = 'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium'
+  const tone = label === 'Roth IRA'
+    ? 'bg-amber-300/25 text-amber-700 dark:text-amber-200'
+    : 'bg-sky-300/25 text-sky-700 dark:text-sky-200'
+  return `${base} ${tone}`
 }
 
 function normalizePriorityFromUnknownBlock(value: unknown): NodePriority | null {
@@ -602,11 +616,8 @@ function positionTitleFromSummaryBlock(position: WebullPositionSummaryBlock): st
   if (optionType && optionExpireDate && optionStrike) {
     return `${symbol}${optionStrike}-${optionExpireDate}-${optionType}`
   }
-  if (instrumentType === 'STOCK') {
-    return `${symbol}STOCK`
-  }
-  const fromFileName = firstStringBlock(position.fileName)
-  return fromFileName.toLowerCase().endsWith('.md') ? fromFileName.slice(0, -3) : symbol
+  // Stocks/ETFs (EQUITY, STOCK, …) display as just the ticker, e.g. "TSLA" not "TSLASTOCK".
+  return symbol
 }
 
 function compareWebullPositionsAscendingBlock(a: WebullPositionSummaryBlock, b: WebullPositionSummaryBlock): number {
@@ -652,6 +663,7 @@ function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, u
       optionType: firstStringBlock(row.option_type) || null,
       optionExpireDate: firstStringBlock(row.option_expire_date) || null,
       optionExercisePrice: firstStringBlock(row.option_exercise_price) || null,
+      quantity: firstStringBlock(row.quantity, row.qty, row.position, row.shares) || null,
       cost: firstStringBlock(row.cost) || null,
       proportion: firstStringBlock(row.proportion) || null,
       lastPrice: firstStringBlock(row.last_price) || null,
@@ -754,13 +766,31 @@ function resolveUnitCostBlock(payload: Record<string, unknown> | null | undefine
   return readNumberFromRecordBlock(payload, 'cost', 'unit_cost', 'avg_cost', 'average_cost', 'cost_price')
 }
 
+// Share/contract count held for a position, using the same field aliases the cost math relies on.
+function resolveQuantityBlock(payload: Record<string, unknown> | null | undefined): number | null {
+  return readNumberFromRecordBlock(payload, 'quantity', 'qty', 'position', 'position_size', 'held', 'amount')
+}
+
+function formatQuantityBlock(value: number | null): string {
+  if (value === null) return '—'
+  return value.toLocaleString(undefined, { maximumFractionDigits: 4 })
+}
+
 function resolveTotalCostBlock(payload: Record<string, unknown> | null | undefined): number | null {
   const unitCost = resolveUnitCostBlock(payload)
   if (unitCost === null) return null
-  const quantity = readNumberFromRecordBlock(payload, 'quantity', 'qty', 'position', 'position_size', 'held', 'amount')
+  const quantity = resolveQuantityBlock(payload)
   const multiplier = readNumberFromRecordBlock(payload, 'option_contract_multiplier') ?? 1
   if (quantity === null || quantity <= 0) return unitCost
   return unitCost * quantity * multiplier
+}
+
+// True per-share/per-contract cost. The stored `cost` field is the TOTAL cost basis,
+// so the per-unit cost is total / quantity (e.g. $800 over 5 shares = $160/share).
+function resolvePerUnitCostBlock(totalCost: number | null, quantity: number | null): number | null {
+  if (totalCost === null) return null
+  if (quantity === null || quantity <= 0) return totalCost
+  return totalCost / quantity
 }
 
 function resolveUnrealizedProfitLossBlock(payload: Record<string, unknown> | null | undefined): number | null {
@@ -799,8 +829,7 @@ function computeCompanyTotalsBlock(positions: WebullPositionSummaryBlock[]): {
 } {
   let totalCost = 0
   let totalCostCount = 0
-  let totalUnitCost = 0
-  let unitCostCount = 0
+  let totalQuantity = 0
   let totalUnrealized = 0
   let unrealizedCount = 0
   let totalCurrentPrice = 0
@@ -813,10 +842,9 @@ function computeCompanyTotalsBlock(positions: WebullPositionSummaryBlock[]): {
       totalCost += totalCostValue
       totalCostCount += 1
     }
-    const unitCostValue = resolveUnitCostBlock(payload)
-    if (unitCostValue !== null) {
-      totalUnitCost += unitCostValue
-      unitCostCount += 1
+    const quantityValue = firstNumberBlock(position.quantity)
+    if (quantityValue !== null && quantityValue > 0) {
+      totalQuantity += quantityValue
     }
     const unrealizedValue = firstNumberBlock(payload.unrealized_profit_loss)
     if (unrealizedValue !== null) {
@@ -832,7 +860,7 @@ function computeCompanyTotalsBlock(positions: WebullPositionSummaryBlock[]): {
 
   return {
     totalCost: totalCostCount > 0 ? totalCost : null,
-    avgUnitCost: unitCostCount > 0 ? totalUnitCost / unitCostCount : null,
+    avgUnitCost: totalCostCount > 0 && totalQuantity > 0 ? totalCost / totalQuantity : null,
     totalUnrealizedProfitLoss: unrealizedCount > 0 ? totalUnrealized : null,
     totalCurrentPrice: currentPriceCount > 0 ? totalCurrentPrice : null,
   }
@@ -1144,6 +1172,7 @@ export default function WebullWorkspaceBlock({
             webull_position_file_name: fileName,
             webull_position_status: positionStatus,
             webull_linked_idea_id: position.linkedIdeaId ?? '',
+            webull_position_quantity: position.quantity ?? '',
             webull_position_payload: positionPayloadFromSummaryBlock(position),
           },
         }
@@ -1605,10 +1634,24 @@ export default function WebullWorkspaceBlock({
             payload?.account_number ?? payload?.accountNumber,
           )
           return accountLabel ? (
-            <span className="inline-flex items-center rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+            <span className={accountPillClassBlock(accountLabel)}>
               {accountLabel}
             </span>
           ) : '—'
+        },
+      },
+      {
+        id: 'quantity',
+        label: 'Quantity',
+        widthClassName: 'w-20',
+        align: 'right',
+        render: (node) => {
+          if (node.type !== 'epic') return '—'
+          const metadata = asMetadataRecordBlock(node)
+          const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
+          const instrumentType = firstStringBlock(payload?.instrument_type, payload?.type).toUpperCase()
+          if (instrumentType === 'CASH') return '—' // cash balances aren't a share count
+          return formatQuantityBlock(readNumberFromRecordBlock(metadata, 'webull_position_quantity'))
         },
       },
       {
@@ -1632,7 +1675,9 @@ export default function WebullWorkspaceBlock({
           const metadata = asMetadataRecordBlock(node)
           if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.webull_avg_unit_cost)
           const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
-          return formatCurrencyBlock(resolveUnitCostBlock(payload))
+          const totalCost = resolveTotalCostBlock(payload)
+          const quantity = readNumberFromRecordBlock(metadata, 'webull_position_quantity')
+          return formatCurrencyBlock(resolvePerUnitCostBlock(totalCost, quantity))
         },
       },
       {
@@ -1698,7 +1743,7 @@ export default function WebullWorkspaceBlock({
       <div className="space-y-1.5 text-xs text-muted-foreground">
         <div className="flex flex-wrap items-center gap-2">
           {accountLabel && (
-            <span className="inline-flex items-center rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+            <span className={accountPillClassBlock(accountLabel)}>
               {accountLabel}
             </span>
           )}
@@ -2490,7 +2535,7 @@ export default function WebullWorkspaceBlock({
                     linksBeforeTags
                     statusRightAligned={false}
                     rowDetailsRenderer={renderWebullInlineDetails}
-                    titleColumnClassName="w-[20rem]"
+                    titleColumnClassName="w-[11rem]"
                     wrapTitleText
                     actionsRightEdge
                     showProgramStatus={false}
@@ -2691,7 +2736,7 @@ export default function WebullWorkspaceBlock({
                   linksBeforeTags
                   statusRightAligned={false}
                   rowDetailsRenderer={renderWebullInlineDetails}
-                  titleColumnClassName="w-[20rem]"
+                  titleColumnClassName="w-[11rem]"
                   wrapTitleText
                   actionsRightEdge
                   showProgramStatus={false}

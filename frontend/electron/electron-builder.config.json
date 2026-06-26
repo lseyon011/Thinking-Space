@@ -75,7 +75,8 @@
   "mac": {
     "category": "public.app-category.productivity",
     "target": ["dmg", "pkg"],
-    "icon": "assets/appIcon.png"
+    "icon": "assets/appIcon.png",
+    "hardenedRuntime": false
   },
   "pkg": {
     "scripts": "pkg-scripts",
