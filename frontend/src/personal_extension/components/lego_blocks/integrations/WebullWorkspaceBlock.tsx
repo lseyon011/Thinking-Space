@@ -762,8 +762,11 @@ function readNumberFromRecordBlock(record: Record<string, unknown> | null | unde
   return null
 }
 
+// Per-share / per-contract cost (premium per share for options). Webull stores
+// this as `cost_price`; the bare `cost` field is the TOTAL dollar basis and is
+// intentionally NOT consulted here so totals don't get over-multiplied.
 function resolveUnitCostBlock(payload: Record<string, unknown> | null | undefined): number | null {
-  return readNumberFromRecordBlock(payload, 'cost', 'unit_cost', 'avg_cost', 'average_cost', 'cost_price')
+  return readNumberFromRecordBlock(payload, 'cost_price', 'unit_cost', 'avg_cost', 'average_cost')
 }
 
 // Share/contract count held for a position, using the same field aliases the cost math relies on.
@@ -776,7 +779,13 @@ function formatQuantityBlock(value: number | null): string {
   return value.toLocaleString(undefined, { maximumFractionDigits: 4 })
 }
 
+// Total dollar cost basis for a position. Webull's `cost` already factors in
+// the option contract multiplier (e.g. 1 MU contract: cost=$24,200, cost_price=$242),
+// so prefer it directly. Fall back to cost_price × quantity × multiplier only
+// when the broker omits the total.
 function resolveTotalCostBlock(payload: Record<string, unknown> | null | undefined): number | null {
+  const directTotal = readNumberFromRecordBlock(payload, 'cost')
+  if (directTotal !== null) return directTotal
   const unitCost = resolveUnitCostBlock(payload)
   if (unitCost === null) return null
   const quantity = resolveQuantityBlock(payload)
