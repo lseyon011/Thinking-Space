@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, Building2, Wallet, type LucideIcon } from 'lucide-react'
+import { BookOpen, Building2, Clock, Layers, Wallet, type LucideIcon } from 'lucide-react'
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import {
   dispatchWebullSidebarChromeStateBlock,
   Webull_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
@@ -150,11 +151,71 @@ interface WebullWorkspaceBlockProps {
   onOpenNodeFile: (filePath: string) => void
 }
 
+const CASH_EQUIVALENT_SYMBOLS = new Set<string>(['JPST'])
+
+const COMPANY_PIE_PALETTE = [
+  '#10b981', '#0ea5e9', '#a855f7', '#f59e0b', '#ef4444', '#14b8a6',
+  '#6366f1', '#ec4899', '#84cc16', '#f97316', '#06b6d4', '#8b5cf6',
+]
+
+interface CompanyPieSliceBlock {
+  key: string
+  ticker: string
+  kind: 'STOCK' | 'OPTION' | 'CASH' | 'OTHER'
+  value: number
+  color: string
+  fillOpacity: number
+  isFirstForTicker: boolean
+}
+
+function buildCompanyPieDataBlock(companies: WebullCompanyOverviewBlock[]): {
+  slices: CompanyPieSliceBlock[]
+  total: number
+} {
+  const CASH_EQUIVS = new Set<string>(['JPST'])
+  const tickerTotals: Array<{ ticker: string; stock: number; option: number; total: number }> = []
+  for (const company of companies) {
+    const ticker = company.companyTicker.toUpperCase()
+    if (CASH_EQUIVS.has(ticker)) continue
+    const activePositions = company.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived')
+    const metrics = computeCompanySummaryMetricsBlock(activePositions)
+    const stock = Math.max(0, metrics.stockCost ?? 0)
+    const option = Math.max(0, metrics.optionCost ?? 0)
+    const total = stock + option
+    if (total <= 0) continue
+    tickerTotals.push({ ticker, stock, option, total })
+  }
+  tickerTotals.sort((a, b) => b.total - a.total)
+
+  const slices: CompanyPieSliceBlock[] = []
+  let total = 0
+  tickerTotals.forEach((entry, index) => {
+    const color = COMPANY_PIE_PALETTE[index % COMPANY_PIE_PALETTE.length]
+    let first = true
+    const push = (kind: CompanyPieSliceBlock['kind'], value: number, opacity: number) => {
+      slices.push({
+        key: `${entry.ticker}-${kind.toLowerCase()}`,
+        ticker: entry.ticker,
+        kind,
+        value,
+        color,
+        fillOpacity: opacity,
+        isFirstForTicker: first,
+      })
+      first = false
+    }
+    if (entry.stock > 0) push('STOCK', entry.stock, 1)
+    if (entry.option > 0) push('OPTION', entry.option, 0.45)
+    total += entry.total
+  })
+
+  return { slices, total }
+}
+
 const Webull_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK = 'webull_workspace_side_tabs_collapsed'
 const Webull_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK = 'min-w-[1360px]'
 type WebullProjectPresetTagsByRootBlock = Record<string, string[]>
 type WebullProjectProgramGroupsByRootBlock = Record<string, OrganizerProgramGroupEntryBlock[]>
-type WebullOverallRememberByProjectRootBlock = Record<string, string>
 
 function makeProgramGroupIdBlock(): string {
   return `program-group-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -1157,9 +1218,6 @@ export default function WebullWorkspaceBlock({
   const [projectProgramGroupsByRoot, setProjectProgramGroupsByRoot] = useState<WebullProjectProgramGroupsByRootBlock>(
     () => getJsonStorageItem<WebullProjectProgramGroupsByRootBlock>(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, {}),
   )
-  const [overallRememberByProjectRoot, setOverallRememberByProjectRoot] = useState<WebullOverallRememberByProjectRootBlock>(
-    () => getJsonStorageItem<WebullOverallRememberByProjectRootBlock>(STORAGE_KEYS.webullOverallRememberByProjectRoot, {}),
-  )
   const [linkOptions, setLinkOptions] = useState<WebullLinkOptionBlock[]>([])
   const [pdfOptions, setPdfOptions] = useState<WebullPdfOptionBlock[]>([])
   const [companyFilePickerOpen, setCompanyFilePickerOpen] = useState(false)
@@ -1170,10 +1228,6 @@ export default function WebullWorkspaceBlock({
   const [companyPdfQuery, setCompanyPdfQuery] = useState('')
   const [companyPdfViewerNonce, setCompanyPdfViewerNonce] = useState(0)
   const [companyPdfControlsHidden, setCompanyPdfControlsHidden] = useState(false)
-  const [overallRememberPickerOpen, setOverallRememberPickerOpen] = useState(false)
-  const [overallRememberQuery, setOverallRememberQuery] = useState('')
-  const [overallRememberViewerNonce, setOverallRememberViewerNonce] = useState(0)
-  const [overallRememberControlsHidden, setOverallRememberControlsHidden] = useState(false)
 
   const updateProjectProgramGroups = useCallback((
     root: string,
@@ -1787,22 +1841,6 @@ export default function WebullWorkspaceBlock({
     return { [projectRootKey]: allTags }
   }, [availableProjectPresetTags, backlogTableModel.nodeByUuid, projectRootKey])
 
-  const updateActiveOverallRememberPath = useCallback((path: string | null) => {
-    const normalizedRoot = normalizeRelativePathBlock(projectRootKey)
-    if (!normalizedRoot) return
-    const normalizedPath = normalizeRelativePathBlock(path ?? '')
-
-    setOverallRememberByProjectRoot((prev) => {
-      const current = normalizeRelativePathBlock(prev[normalizedRoot] ?? '')
-      if (current === normalizedPath) return prev
-      const next: WebullOverallRememberByProjectRootBlock = { ...prev }
-      if (normalizedPath) next[normalizedRoot] = normalizedPath
-      else delete next[normalizedRoot]
-      setJsonStorageItem(STORAGE_KEYS.webullOverallRememberByProjectRoot, next)
-      return next
-    })
-  }, [projectRootKey])
-
   const companyPortfolioWeight = percentOfBlock(selectedCompanyMetrics?.totalCost ?? null, portfolioTotalCost)
   const stockCostWeight = percentOfBlock(selectedCompanyMetrics?.stockCost ?? null, selectedCompanyMetrics?.totalCost ?? null)
   const optionCostWeight = percentOfBlock(selectedCompanyMetrics?.optionCost ?? null, selectedCompanyMetrics?.totalCost ?? null)
@@ -1821,12 +1859,6 @@ export default function WebullWorkspaceBlock({
   const selectedCompanyPdfPath = normalizeRelativePathBlock(selectedCompany?.companyPdfReportPath ?? '')
   const selectedCompanyPdfLabel = selectedCompanyPdfPath
     ? (pdfOptions.find((option) => option.path === selectedCompanyPdfPath)?.label ?? selectedCompanyPdfPath.split('/').pop() ?? selectedCompanyPdfPath)
-    : ''
-  const selectedProjectRememberPath = normalizeRelativePathBlock(
-    overallRememberByProjectRoot[normalizeRelativePathBlock(projectRootKey)] ?? '',
-  )
-  const selectedProjectRememberLabel = selectedProjectRememberPath
-    ? (linkOptionsByPath.get(selectedProjectRememberPath)?.label ?? linkLabelFromPathBlock(selectedProjectRememberPath))
     : ''
   const overallTabActive = !showCompanyView && activeSubtabId === 'overall'
   const studyTabActive = !showCompanyView && activeSubtabId === 'study'
@@ -2035,79 +2067,269 @@ export default function WebullWorkspaceBlock({
             </div>
           )}
 
-          {overallTabActive && (
-            <FileSelectionViewerBlock
-              heading="Things To Remember"
-              summary="Project-level reminders shown directly in Overall Positions."
-              selectedPath={selectedProjectRememberPath || null}
-              selectedLabel={selectedProjectRememberLabel}
-              emptySelectionMessage="No things-to-remember file selected."
-              options={linkOptions}
-              query={overallRememberQuery}
-              onQueryChange={setOverallRememberQuery}
-              pickerOpen={overallRememberPickerOpen}
-              onPickerOpenChange={setOverallRememberPickerOpen}
-              controlsHidden={overallRememberControlsHidden}
-              onControlsHiddenChange={setOverallRememberControlsHidden}
-              onSelectPath={(path) => {
-                const nextPath = normalizeRelativePathBlock(path ?? '')
-                updateActiveOverallRememberPath(nextPath || null)
-                setOverallRememberViewerNonce((prev) => prev + 1)
-              }}
-              onOpenPath={onOpenNodeFile}
-              disabled={workspaceBusy}
-              searchPlaceholder="Search things-to-remember file"
-              searchEmptyMessage="No markdown files found"
-              allowCustomValue
-              hideDetailsWithSelectionControls
-              emptyViewerMessage="Select a file to render it here."
-              renderSelectedContent={() => (
-                <div className="h-[320px] overflow-hidden rounded-lg border">
-                  <MarkdownDocumentBlock
-                    key={`overall-remember::${selectedProjectRememberPath}::${overallRememberViewerNonce}`}
-                    path={selectedProjectRememberPath}
-                    initialMode="view"
-                    onOpenPath={(path) => onOpenNodeFile(path)}
-                    onOpenPathForEdit={(path) => onOpenNodeFile(path)}
-                    className="h-full"
-                  />
+          {overallTabActive && (() => {
+            const overallValueNumber = resolveOverallValueNumberBlock(accountBalanceLegacy ?? assetsAccount)
+            let cashEquivalentExtra = 0
+            let cashEquivalentHasAny = false
+            for (const row of overallRows) {
+              const symbol = firstStringBlock(row.symbol, row.ticker, row.position_symbol, row.stock_code).toUpperCase()
+              if (!CASH_EQUIVALENT_SYMBOLS.has(symbol)) continue
+              const marketValue = firstNumberBlock(row.market_value, row.marketValue, row.position_value, row.positionValue)
+                ?? (() => {
+                  const lastPrice = firstNumberBlock(row.last_price, row.lastPrice)
+                  const quantity = firstNumberBlock(row.quantity, row.qty, row.position, row.position_size)
+                  return (lastPrice !== null && quantity !== null) ? lastPrice * quantity : null
+                })()
+              if (marketValue === null) continue
+              cashEquivalentExtra += marketValue
+              cashEquivalentHasAny = true
+            }
+            const cashAndEquivalents = (overallCashValue !== null || cashEquivalentHasAny)
+              ? (overallCashValue ?? 0) + cashEquivalentExtra
+              : null
+            const investedNumber = (overallValueNumber !== null && cashAndEquivalents !== null)
+              ? Math.max(0, overallValueNumber - cashAndEquivalents)
+              : null
+            const investedShare = (investedNumber !== null && overallValueNumber && overallValueNumber > 0)
+              ? Math.min(100, Math.max(0, (investedNumber / overallValueNumber) * 100))
+              : null
+            const cashShare = investedShare !== null ? 100 - investedShare : null
+            const accountCount = accounts.length || (selectedAccount ? 1 : 0)
+            const accountDescriptor = accountLabelEntries.length > 0
+              ? accountLabelEntries.map(formatAccountDescriptorBlock).join(' · ')
+              : (selectedAccount?.accountNumber ?? selectedAccount?.accountId ?? 'No account metadata')
+            return (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-background/60 px-3 py-2 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span className="text-foreground">{formatFetchedTimestampBlock(fetchedAt)}</span>
+                    <span className="text-muted-foreground">· {formatRuntimeLabelBlock(lastRefreshRuntime)}</span>
+                  </span>
+                  <span className="hidden h-3 w-px bg-border sm:inline-block" />
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <Building2 className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate" title={accountDescriptor}>{accountDescriptor}</span>
+                  </span>
+                  <span className="hidden h-3 w-px bg-border sm:inline-block" />
+                  <span className="flex items-center gap-1.5">
+                    <Layers className="h-3.5 w-3.5" />
+                    <span className="text-foreground">{executionCompanyCount}</span> indexed
+                  </span>
                 </div>
-              )}
-            />
-          )}
-
-          {overallTabActive && (
-            <div className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-5">
-              <div className="rounded-lg border bg-background p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Fetched</p>
-                <p className="mt-1 font-medium">{formatFetchedTimestampBlock(fetchedAt)}</p>
-                <p className="text-xs text-muted-foreground">
-                  via {formatRuntimeLabelBlock(lastRefreshRuntime)}
-                </p>
+                <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-emerald-500/10 via-background to-sky-500/10 p-5 shadow-sm">
+                  <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-emerald-500/10 blur-3xl" />
+                  <div className="pointer-events-none absolute -bottom-20 -left-10 h-44 w-44 rounded-full bg-sky-500/10 blur-3xl" />
+                  <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                        <Wallet className="h-3.5 w-3.5" />
+                        Overall Value
+                      </div>
+                      <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+                        {formatOverallValueBlock(accountBalanceLegacy ?? assetsAccount)}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Across {accountCount || '—'} {accountCount === 1 ? 'account' : 'accounts'}
+                        {executionCompanyCount > 0 ? ` · ${executionCompanyCount} indexed ${executionCompanyCount === 1 ? 'company' : 'companies'}` : ''}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 text-sm sm:max-w-sm sm:flex-1">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Invested</p>
+                        <p className="mt-0.5 font-semibold text-emerald-500">
+                          {formatCurrencyBlock(investedNumber)}
+                          {investedShare !== null && (
+                            <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">{investedShare.toFixed(1)}%</span>
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Cash &amp; Equivalents</p>
+                        <p className="mt-0.5 font-semibold text-sky-500">
+                          {formatCurrencyBlock(cashAndEquivalents)}
+                          {cashShare !== null && (
+                            <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">{cashShare.toFixed(1)}%</span>
+                          )}
+                        </p>
+                        {cashEquivalentHasAny && (
+                          <p className="text-[11px] text-muted-foreground">
+                            incl. {formatCurrencyBlock(cashEquivalentExtra)} JPST
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {(() => {
+                  const pieCompanies = (executionOverview?.companies.length ?? 0) > 0
+                    ? executionOverview!.companies
+                    : companiesForTable
+                  const { slices, total } = buildCompanyPieDataBlock(pieCompanies)
+                  if (slices.length === 0 || total <= 0) return null
+                  const profitLossByTicker = new Map<string, number | null>()
+                  for (const company of pieCompanies) {
+                    const ticker = company.companyTicker.toUpperCase()
+                    const activePositions = company.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived')
+                    const metrics = computeCompanySummaryMetricsBlock(activePositions)
+                    profitLossByTicker.set(ticker, metrics.totalProfitLoss)
+                  }
+                  const byTicker = new Map<string, { color: string; stock: number; option: number; other: number; total: number }>()
+                  for (const slice of slices) {
+                    const entry = byTicker.get(slice.ticker) ?? { color: slice.color, stock: 0, option: 0, other: 0, total: 0 }
+                    if (slice.kind === 'STOCK') entry.stock += slice.value
+                    else if (slice.kind === 'OPTION') entry.option += slice.value
+                    else entry.other += slice.value
+                    entry.total += slice.value
+                    entry.color = slice.color
+                    byTicker.set(slice.ticker, entry)
+                  }
+                  const legend = [...byTicker.entries()]
+                    .map(([ticker, agg]) => {
+                      const pl = profitLossByTicker.get(ticker) ?? null
+                      const plPercent = (pl !== null && agg.total > 0) ? (pl / agg.total) * 100 : null
+                      return { ticker, ...agg, share: (agg.total / total) * 100, plPercent }
+                    })
+                    .sort((a, b) => b.total - a.total)
+                  const renderTickerLabel = (props: {
+                    cx?: number; cy?: number; midAngle?: number; outerRadius?: number;
+                    payload?: CompanyPieSliceBlock;
+                  }) => {
+                    const { cx, cy, midAngle, outerRadius, payload } = props
+                    if (cx === undefined || cy === undefined || midAngle === undefined || outerRadius === undefined || !payload) return null
+                    if (!payload.isFirstForTicker) return null
+                    const tickerShare = total > 0 ? (byTicker.get(payload.ticker)?.total ?? 0) / total : 0
+                    if (tickerShare < 0.025) return null
+                    const RADIAN = Math.PI / 180
+                    const sin = Math.sin(-midAngle * RADIAN)
+                    const cos = Math.cos(-midAngle * RADIAN)
+                    const x = cx + (outerRadius + 14) * cos
+                    const y = cy + (outerRadius + 14) * sin
+                    const anchor = cos >= 0 ? 'start' : 'end'
+                    return (
+                      <g>
+                        <text
+                          x={x}
+                          y={y - 6}
+                          textAnchor={anchor}
+                          dominantBaseline="central"
+                          fontSize={11}
+                          fontWeight={600}
+                          fill={payload.color}
+                        >
+                          {payload.ticker}
+                        </text>
+                        <text
+                          x={x}
+                          y={y + 6}
+                          textAnchor={anchor}
+                          dominantBaseline="central"
+                          fontSize={10}
+                          fontWeight={500}
+                          fill="hsl(var(--muted-foreground))"
+                        >
+                          {(tickerShare * 100).toFixed(1)}%
+                        </text>
+                      </g>
+                    )
+                  }
+                  return (
+                    <div className="rounded-2xl border bg-background/40 p-5">
+                      <div className="mb-4 flex items-baseline justify-between">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Allocation by Businesses</p>
+                          <p className="text-[11px] text-muted-foreground">by cost basis</p>
+                        </div>
+                        <p className="text-sm font-medium text-foreground">{formatCurrencyBlock(total)}</p>
+                      </div>
+                      <div className="flex flex-col gap-6 md:flex-row md:items-center">
+                        <div className="relative h-[260px] w-full md:w-[320px] md:shrink-0">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={slices}
+                                dataKey="value"
+                                nameKey="key"
+                                innerRadius={70}
+                                outerRadius={105}
+                                paddingAngle={0}
+                                stroke="hsl(var(--background))"
+                                strokeWidth={1}
+                                label={renderTickerLabel}
+                                labelLine={false}
+                                isAnimationActive={false}
+                              >
+                                {slices.map((slice) => (
+                                  <Cell key={slice.key} fill={slice.color} fillOpacity={slice.fillOpacity} />
+                                ))}
+                              </Pie>
+                              <Tooltip
+                                cursor={false}
+                                contentStyle={{
+                                  background: 'hsl(var(--background))',
+                                  border: '1px solid hsl(var(--border))',
+                                  borderRadius: 8,
+                                  fontSize: 12,
+                                }}
+                                formatter={(value, _name, item) => {
+                                  const numeric = typeof value === 'number' ? value : Number(value)
+                                  const share = total > 0 ? (numeric / total) * 100 : 0
+                                  const payload = (item as { payload?: CompanyPieSliceBlock } | undefined)?.payload
+                                  const label = payload ? `${payload.ticker} · ${payload.kind.toLowerCase()}` : ''
+                                  return [`${formatCurrencyBlock(numeric)} (${share.toFixed(1)}%)`, label]
+                                }}
+                              />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <ul className="grid flex-1 grid-cols-1 gap-x-6 gap-y-1 text-xs sm:grid-cols-2 md:max-h-[260px] md:overflow-y-auto md:pr-2">
+                          {legend.map((entry) => (
+                            <li key={entry.ticker} className="flex items-center justify-between gap-3 border-b border-border/40 py-1.5 last:border-0">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span
+                                  className="inline-block h-2 w-2 shrink-0 rounded-full"
+                                  style={{ backgroundColor: entry.color }}
+                                />
+                                <span className="truncate font-medium text-foreground">{entry.ticker}</span>
+                                {entry.option > 0 && entry.stock > 0 && (
+                                  <span
+                                    className="inline-block h-1.5 w-1.5 shrink-0 rounded-full ring-1 ring-inset"
+                                    style={{ backgroundColor: 'transparent', color: entry.color, boxShadow: `inset 0 0 0 1px ${entry.color}` }}
+                                    title="Has stock and options"
+                                  />
+                                )}
+                                {entry.option > 0 && entry.stock === 0 && (
+                                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">opt</span>
+                                )}
+                              </div>
+                              <div className="flex shrink-0 items-center gap-3 tabular-nums">
+                                <span className="text-muted-foreground">{entry.share.toFixed(1)}%</span>
+                                <span className="w-14 text-right text-foreground/80">{formatCurrencyKBlock(entry.total)}</span>
+                                <span
+                                  className={cn(
+                                    'w-14 text-right',
+                                    entry.plPercent === null
+                                      ? 'text-muted-foreground/60'
+                                      : entry.plPercent >= 0
+                                        ? 'text-emerald-500'
+                                        : 'text-rose-500',
+                                  )}
+                                >
+                                  {entry.plPercent === null
+                                    ? '—'
+                                    : `${entry.plPercent >= 0 ? '+' : ''}${entry.plPercent.toFixed(1)}%`}
+                                </span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
-              <div className="rounded-lg border bg-background p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Accounts</p>
-                <p className="mt-1 font-medium">{accounts.length || (selectedAccount ? 1 : 0)}</p>
-                <p className="text-xs text-muted-foreground">
-                  {accountLabelEntries.length > 0
-                    ? accountLabelEntries.map(formatAccountDescriptorBlock).join(' · ')
-                    : (selectedAccount?.accountNumber ?? selectedAccount?.accountId ?? 'No account metadata')}
-                </p>
-              </div>
-              <div className="rounded-lg border bg-background p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Overall Value</p>
-                <p className="mt-1 font-medium">{formatOverallValueBlock(accountBalanceLegacy ?? assetsAccount)}</p>
-              </div>
-              <div className="rounded-lg border bg-background p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Total Cash</p>
-                <p className="mt-1 font-medium">{formatCurrencyBlock(overallCashValue)}</p>
-              </div>
-              <div className="rounded-lg border bg-background p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Indexed Companies</p>
-                <p className="mt-1 font-medium">{executionCompanyCount}</p>
-              </div>
-            </div>
-          )}
+            )
+          })()}
 
           {showCompanyView ? (
             <>
