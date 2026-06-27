@@ -22,12 +22,18 @@ DST="$HOME/Applications/Thinking Space.app"
 
 ./build.sh mac                                 # 1. build (vite + electron + package)
 codesign --deep --force --sign "Thinking Space Local Signing" "$APP"   # 2. sign
-pkill -f "Thinking Space.app/Contents/MacOS"   # 3. quit running copy
-rm -rf "$DST" && cp -R "$APP" "$DST"           # 4. install to ~/Applications
+pkill -9 -f "Thinking Space.app/Contents/MacOS"; sleep 3   # 3. FULLY quit running copy
+rm -rf "$DST" && ditto "$APP" "$DST"           # 4. install to ~/Applications
 open "$DST"                                     # 5. relaunch
 ```
 
 The build takes ~1.5–3 min. The artifact path is `arm64` on Apple Silicon.
+
+> **Always fully quit the running copy first** (`pkill -9` + a short wait, then
+> confirm with `pgrep -f "Thinking Space.app/Contents/MacOS"`). Copying over a
+> still-running bundle corrupts it (`cp` fails partway with "Operation not
+> permitted" / "invalid Info.plist"). `ditto` is preferred over `cp -R` for
+> copying `.app` bundles.
 
 ---
 
