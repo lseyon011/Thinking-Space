@@ -109,8 +109,14 @@ node -v                # confirm >= 22 with /opt/homebrew/bin first on PATH
 ```
 
 ### B. Self-signed code-signing certificate
-Creates the stable identity macOS needs for Keychain access. The OpenSSL
-`-legacy` flag is required so Apple's keychain can import the `.p12`.
+Creates the stable identity macOS needs for Keychain access.
+
+> **`-legacy` depends on which `openssl` you have.** With **OpenSSL 3.x**
+> (e.g. Homebrew's), the `-legacy` flag is required so Apple's keychain can
+> import the `.p12`. But macOS's stock `/usr/bin/openssl` is **LibreSSL**, which
+> does **not** recognize `-legacy` (it already emits the legacy PBE format) — on
+> LibreSSL you must **drop the flag** or the `pkcs12` command errors out with
+> `unknown option '-legacy'`. Check with `openssl version`.
 
 ```bash
 cd /tmp
@@ -119,7 +125,8 @@ openssl req -x509 -newkey rsa:2048 -keyout cs.key -out cs.crt -days 3650 -nodes 
   -addext "basicConstraints=critical,CA:false" \
   -addext "keyUsage=critical,digitalSignature" \
   -addext "extendedKeyUsage=critical,codeSigning"
-openssl pkcs12 -export -legacy -inkey cs.key -in cs.crt -out cs.p12 -passout pass:tspass
+# OpenSSL 3.x: add -legacy ; LibreSSL (stock macOS /usr/bin/openssl): omit it
+openssl pkcs12 -export -inkey cs.key -in cs.crt -out cs.p12 -passout pass:tspass
 security import cs.p12 -k "$HOME/Library/Keychains/login.keychain-db" -P tspass -T /usr/bin/codesign -A
 rm -f cs.key cs.crt cs.p12
 ```

@@ -17,7 +17,14 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
-ELECTRON_BIN="/Applications/Thinking Space.app/Contents/MacOS/Thinking Space"
+# Local self-signed builds install to ~/Applications (App Management blocks
+# scripted copies into /Applications — see docs/BUILD-macOS-LOCAL.md). Prefer
+# the per-user location, then fall back to the system one for store/DMG installs.
+if [ -x "$HOME/Applications/Thinking Space.app/Contents/MacOS/Thinking Space" ]; then
+  ELECTRON_BIN="$HOME/Applications/Thinking Space.app/Contents/MacOS/Thinking Space"
+else
+  ELECTRON_BIN="/Applications/Thinking Space.app/Contents/MacOS/Thinking Space"
+fi
 REPO_BUNDLE="$REPO_ROOT/frontend/electron/resources/cli/thinkspc-runner.mjs"
 INSTALLED_BUNDLE="$HOME/.thinking-space/bin/thinkspc-runner.mjs"
 
@@ -41,7 +48,7 @@ fi
 
 if [ ! -x "$ELECTRON_BIN" ]; then
   echo "Error: Thinking Space.app not installed at $ELECTRON_BIN" >&2
-  echo "Build with ./build.sh mac and install the DMG to /Applications/." >&2
+  echo "Build with ./build.sh mac and install to ~/Applications/ (see docs/BUILD-macOS-LOCAL.md)." >&2
   exit 1
 fi
 
