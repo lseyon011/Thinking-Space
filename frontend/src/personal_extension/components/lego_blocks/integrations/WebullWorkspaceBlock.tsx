@@ -512,10 +512,13 @@ interface WebullAccountLabelEntryBlock {
   accountNumber: string | null
 }
 
-// Friendly personal-account display names, in account discovery order.
-// Index 0 == the account previously labeled "Account 1", index 1 == "Account 2", etc.
+// Friendly personal-account display names, in Webull's account-discovery order.
+// Verified against the live accounts: discovery slot 0 is the Roth IRA, slot 1 is
+// the Individual Cash account (the previous order was reversed, which crossed the
+// two labels). There is no account-type field in the API response to key on, so
+// this stays order-based; update it if Webull ever changes account ordering.
 // Any account beyond this list falls back to the generic "Account N" label.
-const PERSONAL_WEBULL_ACCOUNT_LABELS_BLOCK = ['Individual Cash', 'Roth IRA']
+const PERSONAL_WEBULL_ACCOUNT_LABELS_BLOCK = ['Roth IRA', 'Individual Cash']
 
 function buildAccountLabelEntriesBlock(
   accounts: WebullAccountSnapshotOrch[],
@@ -2367,12 +2370,12 @@ export default function WebullWorkspaceBlock({
                   }
                   return (
                     <div className="rounded-2xl border bg-background/40 p-5">
-                      <div className="mb-4 flex items-baseline justify-between">
+                      <div className="mb-4 flex items-baseline justify-between border-b border-border/40 pb-3">
                         <div>
                           <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Allocation by Businesses</p>
                           <p className="text-[11px] text-muted-foreground">by cost basis</p>
                         </div>
-                        <p className="text-sm font-medium text-foreground">{formatCurrencyBlock(total)}</p>
+                        <p className="text-base font-semibold tracking-tight text-foreground">{formatCurrencyBlock(total)}</p>
                       </div>
                       <div className="flex flex-col gap-6 md:flex-row md:items-center">
                         <div className="relative h-[260px] w-full md:w-[320px] md:shrink-0">
@@ -2414,10 +2417,15 @@ export default function WebullWorkspaceBlock({
                             </PieChart>
                           </ResponsiveContainer>
                         </div>
-                        <ul className="grid flex-1 grid-cols-1 gap-x-6 gap-y-1 text-xs sm:grid-cols-2 md:max-h-[260px] md:overflow-y-auto md:pr-2">
+                        <div className="relative flex-1">
+                          <div
+                            aria-hidden
+                            className="pointer-events-none absolute inset-y-1 left-1/2 hidden w-px -translate-x-1/2 bg-border/40 sm:block"
+                          />
+                          <ul className="grid grid-cols-1 gap-x-10 gap-y-0.5 text-xs sm:grid-cols-2 md:max-h-[260px] md:overflow-y-auto md:pr-2">
                           {legend.map((entry) => (
-                            <li key={entry.ticker} className="flex items-center justify-between gap-3 border-b border-border/40 py-1.5 last:border-0">
-                              <div className="flex min-w-0 items-center gap-2">
+                            <li key={entry.ticker} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-foreground/[0.04]">
+                              <div className="flex w-16 min-w-0 items-center gap-2">
                                 <span
                                   className="inline-block h-2 w-2 shrink-0 rounded-full"
                                   style={{ backgroundColor: entry.color }}
@@ -2432,7 +2440,7 @@ export default function WebullWorkspaceBlock({
                                 )}
                               </div>
                               <div className="flex shrink-0 items-center gap-3 tabular-nums">
-                                <span className="text-muted-foreground">{entry.share.toFixed(1)}%</span>
+                                <span className="w-12 text-right text-muted-foreground">{entry.share.toFixed(1)}%</span>
                                 <span className="w-14 text-right text-foreground/80">{formatCurrencyKBlock(entry.total)}</span>
                                 <span
                                   className={cn(
@@ -2451,7 +2459,8 @@ export default function WebullWorkspaceBlock({
                               </div>
                             </li>
                           ))}
-                        </ul>
+                          </ul>
+                        </div>
                       </div>
                     </div>
                   )
