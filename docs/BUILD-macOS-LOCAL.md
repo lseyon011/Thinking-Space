@@ -20,14 +20,21 @@ export PATH="/opt/homebrew/bin:$PATH"          # Node >= 22 (Capacitor needs it)
 APP="frontend/electron/dist/mac-arm64/Thinking Space.app"
 DST="$HOME/Applications/Thinking Space.app"
 
+pkill -9 -f "Thinking Space.app/Contents/MacOS"; sleep 3   # 0. quit the running copy FIRST
 ./build.sh mac                                 # 1. build (vite + electron + package)
 codesign --deep --force --sign "Thinking Space Local Signing" "$APP"   # 2. sign
-pkill -9 -f "Thinking Space.app/Contents/MacOS"; sleep 3   # 3. FULLY quit running copy
-rm -rf "$DST" && ditto "$APP" "$DST"           # 4. install to ~/Applications
-open "$DST"                                     # 5. relaunch
+rm -rf "$DST" && ditto "$APP" "$DST"           # 3. install to ~/Applications
+open "$DST"                                     # 4. relaunch
 ```
 
 The build takes ~1.5–3 min. The artifact path is `arm64` on Apple Silicon.
+
+> **Quit the app *before building*, not just before installing.** On a 16 GB
+> machine, building (Vite/esbuild + electron-builder) while the app is also
+> running causes memory contention that can stall the Vite step for minutes (seen:
+> a 12 s build ballooning past 6 min). Killing the running copy up front keeps the
+> build fast *and* frees the bundle for the `ditto` install. The quit moved to
+> step 0 above.
 
 > **Always fully quit the running copy first** (`pkill -9` + a short wait, then
 > confirm with `pgrep -f "Thinking Space.app/Contents/MacOS"`). Copying over a

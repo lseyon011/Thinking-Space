@@ -290,6 +290,9 @@ interface ElectronAPI {
   }>
   onTerminalData?(id: string, handler: (data: string) => void): () => void
   onTerminalExit?(id: string, handler: (exitCode: number) => void): () => void
+  // Write-through of the open-source AI base URL into main-process persistence,
+  // so setupContentSecurityPolicy can allow this origin in connect-src next launch.
+  opensourceAiBaseUrlSetPersisted?(baseUrl: string | null): Promise<void>
   read(vaultRoot: string, relPath: string): Promise<string>
   write(vaultRoot: string, relPath: string, data: string): Promise<void>
   readBytesBase64?(vaultRoot: string, relPath: string): Promise<string>
