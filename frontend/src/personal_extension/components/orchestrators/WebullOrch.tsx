@@ -44,11 +44,46 @@ function parseSelectedAccountBlock(value: unknown): WebullSelectedAccountOrch | 
   if (!accountId) return null
   const accountNumber = String(record.accountNumber ?? record.account_number ?? '').trim()
   const subscriptionId = String(record.subscriptionId ?? record.subscription_id ?? '').trim()
+  const accountClass = String(record.accountClass ?? record.account_class ?? '').trim()
+  const accountLabel = String(record.accountLabel ?? record.account_label ?? '').trim()
   return {
     accountId,
     accountNumber: accountNumber || null,
     subscriptionId: subscriptionId || null,
+    accountClass: accountClass || null,
+    accountLabel: accountLabel || null,
   }
+}
+
+/**
+ * Webull's normalized `accounts[].account` snapshots drop the stable
+ * account_class/account_label fields, but the raw `account_list` payload keeps
+ * them. Backfill the friendly identity onto an account by matching id/number so
+ * labels stay correct regardless of account discovery order.
+ */
+function enrichAccountIdentityFromListBlock(
+  account: WebullSelectedAccountOrch,
+  accountList: unknown,
+): WebullSelectedAccountOrch {
+  if (account.accountClass || account.accountLabel) return account
+  if (!Array.isArray(accountList)) return account
+  for (const value of accountList) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const record = value as Record<string, unknown>
+    const listId = String(record.account_id ?? record.accountId ?? '').trim()
+    const listNumber = String(record.account_number ?? record.accountNumber ?? '').trim()
+    const matches = (listId && listId === account.accountId)
+      || (listNumber && listNumber === (account.accountNumber ?? ''))
+    if (!matches) continue
+    const accountClass = String(record.account_class ?? record.accountClass ?? '').trim()
+    const accountLabel = String(record.account_label ?? record.accountLabel ?? '').trim()
+    return {
+      ...account,
+      accountClass: accountClass || account.accountClass,
+      accountLabel: accountLabel || account.accountLabel,
+    }
+  }
+  return account
 }
 
 function parseAccountSnapshotsFromCacheBlock(cache: WebullOverallCacheBlock): WebullAccountSnapshotOrch[] {
@@ -56,8 +91,9 @@ function parseAccountSnapshotsFromCacheBlock(cache: WebullOverallCacheBlock): We
     return cache.accounts.flatMap((value) => {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return []
       const record = value as Record<string, unknown>
-      const account = parseSelectedAccountBlock(record.account)
-      if (!account) return []
+      const parsedAccount = parseSelectedAccountBlock(record.account)
+      if (!parsedAccount) return []
+      const account = enrichAccountIdentityFromListBlock(parsedAccount, cache.accountList)
       return [{
         account,
         accountBalanceLegacy: record.accountBalanceLegacy ?? record.account_balance_legacy ?? null,
@@ -70,8 +106,9 @@ function parseAccountSnapshotsFromCacheBlock(cache: WebullOverallCacheBlock): We
     })
   }
 
-  const selectedAccount = parseSelectedAccountBlock(cache.selectedAccount)
-  if (!selectedAccount) return []
+  const parsedSelected = parseSelectedAccountBlock(cache.selectedAccount)
+  if (!parsedSelected) return []
+  const selectedAccount = enrichAccountIdentityFromListBlock(parsedSelected, cache.accountList)
   return [{
     account: selectedAccount,
     accountBalanceLegacy: cache.accountBalanceLegacy,

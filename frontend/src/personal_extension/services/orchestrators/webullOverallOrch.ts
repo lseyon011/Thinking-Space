@@ -13,6 +13,14 @@ export interface WebullSelectedAccountOrch {
   accountId: string
   accountNumber: string | null
   subscriptionId: string | null
+  /**
+   * Stable Webull account class (e.g. 'ROTH_IRA', 'INDIVIDUAL_CASH') when the
+   * account-list payload provides it. Used to derive friendly account labels by
+   * identity instead of fragile discovery order.
+   */
+  accountClass: string | null
+  /** Friendly label supplied directly by Webull's account-list payload, if any. */
+  accountLabel: string | null
 }
 
 export interface WebullAccountSnapshotOrch {
@@ -108,6 +116,8 @@ function resolveAllAccountsBlock(accountListData: unknown): WebullSelectedAccoun
       accountId,
       accountNumber: firstNonEmptyStringBlock(row.account_number, row.accountNumber),
       subscriptionId: firstNonEmptyStringBlock(row.subscription_id, row.subscriptionId),
+      accountClass: firstNonEmptyStringBlock(row.account_class, row.accountClass),
+      accountLabel: firstNonEmptyStringBlock(row.account_label, row.accountLabel),
     })
   }
   return accounts

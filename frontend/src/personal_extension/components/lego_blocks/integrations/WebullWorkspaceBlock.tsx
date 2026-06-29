@@ -512,13 +512,35 @@ interface WebullAccountLabelEntryBlock {
   accountNumber: string | null
 }
 
-// Friendly personal-account display names, in Webull's account-discovery order.
-// Verified against the live accounts: discovery slot 0 is the Roth IRA, slot 1 is
-// the Individual Cash account (the previous order was reversed, which crossed the
-// two labels). There is no account-type field in the API response to key on, so
-// this stays order-based; update it if Webull ever changes account ordering.
-// Any account beyond this list falls back to the generic "Account N" label.
-const PERSONAL_WEBULL_ACCOUNT_LABELS_BLOCK = ['Roth IRA', 'Individual Cash']
+// Friendly personal-account display names. These are now derived primarily from
+// the stable Webull `account_class` / `account_label` carried on each account, so
+// labels follow account identity rather than discovery order (which previously
+// crossed the two labels whenever Webull returned accounts in a different order).
+// The order-based list below is only a last-resort fallback for accounts that
+// arrive without any class/label; any account beyond it falls back to "Account N".
+const PERSONAL_WEBULL_ACCOUNT_CLASS_LABELS_BLOCK: Record<string, string> = {
+  ROTH_IRA: 'Roth IRA',
+  INDIVIDUAL_CASH: 'Individual Cash',
+  TRADITIONAL_IRA: 'Traditional IRA',
+  MARGIN: 'Margin',
+}
+const PERSONAL_WEBULL_ACCOUNT_LABELS_BLOCK = ['Individual Cash', 'Roth IRA']
+
+// Resolve a friendly label for a single account, preferring stable identity
+// (account_class, then Webull's own account_label) and only falling back to the
+// discovery-order list when neither is present.
+function resolveFriendlyAccountLabelBlock(
+  account: { accountClass?: string | null; accountLabel?: string | null },
+  orderIndex: number,
+): string {
+  const normalizedClass = (account.accountClass ?? '').trim().toUpperCase()
+  if (normalizedClass && PERSONAL_WEBULL_ACCOUNT_CLASS_LABELS_BLOCK[normalizedClass]) {
+    return PERSONAL_WEBULL_ACCOUNT_CLASS_LABELS_BLOCK[normalizedClass]
+  }
+  const apiLabel = (account.accountLabel ?? '').trim()
+  if (apiLabel) return apiLabel
+  return PERSONAL_WEBULL_ACCOUNT_LABELS_BLOCK[orderIndex] ?? `Account ${orderIndex + 1}`
+}
 
 function buildAccountLabelEntriesBlock(
   accounts: WebullAccountSnapshotOrch[],
@@ -538,7 +560,7 @@ function buildAccountLabelEntriesBlock(
     if (seen.has(dedupeKey)) continue
     seen.add(dedupeKey)
     entries.push({
-      label: PERSONAL_WEBULL_ACCOUNT_LABELS_BLOCK[entries.length] ?? `Account ${entries.length + 1}`,
+      label: resolveFriendlyAccountLabelBlock(account, entries.length),
       accountId,
       accountNumber,
     })
