@@ -2,10 +2,11 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X, Loader2, AlertTriangle, History, FileText, Search } from 'lucide-react'
+import { X, Loader2, AlertTriangle, History, FileText, Search, Copy, Check } from 'lucide-react'
 import type { ActivityChain, ParsedSession } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import {
   countReadableSessionsBlock,
+  formatChainTranscriptBlock,
   getChainSessionTranscriptsBlock,
   getSubagentTranscriptBlock,
   type ChainSessionStatusBlock,
@@ -190,6 +191,7 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
     }
   }, [onClose, openFile])
   const searchRef = useRef<HTMLInputElement | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (!chain) {
@@ -204,6 +206,7 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
     setParts(null)
     setSelected('all')
     setQuery('')
+    setCopied(false)
     getChainSessionTranscriptsBlock(chain)
       .then(next => { if (!cancelled) setParts(next) })
       .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)) })
@@ -316,6 +319,25 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
 
   const sheet = useResizableSheetBlock('chain-transcript', 760)
 
+  // Formatted from the sessions already in hand, not re-read on click: Safari
+  // drops the clipboard permission if the write does not happen inside the
+  // gesture, and an await on a disk read is long enough to lose it.
+  const markdown = useMemo(
+    () => (chain && parts ? formatChainTranscriptBlock(chain, parts) : null),
+    [chain, parts],
+  )
+
+  const handleCopyAll = async () => {
+    if (!markdown) return
+    try {
+      await navigator.clipboard.writeText(markdown)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Clipboard write can fail without a secure context / permission; ignore.
+    }
+  }
+
   if (!chain) return null
 
   // Portal to <body>: this block mounts inside the home-canvas anchor panel,
@@ -364,14 +386,26 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
               {fmtChainWhen(chain.startedIso, chain.endedIso)}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleCopyAll}
+              disabled={!markdown}
+              className="flex items-center gap-1.5 rounded-md border border-border/50 px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Copy entire transcript"
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? 'Copied' : 'Copy all'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Session picker. Hidden for single-session chains, where it would be
