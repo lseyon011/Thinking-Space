@@ -278,7 +278,18 @@ export function countReadableSessionsBlock(parts: ChainSessionTranscriptBlock[])
  * disagree about what loaded.
  */
 export async function getChainTranscriptBlock(chain: ActivityChain): Promise<string> {
-  const parts = await getChainSessionTranscriptsBlock(chain)
+  return formatChainTranscriptBlock(chain, await getChainSessionTranscriptsBlock(chain))
+}
+
+/**
+ * The same document, built from sessions a caller already holds. Split out so
+ * the slide-over's "Copy all" can format synchronously — Safari drops the
+ * clipboard permission if the write waits on a disk read.
+ */
+export function formatChainTranscriptBlock(
+  chain: ActivityChain,
+  parts: ChainSessionTranscriptBlock[],
+): string {
   const readable = countReadableSessionsBlock(parts)
   const out: string[] = [
     `# ${chain.project} · ${parts.length} session${parts.length === 1 ? '' : 's'}`,
