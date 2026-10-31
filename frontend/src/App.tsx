@@ -3221,7 +3221,7 @@ function App() {
                   <Route path="/transcript-cleaner" element={<Navigate to="/excalidraw-plus/transcript" replace />} />
                   <Route path="/webull" element={<WebullPage pageLabel={webullTabLabel} />} />
                   {PrivateRealEstateBlock && (
-                    <Route path="/real-estate" element={<div className="ltm-page"><PrivateRealEstateBlock /></div>} />
+                    <Route path="/real-estate" element={<div className="ltm-page h-full min-h-0"><PrivateRealEstateBlock /></div>} />
                   )}
                   <Route
                     path="/settings"
