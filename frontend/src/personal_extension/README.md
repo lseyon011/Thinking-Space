@@ -32,7 +32,7 @@ Some tabs live in private repos cloned into gitignored folders here. The public
 app finds each one through an `import.meta.glob` loader and leaves the tab out
 when the folder is missing.
 
-- `gaps/` — F9 Gaps/Noticed/Study/Sim (`anuragrpatil23/Thinking-Space-Personal`), loaded by `units/privateGapsBlock.ts`.
+- `thinkingspace-personal/` — F9 Gaps/Noticed/Study/Sim (`anuragrpatil23/Thinking-Space-Personal`), loaded by `units/privatePersonalBlock.ts`.
 - `realestate/` — Real Estate tab on the rail, route `/real-estate` (`lseyon011/Thinking-Space-Personal`), loaded by `units/privateRealEstateBlock.ts`. Setup: `git clone https://github.com/lseyon011/Thinking-Space-Personal.git realestate`.
 
 ## Environment

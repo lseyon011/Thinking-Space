@@ -50,6 +50,11 @@ Model-agnostic layer for internal AI tasks (session titles, structured extracts,
 - `frontend/src/services/lego_blocks/integrations/intelligence/*` — providers/openaiCompatProviderBlock (mlx_lm.server, LM Studio, Ollama, llama.cpp, vLLM, OpenAI), providers/anthropicProviderBlock (Claude via @anthropic-ai/sdk), providerRegistryBlock (default provider + per-call override), toolLoopBlock, jobQueueBlock (concurrency + dedup), intelligenceCacheBlock (sidecar JSON via electron IPC).
 - Cache lives at `~/.thinking-space/intelligence-cache/<taskId>/<key>.json`. Keyed by `(taskId, inputHash, promptVersion, model)` — any of those changing invalidates automatically.
 - Default provider is user-configurable in Settings → AI → Intelligence Subsystem. Diagnostics panel there shows live provider status, capability probes, and the last 20 requests.
+- **Engine health (local model).** `/v1/models` answering is NOT healthy: on Oct 25/30 the generation thread died while the HTTP layer kept accepting work. `units/intelligence/engineStatusBlock` probes, in trust order, a loopback supervisor (`http://127.0.0.1:1233/status`, only trusted when it manages the configured port), then `{origin}/health`, then the legacy `/v1/models` (`unmanaged` = reachable, treated as ready). `integrations/intelligence/engineMonitorBlock` installs the job queue's per-provider dispatch gate: openai-compat work waits (paused, not failed) while the engine is in a known bad state, and the queue resumes when it turns ready. It polls every 3s only while openai-compat work is queued or running; it never polls when idle (Energy contract).
+- **Engine-death retries.** In `runContract`, a dropped connection or 5xx on a *supervised* engine waits for ready, then retries up to 2 times under the same `X-Request-Id` (`X-Job` = contract id). If the supervisor's `last_failure.in_flight` names that request in two consecutive deaths, the job is poison: it fails as `engine-crashed` with `poison: true` and is not retried. Unsupervised servers fail as before, because nothing restarts them. Thrown failures are recorded in telemetry so they show in AI Runs. Each attempt gets a fresh timeout; time spent waiting for a restart isn't counted.
+- **Lanes.** `runContract(..., { priority: 'interactive' })` takes the next free slot ahead of all background work. Re-enqueueing a waiting key as interactive promotes it. Only Settings → Test uses it today.
+- **Big/small pairing.** A job whose input is estimated at ≥4k tokens (`HEAVY_PROMPT_TOKENS`) counts as big. Rules apply per provider and are skipped for interactive jobs. A big job does not start beside a running small one; if the big job is next in line, it holds the free slot so a trickle of small jobs can't starve it. A small job does not start while a big neighbour is still reading its prompt (estimated at 300 tok/s plus a 2s margin; a one-shot timer rechecks when that window closes). This exists because the engine reads a prompt as one uninterrupted step, which froze small jobs decoding beside it. Server-side chunked prefill would remove the need for it. Concurrency follows job size: up to 4 at once while every running job is small (`MAX_SMALL_CONCURRENT`), and 2 once a big job is running or about to start (`MAX_CONCURRENT`).
+- **AI Runs surface.** ⋯ menu → AI section (`AiEngineStatusCardBlock` card + "AI Runs" opening `integrations/AiRunsPanelBlock`, which hosts `units/IntelligenceRunsTabBlock`). It is no longer a Debug Console tab. A dot on the ⋯ button appears only while the engine isn't taking work and something is waiting or a supervisor says it should be up. Shared state hook: `hooks/shared/useAiEngineStatusBlock`.
 - To add a new intelligence task: define a Contract in `units/intelligence/contracts/<name>ContractBlock.ts`, call `runContract(contract, input)`. Do NOT open a new HTTP path or add another `sessionTitle`-style module.
 
 ## Key Electron Blocks (main process)
@@ -78,17 +83,16 @@ Model-agnostic layer for internal AI tasks (session titles, structured extracts,
   large at rest, small once the tree scrolls, never grows back), the
   AI-session line as quiet text (still the filter toggle), a soft search
   pill, one ＋ that names the folder it creates in, one ⋯ for view options.
-  Clawd says hello once per session (beside the greeting), and on a pull past
-  the end of the tree (`ExplorerPullHelloBlock`; moved from the top
-  2026-10-23 — the top, where greeting and search live, stays fixed): the
-  whole explorer slides up by `translate` (never resize — that reflowed per
-  wheel event), 1:1 with the fingers then easing into a stop, Clawd rising
-  out of the floor in the gap; the hello fires
-  only at the far end of a slow, deliberate pull and the spring-back is a
-  fixed-time critically damped `linear()` spring (further pull → faster
-  snap). Gesture rules in `pullForHelloBlock` were tuned by hand on a Mac
-  trackpad — each comment records a rejected variant (rubber band, caps,
-  speed filters, silence waits); read them before changing anything. Lines
+  Clawd says hello once per session (beside the greeting), and as an easter
+  egg (`ExplorerGreetingBlock` `helloNonce`, counted by `topNudgeCounterBlock`): already at the
+  top of the tree, three separate upward scrolls (each within 2s; a gesture
+  is wheel events with no gap over 250ms, so momentum is not more taps; the
+  scroll that reaches the top doesn't count, scrolling down resets) bring
+  him back to the hi's spot in the greeting row, doing a trick with a line
+  in a pixel bubble to his left. Nothing in the explorer moves —
+  it replaced (2026-10-30) a visible pull that slid the whole explorer with
+  the fingers (first at the top, then at the end of the tree); plain
+  scrolling felt smoother without it. Lines
   come from `explorerEncouragementBlock` (never "take a break"-style advice).
   One Clawd on screen at a time. Nothing idles or loops (ENERGY.md).
 - Moon characters are shared: sprites and pixel data
@@ -259,7 +263,7 @@ against the real file for anything touching pdf.js payloads.
 Added 2026-10-22 when the F9 tab moved to a macOS-native look (white grouped panels on a `#F5F5F7` ground, sentence-case labels, half-pixel `#EFEFF2` hairlines). The company page is the first view on it; the other subtabs follow.
 
 - `personal_extension/components/lego_blocks/units/F9NativeBlock.tsx` — the shared parts every F9 view builds from: `F9PanelBlock` / `F9_PANEL_CLASS_BLOCK`, `F9SectionLabelBlock`, `F9SegmentedBlock`, `F9FactRowBlock`.
-- `WebullCompanyPageBlock.tsx` + `useWebullCompanyDossierBlock` + `webullCompanyDossierVaultBlock.ts` — the company page pulls everything itself instead of hand-picked files: the study record (`<TICKER>/<ticker>-study.md` or `watchlist/<ticker>/`), `observations.md` (`## YYYY-MM-DD` sections), `prices.csv`, and the research folder under `F9/Thoughts, Predictions, launches and Postmortem/<TICKER or company name>` (ValueLine PDFs, earnings calls, launches). Files open read-only in the side sheet (`onOpenFileForReading`). Gaps come through `privateGapsBlock`'s optional loader (`gaps/companyGaps.tsx`), because `personal_extension/gaps/` is a gitignored private repo — **never import it statically from public code**, or builds without the folder break.
+- `WebullCompanyPageBlock.tsx` + `useWebullCompanyDossierBlock` + `webullCompanyDossierVaultBlock.ts` — the company page pulls everything itself instead of hand-picked files: the study record (`<TICKER>/<ticker>-study.md` or `watchlist/<ticker>/`), `observations.md` (`## YYYY-MM-DD` sections), `prices.csv`, and the research folder under `F9/Thoughts, Predictions, launches and Postmortem/<TICKER or company name>` (ValueLine PDFs, earnings calls, launches). Files open read-only in the side sheet (`onOpenFileForReading`). Gaps come through `privatePersonalBlock`'s optional loader (`thinkingspace-personal/companyGaps.tsx`), because `personal_extension/thinkingspace-personal/` is a gitignored private repo — **never import it statically from public code**, or builds without the folder break.
 - `BacklogListBlock appearance="native"` — opt-in look for the shared table (default look unchanged for the organizer). Header, program band and rows share one CSS grid (`nativeRowGridTemplateBlock`): title and data columns keep their class width as a *minimum* and split the spare space; status, links and the two row icons are fixed slots. This replaced a measured "fit columns" attempt — measuring a row that already spans the full width yields a ratio of 1, and measuring its children fed back into itself. `renderNodeTitle` / `statusColumnLabel` pair with it.
 - `ScrollableZoomSurfaceBlock` — `controlsAppearance="quiet"` and `controlsHost` (portal the zoom controls into a header slot).
 - `webullStudyRecordBlock` — js-yaml parses a bare `2026-12-16` as a `Date`; string fields convert it back to `YYYY-MM-DD` (before this, every Valid through / Last updated read "—").
@@ -281,11 +285,11 @@ A new slide-over uses the hook and the handle; a fixed-width sheet is a regressi
 
 ## F9 Noticed (private, step before a gap)
 
-The flow is **Noticed → Gap → Act**. A Noticed record is something seen happening around a company (earnings call, news, filing, price move, conversation), written on the day before it is a gap. Private code, loaded optionally like Gaps: `privateGapsBlock.ts` exposes `NOTICED_TAB_AVAILABLE`, `PrivateNoticedBlock` (`gaps/noticed.tsx`, the F9 sidebar view, ordered before Gaps) and `PrivateCompanyNoticedBlock` (`gaps/companyNoticed.tsx`, a section on the company page). Without the private folder neither appears.
+The flow is **Noticed → Gap → Act**. A Noticed record is something seen happening around a company (earnings call, news, filing, price move, conversation), written on the day before it is a gap. Private code, loaded optionally like Gaps: `privatePersonalBlock.ts` exposes `NOTICED_TAB_AVAILABLE`, `PrivateNoticedBlock` (`thinkingspace-personal/noticed.tsx`, the F9 sidebar view, ordered before Gaps) and `PrivateCompanyNoticedBlock` (`thinkingspace-personal/companyNoticed.tsx`, a section on the company page). Without the private folder neither appears.
 
-- Files: `<executionRoot>/noticed/<ticker>/<ticker>-YYYY-MM-DD-<slug>.md`, `type: noticed`, with `source`, `link`, `price_at_noticed`, `status` (watching | became-gap | let-go), `gap`; body sections What happened / Why it might matter / Questions / Takeaways. Format and parser: `gaps/services/lego_blocks/units/noticedRecordBlock.ts`; I/O: `gaps/services/orchestrators/webullNoticedOrch.ts`. Edits reuse the gap entry editors (`setGapEntryFieldBlock` / `setGapEntrySectionBlock` / `appendGapTakeawayBlock`).
+- Files: `<executionRoot>/noticed/<ticker>/<ticker>-YYYY-MM-DD-<slug>.md`, `type: noticed`, with `source`, `link`, `price_at_noticed`, `status` (watching | became-gap | let-go), `gap`; body sections What happened / Why it might matter / Questions / Takeaways. Format and parser: `thinkingspace-personal/services/lego_blocks/units/noticedRecordBlock.ts`; I/O: `thinkingspace-personal/services/orchestrators/webullNoticedOrch.ts`. Edits reuse the gap entry editors (`setGapEntryFieldBlock` / `setGapEntrySectionBlock` / `appendGapTakeawayBlock`).
 - "Make it a gap" opens the New gap panel pre-filled, then links both ways: the record gets `status: became-gap` + `gap: G-xxxx`, the gap gets `from_noticed: "[[<record>]]"`.
-- The record board (script headings, pastel notes, dashed time columns, the canvas sheet) is shared: `gaps/components/lego_blocks/units/GapRecordBoardPartsBlock.tsx`, used by the gap page and the Noticed page.
+- The record board (script headings, pastel notes, dashed time columns, the canvas sheet) is shared: `thinkingspace-personal/components/lego_blocks/units/GapRecordBoardPartsBlock.tsx`, used by the gap page and the Noticed page.
 
 ## F9 Feed (the RSS reader's home)
 
@@ -327,7 +331,7 @@ A replay is the F9 loop at a moment in history: one company, the desk on day 0, 
 
 - `simReplayRecordBlock.ts` (pure): weeks relative to day 0, pacing (`steps_per_day` new weeks per real day; day 0 does not count), weekly prices (hidden past the current week until the end), `calls.yaml` (act / pass / exit, append-only), results at the reveal.
 - `simReplayOrch.ts`: load, next week (refuses past the pace), record a call, end (writes `reveal-request.md` for Kai).
-- `SimViewBlock` (Sim tab, via `gaps/sim.tsx` and `PrivateSimBlock`): replays list, summary card, the era timeline. An unrevealed replay is drawn across its whole era so the timeline never gives the year away.
+- `SimViewBlock` (Sim tab, via `thinkingspace-personal/sim.tsx` and `PrivateSimBlock`): replays list, summary card, the era timeline. An unrevealed replay is drawn across its whole era so the timeline never gives the year away.
 - `SimReplayViewBlock` + `SimReplayChartBlock`: the replay page. Axis in weeks, never dates.
 - Masking runs twice (fetcher and on display) and covers slash dates ("10/21/02"): a filing title leaked one before that rule.
 - Plain walks (no anchor) stay under Noticed → Reading → Sim; replays are filtered out there.

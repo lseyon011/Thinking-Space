@@ -1,15 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { checkPricesNowOrch, pricesAvailableOrch, readLastPricesPassOrch, readPricesPassProgressOrch, subscribePricesPassOrch } from '@/personal_extension/services/orchestrators/webullPricesOrch'
 import { PassQueueListBlock } from '@/components/lego_blocks/units/PassQueueListBlock'
 import type { PassItemBlock } from '@/services/lego_blocks/units/passQueueBlock'
 import { useSearchParams } from 'react-router-dom'
-import { ChevronRight } from 'lucide-react'
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { fmtDayMonthBlock } from '@/services/lego_blocks/units/aiActivityStripBlock'
+import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { askRssTopicsForDayOrch, setRssThemeListPathOrch } from '@/services/orchestrators/rssTopicOrch'
+import { feedDayKeyBlock, parseFeedDayBlock, shiftFeedDayBlock } from '@/personal_extension/services/lego_blocks/units/feedDayBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import { cn } from '@/lib/utils'
 import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
-import RssFeedPanelBlock from '@/components/lego_blocks/integrations/RssFeedPanelBlock'
+import RssFeedPanelBlock, { type RssThemeDigestEntryBlock } from '@/components/lego_blocks/integrations/RssFeedPanelBlock'
+import { FeedThemeDigestViewBlock } from './FeedThemeDigestViewBlock'
 import { loadRssFeedsBlock, replaceRssItemBlock, useRssFeedsBlock } from '@/components/lego_blocks/hooks/shared/useRssFeedsBlock'
+import { rssReaderFeedsBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { loadRssItemByIdOrch, readRssFeedPreferencesOrch, updateRssFeedOrch } from '@/services/orchestrators/rssFeedOrch'
@@ -37,11 +42,13 @@ import { nameNoteCompaniesOrch, pickUpTaggedArticlesOrch } from '@/personal_exte
 import { FeedOverviewBlock } from './FeedOverviewBlock'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
 import { WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK } from './WebullSidebarBlock'
+import type { WebullUniverseCompanyBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
+import { FEED_DROPS_AVAILABLE, PrivateFeedDropsBlock } from '../units/privatePersonalBlock'
 import { writeFeedReadLogsOrch } from '@/personal_extension/services/orchestrators/feedReadLogOrch'
 import { readWebullExecutionSettingsOrch } from '@/personal_extension/services/orchestrators/webullExecutionSettingsOrch'
-import { feedReadLogPathBlock } from '@/personal_extension/services/lego_blocks/units/feedReadLogBlock'
+import { feedReadLogPathBlock, feedThemeListPathBlock } from '@/personal_extension/services/lego_blocks/units/feedReadLogBlock'
 import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
-import { F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK, F9_CHART_TOOLTIP_STYLE_BLOCK, F9PanelBlock, F9SegmentedBlock, FEED_PASTELS_BLOCK } from '../units/F9NativeBlock'
+import { F9_CHART_TOOLTIP_STYLE_BLOCK, F9PanelBlock, F9SegmentedBlock } from '../units/F9NativeBlock'
 
 // F9's Feed: the front of the loop, where things are first seen. One product
 // in three views: Overview (where things stand, what is loud, what needs
@@ -51,7 +58,7 @@ import { F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK, F9_CHART_TOOLTIP_STYLE_BLOCK, F9Pan
 // and the sources only the AI reads). The reader itself is the app's RSS
 // reader (shared code).
 
-type FeedViewBlock = 'overview' | 'reading' | 'sources'
+type FeedViewBlock = 'overview' | 'reading' | 'drops' | 'sources'
 
 const TRUST_OPTIONS_BLOCK: Array<{ value: 'high' | 'normal' | 'low'; label: string }> = [
   { value: 'high', label: 'Trusted' },
@@ -241,7 +248,7 @@ function AiReadsStatusBlock({ reader }: { reader: ReturnType<typeof useFeedAiRea
           ? (() => {
             // `waiting` is every article not yet read, this batch's unfinished ones included
             const after = progress.kind === 'articles' ? waiting - (progress.total - progress.done) : waiting
-            return `${progress.kind === 'stories' ? 'Writing story cards' : 'Reading'} · ${progress.done} of ${progress.total} in this batch${after > 0 ? ` · ${after} more after it` : ''}`
+            return `${progress.kind === 'topics' ? 'Sorting today into topics' : progress.kind === 'stories' ? 'Writing story cards' : 'Reading'} · ${progress.done} of ${progress.total} in this batch${after > 0 ? ` · ${after} more after it` : ''}`
           })()
           : [
             waiting > 0 ? `${waiting} waiting` : 'Up to date',
@@ -317,64 +324,176 @@ function EarningsCallsStatusBlock() {
   )
 }
 
-// Articles per day over the last 30 days, as two calm pastel lines:
-// everything that arrived, and how much the app can show in full.
-function VolumeChartBlock() {
-  const { feeds } = useRssFeedsBlock()
+// Articles per day over the last 30 days, one bar a day: the part the app can
+// show in full at the bottom, headline-only on top, so the bar's height is
+// everything that arrived. In full is part of all, so two overlapping smoothed
+// areas drew one number twice and curved through days that never happened.
+const VOLUME_COLORS_BLOCK = {
+  // Your reading list in teal, the rest in two steps of one lavender; checked
+  // with the dataviz palette validator in each mode.
+  light: { list: '#1F9E89', full: '#5B52C9', teaser: '#A29BEC', grid: '#EFEFF2', cursor: 'rgba(0,0,0,0.04)' },
+  dark: { list: '#2BA592', full: '#8C85E3', teaser: '#5B52C9', grid: '#27272a', cursor: 'rgba(255,255,255,0.05)' },
+}
+
+function VolumeTooltipBlock({ active, payload, colors }: {
+  active?: boolean
+  payload?: Array<{ payload: { label: string; all: number; inList: number; otherFull: number; teaser: number; today: boolean } }>
+  colors: { list: string; full: string; teaser: string }
+}) {
+  const d = active ? payload?.[0]?.payload : undefined
+  if (!d) return null
+  const row = (color: string, name: string, value: number) => (
+    <div className="flex items-center gap-2">
+      <span className="h-2 w-2 rounded-[2px]" style={{ background: color }} />
+      <span className="text-zinc-500 dark:text-zinc-400">{name}</span>
+      <span className="ml-auto pl-4 font-medium tabular-nums text-zinc-900 dark:text-zinc-100">{value.toLocaleString()}</span>
+    </div>
+  )
+  return (
+    <div style={F9_CHART_TOOLTIP_STYLE_BLOCK} className="min-w-[150px] space-y-1 px-3 py-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-zinc-500 dark:text-zinc-400">{d.label}{d.today ? ', so far' : ''}</span>
+        <span className="font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">{d.all.toLocaleString()}</span>
+      </div>
+      {row(colors.list, 'In your reading list', d.inList)}
+      {row(colors.full, 'In full, other sources', d.otherFull)}
+      {row(colors.teaser, 'Headline only', d.teaser)}
+    </div>
+  )
+}
+
+function VolumeChartBlock({ day, onPickDay }: { day: string; onPickDay: (day: string) => void }) {
+  const { feeds, preferences } = useRssFeedsBlock()
   const { hostRef, isDark } = useDarkModeClassBlock()
-  const colors = { all: FEED_PASTELS_BLOCK.lavender.line, readable: FEED_PASTELS_BLOCK.mint.line }
-  const fills = { all: FEED_PASTELS_BLOCK.lavender.fill, readable: FEED_PASTELS_BLOCK.mint.fill }
-  const data = useMemo(() => identityMemoBlock('feed-volume', [feeds, new Date().toDateString()], () => rssDailyVolumeBlock(feeds, new Date(), 30)).map((d) => ({
-    day: d.day,
-    all: d.readable + d.teaser,
-    readable: d.readable,
-    label: new Date(`${d.day}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-  })), [feeds])
+  const colors = isDark ? VOLUME_COLORS_BLOCK.dark : VOLUME_COLORS_BLOCK.light
+  const data = useMemo(() => {
+    const days = identityMemoBlock('feed-volume', [feeds, preferences, new Date().toDateString()], () => {
+      // The reading list's articles: what the Reading tab and the stories count
+      const listIds = new Set(rssReaderFeedsBlock(feeds, preferences).flatMap(f => f.items.map(item => item.id)))
+      return rssDailyVolumeBlock(feeds, new Date(), 30, listIds)
+    })
+    return days.map((d, i) => ({
+      day: d.day,
+      all: d.readable + d.teaser,
+      readable: d.readable,
+      inList: d.inList,
+      otherFull: d.readable - d.inList,
+      teaser: d.teaser,
+      today: i === days.length - 1,
+      label: new Date(`${d.day}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    }))
+  }, [feeds, preferences])
   const total = data.reduce((n, d) => n + d.all, 0)
   const readable = data.reduce((n, d) => n + d.readable, 0)
+  // A day's average over the full days only; today is still arriving.
+  const past = data.slice(0, -1)
+  const average = past.length > 0 ? Math.round(past.reduce((n, d) => n + d.all, 0) / past.length) : 0
   const swatch = (color: string, label: string) => (
     <span className="inline-flex items-center gap-1.5">
-      <span className="h-[2px] w-3 rounded-full" style={{ background: color }} />
+      <span className="h-2 w-2 rounded-[2px]" style={{ background: color }} />
       {label}
     </span>
   )
+  const tick = { fontSize: 10, fill: isDark ? '#71717a' : '#8E8E93' }
   return (
     <F9PanelBlock className="px-5 pb-3 pt-[18px] text-[13px]">
-      <div ref={hostRef} className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <p className="font-semibold">Articles per day</p>
+      <div ref={hostRef} className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className="flex items-baseline gap-2">
+          <p className="font-semibold">Articles per day</p>
+          <span className="text-[12px] text-zinc-500 dark:text-zinc-400">{total.toLocaleString()} in 30 days · {total > 0 ? Math.round((readable / total) * 100) : 0}% in full</span>
+        </div>
         <span className="flex items-center gap-3 text-[12px] text-zinc-500 dark:text-zinc-400">
-          {swatch(colors.all, `All · ${total}`)}
-          {swatch(colors.readable, `In full · ${readable}`)}
-          <span>last 30 days</span>
+          {swatch(colors.list, 'Your reading list')}
+          {swatch(colors.full, 'In full')}
+          {swatch(colors.teaser, 'Headline only')}
         </span>
       </div>
-        <div className="h-[150px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="feed-volume-all" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={fills.all} stopOpacity={0.55} />
-                  <stop offset="100%" stopColor={fills.all} stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="feed-volume-readable" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={fills.readable} stopOpacity={0.6} />
-                  <stop offset="100%" stopColor={fills.readable} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#8E8E93' }} axisLine={false} tickLine={false} interval={6} />
-              <YAxis width={30} tick={{ fontSize: 10, fill: '#8E8E93' }} axisLine={false} tickLine={false} allowDecimals={false} tickCount={3} />
-              <Tooltip
-                cursor={{ stroke: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)', strokeWidth: 1 }}
-                contentStyle={F9_CHART_TOOLTIP_STYLE_BLOCK}
-                labelStyle={F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK}
-                formatter={(value, name) => [value, name === 'readable' ? 'In full' : 'All articles']}
+      <div className="h-[150px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={data}
+            margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+            barCategoryGap="22%"
+            className="cursor-pointer"
+            onClick={(state) => { const d = data[Number(state?.activeTooltipIndex)]; if (d) onPickDay(d.day) }}
+          >
+            <CartesianGrid vertical={false} stroke={colors.grid} />
+            <XAxis dataKey="label" tick={tick} axisLine={false} tickLine={false} interval={6} />
+            <YAxis width={30} tick={tick} axisLine={false} tickLine={false} allowDecimals={false} tickCount={3} />
+            <Tooltip cursor={{ fill: colors.cursor }} content={<VolumeTooltipBlock colors={colors} />} isAnimationActive={false} />
+            {average > 0 && (
+              <ReferenceLine
+                y={average}
+                stroke={isDark ? '#52525b' : '#C7C7CC'}
+                strokeDasharray="3 3"
+                label={{ value: `avg ${average}`, position: 'insideTopRight', fontSize: 10, fill: tick.fill }}
               />
-              <Area type="monotone" dataKey="all" stroke={colors.all} strokeWidth={2} fill="url(#feed-volume-all)" dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: isDark ? '#18181b' : '#ffffff' }} isAnimationActive={false} />
-              <Area type="monotone" dataKey="readable" stroke={colors.readable} strokeWidth={2} fill="url(#feed-volume-readable)" dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: isDark ? '#18181b' : '#ffffff' }} isAnimationActive={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+            )}
+            {/* The Feed's day at full strength, so the bar for the day shown stands out */}
+            <Bar dataKey="inList" stackId="v" fill={colors.list} radius={[0, 0, 2, 2]} isAnimationActive={false}>
+              {data.map(d => <Cell key={d.day} fillOpacity={d.day === day ? 1 : 0.55} />)}
+            </Bar>
+            <Bar dataKey="otherFull" stackId="v" fill={colors.full} isAnimationActive={false}>
+              {data.map(d => <Cell key={d.day} fillOpacity={d.day === day ? 1 : 0.55} />)}
+            </Bar>
+            <Bar dataKey="teaser" stackId="v" fill={colors.teaser} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+              {data.map(d => <Cell key={d.day} fillOpacity={d.day === day ? 1 : 0.55} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </F9PanelBlock>
+  )
+}
+
+// The Feed's day, read as part of the title ("Feed for 31st Oct ‹ ›"), written
+// the way AI activity writes its day. A click on the date opens the calendar,
+// which also has its own Today; the arrows step a day. Every view but Sources
+// shows this day.
+const FEED_DAY_STEP_CLASS_BLOCK = 'flex items-center justify-center rounded-md p-[0.1em] text-foreground/40 hover:bg-zinc-200/70 hover:text-foreground/80 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-zinc-800'
+
+function FeedDayTitleBlock({ day, today, onPick }: { day: string; today: string; onPick: (day: string) => void }) {
+  const pickerRef = useRef<HTMLInputElement>(null)
+  const { day: dayNumber, ordinal, month } = fmtDayMonthBlock(day)
+  const openCalendar = () => {
+    const input = pickerRef.current
+    if (!input) return
+    // A click on a date input opens its calendar only on its own icon; ask for it directly
+    try { input.showPicker() } catch { input.focus(); input.click() }
+  }
+  return (
+    // The same gap after "Feed" as between the words of the date
+    <span className="relative ml-[0.4em] inline-flex items-baseline gap-[0.3em]">
+      {/* AI activity's date, scaled to the title: one line box (leading-none),
+          words on the baseline, the suffix at the top of the numeral beside it */}
+      <button type="button" onClick={openCalendar} title="Pick a day" className="inline-flex items-baseline gap-[0.3em] whitespace-nowrap leading-none">
+        <span className="font-normal text-foreground/40">for</span>
+        <span className="flex items-start">
+          <span className="tabular-nums">{dayNumber}</span>
+          <span className="ml-[0.05em] text-[0.42em] font-medium leading-none tracking-tight text-foreground/60">{ordinal}</span>
+        </span>
+        <span className="font-normal text-foreground/40">{month}</span>
+      </button>
+      {/* A day back and a day on; the date itself opens the calendar */}
+      <span className="inline-flex items-center gap-0.5 self-center">
+        <button type="button" onClick={() => onPick(shiftFeedDayBlock(day, -1))} className={FEED_DAY_STEP_CLASS_BLOCK} aria-label="The day before" title="The day before">
+          <ChevronLeft className="h-[0.6em] w-[0.6em]" />
+        </button>
+        <button type="button" onClick={() => onPick(shiftFeedDayBlock(day, 1))} disabled={day >= today} className={FEED_DAY_STEP_CLASS_BLOCK} aria-label="The day after" title="The day after">
+          <ChevronRight className="h-[0.6em] w-[0.6em]" />
+        </button>
+      </span>
+      <input
+        ref={pickerRef}
+        type="date"
+        value={day}
+        max={today}
+        onChange={(e) => onPick(e.target.value || today)}
+        tabIndex={-1}
+        className="pointer-events-none absolute bottom-0 left-0 h-0 w-full opacity-0"
+        aria-label="Feed day"
+      />
+    </span>
   )
 }
 
@@ -686,7 +805,8 @@ function AiReadsPanelBlock({ groups, healthById, errorById, lastItemById }: {
   )
 }
 
-export default function WebullFeedBlock() {
+export default function WebullFeedBlock({ companies = [] }: { companies?: WebullUniverseCompanyBlock[] }) {
+  const dropGroups = useMemo(() => Object.fromEntries(companies.flatMap(c => (c.ticker ? [[c.ticker, c.group] as const] : []))), [companies])
   const { layout } = useUILayoutBlock()
   const { openFile } = useMarkdownViewer()
   const phone = layout.mode === 'phone'
@@ -708,6 +828,10 @@ export default function WebullFeedBlock() {
   useEffect(() => {
     void readWebullExecutionSettingsOrch().then(s => setFeedLogRoot(s.executionFolderPath || null)).catch(() => setFeedLogRoot(null))
   }, [])
+  // The AI's theme list is an F9 record: beside the day logs, F9-execution/feed/themes.md
+  useEffect(() => {
+    setRssThemeListPathOrch(feedLogRoot ? feedThemeListPathBlock(feedLogRoot) : null)
+  }, [feedLogRoot])
   const today = new Date()
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   useReadingAttentionBlock(view === 'reading' && feedLogRoot ? feedReadLogPathBlock(feedLogRoot, todayKey) : null, view === 'reading', {
@@ -744,15 +868,35 @@ export default function WebullFeedBlock() {
     void pickUpTaggedArticlesOrch(feeds).then(() => nameNoteCompaniesOrch(feeds))
   }, [feeds, feedsReady])
 
-  // From Overview: open the story in Reading
+  // From Overview: open the story in Reading, the list by theme with its theme open and the article in view
+  const [readingFocus, setReadingFocus] = useState<{ itemId: string; nonce: number } | null>(null)
   const openFromOverview = useCallback((item: RssFeedItemBlock) => {
     setView('reading')
+    setReadingFocus(prev => ({ itemId: item.id, nonce: (prev?.nonce ?? 0) + 1 }))
     setArticle({ item, onItemUpdate: () => {}, onItemRemove: () => {}, presetTags: preferences?.presetTags ?? [], tagColors: preferences?.tagColors ?? {} })
   }, [preferences])
 
   // `?rss=<item id>` (from Reading's "Open in reader", or an old Explorer link) opens that article
   const [searchParams, setSearchParams] = useSearchParams()
   const itemFromRoute = searchParams.get('rss')
+
+  // The Feed's day, kept in the address as `?day=YYYY-MM-DD` so every view
+  // shows the same one; no `day` is today.
+  const pickedDay = parseFeedDayBlock(searchParams.get('day'), todayKey)
+  const feedDay = pickedDay ?? todayKey
+  const pickDay = useCallback((next: string) => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev)
+      if (next >= feedDayKeyBlock(new Date())) params.delete('day')
+      else params.set('day', next)
+      return params
+    }, { replace: true })
+  }, [setSearchParams])
+  // A past day's topics are sorted while it is open, after today's
+  useEffect(() => {
+    askRssTopicsForDayOrch(pickedDay)
+  }, [pickedDay])
+  useEffect(() => () => askRssTopicsForDayOrch(null), [])
   useEffect(() => {
     if (!itemFromRoute) return
     let cancelled = false
@@ -771,9 +915,23 @@ export default function WebullFeedBlock() {
     return () => { cancelled = true }
   }, [itemFromRoute, setSearchParams])
 
+  // A theme's digest from the other sources, opened beside the list like an article
+  const [digestEntry, setDigestEntry] = useState<RssThemeDigestEntryBlock | null>(null)
   const openArticle = useCallback((item: RssFeedItemBlock, onItemUpdate: (u: RssFeedItemBlock) => void, onItemRemove: () => void, presetTags: string[], tagColors: Record<string, string>) => {
+    setDigestEntry(null)
     setArticle({ item, onItemUpdate, onItemRemove, presetTags, tagColors })
   }, [])
+  const openDigest = useCallback((entry: RssThemeDigestEntryBlock) => {
+    setArticle(null)
+    setDigestEntry(entry)
+  }, [])
+  // An article opened from a digest: the digest stays, so closing the article returns to it
+  const openFromDigest = useCallback((item: RssFeedItemBlock) => {
+    setArticle({ item, onItemUpdate: () => {}, onItemRemove: () => {}, presetTags: preferences?.presetTags ?? [], tagColors: preferences?.tagColors ?? {} })
+  }, [preferences])
+  const digestView = digestEntry && (
+    <FeedThemeDigestViewBlock entry={digestEntry} feeds={feeds} onOpenItem={openFromDigest} onClose={() => setDigestEntry(null)} />
+  )
 
   const reader = article && (
     // Not keyed by article: the reader (and its in-app browser) stays mounted and
@@ -799,9 +957,9 @@ export default function WebullFeedBlock() {
     />
   )
 
-  // On iPhone an open article is the next screen; the list waits underneath.
-  if (phone && article) {
-    return <div ref={readingSurfaceRef} className="ltm-page-push-in -mx-7 -my-6 h-[calc(100dvh-1rem)] min-h-0">{reader}</div>
+  // On iPhone an open article (or digest) is the next screen; the list waits underneath.
+  if (phone && (article || digestEntry)) {
+    return <div ref={readingSurfaceRef} className="ltm-page-push-in -mx-7 -my-6 h-[calc(100dvh-1rem)] min-h-0">{reader || digestView}</div>
   }
 
   const panel = (
@@ -812,6 +970,10 @@ export default function WebullFeedBlock() {
       articleOpen={article !== null}
       onClose={() => setArticle(null)}
       className="h-full"
+      day={feedDay}
+      focus={readingFocus}
+      onOpenDigest={openDigest}
+      activeDigestKey={article ? null : digestEntry?.key ?? null}
     />
   )
 
@@ -820,15 +982,32 @@ export default function WebullFeedBlock() {
   const header = (
       <header className={cn('flex flex-wrap justify-between gap-4', compactHeader ? 'items-center' : 'items-start')}>
         <div className="min-w-0">
-          <h1 className={cn('font-bold leading-tight tracking-tight', compactHeader ? 'text-[20px]' : 'text-[26px]')}>Feed</h1>
+          {/* "Feed" and the day it shows, as one title */}
+          <h1 className={cn('font-bold leading-tight tracking-tight', compactHeader ? 'text-[20px]' : 'text-[26px]')}>
+            Feed{view !== 'sources' && <FeedDayTitleBlock day={feedDay} today={todayKey} onPick={pickDay} />}
+          </h1>
           {!compactHeader && <p className="mt-0.5 text-[13px] text-zinc-500 dark:text-zinc-400">Where things are first seen. Write down what you notice.</p>}
         </div>
-        <F9SegmentedBlock ariaLabel="Feed view" value={view} onChange={setView} options={[{ value: 'overview', label: 'Overview' }, { value: 'reading', label: 'Reading' }, { value: 'sources', label: 'Sources' }]} />
+        <F9SegmentedBlock ariaLabel="Feed view" value={view} onChange={setView} options={[
+          { value: 'overview', label: 'Overview' },
+          { value: 'reading', label: 'Reading' },
+          ...(FEED_DROPS_AVAILABLE ? [{ value: 'drops' as const, label: 'Drops' }] : []),
+          { value: 'sources', label: 'Sources' },
+        ]} />
       </header>
   )
 
+  if (view === 'drops' && PrivateFeedDropsBlock) {
+    return (
+      <div className="flex flex-col gap-4">
+        {header}
+        <Suspense fallback={null}><PrivateFeedDropsBlock groups={dropGroups} day={pickedDay} /></Suspense>
+      </div>
+    )
+  }
+
   if (view === 'overview') {
-    return <FeedOverviewBlock reader={aiReader} onOpenItem={openFromOverview} chart={<VolumeChartBlock />} header={header} />
+    return <FeedOverviewBlock reader={aiReader} onOpenItem={openFromOverview} chart={<VolumeChartBlock day={feedDay} onPickDay={pickDay} />} header={header} day={feedDay} onPickDay={pickDay} />
   }
 
   return (
@@ -851,7 +1030,9 @@ export default function WebullFeedBlock() {
             {reader
               // The reader fills its pane, as it does in the Explorer
               ? <div className="h-full min-h-0 flex-1">{reader}</div>
-              : <p className="flex h-full items-center justify-center p-8 text-[13px] text-zinc-500 dark:text-zinc-400">Pick an article on the left.</p>}
+              : digestView
+                ? <div className="h-full min-h-0 flex-1">{digestView}</div>
+                : <p className="flex h-full items-center justify-center p-8 text-[13px] text-zinc-500 dark:text-zinc-400">Pick an article on the left.</p>}
           </F9PanelBlock>
         </div>
       )}

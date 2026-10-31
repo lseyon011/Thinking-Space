@@ -20,6 +20,7 @@ import {
   utf8ToBytesBlock,
   bytesToUtf8Block,
 } from '@/services/lego_blocks/units/byteEncodingBlock'
+import { setBrowserVaultFolderNameBlock } from '@/services/lego_blocks/units/vaultNameBlock'
 
 // ── Types ──
 
@@ -464,6 +465,17 @@ interface ElectronAPI {
   /** Earnings call transcripts (StockAnalysis public pages). Desktop only. */
   earningsCallsList?(payload: { ticker: string }): Promise<{ covered: boolean; calls: Array<{ slug: string; quarter: number; fiscalYear: number }> }>
   earningsCallGet?(payload: { ticker: string; slug: string }): Promise<{ date: string; text: string }>
+  marketOptionChain?(payload: { ticker: string; expiry?: number }): Promise<{
+    covered: boolean
+    price: number | null
+    marketCap: number | null
+    trailingPe: number | null
+    forwardPe: number | null
+    marketTime: number | null
+    expirations: number[]
+    expiry: number | null
+    calls: Array<{ strike: number; bid: number | null; ask: number | null; last: number | null; iv: number | null; openInterest: number | null; volume: number | null }>
+  }>
   webullCredentialStatus?(): Promise<{
     secureStorageAvailable: boolean
     configured: boolean
@@ -1414,6 +1426,7 @@ export async function initBrowserVaultFS(options: { prompt?: boolean } = {}): Pr
   if (perm !== 'granted') return null
 
   _browserInstance = new BrowserVaultFS(handle)
+  setBrowserVaultFolderNameBlock(handle.name)
   return _browserInstance
 }
 
@@ -1426,6 +1439,7 @@ export async function pickAndInitBrowserVaultFS(): Promise<BrowserVaultFS> {
   const handle = await window.showDirectoryPicker({ mode: 'readwrite' })
   await persistDirectoryHandle(handle)
   _browserInstance = new BrowserVaultFS(handle)
+  setBrowserVaultFolderNameBlock(handle.name)
   return _browserInstance
 }
 

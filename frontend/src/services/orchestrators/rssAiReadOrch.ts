@@ -5,9 +5,9 @@
 // The model is the app's: the default provider and model in Settings → AI,
 // like every other AI task. The Feed only switches the reader on or off.
 //
-// Work comes in this order, one job at a time (runFeedAiNextOrch): first the
-// articles of stories several publishers carry, then those stories' cards
-// (rssStoryCardOrch), then every other recent article. Runs only in the desktop app, while it is open, when asked:
+// Work comes in this order, one job at a time (runFeedAiNextOrch): first
+// today's articles, then sorting them into today's topics and writing each
+// topic's key details (rssTopicOrch), then every other recent article. Runs only in the desktop app, while it is open, when asked:
 // the Feed opening or new articles arriving. No timers. Requests go through
 // the intelligence job queue one at a time; a summary already written for the
 // current prompt version is never asked for again.
@@ -20,8 +20,8 @@ import { isElectron } from '@/services/lego_blocks/integrations/fsBlock'
 import { readDefaultProviderBlock, resolveProviderBlock } from '@/services/lego_blocks/integrations/intelligence/providerRegistryBlock'
 import type { ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 import { rssReaderFeedsBlock, type RssFeedItemBlock, type RssFeedPreferencesBlock, type RssFeedResultBlock } from '@/services/lego_blocks/units/rssFeedBlock'
-import { buildRssDayInboxBlock, recentRssFeedsBlock, rssLoudStoriesBlock } from '@/services/lego_blocks/units/rssStoryBlock'
-import { runStoryCardPassOrch, storyNeedsCardBlock, loadStoryCardsOrch } from '@/services/orchestrators/rssStoryCardOrch'
+import { localDayBlock, rssTopicItemsBlock } from '@/services/lego_blocks/units/rssTopicBlock'
+import { loadRssTopicsOrch, readAskedRssTopicsDayOrch, rssOutsideItemsOrch, rssTopicsWorkOrch, runRssOutsidePassOrch, runRssThemeNotePassOrch, runRssTopicCardPassOrch, runRssTopicSortPassOrch, runRssTopicThemePassOrch } from '@/services/orchestrators/rssTopicOrch'
 import {
   ARTICLE_SUMMARY_TEXT_CHARS_BLOCK,
   articleSummaryContract,
@@ -80,7 +80,7 @@ export interface FeedAiReadPassBlock {
   /** The provider itself failed (not running, no model): wait before asking again */
   providerDown?: boolean
   /** Reading articles, or writing story cards */
-  kind?: 'articles' | 'stories'
+  kind?: 'articles' | 'stories' | 'topics'
   /** Each article (or story) and what came of it */
   items?: PassItemBlock[]
 }
@@ -92,7 +92,7 @@ export interface FeedAiReadProgressBlock {
   done: number
   total: number
   /** Reading articles, or writing story cards */
-  kind: 'articles' | 'stories'
+  kind: 'articles' | 'stories' | 'topics'
   /** Each article (or story): waiting, being read, or what came of it */
   items: PassItemBlock[]
 }
@@ -143,7 +143,7 @@ function runFeedAiReadPassOrch(
   feeds: RssFeedResultBlock[],
   onRead: (item: RssFeedItemBlock) => void,
   provider: ProviderId,
-  /** Only these articles (the ones in stories many are telling) */
+  /** Only these articles (today's, read first) */
   onlyIds?: Set<string>,
 ): Promise<FeedAiReadPassBlock> {
   return (async () => {
@@ -210,37 +210,70 @@ export function runFeedAiNextOrch(
   feeds: RssFeedResultBlock[],
   preferences: RssFeedPreferencesBlock | null,
   onRead: (item: RssFeedItemBlock) => void,
+  /** Asked for by hand: try the provider again even within the wait after it was down */
+  force = false,
 ): Promise<FeedAiReadPassBlock | null> {
   if (running) return running
   if (!readFeedAiReaderOrch().on || !feedAiReadAvailableOrch() || !preferences) return Promise.resolve(null)
   const provider = feedAiReaderProviderOrch()
   const last = readLastFeedAiReadOrch()
-  if (last?.providerDown && last.provider === provider
+  if (!force && last?.providerDown && last.provider === provider
     && Date.now() - Date.parse(last.at) < PROVIDER_RETRY_MS) return Promise.resolve(null)
   running = (async () => {
-    await loadStoryCardsOrch()
-    const days = buildRssDayInboxBlock({ feeds: recentRssFeedsBlock(rssReaderFeedsBlock(feeds, preferences), 3), configs: preferences.feeds })
-    const loud = rssLoudStoriesBlock(days, preferences.feeds).map(entry => entry.story)
-    const unread = new Set(feedAiUnreadItemsBlock(feeds).map(({ item }) => item.id))
-    const loudUnread = new Set(loud.flatMap(story => [story.lead, ...story.others].map(m => m.item.id)).filter(id => unread.has(id)))
+    await loadRssTopicsOrch()
+    const today = localDayBlock(new Date())
+    const readerItems = rssReaderFeedsBlock(feeds, preferences).flatMap(feed => feed.items)
+    const unreadList = feedAiUnreadItemsBlock(feeds)
+    const unread = new Set(unreadList.map(({ item }) => item.id))
+    const todayUnread = new Set(unreadList.filter(({ item }) => item.pubDate && localDayBlock(new Date(item.pubDate)) === today).map(({ item }) => item.id))
+    const topicItems = rssTopicItemsBlock(readerItems, today)
+    // What the AI read in the other sources: placed against the reading list's topics, then a paragraph per theme
+    const outsideItems = rssOutsideItemsOrch(feeds, preferences, today)
+    const topicWork = rssTopicsWorkOrch(topicItems, today, outsideItems)
+    // A past day that is open in the Feed: its topics, once today's are done
+    const askedDay = readAskedRssTopicsDayOrch()
+    if (askedDay) await loadRssTopicsOrch(askedDay)
+    const askedItems = askedDay ? rssTopicItemsBlock(readerItems, askedDay) : []
+    const askedOutside = askedDay ? rssOutsideItemsOrch(feeds, preferences, askedDay) : []
+    const askedWork = askedDay ? rssTopicsWorkOrch(askedItems, askedDay, askedOutside) : { unsorted: [], themes: [], outside: [], cards: [], notes: 0 }
+    const onTopics = (done: number, total: number, items: PassItemBlock[]) => {
+      progress = { done, total, kind: 'topics', items }
+      notifyBlock()
+    }
+    const topicPassBlock = (job: Awaited<ReturnType<typeof runRssTopicSortPassOrch>>): FeedAiReadPassBlock | null => (job.done + job.failed > 0 || job.providerDown
+      ? { at: new Date().toISOString(), read: 0, failed: job.failed, provider, model: '', error: job.error, kind: 'topics', items: job.items, ...(job.providerDown ? { providerDown: true } : {}) }
+      : null)
 
     let pass: FeedAiReadPassBlock | null = null
-    if (loudUnread.size > 0) {
-      pass = await runFeedAiReadPassOrch(feeds, onRead, provider, loudUnread)
-    } else if (loud.some(story => storyNeedsCardBlock(story))) {
-      const cards = await runStoryCardPassOrch(loud, provider, (done, total, items) => {
-        progress = { done, total, kind: 'stories', items }
-        notifyBlock()
-      })
-      if (cards.made + cards.failed > 0) {
-        pass = { at: new Date().toISOString(), read: 0, failed: cards.failed, provider, model: '', error: cards.error, kind: 'stories', items: cards.items, ...(cards.providerDown ? { providerDown: true } : {}) }
-        if (cards.made > 0) pass.read = 0
-      }
+    if (todayUnread.size > 0) {
+      pass = await runFeedAiReadPassOrch(feeds, onRead, provider, todayUnread)
+    } else if (topicWork.unsorted.length > 0) {
+      pass = topicPassBlock(await runRssTopicSortPassOrch(topicItems, provider, onTopics))
+    } else if (topicWork.themes.length > 0) {
+      // One call gathers the topics under themes: before the key details, which take one call a topic
+      pass = topicPassBlock(await runRssTopicThemePassOrch(provider, onTopics))
+    } else if (topicWork.outside.length > 0) {
+      pass = topicPassBlock(await runRssOutsidePassOrch(outsideItems, provider, onTopics))
+    } else if (topicWork.cards.length > 0) {
+      pass = topicPassBlock(await runRssTopicCardPassOrch(topicItems, provider, onTopics))
+    } else if (topicWork.notes > 0) {
+      // At fixed times of the day (rssNoteSlotBlock), not each time an article arrives
+      pass = topicPassBlock(await runRssThemeNotePassOrch(outsideItems, provider, onTopics))
+    } else if (askedDay && askedWork.unsorted.length > 0) {
+      pass = topicPassBlock(await runRssTopicSortPassOrch(askedItems, provider, onTopics, askedDay))
+    } else if (askedDay && askedWork.themes.length > 0) {
+      pass = topicPassBlock(await runRssTopicThemePassOrch(provider, onTopics, askedDay))
+    } else if (askedDay && askedWork.outside.length > 0) {
+      pass = topicPassBlock(await runRssOutsidePassOrch(askedOutside, provider, onTopics, askedDay))
+    } else if (askedDay && askedWork.cards.length > 0) {
+      pass = topicPassBlock(await runRssTopicCardPassOrch(askedItems, provider, onTopics, askedDay))
+    } else if (askedDay && askedWork.notes > 0) {
+      pass = topicPassBlock(await runRssThemeNotePassOrch(askedOutside, provider, onTopics, askedDay))
     } else if (unread.size > 0) {
       pass = await runFeedAiReadPassOrch(feeds, onRead, provider)
     }
     if (pass && (pass.read + pass.failed > 0 || pass.providerDown)) {
-      // Keep the last reading pass's model on record when this job only wrote cards
+      // Keep the last reading pass's model on record when this job only sorted topics
       setJsonStorageItem(STORAGE_KEYS.feedAiReadLast, pass.model ? pass : { ...pass, model: last?.model ?? '', read: last?.read ?? 0 })
     }
     return pass

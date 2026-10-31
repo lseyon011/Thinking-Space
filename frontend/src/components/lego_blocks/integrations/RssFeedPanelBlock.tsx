@@ -65,11 +65,15 @@ import {
 import { cn } from '@/lib/utils'
 import RssItemAnnotationMarksBlock from '@/components/lego_blocks/units/RssItemAnnotationMarksBlock'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
+import { localDayBlock, regroupRssDayInboxByThemeBlock } from '@/services/lego_blocks/units/rssTopicBlock'
+import { loadRssTopicsOrch, readRssTopicsOrch, subscribeRssTopicsOrch } from '@/services/orchestrators/rssTopicOrch'
 import {
   buildRssDayInboxBlock,
   rssDayLabelBlock,
   rssStoryOthersLabelBlock,
   type RssDayInboxBlock,
+  rssOutletNameBlock,
+  type RssThemeDigestBlock,
 } from '@/services/lego_blocks/units/rssStoryBlock'
 
 // F9's Feed draws the list in its native look: quiet header, no RSS or folder
@@ -95,6 +99,29 @@ interface RssFeedPanelBlockProps {
    *  owner of the reader knows when it closed, so this can't be derived here. */
   articleOpen?: boolean
   className?: string
+  /** Native: only the articles that arrived on this day (YYYY-MM-DD, local). */
+  day?: string | null
+  /**
+   * Native: an article opened from elsewhere (the Overview's topics). The list
+   * groups by theme, opens its day and its group, marks it, and scrolls to it.
+   * A new `nonce` asks again for the same article.
+   */
+  focus?: { itemId: string; nonce: number } | null
+  /**
+   * Native, by theme: a theme's digest from the other sources opens beside the
+   * list like an article (the caller draws it). Without this the digest shows
+   * as a box under the theme's articles.
+   */
+  onOpenDigest?: (entry: RssThemeDigestEntryBlock) => void
+  /** The digest open beside the list, to mark its row */
+  activeDigestKey?: string | null
+}
+
+/** A theme's digest as opened from the list: its key, the label the list shows, the digest. */
+export interface RssThemeDigestEntryBlock {
+  key: string
+  theme: string
+  digest: RssThemeDigestBlock
 }
 
 function formatRelativeDate(dateStr: string | null): string {
@@ -145,6 +172,10 @@ export default function RssFeedPanelBlock({
   articleOpen,
   className,
   appearance = 'default',
+  day = null,
+  focus = null,
+  onOpenDigest,
+  activeDigestKey = null,
 }: RssFeedPanelBlockProps) {
   const native = appearance === 'native'
   const { layout } = useUILayoutBlock()
@@ -195,10 +226,11 @@ export default function RssFeedPanelBlock({
     const narrowed = allFeeds.map(feed => ({
       ...feed,
       items: feed.items.filter(item => rssItemReadableBlock(item) === (readableTab === 'readable')
-        && (!unreadOnly || !item.read || sessionReadIds.has(item.id))),
+        && (!unreadOnly || !item.read || sessionReadIds.has(item.id))
+        && (!day || (Boolean(item.pubDate) && localDayBlock(new Date(item.pubDate as string)) === day))),
     }))
-    return unreadOnly ? narrowed.filter(feed => feed.items.length > 0) : narrowed
-  }, [allFeeds, native, readableTab, unreadOnly, sessionReadIds])
+    return unreadOnly || day ? narrowed.filter(feed => feed.items.length > 0) : narrowed
+  }, [allFeeds, native, readableTab, unreadOnly, sessionReadIds, day])
   // Feeds/groups are collapsed by default; only those explicitly expanded are in these sets.
   // Persisted in localStorage so the state survives navigation.
   const { expanded: expandedFeedIds, toggle: toggleFeedExpanded, setAll: setExpandedFeeds } = useExpandedSetBlock('ltm-rss-expanded-feeds')
@@ -348,12 +380,38 @@ export default function RssFeedPanelBlock({
   const deferredInboxFeeds = useDeferredValue(filteredInboxFeeds)
   // Remembered across visits, keyed on the store snapshot and the filters that
   // shape it, so returning to the list does not regroup every story
-  const dayInbox = useMemo<RssDayInboxBlock[]>(
+  const sourceInbox = useMemo<RssDayInboxBlock[]>(
     () => (dayMode
-      ? identityMemoBlock('rss-day-inbox', [allFeeds, preferences, readableTab, unreadOnly, sessionReadIds, sourceFilter.join(','), deferredInboxFeeds === filteredInboxFeeds], () =>
+      // The day is a key too: without it, picking another day kept the last day's list
+      ? identityMemoBlock('rss-day-inbox', [allFeeds, preferences, readableTab, unreadOnly, sessionReadIds, sourceFilter.join(','), day ?? '', deferredInboxFeeds === filteredInboxFeeds], () =>
         buildRssDayInboxBlock({ feeds: deferredInboxFeeds, configs: preferences?.feeds ?? [], unreadOnly, sessionReadIds }))
       : []),
-    [dayMode, deferredInboxFeeds, filteredInboxFeeds, allFeeds, preferences, readableTab, unreadOnly, sessionReadIds, sourceFilter],
+    [dayMode, deferredInboxFeeds, filteredInboxFeeds, allFeeds, preferences, readableTab, unreadOnly, sessionReadIds, sourceFilter, day],
+  )
+  // Native: each day by source (as it arrived) or by theme (as the AI sorted
+  // it: the Overview's themes). Remembered on this device.
+  const [groupBy, setGroupBy] = useState<'sources' | 'themes'>(() => {
+    try { return localStorage.getItem('ltm-rss-group-by') === 'themes' ? 'themes' : 'sources' } catch { return 'sources' }
+  })
+  const toggleGroupBy = useCallback(() => {
+    setGroupBy((prev) => {
+      const next = prev === 'themes' ? 'sources' : 'themes'
+      try { localStorage.setItem('ltm-rss-group-by', next) } catch { /* storage is optional */ }
+      return next
+    })
+  }, [])
+  const byTheme = dayMode && groupBy === 'themes'
+  // The days' topics, read from the vault once each; a sorting pass redraws the list
+  const [topicsTick, setTopicsTick] = useState(0)
+  useEffect(() => (byTheme ? subscribeRssTopicsOrch(() => setTopicsTick(t => t + 1)) : undefined), [byTheme])
+  const inboxDaysKey = sourceInbox.map(d => d.day).join(',')
+  useEffect(() => {
+    if (!byTheme) return
+    for (const d of inboxDaysKey.split(',')) if (/^\d{4}-\d{2}-\d{2}$/.test(d)) void loadRssTopicsOrch(d)
+  }, [byTheme, inboxDaysKey])
+  const dayInbox = useMemo<RssDayInboxBlock[]>(
+    () => (byTheme ? regroupRssDayInboxByThemeBlock(sourceInbox, d => readRssTopicsOrch(d)) : sourceInbox),
+    [byTheme, sourceInbox, topicsTick],  // eslint-disable-line react-hooks/exhaustive-deps
   )
   // Each day's whole count, whatever Unread hides: the filter chooses the rows,
   // not the day's size. Grouped once per feed snapshot (only with Unread on).
@@ -435,6 +493,37 @@ export default function RssFeedPanelBlock({
     useGroupedRendering, groupTree, feeds, visibleFeeds, expandedFeedIds, expandedGroupIds,
     dayMode, dayInbox, foldedDays, foldedSources,
   ])
+
+  // An article opened from the Overview: by theme, its day and group open, marked and in view
+  const pendingFocusRef = useRef<{ itemId: string; nonce: number } | null>(null)
+  useEffect(() => {
+    if (!focus || !dayMode) return
+    pendingFocusRef.current = focus
+    if (groupBy !== 'themes') {
+      setGroupBy('themes')
+      try { localStorage.setItem('ltm-rss-group-by', 'themes') } catch { /* storage is optional */ }
+    }
+  }, [focus?.nonce, dayMode]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const pending = pendingFocusRef.current
+    if (!pending || !byTheme) return
+    for (const d of dayInbox) {
+      for (const source of d.sources) {
+        const story = source.stories.find(st => [st.lead, ...st.others].some(m => m.item.id === pending.itemId))
+        if (!story) continue
+        pendingFocusRef.current = null
+        if (foldedDays.has(d.day)) toggleDayFolded(d.day)
+        const key = `${d.day}|${source.feedId}`
+        if (foldedSources.has(key)) toggleSourceFolded(key)
+        const rowId = rssRowIdBlock(`day:${d.day}`, story.lead.item.id)
+        setSelectedItemId(story.lead.item.id)
+        setActiveRowId(rowId)
+        // After the unfolded rows are drawn
+        requestAnimationFrame(() => requestAnimationFrame(() => itemButtonRefs.current.get(rowId)?.scrollIntoView({ block: 'center' })))
+        return
+      }
+    }
+  }, [dayInbox, byTheme, foldedDays, foldedSources, toggleDayFolded, toggleSourceFolded])
 
   const registerItemButton = useCallback((rowId: string, node: HTMLButtonElement | null) => {
     if (node) itemButtonRefs.current.set(rowId, node)
@@ -622,7 +711,20 @@ export default function RssFeedPanelBlock({
         anythingExpanded={anythingExpanded}
         onToggleExpandAll={native ? toggleExpandAll : undefined}
         sourceFilter={dayMode && viewMode === 'compact'
-          ? <SourceFilterBlock options={inboxFeeds.map(feed => ({ feedId: feed.feedId, title: feed.feedTitle }))} chosen={sourceFilter} onChange={chooseSourceFilter} />
+          ? (
+            <>
+              <button
+                type="button"
+                onClick={toggleGroupBy}
+                aria-pressed={groupBy === 'themes'}
+                title={groupBy === 'themes' ? 'Grouped by theme, as the AI sorted the news (click to group by source)' : 'Group by theme, as the AI sorted the news'}
+                className={cn('shrink-0 rounded-md px-2 py-1 text-[11px] font-medium', groupBy === 'themes' && '!bg-zinc-200/80 !text-zinc-900 dark:!bg-zinc-700 dark:!text-white')}
+              >
+                By theme
+              </button>
+              <SourceFilterBlock options={inboxFeeds.map(feed => ({ feedId: feed.feedId, title: feed.feedTitle }))} chosen={sourceFilter} onChange={chooseSourceFilter} />
+            </>
+          )
           : undefined}
       />}
 
@@ -715,6 +817,8 @@ export default function RssFeedPanelBlock({
             onItemKeyDown={handleItemKeyDown}
             registerItemButton={registerItemButton}
             tagColors={tagColors}
+            onOpenDigest={onOpenDigest}
+            activeDigestKey={activeDigestKey}
           />
         )}
         {/* Group tree rendering */}
@@ -1328,6 +1432,8 @@ function DayInboxRenderer({
   onItemKeyDown,
   registerItemButton,
   tagColors,
+  onOpenDigest,
+  activeDigestKey,
 }: {
   days: RssDayInboxBlock[]
   /** The day's whole counts when Unread hides some rows */
@@ -1342,6 +1448,8 @@ function DayInboxRenderer({
   onItemKeyDown: (rowId: string, event: KeyboardEvent<HTMLButtonElement>) => void
   registerItemButton: (rowId: string, node: HTMLButtonElement | null) => void
   tagColors: Record<string, string>
+  onOpenDigest?: (entry: RssThemeDigestEntryBlock) => void
+  activeDigestKey: string | null
 }) {
   const now = new Date()
   if (days.length === 0) {
@@ -1358,7 +1466,7 @@ function DayInboxRenderer({
               type="button"
               aria-expanded={!folded}
               onClick={() => toggleDayFolded(day.day)}
-              className="sticky top-0 z-10 flex w-full items-center gap-2 border-b-[0.5px] border-[#EFEFF2] bg-[#F6F6F8]/95 px-3 py-2 text-left backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95"
+              className="sticky top-0 z-10 flex h-9 w-full items-center gap-2 border-b-[0.5px] border-[#EFEFF2] bg-[#F6F6F8]/95 px-3 text-left backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95"
             >
               <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform', !folded && 'rotate-90')} />
               <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{rssDayLabelBlock(day.day, now)}</span>
@@ -1378,7 +1486,9 @@ function DayInboxRenderer({
               if (sourceFolded) idx += source.stories.length
               return (
               <div key={source.feedId}>
-                <div className="group flex items-center gap-1.5 px-3 pb-1 pt-2.5">
+                {/* Stays under the day's header while its stories scroll, until the
+                    next source (or theme) takes its place: it is sticky inside its own block */}
+                <div className="group sticky top-9 z-[9] flex items-center gap-1.5 bg-white/95 px-3 pb-1 pt-2.5 backdrop-blur dark:bg-zinc-900/95">
                   <button
                     type="button"
                     aria-expanded={!sourceFolded}
@@ -1387,16 +1497,21 @@ function DayInboxRenderer({
                   >
                     <ChevronRight className={cn('h-3 w-3 shrink-0 transition-transform', !sourceFolded && 'rotate-90')} />
                     <span className="truncate">{source.feedTitle}</span>
-                    <span className="shrink-0 font-normal normal-case tracking-normal text-zinc-400">{unread > 0 ? `${unread} of ${source.stories.length}` : source.stories.length}</span>
+                    <span className="shrink-0 font-normal normal-case tracking-normal text-zinc-400">
+                      {source.stories.length === 0 && source.digest
+                        ? `${source.digest.sources.length} ${source.digest.sources.length === 1 ? 'source' : 'sources'}`
+                        : unread > 0 ? `${unread} of ${source.stories.length}` : source.stories.length}
+                    </span>
                   </button>
-                  <button
+                  {/* A theme is not a source: "only this" filters by outlet */}
+                  {!source.feedId.startsWith('theme:') && <button
                     type="button"
                     onClick={() => onSourceFilter([source.feedId])}
                     className="shrink-0 text-[11px] text-sky-600 opacity-0 transition-opacity hover:text-sky-700 group-hover:opacity-100 dark:text-sky-400"
                     title="Show only this source, on every day"
                   >
                     only this
-                  </button>
+                  </button>}
                 </div>
                 {!sourceFolded && source.stories.map(story => {
                   const rowId = rssRowIdBlock(`day:${day.day}`, story.lead.item.id)
@@ -1422,6 +1537,10 @@ function DayInboxRenderer({
                   idx += 1
                   return row
                 })}
+                {/* After the theme's own articles: what the other sources had on it */}
+                {!sourceFolded && source.digest && (onOpenDigest
+                  ? <ThemeDigestRowBlock entry={{ key: `${day.day}|${source.feedId}`, theme: source.feedTitle, digest: source.digest }} active={activeDigestKey === `${day.day}|${source.feedId}`} onOpen={onOpenDigest} />
+                  : <ThemeDigestBlock digest={source.digest} />)}
               </div>
               )
             })}
@@ -1429,6 +1548,65 @@ function DayInboxRenderer({
         )
       })}
     </>
+  )
+}
+
+
+/**
+ * A theme's digest from the sources outside the reading list: which of its
+ * topics other outlets also carried, and the AI's paragraph on what else
+ * happened in the theme. Read after the theme's own articles.
+ */
+function ThemeDigestBlock({ digest }: { digest: RssThemeDigestBlock }) {
+  if (!digest.note && digest.cited.length === 0) return null
+  return (
+    <div className="mx-3 mb-3 mt-1 rounded-lg bg-zinc-50 px-3 py-2.5 text-[12.5px] leading-snug dark:bg-zinc-800/50">
+      <p className="text-[10.5px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        From other sources · {digest.sources.length} {digest.sources.length === 1 ? 'outlet' : 'outlets'}
+      </p>
+      {digest.cited.length > 0 && (
+        <ul className="mt-1.5 space-y-1">
+          {digest.cited.map(c => (
+            <li key={c.topic} className="flex gap-2">
+              <span className="min-w-0 flex-1 text-zinc-800 dark:text-zinc-200">{c.topic}</span>
+              <span className="max-w-[55%] shrink-0 truncate text-right text-zinc-500 dark:text-zinc-400" title={c.sources.map(rssOutletNameBlock).join(', ')}>
+                also {c.sources.map(rssOutletNameBlock).join(', ')}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {digest.note && <p className="mt-2 leading-relaxed text-zinc-700 dark:text-zinc-300">{digest.note}</p>}
+    </div>
+  )
+}
+
+/**
+ * A theme's digest as a row of the list, read last in its theme like one more
+ * article: what the other sources had, opened beside the list in full.
+ */
+function ThemeDigestRowBlock({ entry, active, onOpen }: { entry: RssThemeDigestEntryBlock; active: boolean; onOpen: (entry: RssThemeDigestEntryBlock) => void }) {
+  const { digest } = entry
+  if (!digest.note && digest.cited.length === 0) return null
+  const lead = digest.note ?? `Also covered: ${digest.cited.map(c => `${c.topic} (${c.sources.map(rssOutletNameBlock).join(', ')})`).join('; ')}`
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(entry)}
+      className={cn(
+        'flex w-full items-start gap-2 border-b border-border/40 px-3 py-3 text-left text-xs outline-none',
+        active ? 'border-[var(--ltm-explorer-selected-color,#c73773)] bg-[var(--ltm-explorer-selected-color,#c73773)] text-white' : 'hover:bg-muted/40',
+      )}
+    >
+      <Layers className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', active ? 'text-white/80' : 'text-violet-500 dark:text-violet-400')} />
+      <div className="min-w-0 flex-1">
+        <div className="font-medium leading-snug">From other sources</div>
+        <div className={cn('mt-0.5 line-clamp-3 text-[11px] leading-snug', active ? 'text-white/85' : 'text-zinc-600 dark:text-zinc-300')}>{lead}</div>
+        <div className={cn('mt-1 truncate text-[10px] leading-none', active ? 'text-white/60' : 'text-muted-foreground/70')} title={digest.sources.map(rssOutletNameBlock).join(', ')}>
+          {digest.sources.length} {digest.sources.length === 1 ? 'outlet' : 'outlets'} · {digest.sources.map(rssOutletNameBlock).join(', ')}
+        </div>
+      </div>
+    </button>
   )
 }
 

@@ -8,6 +8,9 @@ import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListB
 import { chipColorClassBlock, type ChipColorBlock } from '@/services/lego_blocks/units/chipColorBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import WebullCompanyPageBlock, { type WebullCompanyHoldingBlock } from './WebullCompanyPageBlock'
+import { useGapPositionLinksBlock } from '@/personal_extension/components/lego_blocks/hooks/useGapPositionLinksBlock'
+import { gapsForPositionBlock } from '@/personal_extension/services/lego_blocks/units/webullGapLinkMatchBlock'
+import { GapChipsBlock } from '@/personal_extension/components/lego_blocks/units/GapChipsBlock'
 import WebullOverallPageBlock from './WebullOverallPageBlock'
 import WebullSidebarBlock from './WebullSidebarBlock'
 import { useWebullCompanyUniverseBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullCompanyUniverseBlock'
@@ -17,7 +20,7 @@ import { F9_PANEL_CLASS_BLOCK } from '@/personal_extension/components/lego_block
 import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_blocks/integrations/webullStudyVaultBlock'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import WebullFeedBlock from './WebullFeedBlock'
-import { PrivateGapsBlock, PrivateNoticedBlock, PrivateSimBlock, PrivateStudyBlock } from '../units/privateGapsBlock'
+import { PrivateGapsBlock, PrivateNoticedBlock, PrivateSimBlock, PrivateStudyBlock } from '../units/privatePersonalBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
@@ -758,6 +761,8 @@ function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, u
       lastPrice: firstStringBlock(row.last_price) || null,
       unrealizedProfitLoss: firstStringBlock(row.unrealized_profit_loss) || null,
       dayProfitLoss: firstStringBlock(row.day_profit_loss) || null,
+      marketValue: firstStringBlock(row.market_value) || null,
+      updatedAt: null,
       linkedIdeaId: null,
       relatedNodes: [],
       tags: [],
@@ -1806,6 +1811,9 @@ export default function WebullWorkspaceBlock({
     )
   }, [])
 
+  // Which gap holds each position, from the gaps' positions logs
+  const gapLinks = useGapPositionLinksBlock(executionRoot)
+  const openGapFile = onOpenFileForReading ?? onOpenNodeFile
   const webullRowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
     return [
       {
@@ -1926,8 +1934,29 @@ export default function WebullWorkspaceBlock({
           return formatCurrencyFromUnknownBlock(payload?.last_price)
         },
       },
+      // Last, beside Status: which gap holds the position
+      {
+        id: 'gap',
+        label: 'Gap',
+        widthClassName: 'w-[8rem]',
+        align: 'left',
+        render: (node) => {
+          if (node.type !== 'epic') return null
+          const payload = asMetadataRecordBlock(node).webull_position_payload as Record<string, unknown> | undefined
+          if (!payload) return null
+          const gaps = gapsForPositionBlock(gapLinks, {
+            id: firstStringBlock(payload.id) || null,
+            symbol: firstStringBlock(payload.symbol) || null,
+            instrumentType: firstStringBlock(payload.instrument_type) || null,
+            optionType: firstStringBlock(payload.option_type) || null,
+            optionExpireDate: firstStringBlock(payload.option_expire_date) || null,
+            optionExercisePrice: firstStringBlock(payload.option_exercise_price) || null,
+          })
+          return <GapChipsBlock gaps={gaps} onOpen={openGapFile} />
+        },
+      },
     ]
-  }, [accountLabelEntries])
+  }, [accountLabelEntries, gapLinks, openGapFile])
 
   const linkOptionsByPath = useMemo(() => {
     const map = new Map<string, WebullLinkOptionBlock>()
@@ -2521,7 +2550,7 @@ export default function WebullWorkspaceBlock({
           )}
 
           {feedTabActive && (
-            <WebullFeedBlock />
+            <WebullFeedBlock companies={companyUniverse} />
           )}
 
           {studyTabActive && PrivateStudyBlock && (
@@ -2694,6 +2723,7 @@ export default function WebullWorkspaceBlock({
               holding={selectedCompanyHolding}
               positionsActions={nativePositionsActions}
               positionCount={selectedCompany.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived').length}
+              accountLabel={(accountId, accountNumber) => resolveAccountLabelBlock(accountLabelEntries, accountId, accountNumber)}
               onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
               positionsSlot={(
                 <div className="space-y-3">
