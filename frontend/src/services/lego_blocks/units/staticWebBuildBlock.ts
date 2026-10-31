@@ -15,6 +15,7 @@ export const IS_STATIC_WEB_BUILD_BLOCK = import.meta.env.VITE_HASH_ROUTER === 't
 
 const STATIC_WEB_HIDDEN_ROUTES_BLOCK = new Set([
   '/webull',
+  '/real-estate',
   '/password-manager',
   '/personal-tools',
   '/personal-extension',

@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { createPortal } from 'react-dom'
 import {
   Bug,
+  Building2,
   MoreHorizontal,
   Compass,
   FileText,
@@ -55,6 +56,7 @@ const PasswordManager = lazy(() => import('./pages/PasswordManager'))
 const TerminalPage = lazy(() => import('./pages/TerminalPage'))
 const WebullPage = lazy(() => import('./personal_extension/pages/WebullPage'))
 const PersonalToolsPage = lazy(() => import('./personal_extension/pages/PersonalToolsPage'))
+import { PrivateRealEstateBlock, REAL_ESTATE_TAB_AVAILABLE } from './personal_extension/components/lego_blocks/units/privateRealEstateBlock'
 const StewardQueueOrch = lazy(() => import('./components/orchestrators/StewardQueueOrch'))
 const OrganizerIntegrityOrch = lazy(() => import('./components/orchestrators/OrganizerIntegrityOrch'))
 import ToolsShellBlock, { isToolsShellRoute } from './components/lego_blocks/integrations/ToolsShellBlock'
@@ -367,6 +369,8 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/thinking-space', label: 'Thinking Space', icon: Compass },
   { to: '/new-thought', label: 'New Note', icon: NewNoteNavIcon },
   { to: '/webull', label: 'Webull', icon: WebullNavIcon, railIconClassName: 'h-[18px] w-[18px]' },
+  // Private (personal_extension/realestate): only on the rail when that folder is cloned in.
+  ...(REAL_ESTATE_TAB_AVAILABLE ? [{ to: '/real-estate', label: 'Real Estate', icon: Building2 }] : []),
   {
     to: '/thinking-organizer',
     label: 'Thinking Organizer',
@@ -1010,6 +1014,7 @@ function App() {
       case '/thinking-space':
       case '/new-thought':
       case '/webull':
+      case '/real-estate':
       case '/settings':
         return location.pathname
       case '/tools':
@@ -1876,6 +1881,7 @@ function App() {
       case '/ai/chat':
       case '/web':
       case '/webull':
+      case '/real-estate':
       case '/thinking-organizer':
       case '/terminal':
       case '/settings':
@@ -3196,6 +3202,9 @@ function App() {
                   <Route path="/pdf-to-markdown" element={<Navigate to="/excalidraw-plus/pdf" replace />} />
                   <Route path="/transcript-cleaner" element={<Navigate to="/excalidraw-plus/transcript" replace />} />
                   <Route path="/webull" element={<WebullPage pageLabel={webullTabLabel} />} />
+                  {PrivateRealEstateBlock && (
+                    <Route path="/real-estate" element={<div className="ltm-page"><PrivateRealEstateBlock /></div>} />
+                  )}
                   <Route
                     path="/settings"
                     element={

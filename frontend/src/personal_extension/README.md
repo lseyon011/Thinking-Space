@@ -26,6 +26,15 @@ without mixing directly into shared product folders.
 - First subtab: `Overall` (loads Webull account list data)
 - Runtime note: `Overall` currently calls Webull through Electron main-process IPC (renderer/browser CORS-safe).
 
+## Private tabs (separate private repos)
+
+Some tabs live in private repos cloned into gitignored folders here. The public
+app finds each one through an `import.meta.glob` loader and leaves the tab out
+when the folder is missing.
+
+- `gaps/` — F9 Gaps/Noticed/Study/Sim (`anuragrpatil23/Thinking-Space-Personal`), loaded by `units/privateGapsBlock.ts`.
+- `realestate/` — Real Estate tab on the rail, route `/real-estate` (`lseyon011/Thinking-Space-Personal`), loaded by `units/privateRealEstateBlock.ts`. Setup: `git clone https://github.com/lseyon011/Thinking-Space-Personal.git realestate`.
+
 ## Environment
 
 Set these optional route/runtime values in your frontend env file (for example `frontend/.env.local`):
