@@ -15,6 +15,8 @@ export type ScheduleExecutionSpecBlock =
       args: string[]
       env?: Record<string, string>
       cwd?: string | null
+      /** Run limit; default 10, at most 240. */
+      timeoutMinutes?: number
     }
   | {
       kind: 'claude-code'
@@ -28,6 +30,8 @@ export type ScheduleExecutionSpecBlock =
       skipPermissions?: boolean
       claudeBinary?: string | null
       env?: Record<string, string>
+      /** Run limit; default 10, at most 240. */
+      timeoutMinutes?: number
       // Mirrors the electron-side flag: when true, a successful run with a
       // captured sessionId auto-opens a Telegram conversation and the poller
       // resumes the session on user replies. The UI needs to know this so it

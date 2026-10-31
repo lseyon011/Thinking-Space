@@ -37,6 +37,17 @@ export interface ScheduleRunOptionsBlock {
 }
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+const MAX_TIMEOUT_MS = 4 * 60 * 60 * 1000;
+
+// Mirrors runner.mjs `scheduleTimeoutMs`, plus a minute so the runner's own
+// cap (which writes the transcript's exit lines) always fires first.
+function runnerWaitMsBlock(spec: ScheduleSpecBlock): number {
+  const minutes = spec.execution.timeoutMinutes;
+  const own = typeof minutes === 'number' && Number.isFinite(minutes) && minutes > 0
+    ? Math.min(MAX_TIMEOUT_MS, Math.round(minutes * 60 * 1000))
+    : DEFAULT_TIMEOUT_MS;
+  return own + 60 * 1000;
+}
 
 function getTranscriptDirBlock(key: string): string {
   return path.join(app.getPath('userData'), 'transcripts', key);
@@ -113,12 +124,13 @@ export async function runScheduleBlock(
     child.stdout?.on('data', () => {});
     child.stderr?.on('data', () => {});
 
+    const waitMs = runnerWaitMsBlock(spec);
     const timeout = setTimeout(() => {
       if (!child.killed) {
-        errorMessage = `runner timeout after ${DEFAULT_TIMEOUT_MS}ms`;
+        errorMessage = `runner timeout after ${waitMs}ms`;
         child.kill('SIGTERM');
       }
-    }, DEFAULT_TIMEOUT_MS);
+    }, waitMs);
 
     child.on('error', (err) => {
       errorMessage = err.message;

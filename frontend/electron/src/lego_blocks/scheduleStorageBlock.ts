@@ -11,6 +11,8 @@ export type ScheduleExecutionBlock =
       args: string[];
       env?: Record<string, string>;
       cwd?: string | null;
+      /** Run limit; default 10, at most 240 (runner.mjs `scheduleTimeoutMs`). */
+      timeoutMinutes?: number;
     }
   | {
       kind: 'claude-code';
@@ -24,6 +26,8 @@ export type ScheduleExecutionBlock =
       skipPermissions?: boolean;
       claudeBinary?: string | null;
       env?: Record<string, string>;
+      /** Run limit; default 10, at most 240 (runner.mjs `scheduleTimeoutMs`). */
+      timeoutMinutes?: number;
       // When true and the run completes successfully with a captured
       // sessionId, the scheduler auto-opens a Telegram conversation pinned
       // to that sessionId. The poller then resumes this session on user
@@ -86,6 +90,10 @@ function getScheduleFilePathBlock(key: string): string {
 function isValidExecution(value: unknown): value is ScheduleExecutionBlock {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
+  if (v.timeoutMinutes !== undefined
+    && (typeof v.timeoutMinutes !== 'number' || !Number.isFinite(v.timeoutMinutes) || v.timeoutMinutes <= 0 || v.timeoutMinutes > 240)) {
+    return false;
+  }
   if (v.kind === 'shell') {
     if (typeof v.command !== 'string' || !v.command.trim()) return false;
     if (!Array.isArray(v.args) || !v.args.every((a) => typeof a === 'string')) return false;

@@ -274,4 +274,19 @@ describe('sanitizeScheduleSpecBlock', () => {
       expect(out!.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
     })
   })
+
+  describe('run limit', () => {
+    it('keeps a timeoutMinutes between 1 and 240', async () => {
+      const { sanitizeScheduleSpecBlock } = await loadBlock()
+      const out = sanitizeScheduleSpecBlock(baseSpec({ execution: { kind: 'shell', command: '/bin/echo', args: [], timeoutMinutes: 180 } }))
+      expect(out!.execution.timeoutMinutes).toBe(180)
+    })
+
+    it('rejects a spec whose timeoutMinutes is not a sane number', async () => {
+      const { sanitizeScheduleSpecBlock } = await loadBlock()
+      for (const bad of [0, -5, 241, 'long', Number.NaN]) {
+        expect(sanitizeScheduleSpecBlock(baseSpec({ execution: { kind: 'shell', command: '/bin/echo', args: [], timeoutMinutes: bad } }))).toBeNull()
+      }
+    })
+  })
 })

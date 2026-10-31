@@ -48,6 +48,14 @@ const TELEGRAM_REPLY_CLAUDE_TIMEOUT_MS = 5 * 60 * 1000;
 
 const MAX_TRANSCRIPT_BYTES = 5 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+// A schedule may ask for longer (execution.timeoutMinutes, e.g. a job that
+// runs several research agents); capped so a hung run still ends.
+const MAX_TIMEOUT_MS = 4 * 60 * 60 * 1000;
+function scheduleTimeoutMs(spec) {
+  const minutes = spec?.execution?.timeoutMinutes;
+  if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) return DEFAULT_TIMEOUT_MS;
+  return Math.min(MAX_TIMEOUT_MS, Math.round(minutes * 60 * 1000));
+}
 const HEARTBEAT_STALE_MS = 36 * 60 * 60 * 1000;
 const DEFAULT_CLAUDE_BINARY = '/opt/homebrew/bin/claude';
 // Catch-up only fires a scheduled slot if it's at least this old. Gives
@@ -113,7 +121,7 @@ function lockPathFor(key) {
   return join(LOCKS_DIR, `${key}.lock`);
 }
 
-function tryAcquireLock(key, origin) {
+function tryAcquireLock(key, origin, staleMs = LOCK_STALE_MS) {
   ensureDir(LOCKS_DIR);
   const path = lockPathFor(key);
   const body = JSON.stringify({ pid: process.pid, origin, startedAt: nowIso() });
@@ -129,7 +137,7 @@ function tryAcquireLock(key, origin) {
     // process almost certainly died without releasing. Take it over.
     try {
       const st = statSync(path);
-      if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
+      if (Date.now() - st.mtimeMs > staleMs) {
         writeFileSync(path, body, { encoding: 'utf-8', mode: 0o600 });
         logEvent({ kind: 'lock_stale_taken', key, origin });
         return path;
@@ -310,7 +318,8 @@ async function runSchedule(key, { origin = 'launchd' } = {}) {
     return { ok: false, reason: 'disabled' };
   }
 
-  const lockPath = tryAcquireLock(key, origin);
+  // Stale only after twice the run's own limit, so a long job keeps its lock.
+  const lockPath = tryAcquireLock(key, origin, Math.max(LOCK_STALE_MS, 2 * scheduleTimeoutMs(spec)));
   if (!lockPath) {
     logEvent({ kind: 'run_skip', key, reason: 'lock_held', origin });
     return { ok: false, reason: 'lock_held' };
@@ -427,12 +436,13 @@ async function runScheduleLocked(spec, origin) {
   // can find it.
   let timeoutHandle = null;
   if (!isWindow) {
+    const timeoutMs = scheduleTimeoutMs(spec);
     timeoutHandle = setTimeout(() => {
       if (!child.killed) {
-        transcript.write(`\n[killed: timeout after ${DEFAULT_TIMEOUT_MS}ms]\n`);
+        transcript.write(`\n[killed: timeout after ${timeoutMs}ms]\n`);
         child.kill('SIGTERM');
       }
-    }, DEFAULT_TIMEOUT_MS);
+    }, timeoutMs);
   } else {
     updateScheduleState(key, { runningPid: child.pid, runningSince: nowIso() });
   }
