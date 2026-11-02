@@ -8,6 +8,7 @@ import {
   Compass,
   FileText,
   Loader2,
+  Mail,
   Menu,
   Settings as SettingsIcon,
   Sparkles,
@@ -57,6 +58,7 @@ const TerminalPage = lazy(() => import('./pages/TerminalPage'))
 const WebullPage = lazy(() => import('./personal_extension/pages/WebullPage'))
 const PersonalToolsPage = lazy(() => import('./personal_extension/pages/PersonalToolsPage'))
 import { PrivateRealEstateBlock, REAL_ESTATE_TAB_AVAILABLE } from './personal_extension/components/lego_blocks/units/privateRealEstateBlock'
+import { PrivateOutlookBlock, OUTLOOK_TAB_AVAILABLE } from './personal_extension/components/lego_blocks/units/privateOutlookBlock'
 const StewardQueueOrch = lazy(() => import('./components/orchestrators/StewardQueueOrch'))
 const OrganizerIntegrityOrch = lazy(() => import('./components/orchestrators/OrganizerIntegrityOrch'))
 import ToolsShellBlock, { isToolsShellRoute } from './components/lego_blocks/integrations/ToolsShellBlock'
@@ -375,6 +377,8 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/webull', label: 'Webull', icon: WebullNavIcon, railIconClassName: 'h-[18px] w-[18px]' },
   // Private (personal_extension/realestate): only on the rail when that folder is cloned in.
   ...(REAL_ESTATE_TAB_AVAILABLE ? [{ to: '/real-estate', label: 'Real Estate', icon: Building2 }] : []),
+  // Private, same folder: the CUC email watch.
+  ...(OUTLOOK_TAB_AVAILABLE ? [{ to: '/outlook', label: 'Outlook', icon: Mail }] : []),
   {
     to: '/thinking-organizer',
     label: 'Thinking Organizer',
@@ -1027,6 +1031,7 @@ function App() {
       case '/new-thought':
       case '/webull':
       case '/real-estate':
+      case '/outlook':
       case '/settings':
         return location.pathname
       case '/tools':
@@ -1894,6 +1899,7 @@ function App() {
       case '/web':
       case '/webull':
       case '/real-estate':
+      case '/outlook':
       case '/thinking-organizer':
       case '/terminal':
       case '/settings':
@@ -3222,6 +3228,9 @@ function App() {
                   <Route path="/webull" element={<WebullPage pageLabel={webullTabLabel} />} />
                   {PrivateRealEstateBlock && (
                     <Route path="/real-estate" element={<div className="ltm-page h-full min-h-0"><PrivateRealEstateBlock /></div>} />
+                  )}
+                  {PrivateOutlookBlock && (
+                    <Route path="/outlook" element={<div className="ltm-page h-full min-h-0"><PrivateOutlookBlock /></div>} />
                   )}
                   <Route
                     path="/settings"
